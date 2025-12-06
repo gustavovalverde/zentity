@@ -1,0 +1,11 @@
+[tools]
+node = "20.10.0"
+rust = "1.91.0"
+python = "3.12"
+
+[env]
+# Service URLs for local development
+FHE_SERVICE_URL = "http://localhost:5001"
+ZK_SERVICE_URL = "http://localhost:5002"
+LIVENESS_SERVICE_URL = "http://localhost:5003"
+OCR_SERVICE_URL = "http://localhost:5004"

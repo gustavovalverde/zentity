@@ -1,0 +1,36 @@
+meta {
+  name: FHE Service
+}
+
+docs {
+  # FHE Service (Port 5001)
+
+  Fully Homomorphic Encryption service built with Rust and TFHE-rs.
+
+  ## Capabilities
+
+  - Encrypt birth year data
+  - Perform age verification on encrypted data
+  - Never sees plaintext - computation happens on ciphertext
+
+  ## Technology
+
+  - **Runtime**: Rust (Axum HTTP server)
+  - **FHE Library**: TFHE-rs 1.4.2
+  - **Key Size**: ~100MB (generated on first start)
+  - **Ciphertext Size**: ~175KB per encrypted integer
+
+  ## Performance
+
+  | Operation | Time |
+  |-----------|------|
+  | Key Generation | ~450ms (one-time) |
+  | Encryption | <1ms |
+  | Age Check | ~80-130ms |
+
+  ## Endpoints
+
+  1. `GET /health` - Health check
+  2. `POST /encrypt` - Encrypt birth year
+  3. `POST /verify-age` - Verify age on encrypted data
+}

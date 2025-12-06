@@ -1,0 +1,121 @@
+services:
+  frontend:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - FHE_SERVICE_URL=http://fhe-service:5001
+      - ZK_SERVICE_URL=http://zk-service:5002
+      - LIVENESS_SERVICE_URL=http://liveness-service:5003
+      - OCR_SERVICE_URL=http://ocr-service:5004
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
+      - BETTER_AUTH_URL=http://localhost:3000
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    depends_on:
+      fhe-service:
+        condition: service_healthy
+      zk-service:
+        condition: service_healthy
+      liveness-service:
+        condition: service_healthy
+      ocr-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  fhe-service:
+    build:
+      context: ./apps/fhe
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - RUST_LOG=info
+      - PORT=5001
+    volumes:
+      - fhe-keys:/app/keys
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  zk-service:
+    build:
+      context: ./apps/zk
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    environment:
+      - PORT=5002
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  liveness-service:
+    build:
+      context: ./apps/liveness
+      dockerfile: Dockerfile
+    ports:
+      - "5003:5003"
+    environment:
+      - PORT=5003
+      - ANTISPOOF_THRESHOLD=0.5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  ocr-service:
+    build:
+      context: ./apps/ocr
+      dockerfile: Dockerfile
+    ports:
+      - "5004:5004"
+    environment:
+      - PORT=5004
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+networks:
+  zentity-network:
+    driver: bridge
+
+volumes:
+  fhe-keys:
+    driver: local

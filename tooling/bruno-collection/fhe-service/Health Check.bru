@@ -1,0 +1,36 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{fhe_base_url}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  # FHE Service Health Check
+
+  Checks if the FHE service is running and ready to accept requests.
+
+  ## Response
+
+  ```json
+  {
+    "status": "ok",
+    "service": "fhe-service"
+  }
+  ```
+
+  ## Notes
+
+  - The service needs ~45-60 seconds to generate FHE keys on first start
+  - Health check will fail until key generation is complete
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq ok
+}

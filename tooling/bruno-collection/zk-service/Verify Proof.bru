@@ -1,0 +1,68 @@
+meta {
+  name: Verify Proof
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{zk_base_url}}/verify-proof
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "proof": {{zk_proof}},
+    "publicSignals": {{zk_public_signals}}
+  }
+}
+
+docs {
+  # Verify Zero-Knowledge Proof
+
+  Verifies a Groth16 zero-knowledge proof. This is the same verification
+  that would happen on-chain with a Solidity verifier contract.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | proof | object | Yes | The Groth16 proof object from /generate-proof |
+  | publicSignals | string[] | Yes | Array of public signals from /generate-proof |
+
+  ## Response
+
+  ```json
+  {
+    "isValid": true,
+    "verificationTimeMs": 10
+  }
+  ```
+
+  ## Workflow
+
+  1. First call "Generate Proof" to get a proof and public signals
+  2. The proof/signals are automatically stored in variables
+  3. This request uses those variables to verify
+
+  ## Performance
+
+  - Verification: 10-50ms (much faster than generation)
+  - On-chain verification: ~300k gas
+
+  ## Security Notes
+
+  - Verification is deterministic - same proof always gives same result
+  - Invalid or tampered proofs will return `isValid: false`
+  - The verification key is embedded in the service (from trusted setup)
+}
+
+assert {
+  res.status: eq 200
+  res.body.isValid: isDefined
+  res.body.verificationTimeMs: isDefined
+}

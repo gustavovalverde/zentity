@@ -1,0 +1,44 @@
+meta {
+  name: ZK Service
+}
+
+docs {
+  # ZK Service (Port 5002)
+
+  Zero-Knowledge proof service built with Node.js and snarkjs.
+
+  ## Capabilities
+
+  - Generate Groth16 proofs for age verification
+  - Verify proofs (same as on-chain verification)
+  - Export Solidity calldata for smart contract integration
+
+  ## Technology
+
+  - **Runtime**: Node.js 20 (Express server)
+  - **ZK Library**: snarkjs 0.7.5
+  - **Circuit**: Circom (age check circuit)
+  - **Curve**: BN128 (Ethereum compatible)
+
+  ## Circuit
+
+  The age check circuit:
+  - **Private inputs**: birthYear
+  - **Public inputs**: currentYear, minAge
+  - **Output**: isOver18 (1 or 0)
+  - **Constraints**: 6 (very efficient)
+
+  ## Performance
+
+  | Operation | Time |
+  |-----------|------|
+  | Proof Generation | 100-500ms |
+  | Proof Verification | 10-50ms |
+  | On-chain Verification | ~300k gas |
+
+  ## Endpoints
+
+  1. `GET /health` - Health check
+  2. `POST /generate-proof` - Generate ZK proof
+  3. `POST /verify-proof` - Verify ZK proof
+}

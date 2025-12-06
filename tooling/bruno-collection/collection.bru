@@ -1,0 +1,41 @@
+meta {
+  name: Zentity Crypto Services
+}
+
+docs {
+  # Zentity Crypto Services API Collection
+
+  This collection contains endpoints for testing the FHE (Fully Homomorphic Encryption)
+  and ZK (Zero-Knowledge) proof services.
+
+  ## Services
+
+  | Service | Port | Description |
+  |---------|------|-------------|
+  | FHE Service | 5001 | Rust-based TFHE-rs encryption and age verification |
+  | ZK Service | 5002 | Node.js snarkjs Groth16 proof generation/verification |
+
+  ## Getting Started
+
+  1. Start the services:
+     ```bash
+     cd services
+     docker compose up -d fhe-service zk-service
+     ```
+
+  2. Wait ~60s for FHE key generation on first start
+
+  3. Select the appropriate environment (Local or Docker)
+
+  ## Typical Workflow
+
+  ### FHE Age Verification:
+  1. Call "Encrypt Birth Year" with a birth year
+  2. Copy the `ciphertext` from response
+  3. Call "Verify Age" with the ciphertext
+
+  ### ZK Age Proof:
+  1. Call "Generate Proof" with birth year, current year, min age
+  2. Copy `proof` and `publicSignals` from response
+  3. Call "Verify Proof" to validate
+}

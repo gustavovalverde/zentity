@@ -1,0 +1,19 @@
+# Liveness Detection Service Dependencies
+
+# Core ML libraries
+deepface>=0.0.89
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+tf-keras>=2.20.0
+
+# Web framework
+fastapi>=0.109.0
+uvicorn>=0.27.0
+python-multipart>=0.0.6
+httpx>=0.27.0
+
+# Image processing
+pillow>=10.0.0
+
+# UniFace for face detection and 106-point landmarks
+uniface>=1.2.0

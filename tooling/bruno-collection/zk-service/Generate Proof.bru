@@ -1,0 +1,94 @@
+meta {
+  name: Generate Proof
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{zk_base_url}}/generate-proof
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "birthYear": 1990,
+    "currentYear": 2025,
+    "minAge": 18
+  }
+}
+
+docs {
+  # Generate Zero-Knowledge Proof
+
+  Generates a Groth16 zero-knowledge proof that proves the user is
+  above a minimum age without revealing their actual birth year.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | birthYear | number | Yes | Private input - year of birth |
+  | currentYear | number | Yes | Public input - current year |
+  | minAge | number | No | Public input - minimum age (default: 18) |
+
+  ## Response
+
+  ```json
+  {
+    "proof": {
+      "pi_a": ["...", "...", "1"],
+      "pi_b": [["...", "..."], ["...", "..."], ["1", "0"]],
+      "pi_c": ["...", "...", "1"],
+      "protocol": "groth16",
+      "curve": "bn128"
+    },
+    "publicSignals": ["1", "2025", "18"],
+    "generationTimeMs": 150,
+    "solidityCalldata": "..."
+  }
+  ```
+
+  ## Public Signals
+
+  The `publicSignals` array contains:
+  1. `isOver18` - 1 if age >= minAge, 0 otherwise
+  2. `currentYear` - The year used for calculation
+  3. `minAge` - The minimum age threshold
+
+  ## Privacy
+
+  - `birthYear` is a **private input** - it's used to generate the proof
+    but is NOT included in the output
+  - Only the boolean result (is over 18) and public inputs are revealed
+  - The proof cryptographically guarantees the computation is correct
+
+  ## Performance
+
+  - Proof generation: 100-500ms
+  - Circuit: 6 constraints (very efficient)
+
+  ## Solidity Integration
+
+  The `solidityCalldata` field contains formatted calldata for
+  on-chain verification using a Groth16 verifier contract.
+}
+
+assert {
+  res.status: eq 200
+  res.body.proof: isDefined
+  res.body.publicSignals: isDefined
+  res.body.generationTimeMs: isDefined
+}
+
+script:post-response {
+  // Store proof and public signals for verification
+  if (res.body.proof) {
+    bru.setVar("zk_proof", JSON.stringify(res.body.proof));
+    bru.setVar("zk_public_signals", JSON.stringify(res.body.publicSignals));
+  }
+}

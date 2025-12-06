@@ -1,0 +1,67 @@
+meta {
+  name: Encrypt Birth Year
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{fhe_base_url}}/encrypt
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "birthYear": 1990
+  }
+}
+
+docs {
+  # Encrypt Birth Year
+
+  Encrypts a birth year using TFHE (Fully Homomorphic Encryption).
+  The encrypted ciphertext can be used for age verification without
+  revealing the actual birth year.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | birthYear | number | Yes | Year of birth (1900-current year) |
+
+  ## Response
+
+  ```json
+  {
+    "ciphertext": "base64-encoded-ciphertext...",
+    "message": "Birth year encrypted successfully"
+  }
+  ```
+
+  ## Notes
+
+  - Ciphertext is ~175KB base64 encoded
+  - Encryption takes <1ms
+  - Save the ciphertext to use in the "Verify Age" endpoint
+
+  ## Example Values
+
+  - `birthYear: 1990` → Person born in 1990 (35 years old in 2025)
+  - `birthYear: 2010` → Person born in 2010 (15 years old in 2025)
+}
+
+assert {
+  res.status: eq 200
+  res.body.ciphertext: isDefined
+}
+
+script:post-response {
+  // Store ciphertext for use in verify-age request
+  if (res.body.ciphertext) {
+    bru.setVar("encrypted_birth_year", res.body.ciphertext);
+  }
+}

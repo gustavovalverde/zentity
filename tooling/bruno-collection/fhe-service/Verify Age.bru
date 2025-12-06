@@ -1,0 +1,71 @@
+meta {
+  name: Verify Age
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{fhe_base_url}}/verify-age
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "ciphertext": "{{encrypted_birth_year}}",
+    "currentYear": 2025,
+    "minAge": 18
+  }
+}
+
+docs {
+  # Verify Age (FHE)
+
+  Performs homomorphic age verification on encrypted birth year data.
+  The computation happens entirely on encrypted data - the server
+  never sees the actual birth year.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | ciphertext | string | Yes | Base64-encoded encrypted birth year (from /encrypt) |
+  | currentYear | number | Yes | Current year for age calculation |
+  | minAge | number | Yes | Minimum age threshold to check |
+
+  ## Response
+
+  ```json
+  {
+    "isOver18": true,
+    "computationTimeMs": 80
+  }
+  ```
+
+  ## Workflow
+
+  1. First call "Encrypt Birth Year" to get a ciphertext
+  2. The ciphertext is automatically stored in `encrypted_birth_year` variable
+  3. This request uses that variable
+
+  ## Performance
+
+  - Age verification: ~80-130ms
+  - Computation happens on encrypted data (FHE magic!)
+
+  ## Privacy Guarantee
+
+  The server performs `(currentYear - birthYear) >= minAge` entirely
+  on encrypted data. It learns only the boolean result, never the
+  actual age or birth year.
+}
+
+assert {
+  res.status: eq 200
+  res.body.isOver18: isDefined
+  res.body.computationTimeMs: isDefined
+}
