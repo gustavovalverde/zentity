@@ -111,8 +111,12 @@ export function StepIdUpload() {
       const result = await processDocument(base64);
       updateData({ documentResult: result });
 
-      // Check if document is valid
-      if (result.isValidDRDocument && result.documentType !== "unknown") {
+      // Check if document is valid (recognized type with extracted data)
+      const isValid = result.documentType !== "unknown" &&
+                      result.confidence > 0.3 &&
+                      result.extractedData?.documentNumber;
+
+      if (isValid) {
         setProcessingState("verified");
         // Store extracted data in wizard state for later use
         if (result.extractedData) {
@@ -164,7 +168,7 @@ export function StepIdUpload() {
       <div className="space-y-2">
         <h3 className="text-lg font-medium">Upload ID Document</h3>
         <p className="text-sm text-muted-foreground">
-          Upload a Dominican Republic ID document for verification. We accept passports, cedulas, and driver's licenses.
+          Upload a government-issued ID document for verification. We accept passports, national ID cards, and driver's licenses.
         </p>
       </div>
 
@@ -278,9 +282,9 @@ export function StepIdUpload() {
             <div className="flex-1">
               <p className="font-medium text-red-700 dark:text-red-300">Document Not Accepted</p>
               <p className="text-sm text-red-600 dark:text-red-400">
-                {!documentResult.isValidDRDocument
-                  ? "This does not appear to be a Dominican Republic document"
-                  : "Unable to identify document type"}
+                {documentResult.documentType === "unknown"
+                  ? "Unable to identify document type"
+                  : "Could not extract required information from document"}
               </p>
             </div>
             <Button

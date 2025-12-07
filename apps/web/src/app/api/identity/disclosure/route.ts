@@ -254,9 +254,10 @@ export async function POST(
         documentNumber?: string;
         dateOfBirth?: string;
         nationality?: string;
+        nationalityCode?: string;
       };
       documentType?: string;
-      isValidDRDocument?: boolean;
+      documentOrigin?: string;
     } | null = null;
 
     try {
@@ -369,10 +370,11 @@ export async function POST(
     }
 
     if (body.fields.nationality) {
-      // Default to DOM for Dominican Republic cedula
+      // Use nationality from extracted data or document origin
       piiPackage.nationality =
         documentResult?.extractedData?.nationality ||
-        (documentResult?.isValidDRDocument ? "DOM" : undefined);
+        documentResult?.extractedData?.nationalityCode ||
+        documentResult?.documentOrigin;
       if (piiPackage.nationality) encryptedFields.push("nationality");
     }
 

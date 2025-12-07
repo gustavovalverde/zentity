@@ -9,9 +9,13 @@ use serde_json::json;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum FheError {
     #[error("Key not found: {0}")]
     KeyNotFound(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] bincode::Error),
@@ -27,6 +31,7 @@ impl IntoResponse for FheError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             FheError::KeyNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
+            FheError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Serialization(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Base64Decode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),

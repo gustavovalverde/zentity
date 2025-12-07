@@ -4,7 +4,7 @@ Privacy-preserving document OCR and field extraction using RapidOCR with PPOCRv5
 
 ## Overview
 
-This service extracts identity information from documents (cedula, passport, driver's license) and generates cryptographic commitments. Documents are processed transiently and NEVER stored.
+This service extracts identity information from documents (national IDs, passports, driver's licenses) and generates cryptographic commitments. Documents are processed transiently and NEVER stored.
 
 ## Technology
 
@@ -22,11 +22,11 @@ This service extracts identity information from documents (cedula, passport, dri
 
 ## Supported Documents
 
-| Document Type | Country | Fields Extracted |
-|---------------|---------|------------------|
-| Cedula | Dominican Republic | Name, DOB, Document #, Expiry |
-| Passport | International | Name, DOB, Passport #, Nationality, Expiry |
-| Driver's License | Dominican Republic | Name, DOB, License #, Expiry |
+| Document Type | Countries | Fields Extracted |
+|---------------|-----------|------------------|
+| National ID | International (cedula, DNI, etc.) | Name, DOB, Document #, Expiry, Nationality |
+| Passport | International (MRZ parsing) | Name, DOB, Passport #, Nationality, Expiry |
+| Driver's License | International | Name, DOB, License #, Expiry |
 
 ## Endpoints
 
@@ -60,8 +60,8 @@ Full document OCR with field parsing.
 **Response:**
 ```json
 {
-  "documentType": "cedula",
-  "isValidDRDocument": true,
+  "documentType": "national_id",
+  "documentOrigin": "DOM",
   "confidence": 0.87,
   "extractedData": {
     "fullName": "JUAN PEREZ",
@@ -70,7 +70,8 @@ Full document OCR with field parsing.
     "documentNumber": "001-0000000-0",
     "dateOfBirth": "1990-05-15",
     "expirationDate": "2025-12-31",
-    "nationality": "DOM"
+    "nationality": "Dominican Republic",
+    "nationalityCode": "DOM"
   },
   "validationIssues": [],
   "processingTimeMs": 520
@@ -96,12 +97,14 @@ Privacy-preserving document processing (recommended).
     "nameCommitment": "sha256-hash",
     "userSalt": "random-32-bytes"
   },
-  "documentType": "cedula",
-  "isValidDRDocument": true,
+  "documentType": "national_id",
+  "documentOrigin": "DOM",
   "confidence": 0.87,
   "extractedData": {
     "fullName": "JUAN PEREZ",
-    "dateOfBirth": "1990-05-15"
+    "dateOfBirth": "1990-05-15",
+    "nationality": "Dominican Republic",
+    "nationalityCode": "DOM"
   },
   "validationIssues": [],
   "processingTimeMs": 550
@@ -183,7 +186,7 @@ docker run -p 5004:5004 zentity-ocr-service
 ## Validation
 
 The service validates:
-- Cedula number format (Luhn check digit)
-- Passport number format
+- National ID formats (country-specific, e.g., Dominican cedula with Luhn check)
+- Passport MRZ checksum (ICAO 9303 standard)
 - Expiration date (not expired)
 - Date of birth (reasonable age range)

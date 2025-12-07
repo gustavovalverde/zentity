@@ -5,7 +5,6 @@
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use tfhe::prelude::*;
 use tfhe::{generate_keys, set_server_key, ClientKey, ConfigBuilder, ServerKey};
 use uuid::Uuid;
 

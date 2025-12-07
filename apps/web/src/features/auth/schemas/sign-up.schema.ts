@@ -29,8 +29,8 @@ export const selfieSchema = z.object({
 
 // Document AI processing result
 export const documentResultSchema = z.object({
-  documentType: z.enum(["passport", "cedula", "drivers_license", "unknown"]),
-  isValidDRDocument: z.boolean(),
+  documentType: z.enum(["passport", "national_id", "drivers_license", "unknown"]),
+  documentOrigin: z.string().optional(), // ISO 3166-1 alpha-3 country code
   confidence: z.number(),
   extractedData: z.object({
     fullName: z.string().optional(),
@@ -38,6 +38,7 @@ export const documentResultSchema = z.object({
     dateOfBirth: z.string().optional(),
     expirationDate: z.string().optional(),
     nationality: z.string().optional(),
+    nationalityCode: z.string().optional(),
     gender: z.string().optional(),
   }).optional(),
   validationIssues: z.array(z.string()),

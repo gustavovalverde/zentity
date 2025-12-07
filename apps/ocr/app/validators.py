@@ -1,40 +1,388 @@
 """
-Document validation.
+Dynamic document validation using python-stdnum.
 
-Validates document format, checksums, and authenticity.
-Country-specific validations (e.g., cedula) are clearly marked.
+Uses established libraries for document number validation:
+- python-stdnum: 200+ ID formats with proper checksums (dynamic discovery)
+- iso3166: Country code conversion
+- mrz: Passport MRZ validation (ICAO 9303)
+
+Key features:
+- Dynamic validator discovery via stdnum.get_cc_module()
+- Supports 30+ countries automatically
+- Rich, user-friendly error messages
 """
 
 import re
-from typing import List
+from typing import List, Optional
 from datetime import datetime, date
+from dataclasses import dataclass
+
+import iso3166
+from stdnum import get_cc_module
+from stdnum.exceptions import (
+    ValidationError,
+    InvalidChecksum,
+    InvalidFormat,
+    InvalidLength,
+    InvalidComponent,
+)
 
 
-def validate_cedula_number(number: str) -> List[str]:
+# =============================================================================
+# Personal ID Module Names (tried in priority order)
+# =============================================================================
+
+PERSONAL_ID_MODULE_NAMES = [
+    # Primary personal identification documents
+    "personalid",    # Generic (few countries use this exact name)
+    "cedula",        # Dominican Republic, Ecuador
+    "dni",           # Spain, Argentina
+    "cpf",           # Brazil
+    "curp",          # Mexico
+    "rut",           # Chile
+    "nie",           # Spain (foreign residents)
+    "nif",           # Spain, Portugal (tax ID often used as personal)
+    "pesel",         # Poland
+    "bsn",           # Netherlands
+    "personnummer",  # Sweden, Norway
+    "fodselsnummer", # Norway (alternative)
+    "hetu",          # Finland
+    "kennitala",     # Iceland
+    "cpr",           # Denmark
+    "nino",          # UK (National Insurance Number)
+    "ssn",           # USA (Social Security Number)
+    "sin",           # Canada (Social Insurance Number)
+    "tfn",           # Australia (Tax File Number)
+    "aadhaar",       # India
+    "idnr",          # Germany
+    "cnp",           # Romania
+    "egn",           # Bulgaria
+    "amka",          # Greece
+    "isikukood",     # Estonia
+    "asmens_kodas",  # Lithuania
+    "oib",           # Croatia
+    "emso",          # Slovenia
+    "rodne_cislo",   # Czech Republic, Slovakia
+    "rc",            # Czech Republic (alternative)
+    "cui",           # Peru
+    "ci",            # Ecuador (alternative)
+    "cc",            # Portugal (Cartao de Cidadao)
+    "ric",           # Costa Rica
+    "identity_number",  # Israel
+    # Fallback to tax IDs (sometimes used for identification)
+    "nit",           # Colombia
+    "rfc",           # Mexico (tax ID)
+    "cuit",          # Argentina (tax ID)
+    "vat",           # Generic VAT (last resort)
+]
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
+
+@dataclass
+class ValidatorInfo:
+    """Information about a discovered validator."""
+    module: object           # The stdnum module (has validate(), is_valid(), etc.)
+    country_code: str        # Alpha-2 code (e.g., "do")
+    module_name: str         # Module name (e.g., "cedula")
+    full_path: str           # Full path (e.g., "stdnum.do.cedula")
+    display_name: str        # Human-readable name (from module docstring)
+
+
+@dataclass
+class ValidationResult:
+    """Result of document number validation with rich error info."""
+    is_valid: bool
+    error_code: Optional[str] = None        # Machine-readable code
+    error_message: Optional[str] = None     # Human-readable message
+    validator_used: Optional[str] = None    # e.g., "stdnum.do.cedula"
+    format_name: Optional[str] = None       # e.g., "cedula (Dominican Republic national ID)"
+
+
+# =============================================================================
+# Country Code Conversion
+# =============================================================================
+
+def alpha3_to_alpha2(alpha3_code: str) -> Optional[str]:
     """
-    Validate Dominican cedula number format and checksum.
+    Convert ISO 3166-1 alpha-3 code to alpha-2 code (lowercase).
 
-    Format: XXX-XXXXXXX-X
+    Uses iso3166 library (already a dependency).
+
+    Args:
+        alpha3_code: 3-letter country code (e.g., "DOM", "ESP")
+
+    Returns:
+        2-letter country code (e.g., "do", "es") or None if not found
     """
-    issues = []
+    if not alpha3_code:
+        return None
 
+    try:
+        country = iso3166.countries.get(alpha3_code)
+        if country:
+            return country.alpha2.lower()
+    except (KeyError, AttributeError):
+        pass
+    return None
+
+
+def get_country_display_name(alpha3_code: str) -> str:
+    """Get human-readable country name from alpha-3 code."""
+    if not alpha3_code:
+        return "Unknown"
+
+    try:
+        country = iso3166.countries.get(alpha3_code)
+        if country:
+            return country.name
+    except (KeyError, AttributeError):
+        pass
+
+    return alpha3_code  # Fallback to code itself
+
+
+# =============================================================================
+# Dynamic Validator Discovery
+# =============================================================================
+
+def _extract_display_name(module: object, module_name: str) -> str:
+    """Extract human-readable name from module docstring."""
+    doc = getattr(module, '__doc__', '')
+    if doc:
+        # First line of docstring usually contains the format name
+        first_line = doc.strip().split('\n')[0]
+        # Remove trailing period and clean up
+        name = first_line.rstrip('.').strip()
+        if name:
+            return name
+    return module_name.upper()
+
+
+def discover_validator(alpha3_code: str) -> Optional[ValidatorInfo]:
+    """
+    Dynamically discover the appropriate validator for a country.
+
+    Uses stdnum.get_cc_module() to find country-specific validators
+    without needing hardcoded imports.
+
+    Args:
+        alpha3_code: ISO 3166-1 alpha-3 country code (e.g., "DOM", "ESP")
+
+    Returns:
+        ValidatorInfo if a validator was found, None otherwise
+    """
+    # Step 1: Convert alpha-3 to alpha-2
+    alpha2_code = alpha3_to_alpha2(alpha3_code)
+    if not alpha2_code:
+        return None
+
+    # Step 2: Try each module name in priority order
+    for module_name in PERSONAL_ID_MODULE_NAMES:
+        try:
+            module = get_cc_module(alpha2_code, module_name)
+            if module is not None and hasattr(module, 'validate'):
+                # Extract display name from module docstring
+                display_name = _extract_display_name(module, module_name)
+
+                return ValidatorInfo(
+                    module=module,
+                    country_code=alpha2_code,
+                    module_name=module_name,
+                    full_path=f"stdnum.{alpha2_code}.{module_name}",
+                    display_name=display_name
+                )
+        except (ImportError, AttributeError):
+            # Module doesn't exist for this country, try next
+            continue
+
+    return None
+
+
+# =============================================================================
+# Rich Validation with User-Friendly Errors
+# =============================================================================
+
+def validate_document_number(
+    number: str,
+    country_code: Optional[str]
+) -> ValidationResult:
+    """
+    Validate a national ID/document number with rich error reporting.
+
+    Returns ValidationResult with:
+    - Clear, actionable error messages for users
+    - Which validator was used (for debugging)
+    - Specific error codes for programmatic handling
+
+    Args:
+        number: The document number to validate
+        country_code: ISO 3166-1 alpha-3 code (e.g., "DOM", "ESP")
+
+    Returns:
+        ValidationResult with validation status and details
+    """
     if not number:
-        issues.append("missing_document_number")
-        return issues
+        return ValidationResult(
+            is_valid=False,
+            error_code="missing_document_number",
+            error_message="Document number is required.",
+        )
 
-    # Remove formatting
-    digits = re.sub(r"[^\d]", "", number)
+    if not country_code:
+        # Can't validate without knowing the country
+        return ValidationResult(
+            is_valid=True,
+            error_code=None,
+            error_message=None,
+        )
 
-    if len(digits) != 11:
-        issues.append("invalid_cedula_length")
-        return issues
+    # Discover the appropriate validator
+    validator_info = discover_validator(country_code)
+    country_name = get_country_display_name(country_code)
 
-    # Validate all digits
-    if not digits.isdigit():
-        issues.append("invalid_cedula_characters")
+    if not validator_info:
+        # No validator available for this country - warn but don't fail
+        return ValidationResult(
+            is_valid=True,  # Don't block the user
+            error_code="validation_unavailable_for_country",
+            error_message=(
+                f"Document validation is not available for {country_name}. "
+                f"The document number format could not be verified."
+            ),
+        )
 
-    return issues
+    # Attempt validation with specific error handling
+    try:
+        validator_info.module.validate(number)
+        return ValidationResult(
+            is_valid=True,
+            validator_used=validator_info.full_path,
+            format_name=validator_info.display_name,
+        )
 
+    except InvalidLength as e:
+        return ValidationResult(
+            is_valid=False,
+            error_code="invalid_document_length",
+            error_message=(
+                f"The document number has an incorrect length for {country_name}. "
+                f"A valid {validator_info.display_name} should have the correct number of digits."
+            ),
+            validator_used=validator_info.full_path,
+            format_name=validator_info.display_name,
+        )
+
+    except InvalidChecksum as e:
+        return ValidationResult(
+            is_valid=False,
+            error_code="invalid_document_checksum",
+            error_message=(
+                f"The document number appears to be invalid for {country_name}. "
+                f"The check digit doesn't match what's expected for a {validator_info.display_name}. "
+                f"Please verify you entered the number correctly."
+            ),
+            validator_used=validator_info.full_path,
+            format_name=validator_info.display_name,
+        )
+
+    except InvalidFormat as e:
+        return ValidationResult(
+            is_valid=False,
+            error_code="invalid_document_format",
+            error_message=(
+                f"The document number format is incorrect for {country_name}. "
+                f"A {validator_info.display_name} should contain only valid characters "
+                f"in the expected format."
+            ),
+            validator_used=validator_info.full_path,
+            format_name=validator_info.display_name,
+        )
+
+    except InvalidComponent as e:
+        return ValidationResult(
+            is_valid=False,
+            error_code="invalid_document_component",
+            error_message=(
+                f"Part of the document number is invalid for {country_name}. "
+                f"This could indicate an invalid date, region code, or other embedded value."
+            ),
+            validator_used=validator_info.full_path,
+            format_name=validator_info.display_name,
+        )
+
+    except ValidationError as e:
+        # Catch-all for any other validation error
+        return ValidationResult(
+            is_valid=False,
+            error_code="invalid_document_number",
+            error_message=(
+                f"The document number doesn't appear to be valid for {country_name}. "
+                f"Please check that you've entered a correct {validator_info.display_name}."
+            ),
+            validator_used=validator_info.full_path,
+            format_name=validator_info.display_name,
+        )
+
+
+# =============================================================================
+# Backward-Compatible API
+# =============================================================================
+
+def validate_national_id(number: str, country_code: Optional[str]) -> List[str]:
+    """
+    Validate national ID number using dynamic discovery.
+
+    This function maintains backward compatibility with the existing API
+    while using the new dynamic validation system internally.
+
+    Args:
+        number: The document number to validate
+        country_code: ISO 3166-1 alpha-3 country code (e.g., "DOM", "ESP")
+
+    Returns:
+        List of issue codes (empty if valid)
+    """
+    result = validate_document_number(number, country_code)
+
+    if result.is_valid:
+        # If there's a warning (like validation_unavailable_for_country),
+        # include it in the issues list
+        if result.error_code:
+            return [result.error_code]
+        return []
+
+    # Return error code for backward compatibility
+    return [result.error_code] if result.error_code else ["invalid_national_id"]
+
+
+def validate_national_id_detailed(
+    number: str,
+    country_code: Optional[str]
+) -> ValidationResult:
+    """
+    Validate national ID with full error details.
+
+    Use this when you need:
+    - Human-readable error messages for UI display
+    - Which validator was used (for logging/debugging)
+    - Detailed error context
+
+    Args:
+        number: The document number to validate
+        country_code: ISO 3166-1 alpha-3 country code
+
+    Returns:
+        ValidationResult with full details
+    """
+    return validate_document_number(number, country_code)
+
+
+# =============================================================================
+# Other Validators (unchanged)
+# =============================================================================
 
 def validate_passport_number(number: str) -> List[str]:
     """

@@ -1,8 +1,8 @@
 """
 Document type detection from OCR text.
 
-Identifies Dominican Republic document types based on
-text markers and patterns.
+Identifies identity document types (passport, national ID, driver's license)
+based on text markers and patterns. Supports international documents.
 """
 
 from enum import Enum
@@ -12,49 +12,56 @@ import re
 
 class DocumentType(str, Enum):
     PASSPORT = "passport"
-    CEDULA = "cedula"
+    NATIONAL_ID = "national_id"  # Generic national ID (cedula, DNI, etc.)
     DRIVERS_LICENSE = "drivers_license"
     UNKNOWN = "unknown"
 
 
-# Detection patterns for each document type
+# Detection patterns for each document type (international)
 DOCUMENT_MARKERS = {
-    DocumentType.CEDULA: [
-        r"JUNTA\s+CENTRAL\s+ELECTORAL",
+    DocumentType.NATIONAL_ID: [
+        # Generic national ID patterns
+        r"NATIONAL\s+ID",
+        r"IDENTITY\s+CARD",
+        r"ID\s+CARD",
+        # Spanish-speaking countries
         r"CÉDULA\s+DE\s+IDENTIDAD",
         r"CEDULA\s+DE\s+IDENTIDAD",
+        r"DOCUMENTO\s+NACIONAL",
+        r"DNI",
+        # Dominican Republic specific
+        r"JUNTA\s+CENTRAL\s+ELECTORAL",
         r"JCE",
-        r"\d{3}[-\s]?\d{7}[-\s]?\d{1}",  # Cedula number format
+        # Common ID number formats
+        r"\d{3}[-\s]?\d{7}[-\s]?\d{1}",  # Dominican cedula format
+        r"\d{8}[A-Z]",  # Spanish DNI format
     ],
     DocumentType.PASSPORT: [
         r"PASAPORTE",
         r"PASSPORT",
-        r"P<DOM",  # MRZ indicator for Dominican passport
-        r"DIRECCIÓN\s+GENERAL\s+DE\s+PASAPORTES",
+        r"REISEPASS",  # German
+        r"PASSEPORT",  # French
+        r"P<[A-Z]{3}",  # MRZ indicator for any passport
         r"TIPO\s*/?\s*TYPE\s*P",
     ],
     DocumentType.DRIVERS_LICENSE: [
         r"LICENCIA\s+DE\s+CONDUCIR",
-        r"DIRECCIÓN\s+GENERAL\s+DE\s+TRÁNSITO",
-        r"INTRANT",
-        r"CATEGORÍA",
         r"DRIVER.*LICENSE",
+        r"DRIVING\s+LICEN[CS]E",
+        r"PERMIS\s+DE\s+CONDUIRE",  # French
+        r"FÜHRERSCHEIN",  # German
+        r"CATEGORÍA",
+        r"CATEGORY",
     ],
 }
-
-# Dominican Republic authenticity markers
-DR_MARKERS = [
-    r"REPÚBLICA\s+DOMINICANA",
-    r"REPUBLICA\s+DOMINICANA",
-    r"REP\.?\s*DOM\.?",
-    r"DOMINICAN\s+REPUBLIC",
-    r"DOM(?=\s|<|$)",  # DOM country code
-]
 
 
 def detect_document_type(text: str) -> Tuple[DocumentType, float]:
     """
     Detect document type from OCR text.
+
+    Supports international documents including passports,
+    national IDs, and driver's licenses.
 
     Returns:
         Tuple of (DocumentType, confidence_score)
@@ -62,7 +69,7 @@ def detect_document_type(text: str) -> Tuple[DocumentType, float]:
     text_upper = text.upper()
 
     scores = {
-        DocumentType.CEDULA: 0,
+        DocumentType.NATIONAL_ID: 0,
         DocumentType.PASSPORT: 0,
         DocumentType.DRIVERS_LICENSE: 0,
     }
@@ -85,24 +92,3 @@ def detect_document_type(text: str) -> Tuple[DocumentType, float]:
     confidence = min(1.0, max_score / max(1, total_patterns - 1))
 
     return max_type, confidence
-
-
-def is_dr_document(text: str) -> Tuple[bool, float]:
-    """
-    Check if document appears to be from Dominican Republic.
-
-    Returns:
-        Tuple of (is_dr, confidence_score)
-    """
-    text_upper = text.upper()
-    matches = 0
-
-    for pattern in DR_MARKERS:
-        if re.search(pattern, text_upper, re.IGNORECASE):
-            matches += 1
-
-    if matches == 0:
-        return False, 0.0
-
-    confidence = min(1.0, matches / 2)  # 2+ matches = high confidence
-    return True, confidence
