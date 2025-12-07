@@ -7,6 +7,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { X, FileText, Upload, Loader2, CheckCircle2, AlertCircle, CreditCard } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ai";
 
 type ProcessingState = "idle" | "converting" | "processing" | "verified" | "rejected";
@@ -89,11 +91,19 @@ export function StepIdUpload() {
 
     const validTypes = ["image/jpeg", "image/png", "image/webp"];
     if (!validTypes.includes(file.type)) {
-      setUploadError("Please upload an image file (JPEG, PNG, or WebP). PDFs are not supported for AI processing.");
+      const errorMsg = "Please upload an image file (JPEG, PNG, or WebP). PDFs are not supported for AI processing.";
+      setUploadError(errorMsg);
+      toast.error("Invalid file type", {
+        description: "Please upload a JPEG, PNG, or WebP image.",
+      });
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setUploadError("File size must be less than 10MB.");
+      const errorMsg = "File size must be less than 10MB.";
+      setUploadError(errorMsg);
+      toast.error("File too large", {
+        description: "Please upload a file smaller than 10MB.",
+      });
       return;
     }
 
@@ -118,6 +128,9 @@ export function StepIdUpload() {
 
       if (isValid) {
         setProcessingState("verified");
+        toast.success("Document verified!", {
+          description: `${DOCUMENT_TYPE_LABELS[result.documentType]} detected successfully.`,
+        });
         // Store extracted data in wizard state for later use
         if (result.extractedData) {
           updateData({
@@ -130,12 +143,19 @@ export function StepIdUpload() {
         }
       } else {
         setProcessingState("rejected");
+        toast.error("Document not accepted", {
+          description: result.documentType === "unknown"
+            ? "Unable to identify document type. Please try a different document."
+            : "Could not extract required information. Please ensure the document is clear and visible.",
+        });
       }
     } catch (error) {
       console.error("Document processing error:", error);
-      setUploadError(
-        error instanceof Error ? error.message : "Failed to process document"
-      );
+      const errorMsg = error instanceof Error ? error.message : "Failed to process document";
+      setUploadError(errorMsg);
+      toast.error("Processing failed", {
+        description: errorMsg,
+      });
       setProcessingState("idle");
     }
   };
@@ -179,17 +199,43 @@ export function StepIdUpload() {
         </Alert>
       )}
 
-      {/* Processing indicator */}
+      {/* Processing indicator with skeleton */}
       {(processingState === "converting" || processingState === "processing") && (
-        <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-4">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <div>
-            <p className="font-medium">
-              {processingState === "converting" ? "Preparing document..." : "Analyzing document..."}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {processingState === "processing" && "AI is verifying your document"}
-            </p>
+        <div className="space-y-4 animate-in fade-in duration-300">
+          {/* Status header */}
+          <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
+            <div>
+              <p className="font-medium text-blue-700 dark:text-blue-300">
+                {processingState === "converting" ? "Preparing document..." : "Analyzing document..."}
+              </p>
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                {processingState === "processing" && "AI is verifying your document"}
+              </p>
+            </div>
+          </div>
+
+          {/* Document preview skeleton */}
+          <div className="rounded-lg border bg-muted/30 p-4">
+            <Skeleton className="mx-auto h-48 w-full max-w-xs rounded-lg" />
+          </div>
+
+          {/* Extracted data skeleton */}
+          <div className="rounded-lg border bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-muted-foreground" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-4 w-20" />
+            </div>
           </div>
         </div>
       )}

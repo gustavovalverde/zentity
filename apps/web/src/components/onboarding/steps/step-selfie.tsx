@@ -10,11 +10,11 @@ import {
   Camera,
   CameraOff,
   CheckCircle2,
-  XCircle,
   Loader2,
   Smile,
   RotateCcw,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   validateLivenessChallenge,
   checkLiveness,
@@ -116,18 +116,79 @@ export function StepSelfie() {
     checkPermission();
   }, []);
 
+  /**
+   * Capture a frame from the video stream.
+   *
+   * Note: Browser video elements apply display enhancements (brightness, contrast)
+   * that canvas.drawImage() doesn't receive. We apply brightness correction to
+   * compensate for the raw camera data being darker than what's displayed.
+   */
   const captureFrame = useCallback((): string | null => {
     if (!videoRef.current) return null;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0);
-      return canvas.toDataURL("image/jpeg", 0.8);
+    const video = videoRef.current;
+
+    // Ensure video has valid dimensions (camera fully initialized)
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.warn("Video dimensions not ready");
+      return null;
     }
-    return null;
+
+    // Check if video is actually playing and has data
+    if (video.readyState < 2) {
+      console.warn("Video not ready for capture, readyState:", video.readyState);
+      return null;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    ctx.drawImage(video, 0, 0);
+
+    // Analyze brightness of the captured frame
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    let totalBrightness = 0;
+    const sampleSize = Math.min(1000, data.length / 4);
+    const step = Math.floor(data.length / 4 / sampleSize);
+
+    for (let i = 0; i < sampleSize; i++) {
+      const idx = i * step * 4;
+      totalBrightness += (data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
+    }
+
+    const avgBrightness = totalBrightness / sampleSize;
+
+    // If average brightness is very low (< 20), the frame is too dark to use
+    if (avgBrightness < 20) {
+      console.warn("Frame too dark to recover, brightness:", avgBrightness);
+      return null;
+    }
+
+    // Apply brightness correction if the frame is underexposed
+    // Target brightness is around 100-120 for a well-lit face
+    if (avgBrightness < 80) {
+      // Calculate brightness multiplier (cap at 2.5x to avoid noise amplification)
+      const targetBrightness = 100;
+      const brightnessMultiplier = Math.min(2.5, targetBrightness / avgBrightness);
+
+      console.log(`Applying brightness correction: ${avgBrightness.toFixed(1)} -> ${(avgBrightness * brightnessMultiplier).toFixed(1)}`);
+
+      // Apply brightness correction to all pixels
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, data[i] * brightnessMultiplier);     // R
+        data[i + 1] = Math.min(255, data[i + 1] * brightnessMultiplier); // G
+        data[i + 2] = Math.min(255, data[i + 2] * brightnessMultiplier); // B
+        // Alpha (data[i + 3]) stays unchanged
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    return canvas.toDataURL("image/jpeg", 0.85);
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -160,9 +221,11 @@ export function StepSelfie() {
       }
     } catch {
       setPermissionStatus("denied");
-      setCameraError(
-        "Unable to access camera. Please check your browser settings and grant camera permission."
-      );
+      const errorMsg = "Unable to access camera. Please check your browser settings and grant camera permission.";
+      setCameraError(errorMsg);
+      toast.error("Camera access denied", {
+        description: "Please check your browser settings and grant camera permission.",
+      });
     }
   }, []);
 
@@ -246,29 +309,44 @@ export function StepSelfie() {
         if (result.passed) {
           setChallengeState("passed");
 
-          // Analyze passive monitoring to get best frame for face matching
-          let selectedBestFrame = smileFrame;
+          // Select the best frame for face matching
+          // Priority: baselineImage (neutral expression, best for matching ID photo)
+          //         > bestFrame from passive monitoring (neutral, good quality)
+          //         > smileFrame (last resort - smiling distorts facial features)
+          let selectedBestFrame = baselineImage; // Default to baseline - neutral expression matches ID
+
+          // Try to get an even better frame from passive monitoring
           if (passiveFrames.length > 0) {
             try {
               const passiveResult = await analyzePassiveMonitor(passiveFrames);
               setBlinkCount(passiveResult.totalBlinks);
 
-              // Use best frame if available, otherwise use the smile frame
+              // Use best passive frame if available, valid, and has good quality score
               if (
                 passiveResult.bestFrameIndex >= 0 &&
-                passiveResult.bestFrameIndex < passiveFrames.length
+                passiveResult.bestFrameIndex < passiveFrames.length &&
+                passiveResult.bestFrameScore > 0.7 // Only use if quality is high
               ) {
-                selectedBestFrame = passiveFrames[passiveResult.bestFrameIndex];
+                const candidateFrame = passiveFrames[passiveResult.bestFrameIndex];
+                if (candidateFrame && candidateFrame.length > 1000 && candidateFrame.startsWith("data:image/")) {
+                  selectedBestFrame = candidateFrame;
+                }
               }
             } catch (passiveError) {
-              console.warn("Passive monitoring analysis failed:", passiveError);
-              // Continue with smile frame
+              console.warn("Passive monitoring analysis failed, using baseline:", passiveError);
+              // Continue with baseline - it has a neutral expression ideal for matching
             }
           }
 
+          // Fallback to smile frame only if baseline is somehow missing
+          if (!selectedBestFrame) {
+            console.warn("No baseline available, falling back to smile frame");
+            selectedBestFrame = smileFrame;
+          }
+
           updateData({
-            selfieImage: smileFrame,
-            bestSelfieFrame: selectedBestFrame,
+            selfieImage: smileFrame, // Keep smile for liveness proof
+            bestSelfieFrame: selectedBestFrame, // Neutral expression for face matching
             blinkCount: blinkCount,
           });
         } else {
@@ -278,8 +356,8 @@ export function StepSelfie() {
         // Service error - allow through with warning
         setChallengeState("passed");
         updateData({
-          selfieImage: smileFrame,
-          bestSelfieFrame: smileFrame,
+          selfieImage: smileFrame, // Keep smile for liveness proof
+          bestSelfieFrame: baselineImage || smileFrame, // Prefer baseline for face matching
           blinkCount: blinkCount,
         });
       }
@@ -431,6 +509,33 @@ export function StepSelfie() {
     return () => clearTimeout(timeout);
   }, [challengeState, stopCamera]);
 
+  // Toast notifications for status changes
+  useEffect(() => {
+    if (challengeState === "passed") {
+      toast.success("Liveness verified!", {
+        description: blinkCount > 0
+          ? `You've been confirmed as a real person. (${blinkCount} blink${blinkCount !== 1 ? "s" : ""} detected)`
+          : "You've been confirmed as a real person.",
+      });
+    }
+  }, [challengeState, blinkCount]);
+
+  useEffect(() => {
+    if (challengeState === "failed" && challengeResult) {
+      toast.error("Verification failed", {
+        description: challengeResult.message || "Please try again.",
+      });
+    }
+  }, [challengeState, challengeResult]);
+
+  useEffect(() => {
+    if (challengeState === "timeout") {
+      toast.error("Timeout", {
+        description: timeoutMessage || "Please try again.",
+      });
+    }
+  }, [challengeState, timeoutMessage]);
+
   const retryChallenge = useCallback(() => {
     setBaselineImage(null);
     setChallengeImage(null);
@@ -510,6 +615,46 @@ export function StepSelfie() {
           </>
         )}
 
+        {/* Face positioning guide - visible during detection and smile states */}
+        {(challengeState === "detecting" || challengeState === "waiting_smile") && (
+          <div className="pointer-events-none absolute inset-0">
+            <svg className="h-full w-full" viewBox="0 0 640 480" preserveAspectRatio="xMidYMid slice">
+              {/* Semi-transparent overlay with face cutout */}
+              <defs>
+                <mask id="face-mask">
+                  <rect x="0" y="0" width="640" height="480" fill="white" />
+                  <ellipse cx="320" cy="200" rx="130" ry="170" fill="black" />
+                </mask>
+              </defs>
+              <rect
+                x="0" y="0" width="640" height="480"
+                fill="rgba(0,0,0,0.3)"
+                mask="url(#face-mask)"
+              />
+              {/* Face oval guide */}
+              <ellipse
+                cx="320" cy="200" rx="130" ry="170"
+                fill="none"
+                stroke={challengeState === "waiting_smile" ? "#eab308" : "#ffffff"}
+                strokeWidth="3"
+                strokeDasharray={challengeState === "detecting" ? "12,6" : "none"}
+                className={challengeState === "detecting" ? "animate-pulse" : ""}
+              />
+              {/* Corner guides */}
+              <g stroke={challengeState === "waiting_smile" ? "#eab308" : "#ffffff"} strokeWidth="3" strokeLinecap="round">
+                {/* Top-left */}
+                <path d="M 170 50 L 170 90 M 170 50 L 210 50" fill="none" />
+                {/* Top-right */}
+                <path d="M 470 50 L 470 90 M 470 50 L 430 50" fill="none" />
+                {/* Bottom-left */}
+                <path d="M 170 400 L 170 360 M 170 400 L 210 400" fill="none" />
+                {/* Bottom-right */}
+                <path d="M 470 400 L 470 360 M 470 400 L 430 400" fill="none" />
+              </g>
+            </svg>
+          </div>
+        )}
+
         {/* Detecting face overlay */}
         {challengeState === "detecting" && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center">
@@ -586,7 +731,7 @@ export function StepSelfie() {
       </div>
 
       {/* Permission denied guidance */}
-      {permissionStatus === "denied" && !cameraError && (
+      {permissionStatus === "denied" && (
         <Alert variant="destructive">
           <AlertDescription className="space-y-2">
             <p>Camera access is blocked. To enable:</p>
@@ -599,48 +744,12 @@ export function StepSelfie() {
         </Alert>
       )}
 
-      {cameraError && (
-        <Alert variant="destructive">
-          <AlertDescription>{cameraError}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Status alerts */}
+      {/* Success indicator */}
       {challengeState === "passed" && (
         <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
           <CheckCircle2 className="h-4 w-4 text-green-600" />
           <AlertDescription className="ml-2 text-green-700 dark:text-green-300">
-            Liveness verified! You&apos;ve been confirmed as a real person.
-            {blinkCount > 0 && (
-              <span className="ml-1 text-sm opacity-80">
-                ({blinkCount} blink{blinkCount !== 1 ? "s" : ""} detected)
-              </span>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {challengeState === "failed" && challengeResult && (
-        <Alert variant="destructive">
-          <XCircle className="h-4 w-4" />
-          <AlertDescription className="ml-2">
-            <p className="font-medium">Verification failed</p>
-            <p className="text-sm">{challengeResult.message}</p>
-            {challengeResult.error && (
-              <p className="mt-1 text-sm">
-                {getIssueDescription(challengeResult.error)}
-              </p>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {challengeState === "timeout" && (
-        <Alert variant="destructive">
-          <XCircle className="h-4 w-4" />
-          <AlertDescription className="ml-2">
-            <p className="font-medium">Timeout</p>
-            <p className="text-sm">{timeoutMessage}</p>
+            Liveness verified! Click &quot;Next&quot; to continue.
           </AlertDescription>
         </Alert>
       )}

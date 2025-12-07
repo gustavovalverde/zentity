@@ -1,21 +1,15 @@
 "use client";
 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "@tanstack/react-form";
 import { useWizard } from "../wizard-provider";
 import { WizardNavigation } from "../wizard-navigation";
+import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
 import {
-  emailSchema,
-  EmailData,
-} from "@/features/auth/schemas/sign-up.schema";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+  Field,
+  FieldControl,
+  FieldLabel,
+  FieldMessage,
+} from "@/components/ui/tanstack-form";
 import { Input } from "@/components/ui/input";
 
 /**
@@ -27,54 +21,79 @@ import { Input } from "@/components/ui/input";
 export function StepEmail() {
   const { state, updateData, nextStep } = useWizard();
 
-  const form = useForm<EmailData>({
-    resolver: zodResolver(emailSchema),
+  const form = useForm({
     defaultValues: {
-      email: state.data.email,
+      email: state.data.email || "",
+    },
+    onSubmit: async ({ value }) => {
+      updateData(value);
+      nextStep();
     },
   });
 
-  const onSubmit = (data: EmailData) => {
-    updateData(data);
-    nextStep();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    form.handleSubmit();
   };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Get Started</h3>
-          <p className="text-sm text-muted-foreground">
-            Enter your email to begin identity verification.
-          </p>
-        </div>
-
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email Address</FormLabel>
-              <FormControl>
-                <Input
-                  type="email"
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  autoFocus
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <p className="text-xs text-muted-foreground">
-          We'll use this email to contact you if needed and for account recovery.
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-2">
+        <h3 className="text-lg font-medium">Get Started</h3>
+        <p className="text-sm text-muted-foreground">
+          Enter your email to begin identity verification.
         </p>
+      </div>
 
-        <WizardNavigation />
-      </form>
-    </Form>
+      <form.Field
+        name="email"
+        validators={{
+          onBlur: ({ value }) => {
+            const result = emailSchema.safeParse({ email: value });
+            if (!result.success) {
+              return result.error.issues[0]?.message || "Invalid email";
+            }
+            return undefined;
+          },
+          onSubmit: ({ value }) => {
+            const result = emailSchema.safeParse({ email: value });
+            if (!result.success) {
+              return result.error.issues[0]?.message || "Invalid email";
+            }
+            return undefined;
+          },
+        }}
+      >
+        {(field) => (
+          <Field
+            name={field.name}
+            errors={field.state.meta.errors as string[]}
+            isTouched={field.state.meta.isTouched}
+            isValidating={field.state.meta.isValidating}
+          >
+            <FieldLabel>Email Address</FieldLabel>
+            <FieldControl>
+              <Input
+                type="email"
+                placeholder="you@example.com"
+                autoComplete="email"
+                autoFocus
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+                onBlur={field.handleBlur}
+              />
+            </FieldControl>
+            <FieldMessage />
+          </Field>
+        )}
+      </form.Field>
+
+      <p className="text-xs text-muted-foreground">
+        We'll use this email to contact you if needed and for account recovery.
+      </p>
+
+      <WizardNavigation />
+    </form>
   );
 }

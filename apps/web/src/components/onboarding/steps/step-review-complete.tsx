@@ -2,29 +2,28 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "@tanstack/react-form";
 import { useWizard } from "../wizard-provider";
 import { WizardNavigation } from "../wizard-navigation";
 import { signUp } from "@/lib/auth-client";
-import { passwordSchema, PasswordData } from "@/features/auth/schemas/sign-up.schema";
+import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+  Field,
+  FieldControl,
+  FieldLabel,
+  FieldMessage,
+} from "@/components/ui/tanstack-form";
 import { generateAgeProof, verifyAgeProof, storeAgeProof, encryptDOB } from "@/lib/crypto-client";
 import { matchFaces, type FaceMatchResult } from "@/lib/face-detection";
 import { Check, Loader2, Shield, Lock, Database, Key, UserCheck, XCircle, ArrowLeftRight, Edit2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 type ProofStatus =
   | "idle"
@@ -103,14 +102,46 @@ export function StepReviewComplete() {
   const [faceMatchStatus, setFaceMatchStatus] = useState<FaceMatchStatus>("idle");
   const [faceMatchResult, setFaceMatchResult] = useState<FaceMatchResult | null>(null);
 
-  // Password form
-  const form = useForm<PasswordData>({
-    resolver: zodResolver(passwordSchema),
+  // Password form with TanStack Form
+  const form = useForm({
     defaultValues: {
       password: data.password || "",
       confirmPassword: data.confirmPassword || "",
     },
+    onSubmit: async ({ value }) => {
+      await handleSubmit(value);
+    },
   });
+
+  // Validate password field
+  const validatePassword = (value: string) => {
+    const result = passwordSchema.safeParse({
+      password: value,
+      confirmPassword: form.getFieldValue("confirmPassword"),
+    });
+    if (!result.success) {
+      const fieldError = result.error.issues.find((issue) =>
+        issue.path.includes("password") && !issue.path.includes("confirmPassword")
+      );
+      return fieldError?.message;
+    }
+    return undefined;
+  };
+
+  // Validate confirm password field (includes cross-field validation)
+  const validateConfirmPassword = (value: string) => {
+    const result = passwordSchema.safeParse({
+      password: form.getFieldValue("password"),
+      confirmPassword: value,
+    });
+    if (!result.success) {
+      const fieldError = result.error.issues.find((issue) =>
+        issue.path.includes("confirmPassword")
+      );
+      return fieldError?.message;
+    }
+    return undefined;
+  };
 
   const calculateAge = (dob: string | null): number | null => {
     if (!dob) return null;
@@ -172,7 +203,16 @@ export function StepReviewComplete() {
     }
   }, [data.idDocumentBase64, selfieForMatching, faceMatchStatus]);
 
-  const handleSubmit = async (formData: PasswordData) => {
+  const handleSubmit = async (formData: { password: string; confirmPassword: string }) => {
+    // Validate the full schema before proceeding
+    const validation = passwordSchema.safeParse(formData);
+    if (!validation.success) {
+      toast.error("Validation failed", {
+        description: validation.error.issues[0]?.message || "Please check your password",
+      });
+      return;
+    }
+
     // Save password to wizard state
     updateData({ password: formData.password, confirmPassword: formData.confirmPassword });
 
@@ -376,7 +416,7 @@ export function StepReviewComplete() {
             <span>{error}</span>
             <button
               type="button"
-              onClick={() => form.handleSubmit(handleSubmit)()}
+              onClick={() => form.handleSubmit()}
               className="ml-4 text-sm font-medium underline hover:no-underline"
             >
               Try again
@@ -487,12 +527,21 @@ export function StepReviewComplete() {
 
           <div className="flex items-center justify-center gap-4">
             <div className="flex flex-col items-center gap-2">
-              <div className="w-20 h-20 rounded-lg overflow-hidden border bg-muted">
+              <div className={cn(
+                "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                faceMatchStatus === "matching" && "ring-2 ring-blue-400 ring-offset-2"
+              )}>
+                {faceMatchStatus === "matching" && !faceMatchResult?.idFaceImage && (
+                  <Skeleton className="h-full w-full" />
+                )}
                 {(faceMatchResult?.idFaceImage || data.idDocumentBase64) && (
                   <img
                     src={faceMatchResult?.idFaceImage || data.idDocumentBase64 || ""}
                     alt="ID Photo"
-                    className="h-full w-full object-cover"
+                    className={cn(
+                      "h-full w-full object-cover transition-opacity duration-300",
+                      faceMatchStatus === "matching" && "opacity-70"
+                    )}
                   />
                 )}
               </div>
@@ -504,15 +553,21 @@ export function StepReviewComplete() {
                 <ArrowLeftRight className="h-6 w-6 text-muted-foreground" />
               )}
               {faceMatchStatus === "matching" && (
-                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
+                  <div className="relative">
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                    <div className="absolute inset-0 h-6 w-6 rounded-full bg-blue-400/20 animate-ping" />
+                  </div>
+                  <Skeleton className="h-3 w-16 mt-1" />
+                </div>
               )}
               {faceMatchStatus === "matched" && (
-                <>
+                <div className="animate-in zoom-in duration-300">
                   <Check className="h-6 w-6 text-green-600" />
                   <span className="text-xs font-medium text-green-600">
                     {Math.round((faceMatchResult?.confidence || 0) * 100)}% match
                   </span>
-                </>
+                </div>
               )}
               {faceMatchStatus === "no_match" && (
                 <>
@@ -529,12 +584,21 @@ export function StepReviewComplete() {
             </div>
 
             <div className="flex flex-col items-center gap-2">
-              <div className="w-20 h-20 rounded-lg overflow-hidden border bg-muted">
+              <div className={cn(
+                "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                faceMatchStatus === "matching" && "ring-2 ring-blue-400 ring-offset-2"
+              )}>
+                {faceMatchStatus === "matching" && !selfieForMatching && (
+                  <Skeleton className="h-full w-full" />
+                )}
                 {selfieForMatching && (
                   <img
                     src={selfieForMatching}
                     alt="Selfie"
-                    className="h-full w-full object-cover"
+                    className={cn(
+                      "h-full w-full object-cover transition-opacity duration-300",
+                      faceMatchStatus === "matching" && "opacity-70"
+                    )}
                   />
                 )}
               </div>
@@ -575,62 +639,89 @@ export function StepReviewComplete() {
 
       {/* Password Form */}
       {proofStatus === "idle" && (
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <div className="rounded-lg border p-4 space-y-4">
-              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-                Create Password
-              </h4>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            form.handleSubmit();
+          }}
+          className="space-y-4"
+        >
+          <div className="rounded-lg border p-4 space-y-4">
+            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+              Create Password
+            </h4>
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Create a strong password"
-                        autoComplete="new-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <form.Field
+              name="password"
+              validators={{
+                onBlur: ({ value }) => validatePassword(value),
+                onSubmit: ({ value }) => validatePassword(value),
+              }}
+            >
+              {(field) => (
+                <Field
+                  name={field.name}
+                  errors={field.state.meta.errors as string[]}
+                  isTouched={field.state.meta.isTouched}
+                  isValidating={field.state.meta.isValidating}
+                >
+                  <FieldLabel>Password</FieldLabel>
+                  <FieldControl>
+                    <Input
+                      type="password"
+                      placeholder="Create a strong password"
+                      autoComplete="new-password"
+                      value={field.state.value}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                    />
+                  </FieldControl>
+                  <FieldMessage />
+                </Field>
+              )}
+            </form.Field>
 
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Confirm your password"
-                        autoComplete="new-password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <form.Field
+              name="confirmPassword"
+              validators={{
+                onBlur: ({ value }) => validateConfirmPassword(value),
+                onSubmit: ({ value }) => validateConfirmPassword(value),
+              }}
+            >
+              {(field) => (
+                <Field
+                  name={field.name}
+                  errors={field.state.meta.errors as string[]}
+                  isTouched={field.state.meta.isTouched}
+                  isValidating={field.state.meta.isValidating}
+                >
+                  <FieldLabel>Confirm Password</FieldLabel>
+                  <FieldControl>
+                    <Input
+                      type="password"
+                      placeholder="Confirm your password"
+                      autoComplete="new-password"
+                      value={field.state.value}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                    />
+                  </FieldControl>
+                  <FieldMessage />
+                </Field>
+              )}
+            </form.Field>
 
-              <p className="text-xs text-muted-foreground">
-                Password must be at least 8 characters with uppercase, lowercase, and a number.
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Password must be at least 8 characters with uppercase, lowercase, and a number.
+            </p>
+          </div>
 
-            <WizardNavigation
-              onNext={form.handleSubmit(handleSubmit)}
-              nextLabel="Complete Registration"
-            />
-          </form>
-        </Form>
+          <WizardNavigation
+            onNext={() => form.handleSubmit()}
+            nextLabel="Complete Registration"
+          />
+        </form>
       )}
 
       {/* Processing Status */}

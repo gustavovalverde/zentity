@@ -18,14 +18,17 @@ export function WizardStepper() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium">
+        <span className="font-medium animate-in fade-in duration-300">
           Step {state.currentStep} of {totalSteps}
         </span>
-        <span className="text-muted-foreground">
+        <span
+          key={state.currentStep}
+          className="text-muted-foreground animate-in slide-in-from-right-2 fade-in duration-300"
+        >
           {STEP_TITLES[state.currentStep - 1]}
         </span>
       </div>
-      <Progress value={progress} className="h-2" />
+      <Progress value={progress} className="h-2 transition-all duration-500" />
 
       {/* Visual step indicators */}
       <div className="flex justify-between items-center">
@@ -41,30 +44,32 @@ export function WizardStepper() {
               onClick={() => canNavigate && goToStep(stepNumber)}
               disabled={!canNavigate}
               className={cn(
-                "flex flex-col items-center gap-1 group",
-                canNavigate && "cursor-pointer"
+                "flex flex-col items-center gap-1 group transition-transform duration-200",
+                canNavigate && "cursor-pointer hover:scale-105"
               )}
               aria-label={`${title} - Step ${stepNumber}${isCompleted ? " (completed)" : isCurrent ? " (current)" : ""}`}
               aria-current={isCurrent ? "step" : undefined}
             >
               <div
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
-                  isCompleted && "bg-primary text-primary-foreground",
-                  isCurrent && "bg-primary text-primary-foreground ring-4 ring-primary/20",
-                  !isCompleted && !isCurrent && "bg-muted text-muted-foreground",
+                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all duration-300",
+                  isCompleted && "bg-primary text-primary-foreground scale-100",
+                  isCurrent && "bg-primary text-primary-foreground ring-4 ring-primary/20 scale-110",
+                  !isCompleted && !isCurrent && "bg-muted text-muted-foreground scale-100",
                   canNavigate && "group-hover:ring-2 group-hover:ring-primary/30"
                 )}
               >
                 {isCompleted ? (
-                  <Check className="w-4 h-4" />
+                  <Check className="w-4 h-4 animate-in zoom-in duration-200" />
                 ) : (
-                  stepNumber
+                  <span className={cn(isCurrent && "animate-in zoom-in duration-200")}>
+                    {stepNumber}
+                  </span>
                 )}
               </div>
               <span
                 className={cn(
-                  "text-[10px] max-w-[60px] text-center leading-tight hidden sm:block",
+                  "text-[10px] max-w-[60px] text-center leading-tight hidden sm:block transition-colors duration-200",
                   isCurrent ? "text-foreground font-medium" : "text-muted-foreground"
                 )}
               >
