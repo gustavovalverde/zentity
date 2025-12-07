@@ -4,37 +4,338 @@ Privacy-preserving document OCR and field extraction using RapidOCR with PPOCRv5
 
 ## Overview
 
-This service extracts identity information from documents (national IDs, passports, driver's licenses) and generates cryptographic commitments. Documents are processed transiently and NEVER stored.
+This service extracts identity information from documents (national IDs, passports, driver's licenses) and generates cryptographic commitments. Documents are processed transiently and **NEVER stored**.
 
-## Technology
+### Key Capabilities
 
-- **Language**: Python 3.10+
-- **Framework**: FastAPI
-- **OCR Engine**: RapidOCR (PPOCRv5 for Latin languages)
-- **Port**: 5004
+- **Multi-Country Support**: Automatically detects and validates documents from 30+ countries
+- **Dynamic Validation**: Uses [python-stdnum](https://github.com/arthurdejong/python-stdnum) for country-specific document number validation
+- **Privacy-First**: Only cryptographic commitments are returned for storage
+- **Rich Error Messages**: User-friendly validation feedback for invalid documents
+
+---
+
+## How It Works
+
+### Processing Pipeline
+
+```
+┌─────────────────┐
+│  Document Image │
+│   (Base64)      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  1. OCR Engine  │  RapidOCR with PPOCRv5
+│  Text Extraction│  Extracts all visible text
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 2. Document     │  Identifies: passport, national_id, drivers_license
+│ Type Detection  │  Based on keywords and patterns
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 3. Country      │  Detects origin country from document text
+│ Inference       │  e.g., "REPUBLICA DOMINICANA" → DOM
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 4. Field        │  Extracts: name, DOB, document number, etc.
+│ Extraction      │  Uses document-type-specific patterns
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 5. Dynamic      │  Discovers validator for detected country
+│ Validation      │  Uses stdnum.get_cc_module()
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ 6. Cryptographic│  SHA256 commitments for privacy
+│ Commitments     │  (optional, /process endpoint only)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│    Response     │
+│ + Rich Errors   │
+└─────────────────┘
+```
+
+---
+
+## Country Detection & Inference
+
+The service automatically detects the document's country of origin by scanning the OCR text for country-specific markers.
+
+### How Country Detection Works
+
+1. **Text Scanning**: After OCR extraction, the full text is scanned for country markers
+2. **Pattern Matching**: Regex patterns identify country-specific text
+3. **ISO Code Assignment**: Detected country is assigned its ISO 3166-1 alpha-3 code
+
+### Country Markers (Examples)
+
+| Country | ISO Code | Detection Patterns |
+|---------|----------|-------------------|
+| Dominican Republic | `DOM` | `REPÚBLICA DOMINICANA`, `REPUBLICA DOMINICANA`, `REP. DOM` |
+| Spain | `ESP` | `ESPAÑA`, `SPAIN`, `REINO DE ESPAÑA` |
+| Mexico | `MEX` | `MÉXICO`, `MEXICO`, `ESTADOS UNIDOS MEXICANOS` |
+| United States | `USA` | `UNITED STATES`, `U.S.A.` |
+| France | `FRA` | `RÉPUBLIQUE FRANÇAISE`, `FRANCE` |
+| Germany | `DEU` | `BUNDESREPUBLIK DEUTSCHLAND`, `GERMANY` |
+
+### Country Code Conversion
+
+The service uses ISO 3166 country codes throughout:
+- **Alpha-3** (e.g., `DOM`, `ESP`): Used in API responses
+- **Alpha-2** (e.g., `do`, `es`): Used internally for stdnum validator lookup
+
+```python
+# Example: DOM → do for stdnum lookup
+from iso3166 import countries
+alpha2 = countries.get("DOM").alpha2.lower()  # Returns "do"
+```
+
+---
+
+## Dynamic Validator Discovery
+
+Instead of hardcoding validators for specific countries, the service **dynamically discovers** the appropriate validator at runtime.
+
+### How It Works
+
+```python
+from stdnum import get_cc_module
+
+# Dynamically get the Dominican cedula validator
+validator = get_cc_module('do', 'cedula')
+validator.validate('00113918205')  # Validates with Luhn checksum
+```
+
+### Discovery Process
+
+1. **Convert Country Code**: `DOM` → `do` (alpha-3 to alpha-2)
+2. **Try Module Names**: Iterate through common personal ID module names:
+   ```
+   personalid, cedula, dni, cpf, curp, rut, nie, nif, pesel,
+   bsn, personnummer, hetu, nino, ssn, sin, aadhaar, ...
+   ```
+3. **Return First Match**: First module with a `validate()` function is used
+4. **Graceful Fallback**: If no validator found, validation is skipped (not failed)
+
+### Benefits
+
+- **Zero Maintenance**: New countries are supported automatically when stdnum adds them
+- **30+ Countries**: Compared to hardcoded support for just 7 countries
+- **Proper Checksums**: Each validator includes country-specific checksum algorithms
+
+---
+
+## Document Type Detection
+
+The service identifies document types based on keywords and patterns in the OCR text.
+
+### Detection Logic
+
+| Document Type | Detection Patterns |
+|--------------|-------------------|
+| **Passport** | `PASAPORTE`, `PASSPORT`, MRZ pattern (`P<XXX...`) |
+| **National ID** | `CEDULA`, `DNI`, `NATIONAL ID`, `CARTE D'IDENTITÉ`, country-specific formats |
+| **Driver's License** | `LICENCIA DE CONDUCIR`, `DRIVER LICENSE`, `PERMIS DE CONDUIRE` |
+
+### Confidence Scoring
+
+Each detection includes a confidence score based on:
+- Number of matching patterns found
+- OCR confidence levels
+- Number of fields successfully extracted
+
+---
+
+## Field Extraction
+
+### National IDs
+
+Fields are extracted using multilingual regex patterns:
+
+| Field | Patterns Tried |
+|-------|---------------|
+| **First Name** | `NOMBRE(S):`, `GIVEN NAME:`, `FIRST NAME:`, `PRÉNOM:` |
+| **Last Name** | `APELLIDO(S):`, `SURNAME:`, `LAST NAME:`, `NOM:` |
+| **Date of Birth** | `FECHA NAC:`, `DATE OF BIRTH:`, `DOB:`, `BORN:` |
+| **Document Number** | Country-specific formats (cedula, DNI, etc.) |
+| **Expiration** | `VENCE:`, `EXPIRA:`, `EXPIRY:`, `VALID UNTIL:` |
+
+### Passports (MRZ Parsing)
+
+Passports are parsed using the **MRZ (Machine Readable Zone)** following [ICAO 9303](https://www.icao.int/publications/pages/publication.aspx?docnum=9303) standard.
+
+```
+P<DOMPEREZ<<JUAN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+AB12345670DOM9005156M2512310<<<<<<<<<<<<<<00
+```
+
+The `mrz` library extracts:
+- Surname and given names
+- Document number with checksum validation
+- Nationality (with OCR error correction)
+- Date of birth
+- Expiration date
+- Gender
+
+#### MRZ OCR Error Correction
+
+Common OCR mistakes in country codes are automatically corrected:
+- `0` ↔ `O` (zero vs letter O)
+- `1` ↔ `I` (one vs letter I)
+- `5` ↔ `S` (five vs letter S)
+
+---
+
+## Document Number Validation
+
+### Validation Results
+
+Each validation returns rich error information:
+
+```python
+@dataclass
+class ValidationResult:
+    is_valid: bool
+    error_code: str          # Machine-readable: "invalid_document_checksum"
+    error_message: str       # Human-readable for UI display
+    validator_used: str      # e.g., "stdnum.do.cedula"
+    format_name: str         # e.g., "cedula (Dominican Republic national ID)"
+```
+
+### Error Types
+
+| Error Code | Description | Example Message |
+|------------|-------------|-----------------|
+| `invalid_document_checksum` | Check digit failed | "The document number appears to be invalid for Dominican Republic. The check digit doesn't match what's expected for a cedula." |
+| `invalid_document_length` | Wrong number of digits | "The document number has an incorrect length for Spain. A valid DNI should have 8 digits followed by a letter." |
+| `invalid_document_format` | Invalid characters/format | "The document number format is incorrect for Mexico. A CURP should contain 18 alphanumeric characters." |
+| `validation_unavailable_for_country` | No validator exists | "Document validation is not available for Germany. The document number format could not be verified." |
+
+### API Response with Validation Details
+
+```json
+{
+  "documentType": "national_id",
+  "documentOrigin": "DOM",
+  "validationIssues": ["invalid_document_checksum"],
+  "validationDetails": [{
+    "errorCode": "invalid_document_checksum",
+    "errorMessage": "The document number appears to be invalid for Dominican Republic. The check digit doesn't match what's expected for a cedula (Dominican Republic national ID). Please verify you entered the number correctly.",
+    "validatorUsed": "stdnum.do.cedula",
+    "formatName": "cedula (Dominican Republic national ID)"
+  }]
+}
+```
+
+---
+
+## Supported Countries
+
+### Countries with Document Number Validation
+
+The service can validate document numbers for these countries using `python-stdnum`:
+
+| Region | Countries |
+|--------|-----------|
+| **Americas** | Argentina (DNI), Brazil (CPF), Chile (RUT), Colombia (NIT), Costa Rica, Cuba, Dominican Republic (Cedula), Ecuador, Mexico (CURP), Peru |
+| **Europe** | Belgium, Bulgaria (EGN), Denmark (CPR), Estonia, Finland (HETU), France, Greece (AMKA), Iceland (Kennitala), Italy, Lithuania, Netherlands (BSN), Norway, Poland (PESEL), Portugal, Romania (CNP), Spain (DNI/NIE), Sweden (Personnummer), Turkey, Ukraine |
+| **Asia-Pacific** | Australia (TFN), India (Aadhaar), Israel, Japan, South Korea |
+| **Other** | South Africa |
+
+### Countries with Detection Only
+
+For countries without a stdnum validator, the service will:
+1. ✅ Detect the country from document text
+2. ✅ Extract fields (name, DOB, etc.)
+3. ⚠️ Return `validation_unavailable_for_country` warning
+4. ✅ Continue processing (not blocked)
+
+---
+
+## Technology Stack
+
+| Component | Library | Purpose |
+|-----------|---------|---------|
+| **OCR Engine** | [RapidOCR](https://github.com/RapidAI/RapidOCR) | Text extraction with PPOCRv5 |
+| **Web Framework** | [FastAPI](https://fastapi.tiangolo.com/) | REST API |
+| **Document Validation** | [python-stdnum](https://github.com/arthurdejong/python-stdnum) | 200+ ID format validators |
+| **MRZ Parsing** | [mrz](https://pypi.org/project/mrz/) | ICAO 9303 passport parsing |
+| **Country Codes** | [iso3166](https://pypi.org/project/iso3166/) | ISO 3166 country lookups |
+| **Image Processing** | OpenCV, Pillow | Image preprocessing |
+
+---
 
 ## Privacy Guarantees
 
-- Document images processed transiently
-- Only cryptographic commitments returned for storage
-- PII discarded after processing
-- Follows zkKYC principles
+### Zero Storage Policy
 
-## Supported Documents
+- Document images are **never written to disk**
+- All processing happens **in-memory only**
+- PII is **discarded immediately** after response
 
-| Document Type | Countries | Fields Extracted |
-|---------------|-----------|------------------|
-| National ID | International (cedula, DNI, etc.) | Name, DOB, Document #, Expiry, Nationality |
-| Passport | International (MRZ parsing) | Name, DOB, Passport #, Nationality, Expiry |
-| Driver's License | International | Name, DOB, License #, Expiry |
+### Cryptographic Commitments
 
-## Endpoints
+For the `/process` endpoint, the service generates privacy-preserving commitments:
+
+```
+Document Hash:   SHA256(normalize(doc_number) + ":" + user_salt)
+Name Commitment: SHA256(normalize(full_name) + ":" + user_salt)
+```
+
+**What gets stored (safe):**
+- Document hash (cannot reverse to get actual number)
+- Name commitment (cannot reverse to get actual name)
+- User salt (enables verification)
+
+**What gets discarded (PII):**
+- Original document image
+- Extracted name, DOB, document number
+- All OCR text
+
+### GDPR Right to Erasure
+
+```
+DELETE user_salt → All commitments become unlinkable
+```
+
+When a user requests deletion, removing their salt orphans all their commitments, making them cryptographically useless.
+
+---
+
+## API Reference
 
 ### `GET /health`
-Service health check.
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "ocr-service",
+  "version": "1.0.0",
+  "uptimeSeconds": 3600.5
+}
+```
+
+---
 
 ### `POST /extract`
-Raw OCR text extraction.
+
+Raw OCR text extraction without parsing.
 
 **Request:**
 ```json
@@ -47,15 +348,25 @@ Raw OCR text extraction.
 ```json
 {
   "textBlocks": [
-    { "text": "REPUBLICA DOMINICANA", "confidence": 0.95, "bbox": [...] }
+    { "text": "REPUBLICA DOMINICANA", "confidence": 0.95, "bbox": [10, 20, 200, 50] }
   ],
-  "fullText": "REPUBLICA DOMINICANA...",
+  "fullText": "REPUBLICA DOMINICANA\nCEDULA DE IDENTIDAD...",
   "processingTimeMs": 450
 }
 ```
 
+---
+
 ### `POST /ocr`
-Full document OCR with field parsing.
+
+Full document OCR with field extraction and validation.
+
+**Request:**
+```json
+{
+  "image": "base64-encoded-image"
+}
+```
 
 **Response:**
 ```json
@@ -71,15 +382,38 @@ Full document OCR with field parsing.
     "dateOfBirth": "1990-05-15",
     "expirationDate": "2025-12-31",
     "nationality": "Dominican Republic",
-    "nationalityCode": "DOM"
+    "nationalityCode": "DOM",
+    "gender": "M"
   },
   "validationIssues": [],
+  "validationDetails": null,
   "processingTimeMs": 520
 }
 ```
 
+**With Validation Errors:**
+```json
+{
+  "documentType": "national_id",
+  "documentOrigin": "DOM",
+  "confidence": 0.87,
+  "extractedData": { ... },
+  "validationIssues": ["invalid_document_checksum"],
+  "validationDetails": [{
+    "errorCode": "invalid_document_checksum",
+    "errorMessage": "The document number appears to be invalid for Dominican Republic. The check digit doesn't match what's expected for a cedula (Dominican Republic national ID). Please verify you entered the number correctly.",
+    "validatorUsed": "stdnum.do.cedula",
+    "formatName": "cedula (Dominican Republic national ID)"
+  }],
+  "processingTimeMs": 520
+}
+```
+
+---
+
 ### `POST /process`
-Privacy-preserving document processing (recommended).
+
+Privacy-preserving document processing (recommended for production).
 
 **Request:**
 ```json
@@ -93,9 +427,9 @@ Privacy-preserving document processing (recommended).
 ```json
 {
   "commitments": {
-    "documentHash": "sha256-hash",
-    "nameCommitment": "sha256-hash",
-    "userSalt": "random-32-bytes"
+    "documentHash": "a1b2c3d4e5f6...",
+    "nameCommitment": "f6e5d4c3b2a1...",
+    "userSalt": "random-32-bytes-hex"
   },
   "documentType": "national_id",
   "documentOrigin": "DOM",
@@ -107,21 +441,25 @@ Privacy-preserving document processing (recommended).
     "nationalityCode": "DOM"
   },
   "validationIssues": [],
+  "validationDetails": null,
   "processingTimeMs": 550
 }
 ```
 
-**Important:** The `extractedData` is for UI display only. The caller MUST discard it after use and store only the `commitments`.
+> **Important:** The `extractedData` is for UI display only. Callers MUST discard it after use and store only the `commitments`.
+
+---
 
 ### `POST /verify-name`
-Verify a name claim against stored commitment.
+
+Verify a name claim against a stored commitment.
 
 **Request:**
 ```json
 {
   "claimedName": "Juan Perez",
-  "storedCommitment": "sha256-hash",
-  "userSalt": "user-salt"
+  "storedCommitment": "f6e5d4c3b2a1...",
+  "userSalt": "user-salt-hex"
 }
 ```
 
@@ -132,61 +470,136 @@ Verify a name claim against stored commitment.
 }
 ```
 
-## Cryptographic Commitments
+---
 
-### Document Hash
-```
-hash = SHA256(normalize(doc_number) + ":" + user_salt)
-Purpose: Detect duplicate documents without storing actual number
-```
+## Validation Rules
 
-### Name Commitment
-```
-commitment = SHA256(normalize(full_name) + ":" + user_salt)
-Purpose: Verify name claims without storing actual name
-Normalization: Uppercase, remove accents, collapse whitespace
-```
+### Document Number Validation
 
-### GDPR Erasure
-```
-DELETE user_salt → All commitments become unlinkable
-User can re-verify with new salt, old records orphaned
-```
+| Check | Description |
+|-------|-------------|
+| **Country-specific format** | Validates against stdnum if available |
+| **Checksum verification** | Luhn, modulo, or country-specific algorithm |
+| **Length validation** | Correct number of digits/characters |
+
+### Date Validation
+
+| Check | Description |
+|-------|-------------|
+| **Expiration** | Document not expired |
+| **Date of Birth** | Age between 0-150 years |
+| **Minor Detection** | Flags if age < 18 |
+
+### Passport MRZ Validation
+
+| Check | Description |
+|-------|-------------|
+| **Line checksums** | Each MRZ line has check digits |
+| **Composite checksum** | Overall MRZ integrity |
+| **Country code** | Valid ISO 3166 code |
+
+---
 
 ## Development
 
 ### Prerequisites
+
 - Python 3.10+
 - pip
 
-### Install
+### Installation
+
 ```bash
+cd apps/ocr
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Run
+### Running Locally
+
 ```bash
 uvicorn app.main:app --port 5004 --reload
 ```
 
 ### Environment Variables
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | 5004 | Service port |
+| `PORT` | `5004` | Service port |
+
+---
 
 ## Docker
 
 ```bash
+# Build
 docker build -t zentity-ocr-service .
+
+# Run
 docker run -p 5004:5004 zentity-ocr-service
 ```
 
-## Validation
+---
 
-The service validates:
-- National ID formats (country-specific, e.g., Dominican cedula with Luhn check)
-- Passport MRZ checksum (ICAO 9303 standard)
-- Expiration date (not expired)
-- Date of birth (reasonable age range)
+## Architecture
+
+```
+apps/ocr/
+├── app/
+│   ├── main.py              # FastAPI application & endpoints
+│   ├── ocr.py               # RapidOCR text extraction
+│   ├── document_detector.py # Document type detection
+│   ├── parser.py            # Field extraction & country detection
+│   ├── validators.py        # Dynamic validation with stdnum
+│   └── commitments.py       # Cryptographic commitment generation
+├── requirements.txt
+├── Dockerfile
+└── README.md
+```
+
+### Module Responsibilities
+
+| Module | Responsibility |
+|--------|---------------|
+| `main.py` | API endpoints, request/response models |
+| `ocr.py` | Image preprocessing, RapidOCR integration |
+| `document_detector.py` | Identify document type from text patterns |
+| `parser.py` | Extract fields, detect country, normalize formats |
+| `validators.py` | Dynamic validator discovery, rich error messages |
+| `commitments.py` | SHA256 hashing, salt generation |
+
+---
+
+## Error Handling
+
+### Validation Issues
+
+All validation issues are returned in `validationIssues` array:
+
+| Issue Code | Description |
+|------------|-------------|
+| `ocr_failed` | OCR engine error |
+| `no_text_detected` | No readable text in image |
+| `mrz_checksum_invalid` | Passport MRZ failed checksum |
+| `invalid_document_checksum` | Document number checksum failed |
+| `invalid_document_length` | Wrong number of digits |
+| `invalid_document_format` | Invalid format/characters |
+| `validation_unavailable_for_country` | No validator for this country |
+| `document_expired` | Document past expiration date |
+| `invalid_date_of_birth` | Unreasonable DOB |
+| `minor_age_detected` | Person is under 18 |
+| `missing_document_number` | Could not extract document number |
+| `missing_full_name` | Could not extract name |
+
+---
+
+## Contributing
+
+When adding support for new document types or countries:
+
+1. **Country Detection**: Add patterns to `COUNTRY_MARKERS` in `parser.py`
+2. **Field Extraction**: Add regex patterns to `NATIONAL_ID_PATTERNS` in `parser.py`
+3. **Validation**: If stdnum doesn't support the country, validation is automatically skipped
+
+No code changes needed for countries already in stdnum - they're discovered automatically!
