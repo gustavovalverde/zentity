@@ -41,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         error: "Failed to process document",
         documentType: "unknown",
-        isValidDRDocument: false,
+        documentOrigin: null,
         confidence: 0,
         extractedData: null,
         validationIssues: ["ocr_service_unavailable"],

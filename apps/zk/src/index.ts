@@ -12,6 +12,7 @@ import { proofRouter } from "./routes/proof.js";
 import { verifyRouter } from "./routes/verify.js";
 import { facematchRouter } from "./routes/facematch.js";
 import { docvalidityRouter } from "./routes/docvalidity.js";
+import { nationalityRouter } from "./routes/nationality.js";
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -34,6 +35,7 @@ app.use("/generate-proof", proofRouter);
 app.use("/verify-proof", verifyRouter);
 app.use("/facematch", facematchRouter);
 app.use("/docvalidity", docvalidityRouter);
+app.use("/nationality", nationalityRouter);
 
 // Error handling
 app.use(

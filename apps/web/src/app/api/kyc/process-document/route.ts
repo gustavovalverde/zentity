@@ -5,8 +5,8 @@
  * Falls back to cloud AI if local service is unavailable.
  *
  * Features:
- * - Document type detection (passport, cedula, driver's license)
- * - Dominican Republic document validation
+ * - Document type detection (passport, national ID, driver's license)
+ * - International document support
  * - Field extraction (name, document number, DOB, etc.)
  *
  * Note: This endpoint allows unauthenticated requests for the onboarding flow.

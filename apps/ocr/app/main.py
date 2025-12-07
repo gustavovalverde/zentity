@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from .ocr import extract_text_from_base64
 from .parser import (
     ExtractedData,
-    extract_cedula_fields,
+    extract_national_id_fields,
     extract_passport_fields,
     extract_drivers_license_fields,
 )
@@ -36,7 +36,8 @@ from .document_detector import (
     detect_document_type,
 )
 from .validators import (
-    validate_cedula_number,
+    validate_national_id,
+    validate_national_id_detailed,
     validate_passport_number,
     validate_expiration_date,
     validate_dob,
@@ -91,9 +92,21 @@ class ExtractedDataResponse(BaseModel):
     gender: Optional[str] = None
 
 
+class ValidationDetail(BaseModel):
+    """Rich validation error details for frontend display."""
+    errorCode: str = Field(..., description="Machine-readable error code")
+    errorMessage: str = Field(..., description="User-friendly error message")
+    validatorUsed: Optional[str] = Field(
+        None, description="Validator module used (e.g., 'stdnum.do.cedula')"
+    )
+    formatName: Optional[str] = Field(
+        None, description="Document format name (e.g., 'cedula (Dominican Republic national ID)')"
+    )
+
+
 class DocumentResponse(BaseModel):
     documentType: str = Field(
-        ..., description="passport, cedula, drivers_license, unknown"
+        ..., description="passport, national_id, drivers_license, unknown"
     )
     documentOrigin: Optional[str] = Field(
         None, description="Detected country of origin (e.g., 'DOM', 'USA')"
@@ -101,6 +114,9 @@ class DocumentResponse(BaseModel):
     confidence: float = Field(..., ge=0, le=1)
     extractedData: Optional[ExtractedDataResponse] = None
     validationIssues: List[str]
+    validationDetails: Optional[List[ValidationDetail]] = Field(
+        None, description="Rich validation error details for frontend display"
+    )
     processingTimeMs: int
 
 
@@ -169,6 +185,7 @@ async def ocr_document_endpoint(request: ImageRequest):
 
     start_time = time.time()
     validation_issues: List[str] = []
+    validation_details: List[ValidationDetail] = []
 
     # Step 1: Extract text
     ocr_result = extract_text_from_base64(request.image)
@@ -180,6 +197,7 @@ async def ocr_document_endpoint(request: ImageRequest):
             confidence=0.0,
             extractedData=None,
             validationIssues=["ocr_failed", ocr_result["error"]],
+            validationDetails=None,
             processingTimeMs=int((time.time() - start_time) * 1000),
         )
 
@@ -193,6 +211,7 @@ async def ocr_document_endpoint(request: ImageRequest):
             confidence=0.0,
             extractedData=None,
             validationIssues=["no_text_detected"],
+            validationDetails=None,
             processingTimeMs=int((time.time() - start_time) * 1000),
         )
 
@@ -202,10 +221,23 @@ async def ocr_document_endpoint(request: ImageRequest):
     # Step 3: Extract fields based on document type
     extracted: Optional[ExtractedData] = None
 
-    if doc_type == DocumentType.CEDULA:
-        extracted = extract_cedula_fields(full_text)
-        if extracted.document_number:
-            validation_issues.extend(validate_cedula_number(extracted.document_number))
+    if doc_type == DocumentType.NATIONAL_ID:
+        extracted = extract_national_id_fields(full_text)
+        # Validate document number format using country-aware validation
+        if extracted.document_number and extracted.nationality_code:
+            # Get detailed validation result for rich error messages
+            result = validate_national_id_detailed(
+                extracted.document_number, extracted.nationality_code
+            )
+            if result.error_code:
+                validation_issues.append(result.error_code)
+                if result.error_message:
+                    validation_details.append(ValidationDetail(
+                        errorCode=result.error_code,
+                        errorMessage=result.error_message,
+                        validatorUsed=result.validator_used,
+                        formatName=result.format_name,
+                    ))
     elif doc_type == DocumentType.PASSPORT:
         extracted, mrz_valid = extract_passport_fields(full_text)
         if not mrz_valid:
@@ -271,6 +303,7 @@ async def ocr_document_endpoint(request: ImageRequest):
         confidence=round(confidence, 3),
         extractedData=extracted_response,
         validationIssues=validation_issues,
+        validationDetails=validation_details if validation_details else None,
         processingTimeMs=processing_time_ms,
     )
 
@@ -326,6 +359,9 @@ class ProcessDocumentResponse(BaseModel):
 
     # Metadata
     validationIssues: List[str]
+    validationDetails: Optional[List[ValidationDetail]] = Field(
+        None, description="Rich validation error details for frontend display"
+    )
     processingTimeMs: int
 
 
@@ -352,6 +388,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
 
     start_time = time.time()
     validation_issues: List[str] = []
+    validation_details: List[ValidationDetail] = []
 
     # Step 1: Extract text (transient)
     ocr_result = extract_text_from_base64(request.image)
@@ -364,6 +401,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             confidence=0.0,
             extractedData=None,
             validationIssues=["ocr_failed", ocr_result["error"]],
+            validationDetails=None,
             processingTimeMs=int((time.time() - start_time) * 1000),
         )
 
@@ -378,6 +416,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             confidence=0.0,
             extractedData=None,
             validationIssues=["no_text_detected"],
+            validationDetails=None,
             processingTimeMs=int((time.time() - start_time) * 1000),
         )
 
@@ -387,10 +426,23 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
     # Step 3: Extract fields based on document type (transient)
     extracted: Optional[ExtractedData] = None
 
-    if doc_type == DocumentType.CEDULA:
-        extracted = extract_cedula_fields(full_text)
-        if extracted.document_number:
-            validation_issues.extend(validate_cedula_number(extracted.document_number))
+    if doc_type == DocumentType.NATIONAL_ID:
+        extracted = extract_national_id_fields(full_text)
+        # Validate document number format using country-aware validation
+        if extracted.document_number and extracted.nationality_code:
+            # Get detailed validation result for rich error messages
+            result = validate_national_id_detailed(
+                extracted.document_number, extracted.nationality_code
+            )
+            if result.error_code:
+                validation_issues.append(result.error_code)
+                if result.error_message:
+                    validation_details.append(ValidationDetail(
+                        errorCode=result.error_code,
+                        errorMessage=result.error_message,
+                        validatorUsed=result.validator_used,
+                        formatName=result.format_name,
+                    ))
     elif doc_type == DocumentType.PASSPORT:
         extracted, mrz_valid = extract_passport_fields(full_text)
         if not mrz_valid:
@@ -481,6 +533,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
         confidence=round(confidence, 3),
         extractedData=extracted_response,
         validationIssues=validation_issues,
+        validationDetails=validation_details if validation_details else None,
         processingTimeMs=processing_time_ms,
     )
 

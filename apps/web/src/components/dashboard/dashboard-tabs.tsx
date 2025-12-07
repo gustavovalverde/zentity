@@ -14,6 +14,34 @@ import { User, Code, Shield, ArrowRight, ExternalLink, FileCheck, Globe, Calenda
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
+// Fallback country names for backwards compatibility
+// The backend now uses iso3166 library for proper country lookups
+// This map is only used when countryName is not provided in identityData
+const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
+  DOM: "Dominican Republic",
+  USA: "United States",
+  ESP: "Spain",
+  MEX: "Mexico",
+  FRA: "France",
+  DEU: "Germany",
+  GBR: "United Kingdom",
+  CAN: "Canada",
+  BRA: "Brazil",
+  ARG: "Argentina",
+  COL: "Colombia",
+  PER: "Peru",
+  CHL: "Chile",
+  ITA: "Italy",
+  PRT: "Portugal",
+};
+
+function getCountryDisplayName(code: string, name?: string): string {
+  // Prefer backend-provided name (from iso3166 library)
+  if (name) return name;
+  // Fallback to hardcoded map for backwards compatibility
+  return COUNTRY_NAMES_FALLBACK[code] || code;
+}
+
 interface DashboardTabsProps {
   checks: VerificationChecks;
   hasProof: boolean;
@@ -26,7 +54,8 @@ interface DashboardTabsProps {
     ageProofVerified?: boolean;
     // Document metadata (non-PII)
     documentType?: string;
-    countryVerified?: string;
+    countryVerified?: string;   // ISO 3166-1 alpha-3 code (e.g., "DOM")
+    countryName?: string;       // Full country name from backend (e.g., "Dominican Republic")
     verifiedAt?: string;
   };
 }
@@ -145,7 +174,7 @@ export function DashboardTabs({ checks, hasProof, identityData }: DashboardTabsP
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Country</p>
-                      <p className="font-medium">{identityData.countryVerified === "DOM" ? "Dominican Republic" : identityData.countryVerified}</p>
+                      <p className="font-medium">{getCountryDisplayName(identityData.countryVerified, identityData.countryName)}</p>
                     </div>
                   </div>
                 )}

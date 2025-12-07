@@ -54,12 +54,15 @@ interface VerifyIdentityResponse {
   results: {
     documentProcessed: boolean;
     documentType?: string;
-    isValidDRDocument: boolean;
+    documentOrigin?: string; // ISO 3166-1 alpha-3 country code
+    isDocumentValid: boolean;
     livenessPassed: boolean;
     faceMatched: boolean;
     isDuplicateDocument: boolean;
     ageProofGenerated: boolean;
     dobEncrypted: boolean;
+    docValidityProofGenerated: boolean;
+    nationalityCommitmentGenerated: boolean;
   };
 
   // Extracted data for UI display (TRANSIENT - DO NOT PERSIST ON CLIENT)
@@ -96,12 +99,14 @@ export async function POST(
           verified: false,
           results: {
             documentProcessed: false,
-            isValidDRDocument: false,
+            isDocumentValid: false,
             livenessPassed: false,
             faceMatched: false,
             isDuplicateDocument: false,
             ageProofGenerated: false,
             dobEncrypted: false,
+            docValidityProofGenerated: false,
+            nationalityCommitmentGenerated: false,
           },
           processingTimeMs: Date.now() - startTime,
           issues: ["unauthorized"],
@@ -122,12 +127,14 @@ export async function POST(
           verified: false,
           results: {
             documentProcessed: false,
-            isValidDRDocument: false,
+            isDocumentValid: false,
             livenessPassed: false,
             faceMatched: false,
             isDuplicateDocument: false,
             ageProofGenerated: false,
             dobEncrypted: false,
+            docValidityProofGenerated: false,
+            nationalityCommitmentGenerated: false,
           },
           processingTimeMs: Date.now() - startTime,
           issues: ["missing_document_image"],
@@ -144,12 +151,14 @@ export async function POST(
           verified: false,
           results: {
             documentProcessed: false,
-            isValidDRDocument: false,
+            isDocumentValid: false,
             livenessPassed: false,
             faceMatched: false,
             isDuplicateDocument: false,
             ageProofGenerated: false,
             dobEncrypted: false,
+            docValidityProofGenerated: false,
+            nationalityCommitmentGenerated: false,
           },
           processingTimeMs: Date.now() - startTime,
           issues: ["missing_selfie_image"],
@@ -173,7 +182,7 @@ export async function POST(
         userSalt: string;
       };
       documentType: string;
-      isValidDRDocument: boolean;
+      documentOrigin?: string;        // ISO 3166-1 alpha-3 country code
       confidence: number;
       extractedData?: {
         fullName?: string;
@@ -181,6 +190,9 @@ export async function POST(
         lastName?: string;
         documentNumber?: string;
         dateOfBirth?: string;
+        expirationDate?: string;      // ISO 8601: YYYY-MM-DD
+        nationalityCode?: string;     // ISO 3166-1 alpha-3
+        gender?: string;              // M or F from OCR
       };
       validationIssues: string[];
     } | null = null;
@@ -275,6 +287,34 @@ export async function POST(
       isOver18: boolean;
     } | null = null;
 
+    // Document validity ZK proof result
+    let docValidityResult: {
+      proof: unknown;
+      publicSignals: string[];
+      isValid: boolean;
+      generationTimeMs: number;
+    } | null = null;
+
+    // Nationality commitment (SHA256 hash)
+    let nationalityCommitment: string | null = null;
+
+    // Multiple age proofs (18, 21, 25)
+    let ageProofsJson: Record<string, unknown> | null = null;
+
+    // Sprint 2: Gender FHE encryption result
+    let genderFheResult: {
+      ciphertext: string;
+      clientKeyId: string;
+      genderCode: number;
+    } | null = null;
+
+    // Sprint 2: Full DOB FHE encryption result
+    let dobFullFheResult: {
+      ciphertext: string;
+      clientKeyId: string;
+      dobInt: number;
+    } | null = null;
+
     const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
     if (dateOfBirth) {
       // Parse birth year from DOB (format: DD/MM/YYYY or YYYY-MM-DD)
@@ -315,30 +355,64 @@ export async function POST(
           issues.push("fhe_service_unavailable");
         }
 
-        // ZK Proof Generation (prove age >= 18)
+        // ZK Proof Generation (prove age >= 18, 21, 25 in parallel)
+        const ageThresholds = [18, 21, 25];
         try {
-          const zkResponse = await fetch(`${ZK_SERVICE_URL}/generate-proof`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              birthYear,
-              currentYear,
-              minAge: 18,
-            }),
-          });
+          // Generate all age proofs in parallel
+          const zkPromises = ageThresholds.map((minAge) =>
+            fetch(`${ZK_SERVICE_URL}/generate-proof`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                birthYear,
+                currentYear,
+                minAge,
+              }),
+            }).then(async (res) => {
+              if (res.ok) {
+                const data = await res.json();
+                return { minAge, data, success: true };
+              }
+              return { minAge, success: false, error: await res.text() };
+            })
+          );
 
-          if (zkResponse.ok) {
-            const zkData = await zkResponse.json();
-            // publicSignals[0] is the isOver18 result (1 or 0)
-            const isOver18 = zkData.publicSignals?.[0] === "1";
+          const zkResults = await Promise.all(zkPromises);
+          const ageProofs: Record<string, unknown> = {};
+          let primaryZkData = null;
+
+          for (const result of zkResults) {
+            if (result.success && result.data) {
+              ageProofs[result.minAge.toString()] = {
+                proof: result.data.proof,
+                publicSignals: result.data.publicSignals,
+                generationTimeMs: result.data.generationTimeMs,
+              };
+              // Use age 18 proof as the primary result
+              if (result.minAge === 18) {
+                primaryZkData = result.data;
+              }
+            } else {
+              console.warn(`ZK proof for age ${result.minAge} failed:`, result.error);
+            }
+          }
+
+          if (Object.keys(ageProofs).length > 0) {
+            ageProofsJson = ageProofs;
+          }
+
+          if (primaryZkData) {
+            const isOver18 = primaryZkData.publicSignals?.[0] === "1";
             zkResult = {
-              proof: zkData.proof,
-              publicSignals: zkData.publicSignals,
-              generationTimeMs: zkData.generationTimeMs,
+              proof: primaryZkData.proof,
+              publicSignals: primaryZkData.publicSignals,
+              generationTimeMs: primaryZkData.generationTimeMs,
               isOver18,
             };
+            console.log(
+              `[Identity Verify] Generated ${Object.keys(ageProofs).length} age proofs (18, 21, 25)`
+            );
           } else {
-            console.warn("ZK proof generation failed:", await zkResponse.text());
             issues.push("zk_proof_failed");
           }
         } catch (error) {
@@ -349,17 +423,147 @@ export async function POST(
     }
 
     // =========================================================================
+    // STEP 3.5: Document Validity ZK Proof
+    // =========================================================================
+    // Generate ZK proof that document is not expired (without revealing expiry date)
+    const expirationDate = documentResult?.extractedData?.expirationDate;
+    if (expirationDate) {
+      try {
+        const docValidityResponse = await fetch(`${ZK_SERVICE_URL}/docvalidity/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expiryDate: expirationDate, // Already in YYYY-MM-DD format from OCR
+          }),
+        });
+
+        if (docValidityResponse.ok) {
+          const docValidityData = await docValidityResponse.json();
+          docValidityResult = {
+            proof: docValidityData.proof,
+            publicSignals: docValidityData.publicSignals,
+            isValid: docValidityData.isValid,
+            generationTimeMs: docValidityData.generationTimeMs,
+          };
+          console.log(
+            `[Identity Verify] Doc validity proof generated in ${docValidityData.generationTimeMs}ms, isValid=${docValidityData.isValid}`
+          );
+        } else {
+          console.warn("Doc validity proof generation failed:", await docValidityResponse.text());
+          issues.push("doc_validity_proof_failed");
+        }
+      } catch (error) {
+        console.warn("Doc validity proof unavailable:", error);
+        issues.push("doc_validity_service_unavailable");
+      }
+    }
+
+    // =========================================================================
+    // STEP 3.6: Nationality Commitment
+    // =========================================================================
+    // Generate SHA256 commitment for nationality (ISO 3166-1 alpha-3 code)
+    const nationalityCode = documentResult?.extractedData?.nationalityCode;
+    if (nationalityCode && documentResult?.commitments?.userSalt) {
+      try {
+        // Generate commitment: SHA256(nationalityCode + userSalt)
+        const encoder = new TextEncoder();
+        const data = encoder.encode(nationalityCode + documentResult.commitments.userSalt);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        nationalityCommitment = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        console.log(`[Identity Verify] Nationality commitment generated for code: ${nationalityCode}`);
+      } catch (error) {
+        console.warn("Nationality commitment generation failed:", error);
+        issues.push("nationality_commitment_failed");
+      }
+    }
+
+    // =========================================================================
+    // STEP 3.7: Gender FHE Encryption (Sprint 2)
+    // =========================================================================
+    const gender = documentResult?.extractedData?.gender;
+    if (gender) {
+      try {
+        // Convert M/F to ISO 5218 code
+        const genderCode = gender === "M" ? 1 : gender === "F" ? 2 : 0;
+
+        const genderResponse = await fetch(`${FHE_SERVICE_URL}/encrypt-gender`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            genderCode,
+            clientKeyId: "default",
+          }),
+        });
+
+        if (genderResponse.ok) {
+          const genderData = await genderResponse.json();
+          genderFheResult = {
+            ciphertext: genderData.ciphertext,
+            clientKeyId: genderData.clientKeyId,
+            genderCode,
+          };
+          console.log(`[Identity Verify] Gender encrypted (ISO 5218 code: ${genderCode})`);
+        } else {
+          console.warn("Gender FHE encryption failed:", await genderResponse.text());
+          issues.push("gender_fhe_encryption_failed");
+        }
+      } catch (error) {
+        console.warn("Gender FHE service unavailable:", error);
+        issues.push("gender_fhe_service_unavailable");
+      }
+    }
+
+    // =========================================================================
+    // STEP 3.8: Full DOB FHE Encryption (Sprint 2)
+    // =========================================================================
+    // Encrypt full DOB as YYYYMMDD for precise age calculations
+    if (dateOfBirth) {
+      try {
+        const dobFullResponse = await fetch(`${FHE_SERVICE_URL}/encrypt-dob`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dob: dateOfBirth,
+            clientKeyId: "default",
+          }),
+        });
+
+        if (dobFullResponse.ok) {
+          const dobFullData = await dobFullResponse.json();
+          dobFullFheResult = {
+            ciphertext: dobFullData.ciphertext,
+            clientKeyId: dobFullData.clientKeyId,
+            dobInt: dobFullData.dobInt,
+          };
+          console.log(`[Identity Verify] Full DOB encrypted as ${dobFullData.dobInt}`);
+        } else {
+          console.warn("Full DOB FHE encryption failed:", await dobFullResponse.text());
+          issues.push("dob_full_fhe_encryption_failed");
+        }
+      } catch (error) {
+        console.warn("Full DOB FHE service unavailable:", error);
+        issues.push("dob_full_fhe_service_unavailable");
+      }
+    }
+
+    // =========================================================================
     // STEP 4: Store Identity Proof (Only commitments and flags)
     // =========================================================================
     const documentProcessed = Boolean(documentResult?.commitments);
-    const isValidDRDocument = documentResult?.isValidDRDocument || false;
+    // Document is valid if we have commitments and confidence is reasonable
+    const isDocumentValid = documentProcessed &&
+                            (documentResult?.confidence ?? 0) > 0.3 &&
+                            Boolean(documentResult?.extractedData?.documentNumber);
     const livenessPassed = verificationResult?.is_live || false;
     const faceMatched = verificationResult?.faces_match || false;
     const ageProofGenerated = Boolean(zkResult?.proof);
     const dobEncrypted = Boolean(fheResult?.ciphertext);
+    const docValidityProofGenerated = Boolean(docValidityResult?.proof);
+    const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
     const verified =
       documentProcessed &&
-      isValidDRDocument &&
+      isDocumentValid &&
       livenessPassed &&
       faceMatched &&
       !isDuplicateDocument;
@@ -367,11 +571,14 @@ export async function POST(
     // Log what we're about to store
     console.log("[Identity Verify] Storing identity proof:", {
       documentProcessed,
-      isValidDRDocument,
+      isDocumentValid,
+      documentOrigin: documentResult?.documentOrigin,
       livenessPassed,
       faceMatched,
       ageProofGenerated,
       dobEncrypted,
+      docValidityProofGenerated,
+      nationalityCommitmentGenerated,
       verified,
       hasExistingProof: Boolean(existingProof),
     });
@@ -387,8 +594,8 @@ export async function POST(
           nameCommitment: documentResult.commitments.nameCommitment,
           userSalt: documentResult.commitments.userSalt,
           documentType: documentResult.documentType,
-          countryVerified: isValidDRDocument ? "DOM" : undefined,
-          isDocumentVerified: isValidDRDocument,
+          countryVerified: documentResult.documentOrigin || documentResult.extractedData?.nationalityCode,
+          isDocumentVerified: isDocumentValid,
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
           ageProofVerified: zkResult?.isOver18 ?? false,
@@ -400,6 +607,20 @@ export async function POST(
           fheClientKeyId: fheResult?.clientKeyId,
           // ZK Proof
           ageProof: zkResult ? JSON.stringify(zkResult.proof) : undefined,
+          // Sprint 1: Document validity proof
+          docValidityProof: docValidityResult
+            ? JSON.stringify(docValidityResult.proof)
+            : undefined,
+          // Sprint 1: Nationality commitment (ISO 3166-1 alpha-3)
+          nationalityCommitment: nationalityCommitment || undefined,
+          // Sprint 1: Multiple age proofs (18, 21, 25)
+          ageProofsJson: ageProofsJson
+            ? JSON.stringify(ageProofsJson)
+            : undefined,
+          // Sprint 2: Gender FHE encryption
+          genderCiphertext: genderFheResult?.ciphertext,
+          // Sprint 2: Full DOB FHE encryption
+          dobFullCiphertext: dobFullFheResult?.ciphertext,
         });
       } catch (error) {
         console.error("Failed to create identity proof:", error);
@@ -420,6 +641,26 @@ export async function POST(
           ...(zkResult && {
             ageProof: JSON.stringify(zkResult.proof),
             ageProofVerified: zkResult.isOver18,
+          }),
+          // Sprint 1: Document validity proof
+          ...(docValidityResult && {
+            docValidityProof: JSON.stringify(docValidityResult.proof),
+          }),
+          // Sprint 1: Nationality commitment
+          ...(nationalityCommitment && {
+            nationalityCommitment,
+          }),
+          // Sprint 1: Multiple age proofs
+          ...(ageProofsJson && {
+            ageProofsJson: JSON.stringify(ageProofsJson),
+          }),
+          // Sprint 2: Gender FHE encryption
+          ...(genderFheResult && {
+            genderCiphertext: genderFheResult.ciphertext,
+          }),
+          // Sprint 2: Full DOB FHE encryption
+          ...(dobFullFheResult && {
+            dobFullCiphertext: dobFullFheResult.ciphertext,
           }),
         });
       } catch (error) {
@@ -464,12 +705,15 @@ export async function POST(
       results: {
         documentProcessed,
         documentType: documentResult?.documentType,
-        isValidDRDocument,
+        documentOrigin: documentResult?.documentOrigin || documentResult?.extractedData?.nationalityCode,
+        isDocumentValid,
         livenessPassed,
         faceMatched,
         isDuplicateDocument,
         ageProofGenerated,
         dobEncrypted,
+        docValidityProofGenerated,
+        nationalityCommitmentGenerated,
       },
       transientData: documentResult?.extractedData
         ? {
@@ -492,12 +736,14 @@ export async function POST(
         verified: false,
         results: {
           documentProcessed: false,
-          isValidDRDocument: false,
+          isDocumentValid: false,
           livenessPassed: false,
           faceMatched: false,
           isDuplicateDocument: false,
           ageProofGenerated: false,
           dobEncrypted: false,
+          docValidityProofGenerated: false,
+          nationalityCommitmentGenerated: false,
         },
         processingTimeMs: Date.now() - startTime,
         issues: ["internal_error"],

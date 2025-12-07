@@ -113,7 +113,17 @@ CREATE TABLE IF NOT EXISTS identity_proofs (
   verified_at TEXT,
   confidence_score REAL,
   created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now'))
+  updated_at TEXT DEFAULT (datetime('now')),
+  -- Sprint 1 additions: New privacy-preserving fields
+  doc_validity_proof TEXT,            -- ZK proof that document is not expired
+  nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt), ISO 3166-1 alpha-3
+  age_proofs_json TEXT,               -- JSON: {"18": proof, "21": proof, "25": proof}
+  -- Sprint 2 additions: FHE expansion
+  gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218: 0=Unknown, 1=Male, 2=Female, 9=N/A)
+  dob_full_ciphertext TEXT,           -- FHE encrypted full DOB as YYYYMMDD (u32)
+  -- Sprint 3 additions: Advanced ZK + Liveness FHE
+  nationality_membership_proof TEXT,  -- ZK proof of nationality group membership (EU, SCHENGEN, etc.)
+  liveness_score_ciphertext TEXT      -- FHE encrypted liveness score (0.0-1.0 as u16 0-10000)
 );
 
 -- Indexes for application tables

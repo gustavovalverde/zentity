@@ -2,9 +2,14 @@
 Document field extraction using regex patterns.
 
 Supports:
-- Dominican Republic Cedula (XXX-XXXXXXX-X)
-- Passport with MRZ parsing
-- Driver's License
+- National IDs (cedula, DNI, etc.)
+- Passports with MRZ parsing (any country)
+- Driver's Licenses
+
+Uses:
+- python-stdnum: Document number formatting
+- iso3166: Country code lookups
+- mrz: Passport MRZ parsing (ICAO 9303)
 """
 
 import re
@@ -12,7 +17,10 @@ from typing import Optional, Tuple
 from dataclasses import dataclass
 
 from mrz.checker.td3 import TD3CodeChecker
-from mrz.base.countries_ops import is_code, get_country
+from mrz.base.countries_ops import is_code, get_country as mrz_get_country
+import iso3166
+from stdnum.do import cedula as do_cedula
+from stdnum.exceptions import ValidationError
 
 
 @dataclass
@@ -63,18 +71,56 @@ def correct_country_code(code: str) -> Tuple[str, bool]:
     return code, False  # Could not correct
 
 
-# Dominican Republic Cedula patterns
-CEDULA_PATTERNS = {
-    # Format: XXX-XXXXXXX-X (11 digits with dashes or spaces)
-    "document_number": r"\b(\d{3}[-\s]?\d{7}[-\s]?\d{1})\b",
-    # Name patterns (NOMBRE: or NOMBRES:)
-    "first_name": r"(?:NOMBRE[S]?\s*[:.]?\s*)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",
-    "last_name": r"(?:APELLIDO[S]?\s*[:.]?\s*)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",
-    # Date patterns (DD/MM/YYYY or DD-MM-YYYY)
-    "date_of_birth": r"(?:FECHA\s*(?:DE\s*)?NAC(?:IMIENTO)?\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",
-    "expiration_date": r"(?:VENCE|EXPIRA(?:CION)?|VALIDO?\s*HASTA)\s*[:.]?\s*(\d{2}[/-]\d{2}[/-]\d{4})",
+# National ID patterns (supports multiple formats)
+NATIONAL_ID_PATTERNS = {
+    # Document number patterns for various countries
+    "document_number": [
+        r"\b(\d{3}[-\s]?\d{7}[-\s]?\d{1})\b",  # Dominican cedula: XXX-XXXXXXX-X
+        r"\b(\d{8}[A-Z])\b",  # Spanish DNI: 12345678A
+        r"\b([A-Z]\d{7}[A-Z])\b",  # Mexican INE
+        r"\b(\d{9,12})\b",  # Generic numeric ID
+    ],
+    # Name patterns (multilingual)
+    "first_name": [
+        r"(?:NOMBRE[S]?\s*[:.]?\s*)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",  # Spanish
+        r"(?:GIVEN\s*NAME[S]?\s*[:.]?\s*)([A-Z][A-Z\s]+)",  # English
+        r"(?:FIRST\s*NAME\s*[:.]?\s*)([A-Z][A-Z\s]+)",  # English alt
+        r"(?:PRÉNOM[S]?\s*[:.]?\s*)([A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ][A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ\s]+)",  # French
+    ],
+    "last_name": [
+        r"(?:APELLIDO[S]?\s*[:.]?\s*)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",  # Spanish
+        r"(?:SURNAME\s*[:.]?\s*)([A-Z][A-Z\s]+)",  # English
+        r"(?:LAST\s*NAME\s*[:.]?\s*)([A-Z][A-Z\s]+)",  # English alt
+        r"(?:NOM\s*[:.]?\s*)([A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ][A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ\s]+)",  # French
+    ],
+    # Date patterns (DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD)
+    "date_of_birth": [
+        r"(?:FECHA\s*(?:DE\s*)?NAC(?:IMIENTO)?\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",  # Spanish
+        r"(?:DATE\s*OF\s*BIRTH\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",  # English
+        r"(?:DOB\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",  # Abbreviated
+        r"(?:BORN\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",  # Alternative
+    ],
+    "expiration_date": [
+        r"(?:VENCE|EXPIRA(?:CION)?|VALIDO?\s*HASTA)\s*[:.]?\s*(\d{2}[/-]\d{2}[/-]\d{4})",  # Spanish
+        r"(?:EXPIR(?:Y|ES|ATION)?\s*(?:DATE)?\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",  # English
+        r"(?:VALID\s*(?:UNTIL|THRU|TO)\s*[:.]?\s*)(\d{2}[/-]\d{2}[/-]\d{4})",  # Alternative
+    ],
     # Gender
-    "gender": r"(?:SEXO\s*[:.]?\s*)([MF])",
+    "gender": [
+        r"(?:SEXO\s*[:.]?\s*)([MF])",  # Spanish
+        r"(?:SEX\s*[:.]?\s*)([MF])",  # English
+        r"(?:GENDER\s*[:.]?\s*)([MF])",  # Alternative
+    ],
+}
+
+# Country detection patterns
+COUNTRY_MARKERS = {
+    "DOM": [r"REPÚBLICA\s+DOMINICANA", r"REPUBLICA\s+DOMINICANA", r"REP\.?\s*DOM", r"DOMINICAN"],
+    "ESP": [r"ESPAÑA", r"SPAIN", r"REINO\s+DE\s+ESPAÑA"],
+    "MEX": [r"MÉXICO", r"MEXICO", r"ESTADOS\s+UNIDOS\s+MEXICANOS"],
+    "USA": [r"UNITED\s+STATES", r"U\.?S\.?A\.?"],
+    "FRA": [r"RÉPUBLIQUE\s+FRANÇAISE", r"FRANCE"],
+    "DEU": [r"BUNDESREPUBLIK\s+DEUTSCHLAND", r"GERMANY", r"DEUTSCHLAND"],
 }
 
 # Passport MRZ patterns (TD3 format - 2 lines of 44 chars)
@@ -83,11 +129,44 @@ MRZ_PATTERN = r"P<[A-Z]{3}[A-Z<]+<<[A-Z<]+<*\s*[A-Z0-9<]{44}"
 
 
 def normalize_cedula_number(raw: str) -> str:
-    """Normalize cedula to XXX-XXXXXXX-X format."""
-    digits = re.sub(r"[^\d]", "", raw)
-    if len(digits) == 11:
-        return f"{digits[:3]}-{digits[3:10]}-{digits[10]}"
-    return raw
+    """Normalize cedula to XXX-XXXXXXX-X format using python-stdnum."""
+    try:
+        # Use stdnum for proper formatting
+        return do_cedula.format(do_cedula.compact(raw))
+    except (ValidationError, Exception):
+        # Fallback to manual formatting if stdnum fails
+        digits = re.sub(r"[^\d]", "", raw)
+        if len(digits) == 11:
+            return f"{digits[:3]}-{digits[3:10]}-{digits[10]}"
+        return raw
+
+
+def get_country_name(code: str) -> Optional[str]:
+    """
+    Get country name from ISO 3166-1 alpha-3 code.
+
+    Uses iso3166 as primary (lightweight), mrz library as fallback.
+    """
+    if not code:
+        return None
+
+    # Try iso3166 first (lightweight, comprehensive)
+    try:
+        country = iso3166.countries.get(code)
+        if country:
+            return country.name
+    except (KeyError, AttributeError):
+        pass
+
+    # Fallback to mrz library (already in use for MRZ parsing)
+    try:
+        name = mrz_get_country(code)
+        if name:
+            return name
+    except Exception:
+        pass
+
+    return None
 
 
 def parse_date_to_iso(date_str: str) -> Optional[str]:
@@ -112,31 +191,57 @@ def parse_date_to_iso(date_str: str) -> Optional[str]:
     return None
 
 
-def extract_cedula_fields(text: str) -> ExtractedData:
-    """Extract fields from Dominican cedula OCR text."""
+def detect_country_from_text(text: str) -> Optional[str]:
+    """Detect country code from document text."""
+    text_upper = text.upper()
+    for country_code, patterns in COUNTRY_MARKERS.items():
+        for pattern in patterns:
+            if re.search(pattern, text_upper, re.IGNORECASE):
+                return country_code
+    return None
+
+
+def extract_national_id_fields(text: str) -> ExtractedData:
+    """Extract fields from national ID card OCR text (supports multiple countries)."""
     data = ExtractedData()
     text_upper = text.upper()
 
-    # Document number
-    match = re.search(CEDULA_PATTERNS["document_number"], text_upper)
-    if match:
-        data.document_number = normalize_cedula_number(match.group(1))
+    # Detect country from document text
+    detected_country = detect_country_from_text(text)
+    if detected_country:
+        data.nationality_code = detected_country
+        data.nationality = get_country_name(detected_country) or detected_country
 
-    # Extract first and last names separately
-    first_match = re.search(CEDULA_PATTERNS["first_name"], text_upper)
-    last_match = re.search(CEDULA_PATTERNS["last_name"], text_upper)
+    # Document number - try each pattern
+    for pattern in NATIONAL_ID_PATTERNS["document_number"]:
+        match = re.search(pattern, text_upper)
+        if match:
+            doc_num = match.group(1)
+            # Normalize Dominican cedula format if applicable
+            if detected_country == "DOM" and len(re.sub(r"[^\d]", "", doc_num)) == 11:
+                data.document_number = normalize_cedula_number(doc_num)
+            else:
+                data.document_number = doc_num
+            break
 
-    if first_match:
-        # Clean up: stop at next label or date pattern
-        first_raw = first_match.group(1).strip()
-        first_clean = re.split(r'\s+(?:APELLIDO|FECHA|SEXO|NACIMIENTO|VENCE)', first_raw)[0].strip()
-        data.first_name = first_clean.title()
+    # Extract first name - try each pattern
+    for pattern in NATIONAL_ID_PATTERNS["first_name"]:
+        first_match = re.search(pattern, text_upper)
+        if first_match:
+            first_raw = first_match.group(1).strip()
+            # Clean up: stop at common label words
+            first_clean = re.split(r'\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)', first_raw)[0].strip()
+            data.first_name = first_clean.title()
+            break
 
-    if last_match:
-        # Clean up: stop at next label or date pattern
-        last_raw = last_match.group(1).strip()
-        last_clean = re.split(r'\s+(?:NOMBRE|FECHA|SEXO|NACIMIENTO|VENCE)', last_raw)[0].strip()
-        data.last_name = last_clean.title()
+    # Extract last name - try each pattern
+    for pattern in NATIONAL_ID_PATTERNS["last_name"]:
+        last_match = re.search(pattern, text_upper)
+        if last_match:
+            last_raw = last_match.group(1).strip()
+            last_clean = re.split(r'\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)', last_raw)[0].strip()
+            data.last_name = last_clean.title()
+            break
 
     # Combine for full_name
     if data.first_name and data.last_name:
@@ -148,41 +253,43 @@ def extract_cedula_fields(text: str) -> ExtractedData:
 
     # Fallback: try to find name without labels
     if not data.full_name:
-        # Look for uppercase names (at least 2 words of 3+ chars)
         name_match = re.search(
-            r"\b([A-ZÁÉÍÓÚÑ]{3,}(?:\s+[A-ZÁÉÍÓÚÑ]{2,}){1,5})\b", text_upper
+            r"\b([A-ZÁÉÍÓÚÑÀÂÇÈÊËÎÏÔÛÙÜŸ]{3,}(?:\s+[A-ZÁÉÍÓÚÑÀÂÇÈÊËÎÏÔÛÙÜŸ]{2,}){1,5})\b", text_upper
         )
         if name_match:
             potential_name = name_match.group(1)
             # Exclude common non-name phrases
-            exclude = ["REPUBLICA DOMINICANA", "JUNTA CENTRAL", "ELECTORAL", "CEDULA"]
+            exclude = ["REPUBLICA", "REPUBLIC", "JUNTA", "CENTRAL", "ELECTORAL", "CEDULA",
+                       "IDENTITY", "NATIONAL", "CARD", "DOCUMENTO", "ESPAÑA", "FRANCE"]
             if not any(ex in potential_name for ex in exclude):
                 data.full_name = potential_name.title()
 
-    # Date of birth
-    dob_match = re.search(CEDULA_PATTERNS["date_of_birth"], text_upper)
-    if dob_match:
-        data.date_of_birth = parse_date_to_iso(dob_match.group(1))
+    # Date of birth - try each pattern
+    for pattern in NATIONAL_ID_PATTERNS["date_of_birth"]:
+        dob_match = re.search(pattern, text_upper)
+        if dob_match:
+            data.date_of_birth = parse_date_to_iso(dob_match.group(1))
+            break
 
-    # Try generic date pattern if specific one fails
+    # Fallback: try generic date pattern
     if not data.date_of_birth:
         date_matches = re.findall(r"\b(\d{2}[/-]\d{2}[/-]\d{4})\b", text_upper)
         if date_matches:
             data.date_of_birth = parse_date_to_iso(date_matches[0])
 
-    # Expiration date
-    exp_match = re.search(CEDULA_PATTERNS["expiration_date"], text_upper)
-    if exp_match:
-        data.expiration_date = parse_date_to_iso(exp_match.group(1))
+    # Expiration date - try each pattern
+    for pattern in NATIONAL_ID_PATTERNS["expiration_date"]:
+        exp_match = re.search(pattern, text_upper)
+        if exp_match:
+            data.expiration_date = parse_date_to_iso(exp_match.group(1))
+            break
 
-    # Gender
-    gender_match = re.search(CEDULA_PATTERNS["gender"], text_upper)
-    if gender_match:
-        data.gender = gender_match.group(1)
-
-    # Nationality is always Dominican for cedula
-    data.nationality_code = "DOM"
-    data.nationality = get_country("DOM") or "Dominican Republic"
+    # Gender - try each pattern
+    for pattern in NATIONAL_ID_PATTERNS["gender"]:
+        gender_match = re.search(pattern, text_upper)
+        if gender_match:
+            data.gender = gender_match.group(1)
+            break
 
     return data
 
@@ -238,8 +345,8 @@ def parse_mrz(mrz_text: str) -> Tuple[ExtractedData, bool]:
         corrected_code, _ = correct_country_code(nationality_code)
         data.nationality_code = corrected_code
 
-        # Use library's country name lookup (no hardcoding)
-        country_name = get_country(corrected_code)
+        # Use library's country name lookup (iso3166 + mrz fallback)
+        country_name = get_country_name(corrected_code)
         data.nationality = country_name or corrected_code
 
         # Build full name (Given Names + Surname)
@@ -293,40 +400,60 @@ def extract_drivers_license_fields(text: str) -> ExtractedData:
     data = ExtractedData()
     text_upper = text.upper()
 
-    # License number pattern
-    lic_match = re.search(
-        r"(?:LICENCIA|LIC\.?\s*(?:NO|NUM)?\.?\s*[:.]?\s*)([A-Z0-9-]+)", text_upper
-    )
-    if lic_match:
-        data.document_number = lic_match.group(1)
+    # Detect country from document text
+    detected_country = detect_country_from_text(text)
+    if detected_country:
+        data.nationality_code = detected_country
+        data.nationality = get_country_name(detected_country) or detected_country
 
-    # Try cedula number as document number (common in DR licenses)
+    # License number patterns (multilingual)
+    license_patterns = [
+        r"(?:LICENCIA|LIC\.?\s*(?:NO|NUM)?\.?\s*[:.]?\s*)([A-Z0-9-]+)",  # Spanish
+        r"(?:LICENSE\s*(?:NO|NUM|NUMBER)?\.?\s*[:.]?\s*)([A-Z0-9-]+)",  # English
+        r"(?:PERMIS\s*(?:NO|NUM)?\.?\s*[:.]?\s*)([A-Z0-9-]+)",  # French
+    ]
+
+    for pattern in license_patterns:
+        lic_match = re.search(pattern, text_upper)
+        if lic_match:
+            data.document_number = lic_match.group(1)
+            break
+
+    # Try national ID number as document number (common in some countries)
     if not data.document_number:
-        ced_match = re.search(CEDULA_PATTERNS["document_number"], text_upper)
-        if ced_match:
-            data.document_number = normalize_cedula_number(ced_match.group(1))
+        for pattern in NATIONAL_ID_PATTERNS["document_number"]:
+            match = re.search(pattern, text_upper)
+            if match:
+                doc_num = match.group(1)
+                if detected_country == "DOM" and len(re.sub(r"[^\d]", "", doc_num)) == 11:
+                    data.document_number = normalize_cedula_number(doc_num)
+                else:
+                    data.document_number = doc_num
+                break
 
-    # Name
-    name_match = re.search(
-        r"(?:NOMBRE|NAME)\s*[:.]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)", text_upper
-    )
-    if name_match:
-        data.full_name = name_match.group(1).strip()
+    # Name - try multiple patterns
+    name_patterns = [
+        r"(?:NOMBRE|NAME)\s*[:.]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",
+        r"(?:FULL\s*NAME|TITULAR)\s*[:.]?\s*([A-Z][A-Z\s]+)",
+    ]
+    for pattern in name_patterns:
+        name_match = re.search(pattern, text_upper)
+        if name_match:
+            data.full_name = name_match.group(1).strip().title()
+            break
 
-    # Reuse cedula patterns for dates
-    dob_match = re.search(CEDULA_PATTERNS["date_of_birth"], text_upper)
-    if dob_match:
-        data.date_of_birth = parse_date_to_iso(dob_match.group(1))
+    # Date of birth - reuse national ID patterns
+    for pattern in NATIONAL_ID_PATTERNS["date_of_birth"]:
+        dob_match = re.search(pattern, text_upper)
+        if dob_match:
+            data.date_of_birth = parse_date_to_iso(dob_match.group(1))
+            break
 
-    exp_match = re.search(CEDULA_PATTERNS["expiration_date"], text_upper)
-    if exp_match:
-        data.expiration_date = parse_date_to_iso(exp_match.group(1))
-
-    # Try to detect nationality from document text
-    # Driver's licenses don't have MRZ, so we check for country markers
-    if re.search(r"REPUBLICA\s+DOMINICANA|REP\.?\s*DOM|DOMINICAN", text_upper):
-        data.nationality_code = "DOM"
-        data.nationality = get_country("DOM")
-    # Add other countries as needed
+    # Expiration date - reuse national ID patterns
+    for pattern in NATIONAL_ID_PATTERNS["expiration_date"]:
+        exp_match = re.search(pattern, text_upper)
+        if exp_match:
+            data.expiration_date = parse_date_to_iso(exp_match.group(1))
+            break
 
     return data

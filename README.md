@@ -1,15 +1,18 @@
 # Zentity
 
-Privacy-preserving identity verification using zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
+**Privacy-preserving KYC platform** using zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
 
 ## What is Zentity?
 
-Zentity is a self-sovereign identity verification platform that proves identity claims without exposing personal data. It uses cutting-edge cryptographic techniques to:
+Zentity is a privacy-preserving KYC platform that enables identity verification for banks, crypto exchanges, and fintechs—without storing or accessing sensitive personal information. It uses cutting-edge cryptographic techniques to:
 
-- **Verify age** without revealing your date of birth (ZK proofs + FHE)
-- **Match your face** to ID documents without storing biometrics
-- **Prove document validity** without exposing expiration dates
-- **Enable regulatory compliance** with end-to-end encrypted disclosure
+- **Verify age** without revealing date of birth (ZK proofs + FHE)
+- **Verify nationality group membership** without revealing country (ZK Merkle proofs)
+- **Verify liveness** without revealing biometric scores (FHE threshold comparisons)
+- **Prove accredited investor status** without revealing income (ZK proofs)
+- **Screen against sanctions lists** without exposing identity (ZK proofs)
+- **Match faces** to ID documents without storing biometrics
+- **Enable regulatory compliance** (FATF, MiCA, BSA/AML) with zero PII storage
 
 ## Project Structure
 
@@ -49,7 +52,8 @@ zentity/
     │ • /encrypt          │  │ • /generate │  │  │ • /process         │
     │ • /verify-age       │  │ • /verify   │  │  │ • /extract         │
     │ • /keys/generate    │  │ • /facematch│  │  │ • /ocr             │
-    │                     │  │ • /docvalid │  │  │                    │
+    │ • /encrypt-liveness │  │ • /docvalid │  │  │                    │
+    │ • /verify-liveness  │  │ • /national │  │  │                    │
     │ TFHE-rs v1.4.2      │  │ snarkjs     │  │  │ RapidOCR (PPOCRv5) │
     └─────────────────────┘  └─────────────┘  │  └────────────────────┘
                                               │
@@ -85,10 +89,16 @@ zentity/
 | Data | Storage Type | Purpose |
 |------|--------------|---------|
 | Birth Year | FHE ciphertext | Age verification at any threshold |
+| Full DOB | FHE ciphertext (u32) | Precise age calculation (YYYYMMDD) |
+| Liveness Score | FHE ciphertext (u16) | Privacy-preserving anti-spoof threshold |
+| Gender | FHE ciphertext (u8) | ISO 5218 encoded, FHE comparisons |
 | Name | SHA256 commitment | Verification without storage |
 | Document # | SHA256 commitment | Duplicate detection |
-| Age Proof | ZK proof | Shareable proof of age >= 18 |
+| Nationality | SHA256 commitment | ISO 3166-1 alpha-3 code commitment |
+| Age Proof | ZK proof (JSON) | Multiple thresholds: 18, 21, 25 |
 | Face Match Proof | ZK proof | Shareable proof of identity |
+| Doc Validity Proof | ZK proof | Proves document not expired |
+| Nationality Group Proof | ZK Merkle proof | Proves EU/EEA/SCHENGEN membership |
 
 ### What We NEVER Store
 
@@ -170,9 +180,9 @@ Open http://localhost:3000
 | Document | Description |
 |----------|-------------|
 | [Executive Summary](docs/executive-summary.md) | Business overview and value proposition |
+| [KYC Data Architecture](docs/kyc-data-architecture.md) | FHE vs ZK vs Hash decision framework |
 | [MVP Specification](docs/MVP.md) | Feature scope and requirements |
 | [Liveness Architecture](docs/liveness-architecture.md) | Anti-spoofing and face matching design |
-| [OCR Solutions](docs/ocr-solutions-evaluation.md) | Document OCR evaluation for Dominican IDs |
 | [Frontend UX](docs/frontend-ui-ux.md) | Onboarding flow UX best practices |
 | [API Collection](tooling/bruno-collection/README.md) | Bruno API testing collection |
 
@@ -212,6 +222,67 @@ Biometrics: NEVER stored by either party
 | Age Proof | Prove age >= threshold | `currentYear`, `minAge`, `isValid` |
 | Face Match | Prove similarity >= threshold | `threshold`, `isMatch` |
 | Document Validity | Prove not expired | `currentDate`, `isValid` |
+| Nationality Membership | Prove nationality in group | `merkleRoot`, `isMember` |
+
+### Supported Country Groups
+
+The Nationality Membership circuit uses Merkle tree proofs to verify membership in predefined country groups without revealing the specific country:
+
+| Group | Countries | Use Case |
+|-------|-----------|----------|
+| EU | 27 countries | EU citizen verification |
+| EEA | 30 countries | European work authorization |
+| SCHENGEN | 25 countries | Travel zone verification |
+| LATAM | 7 countries | Regional compliance |
+| FIVE_EYES | 5 countries | Intelligence alliance nations |
+
+## Business Use Cases
+
+### Privacy-Preserving Liveness Verification
+
+Traditional liveness detection exposes exact anti-spoof confidence scores. Zentity encrypts liveness scores using FHE, enabling threshold comparisons without revealing the actual score:
+
+```
+User → Liveness Service: Submit face capture
+Liveness Service → FHE: encrypt(score=0.85)
+FHE → Storage: ciphertext (score hidden)
+Verifier → FHE: verify(ciphertext >= 0.3)
+FHE → Verifier: true/false (score never revealed)
+```
+
+**Benefits:**
+- Prevents gaming the system by knowing exact thresholds
+- Protects biometric scoring algorithms from reverse engineering
+- Enables different threshold policies per use case
+
+### Nationality Group Membership
+
+Proving citizenship often requires revealing exact nationality, which can lead to discrimination. Zentity's ZK Merkle proofs enable group membership verification:
+
+```
+User → Zentity: "Prove I'm EU citizen"
+Zentity → ZK Service: Generate Merkle proof (nationality in EU tree)
+ZK Service → Verifier: proof + merkleRoot (EU identifier)
+Verifier: Knows user is EU citizen, but NOT which of 27 countries
+```
+
+**Use Cases:**
+- **EU Right to Work**: Verify employment authorization without revealing specific nationality
+- **Schengen Travel**: Prove travel zone eligibility without passport country disclosure
+- **Regional Compliance**: Meet LATAM or EEA requirements without over-sharing
+- **Anti-Discrimination**: Prevent nationality-based bias in hiring/services
+
+### Multi-Threshold Age Verification
+
+Different jurisdictions require different age thresholds. Zentity generates multiple age proofs efficiently:
+
+| Threshold | Use Case |
+|-----------|----------|
+| 18+ | General adult verification (EU, most jurisdictions) |
+| 21+ | US alcohol/cannabis, car rental |
+| 25+ | Premium car rental, certain financial products |
+
+All proofs use the same FHE-encrypted DOB, generating new proofs without re-verification.
 
 ## License
 

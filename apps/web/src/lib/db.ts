@@ -106,6 +106,19 @@ export interface IdentityProof {
   confidenceScore?: number;
   createdAt: string;
   updatedAt: string;
+
+  // Sprint 1 additions
+  docValidityProof?: string;       // ZK proof that document is not expired
+  nationalityCommitment?: string;  // SHA256(nationality_code + user_salt)
+  ageProofsJson?: string;          // JSON: {"18": proof, "21": proof, "25": proof}
+
+  // Sprint 2 additions: FHE expansion
+  genderCiphertext?: string;       // FHE encrypted gender (ISO 5218)
+  dobFullCiphertext?: string;      // FHE encrypted full DOB as YYYYMMDD (u32)
+
+  // Sprint 3 additions: Advanced ZK + Liveness FHE
+  nationalityMembershipProof?: string;  // ZK proof of nationality group membership
+  livenessScoreCiphertext?: string;     // FHE encrypted liveness score (0.0-1.0 as u16)
 }
 
 /**
@@ -118,12 +131,18 @@ export function createIdentityProof(proof: Omit<IdentityProof, "createdAt" | "up
       dob_ciphertext, fhe_client_key_id, age_proof, age_proof_verified,
       document_type, country_verified, is_document_verified,
       is_liveness_passed, is_face_matched, verification_method,
-      verified_at, confidence_score
+      verified_at, confidence_score,
+      doc_validity_proof, nationality_commitment, age_proofs_json,
+      gender_ciphertext, dob_full_ciphertext,
+      nationality_membership_proof, liveness_score_ciphertext
     ) VALUES (
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?, ?,
+      ?, ?,
+      ?, ?, ?,
+      ?, ?,
       ?, ?
     )
   `);
@@ -145,7 +164,14 @@ export function createIdentityProof(proof: Omit<IdentityProof, "createdAt" | "up
     proof.isFaceMatched ? 1 : 0,
     proof.verificationMethod || null,
     proof.verifiedAt || null,
-    proof.confidenceScore || null
+    proof.confidenceScore || null,
+    proof.docValidityProof || null,
+    proof.nationalityCommitment || null,
+    proof.ageProofsJson || null,
+    proof.genderCiphertext || null,
+    proof.dobFullCiphertext || null,
+    proof.nationalityMembershipProof || null,
+    proof.livenessScoreCiphertext || null
   );
 }
 
@@ -164,7 +190,14 @@ export function getIdentityProofByUserId(userId: string): IdentityProof | null {
       is_liveness_passed as isLivenessPassed, is_face_matched as isFaceMatched,
       verification_method as verificationMethod, verified_at as verifiedAt,
       confidence_score as confidenceScore, created_at as createdAt,
-      updated_at as updatedAt
+      updated_at as updatedAt,
+      doc_validity_proof as docValidityProof,
+      nationality_commitment as nationalityCommitment,
+      age_proofs_json as ageProofsJson,
+      gender_ciphertext as genderCiphertext,
+      dob_full_ciphertext as dobFullCiphertext,
+      nationality_membership_proof as nationalityMembershipProof,
+      liveness_score_ciphertext as livenessScoreCiphertext
     FROM identity_proofs
     WHERE user_id = ?
   `);
@@ -195,6 +228,16 @@ export function updateIdentityProofFlags(
     dobCiphertext?: string;
     fheClientKeyId?: string;
     ageProof?: string;
+    // Sprint 1 additions
+    docValidityProof?: string;
+    nationalityCommitment?: string;
+    ageProofsJson?: string;
+    // Sprint 2 additions
+    genderCiphertext?: string;
+    dobFullCiphertext?: string;
+    // Sprint 3 additions
+    nationalityMembershipProof?: string;
+    livenessScoreCiphertext?: string;
   }
 ): void {
   const updates: string[] = [];
@@ -231,6 +274,37 @@ export function updateIdentityProofFlags(
   if (flags.ageProof !== undefined) {
     updates.push("age_proof = ?");
     values.push(flags.ageProof);
+  }
+  // Sprint 1 additions
+  if (flags.docValidityProof !== undefined) {
+    updates.push("doc_validity_proof = ?");
+    values.push(flags.docValidityProof);
+  }
+  if (flags.nationalityCommitment !== undefined) {
+    updates.push("nationality_commitment = ?");
+    values.push(flags.nationalityCommitment);
+  }
+  if (flags.ageProofsJson !== undefined) {
+    updates.push("age_proofs_json = ?");
+    values.push(flags.ageProofsJson);
+  }
+  // Sprint 2 additions
+  if (flags.genderCiphertext !== undefined) {
+    updates.push("gender_ciphertext = ?");
+    values.push(flags.genderCiphertext);
+  }
+  if (flags.dobFullCiphertext !== undefined) {
+    updates.push("dob_full_ciphertext = ?");
+    values.push(flags.dobFullCiphertext);
+  }
+  // Sprint 3 additions
+  if (flags.nationalityMembershipProof !== undefined) {
+    updates.push("nationality_membership_proof = ?");
+    values.push(flags.nationalityMembershipProof);
+  }
+  if (flags.livenessScoreCiphertext !== undefined) {
+    updates.push("liveness_score_ciphertext = ?");
+    values.push(flags.livenessScoreCiphertext);
   }
 
   updates.push("updated_at = datetime('now')");

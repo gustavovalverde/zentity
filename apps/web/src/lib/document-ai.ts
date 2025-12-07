@@ -6,8 +6,8 @@
  * 2. Vercel AI Gateway (cloud fallback)
  *
  * Supports:
- * - Document type detection (passport, cedula, driver's license)
- * - DR document validation
+ * - Document type detection (passport, national ID, driver's license)
+ * - International document validation
  * - Field extraction (name, document number, DOB, etc.)
  */
 
@@ -16,18 +16,19 @@ import { z } from "zod";
 
 // Schema for extracted document data
 const DocumentSchema = z.object({
-  documentType: z.enum(["passport", "cedula", "drivers_license", "unknown"]),
-  isValidDRDocument: z.boolean(),
+  documentType: z.enum(["passport", "national_id", "drivers_license", "unknown"]),
+  documentOrigin: z.string().optional(), // ISO 3166-1 alpha-3 country code
   confidence: z.number().min(0).max(1),
   extractedData: z
     .object({
       fullName: z.string().optional(),
-      firstName: z.string().optional(),  // Nombres
-      lastName: z.string().optional(),   // Apellidos
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
       documentNumber: z.string().optional(),
       dateOfBirth: z.string().optional(),
       expirationDate: z.string().optional(),
       nationality: z.string().optional(),
+      nationalityCode: z.string().optional(),
       gender: z.string().optional(),
     })
     .optional(),
@@ -39,7 +40,7 @@ export type DocumentResult = z.infer<typeof DocumentSchema>;
 // Document types for display
 export const DOCUMENT_TYPE_LABELS: Record<DocumentResult["documentType"], string> = {
   passport: "Passport",
-  cedula: "Cedula (ID Card)",
+  national_id: "National ID Card",
   drivers_license: "Driver's License",
   unknown: "Unknown Document",
 };
@@ -78,24 +79,22 @@ async function processDocumentCloud(imageBase64: string): Promise<DocumentResult
             type: "text",
             text: `Analyze this identity document image.
 
-1. Identify if this is a Dominican Republic passport, cedula (ID card), or driver's license
-2. Verify it appears to be a genuine DR document by looking for:
-   - "REPÚBLICA DOMINICANA" text
-   - Dominican coat of arms or official emblems
-   - Expected layout and formatting for DR documents
+1. Identify the document type: passport, national_id (cedula, DNI, ID card), or drivers_license
+2. Identify the issuing country if visible (set documentOrigin to ISO 3166-1 alpha-3 code)
 3. Extract key fields if visible:
-   - Full name (nombre completo)
-   - Document number (número de documento)
-   - Date of birth (fecha de nacimiento)
-   - Expiration date (fecha de vencimiento)
-   - Nationality (nacionalidad)
-   - Gender (sexo)
+   - Full name
+   - Document number
+   - Date of birth (format: YYYY-MM-DD)
+   - Expiration date (format: YYYY-MM-DD)
+   - Nationality (full country name)
+   - Nationality code (ISO 3166-1 alpha-3)
+   - Gender (M or F)
 
 Rules:
-- If this is NOT a Dominican Republic document, set isValidDRDocument to false
 - If any fields are unclear, blurry, or not visible, omit them from extractedData
-- List any validation concerns in validationIssues (e.g., "document appears expired", "image quality too low", "not a DR document")
-- Set confidence based on how clearly you can read and verify the document (0.0-1.0)`,
+- List any validation concerns in validationIssues (e.g., "document_expired", "image_quality_low", "mrz_checksum_invalid")
+- Set confidence based on how clearly you can read and verify the document (0.0-1.0)
+- For passports, try to read the MRZ (Machine Readable Zone) at the bottom`,
           },
         ],
       },
@@ -130,7 +129,7 @@ async function processDocumentOCR(imageBase64: string): Promise<DocumentResult> 
   // Map response to DocumentResult
   return {
     documentType: data.documentType || "unknown",
-    isValidDRDocument: Boolean(data.isValidDRDocument),
+    documentOrigin: data.documentOrigin || undefined,
     confidence: data.confidence || 0,
     extractedData: data.extractedData
       ? {
@@ -141,6 +140,7 @@ async function processDocumentOCR(imageBase64: string): Promise<DocumentResult> 
           dateOfBirth: data.extractedData.dateOfBirth || undefined,
           expirationDate: data.extractedData.expirationDate || undefined,
           nationality: data.extractedData.nationality || undefined,
+          nationalityCode: data.extractedData.nationalityCode || undefined,
           gender: data.extractedData.gender || undefined,
         }
       : undefined,
@@ -177,7 +177,6 @@ export async function processDocument(imageBase64: string): Promise<DocumentResu
   // No processing method available
   return {
     documentType: "unknown",
-    isValidDRDocument: false,
     confidence: 0,
     validationIssues: ["no_ocr_service_available"],
   };
@@ -217,24 +216,26 @@ export async function checkOCRServiceHealth(): Promise<{
  */
 export function getIssueDescription(issue: string): string {
   const issueMap: Record<string, string> = {
-    not_dr_document: "This document does not appear to be from the Dominican Republic",
     image_quality_low: "Image quality is too low to read clearly",
     document_expired: "This document appears to be expired",
     no_text_visible: "No readable text was found on the document",
     no_text_detected: "No readable text was detected on the document",
     partial_data: "Some fields could not be extracted from the document",
-    suspicious_format: "Document format does not match expected DR document layout",
+    unrecognized_format: "Document format could not be recognized",
     ocr_failed: "OCR processing failed",
     no_ocr_service_available: "No OCR service available - please start the OCR service",
     ocr_service_unavailable: "OCR service is temporarily unavailable",
     missing_document_number: "Document number could not be extracted",
-    invalid_cedula_length: "Cedula number has incorrect length",
-    invalid_cedula_characters: "Cedula number contains invalid characters",
+    missing_full_name: "Full name could not be extracted",
+    extraction_failed: "Failed to extract document fields",
+    invalid_cedula_length: "National ID number has incorrect length",
+    invalid_cedula_characters: "National ID number contains invalid characters",
     invalid_passport_format: "Passport number format is invalid",
     invalid_expiration_format: "Expiration date format is invalid",
     invalid_dob_format: "Date of birth format is invalid",
     invalid_date_of_birth: "Date of birth appears to be invalid",
     minor_age_detected: "Document holder appears to be a minor",
+    mrz_checksum_invalid: "Passport MRZ checksum validation failed",
   };
 
   return issueMap[issue] || issue;
