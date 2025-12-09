@@ -1,0 +1,81 @@
+meta {
+  name: Extract Document
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{ocr_base_url}}/extract
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "image": "{{document_image_base64}}"
+  }
+}
+
+docs {
+  # Extract Document Data
+
+  Extract text and structured data from an identity document image.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | image | string | Yes | Base64 encoded document image |
+
+  ## Response
+
+  ```json
+  {
+    "extractedData": {
+      "documentType": "passport",
+      "firstName": "JOHN",
+      "lastName": "DOE",
+      "dateOfBirth": "1990-01-15",
+      "nationality": "USA",
+      "nationalityCode": "USA",
+      "issuingCountry": "USA",
+      "issuingCountryCode": "USA",
+      "documentNumber": "123456789",
+      "expirationDate": "2030-01-15",
+      "gender": "M"
+    },
+    "rawText": "...",
+    "mrzData": {
+      "valid": true,
+      "checkDigitsValid": true
+    },
+    "processingTimeMs": 450
+  }
+  ```
+
+  ## Extracted Fields
+
+  | Field | Description |
+  |-------|-------------|
+  | firstName | Given names |
+  | lastName | Surname |
+  | dateOfBirth | DOB (YYYY-MM-DD) |
+  | nationality | Nationality (alpha-3) |
+  | issuingCountry | Document issuing country |
+  | documentNumber | Document ID number |
+  | expirationDate | Expiry date |
+  | gender | M/F |
+
+  ## Privacy
+
+  Document image is processed transiently and never stored.
+}
+
+assert {
+  res.status: eq 200
+  res.body.extractedData: isDefined
+}

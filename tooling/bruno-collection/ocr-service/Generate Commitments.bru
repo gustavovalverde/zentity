@@ -1,0 +1,76 @@
+meta {
+  name: Generate Commitments
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{ocr_base_url}}/commitments
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "firstName": "JOHN",
+    "lastName": "DOE",
+    "documentNumber": "123456789",
+    "nationality": "USA",
+    "issuingCountry": "USA"
+  }
+}
+
+docs {
+  # Generate Privacy Commitments
+
+  Generate SHA-256 commitments for identity data.
+  Commitments can be verified without revealing the underlying data.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | firstName | string | Yes | Given names |
+  | lastName | string | Yes | Surname |
+  | documentNumber | string | Yes | Document ID |
+  | nationality | string | Yes | Nationality code |
+  | issuingCountry | string | No | Issuing country code |
+
+  ## Response
+
+  ```json
+  {
+    "nameCommitment": "sha256:abc123...",
+    "documentHashCommitment": "sha256:def456...",
+    "nationalityCommitment": "sha256:ghi789...",
+    "issuingCountryCommitment": "sha256:jkl012...",
+    "salts": {
+      "name": "random-salt-1",
+      "document": "random-salt-2",
+      "nationality": "random-salt-3",
+      "issuingCountry": "random-salt-4"
+    }
+  }
+  ```
+
+  ## How Commitments Work
+
+  ```
+  commitment = SHA256(data + salt)
+  ```
+
+  - Store commitments publicly
+  - Keep salts private
+  - Later, reveal data + salt to prove commitment
+  - Delete salt to make commitment unverifiable (GDPR)
+}
+
+assert {
+  res.status: eq 200
+  res.body.nameCommitment: isDefined
+  res.body.documentHashCommitment: isDefined
+}

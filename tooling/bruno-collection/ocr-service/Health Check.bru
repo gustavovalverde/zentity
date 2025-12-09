@@ -1,0 +1,31 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{ocr_base_url}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  # OCR Service Health Check
+
+  Checks if the OCR service is running.
+
+  ## Response
+
+  ```json
+  {
+    "status": "healthy",
+    "service": "ocr-service"
+  }
+  ```
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq healthy
+}

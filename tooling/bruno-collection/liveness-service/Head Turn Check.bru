@@ -1,0 +1,56 @@
+meta {
+  name: Head Turn Check
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{liveness_base_url}}/head-turn-check
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "image": "{{test_image_base64}}",
+    "direction": "left",
+    "threshold": 0.15
+  }
+}
+
+docs {
+  # Head Turn Check
+
+  Check if head is turned in a specific direction.
+  Simpler API for validating head turn challenges.
+
+  ## Request Body
+
+  | Field | Type | Required | Description |
+  |-------|------|----------|-------------|
+  | image | string | Yes | Base64 encoded image |
+  | direction | string | Yes | Required direction: "left" or "right" |
+  | threshold | number | No | Yaw threshold (default: 0.15) |
+
+  ## Response
+
+  ```json
+  {
+    "turnDetected": true,
+    "yaw": -0.28,
+    "direction": "left",
+    "meetsThreshold": true,
+    "requiredDirection": "left"
+  }
+  ```
+}
+
+assert {
+  res.status: eq 200
+  res.body.turnDetected: isDefined
+  res.body.yaw: isDefined
+}

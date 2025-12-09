@@ -1,0 +1,37 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{liveness_base_url}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  # Liveness Service Health Check
+
+  Checks if the liveness service is running and all ML models are loaded.
+
+  ## Response
+
+  ```json
+  {
+    "status": "healthy",
+    "service": "liveness-service",
+    "models_loaded": true
+  }
+  ```
+
+  ## Notes
+
+  - First startup may take 30-60s while models download
+  - Models are cached in Docker volumes for subsequent starts
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq healthy
+}
