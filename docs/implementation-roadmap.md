@@ -118,33 +118,34 @@ This document tracks the implementation of features to close gaps between Zentit
 
 #### Current State
 - Smile detection: Working via DeepFace
-- Blink detection: **Already implemented** in `/apps/liveness/app/blink_detection.py` (not integrated in UI)
-- Head pose: Not implemented
-- Multi-challenge engine: Not implemented
+- Blink detection: **Implemented** in `/apps/liveness/app/blink_detection.py`
+- Head pose: **Implemented** in `/apps/liveness/app/head_pose.py`
+- Multi-challenge engine: **Implemented** in `/apps/liveness/app/challenge_engine.py`
 
 #### Tasks
-- [ ] **Days 1-2:** Head Pose Detection
-  - [ ] Create `/apps/liveness/app/head_pose.py`
-  - [ ] Implement `calculate_head_yaw()` using landmark positions
-  - [ ] Implement `detect_head_turn()` with threshold
-  - [ ] Add `/head-pose` endpoint to main.py
-  - [ ] Unit test with sample landmarks
+- [x] **Days 1-2:** Head Pose Detection ✅ COMPLETE
+  - [x] Create `/apps/liveness/app/head_pose.py`
+  - [x] Implement `calculate_head_yaw()` using landmark positions
+  - [x] Implement `detect_head_turn()` with threshold
+  - [x] Add `/head-pose` endpoint to main.py
+  - [x] Add `/head-turn-check` endpoint
 
-- [ ] **Day 3:** Challenge Engine
-  - [ ] Create `/apps/liveness/app/challenge_engine.py`
-  - [ ] Define ChallengeType enum (smile, blink, turn_left, turn_right)
-  - [ ] Implement ChallengeSession with random selection
-  - [ ] Add `/challenge/session` endpoint
-  - [ ] Add `/challenge/validate-multi` endpoint
+- [x] **Day 3:** Challenge Engine ✅ COMPLETE
+  - [x] Create `/apps/liveness/app/challenge_engine.py`
+  - [x] Define ChallengeType enum (smile, blink, turn_left, turn_right)
+  - [x] Implement ChallengeSession with random selection
+  - [x] Add `/challenge/session` endpoint
+  - [x] Add `/challenge/complete` endpoint
+  - [x] Add `/challenge/validate-multi` endpoint
+  - [x] Add frontend API client functions to `/apps/web/src/lib/face-detection.ts`
 
-- [ ] **Days 4-5:** Frontend Updates
+- [ ] **Days 4-5:** Frontend Updates - **PENDING**
   - [ ] Update `/apps/web/src/components/onboarding/steps/step-selfie.tsx`
   - [ ] Add challenge progress indicator
   - [ ] Update state machine for multi-challenge flow
-  - [ ] Add challenge-specific UI overlays
-  - [ ] Add new functions to `/apps/web/src/lib/face-detection.ts`
+  - [ ] Add challenge-specific UI overlays (head turn arrows, etc.)
 
-- [ ] **Days 6-7:** Integration & Testing
+- [ ] **Days 6-7:** Integration & Testing - **PENDING**
   - [ ] End-to-end flow testing
   - [ ] Edge case handling (camera loss, timeout)
   - [ ] Performance optimization
@@ -291,9 +292,16 @@ The following features are documented but intentionally deferred:
 |-------|--------|----------|
 | Phase 1: Quick Wins | ✅ Complete | 100% |
 | Phase 2: Nationality ZK | ✅ Complete | 100% |
-| Phase 3: Multi-Gesture | Not Started | 0% |
+| Phase 3: Multi-Gesture | 🚧 In Progress | 60% |
 | Phase 4: ZK Face Match | Not Started | 0% |
 | Phase 5: Documentation | Not Started | 0% |
+
+### Phase 3 Progress
+- ✅ Head pose detection module (`head_pose.py`)
+- ✅ Challenge engine module (`challenge_engine.py`)
+- ✅ Backend API endpoints (head-pose, head-turn-check, challenge/session, challenge/complete, challenge/validate-multi)
+- ✅ Frontend API client functions (`face-detection.ts`)
+- ⏳ Frontend UI updates (step-selfie.tsx) - requires state machine refactor
 
 ### Phase 2 Completed
 - ✅ circomlib/circomlibjs dependencies installed

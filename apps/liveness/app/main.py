@@ -44,6 +44,17 @@ from .frame_selector import (
     evaluate_frame_from_base64,
     select_best_frame,
 )
+from .head_pose import (
+    check_head_pose_from_base64,
+    detect_head_turn,
+)
+from .challenge_engine import (
+    ChallengeType,
+    create_challenge_session,
+    get_session,
+    complete_session_challenge,
+    validate_multi_challenge_batch,
+)
 
 # Configuration
 PORT = int(os.getenv("PORT", "5003"))
@@ -899,6 +910,381 @@ async def full_verification_endpoint(request: FullVerificationRequest):
         processing_time_ms=processing_time_ms,
         issues=issues,
         error=None,
+    )
+
+
+# ============================================================================
+# Head Pose Detection Endpoints
+# ============================================================================
+
+
+class HeadPoseRequest(BaseModel):
+    """Request for head pose detection."""
+
+    image: str = Field(..., description="Base64 encoded image")
+    resetSession: bool = Field(
+        default=False,
+        description="Reset turn detection state before processing",
+    )
+
+
+class HeadPoseResponse(BaseModel):
+    """Response for head pose detection."""
+
+    yaw: float = Field(..., description="Head yaw (-1 to 1, negative=left, positive=right)")
+    pitch: float = Field(..., description="Head pitch (-1 to 1, negative=down, positive=up)")
+    direction: str = Field(..., description="Estimated direction (forward, left, right, up, down)")
+    isTurningLeft: bool = Field(..., description="Whether head is currently turned left")
+    isTurningRight: bool = Field(..., description="Whether head is currently turned right")
+    leftTurnCompleted: bool = Field(..., description="Whether left turn detected in session")
+    rightTurnCompleted: bool = Field(..., description="Whether right turn detected in session")
+    faceDetected: bool = Field(..., description="Whether a face was detected")
+    processingTimeMs: int = Field(..., description="Processing time in milliseconds")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
+class HeadTurnCheckRequest(BaseModel):
+    """Request for head turn check in a specific direction."""
+
+    image: str = Field(..., description="Base64 encoded image")
+    direction: str = Field(..., description="Required direction: 'left' or 'right'")
+    threshold: Optional[float] = Field(
+        default=0.15,
+        description="Yaw threshold for turn detection (0.0-1.0)",
+    )
+
+
+class HeadTurnCheckResponse(BaseModel):
+    """Response for head turn check."""
+
+    turnDetected: bool = Field(..., description="Whether turn was detected in required direction")
+    yaw: float = Field(..., description="Current yaw value")
+    direction: str = Field(..., description="Current detected direction")
+    meetsThreshold: bool = Field(..., description="Whether threshold was met")
+    requiredDirection: str = Field(..., description="The direction that was requested")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
+@app.post("/head-pose", response_model=HeadPoseResponse)
+async def head_pose_endpoint(request: HeadPoseRequest):
+    """
+    Detect head pose in a single frame.
+
+    Uses UniFace 106-point landmarks to estimate head orientation.
+    Returns yaw (left/right) and pitch (up/down) values.
+
+    This endpoint is stateful - it tracks turns across calls within a session.
+    Use resetSession=true to start a new session.
+
+    Privacy: Image is processed transiently and never stored.
+    """
+    if not request.image:
+        raise HTTPException(status_code=400, detail="Image is required")
+
+    result = check_head_pose_from_base64(request.image, request.resetSession)
+
+    return HeadPoseResponse(
+        yaw=result.get("yaw", 0.0),
+        pitch=result.get("pitch", 0.0),
+        direction=result.get("direction", "unknown"),
+        isTurningLeft=result.get("is_turning_left", False),
+        isTurningRight=result.get("is_turning_right", False),
+        leftTurnCompleted=result.get("left_turn_completed", False),
+        rightTurnCompleted=result.get("right_turn_completed", False),
+        faceDetected=result.get("face_detected", False),
+        processingTimeMs=result.get("processing_time_ms", 0),
+        error=result.get("error"),
+    )
+
+
+@app.post("/head-turn-check", response_model=HeadTurnCheckResponse)
+async def head_turn_check_endpoint(request: HeadTurnCheckRequest):
+    """
+    Check if head is turned in the required direction.
+
+    Simpler endpoint for validating a specific head turn challenge.
+
+    Args:
+        image: Base64 encoded image
+        direction: Required direction ("left" or "right")
+        threshold: Optional custom threshold (default 0.15)
+    """
+    if not request.image:
+        raise HTTPException(status_code=400, detail="Image is required")
+    if request.direction not in ["left", "right"]:
+        raise HTTPException(status_code=400, detail="Direction must be 'left' or 'right'")
+
+    result = detect_head_turn(
+        request.image,
+        request.direction,
+        request.threshold or 0.15,
+    )
+
+    return HeadTurnCheckResponse(
+        turnDetected=result.get("turn_detected", False),
+        yaw=result.get("yaw", 0.0),
+        direction=result.get("direction", "unknown"),
+        meetsThreshold=result.get("meets_threshold", False),
+        requiredDirection=result.get("required_direction", request.direction),
+        error=result.get("error"),
+    )
+
+
+# ============================================================================
+# Multi-Challenge Session Endpoints
+# ============================================================================
+
+
+class CreateSessionRequest(BaseModel):
+    """Request to create a new challenge session."""
+
+    numChallenges: int = Field(
+        default=2,
+        ge=2,
+        le=4,
+        description="Number of challenges (2-4)",
+    )
+    excludeChallenges: Optional[list[str]] = Field(
+        default=None,
+        description="Challenge types to exclude (smile, blink, turn_left, turn_right)",
+    )
+    requireHeadTurn: bool = Field(
+        default=False,
+        description="If true, include at least one head turn challenge",
+    )
+
+
+class ChallengeInfo(BaseModel):
+    """Information about a challenge."""
+
+    challengeType: str = Field(..., description="Challenge type")
+    index: int = Field(..., description="Challenge index (0-based)")
+    total: int = Field(..., description="Total challenges in session")
+    title: str = Field(..., description="Display title")
+    instruction: str = Field(..., description="User instruction")
+    icon: str = Field(..., description="Icon name for UI")
+    timeoutSeconds: int = Field(..., description="Timeout in seconds")
+
+
+class SessionResponse(BaseModel):
+    """Response with session state."""
+
+    sessionId: str = Field(..., description="Unique session ID")
+    challenges: list[str] = Field(..., description="List of challenge types")
+    currentIndex: int = Field(..., description="Current challenge index")
+    isComplete: bool = Field(..., description="Whether session is complete")
+    isPassed: Optional[bool] = Field(None, description="Whether session passed (if complete)")
+    currentChallenge: Optional[ChallengeInfo] = Field(None, description="Current challenge info")
+
+
+class CompleteChallengeRequest(BaseModel):
+    """Request to mark a challenge as completed."""
+
+    sessionId: str = Field(..., description="Session ID")
+    challengeType: str = Field(..., description="Challenge type that was completed")
+    passed: bool = Field(..., description="Whether the challenge was passed")
+    metadata: Optional[dict] = Field(None, description="Optional metadata (scores, etc.)")
+
+
+class CompleteChallengeResponse(BaseModel):
+    """Response for challenge completion."""
+
+    success: bool = Field(..., description="Whether completion was recorded")
+    passed: bool = Field(..., description="Whether this challenge passed")
+    sessionComplete: bool = Field(..., description="Whether session is now complete")
+    sessionPassed: Optional[bool] = Field(None, description="Whether session passed (if complete)")
+    nextChallenge: Optional[ChallengeInfo] = Field(None, description="Next challenge (if any)")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
+class MultiChallengeValidateRequest(BaseModel):
+    """Request to validate multiple challenges at once."""
+
+    baselineImage: str = Field(..., description="Base64 baseline image (neutral face)")
+    challengeResults: list[dict] = Field(
+        ...,
+        description="List of {challenge_type, image} dicts",
+    )
+
+
+class ChallengeValidationResult(BaseModel):
+    """Result for a single challenge validation."""
+
+    index: int = Field(..., description="Challenge index")
+    challengeType: str = Field(..., description="Challenge type")
+    passed: bool = Field(..., description="Whether challenge passed")
+    score: Optional[float] = Field(None, description="Score (if applicable)")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
+class MultiChallengeValidateResponse(BaseModel):
+    """Response for multi-challenge validation."""
+
+    allPassed: bool = Field(..., description="Whether all challenges passed")
+    totalChallenges: int = Field(..., description="Total number of challenges")
+    passedCount: int = Field(..., description="Number of passed challenges")
+    results: list[ChallengeValidationResult] = Field(..., description="Individual results")
+    processingTimeMs: int = Field(..., description="Total processing time")
+
+
+@app.post("/challenge/session", response_model=SessionResponse)
+async def create_session_endpoint(request: CreateSessionRequest):
+    """
+    Create a new multi-challenge liveness session.
+
+    Generates a random sequence of 2-4 challenges that the user must complete.
+    This prevents replay attacks using static photos or pre-recorded videos.
+
+    Supported challenges:
+    - smile: Smile detection
+    - blink: Eye blink detection
+    - turn_left: Turn head to the left
+    - turn_right: Turn head to the right
+
+    Returns session info including the first challenge to display.
+    """
+    session_data = create_challenge_session(
+        num_challenges=request.numChallenges,
+        exclude_challenges=request.excludeChallenges,
+        require_head_turn=request.requireHeadTurn,
+    )
+
+    current = session_data.get("current_challenge")
+    current_info = None
+    if current:
+        current_info = ChallengeInfo(
+            challengeType=current["challenge_type"],
+            index=current["index"],
+            total=current["total"],
+            title=current["title"],
+            instruction=current["instruction"],
+            icon=current["icon"],
+            timeoutSeconds=current["timeout_seconds"],
+        )
+
+    return SessionResponse(
+        sessionId=session_data["session_id"],
+        challenges=session_data["challenges"],
+        currentIndex=session_data["current_index"],
+        isComplete=session_data["is_complete"],
+        isPassed=session_data["is_passed"] if session_data["is_complete"] else None,
+        currentChallenge=current_info,
+    )
+
+
+@app.post("/challenge/complete", response_model=CompleteChallengeResponse)
+async def complete_challenge_endpoint(request: CompleteChallengeRequest):
+    """
+    Mark a challenge as completed in a session.
+
+    Call this after the user completes each challenge. The server tracks
+    the session state and returns the next challenge or final result.
+    """
+    result = complete_session_challenge(
+        session_id=request.sessionId,
+        challenge_type=request.challengeType,
+        passed=request.passed,
+        metadata=request.metadata,
+    )
+
+    next_challenge = result.get("next_challenge")
+    next_info = None
+    if next_challenge:
+        next_info = ChallengeInfo(
+            challengeType=next_challenge["challenge_type"],
+            index=next_challenge["index"],
+            total=next_challenge["total"],
+            title=next_challenge["title"],
+            instruction=next_challenge["instruction"],
+            icon=next_challenge["icon"],
+            timeoutSeconds=next_challenge["timeout_seconds"],
+        )
+
+    return CompleteChallengeResponse(
+        success=result.get("success", False),
+        passed=result.get("passed", False),
+        sessionComplete=result.get("session_complete", False),
+        sessionPassed=result.get("session_passed"),
+        nextChallenge=next_info,
+        error=result.get("error"),
+    )
+
+
+@app.get("/challenge/session/{session_id}", response_model=SessionResponse)
+async def get_session_endpoint(session_id: str):
+    """
+    Get the current state of a challenge session.
+    """
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    session_data = session.to_dict()
+
+    current = session_data.get("current_challenge")
+    current_info = None
+    if current:
+        current_info = ChallengeInfo(
+            challengeType=current["challenge_type"],
+            index=current["index"],
+            total=current["total"],
+            title=current["title"],
+            instruction=current["instruction"],
+            icon=current["icon"],
+            timeoutSeconds=current["timeout_seconds"],
+        )
+
+    return SessionResponse(
+        sessionId=session_data["session_id"],
+        challenges=session_data["challenges"],
+        currentIndex=session_data["current_index"],
+        isComplete=session_data["is_complete"],
+        isPassed=session_data["is_passed"] if session_data["is_complete"] else None,
+        currentChallenge=current_info,
+    )
+
+
+@app.post("/challenge/validate-multi", response_model=MultiChallengeValidateResponse)
+async def validate_multi_challenge_endpoint(request: MultiChallengeValidateRequest):
+    """
+    Validate multiple challenges at once.
+
+    Alternative to session-based flow. The frontend collects all challenge
+    images and sends them together for batch validation.
+
+    Each challenge_result should have:
+    - challenge_type: "smile", "blink", "turn_left", or "turn_right"
+    - image: Base64 encoded image for that challenge
+
+    Privacy: All images processed transiently and never stored.
+    """
+    if not request.baselineImage:
+        raise HTTPException(status_code=400, detail="Baseline image is required")
+    if not request.challengeResults:
+        raise HTTPException(status_code=400, detail="Challenge results are required")
+
+    result = validate_multi_challenge_batch(
+        baseline_image=request.baselineImage,
+        challenge_results=request.challengeResults,
+    )
+
+    validation_results = [
+        ChallengeValidationResult(
+            index=r["index"],
+            challengeType=r["challenge_type"],
+            passed=r["passed"],
+            score=r.get("score") or r.get("yaw") or r.get("ear_value"),
+            error=r.get("error"),
+        )
+        for r in result["results"]
+    ]
+
+    return MultiChallengeValidateResponse(
+        allPassed=result["all_passed"],
+        totalChallenges=result["total_challenges"],
+        passedCount=result["passed_count"],
+        results=validation_results,
+        processingTimeMs=result["processing_time_ms"],
     )
 
 

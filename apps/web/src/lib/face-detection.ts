@@ -556,3 +556,408 @@ export async function matchFaces(
     };
   }
 }
+
+// ============================================================================
+// Head Pose Detection
+// ============================================================================
+
+/**
+ * Head pose detection result.
+ */
+export interface HeadPoseResult {
+  yaw: number; // -1 to 1, negative=left, positive=right
+  pitch: number; // -1 to 1, negative=down, positive=up
+  direction: string; // "forward", "left", "right", "up", "down"
+  isTurningLeft: boolean;
+  isTurningRight: boolean;
+  leftTurnCompleted: boolean;
+  rightTurnCompleted: boolean;
+  faceDetected: boolean;
+  processingTimeMs: number;
+  error?: string;
+}
+
+/**
+ * Check head pose in a single frame.
+ *
+ * Uses 106-point facial landmarks to estimate head orientation.
+ * Stateful: tracks turns across calls (use resetSession to start fresh).
+ *
+ * @param imageBase64 - Base64 encoded image
+ * @param resetSession - Reset turn tracking state (default: false)
+ * @returns Head pose detection result
+ */
+export async function checkHeadPose(
+  imageBase64: string,
+  resetSession: boolean = false,
+): Promise<HeadPoseResult> {
+  try {
+    const response = await fetch("/api/liveness/head-pose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: imageBase64, resetSession }),
+    });
+
+    if (!response.ok) {
+      return {
+        yaw: 0,
+        pitch: 0,
+        direction: "unknown",
+        isTurningLeft: false,
+        isTurningRight: false,
+        leftTurnCompleted: false,
+        rightTurnCompleted: false,
+        faceDetected: false,
+        processingTimeMs: 0,
+        error: `Service error: ${response.status}`,
+      };
+    }
+
+    const result = await response.json();
+
+    return {
+      yaw: result.yaw ?? 0,
+      pitch: result.pitch ?? 0,
+      direction: result.direction ?? "unknown",
+      isTurningLeft: result.isTurningLeft ?? false,
+      isTurningRight: result.isTurningRight ?? false,
+      leftTurnCompleted: result.leftTurnCompleted ?? false,
+      rightTurnCompleted: result.rightTurnCompleted ?? false,
+      faceDetected: result.faceDetected ?? false,
+      processingTimeMs: result.processingTimeMs ?? 0,
+      error: result.error,
+    };
+  } catch (error) {
+    return {
+      yaw: 0,
+      pitch: 0,
+      direction: "unknown",
+      isTurningLeft: false,
+      isTurningRight: false,
+      leftTurnCompleted: false,
+      rightTurnCompleted: false,
+      faceDetected: false,
+      processingTimeMs: 0,
+      error: `Network error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Check if head is turned in a specific direction.
+ *
+ * Simpler API for validating head turn challenges.
+ *
+ * @param imageBase64 - Base64 encoded image
+ * @param direction - Required direction: "left" or "right"
+ * @param threshold - Yaw threshold (default: 0.15)
+ */
+export async function checkHeadTurn(
+  imageBase64: string,
+  direction: "left" | "right",
+  threshold: number = 0.15,
+): Promise<{
+  turnDetected: boolean;
+  yaw: number;
+  direction: string;
+  meetsThreshold: boolean;
+  error?: string;
+}> {
+  try {
+    const response = await fetch("/api/liveness/head-turn-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: imageBase64, direction, threshold }),
+    });
+
+    if (!response.ok) {
+      return {
+        turnDetected: false,
+        yaw: 0,
+        direction: "unknown",
+        meetsThreshold: false,
+        error: `Service error: ${response.status}`,
+      };
+    }
+
+    const result = await response.json();
+
+    return {
+      turnDetected: result.turnDetected ?? false,
+      yaw: result.yaw ?? 0,
+      direction: result.direction ?? "unknown",
+      meetsThreshold: result.meetsThreshold ?? false,
+      error: result.error,
+    };
+  } catch (error) {
+    return {
+      turnDetected: false,
+      yaw: 0,
+      direction: "unknown",
+      meetsThreshold: false,
+      error: `Network error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+// ============================================================================
+// Multi-Challenge Session API
+// ============================================================================
+
+/**
+ * Challenge types available for liveness verification.
+ */
+export type ChallengeType = "smile" | "blink" | "turn_left" | "turn_right";
+
+/**
+ * Information about a single challenge.
+ */
+export interface ChallengeInfo {
+  challengeType: ChallengeType;
+  index: number;
+  total: number;
+  title: string;
+  instruction: string;
+  icon: string;
+  timeoutSeconds: number;
+}
+
+/**
+ * Challenge session state.
+ */
+export interface ChallengeSession {
+  sessionId: string;
+  challenges: ChallengeType[];
+  currentIndex: number;
+  isComplete: boolean;
+  isPassed: boolean | null;
+  currentChallenge: ChallengeInfo | null;
+}
+
+/**
+ * Create a new multi-challenge liveness session.
+ *
+ * Generates a random sequence of 2-4 challenges that must be completed
+ * to prove liveness. This prevents replay attacks.
+ *
+ * @param numChallenges - Number of challenges (2-4, default: 2)
+ * @param excludeChallenges - Challenge types to exclude
+ * @param requireHeadTurn - Include at least one head turn challenge
+ */
+export async function createChallengeSession(
+  numChallenges: number = 2,
+  excludeChallenges?: ChallengeType[],
+  requireHeadTurn: boolean = false,
+): Promise<ChallengeSession> {
+  try {
+    const response = await fetch("/api/liveness/challenge/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        numChallenges,
+        excludeChallenges,
+        requireHeadTurn,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Service error: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    return {
+      sessionId: result.sessionId,
+      challenges: result.challenges,
+      currentIndex: result.currentIndex,
+      isComplete: result.isComplete,
+      isPassed: result.isPassed,
+      currentChallenge: result.currentChallenge,
+    };
+  } catch (error) {
+    throw new Error(
+      `Failed to create session: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * Get current state of a challenge session.
+ *
+ * @param sessionId - Session ID
+ */
+export async function getChallengeSession(
+  sessionId: string,
+): Promise<ChallengeSession> {
+  try {
+    const response = await fetch(`/api/liveness/challenge/session/${sessionId}`);
+
+    if (!response.ok) {
+      throw new Error(`Session not found: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    return {
+      sessionId: result.sessionId,
+      challenges: result.challenges,
+      currentIndex: result.currentIndex,
+      isComplete: result.isComplete,
+      isPassed: result.isPassed,
+      currentChallenge: result.currentChallenge,
+    };
+  } catch (error) {
+    throw new Error(
+      `Failed to get session: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * Result of completing a challenge.
+ */
+export interface CompleteChallengeResult {
+  success: boolean;
+  passed: boolean;
+  sessionComplete: boolean;
+  sessionPassed: boolean | null;
+  nextChallenge: ChallengeInfo | null;
+  error?: string;
+}
+
+/**
+ * Mark a challenge as completed in a session.
+ *
+ * @param sessionId - Session ID
+ * @param challengeType - Challenge that was completed
+ * @param passed - Whether the challenge passed
+ * @param metadata - Optional metadata (scores, etc.)
+ */
+export async function completeChallengeInSession(
+  sessionId: string,
+  challengeType: ChallengeType,
+  passed: boolean,
+  metadata?: Record<string, unknown>,
+): Promise<CompleteChallengeResult> {
+  try {
+    const response = await fetch("/api/liveness/challenge/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        challengeType,
+        passed,
+        metadata,
+      }),
+    });
+
+    if (!response.ok) {
+      return {
+        success: false,
+        passed: false,
+        sessionComplete: false,
+        sessionPassed: null,
+        nextChallenge: null,
+        error: `Service error: ${response.status}`,
+      };
+    }
+
+    const result = await response.json();
+
+    return {
+      success: result.success ?? false,
+      passed: result.passed ?? false,
+      sessionComplete: result.sessionComplete ?? false,
+      sessionPassed: result.sessionPassed,
+      nextChallenge: result.nextChallenge,
+      error: result.error,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      passed: false,
+      sessionComplete: false,
+      sessionPassed: null,
+      nextChallenge: null,
+      error: `Network error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Result for a single challenge in batch validation.
+ */
+export interface ChallengeValidationResult {
+  index: number;
+  challengeType: ChallengeType;
+  passed: boolean;
+  score?: number;
+  error?: string;
+}
+
+/**
+ * Multi-challenge batch validation result.
+ */
+export interface MultiChallengeValidationResult {
+  allPassed: boolean;
+  totalChallenges: number;
+  passedCount: number;
+  results: ChallengeValidationResult[];
+  processingTimeMs: number;
+}
+
+/**
+ * Validate multiple challenges at once (batch mode).
+ *
+ * Alternative to session-based flow. Collects all challenge images
+ * and validates them together.
+ *
+ * @param baselineImage - Base64 baseline image (neutral face)
+ * @param challengeResults - Array of {challengeType, image} objects
+ */
+export async function validateMultipleChallenges(
+  baselineImage: string,
+  challengeResults: Array<{ challengeType: ChallengeType; image: string }>,
+): Promise<MultiChallengeValidationResult> {
+  try {
+    const response = await fetch("/api/liveness/challenge/validate-multi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        baselineImage,
+        challengeResults: challengeResults.map((r) => ({
+          challenge_type: r.challengeType,
+          image: r.image,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      return {
+        allPassed: false,
+        totalChallenges: challengeResults.length,
+        passedCount: 0,
+        results: [],
+        processingTimeMs: 0,
+      };
+    }
+
+    const result = await response.json();
+
+    return {
+      allPassed: result.allPassed ?? false,
+      totalChallenges: result.totalChallenges ?? 0,
+      passedCount: result.passedCount ?? 0,
+      results: result.results ?? [],
+      processingTimeMs: result.processingTimeMs ?? 0,
+    };
+  } catch (error) {
+    return {
+      allPassed: false,
+      totalChallenges: challengeResults.length,
+      passedCount: 0,
+      results: [],
+      processingTimeMs: 0,
+    };
+  }
+}
