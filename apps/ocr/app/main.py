@@ -89,6 +89,8 @@ class ExtractedDataResponse(BaseModel):
     expirationDate: Optional[str] = None
     nationality: Optional[str] = None       # Full country name
     nationalityCode: Optional[str] = None   # ISO 3166-1 alpha-3 code
+    issuingCountry: Optional[str] = None    # Full country name of issuing state
+    issuingCountryCode: Optional[str] = None  # ISO 3166-1 alpha-3 issuing state code
     gender: Optional[str] = None
 
 
@@ -291,9 +293,12 @@ async def ocr_document_endpoint(request: ImageRequest):
             expirationDate=extracted.expiration_date,
             nationality=extracted.nationality,
             nationalityCode=extracted.nationality_code,
+            issuingCountry=extracted.issuing_country,
+            issuingCountryCode=extracted.issuing_country_code,
             gender=extracted.gender,
         )
-        document_origin = extracted.nationality_code
+        # Use issuing country as document origin if available, otherwise fall back to nationality
+        document_origin = extracted.issuing_country_code or extracted.nationality_code
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
@@ -328,6 +333,9 @@ class IdentityCommitmentsResponse(BaseModel):
 
     documentHash: str = Field(..., description="SHA256(doc_number + salt)")
     nameCommitment: str = Field(..., description="SHA256(name + salt)")
+    issuingCountryCommitment: Optional[str] = Field(
+        None, description="SHA256(issuing_country_code + salt) - for fraud detection"
+    )
     userSalt: str = Field(..., description="User's unique salt (store securely)")
 
 
@@ -468,10 +476,12 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             full_name=extracted.full_name,
             user_salt=user_salt,
             document_type=doc_type.value,
+            issuing_country_code=extracted.issuing_country_code,
         )
         commitments_response = IdentityCommitmentsResponse(
             documentHash=identity_commitments.document_hash,
             nameCommitment=identity_commitments.name_commitment,
+            issuingCountryCommitment=identity_commitments.issuing_country_commitment,
             userSalt=identity_commitments.user_salt,
         )
     else:
@@ -520,9 +530,12 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             expirationDate=extracted.expiration_date,
             nationality=extracted.nationality,
             nationalityCode=extracted.nationality_code,
+            issuingCountry=extracted.issuing_country,
+            issuingCountryCode=extracted.issuing_country_code,
             gender=extracted.gender,
         )
-        document_origin = extracted.nationality_code
+        # Use issuing country as document origin if available, otherwise fall back to nationality
+        document_origin = extracted.issuing_country_code or extracted.nationality_code
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 

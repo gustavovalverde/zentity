@@ -116,12 +116,37 @@ src/
 
 The web application implements privacy-preserving patterns:
 
-1. **Hash Commitments** — Names and document numbers stored as SHA256 hashes
-2. **FHE Encryption** — Date of birth encrypted with TFHE-rs
-3. **ZK Proofs** — Age and face match proofs via Groth16
+1. **Hash Commitments** — Names, document numbers, nationality stored as SHA256 hashes
+2. **FHE Encryption** — DOB, gender, and liveness scores encrypted with TFHE-rs
+3. **ZK Proofs** — Age, document validity, face match, and nationality membership proofs via Groth16
 4. **Transient Processing** — Images processed and discarded immediately
 
 No raw PII is stored in the database. See [KYC Data Architecture](../../docs/kyc-data-architecture.md) for details.
+
+## Database Schema
+
+The `identity_proofs` table stores only cryptographic data:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT | Primary key |
+| `user_id` | TEXT | Foreign key to users |
+| `name_commitment` | TEXT | SHA256(name + salt) |
+| `document_hash` | TEXT | SHA256(doc_number + salt) |
+| `nationality_commitment` | TEXT | SHA256(nationality + salt) |
+| `dob_ciphertext` | TEXT | FHE encrypted birth year |
+| `dob_full_ciphertext` | TEXT | FHE encrypted YYYYMMDD |
+| `gender_ciphertext` | TEXT | FHE encrypted ISO 5218 code |
+| `liveness_score_ciphertext` | TEXT | FHE encrypted anti-spoof score |
+| `age_proofs_json` | TEXT | JSON array of age proofs (18, 21, 25) |
+| `doc_validity_proof` | TEXT | ZK proof document not expired |
+| `nationality_membership_proof` | TEXT | ZK proof nationality in group |
+| `face_match_result` | INTEGER | Boolean match result |
+| `verified` | INTEGER | Overall verification status |
+
+### Schema Migrations
+
+The database automatically adds missing columns on startup (see `src/lib/db.ts`). This handles upgrades from earlier schema versions.
 
 ## Docker
 

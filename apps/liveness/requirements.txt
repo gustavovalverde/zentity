@@ -6,6 +6,11 @@ opencv-python-headless>=4.8.0
 numpy>=1.24.0
 tf-keras>=2.20.0
 
+# PyTorch CPU-only for FasNet anti-spoofing
+# Using CPU version to minimize image size (~200MB vs ~2GB for CUDA)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
 # Web framework
 fastapi>=0.109.0
 uvicorn>=0.27.0

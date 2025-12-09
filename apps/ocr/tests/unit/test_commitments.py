@@ -13,6 +13,7 @@ from app.commitments import (
     normalize_name,
     hash_document_number,
     generate_name_commitment,
+    generate_issuing_country_commitment,
     verify_name_claim,
     verify_document_claim,
     generate_user_salt,
@@ -302,3 +303,99 @@ class TestGenerateIdentityCommitments:
 
         assert result1.document_hash == result2.document_hash
         assert result1.name_commitment == result2.name_commitment
+
+    def test_issuing_country_commitment_generated(self, sample_salt):
+        """Test that issuing country commitment is generated when code is provided."""
+        result = generate_identity_commitments(
+            document_number="001-1234567-8",
+            full_name="Juan Perez",
+            user_salt=sample_salt,
+            issuing_country_code="DOM",
+        )
+
+        assert result.issuing_country_commitment is not None
+        assert len(result.issuing_country_commitment) == 64  # SHA256 hex
+
+    def test_issuing_country_commitment_none_when_not_provided(self, sample_salt):
+        """Test that issuing country commitment is None when not provided."""
+        result = generate_identity_commitments(
+            document_number="001-1234567-8",
+            full_name="Juan Perez",
+            user_salt=sample_salt,
+        )
+
+        assert result.issuing_country_commitment is None
+
+    def test_issuing_country_commitment_deterministic(self, sample_salt):
+        """Test that issuing country commitment is deterministic."""
+        result1 = generate_identity_commitments(
+            document_number="001-1234567-8",
+            full_name="Juan Perez",
+            user_salt=sample_salt,
+            issuing_country_code="DOM",
+        )
+        result2 = generate_identity_commitments(
+            document_number="001-1234567-8",
+            full_name="Juan Perez",
+            user_salt=sample_salt,
+            issuing_country_code="DOM",
+        )
+
+        assert result1.issuing_country_commitment == result2.issuing_country_commitment
+
+    def test_different_issuing_countries_produce_different_commitments(self, sample_salt):
+        """Test that different issuing countries produce different commitments."""
+        result1 = generate_identity_commitments(
+            document_number="001-1234567-8",
+            full_name="Juan Perez",
+            user_salt=sample_salt,
+            issuing_country_code="DOM",
+        )
+        result2 = generate_identity_commitments(
+            document_number="001-1234567-8",
+            full_name="Juan Perez",
+            user_salt=sample_salt,
+            issuing_country_code="USA",
+        )
+
+        assert result1.issuing_country_commitment != result2.issuing_country_commitment
+
+
+class TestGenerateIssuingCountryCommitment:
+    """Tests for issuing country commitment generation."""
+
+    def test_deterministic_output(self, sample_salt):
+        commit1 = generate_issuing_country_commitment("DOM", sample_salt)
+        commit2 = generate_issuing_country_commitment("DOM", sample_salt)
+        assert commit1 == commit2
+
+    def test_case_insensitive(self, sample_salt):
+        commit1 = generate_issuing_country_commitment("DOM", sample_salt)
+        commit2 = generate_issuing_country_commitment("dom", sample_salt)
+        assert commit1 == commit2
+
+    def test_strips_whitespace(self, sample_salt):
+        commit1 = generate_issuing_country_commitment("DOM", sample_salt)
+        commit2 = generate_issuing_country_commitment("  DOM  ", sample_salt)
+        assert commit1 == commit2
+
+    def test_different_countries_produce_different_commits(self, sample_salt):
+        commit1 = generate_issuing_country_commitment("DOM", sample_salt)
+        commit2 = generate_issuing_country_commitment("USA", sample_salt)
+        assert commit1 != commit2
+
+    def test_raises_on_empty(self, sample_salt):
+        with pytest.raises(ValueError, match="cannot be empty"):
+            generate_issuing_country_commitment("", sample_salt)
+
+    def test_commitment_format_is_sha256(self, sample_salt):
+        result = generate_issuing_country_commitment("DOM", sample_salt)
+        assert len(result) == 64  # SHA256 hex = 64 chars
+        assert all(c in "0123456789abcdef" for c in result)
+
+    def test_different_salts_produce_different_commits(self):
+        salt1 = "salt1" + "0" * 58
+        salt2 = "salt2" + "0" * 58
+        commit1 = generate_issuing_country_commitment("DOM", salt1)
+        commit2 = generate_issuing_country_commitment("DOM", salt2)
+        assert commit1 != commit2

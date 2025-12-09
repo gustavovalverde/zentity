@@ -33,6 +33,8 @@ class ExtractedData:
     expiration_date: Optional[str] = None  # YYYY-MM-DD
     nationality: Optional[str] = None       # Full country name
     nationality_code: Optional[str] = None  # ISO 3166-1 alpha-3 code
+    issuing_country: Optional[str] = None   # Full issuing country name
+    issuing_country_code: Optional[str] = None  # ISO 3166-1 alpha-3 issuing country code
     gender: Optional[str] = None
 
 
@@ -348,6 +350,15 @@ def parse_mrz(mrz_text: str) -> Tuple[ExtractedData, bool]:
         # Use library's country name lookup (iso3166 + mrz fallback)
         country_name = get_country_name(corrected_code)
         data.nationality = country_name or corrected_code
+
+        # Extract issuing country (separate from nationality)
+        # The issuing country is in the "country" field of the MRZ library
+        issuing_code = fields.country
+        if issuing_code:
+            corrected_issuing, _ = correct_country_code(issuing_code)
+            data.issuing_country_code = corrected_issuing
+            issuing_name = get_country_name(corrected_issuing)
+            data.issuing_country = issuing_name or corrected_issuing
 
         # Build full name (Given Names + Surname)
         if data.first_name and data.last_name:

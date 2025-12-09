@@ -58,7 +58,20 @@ export function initializeIdentityProofsTable(): void {
 
       -- Timestamps
       created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      updated_at TEXT DEFAULT (datetime('now')),
+
+      -- Sprint 1: Document validity and nationality
+      doc_validity_proof TEXT,            -- ZK proof that document is not expired
+      nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt)
+      age_proofs_json TEXT,               -- JSON: {"18": proof, "21": proof, "25": proof}
+
+      -- Sprint 2: FHE expansion
+      gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218)
+      dob_full_ciphertext TEXT,           -- FHE encrypted full DOB as YYYYMMDD (u32)
+
+      -- Sprint 3: Advanced ZK + Liveness FHE
+      nationality_membership_proof TEXT,  -- ZK proof of nationality group membership
+      liveness_score_ciphertext TEXT      -- FHE encrypted liveness score (0.0-1.0 as u16)
     );
 
     -- Unique constraint: one identity proof per user
@@ -69,6 +82,26 @@ export function initializeIdentityProofsTable(): void {
     CREATE INDEX IF NOT EXISTS idx_identity_proofs_document_hash
       ON identity_proofs (document_hash);
   `);
+
+  // Migration: Add missing columns to existing tables
+  // SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN, so we use try/catch
+  const columnsToAdd = [
+    { name: "doc_validity_proof", type: "TEXT" },
+    { name: "nationality_commitment", type: "TEXT" },
+    { name: "age_proofs_json", type: "TEXT" },
+    { name: "gender_ciphertext", type: "TEXT" },
+    { name: "dob_full_ciphertext", type: "TEXT" },
+    { name: "nationality_membership_proof", type: "TEXT" },
+    { name: "liveness_score_ciphertext", type: "TEXT" },
+  ];
+
+  for (const col of columnsToAdd) {
+    try {
+      db.exec(`ALTER TABLE identity_proofs ADD COLUMN ${col.name} ${col.type}`);
+    } catch {
+      // Column already exists, ignore
+    }
+  }
 }
 
 /**

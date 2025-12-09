@@ -194,11 +194,13 @@ class IdentityCommitments:
         name_commitment: str,
         user_salt: str,
         document_type: Optional[str] = None,
+        issuing_country_commitment: Optional[str] = None,
     ):
         self.document_hash = document_hash
         self.name_commitment = name_commitment
         self.user_salt = user_salt
         self.document_type = document_type
+        self.issuing_country_commitment = issuing_country_commitment
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -206,9 +208,36 @@ class IdentityCommitments:
             "document_hash": self.document_hash,
             "name_commitment": self.name_commitment,
             "document_type": self.document_type,
+            "issuing_country_commitment": self.issuing_country_commitment,
             # Note: user_salt is intentionally excluded from serialization
             # It should be stored separately and securely
         }
+
+
+def generate_issuing_country_commitment(issuing_country_code: str, user_salt: str) -> str:
+    """
+    Generate a cryptographic commitment for issuing country code.
+
+    This commitment enables fraud detection:
+    - Mismatch between issuing country and nationality may indicate fraud
+    - Can verify claims about issuing country without storing the code
+
+    Args:
+        issuing_country_code: ISO 3166-1 alpha-3 code of issuing country
+        user_salt: User's unique salt
+
+    Returns:
+        SHA256 hex digest (64 characters)
+    """
+    if not issuing_country_code:
+        raise ValueError("Issuing country code cannot be empty")
+
+    # Normalize to uppercase
+    normalized = issuing_country_code.upper().strip()
+
+    # Format: "ISSUING_CODE:salt"
+    data = f"{normalized}:{user_salt}"
+    return hashlib.sha256(data.encode('utf-8')).hexdigest()
 
 
 def generate_identity_commitments(
@@ -216,6 +245,7 @@ def generate_identity_commitments(
     full_name: str,
     user_salt: Optional[str] = None,
     document_type: Optional[str] = None,
+    issuing_country_code: Optional[str] = None,
 ) -> IdentityCommitments:
     """
     Generate all identity commitments from document data.
@@ -228,6 +258,7 @@ def generate_identity_commitments(
         full_name: Raw full name
         user_salt: Optional existing salt (generates new if not provided)
         document_type: Optional document type (cedula, passport, etc.)
+        issuing_country_code: Optional ISO 3166-1 alpha-3 issuing country code
 
     Returns:
         IdentityCommitments object with all hashes
@@ -235,9 +266,16 @@ def generate_identity_commitments(
     if user_salt is None:
         user_salt = generate_user_salt()
 
+    issuing_commitment = None
+    if issuing_country_code:
+        issuing_commitment = generate_issuing_country_commitment(
+            issuing_country_code, user_salt
+        )
+
     return IdentityCommitments(
         document_hash=hash_document_number(document_number, user_salt),
         name_commitment=generate_name_commitment(full_name, user_salt),
         user_salt=user_salt,
         document_type=document_type,
+        issuing_country_commitment=issuing_commitment,
     )

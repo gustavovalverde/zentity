@@ -40,7 +40,9 @@ class TestParseMrz:
         assert data.date_of_birth == "1974-08-12"
         assert data.expiration_date == "2012-04-15"
         assert data.gender == "F"
-        assert data.nationality == "UTO"
+        # nationality is the full country name (from ISO 3166), nationality_code is the 3-letter code
+        assert data.nationality_code == "UTO"
+        assert data.nationality == "Utopia"  # Full country name from mrz library
 
     def test_parse_dominican_mrz(self):
         """Test parsing a Dominican Republic passport MRZ."""
@@ -50,7 +52,9 @@ class TestParseMrz:
         assert data.last_name is not None
         assert data.first_name is not None
         assert data.document_number is not None
-        assert data.nationality == "DOMINICANA"
+        # nationality is the full country name (from ISO 3166), nationality_code is the 3-letter code
+        assert data.nationality_code == "DOM"
+        assert data.nationality == "Dominican Republic"
 
     def test_full_name_construction(self):
         """Test that full name is constructed as 'Given Names + Surname'."""
@@ -225,3 +229,45 @@ class TestParseMrzNationality:
         assert data.nationality_code is not None
         # If OCR read correctly, should be "Dominican Republic"
         # If OCR error was corrected, should still work
+
+
+class TestParseMrzIssuingCountry:
+    """Tests for issuing country handling in parse_mrz."""
+
+    def test_issuing_country_code_extracted(self):
+        """Test that issuing country code is extracted from MRZ."""
+        data, _ = parse_mrz(VALID_MRZ_ICAO)
+
+        # Issuing country is in the same position as nationality in line 2
+        assert data.issuing_country_code is not None
+        assert data.issuing_country_code == "UTO"
+
+    def test_issuing_country_name_extracted(self):
+        """Test that issuing country full name is extracted."""
+        data, _ = parse_mrz(VALID_MRZ_ICAO)
+
+        assert data.issuing_country is not None
+        assert data.issuing_country == "Utopia"
+
+    def test_dominican_passport_issuing_country(self):
+        """Test Dominican passport issuing country extraction."""
+        data, _ = parse_mrz(VALID_MRZ_DOM)
+
+        # DOM is the issuing country for Dominican passport
+        assert data.issuing_country_code == "DOM"
+        assert data.issuing_country == "Dominican Republic"
+
+    def test_issuing_country_vs_nationality(self):
+        """Test that issuing country and nationality are separate fields.
+
+        In most cases they match, but they can differ for:
+        - Dual citizens using foreign passports
+        - Permanent residents with travel documents
+        """
+        data, _ = parse_mrz(VALID_MRZ_DOM)
+
+        # Both should be extracted independently
+        assert data.issuing_country_code is not None
+        assert data.nationality_code is not None
+        # In this case they happen to match
+        assert data.issuing_country_code == data.nationality_code

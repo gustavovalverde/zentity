@@ -180,15 +180,21 @@ Passports are parsed using the **MRZ (Machine Readable Zone)** following [ICAO 9
 ```
 P<DOMPEREZ<<JUAN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 AB12345670DOM9005156M2512310<<<<<<<<<<<<<<00
+  ^^^       ^^^
+  |         |__ Nationality (positions 3-5 of line 1, after "P<")
+  |__ Issuing Country (positions 3-5 of line 2)
 ```
 
 The `mrz` library extracts:
 - Surname and given names
 - Document number with checksum validation
+- **Issuing country** (separate from nationality - useful for fraud detection)
 - Nationality (with OCR error correction)
 - Date of birth
 - Expiration date
 - Gender
+
+**Note:** Issuing country and nationality are typically the same but can differ (e.g., dual citizens). A mismatch can indicate document fraud.
 
 #### MRZ OCR Error Correction
 
@@ -291,13 +297,17 @@ For countries without a stdnum validator, the service will:
 For the `/process` endpoint, the service generates privacy-preserving commitments:
 
 ```
-Document Hash:   SHA256(normalize(doc_number) + ":" + user_salt)
-Name Commitment: SHA256(normalize(full_name) + ":" + user_salt)
+Document Hash:            SHA256(normalize(doc_number) + ":" + user_salt)
+Name Commitment:          SHA256(normalize(full_name) + ":" + user_salt)
+Nationality Commitment:   SHA256(normalize(nationality_code) + ":" + user_salt)
+Issuing Country Commitment: SHA256(normalize(issuing_country_code) + ":" + user_salt)
 ```
 
 **What gets stored (safe):**
 - Document hash (cannot reverse to get actual number)
 - Name commitment (cannot reverse to get actual name)
+- Nationality commitment (for later ZK proof verification)
+- Issuing country commitment (for fraud detection - mismatch with nationality)
 - User salt (enables verification)
 
 **What gets discarded (PII):**

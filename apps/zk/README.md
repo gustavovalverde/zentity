@@ -8,6 +8,7 @@ This service provides ZK proof endpoints for:
 - **Age verification**: Prove age >= threshold without revealing DOB
 - **Face matching**: Prove similarity >= threshold without revealing score
 - **Document validity**: Prove document not expired without revealing expiry date
+- **Nationality membership**: Prove nationality is in a country group (EU, SCHENGEN, etc.) without revealing specific country
 
 ## Technology
 
@@ -45,6 +46,24 @@ template DocumentValidity() {
     signal output isValid;
 }
 ```
+
+### Nationality Membership Circuit
+```circom
+template NationalityMembership(depth) {
+    signal input merkleRoot;           // PUBLIC - identifies the country group
+    signal input nationalityCode;      // PRIVATE - ISO 3166-1 numeric code
+    signal input pathElements[depth];  // PRIVATE - Merkle proof siblings
+    signal input pathIndices[depth];   // PRIVATE - left/right path
+    signal output isMember;            // 1 if nationality in group
+}
+```
+
+Uses **Poseidon hash** (ZK-friendly) for Merkle tree construction. Country groups:
+- `EU` - 27 European Union countries
+- `SCHENGEN` - 26 Schengen Area countries
+- `EEA` - 30 European Economic Area countries
+- `LATAM` - Latin American countries
+- `FIVE_EYES` - USA, GBR, CAN, AUS, NZL
 
 ## Endpoints
 
@@ -141,17 +160,90 @@ Generate document validity ZK proof.
 #### `POST /docvalidity/verify`
 Verify a document validity proof.
 
+### Nationality Membership
+
+#### `POST /nationality/generate`
+Generate nationality membership ZK proof.
+
+**Request:**
+```json
+{
+  "nationalityCode": "DEU",
+  "groupName": "EU"
+}
+```
+
+**Response:**
+```json
+{
+  "proof": { /* Groth16 proof */ },
+  "publicSignals": ["1", "123456789..."],
+  "isMember": true,
+  "groupName": "EU",
+  "merkleRoot": "123456789...",
+  "generationTimeMs": 150,
+  "solidityCalldata": "0x..."
+}
+```
+
+#### `POST /nationality/verify`
+Verify a nationality membership proof.
+
+#### `GET /nationality/groups`
+List all available country groups.
+
+**Response:**
+```json
+{
+  "groups": [
+    { "name": "EU", "merkleRoot": "...", "countryCount": 27 },
+    { "name": "SCHENGEN", "merkleRoot": "...", "countryCount": 26 }
+  ]
+}
+```
+
+#### `GET /nationality/groups/:name`
+Get countries in a specific group.
+
+#### `GET /nationality/check?code=DEU&group=EU`
+Check if a country is in a group (without generating proof).
+
 ## Artifacts
 
 Pre-compiled circuit artifacts in `/artifacts`:
 - `circuit.wasm` - Age verification circuit
 - `facematch/` - Face match circuit
 - `docvalidity/` - Document validity circuit
+- `nationality/` - Nationality membership circuit (requires compilation)
 
 Each contains:
 - `.wasm` - Compiled circuit
 - `_final.zkey` - Proving key
 - `verification_key.json` - Verification key
+
+### Circuit Compilation
+
+To compile circuits from source (requires circom):
+
+```bash
+# Install circom compiler
+cargo install --git https://github.com/iden3/circom.git
+
+# Download Powers of Tau (one-time)
+mkdir -p ptau
+wget https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_14.ptau -O ptau/pot14.ptau
+
+# Compile nationality circuit
+pnpm run circuit:build:nationality
+```
+
+### Key Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `snarkjs` | Groth16 proof generation/verification |
+| `circomlibjs` | Poseidon hash function (matches circuit) |
+| `circomlib` | Circuit library (Poseidon, comparators) |
 
 ## Development
 

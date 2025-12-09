@@ -84,6 +84,10 @@ services:
     environment:
       - PORT=5003
       - ANTISPOOF_THRESHOLD=0.5
+    volumes:
+      # Persist ML model weights to avoid re-downloading on restart
+      - deepface-weights:/root/.deepface/weights
+      - uniface-models:/root/.uniface/models
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
       interval: 30s
@@ -118,4 +122,8 @@ networks:
 
 volumes:
   fhe-keys:
+    driver: local
+  deepface-weights:
+    driver: local
+  uniface-models:
     driver: local

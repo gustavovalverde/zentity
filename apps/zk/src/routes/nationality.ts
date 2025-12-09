@@ -181,17 +181,23 @@ nationalityRouter.post(
  */
 nationalityRouter.get(
   "/groups",
-  (_req: Request, res: Response) => {
-    const groups = getAvailableGroups();
-    const groupInfo = groups.map(name => ({
-      name,
-      merkleRoot: getGroupMerkleRoot(name),
-      countryCount: getGroupCountries(name).length,
-    }));
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const groups = getAvailableGroups();
+      const groupInfo = await Promise.all(
+        groups.map(async (name) => ({
+          name,
+          merkleRoot: await getGroupMerkleRoot(name),
+          countryCount: getGroupCountries(name).length,
+        }))
+      );
 
-    res.json({
-      groups: groupInfo,
-    });
+      res.json({
+        groups: groupInfo,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 );
 
@@ -202,25 +208,29 @@ nationalityRouter.get(
  */
 nationalityRouter.get(
   "/groups/:name",
-  (req: Request, res: Response) => {
-    const { name } = req.params;
-    const upperName = name.toUpperCase();
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { name } = req.params;
+      const upperName = name.toUpperCase();
 
-    const countries = getGroupCountries(upperName);
-    if (countries.length === 0) {
-      res.status(404).json({
-        error: `Unknown country group: ${name}`,
-        availableGroups: getAvailableGroups(),
+      const countries = getGroupCountries(upperName);
+      if (countries.length === 0) {
+        res.status(404).json({
+          error: `Unknown country group: ${name}`,
+          availableGroups: getAvailableGroups(),
+        });
+        return;
+      }
+
+      res.json({
+        name: upperName,
+        merkleRoot: await getGroupMerkleRoot(upperName),
+        countries,
+        countryCount: countries.length,
       });
-      return;
+    } catch (error) {
+      next(error);
     }
-
-    res.json({
-      name: upperName,
-      merkleRoot: getGroupMerkleRoot(upperName),
-      countries,
-      countryCount: countries.length,
-    });
   }
 );
 

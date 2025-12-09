@@ -63,6 +63,7 @@ interface VerifyIdentityResponse {
     dobEncrypted: boolean;
     docValidityProofGenerated: boolean;
     nationalityCommitmentGenerated: boolean;
+    livenessScoreEncrypted: boolean;
   };
 
   // Extracted data for UI display (TRANSIENT - DO NOT PERSIST ON CLIENT)
@@ -107,6 +108,7 @@ export async function POST(
             dobEncrypted: false,
             docValidityProofGenerated: false,
             nationalityCommitmentGenerated: false,
+            livenessScoreEncrypted: false,
           },
           processingTimeMs: Date.now() - startTime,
           issues: ["unauthorized"],
@@ -135,6 +137,7 @@ export async function POST(
             dobEncrypted: false,
             docValidityProofGenerated: false,
             nationalityCommitmentGenerated: false,
+            livenessScoreEncrypted: false,
           },
           processingTimeMs: Date.now() - startTime,
           issues: ["missing_document_image"],
@@ -159,6 +162,7 @@ export async function POST(
             dobEncrypted: false,
             docValidityProofGenerated: false,
             nationalityCommitmentGenerated: false,
+            livenessScoreEncrypted: false,
           },
           processingTimeMs: Date.now() - startTime,
           issues: ["missing_selfie_image"],
@@ -305,6 +309,13 @@ export async function POST(
       ciphertext: string;
       clientKeyId: string;
       dobInt: number;
+    } | null = null;
+
+    // Sprint 3: Liveness score FHE encryption result
+    let livenessScoreFheResult: {
+      ciphertext: string;
+      clientKeyId: string;
+      score: number;
     } | null = null;
 
     const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
@@ -534,6 +545,41 @@ export async function POST(
     }
 
     // =========================================================================
+    // STEP 3.9: Liveness Score FHE Encryption (Sprint 3)
+    // =========================================================================
+    // Encrypt the liveness/anti-spoof score for privacy-preserving threshold checks
+    // Score is 0.0-1.0, encrypted as u16 (0-10000) for FHE operations
+    const livenessScore = verificationResult?.antispoof_score;
+    if (livenessScore !== undefined && livenessScore !== null) {
+      try {
+        const livenessScoreResponse = await fetch(
+          `${FHE_SERVICE_URL}/encrypt-liveness`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              score: livenessScore,
+              clientKeyId: "default",
+            }),
+          },
+        );
+
+        if (livenessScoreResponse.ok) {
+          const livenessScoreData = await livenessScoreResponse.json();
+          livenessScoreFheResult = {
+            ciphertext: livenessScoreData.ciphertext,
+            clientKeyId: livenessScoreData.clientKeyId,
+            score: livenessScoreData.score,
+          };
+        } else {
+          issues.push("liveness_score_fhe_encryption_failed");
+        }
+      } catch (_error) {
+        issues.push("liveness_score_fhe_service_unavailable");
+      }
+    }
+
+    // =========================================================================
     // STEP 4: Store Identity Proof (Only commitments and flags)
     // =========================================================================
     const documentProcessed = Boolean(documentResult?.commitments);
@@ -548,6 +594,7 @@ export async function POST(
     const dobEncrypted = Boolean(fheResult?.ciphertext);
     const docValidityProofGenerated = Boolean(docValidityResult?.proof);
     const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
+    const livenessScoreEncrypted = Boolean(livenessScoreFheResult?.ciphertext);
     const verified =
       documentProcessed &&
       isDocumentValid &&
@@ -593,6 +640,8 @@ export async function POST(
           genderCiphertext: genderFheResult?.ciphertext,
           // Sprint 2: Full DOB FHE encryption
           dobFullCiphertext: dobFullFheResult?.ciphertext,
+          // Sprint 3: Liveness score FHE encryption
+          livenessScoreCiphertext: livenessScoreFheResult?.ciphertext,
         });
       } catch (_error) {
         issues.push("failed_to_save_proof");
@@ -632,6 +681,10 @@ export async function POST(
           // Sprint 2: Full DOB FHE encryption
           ...(dobFullFheResult && {
             dobFullCiphertext: dobFullFheResult.ciphertext,
+          }),
+          // Sprint 3: Liveness score FHE encryption
+          ...(livenessScoreFheResult && {
+            livenessScoreCiphertext: livenessScoreFheResult.ciphertext,
           }),
         });
       } catch (_error) {
@@ -688,6 +741,7 @@ export async function POST(
         dobEncrypted,
         docValidityProofGenerated,
         nationalityCommitmentGenerated,
+        livenessScoreEncrypted,
       },
       transientData: documentResult?.extractedData
         ? {
@@ -716,6 +770,7 @@ export async function POST(
           dobEncrypted: false,
           docValidityProofGenerated: false,
           nationalityCommitmentGenerated: false,
+          livenessScoreEncrypted: false,
         },
         processingTimeMs: Date.now() - startTime,
         issues: ["internal_error"],
