@@ -1,18 +1,34 @@
 "use client";
 
+import {
+  CheckCircle,
+  Clock,
+  FileCheck,
+  Loader2,
+  Shield,
+  XCircle,
+} from "lucide-react";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, XCircle, Shield, Clock, FileCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 interface AgeProofDemoProps {
   ageProof?: string;
   ageProofVerified?: boolean;
 }
 
-export function AgeProofDemo({ ageProof, ageProofVerified }: AgeProofDemoProps) {
+export function AgeProofDemo({
+  ageProof,
+  ageProofVerified,
+}: AgeProofDemoProps) {
   const [verifying, setVerifying] = useState(false);
   const [result, setResult] = useState<{
     isValid: boolean;
@@ -60,7 +76,7 @@ export function AgeProofDemo({ ageProof, ageProofVerified }: AgeProofDemoProps) 
 
   const truncateProof = (proof: string) => {
     if (proof.length <= 50) return proof;
-    return proof.substring(0, 25) + "..." + proof.substring(proof.length - 25);
+    return `${proof.substring(0, 25)}...${proof.substring(proof.length - 25)}`;
   };
 
   return (
@@ -79,7 +95,8 @@ export function AgeProofDemo({ ageProof, ageProofVerified }: AgeProofDemoProps) 
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription>
-              No ZK proof available. Complete identity verification to generate an age proof.
+              No ZK proof available. Complete identity verification to generate
+              an age proof.
             </AlertDescription>
           </Alert>
         ) : (
@@ -153,9 +170,9 @@ export function AgeProofDemo({ ageProof, ageProofVerified }: AgeProofDemoProps) 
             <Alert>
               <Shield className="h-4 w-4" />
               <AlertDescription className="text-xs">
-                <strong>Zero-Knowledge Proof:</strong> The verifier confirms age {"≥"} 18
-                without ever learning the actual birth year. The proof is cryptographically
-                verifiable by anyone.
+                <strong>Zero-Knowledge Proof:</strong> The verifier confirms age{" "}
+                {"≥"} 18 without ever learning the actual birth year. The proof
+                is cryptographically verifiable by anyone.
               </AlertDescription>
             </Alert>
           </>

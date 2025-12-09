@@ -10,9 +10,9 @@
  * - Checking which verification steps are complete
  */
 
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { getVerificationStatus } from "@/lib/db";
 
 interface StatusResponse {
@@ -26,7 +26,9 @@ interface StatusResponse {
   };
 }
 
-export async function GET(): Promise<NextResponse<StatusResponse | { error: string }>> {
+export async function GET(): Promise<
+  NextResponse<StatusResponse | { error: string }>
+> {
   try {
     const session = await auth.api.getSession({
       headers: await headers(),
@@ -39,11 +41,10 @@ export async function GET(): Promise<NextResponse<StatusResponse | { error: stri
     const status = getVerificationStatus(session.user.id);
 
     return NextResponse.json(status);
-  } catch (error) {
-    console.error("Status check error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to get verification status" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

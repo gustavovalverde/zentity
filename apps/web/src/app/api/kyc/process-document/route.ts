@@ -13,8 +13,8 @@
  * Rate limiting is applied to prevent abuse. No data is stored - only processed and returned.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { processDocument, type DocumentResult } from "@/lib/document-ai";
+import { type NextRequest, NextResponse } from "next/server";
+import { type DocumentResult, processDocument } from "@/lib/document-ai";
 
 interface ProcessDocumentRequest {
   image: string;
@@ -53,7 +53,7 @@ setInterval(() => {
 }, RATE_LIMIT_WINDOW_MS);
 
 export async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<DocumentResult | { error: string }>> {
   try {
     // Get client IP for rate limiting
@@ -64,17 +64,14 @@ export async function POST(
     if (isRateLimited(ip)) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a moment and try again." },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
     const body = (await request.json()) as ProcessDocumentRequest;
 
     if (!body.image) {
-      return NextResponse.json(
-        { error: "Image is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
     // Process the document using AI vision (local-first)
@@ -82,16 +79,18 @@ export async function POST(
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Document processing error:", error);
-
     if (error instanceof Error) {
       // OCR service unavailable
-      if (error.message.includes("ECONNREFUSED") || error.message.includes("fetch failed")) {
+      if (
+        error.message.includes("ECONNREFUSED") ||
+        error.message.includes("fetch failed")
+      ) {
         return NextResponse.json(
           {
-            error: "Document processing service unavailable. Please try again later.",
+            error:
+              "Document processing service unavailable. Please try again later.",
           },
-          { status: 503 }
+          { status: 503 },
         );
       }
 
@@ -99,21 +98,21 @@ export async function POST(
       if (error.message.includes("API key")) {
         return NextResponse.json(
           { error: "AI service configuration error" },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
       if (error.message.includes("rate limit")) {
         return NextResponse.json(
           { error: "Service temporarily unavailable, please try again" },
-          { status: 429 }
+          { status: 429 },
         );
       }
     }
 
     return NextResponse.json(
       { error: "Failed to process document. Please try a clearer image." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

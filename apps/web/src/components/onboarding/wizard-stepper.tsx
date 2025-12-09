@@ -1,17 +1,12 @@
 "use client";
 
-import { useWizard } from "./wizard-provider";
-import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
-import { motion } from "@/lib/motion";
 import { Check } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { motion } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+import { useWizard } from "./wizard-provider";
 
-const STEP_TITLES = [
-  "Email",
-  "Upload ID",
-  "Liveness",
-  "Complete",
-];
+const STEP_TITLES = ["Email", "Upload ID", "Liveness", "Complete"];
 
 export function WizardStepper() {
   const { state, totalSteps, progress, goToStep } = useWizard();
@@ -47,7 +42,7 @@ export function WizardStepper() {
               className={cn(
                 // Ensure minimum 44px touch target for accessibility
                 "flex flex-col items-center gap-1 group transition-transform duration-200 min-w-[44px] min-h-[44px] p-1",
-                canNavigate && "cursor-pointer hover:scale-105"
+                canNavigate && "cursor-pointer hover:scale-105",
               )}
               aria-label={`${title} - Step ${stepNumber}${isCompleted ? " (completed)" : isCurrent ? " (current)" : ""}`}
               aria-current={isCurrent ? "step" : undefined}
@@ -56,15 +51,26 @@ export function WizardStepper() {
                 className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all duration-300",
                   isCompleted && "bg-primary text-primary-foreground scale-100",
-                  isCurrent && "bg-primary text-primary-foreground ring-4 ring-primary/20 scale-110",
-                  !isCompleted && !isCurrent && "bg-muted text-muted-foreground scale-100",
-                  canNavigate && "group-hover:ring-2 group-hover:ring-primary/30"
+                  isCurrent &&
+                    "bg-primary text-primary-foreground ring-4 ring-primary/20 scale-110",
+                  !isCompleted &&
+                    !isCurrent &&
+                    "bg-muted text-muted-foreground scale-100",
+                  canNavigate &&
+                    "group-hover:ring-2 group-hover:ring-primary/30",
                 )}
               >
                 {isCompleted ? (
-                  <Check className="w-4 h-4 animate-in zoom-in duration-200" aria-hidden="true" />
+                  <Check
+                    className="w-4 h-4 animate-in zoom-in duration-200"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <span className={cn(isCurrent && "animate-in zoom-in duration-200")}>
+                  <span
+                    className={cn(
+                      isCurrent && "animate-in zoom-in duration-200",
+                    )}
+                  >
                     {stepNumber}
                   </span>
                 )}
@@ -72,7 +78,9 @@ export function WizardStepper() {
               <span
                 className={cn(
                   "text-[10px] max-w-[60px] text-center leading-tight hidden sm:block transition-colors duration-200",
-                  isCurrent ? "text-foreground font-medium" : "text-muted-foreground"
+                  isCurrent
+                    ? "text-foreground font-medium"
+                    : "text-muted-foreground",
                 )}
               >
                 {title}

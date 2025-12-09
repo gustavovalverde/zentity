@@ -1,7 +1,7 @@
 "use client";
 
-import { useWizard } from "./wizard-provider";
 import { Button } from "@/components/ui/button";
+import { useWizard } from "./wizard-provider";
 
 interface WizardNavigationProps {
   onNext?: () => void | Promise<void>;
@@ -56,7 +56,11 @@ export function WizardNavigation({
           disabled={disableNext || state.isSubmitting}
           className="flex-1"
         >
-          {state.isSubmitting ? "Processing..." : isLastStep ? "Complete" : nextLabel}
+          {state.isSubmitting
+            ? "Processing..."
+            : isLastStep
+              ? "Complete"
+              : nextLabel}
         </Button>
       </div>
       {showSkip && (

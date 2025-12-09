@@ -17,17 +17,16 @@ export async function GET(): Promise<NextResponse> {
     if (!response.ok) {
       return NextResponse.json(
         { status: "unhealthy", error: "Liveness service not responding" },
-        { status: 503 }
+        { status: 503 },
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error("Liveness health check error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { status: "unhealthy", error: "Liveness service unavailable" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 }

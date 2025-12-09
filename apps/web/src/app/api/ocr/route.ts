@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-const OCR_SERVICE_URL =
-  process.env.OCR_SERVICE_URL || "http://localhost:5004";
+const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
 
 interface OCRRequest {
   image: string;
@@ -29,14 +28,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const error = await response.text();
       return NextResponse.json(
         { error: `OCR service error: ${error}` },
-        { status: response.status }
+        { status: response.status },
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error("OCR processing error:", error);
+  } catch (_error) {
     return NextResponse.json(
       {
         error: "Failed to process document",
@@ -47,7 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         validationIssues: ["ocr_service_unavailable"],
         processingTimeMs: 0,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

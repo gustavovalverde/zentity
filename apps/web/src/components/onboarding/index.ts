@@ -1,4 +1,4 @@
-export { WizardProvider, useWizard } from "./wizard-provider";
 export { Wizard } from "./wizard";
-export { WizardStepper } from "./wizard-stepper";
 export { WizardNavigation } from "./wizard-navigation";
+export { useWizard, WizardProvider } from "./wizard-provider";
+export { WizardStepper } from "./wizard-stepper";

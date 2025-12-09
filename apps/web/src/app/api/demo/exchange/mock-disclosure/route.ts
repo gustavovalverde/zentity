@@ -5,7 +5,7 @@
  * Uses mock PII data encrypted to the exchange's public key.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 // Mock PII data (in real flow, this comes from user's verified data)
 const MOCK_PII = {
@@ -19,7 +19,11 @@ const MOCK_PII = {
 const MOCK_AGE_PROOF = {
   proof: {
     pi_a: ["1234567890", "9876543210", "1"],
-    pi_b: [["1111", "2222"], ["3333", "4444"], ["1", "0"]],
+    pi_b: [
+      ["1111", "2222"],
+      ["3333", "4444"],
+      ["1", "0"],
+    ],
     pi_c: ["5555", "6666", "1"],
     protocol: "groth16",
     curve: "bn128",
@@ -30,7 +34,11 @@ const MOCK_AGE_PROOF = {
 const MOCK_FACE_MATCH_PROOF = {
   proof: {
     pi_a: ["2345678901", "8765432109", "1"],
-    pi_b: [["2222", "3333"], ["4444", "5555"], ["1", "0"]],
+    pi_b: [
+      ["2222", "3333"],
+      ["4444", "5555"],
+      ["1", "0"],
+    ],
     pi_c: ["6666", "7777", "1"],
     protocol: "groth16",
     curve: "bn128",
@@ -41,7 +49,11 @@ const MOCK_FACE_MATCH_PROOF = {
 const MOCK_DOC_VALIDITY_PROOF = {
   proof: {
     pi_a: ["3456789012", "7654321098", "1"],
-    pi_b: [["3333", "4444"], ["5555", "6666"], ["1", "0"]],
+    pi_b: [
+      ["3333", "4444"],
+      ["5555", "6666"],
+      ["1", "0"],
+    ],
     pi_c: ["7777", "8888", "1"],
     protocol: "groth16",
     curve: "bn128",
@@ -56,7 +68,7 @@ export async function POST(request: NextRequest) {
     if (!rpPublicKey) {
       return NextResponse.json(
         { error: "rpPublicKey is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -69,14 +81,14 @@ export async function POST(request: NextRequest) {
       publicKeyJwk,
       { name: "RSA-OAEP", hash: "SHA-256" },
       false,
-      ["encrypt"]
+      ["encrypt"],
     );
 
     // Generate AES key for hybrid encryption
     const aesKey = await crypto.subtle.generateKey(
       { name: "AES-GCM", length: 256 },
       true,
-      ["encrypt", "decrypt"]
+      ["encrypt", "decrypt"],
     );
 
     // Encrypt PII with AES
@@ -85,7 +97,7 @@ export async function POST(request: NextRequest) {
     const encryptedPii = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
       aesKey,
-      piiBytes
+      piiBytes,
     );
 
     // Encrypt AES key with RSA
@@ -93,14 +105,14 @@ export async function POST(request: NextRequest) {
     const encryptedAesKey = await crypto.subtle.encrypt(
       { name: "RSA-OAEP" },
       publicKey,
-      aesKeyRaw
+      aesKeyRaw,
     );
 
     // Create liveness attestation
     const livenessAttestation = {
       verified: true,
       timestamp: new Date().toISOString(),
-      signature: "mock-signature-" + crypto.randomUUID().slice(0, 8),
+      signature: `mock-signature-${crypto.randomUUID().slice(0, 8)}`,
     };
 
     // Build disclosure package
@@ -124,11 +136,10 @@ export async function POST(request: NextRequest) {
     };
 
     return NextResponse.json(disclosurePackage);
-  } catch (error) {
-    console.error("[Demo] Mock disclosure error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to create disclosure package" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

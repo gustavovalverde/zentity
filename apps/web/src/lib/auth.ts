@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
-import Database from "better-sqlite3";
 import { nextCookies } from "better-auth/next-js";
+import Database from "better-sqlite3";
 
 const db = new Database("./dev.db");
 

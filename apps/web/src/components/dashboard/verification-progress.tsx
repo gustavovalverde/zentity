@@ -1,17 +1,17 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
+  Camera,
   CheckCircle,
   Circle,
   FileCheck,
-  Camera,
-  User,
-  Shield,
   Key,
+  Shield,
+  User,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 
 interface VerificationCheck {
   id: string;
@@ -100,7 +100,9 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
                   <span className="text-muted-foreground">{check.icon}</span>
                   <span
                     className={`text-sm font-medium ${
-                      check.completed ? "text-foreground" : "text-muted-foreground"
+                      check.completed
+                        ? "text-foreground"
+                        : "text-muted-foreground"
                     }`}
                   >
                     {check.label}
@@ -113,9 +115,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
               <Badge
                 variant={check.completed ? "default" : "outline"}
                 className={
-                  check.completed
-                    ? "bg-green-600 hover:bg-green-600"
-                    : ""
+                  check.completed ? "bg-green-600 hover:bg-green-600" : ""
                 }
               >
                 {check.completed ? "Done" : "Pending"}

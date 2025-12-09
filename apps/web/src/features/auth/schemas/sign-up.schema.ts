@@ -6,18 +6,20 @@ export const emailSchema = z.object({
 });
 
 // Step 4: Password (collected at the end, with confirmation)
-export const passwordSchema = z.object({
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-    .regex(/[0-9]/, "Password must contain at least one number"),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+export const passwordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
 
 export const idUploadSchema = z.object({
   idDocument: z.instanceof(File).nullable().optional(),
@@ -28,21 +30,31 @@ export const selfieSchema = z.object({
 });
 
 // Document AI processing result
-export const documentResultSchema = z.object({
-  documentType: z.enum(["passport", "national_id", "drivers_license", "unknown"]),
-  documentOrigin: z.string().optional(), // ISO 3166-1 alpha-3 country code
-  confidence: z.number(),
-  extractedData: z.object({
-    fullName: z.string().optional(),
-    documentNumber: z.string().optional(),
-    dateOfBirth: z.string().optional(),
-    expirationDate: z.string().optional(),
-    nationality: z.string().optional(),
-    nationalityCode: z.string().optional(),
-    gender: z.string().optional(),
-  }).optional(),
-  validationIssues: z.array(z.string()),
-}).nullable().optional();
+export const documentResultSchema = z
+  .object({
+    documentType: z.enum([
+      "passport",
+      "national_id",
+      "drivers_license",
+      "unknown",
+    ]),
+    documentOrigin: z.string().optional(), // ISO 3166-1 alpha-3 country code
+    confidence: z.number(),
+    extractedData: z
+      .object({
+        fullName: z.string().optional(),
+        documentNumber: z.string().optional(),
+        dateOfBirth: z.string().optional(),
+        expirationDate: z.string().optional(),
+        nationality: z.string().optional(),
+        nationalityCode: z.string().optional(),
+        gender: z.string().optional(),
+      })
+      .optional(),
+    validationIssues: z.array(z.string()),
+  })
+  .nullable()
+  .optional();
 
 export type DocumentResultData = z.infer<typeof documentResultSchema>;
 

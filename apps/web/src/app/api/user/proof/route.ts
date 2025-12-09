@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import Database from "better-sqlite3";
+import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
 const db = new Database("./dev.db");
 
@@ -66,17 +66,19 @@ export async function GET(request: NextRequest) {
       LIMIT 1
     `);
 
-    const proofData = stmt.get(session.user.id) as {
-      id: string;
-      is_over_18: number;
-      generation_time_ms: number;
-      created_at: string;
-      proof?: string;
-      public_signals?: string;
-      dob_ciphertext?: string;
-      fhe_client_key_id?: string;
-      fhe_encryption_time_ms?: number;
-    } | undefined;
+    const proofData = stmt.get(session.user.id) as
+      | {
+          id: string;
+          is_over_18: number;
+          generation_time_ms: number;
+          created_at: string;
+          proof?: string;
+          public_signals?: string;
+          dob_ciphertext?: string;
+          fhe_client_key_id?: string;
+          fhe_encryption_time_ms?: number;
+        }
+      | undefined;
 
     if (!proofData) {
       return NextResponse.json({ error: "No proof found" }, { status: 404 });
@@ -101,11 +103,10 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(response);
-  } catch (error) {
-    console.error("Get proof error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to retrieve proof" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
     if (!proof || !publicSignals || typeof isOver18 !== "boolean") {
       return NextResponse.json(
         { error: "proof, publicSignals, and isOver18 are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -165,15 +166,14 @@ export async function POST(request: NextRequest) {
       generationTimeMs || null,
       dobCiphertext || null,
       fheClientKeyId || null,
-      fheEncryptionTimeMs || null
+      fheEncryptionTimeMs || null,
     );
 
     return NextResponse.json({ success: true, proofId });
-  } catch (error) {
-    console.error("Store proof error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to store proof" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import Database from "better-sqlite3";
-import { ensureKycStatus, calculateKycLevel } from "../route";
+import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { calculateKycLevel, ensureKycStatus } from "../route";
 
 const db = new Database("./dev.db");
 
@@ -23,7 +23,7 @@ export interface UploadResponse {
 }
 
 export async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<UploadResponse | { error: string }>> {
   try {
     const session = await auth.api.getSession({
@@ -46,24 +46,23 @@ export async function POST(
     if (!documentType || !["id_document", "selfie"].includes(documentType)) {
       return NextResponse.json(
         { error: "Invalid document type. Must be 'id_document' or 'selfie'" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: "File too large. Maximum size is 10MB" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
         {
-          error:
-            "Invalid file type. Allowed: JPEG, PNG, WebP, PDF",
+          error: "Invalid file type. Allowed: JPEG, PNG, WebP, PDF",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -87,7 +86,7 @@ export async function POST(
       file.name,
       file.type,
       file.size,
-      metadata || null
+      metadata || null,
     );
 
     // Ensure KYC status record exists
@@ -100,7 +99,7 @@ export async function POST(
         : "selfie_uploaded = 1";
 
     db.prepare(
-      `UPDATE kyc_status SET ${updateFields}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
+      `UPDATE kyc_status SET ${updateFields}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
     ).run(userId);
 
     // Get current status to calculate KYC level
@@ -119,12 +118,12 @@ export async function POST(
       Boolean(status.document_uploaded),
       Boolean(status.document_verified),
       Boolean(status.selfie_uploaded),
-      Boolean(status.selfie_verified)
+      Boolean(status.selfie_verified),
     );
 
     // Update KYC level
     db.prepare(
-      `UPDATE kyc_status SET kyc_level = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
+      `UPDATE kyc_status SET kyc_level = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
     ).run(kycLevel, userId);
 
     return NextResponse.json({
@@ -134,18 +133,17 @@ export async function POST(
       fileSize: file.size,
       status: "pending",
     });
-  } catch (error) {
-    console.error("Upload error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to upload document" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // GET - Retrieve uploaded documents for the current user
 export async function GET(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<{ documents: object[] } | { error: string }>> {
   try {
     const session = await auth.api.getSession({
@@ -178,11 +176,10 @@ export async function GET(
     const documents = stmt.all(...params) as object[];
 
     return NextResponse.json({ documents });
-  } catch (error) {
-    console.error("Get documents error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to retrieve documents" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

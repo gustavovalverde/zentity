@@ -1,21 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useForm } from "@tanstack/react-form";
-import { signIn } from "@/lib/auth-client";
-import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Field,
   FieldControl,
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
+import { signIn } from "@/lib/auth-client";
 import { makeFieldValidator } from "@/lib/validation";
 
 export function SignInForm() {
@@ -65,10 +65,15 @@ export function SignInForm() {
   };
 
   const validateField = (fieldName: "email" | "password", value: string) => {
-    const validator = makeFieldValidator(signInSchema, fieldName, (val: string) => ({
-      email: fieldName === "email" ? val : form.getFieldValue("email"),
-      password: fieldName === "password" ? val : form.getFieldValue("password"),
-    }));
+    const validator = makeFieldValidator(
+      signInSchema,
+      fieldName,
+      (val: string) => ({
+        email: fieldName === "email" ? val : form.getFieldValue("email"),
+        password:
+          fieldName === "password" ? val : form.getFieldValue("password"),
+      }),
+    );
 
     return validator(value);
   };

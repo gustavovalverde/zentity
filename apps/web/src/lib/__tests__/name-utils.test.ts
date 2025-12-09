@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { getFirstPart, buildDisplayName, getGreetingName } from "../name-utils";
+import { describe, expect, it } from "vitest";
+import { buildDisplayName, getFirstPart, getGreetingName } from "../name-utils";
 
 describe("name-utils", () => {
   describe("getFirstPart", () => {
@@ -34,7 +34,9 @@ describe("name-utils", () => {
 
   describe("buildDisplayName", () => {
     it("combines first parts of first and last names", () => {
-      expect(buildDisplayName("Juan Carlos", "Perez Garcia")).toBe("Juan Perez");
+      expect(buildDisplayName("Juan Carlos", "Perez Garcia")).toBe(
+        "Juan Perez",
+      );
     });
 
     it("handles single word names", () => {

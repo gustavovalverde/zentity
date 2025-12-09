@@ -11,12 +11,17 @@
  * - Field extraction (name, document number, DOB, etc.)
  */
 
-import { generateObject, gateway } from "ai";
+import { gateway, generateObject } from "ai";
 import { z } from "zod";
 
 // Schema for extracted document data
 const DocumentSchema = z.object({
-  documentType: z.enum(["passport", "national_id", "drivers_license", "unknown"]),
+  documentType: z.enum([
+    "passport",
+    "national_id",
+    "drivers_license",
+    "unknown",
+  ]),
   documentOrigin: z.string().optional(), // ISO 3166-1 alpha-3 country code
   confidence: z.number().min(0).max(1),
   extractedData: z
@@ -38,7 +43,10 @@ const DocumentSchema = z.object({
 export type DocumentResult = z.infer<typeof DocumentSchema>;
 
 // Document types for display
-export const DOCUMENT_TYPE_LABELS: Record<DocumentResult["documentType"], string> = {
+export const DOCUMENT_TYPE_LABELS: Record<
+  DocumentResult["documentType"],
+  string
+> = {
   passport: "Passport",
   national_id: "National ID Card",
   drivers_license: "Driver's License",
@@ -61,7 +69,9 @@ function getBaseUrl(): string {
 /**
  * Process document using Vercel AI Gateway (cloud)
  */
-async function processDocumentCloud(imageBase64: string): Promise<DocumentResult> {
+async function processDocumentCloud(
+  imageBase64: string,
+): Promise<DocumentResult> {
   // Remove data URL prefix if present
   const cleanImage = imageBase64.includes(",")
     ? imageBase64.split(",")[1]
@@ -107,7 +117,9 @@ Rules:
 /**
  * Process document using RapidOCR service
  */
-async function processDocumentOCR(imageBase64: string): Promise<DocumentResult> {
+async function processDocumentOCR(
+  imageBase64: string,
+): Promise<DocumentResult> {
   // Remove data URL prefix if present
   const cleanImage = imageBase64.includes(",")
     ? imageBase64.split(",")[1]
@@ -158,13 +170,14 @@ async function processDocumentOCR(imageBase64: string): Promise<DocumentResult> 
  * @param imageBase64 - Base64 encoded image (with or without data URL prefix)
  * @returns Document analysis result with type, validation, and extracted data
  */
-export async function processDocument(imageBase64: string): Promise<DocumentResult> {
+export async function processDocument(
+  imageBase64: string,
+): Promise<DocumentResult> {
   // Try RapidOCR service first (fastest, privacy-first)
   if (USE_OCR_SERVICE) {
     try {
       return await processDocumentOCR(imageBase64);
-    } catch (error) {
-      console.error("OCR service failed:", error);
+    } catch (_error) {
       // Fall through to cloud
     }
   }
@@ -206,7 +219,10 @@ export async function checkOCRServiceHealth(): Promise<{
   } catch (error) {
     return {
       available: false,
-      error: error instanceof Error ? error.message : "Failed to connect to OCR service",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to connect to OCR service",
     };
   }
 }
@@ -223,7 +239,8 @@ export function getIssueDescription(issue: string): string {
     partial_data: "Some fields could not be extracted from the document",
     unrecognized_format: "Document format could not be recognized",
     ocr_failed: "OCR processing failed",
-    no_ocr_service_available: "No OCR service available - please start the OCR service",
+    no_ocr_service_available:
+      "No OCR service available - please start the OCR service",
     ocr_service_unavailable: "OCR service is temporarily unavailable",
     missing_document_number: "Document number could not be extracted",
     missing_full_name: "Full name could not be extracted",

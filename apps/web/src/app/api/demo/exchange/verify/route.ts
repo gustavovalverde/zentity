@@ -5,7 +5,7 @@
  * In production, this would call the actual ZK service verification endpoints.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
 
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (!proofs) {
       return NextResponse.json(
         { error: "proofs object is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
           results.faceMatchValid = data.isValid;
         } else {
           // Mock verification
-          results.faceMatchValid = proofs.faceMatchProof.publicSignals[0] === "1";
+          results.faceMatchValid =
+            proofs.faceMatchProof.publicSignals[0] === "1";
         }
       } catch {
         // Mock verification
@@ -95,20 +96,21 @@ export async function POST(request: NextRequest) {
           results.docValidityValid = data.isValid;
         } else {
           // Mock verification
-          results.docValidityValid = proofs.docValidityProof.publicSignals[0] === "1";
+          results.docValidityValid =
+            proofs.docValidityProof.publicSignals[0] === "1";
         }
       } catch {
         // Mock verification
-        results.docValidityValid = proofs.docValidityProof.publicSignals[0] === "1";
+        results.docValidityValid =
+          proofs.docValidityProof.publicSignals[0] === "1";
       }
     }
 
     return NextResponse.json(results);
-  } catch (error) {
-    console.error("[Demo] Proof verification error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to verify proofs" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

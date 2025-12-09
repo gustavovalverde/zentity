@@ -7,9 +7,9 @@
  * threshold comparisons without revealing the actual score.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
 const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
 
@@ -37,14 +37,14 @@ export async function POST(request: NextRequest) {
     if (body.score === undefined || body.score === null) {
       return NextResponse.json(
         { error: "score is required (number from 0.0 to 1.0)" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (typeof body.score !== "number" || body.score < 0 || body.score > 1) {
       return NextResponse.json(
         { error: "score must be a number between 0.0 and 1.0" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -59,7 +59,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "FHE service error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "FHE service error" }));
       return NextResponse.json(error, { status: response.status });
     }
 
@@ -72,10 +74,14 @@ export async function POST(request: NextRequest) {
       score: result.score,
     });
   } catch (error) {
-    console.error("[Encrypt Liveness] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to encrypt liveness score" },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to encrypt liveness score",
+      },
+      { status: 500 },
     );
   }
 }

@@ -1,18 +1,18 @@
 "use client";
 
+import { CheckCircle, Clock, Loader2, Shield, XCircle } from "lucide-react";
 import { useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle, XCircle, Shield, Clock } from "lucide-react";
 
 interface VerifyResult {
   matches: boolean;
@@ -77,11 +77,7 @@ export function NameVerificationDemo() {
             onClick={handleVerify}
             disabled={loading || !claimedName.trim()}
           >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "Verify"
-            )}
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
           </Button>
         </div>
 
@@ -122,9 +118,9 @@ export function NameVerificationDemo() {
         <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
           <Shield className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-xs">
-            <strong>Privacy Guarantee:</strong> The stored name is NEVER revealed.
-            We compute SHA256(normalize(input) + salt) and compare hashes.
-            Only a boolean result is returned.
+            <strong>Privacy Guarantee:</strong> The stored name is NEVER
+            revealed. We compute SHA256(normalize(input) + salt) and compare
+            hashes. Only a boolean result is returned.
           </AlertDescription>
         </Alert>
       </CardContent>

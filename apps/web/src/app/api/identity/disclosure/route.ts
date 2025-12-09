@@ -19,10 +19,10 @@
  * 3. Minimizing Zentity's liability (no PII storage)
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
+import { auth } from "@/lib/auth";
 import { getIdentityProofByUserId, getVerificationStatus } from "@/lib/db";
 
 // Service URLs
@@ -100,7 +100,7 @@ interface DisclosureResponse {
  */
 async function encryptToPublicKey(
   data: string,
-  publicKeyBase64: string
+  publicKeyBase64: string,
 ): Promise<string> {
   // Decode the public key
   const publicKeyBuffer = Buffer.from(publicKeyBase64, "base64");
@@ -114,14 +114,14 @@ async function encryptToPublicKey(
       hash: "SHA-256",
     },
     false,
-    ["encrypt"]
+    ["encrypt"],
   );
 
   // For hybrid encryption: generate AES key, encrypt data with AES, encrypt AES key with RSA
   const aesKey = await crypto.subtle.generateKey(
     { name: "AES-GCM", length: 256 },
     true,
-    ["encrypt"]
+    ["encrypt"],
   );
 
   // Encrypt data with AES-GCM
@@ -130,7 +130,7 @@ async function encryptToPublicKey(
   const encryptedData = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     aesKey,
-    dataBuffer
+    dataBuffer,
   );
 
   // Export and encrypt AES key with RSA
@@ -138,25 +138,25 @@ async function encryptToPublicKey(
   const encryptedAesKey = await crypto.subtle.encrypt(
     { name: "RSA-OAEP" },
     publicKey,
-    aesKeyRaw
+    aesKeyRaw,
   );
 
   // Combine: encryptedAesKey (256 bytes for 2048-bit RSA) + iv (12 bytes) + encryptedData
   const result = new Uint8Array(
-    encryptedAesKey.byteLength + iv.byteLength + encryptedData.byteLength
+    encryptedAesKey.byteLength + iv.byteLength + encryptedData.byteLength,
   );
   result.set(new Uint8Array(encryptedAesKey), 0);
   result.set(iv, encryptedAesKey.byteLength);
   result.set(
     new Uint8Array(encryptedData),
-    encryptedAesKey.byteLength + iv.byteLength
+    encryptedAesKey.byteLength + iv.byteLength,
   );
 
   return Buffer.from(result).toString("base64");
 }
 
 export async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<DisclosureResponse>> {
   const packageId = uuidv4();
   const createdAt = new Date().toISOString();
@@ -180,7 +180,7 @@ export async function POST(
           expiresAt,
           error: "Authentication required",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -200,7 +200,7 @@ export async function POST(
           expiresAt,
           error: "User must complete identity verification before disclosure",
         },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -219,7 +219,7 @@ export async function POST(
           expiresAt,
           error: "RP ID and public key are required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -235,7 +235,7 @@ export async function POST(
           expiresAt,
           error: "Document and selfie images are required for disclosure",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -274,8 +274,7 @@ export async function POST(
       }
 
       documentResult = await ocrResponse.json();
-    } catch (error) {
-      console.error("Document processing error:", error);
+    } catch (_error) {
       return NextResponse.json(
         {
           success: false,
@@ -287,7 +286,7 @@ export async function POST(
           expiresAt,
           error: "Failed to process document",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -312,7 +311,7 @@ export async function POST(
             selfieImage: body.selfieImage,
             proofThreshold: body.faceMatchThreshold || 0.6,
           }),
-        }
+        },
       );
 
       if (faceMatchResponse.ok) {
@@ -326,8 +325,7 @@ export async function POST(
           };
         }
       }
-    } catch (error) {
-      console.warn("Face match proof generation failed:", error);
+    } catch (_error) {
       // Non-fatal: continue without face match proof
     }
 
@@ -405,10 +403,9 @@ export async function POST(
     try {
       encryptedPackage = await encryptToPublicKey(
         JSON.stringify(fullPackage),
-        body.rpPublicKey
+        body.rpPublicKey,
       );
-    } catch (error) {
-      console.error("Encryption error:", error);
+    } catch (_error) {
       return NextResponse.json(
         {
           success: false,
@@ -420,7 +417,7 @@ export async function POST(
           expiresAt,
           error: "Failed to encrypt disclosure package. Invalid RP public key?",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -461,8 +458,6 @@ export async function POST(
       expiresAt,
     });
   } catch (error) {
-    console.error("Disclosure error:", error);
-
     return NextResponse.json(
       {
         success: false,
@@ -475,7 +470,7 @@ export async function POST(
         error:
           error instanceof Error ? error.message : "Unknown error occurred",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -24,7 +24,9 @@ type UseLivenessCameraResult = {
  * Shared camera hook used by liveness/doc capture steps.
  * Manages permissions, stream lifecycle, and brightness-corrected frame capture.
  */
-export function useLivenessCamera(options: UseLivenessCameraOptions = {}): UseLivenessCameraResult {
+export function useLivenessCamera(
+  options: UseLivenessCameraOptions = {},
+): UseLivenessCameraResult {
   const {
     facingMode = "user",
     idealWidth = 640,
@@ -35,7 +37,8 @@ export function useLivenessCamera(options: UseLivenessCameraOptions = {}): UseLi
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [permissionStatus, setPermissionStatus] = useState<PermissionState>("checking");
+  const [permissionStatus, setPermissionStatus] =
+    useState<PermissionState>("checking");
 
   // Check permission once on mount and watch for changes.
   useEffect(() => {
@@ -46,10 +49,14 @@ export function useLivenessCamera(options: UseLivenessCameraOptions = {}): UseLi
           if (!cancelled) setPermissionStatus("prompt");
           return;
         }
-        const result = await navigator.permissions.query({ name: "camera" as PermissionName });
+        const result = await navigator.permissions.query({
+          name: "camera" as PermissionName,
+        });
         if (!cancelled) {
           setPermissionStatus(result.state as PermissionState);
-          result.addEventListener("change", () => setPermissionStatus(result.state as PermissionState));
+          result.addEventListener("change", () =>
+            setPermissionStatus(result.state as PermissionState),
+          );
         }
       } catch {
         if (!cancelled) setPermissionStatus("prompt");
@@ -118,12 +125,16 @@ export function useLivenessCamera(options: UseLivenessCameraOptions = {}): UseLi
     const step = Math.max(1, Math.floor(data.length / 4 / sampleSize));
     for (let i = 0; i < sampleSize; i++) {
       const idx = i * step * 4;
-      totalBrightness += data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+      totalBrightness +=
+        data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
     }
     const avgBrightness = totalBrightness / sampleSize;
 
     if (avgBrightness < brightnessTarget - 10) {
-      const multiplier = Math.min(2.5, brightnessTarget / Math.max(avgBrightness, 1));
+      const multiplier = Math.min(
+        2.5,
+        brightnessTarget / Math.max(avgBrightness, 1),
+      );
       for (let i = 0; i < data.length; i += 4) {
         data[i] = Math.min(255, data[i] * multiplier);
         data[i + 1] = Math.min(255, data[i + 1] * multiplier);

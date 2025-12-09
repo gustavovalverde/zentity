@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
 
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     if (!ciphertext) {
       return NextResponse.json(
         { error: "ciphertext is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       const errorData = await response.json().catch(() => ({}));
       return NextResponse.json(
         { error: errorData.error || "FHE service verification error" },
-        { status: response.status }
+        { status: response.status },
       );
     }
 
@@ -40,11 +40,10 @@ export async function POST(request: NextRequest) {
       isOver18: data.isOver18,
       computationTimeMs,
     });
-  } catch (error) {
-    console.error("FHE verify age error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to connect to FHE service" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 }

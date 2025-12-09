@@ -18,22 +18,27 @@ export async function POST() {
         hash: "SHA-256",
       },
       true,
-      ["encrypt", "decrypt"]
+      ["encrypt", "decrypt"],
     );
 
     // Export keys as JWK
-    const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-    const privateKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+    const publicKeyJwk = await crypto.subtle.exportKey(
+      "jwk",
+      keyPair.publicKey,
+    );
+    const privateKeyJwk = await crypto.subtle.exportKey(
+      "jwk",
+      keyPair.privateKey,
+    );
 
     return NextResponse.json({
       publicKey: JSON.stringify(publicKeyJwk),
       privateKey: JSON.stringify(privateKeyJwk),
     });
-  } catch (error) {
-    console.error("[Demo] Keypair generation error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to generate keypair" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -1,10 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 test.describe("Authentication Flow", () => {
   test("should show sign-in page", async ({ page }) => {
     await page.goto("/sign-in");
     // Card title says "Welcome Back" and description mentions "Sign in"
-    await expect(page.locator('text=/welcome back|sign in/i').first()).toBeVisible();
+    await expect(
+      page.locator("text=/welcome back|sign in/i").first(),
+    ).toBeVisible();
   });
 
   test("should show sign-up page", async ({ page }) => {
@@ -43,25 +45,35 @@ test.describe("Authentication Flow", () => {
 
     // Sign-up uses a wizard with steps
     // Wait for email input to appear
-    await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="email"], input[name="email"]', {
+      timeout: 10000,
+    });
 
     // Fill email
-    const emailInput = page.locator('input[type="email"], input[name="email"]').first();
+    const emailInput = page
+      .locator('input[type="email"], input[name="email"]')
+      .first();
     await emailInput.fill(testEmail);
 
     // Fill password
-    const passwordInput = page.locator('input[type="password"], input[name="password"]').first();
+    const passwordInput = page
+      .locator('input[type="password"], input[name="password"]')
+      .first();
     await passwordInput.fill(testPassword);
 
     // If there's a confirm password field
     const confirmPasswordInput = page.locator('input[name="confirmPassword"]');
-    if (await confirmPasswordInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+    if (
+      await confirmPasswordInput.isVisible({ timeout: 1000 }).catch(() => false)
+    ) {
       await confirmPasswordInput.fill(testPassword);
     }
 
     // Click submit button - be specific to avoid step indicator buttons
     // The wizard navigation uses type="submit" on enabled buttons
-    const submitButton = page.locator('button[type="submit"]:not([disabled])').first();
+    const submitButton = page
+      .locator('button[type="submit"]:not([disabled])')
+      .first();
     await submitButton.click();
 
     // Wait for redirect or next step
@@ -69,7 +81,10 @@ test.describe("Authentication Flow", () => {
 
     // Should either redirect or move to next step
     const url = page.url();
-    const hasProgress = url.includes("dashboard") || url.includes("onboarding") || url.includes("sign-up");
+    const hasProgress =
+      url.includes("dashboard") ||
+      url.includes("onboarding") ||
+      url.includes("sign-up");
     expect(hasProgress).toBeTruthy();
   });
 });

@@ -5,9 +5,9 @@
  * GET /api/crypto/nationality-proof - List country groups or check membership
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
 const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
 
@@ -34,15 +34,20 @@ export async function POST(request: NextRequest) {
     // Validate inputs
     if (!nationalityCode) {
       return NextResponse.json(
-        { error: "nationalityCode is required (ISO 3166-1 alpha-3, e.g., 'DEU')" },
-        { status: 400 }
+        {
+          error:
+            "nationalityCode is required (ISO 3166-1 alpha-3, e.g., 'DEU')",
+        },
+        { status: 400 },
       );
     }
 
     if (!groupName) {
       return NextResponse.json(
-        { error: "groupName is required (EU, SCHENGEN, EEA, LATAM, FIVE_EYES)" },
-        { status: 400 }
+        {
+          error: "groupName is required (EU, SCHENGEN, EEA, LATAM, FIVE_EYES)",
+        },
+        { status: 400 },
       );
     }
 
@@ -57,7 +62,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "ZK service error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "ZK service error" }));
       return NextResponse.json(error, { status: response.status });
     }
 
@@ -74,10 +81,12 @@ export async function POST(request: NextRequest) {
       solidityCalldata: result.solidityCalldata,
     });
   } catch (error) {
-    console.error("[Nationality Proof] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate proof" },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to generate proof",
+      },
+      { status: 500 },
     );
   }
 }
@@ -108,11 +117,13 @@ export async function GET(request: NextRequest) {
     // Check membership if both code and group provided
     if (code && group) {
       const response = await fetch(
-        `${ZK_SERVICE_URL}/nationality/check?code=${encodeURIComponent(code)}&group=${encodeURIComponent(group)}`
+        `${ZK_SERVICE_URL}/nationality/check?code=${encodeURIComponent(code)}&group=${encodeURIComponent(group)}`,
       );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "ZK service error" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "ZK service error" }));
         return NextResponse.json(error, { status: response.status });
       }
 
@@ -122,11 +133,13 @@ export async function GET(request: NextRequest) {
     // Get specific group if group provided
     if (group) {
       const response = await fetch(
-        `${ZK_SERVICE_URL}/nationality/groups/${encodeURIComponent(group)}`
+        `${ZK_SERVICE_URL}/nationality/groups/${encodeURIComponent(group)}`,
       );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "ZK service error" }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "ZK service error" }));
         return NextResponse.json(error, { status: response.status });
       }
 
@@ -137,16 +150,20 @@ export async function GET(request: NextRequest) {
     const response = await fetch(`${ZK_SERVICE_URL}/nationality/groups`);
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "ZK service error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "ZK service error" }));
       return NextResponse.json(error, { status: response.status });
     }
 
     return NextResponse.json(await response.json());
   } catch (error) {
-    console.error("[Nationality Proof] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch groups" },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to fetch groups",
+      },
+      { status: 500 },
     );
   }
 }

@@ -1,8 +1,12 @@
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardTabs } from "@/components/dashboard/dashboard-tabs";
-import { getIdentityProofByUserId, getVerificationStatus, getUserAgeProof } from "@/lib/db";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { auth } from "@/lib/auth";
+import {
+  getIdentityProofByUserId,
+  getUserAgeProof,
+  getVerificationStatus,
+} from "@/lib/db";
 import { getGreetingName } from "@/lib/name-utils";
 
 export default async function DashboardPage() {
@@ -27,7 +31,8 @@ export default async function DashboardPage() {
     liveness: identityProof?.isLivenessPassed ?? false,
     faceMatch: identityProof?.isFaceMatched ?? false,
     ageProof: ageProof?.isOver18 ?? identityProof?.ageProofVerified ?? false,
-    fheEncryption: !!ageProof?.hasFheEncryption || !!identityProof?.dobCiphertext,
+    fheEncryption:
+      !!ageProof?.hasFheEncryption || !!identityProof?.dobCiphertext,
   };
 
   const hasProof = ageProof?.isOver18 || verificationStatus?.verified || false;
@@ -50,7 +55,9 @@ export default async function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Welcome, {getGreetingName(session?.user.name) || "User"}</h1>
+          <h1 className="text-3xl font-bold">
+            Welcome, {getGreetingName(session?.user.name) || "User"}
+          </h1>
           <p className="text-muted-foreground">
             Manage your privacy-preserving identity verification
           </p>
@@ -65,7 +72,9 @@ export default async function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-lg font-semibold truncate">{session?.user.email}</p>
+            <p className="text-lg font-semibold truncate">
+              {session?.user.email}
+            </p>
             <p className="text-xs text-muted-foreground">
               Member since{" "}
               {session?.user.createdAt

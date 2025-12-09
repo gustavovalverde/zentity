@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Zentity - Privacy-First Identity Verification",
-  description: "Verify your identity without exposing personal data using zero-knowledge proofs and homomorphic encryption.",
+  description:
+    "Verify your identity without exposing personal data using zero-knowledge proofs and homomorphic encryption.",
 };
 
 export default function RootLayout({
@@ -35,9 +36,7 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <main id="main-content">
-          {children}
-        </main>
+        <main id="main-content">{children}</main>
         <Toaster />
       </body>
     </html>

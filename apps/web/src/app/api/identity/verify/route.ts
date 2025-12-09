@@ -15,14 +15,14 @@
  * - GDPR compliance: delete user_salt to "forget" the user
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
+import { auth } from "@/lib/auth";
 import {
   createIdentityProof,
-  getIdentityProofByUserId,
   documentHashExists,
+  getIdentityProofByUserId,
   updateIdentityProofFlags,
   updateUserName,
 } from "@/lib/db";
@@ -81,7 +81,7 @@ interface VerifyIdentityResponse {
 }
 
 export async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<VerifyIdentityResponse>> {
   const startTime = Date.now();
   const issues: string[] = [];
@@ -112,7 +112,7 @@ export async function POST(
           issues: ["unauthorized"],
           error: "Authentication required",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -140,7 +140,7 @@ export async function POST(
           issues: ["missing_document_image"],
           error: "Document image is required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -164,7 +164,7 @@ export async function POST(
           issues: ["missing_selfie_image"],
           error: "Selfie image is required",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -182,7 +182,7 @@ export async function POST(
         userSalt: string;
       };
       documentType: string;
-      documentOrigin?: string;        // ISO 3166-1 alpha-3 country code
+      documentOrigin?: string; // ISO 3166-1 alpha-3 country code
       confidence: number;
       extractedData?: {
         fullName?: string;
@@ -190,9 +190,9 @@ export async function POST(
         lastName?: string;
         documentNumber?: string;
         dateOfBirth?: string;
-        expirationDate?: string;      // ISO 8601: YYYY-MM-DD
-        nationalityCode?: string;     // ISO 3166-1 alpha-3
-        gender?: string;              // M or F from OCR
+        expirationDate?: string; // ISO 8601: YYYY-MM-DD
+        nationalityCode?: string; // ISO 3166-1 alpha-3
+        gender?: string; // M or F from OCR
       };
       validationIssues: string[];
     } | null = null;
@@ -213,8 +213,7 @@ export async function POST(
 
       documentResult = await ocrResponse.json();
       issues.push(...(documentResult?.validationIssues || []));
-    } catch (error) {
-      console.error("Document processing error:", error);
+    } catch (_error) {
       issues.push("document_processing_failed");
     }
 
@@ -222,7 +221,7 @@ export async function POST(
     let isDuplicateDocument = false;
     if (documentResult?.commitments?.documentHash) {
       const hashExists = documentHashExists(
-        documentResult.commitments.documentHash
+        documentResult.commitments.documentHash,
       );
       if (hashExists && !existingProof) {
         isDuplicateDocument = true;
@@ -253,22 +252,15 @@ export async function POST(
       });
 
       if (!verifyResponse.ok) {
-        throw new Error(`Verification service returned ${verifyResponse.status}`);
+        throw new Error(
+          `Verification service returned ${verifyResponse.status}`,
+        );
       }
 
       verificationResult = await verifyResponse.json();
 
-      // Log face match result for debugging
-      console.log("[Identity Verify] Face match result:", {
-        faces_match: verificationResult?.faces_match,
-        face_match_confidence: verificationResult?.face_match_confidence,
-        is_live: verificationResult?.is_live,
-        verified: verificationResult?.verified,
-      });
-
       issues.push(...(verificationResult?.issues || []));
-    } catch (error) {
-      console.error("Verification error:", error);
+    } catch (_error) {
       issues.push("verification_service_failed");
     }
 
@@ -326,7 +318,11 @@ export async function POST(
         birthYear = parseInt(dateOfBirth.split("-")[0], 10);
       }
 
-      if (birthYear && birthYear > 1900 && birthYear <= new Date().getFullYear()) {
+      if (
+        birthYear &&
+        birthYear > 1900 &&
+        birthYear <= new Date().getFullYear()
+      ) {
         const currentYear = new Date().getFullYear();
 
         // FHE Encryption (encrypt birth year)
@@ -347,11 +343,9 @@ export async function POST(
               clientKeyId: fheData.clientKeyId,
             };
           } else {
-            console.warn("FHE encryption failed:", await fheResponse.text());
             issues.push("fhe_encryption_failed");
           }
-        } catch (error) {
-          console.warn("FHE service unavailable:", error);
+        } catch (_error) {
           issues.push("fhe_service_unavailable");
         }
 
@@ -374,7 +368,7 @@ export async function POST(
                 return { minAge, data, success: true };
               }
               return { minAge, success: false, error: await res.text() };
-            })
+            }),
           );
 
           const zkResults = await Promise.all(zkPromises);
@@ -393,7 +387,6 @@ export async function POST(
                 primaryZkData = result.data;
               }
             } else {
-              console.warn(`ZK proof for age ${result.minAge} failed:`, result.error);
             }
           }
 
@@ -409,14 +402,10 @@ export async function POST(
               generationTimeMs: primaryZkData.generationTimeMs,
               isOver18,
             };
-            console.log(
-              `[Identity Verify] Generated ${Object.keys(ageProofs).length} age proofs (18, 21, 25)`
-            );
           } else {
             issues.push("zk_proof_failed");
           }
-        } catch (error) {
-          console.warn("ZK service unavailable:", error);
+        } catch (_error) {
           issues.push("zk_service_unavailable");
         }
       }
@@ -429,13 +418,16 @@ export async function POST(
     const expirationDate = documentResult?.extractedData?.expirationDate;
     if (expirationDate) {
       try {
-        const docValidityResponse = await fetch(`${ZK_SERVICE_URL}/docvalidity/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            expiryDate: expirationDate, // Already in YYYY-MM-DD format from OCR
-          }),
-        });
+        const docValidityResponse = await fetch(
+          `${ZK_SERVICE_URL}/docvalidity/generate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              expiryDate: expirationDate, // Already in YYYY-MM-DD format from OCR
+            }),
+          },
+        );
 
         if (docValidityResponse.ok) {
           const docValidityData = await docValidityResponse.json();
@@ -445,15 +437,10 @@ export async function POST(
             isValid: docValidityData.isValid,
             generationTimeMs: docValidityData.generationTimeMs,
           };
-          console.log(
-            `[Identity Verify] Doc validity proof generated in ${docValidityData.generationTimeMs}ms, isValid=${docValidityData.isValid}`
-          );
         } else {
-          console.warn("Doc validity proof generation failed:", await docValidityResponse.text());
           issues.push("doc_validity_proof_failed");
         }
-      } catch (error) {
-        console.warn("Doc validity proof unavailable:", error);
+      } catch (_error) {
         issues.push("doc_validity_service_unavailable");
       }
     }
@@ -467,13 +454,15 @@ export async function POST(
       try {
         // Generate commitment: SHA256(nationalityCode + userSalt)
         const encoder = new TextEncoder();
-        const data = encoder.encode(nationalityCode + documentResult.commitments.userSalt);
+        const data = encoder.encode(
+          nationalityCode + documentResult.commitments.userSalt,
+        );
         const hashBuffer = await crypto.subtle.digest("SHA-256", data);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
-        nationalityCommitment = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-        console.log(`[Identity Verify] Nationality commitment generated for code: ${nationalityCode}`);
-      } catch (error) {
-        console.warn("Nationality commitment generation failed:", error);
+        nationalityCommitment = hashArray
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      } catch (_error) {
         issues.push("nationality_commitment_failed");
       }
     }
@@ -487,14 +476,17 @@ export async function POST(
         // Convert M/F to ISO 5218 code
         const genderCode = gender === "M" ? 1 : gender === "F" ? 2 : 0;
 
-        const genderResponse = await fetch(`${FHE_SERVICE_URL}/encrypt-gender`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            genderCode,
-            clientKeyId: "default",
-          }),
-        });
+        const genderResponse = await fetch(
+          `${FHE_SERVICE_URL}/encrypt-gender`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              genderCode,
+              clientKeyId: "default",
+            }),
+          },
+        );
 
         if (genderResponse.ok) {
           const genderData = await genderResponse.json();
@@ -503,13 +495,10 @@ export async function POST(
             clientKeyId: genderData.clientKeyId,
             genderCode,
           };
-          console.log(`[Identity Verify] Gender encrypted (ISO 5218 code: ${genderCode})`);
         } else {
-          console.warn("Gender FHE encryption failed:", await genderResponse.text());
           issues.push("gender_fhe_encryption_failed");
         }
-      } catch (error) {
-        console.warn("Gender FHE service unavailable:", error);
+      } catch (_error) {
         issues.push("gender_fhe_service_unavailable");
       }
     }
@@ -536,13 +525,10 @@ export async function POST(
             clientKeyId: dobFullData.clientKeyId,
             dobInt: dobFullData.dobInt,
           };
-          console.log(`[Identity Verify] Full DOB encrypted as ${dobFullData.dobInt}`);
         } else {
-          console.warn("Full DOB FHE encryption failed:", await dobFullResponse.text());
           issues.push("dob_full_fhe_encryption_failed");
         }
-      } catch (error) {
-        console.warn("Full DOB FHE service unavailable:", error);
+      } catch (_error) {
         issues.push("dob_full_fhe_service_unavailable");
       }
     }
@@ -552,9 +538,10 @@ export async function POST(
     // =========================================================================
     const documentProcessed = Boolean(documentResult?.commitments);
     // Document is valid if we have commitments and confidence is reasonable
-    const isDocumentValid = documentProcessed &&
-                            (documentResult?.confidence ?? 0) > 0.3 &&
-                            Boolean(documentResult?.extractedData?.documentNumber);
+    const isDocumentValid =
+      documentProcessed &&
+      (documentResult?.confidence ?? 0) > 0.3 &&
+      Boolean(documentResult?.extractedData?.documentNumber);
     const livenessPassed = verificationResult?.is_live || false;
     const faceMatched = verificationResult?.faces_match || false;
     const ageProofGenerated = Boolean(zkResult?.proof);
@@ -568,24 +555,7 @@ export async function POST(
       faceMatched &&
       !isDuplicateDocument;
 
-    // Log what we're about to store
-    console.log("[Identity Verify] Storing identity proof:", {
-      documentProcessed,
-      isDocumentValid,
-      documentOrigin: documentResult?.documentOrigin,
-      livenessPassed,
-      faceMatched,
-      ageProofGenerated,
-      dobEncrypted,
-      docValidityProofGenerated,
-      nationalityCommitmentGenerated,
-      verified,
-      hasExistingProof: Boolean(existingProof),
-    });
-
     if (documentProcessed && documentResult?.commitments && !existingProof) {
-      // Create new identity proof
-      console.log("[Identity Verify] Creating new identity proof with isFaceMatched:", faceMatched);
       try {
         createIdentityProof({
           id: uuidv4(),
@@ -594,7 +564,9 @@ export async function POST(
           nameCommitment: documentResult.commitments.nameCommitment,
           userSalt: documentResult.commitments.userSalt,
           documentType: documentResult.documentType,
-          countryVerified: documentResult.documentOrigin || documentResult.extractedData?.nationalityCode,
+          countryVerified:
+            documentResult.documentOrigin ||
+            documentResult.extractedData?.nationalityCode,
           isDocumentVerified: isDocumentValid,
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
@@ -622,8 +594,7 @@ export async function POST(
           // Sprint 2: Full DOB FHE encryption
           dobFullCiphertext: dobFullFheResult?.ciphertext,
         });
-      } catch (error) {
-        console.error("Failed to create identity proof:", error);
+      } catch (_error) {
         issues.push("failed_to_save_proof");
       }
     } else if (existingProof) {
@@ -663,8 +634,7 @@ export async function POST(
             dobFullCiphertext: dobFullFheResult.ciphertext,
           }),
         });
-      } catch (error) {
-        console.error("Failed to update identity proof:", error);
+      } catch (_error) {
         issues.push("failed_to_update_proof");
       }
     }
@@ -675,17 +645,19 @@ export async function POST(
     // After successful document processing, update user's display name
     // using first parts of first name and last name.
     // e.g., "Juan Carlos" + "Perez Garcia" -> "Juan Perez"
-    if (documentResult?.extractedData?.firstName || documentResult?.extractedData?.lastName) {
+    if (
+      documentResult?.extractedData?.firstName ||
+      documentResult?.extractedData?.lastName
+    ) {
       try {
         const displayName = buildDisplayName(
           documentResult.extractedData.firstName,
-          documentResult.extractedData.lastName
+          documentResult.extractedData.lastName,
         );
         if (displayName) {
           updateUserName(userId, displayName);
         }
-      } catch (error) {
-        console.error("Failed to update user name:", error);
+      } catch (_error) {
         // Non-critical, don't add to issues
       }
     }
@@ -705,7 +677,9 @@ export async function POST(
       results: {
         documentProcessed,
         documentType: documentResult?.documentType,
-        documentOrigin: documentResult?.documentOrigin || documentResult?.extractedData?.nationalityCode,
+        documentOrigin:
+          documentResult?.documentOrigin ||
+          documentResult?.extractedData?.nationalityCode,
         isDocumentValid,
         livenessPassed,
         faceMatched,
@@ -728,8 +702,6 @@ export async function POST(
       issues,
     });
   } catch (error) {
-    console.error("Identity verification error:", error);
-
     return NextResponse.json(
       {
         success: false,
@@ -750,7 +722,7 @@ export async function POST(
         error:
           error instanceof Error ? error.message : "Unknown error occurred",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

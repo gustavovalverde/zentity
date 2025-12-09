@@ -1,6 +1,12 @@
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { WizardProvider, Wizard } from "@/components/onboarding";
+import { Wizard, WizardProvider } from "@/components/onboarding";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function SignUpPage() {
   return (
@@ -17,7 +23,10 @@ export default function SignUpPage() {
         </WizardProvider>
         <div className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/sign-in" className="font-medium text-primary hover:underline">
+          <Link
+            href="/sign-in"
+            className="font-medium text-primary hover:underline"
+          >
             Sign In
           </Link>
         </div>
