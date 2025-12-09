@@ -152,6 +152,33 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     trackStep(state.currentStep);
   }, [isHydrated, state.currentStep]);
 
+  // Warn before navigation with unsaved data to prevent accidental data loss
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    // Check if user has entered meaningful data
+    const hasUnsavedData = Boolean(
+      state.data.email ||
+      state.data.idDocument ||
+      state.data.selfieImage ||
+      state.data.extractedName
+    );
+
+    // Only warn if user is mid-process (not on first or last step with completion)
+    const isInProgress = state.currentStep > 1 && state.currentStep < TOTAL_STEPS;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedData && isInProgress) {
+        e.preventDefault();
+        // Modern browsers ignore custom messages, but setting returnValue is required
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isHydrated, state.currentStep, state.data]);
+
   // Show loading state until hydrated to prevent hydration mismatch
   // Server renders this, client also renders this initially, then switches to actual content
   if (!isHydrated) {

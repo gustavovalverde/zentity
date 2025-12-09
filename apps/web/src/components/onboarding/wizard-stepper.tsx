@@ -45,7 +45,8 @@ export function WizardStepper() {
               onClick={() => canNavigate && goToStep(stepNumber)}
               disabled={!canNavigate}
               className={cn(
-                "flex flex-col items-center gap-1 group transition-transform duration-200",
+                // Ensure minimum 44px touch target for accessibility
+                "flex flex-col items-center gap-1 group transition-transform duration-200 min-w-[44px] min-h-[44px] p-1",
                 canNavigate && "cursor-pointer hover:scale-105"
               )}
               aria-label={`${title} - Step ${stepNumber}${isCompleted ? " (completed)" : isCurrent ? " (current)" : ""}`}
@@ -61,7 +62,7 @@ export function WizardStepper() {
                 )}
               >
                 {isCompleted ? (
-                  <Check className="w-4 h-4 animate-in zoom-in duration-200" />
+                  <Check className="w-4 h-4 animate-in zoom-in duration-200" aria-hidden="true" />
                 ) : (
                   <span className={cn(isCurrent && "animate-in zoom-in duration-200")}>
                     {stepNumber}

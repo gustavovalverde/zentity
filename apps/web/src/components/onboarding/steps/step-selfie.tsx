@@ -109,11 +109,7 @@ export function StepSelfie() {
     trackCameraPermission(permissionStatus);
   }, [permissionStatus]);
 
-  // Start warmup as soon as the step renders to reduce first-call wait
-  useEffect(() => {
-    void warmupLiveness();
-  }, [warmupLiveness]);
-
+  // Warmup liveness service - defined before useEffect that calls it
   const warmupLiveness = useCallback(async () => {
     if (warmupStatus === "ready") return true;
     setWarmupStatus("warming");
@@ -144,6 +140,11 @@ export function StepSelfie() {
     });
     return false;
   }, [warmupStatus]);
+
+  // Start warmup as soon as the step renders to reduce first-call wait
+  useEffect(() => {
+    void warmupLiveness();
+  }, [warmupLiveness]);
 
   const beginCamera = useCallback(async () => {
     const ready = await warmupLiveness();
@@ -606,12 +607,17 @@ export function StepSelfie() {
         {/* Detecting face overlay */}
         {challengeState === "detecting" && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-            <div className="rounded-lg bg-background/90 px-4 py-3 shadow-lg backdrop-blur">
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="rounded-lg bg-background/90 px-4 py-3 shadow-lg backdrop-blur"
+            >
               <div className="flex items-center gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
                 <div>
                   <p className="font-medium">{statusMessage}</p>
-                  <Progress value={detectionProgress} className="mt-1 h-1 w-32" />
+                  <Progress value={detectionProgress} className="mt-1 h-1 w-32" aria-label={`Face detection progress: ${Math.round(detectionProgress)}%`} />
                 </div>
               </div>
             </div>
@@ -621,9 +627,14 @@ export function StepSelfie() {
         {/* Countdown overlay */}
         {challengeState === "countdown" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div className="flex flex-col items-center gap-2">
+            <div
+              role="timer"
+              aria-live="assertive"
+              aria-atomic="true"
+              className="flex flex-col items-center gap-2"
+            >
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary text-5xl font-bold text-primary-foreground">
-                {countdown}
+                <span aria-label={`${countdown} seconds remaining`}>{countdown}</span>
               </div>
               <p className="text-lg font-medium text-white drop-shadow-lg">
                 Hold still...
@@ -635,16 +646,22 @@ export function StepSelfie() {
         {/* Waiting for smile overlay */}
         {challengeState === "waiting_smile" && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-            <div className="rounded-lg bg-yellow-500/95 px-6 py-4 shadow-lg backdrop-blur">
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="rounded-lg bg-yellow-500/95 px-6 py-4 shadow-lg backdrop-blur"
+            >
               <div className="flex items-center gap-3 text-yellow-950">
-                <Smile className="h-8 w-8" />
+                <Smile className="h-8 w-8" aria-hidden="true" />
                 <div>
                   <p className="text-xl font-bold">Now smile!</p>
                   <Progress
                     value={smileProgress}
                     className="mt-1 h-2 w-40 bg-yellow-200"
+                    aria-label={`Smile detection progress: ${smileProgress.toFixed(0)}%`}
                   />
-                  <p className="mt-1 text-xs">
+                  <p className="mt-1 text-xs" aria-hidden="true">
                     Smile: {smileProgress.toFixed(0)}%
                   </p>
                 </div>
@@ -656,9 +673,9 @@ export function StepSelfie() {
         {/* Capturing overlay */}
         {challengeState === "capturing" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div className="rounded-lg bg-green-500/95 px-6 py-4">
+            <div role="status" aria-live="polite" className="rounded-lg bg-green-500/95 px-6 py-4">
               <div className="flex items-center gap-2 text-white">
-                <CheckCircle2 className="h-6 w-6" />
+                <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                 <p className="font-medium">Smile detected!</p>
               </div>
             </div>
@@ -668,9 +685,9 @@ export function StepSelfie() {
         {/* Validating overlay */}
         {challengeState === "validating" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <div className="rounded-lg bg-background/95 px-6 py-4 shadow-lg">
+            <div role="status" aria-live="polite" className="rounded-lg bg-background/95 px-6 py-4 shadow-lg">
               <div className="flex items-center gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden="true" />
                 <p className="font-medium">Verifying your identity...</p>
               </div>
             </div>

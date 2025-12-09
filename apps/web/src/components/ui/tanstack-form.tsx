@@ -177,6 +177,7 @@ function FieldMessage({
       data-slot="field-message"
       id={`${id}-message`}
       className={cn("text-destructive text-sm", className)}
+      role="alert"
       aria-live="polite"
     >
       {body}

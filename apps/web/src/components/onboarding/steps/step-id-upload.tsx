@@ -17,6 +17,21 @@ import { trackDocResult, trackError } from "@/lib/analytics";
 
 type ProcessingState = "idle" | "converting" | "processing" | "verified" | "rejected";
 
+// Processing timeout in milliseconds (30 seconds)
+const PROCESSING_TIMEOUT = 30000;
+
+// Error recovery suggestions based on validation issues
+const ERROR_RECOVERY_TIPS: Record<string, string> = {
+  document_blurry: "Hold your camera steady and ensure the document is in focus before capturing.",
+  poor_lighting: "Move to a well-lit area. Natural light works best. Avoid shadows on the document.",
+  text_not_readable: "Make sure all text on the document is clearly visible and not cut off.",
+  face_not_visible: "Ensure the photo on your ID is clearly visible and not obscured.",
+  document_expired: "This document appears to be expired. Please use a valid, non-expired document.",
+  glare_detected: "Reduce glare by tilting the document slightly or moving away from direct light.",
+  partial_document: "Make sure the entire document is visible in the frame, including all edges.",
+  unknown_format: "Try using a passport, national ID card, or driver's license.",
+};
+
 export function StepIdUpload() {
   const { state, updateData, nextStep } = useWizard();
   const [dragActive, setDragActive] = useState(false);
@@ -39,6 +54,24 @@ export function StepIdUpload() {
     }
     return undefined;
   }, [state.data.idDocument]);
+
+  // Timeout for long-running document processing
+  useEffect(() => {
+    if (processingState !== "converting" && processingState !== "processing") {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setUploadError("Processing is taking longer than expected. Please try again with a clearer image.");
+      setProcessingState("idle");
+      toast.error("Processing timeout", {
+        description: "The document took too long to process. Please try uploading again.",
+      });
+      trackError("document_timeout", "Processing exceeded 30 seconds");
+    }, PROCESSING_TIMEOUT);
+
+    return () => clearTimeout(timeout);
+  }, [processingState]);
 
   const processDocument = async (base64: string): Promise<DocumentResult> => {
     const response = await fetch("/api/kyc/process-document", {
@@ -349,13 +382,35 @@ export function StepIdUpload() {
           </div>
 
           {documentResult.validationIssues.length > 0 && (
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <h4 className="mb-2 text-sm font-medium">Issues Found:</h4>
-              <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                {documentResult.validationIssues.map((issue, i) => (
-                  <li key={i}>{issue}</li>
-                ))}
-              </ul>
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+              <div>
+                <h4 className="mb-2 text-sm font-medium">Issues Found:</h4>
+                <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                  {documentResult.validationIssues.map((issue, i) => (
+                    <li key={i}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Error recovery suggestions */}
+              <div className="border-t pt-3">
+                <h4 className="mb-2 text-sm font-medium text-primary">How to fix:</h4>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  {documentResult.validationIssues.map((issue, i) => {
+                    // Convert issue to key format (e.g., "Document is blurry" -> "document_blurry")
+                    const issueKey = issue.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z_]/g, "");
+                    const tip = ERROR_RECOVERY_TIPS[issueKey] ||
+                                ERROR_RECOVERY_TIPS[issueKey.split("_")[0]] ||
+                                "Ensure your document is clear, well-lit, and fully visible.";
+                    return (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>{tip}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </div>
           )}
 
