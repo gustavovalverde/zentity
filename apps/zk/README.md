@@ -10,6 +10,11 @@ This service provides ZK proof endpoints for:
 - **Document validity**: Prove document not expired without revealing expiry date
 - **Nationality membership**: Prove nationality is in a country group (EU, SCHENGEN, etc.) without revealing specific country
 
+## Documentation
+
+For a deep dive into how ZK proofs work and the nationality membership implementation:
+- **[ZK Nationality Proofs Technical Guide](../../docs/zk-nationality-proofs.md)** - Explains Merkle trees, Poseidon hash, trusted setup, and the circuit architecture
+
 ## Technology
 
 - **Language**: TypeScript

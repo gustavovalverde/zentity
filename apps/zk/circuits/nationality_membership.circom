@@ -2,6 +2,7 @@ pragma circom 2.0.0;
 
 include "../node_modules/circomlib/circuits/poseidon.circom";
 include "../node_modules/circomlib/circuits/comparators.circom";
+include "../node_modules/circomlib/circuits/mux1.circom";
 
 /**
  * Nationality Membership Proof Circuit
@@ -27,19 +28,29 @@ template MerkleTreeChecker(levels) {
     signal output isValid;
 
     component hashers[levels];
+    component muxLeft[levels];
+    component muxRight[levels];
     signal hashes[levels + 1];
     hashes[0] <== leaf;
 
     for (var i = 0; i < levels; i++) {
         hashers[i] = Poseidon(2);
 
-        // If pathIndex is 0, leaf is on the left
-        // If pathIndex is 1, leaf is on the right
-        var leftHash = (1 - pathIndices[i]) * hashes[i] + pathIndices[i] * pathElements[i];
-        var rightHash = pathIndices[i] * hashes[i] + (1 - pathIndices[i]) * pathElements[i];
+        // Use Mux1 to select left and right inputs based on pathIndices
+        // If pathIndex is 0, current hash goes left, sibling goes right
+        // If pathIndex is 1, sibling goes left, current hash goes right
+        muxLeft[i] = Mux1();
+        muxLeft[i].c[0] <== hashes[i];
+        muxLeft[i].c[1] <== pathElements[i];
+        muxLeft[i].s <== pathIndices[i];
 
-        hashers[i].inputs[0] <== leftHash;
-        hashers[i].inputs[1] <== rightHash;
+        muxRight[i] = Mux1();
+        muxRight[i].c[0] <== pathElements[i];
+        muxRight[i].c[1] <== hashes[i];
+        muxRight[i].s <== pathIndices[i];
+
+        hashers[i].inputs[0] <== muxLeft[i].out;
+        hashers[i].inputs[1] <== muxRight[i].out;
         hashes[i + 1] <== hashers[i].out;
     }
 
