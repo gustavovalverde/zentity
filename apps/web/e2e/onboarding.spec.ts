@@ -83,11 +83,8 @@ test.describe("Onboarding - Document Upload Flow", () => {
 
     await page.goto("/onboarding");
 
-    // Find file input
-    const fileInput = page.locator('input[type="file"]').first();
-
     // Upload test document
-    // await fileInput.setInputFiles('./e2e/fixtures/test-images/test-id.jpg');
+    // await page.locator('input[type="file"]').first().setInputFiles('./e2e/fixtures/test-images/test-id.jpg');
 
     // Verify processing started
     // await expect(page.locator('text=/processing|analyzing|verifying/i')).toBeVisible();

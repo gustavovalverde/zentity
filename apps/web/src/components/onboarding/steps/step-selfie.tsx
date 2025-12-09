@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint @next/next/no-img-element: off */
+
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useWizard } from "../wizard-provider";
 import { WizardNavigation } from "../wizard-navigation";
@@ -21,11 +23,10 @@ import {
   checkSmile,
   checkBlink,
   analyzePassiveMonitor,
-  getIssueDescription,
   type ChallengeResult,
 } from "@/lib/face-detection";
-
-type PermissionState = "checking" | "granted" | "denied" | "prompt";
+import { useLivenessCamera } from "@/hooks/use-liveness-camera";
+import { trackCameraPermission, trackLiveness } from "@/lib/analytics";
 
 /**
  * Automatic challenge flow states:
@@ -58,13 +59,22 @@ const FACE_TIMEOUT = 30000; // 30 seconds to show face
 const SMILE_THRESHOLD = 30; // happiness score threshold (lowered for better detection)
 const MAX_PASSIVE_FRAMES = 20; // max frames to collect for passive monitoring
 const PASSIVE_FRAME_INTERVAL = 500; // ms between passive frame captures
+const WARMUP_TIMEOUT = 45_000; // allow models to load on cold start
+const LIVENESS_PING_INTERVAL = 3000;
+const LIVENESS_THROTTLE_MS = 800;
+const DUMMY_PIXEL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6nXegAAAAASUVORK5CYII=";
 
 export function StepSelfie() {
   const { state, updateData, nextStep } = useWizard();
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [permissionStatus, setPermissionStatus] =
-    useState<PermissionState>("checking");
+  const {
+    videoRef,
+    isStreaming,
+    permissionStatus,
+    startCamera,
+    stopCamera,
+    captureFrame,
+  } = useLivenessCamera({ facingMode: "user", idealWidth: 640, idealHeight: 480 });
 
   // Challenge state
   const [challengeState, setChallengeState] = useState<ChallengeState>("idle");
@@ -81,6 +91,7 @@ export function StepSelfie() {
   const [countdown, setCountdown] = useState(3);
   const [timeoutMessage, setTimeoutMessage] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [warmupStatus, setWarmupStatus] = useState<"idle" | "warming" | "ready" | "failed">("idle");
 
   // Passive monitoring state
   const [passiveFrames, setPassiveFrames] = useState<string[]>([]);
@@ -88,146 +99,65 @@ export function StepSelfie() {
   const lastPassiveFrameTimeRef = useRef<number>(0);
 
   // Refs for detection loop
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const consecutiveDetectionsRef = useRef(0);
   const consecutiveSmilesRef = useRef(0);
   const isCheckingRef = useRef(false);
+  const lastLivenessCallRef = useRef(0);
 
-  // Check camera permission on mount
+  // Track permission changes for analytics and UX hints
   useEffect(() => {
-    async function checkPermission() {
+    trackCameraPermission(permissionStatus);
+  }, [permissionStatus]);
+
+  // Start warmup as soon as the step renders to reduce first-call wait
+  useEffect(() => {
+    void warmupLiveness();
+  }, [warmupLiveness]);
+
+  const warmupLiveness = useCallback(async () => {
+    if (warmupStatus === "ready") return true;
+    setWarmupStatus("warming");
+
+    // Fire-and-forget a dummy liveness call to trigger model downloads
+    void fetch("/api/liveness", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: DUMMY_PIXEL, threshold: 0 }),
+    }).catch(() => {});
+
+    const start = Date.now();
+    while (Date.now() - start < WARMUP_TIMEOUT) {
       try {
-        if (navigator.permissions) {
-          const result = await navigator.permissions.query({
-            name: "camera" as PermissionName,
-          });
-          setPermissionStatus(result.state as PermissionState);
-          result.addEventListener("change", () => {
-            setPermissionStatus(result.state as PermissionState);
-          });
-        } else {
-          setPermissionStatus("prompt");
+        const res = await fetch("/api/liveness/health");
+        if (res.ok) {
+          setWarmupStatus("ready");
+          return true;
         }
       } catch {
-        setPermissionStatus("prompt");
+        // ignore and retry
       }
+      await new Promise((r) => setTimeout(r, LIVENESS_PING_INTERVAL));
     }
-    checkPermission();
-  }, []);
+    setWarmupStatus("failed");
+    toast.error("Liveness service still warming up", {
+      description: "Models are downloading. Please wait 30-60s then retry.",
+    });
+    return false;
+  }, [warmupStatus]);
 
-  /**
-   * Capture a frame from the video stream.
-   *
-   * Note: Browser video elements apply display enhancements (brightness, contrast)
-   * that canvas.drawImage() doesn't receive. We apply brightness correction to
-   * compensate for the raw camera data being darker than what's displayed.
-   */
-  const captureFrame = useCallback((): string | null => {
-    if (!videoRef.current) return null;
-
-    const video = videoRef.current;
-
-    // Ensure video has valid dimensions (camera fully initialized)
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.warn("Video dimensions not ready");
-      return null;
-    }
-
-    // Check if video is actually playing and has data
-    if (video.readyState < 2) {
-      console.warn("Video not ready for capture, readyState:", video.readyState);
-      return null;
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return null;
-
-    ctx.drawImage(video, 0, 0);
-
-    // Analyze brightness of the captured frame
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    let totalBrightness = 0;
-    const sampleSize = Math.min(1000, data.length / 4);
-    const step = Math.floor(data.length / 4 / sampleSize);
-
-    for (let i = 0; i < sampleSize; i++) {
-      const idx = i * step * 4;
-      totalBrightness += (data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
-    }
-
-    const avgBrightness = totalBrightness / sampleSize;
-
-    // If average brightness is very low (< 20), the frame is too dark to use
-    if (avgBrightness < 20) {
-      console.warn("Frame too dark to recover, brightness:", avgBrightness);
-      return null;
-    }
-
-    // Apply brightness correction if the frame is underexposed
-    // Target brightness is around 100-120 for a well-lit face
-    if (avgBrightness < 80) {
-      // Calculate brightness multiplier (cap at 2.5x to avoid noise amplification)
-      const targetBrightness = 100;
-      const brightnessMultiplier = Math.min(2.5, targetBrightness / avgBrightness);
-
-      console.log(`Applying brightness correction: ${avgBrightness.toFixed(1)} -> ${(avgBrightness * brightnessMultiplier).toFixed(1)}`);
-
-      // Apply brightness correction to all pixels
-      for (let i = 0; i < data.length; i += 4) {
-        data[i] = Math.min(255, data[i] * brightnessMultiplier);     // R
-        data[i + 1] = Math.min(255, data[i + 1] * brightnessMultiplier); // G
-        data[i + 2] = Math.min(255, data[i + 2] * brightnessMultiplier); // B
-        // Alpha (data[i + 3]) stays unchanged
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-    }
-
-    return canvas.toDataURL("image/jpeg", 0.85);
-  }, []);
-
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setIsStreaming(false);
-    }
-  }, []);
-
-  const startCamera = useCallback(async () => {
+  const beginCamera = useCallback(async () => {
+    const ready = await warmupLiveness();
+    if (!ready) return;
     try {
-      setCameraError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        await videoRef.current.play();
-        setIsStreaming(true);
-        setPermissionStatus("granted");
-        // Automatically start detecting
-        setChallengeState("detecting");
-        setStatusMessage("Position your face in the frame");
-      }
+      await startCamera();
+      setChallengeState("detecting");
+      setStatusMessage("Position your face in the frame");
     } catch {
-      setPermissionStatus("denied");
-      const errorMsg = "Unable to access camera. Please check your browser settings and grant camera permission.";
-      setCameraError(errorMsg);
-      toast.error("Camera access denied", {
-        description: "Please check your browser settings and grant camera permission.",
-      });
+      const errorMsg = "Unable to access camera. Please check permissions and try again.";
+      toast.error("Camera access denied", { description: errorMsg });
     }
-  }, []);
+  }, [startCamera, warmupLiveness]);
+
 
   // Face detection check
   const checkForFace = useCallback(
@@ -236,6 +166,12 @@ export function StepSelfie() {
       isCheckingRef.current = true;
 
       try {
+        const now = performance.now();
+        if (now - lastLivenessCallRef.current < LIVENESS_THROTTLE_MS) {
+          return;
+        }
+        lastLivenessCallRef.current = now;
+
         const result = await checkLiveness(frame);
 
         if (result.isReal && result.faceCount === 1) {
@@ -517,6 +453,7 @@ export function StepSelfie() {
           ? `You've been confirmed as a real person. (${blinkCount} blink${blinkCount !== 1 ? "s" : ""} detected)`
           : "You've been confirmed as a real person.",
       });
+      trackLiveness("passed", { blinkCount });
     }
   }, [challengeState, blinkCount]);
 
@@ -525,6 +462,7 @@ export function StepSelfie() {
       toast.error("Verification failed", {
         description: challengeResult.message || "Please try again.",
       });
+      trackLiveness("failed", { message: challengeResult.message });
     }
   }, [challengeState, challengeResult]);
 
@@ -533,6 +471,7 @@ export function StepSelfie() {
       toast.error("Timeout", {
         description: timeoutMessage || "Please try again.",
       });
+      trackLiveness("timeout", { reason: timeoutMessage });
     }
   }, [challengeState, timeoutMessage]);
 
@@ -552,8 +491,8 @@ export function StepSelfie() {
     consecutiveDetectionsRef.current = 0;
     consecutiveSmilesRef.current = 0;
     updateData({ selfieImage: null, bestSelfieFrame: null, blinkCount: null });
-    startCamera();
-  }, [startCamera, updateData]);
+    beginCamera();
+  }, [beginCamera, updateData]);
 
   const handleSubmit = () => {
     stopCamera();
@@ -568,6 +507,15 @@ export function StepSelfie() {
           We&apos;ll automatically verify you&apos;re a real person. Just start
           the camera and follow the prompts.
         </p>
+        {warmupStatus !== "ready" && (
+          <p className="text-xs text-muted-foreground">
+            {warmupStatus === "warming"
+              ? "Warming up liveness models (first run may take up to a minute)."
+              : warmupStatus === "failed"
+                ? "Liveness models are still loading. Please wait a bit and retry."
+                : "We&apos;ll warm up liveness models when you start."}
+          </p>
+        )}
       </div>
 
       {/* Camera/Image display */}
@@ -588,7 +536,7 @@ export function StepSelfie() {
               autoPlay
               playsInline
               muted
-              className={`h-full w-full object-cover ${
+              className={`h-full w-full object-cover transform -scale-x-100 ${
                 isStreaming ? "" : "hidden"
               }`}
             />
@@ -757,9 +705,14 @@ export function StepSelfie() {
       {/* Action buttons */}
       <div className="flex gap-3">
         {challengeState === "idle" && !isStreaming && (
-          <Button type="button" onClick={startCamera} className="flex-1">
+          <Button
+            type="button"
+            onClick={beginCamera}
+            className="flex-1"
+            disabled={warmupStatus === "warming"}
+          >
             <Camera className="mr-2 h-4 w-4" />
-            Start Camera
+            {warmupStatus === "warming" ? "Warming up..." : "Start Camera"}
           </Button>
         )}
 

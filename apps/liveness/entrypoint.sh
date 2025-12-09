@@ -17,6 +17,14 @@ except:
     pass  # Expected to fail on dummy image, but models are loaded
 print('[Liveness] DeepFace models loaded')
 
+# Explicitly download key DeepFace backbones used later (avoids runtime downloads)
+for model_name in ['RetinaFace', 'ArcFace', 'Facenet512', 'Emotion']:
+    try:
+        print(f'[Liveness] Preloading model: {model_name}')
+        DeepFace.build_model(model_name)
+    except Exception as e:
+        print(f'[Liveness] Warning: could not preload {model_name}: {e}')
+
 # Warm up UniFace models (face detection + landmarks)
 print('[Liveness] Loading UniFace models...')
 from uniface import RetinaFace, Landmark106

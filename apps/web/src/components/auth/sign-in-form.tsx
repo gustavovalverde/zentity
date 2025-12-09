@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { makeFieldValidator } from "@/lib/validation";
 
 export function SignInForm() {
   const router = useRouter();
@@ -64,17 +65,12 @@ export function SignInForm() {
   };
 
   const validateField = (fieldName: "email" | "password", value: string) => {
-    const result = signInSchema.safeParse({
-      email: fieldName === "email" ? value : form.getFieldValue("email"),
-      password: fieldName === "password" ? value : form.getFieldValue("password"),
-    });
-    if (!result.success) {
-      const fieldError = result.error.issues.find((issue) =>
-        issue.path.includes(fieldName)
-      );
-      return fieldError?.message;
-    }
-    return undefined;
+    const validator = makeFieldValidator(signInSchema, fieldName, (val: string) => ({
+      email: fieldName === "email" ? val : form.getFieldValue("email"),
+      password: fieldName === "password" ? val : form.getFieldValue("password"),
+    }));
+
+    return validator(value);
   };
 
   return (

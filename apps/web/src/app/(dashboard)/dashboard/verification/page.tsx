@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Shield, Clock, Hash, CheckCircle, Key, Code } from "lucide-react";
+import { Shield, Clock, Hash, CheckCircle, Code } from "lucide-react";
 import { VerificationActions } from "@/components/dashboard/verification-actions";
 import Database from "better-sqlite3";
 

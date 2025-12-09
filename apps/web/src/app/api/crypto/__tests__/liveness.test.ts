@@ -5,6 +5,7 @@
  * that provide privacy-preserving liveness score operations.
  */
 
+/* eslint @typescript-eslint/no-explicit-any: off */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint @next/next/no-img-element: off */
+
 import { useState, useCallback, useEffect } from "react";
 import { useWizard } from "../wizard-provider";
 import { WizardNavigation } from "../wizard-navigation";
@@ -10,6 +12,8 @@ import { X, FileText, Upload, Loader2, CheckCircle2, AlertCircle, CreditCard } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ai";
+import { resizeImageFile } from "@/lib/image";
+import { trackDocResult, trackError } from "@/lib/analytics";
 
 type ProcessingState = "idle" | "converting" | "processing" | "verified" | "rejected";
 
@@ -29,47 +33,12 @@ export function StepIdUpload() {
   useEffect(() => {
     if (state.data.idDocument && state.data.idDocument.type.startsWith("image/")) {
       const url = URL.createObjectURL(state.data.idDocument);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
     return undefined;
   }, [state.data.idDocument]);
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      handleFile(file);
-    }
-  }, []);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
-    }
-  };
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
-  };
 
   const processDocument = async (base64: string): Promise<DocumentResult> => {
     const response = await fetch("/api/kyc/process-document", {
@@ -86,7 +55,7 @@ export function StepIdUpload() {
     return response.json();
   };
 
-  const handleFile = async (file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     setUploadError(null);
 
     const validTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -107,18 +76,23 @@ export function StepIdUpload() {
       return;
     }
 
-    setFileName(file.name);
-    updateData({ idDocument: file, documentResult: null });
-    setProcessingState("converting");
-
     try {
-      // Convert to base64
-      const base64 = await fileToBase64(file);
-      updateData({ idDocumentBase64: base64 });
+      // Resize + compress before upload to speed up AI processing
+      const { file: resizedFile, dataUrl } = await resizeImageFile(file, {
+        maxWidth: 1800,
+        maxHeight: 1800,
+        quality: 0.82,
+      });
+
+      setFileName(resizedFile.name);
+      updateData({ idDocument: resizedFile, documentResult: null });
+      setProcessingState("converting");
+
+      updateData({ idDocumentBase64: dataUrl });
       setProcessingState("processing");
 
       // Process with AI
-      const result = await processDocument(base64);
+      const result = await processDocument(dataUrl);
       updateData({ documentResult: result });
 
       // Check if document is valid (recognized type with extracted data)
@@ -131,6 +105,7 @@ export function StepIdUpload() {
         toast.success("Document verified!", {
           description: `${DOCUMENT_TYPE_LABELS[result.documentType]} detected successfully.`,
         });
+        trackDocResult("verified", { type: result.documentType, confidence: result.confidence });
         // Store extracted data in wizard state for later use
         if (result.extractedData) {
           updateData({
@@ -148,6 +123,7 @@ export function StepIdUpload() {
             ? "Unable to identify document type. Please try a different document."
             : "Could not extract required information. Please ensure the document is clear and visible.",
         });
+        trackDocResult("rejected", { type: result.documentType, issues: result.validationIssues });
       }
     } catch (error) {
       console.error("Document processing error:", error);
@@ -157,6 +133,34 @@ export function StepIdUpload() {
         description: errorMsg,
       });
       setProcessingState("idle");
+      trackError("document_upload", String(errorMsg));
+    }
+  }, [updateData]);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      void handleFile(file);
+    }
+  }, [handleFile]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      void handleFile(e.target.files[0]);
     }
   };
 
@@ -188,7 +192,7 @@ export function StepIdUpload() {
       <div className="space-y-2">
         <h3 className="text-lg font-medium">Upload ID Document</h3>
         <p className="text-sm text-muted-foreground">
-          Upload a government-issued ID document for verification. We accept passports, national ID cards, and driver's licenses.
+          Upload a government-issued ID document for verification. We accept passports, national ID cards, and driver&apos;s licenses.
         </p>
       </div>
 

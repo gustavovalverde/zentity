@@ -3,6 +3,7 @@
 import { useWizard } from "./wizard-provider";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { motion } from "@/lib/motion";
 import { Check } from "lucide-react";
 
 const STEP_TITLES = [
@@ -18,17 +19,17 @@ export function WizardStepper() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium animate-in fade-in duration-300">
+        <span className={cn("font-medium", motion.fadeIn)}>
           Step {state.currentStep} of {totalSteps}
         </span>
         <span
           key={state.currentStep}
-          className="text-muted-foreground animate-in slide-in-from-right-2 fade-in duration-300"
+          className={cn("text-muted-foreground", motion.slideUp)}
         >
           {STEP_TITLES[state.currentStep - 1]}
         </span>
       </div>
-      <Progress value={progress} className="h-2 transition-all duration-500" />
+      <Progress value={progress} className={cn("h-2", motion.progress)} />
 
       {/* Visual step indicators */}
       <div className="flex justify-between items-center">

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint @next/next/no-img-element: off */
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "@tanstack/react-form";
@@ -24,6 +26,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { makeFieldValidator } from "@/lib/validation";
+import { trackFaceMatch } from "@/lib/analytics";
 
 type ProofStatus =
   | "idle"
@@ -114,34 +118,16 @@ export function StepReviewComplete() {
   });
 
   // Validate password field
-  const validatePassword = (value: string) => {
-    const result = passwordSchema.safeParse({
-      password: value,
-      confirmPassword: form.getFieldValue("confirmPassword"),
-    });
-    if (!result.success) {
-      const fieldError = result.error.issues.find((issue) =>
-        issue.path.includes("password") && !issue.path.includes("confirmPassword")
-      );
-      return fieldError?.message;
-    }
-    return undefined;
-  };
+  const validatePassword = makeFieldValidator(passwordSchema, "password", (value: string) => ({
+    password: value,
+    confirmPassword: form.getFieldValue("confirmPassword"),
+  }));
 
   // Validate confirm password field (includes cross-field validation)
-  const validateConfirmPassword = (value: string) => {
-    const result = passwordSchema.safeParse({
-      password: form.getFieldValue("password"),
-      confirmPassword: value,
-    });
-    if (!result.success) {
-      const fieldError = result.error.issues.find((issue) =>
-        issue.path.includes("confirmPassword")
-      );
-      return fieldError?.message;
-    }
-    return undefined;
-  };
+  const validateConfirmPassword = makeFieldValidator(passwordSchema, "confirmPassword", (value: string) => ({
+    password: form.getFieldValue("password"),
+    confirmPassword: value,
+  }));
 
   const calculateAge = (dob: string | null): number | null => {
     if (!dob) return null;
@@ -178,10 +164,13 @@ export function StepReviewComplete() {
 
         if (result.error) {
           setFaceMatchStatus("error");
+          trackFaceMatch("error", { error: result.error });
         } else if (result.matched) {
           setFaceMatchStatus("matched");
+          trackFaceMatch("matched", { confidence: result.confidence });
         } else {
           setFaceMatchStatus("no_match");
+          trackFaceMatch("no_match", { confidence: result.confidence });
         }
       } catch (err) {
         console.error("Face match error:", err);
@@ -195,6 +184,7 @@ export function StepReviewComplete() {
           idFaceExtracted: false,
           error: err instanceof Error ? err.message : "Unknown error",
         });
+        trackFaceMatch("error", { error: err instanceof Error ? err.message : "Unknown error" });
       }
     };
 
@@ -252,6 +242,7 @@ export function StepReviewComplete() {
         } catch (zkError) {
           // ZK service is unavailable - we CANNOT proceed
           // Creating account without proof would lose the DOB forever
+          console.error("Age proof generation failed", zkError);
           setError(
             "Privacy verification services are temporarily unavailable. " +
             "Your information has not been stored. Please try again in a few minutes."
@@ -795,6 +786,33 @@ export function StepReviewComplete() {
             </ul>
           </AlertDescription>
         </Alert>
+      )}
+
+      {proofStatus === "idle" && (
+        <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium">What we keep</p>
+            <ul className="mt-2 list-inside list-disc text-sm text-muted-foreground space-y-1">
+              <li>Encrypted birth year (FHE) and a ZK proof you are 18+</li>
+              <li>Document hash/commitment (no raw image)</li>
+              <li>Face-match proof outcome (boolean + confidence)</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-sm font-medium">What we delete</p>
+            <ul className="mt-2 list-inside list-disc text-sm text-muted-foreground space-y-1">
+              <li>Raw document image after commitments are derived</li>
+              <li>Selfie frames after liveness + face match checks</li>
+              <li>Intermediate model outputs and embeddings</li>
+            </ul>
+          </div>
+          <div>
+            <p className="text-sm font-medium">Why</p>
+            <p className="text-sm text-muted-foreground">
+              You keep control of PII; we keep only the cryptographic evidence required to prove you&apos;re over 18 and matched to your document.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

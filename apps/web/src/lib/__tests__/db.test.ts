@@ -4,7 +4,30 @@
  * Note: These tests mock better-sqlite3 to avoid actual database operations.
  * The setup file provides the mock implementation.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// Mock better-sqlite3 so db.ts can be imported without a real database
+vi.mock('better-sqlite3', () => {
+  const mockStmt = {
+    get: vi.fn(() => undefined),
+    run: vi.fn(),
+    all: vi.fn(() => []),
+  };
+
+  const mockDb = {
+    prepare: vi.fn(() => mockStmt),
+    exec: vi.fn(),
+  };
+
+  const DatabaseMock = vi.fn(function DatabaseMock() {
+    return mockDb;
+  });
+
+  return {
+    __esModule: true,
+    default: DatabaseMock,
+  };
+});
 
 // We need to import after mocking in setup file
 describe('Database Module', () => {

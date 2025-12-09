@@ -29,7 +29,6 @@ import { getIdentityProofByUserId, getVerificationStatus } from "@/lib/db";
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
 const LIVENESS_SERVICE_URL =
   process.env.LIVENESS_SERVICE_URL || "http://localhost:5003";
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
 
 interface DisclosureRequest {
   // RP identification

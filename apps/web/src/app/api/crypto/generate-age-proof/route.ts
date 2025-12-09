@@ -11,9 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { getIdentityProofByUserId, updateIdentityProofFlags } from "@/lib/db";
-
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import { getIdentityProofByUserId } from "@/lib/db";
 
 interface GenerateAgeProofRequest {
   minAge: number;
@@ -138,7 +136,7 @@ export async function POST(
 /**
  * GET - Retrieve cached age proofs for the authenticated user
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     // Authenticate user
     const session = await auth.api.getSession({
@@ -163,7 +161,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // Parse and return available age proofs
-    let availableProofs: Record<string, boolean> = {};
+    const availableProofs: Record<string, boolean> = {};
     if (identityProof.ageProofsJson) {
       try {
         const proofs = JSON.parse(identityProof.ageProofsJson);

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useReducer, useEffect, useRef, useState, ReactNode } from "react";
 import { WizardData, defaultWizardData } from "@/features/auth/schemas/sign-up.schema";
+import { trackStep } from "@/lib/analytics";
 
 const TOTAL_STEPS = 4;
 const STORAGE_KEY = "zentity-signup-wizard";
@@ -100,6 +101,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       console.warn("Failed to load wizard state:", error);
     }
     isInitializedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsHydrated(true);
   }, [isHydrated]);
 
@@ -143,6 +145,12 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     isLastStep: state.currentStep === TOTAL_STEPS,
     progress: (state.currentStep / TOTAL_STEPS) * 100,
   };
+
+  // Track step changes after hydration to avoid server/client mismatch
+  useEffect(() => {
+    if (!isHydrated) return;
+    trackStep(state.currentStep);
+  }, [isHydrated, state.currentStep]);
 
   // Show loading state until hydrated to prevent hydration mismatch
   // Server renders this, client also renders this initially, then switches to actual content

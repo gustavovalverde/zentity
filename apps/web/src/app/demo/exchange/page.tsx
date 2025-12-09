@@ -369,14 +369,14 @@ export default function ExchangeSimulatorPage() {
               <div>
                 <h3 className="font-medium text-blue-400 mb-2">Zentity Stores:</h3>
                 <div className="bg-gray-700 rounded p-3 text-sm space-y-1">
-                  <p className="text-green-400">SHA256(name + salt) <span className="text-gray-500">// commitment</span></p>
-                  <p className="text-green-400">SHA256(doc_number + salt) <span className="text-gray-500">// commitment</span></p>
-                  <p className="text-green-400">FHE(birth_year) <span className="text-gray-500">// encrypted</span></p>
-                  <p className="text-green-400">user_salt <span className="text-gray-500">// for GDPR erasure</span></p>
-                  <p className="text-green-400">verification_status <span className="text-gray-500">// boolean flags</span></p>
-                  <p className="text-red-400 line-through">Document image <span className="text-gray-500">// NEVER stored</span></p>
-                  <p className="text-red-400 line-through">Face embeddings <span className="text-gray-500">// NEVER stored</span></p>
-                  <p className="text-red-400 line-through">Actual name/DOB <span className="text-gray-500">// NEVER stored</span></p>
+                  <p className="text-green-400">SHA256(name + salt) <span className="text-gray-500">commitment</span></p>
+                  <p className="text-green-400">SHA256(doc_number + salt) <span className="text-gray-500">commitment</span></p>
+                  <p className="text-green-400">FHE(birth_year) <span className="text-gray-500">encrypted</span></p>
+                  <p className="text-green-400">user_salt <span className="text-gray-500">used for GDPR erasure</span></p>
+                  <p className="text-green-400">verification_status <span className="text-gray-500">boolean flags</span></p>
+                  <p className="text-red-400 line-through">Document image <span className="text-gray-500">never stored</span></p>
+                  <p className="text-red-400 line-through">Face embeddings <span className="text-gray-500">never stored</span></p>
+                  <p className="text-red-400 line-through">Actual name/DOB <span className="text-gray-500">never stored</span></p>
                 </div>
               </div>
 
@@ -384,14 +384,14 @@ export default function ExchangeSimulatorPage() {
               <div>
                 <h3 className="font-medium text-purple-400 mb-2">Exchange Receives & Stores:</h3>
                 <div className="bg-gray-700 rounded p-3 text-sm space-y-1">
-                  <p className="text-yellow-400">Full Name <span className="text-gray-500">// regulatory requirement</span></p>
-                  <p className="text-yellow-400">Date of Birth <span className="text-gray-500">// regulatory requirement</span></p>
-                  <p className="text-yellow-400">Nationality <span className="text-gray-500">// regulatory requirement</span></p>
-                  <p className="text-yellow-400">Document Number <span className="text-gray-500">// some jurisdictions</span></p>
-                  <p className="text-green-400">ZK Proofs <span className="text-gray-500">// cryptographic verification</span></p>
-                  <p className="text-green-400">Liveness Attestation <span className="text-gray-500">// signed statement</span></p>
-                  <p className="text-red-400 line-through">Biometrics <span className="text-gray-500">// NEVER disclosed</span></p>
-                  <p className="text-red-400 line-through">Face embeddings <span className="text-gray-500">// NEVER disclosed</span></p>
+                  <p className="text-yellow-400">Full Name <span className="text-gray-500">regulatory requirement</span></p>
+                  <p className="text-yellow-400">Date of Birth <span className="text-gray-500">regulatory requirement</span></p>
+                  <p className="text-yellow-400">Nationality <span className="text-gray-500">regulatory requirement</span></p>
+                  <p className="text-yellow-400">Document Number <span className="text-gray-500">required in some jurisdictions</span></p>
+                  <p className="text-green-400">ZK Proofs <span className="text-gray-500">cryptographic verification</span></p>
+                  <p className="text-green-400">Liveness Attestation <span className="text-gray-500">signed statement</span></p>
+                  <p className="text-red-400 line-through">Biometrics <span className="text-gray-500">never disclosed</span></p>
+                  <p className="text-red-400 line-through">Face embeddings <span className="text-gray-500">never disclosed</span></p>
                 </div>
               </div>
 

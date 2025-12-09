@@ -11,6 +11,7 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { Input } from "@/components/ui/input";
+import { makeFieldValidator } from "@/lib/validation";
 
 /**
  * Step 1: Email Only
@@ -20,6 +21,7 @@ import { Input } from "@/components/ui/input";
  */
 export function StepEmail() {
   const { state, updateData, nextStep } = useWizard();
+  const validateEmail = makeFieldValidator(emailSchema, "email", (value: string) => ({ email: value }));
 
   const form = useForm({
     defaultValues: {
@@ -49,20 +51,8 @@ export function StepEmail() {
       <form.Field
         name="email"
         validators={{
-          onBlur: ({ value }) => {
-            const result = emailSchema.safeParse({ email: value });
-            if (!result.success) {
-              return result.error.issues[0]?.message || "Invalid email";
-            }
-            return undefined;
-          },
-          onSubmit: ({ value }) => {
-            const result = emailSchema.safeParse({ email: value });
-            if (!result.success) {
-              return result.error.issues[0]?.message || "Invalid email";
-            }
-            return undefined;
-          },
+          onBlur: ({ value }) => validateEmail(value),
+          onSubmit: ({ value }) => validateEmail(value),
         }}
       >
         {(field) => (
@@ -90,7 +80,7 @@ export function StepEmail() {
       </form.Field>
 
       <p className="text-xs text-muted-foreground">
-        We'll use this email to contact you if needed and for account recovery.
+        We&apos;ll use this email to contact you if needed and for account recovery.
       </p>
 
       <WizardNavigation />
