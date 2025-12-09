@@ -92,23 +92,6 @@ Compare faces between ID document and selfie.
 }
 ```
 
-#### `POST /face-match-proof`
-Face matching with ZK proof generation.
-
-**Response:**
-```json
-{
-  "matched": true,
-  "confidence": 0.73,
-  "proof": { /* Groth16 proof */ },
-  "publicSignals": ["60", "1"],
-  "proofIsMatch": true,
-  "proofThreshold": 0.6,
-  "proofGenerationTimeMs": 120,
-  "solidityCalldata": "0x..."
-}
-```
-
 ### Interactive Liveness
 
 #### `POST /challenge/validate`
@@ -129,9 +112,6 @@ Single-frame smile detection.
 
 #### `POST /blink-check`
 Eye blink detection using EAR (Eye Aspect Ratio).
-
-#### `POST /passive-monitor`
-Analyze multiple frames for passive liveness indicators.
 
 ### Head Pose Detection
 

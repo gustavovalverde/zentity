@@ -139,16 +139,16 @@ This document tracks the implementation of features to close gaps between Zentit
   - [x] Add `/challenge/validate-multi` endpoint
   - [x] Add frontend API client functions to `/apps/web/src/lib/face-detection.ts`
 
-- [ ] **Days 4-5:** Frontend Updates - **PENDING**
-  - [ ] Update `/apps/web/src/components/onboarding/steps/step-selfie.tsx`
-  - [ ] Add challenge progress indicator
-  - [ ] Update state machine for multi-challenge flow
-  - [ ] Add challenge-specific UI overlays (head turn arrows, etc.)
+- [x] **Days 4-5:** Frontend Updates ✅ COMPLETE
+  - [x] Update `/apps/web/src/components/onboarding/steps/step-selfie.tsx`
+  - [x] Add challenge progress indicator
+  - [x] Update state machine for multi-challenge flow
+  - [x] Add challenge-specific UI overlays (head turn arrows, etc.)
 
-- [ ] **Days 6-7:** Integration & Testing - **PENDING**
-  - [ ] End-to-end flow testing
-  - [ ] Edge case handling (camera loss, timeout)
-  - [ ] Performance optimization
+- [x] **Days 6-7:** Integration & Testing ✅ COMPLETE
+  - [x] End-to-end flow testing
+  - [x] Edge case handling (camera loss, timeout)
+  - [x] Performance optimization
 
 **Files:**
 - `/apps/liveness/app/head_pose.py` (new)
@@ -214,25 +214,27 @@ Compute cosine similarity of 512D vectors inside a ZK circuit.
 
 ---
 
-### Phase 5: Documentation Updates (1-2 days)
+### Phase 5: Documentation Updates ✅ COMPLETE
 
 #### Tasks
-- [ ] Update `/README.md` with accurate feature status
-- [ ] Update `/docs/MVP.md` if needed
-- [ ] Update `/docs/executive-summary.md` if needed
-- [ ] Add feature status legend
-- [ ] Add roadmap section
+- [x] Update `/README.md` with accurate feature status
+- [x] Update `/apps/liveness/README.md` with new endpoints
+- [x] Update `/docs/implementation-roadmap.md` with completion status
+- [x] Update `/docs/liveness-architecture.md` with status markers
+- [x] Add feature status legend to ZK Proof Circuits table
 
-**Feature Status Updates:**
-| Feature | Current Claim | Correct Status |
-|---------|---------------|----------------|
-| Age verification | Available | Done |
-| Face matching | ZK proofs | Implementing (Phase 4) |
-| Nationality groups | ZK membership | Implementing (Phase 2) |
-| Multi-gesture liveness | Multiple gestures | Implementing (Phase 3) |
-| AML/Sanctions | Available | Future Roadmap |
-| Accredited Investor | Available | Future Roadmap |
-| Source of Funds | Available | Future Roadmap |
+**Feature Status (Updated):**
+| Feature | Status |
+|---------|--------|
+| Age verification (ZK) | ✅ Done |
+| Document validity (ZK) | ✅ Done |
+| Nationality groups (ZK) | ✅ Done |
+| Multi-gesture liveness | ✅ Done |
+| Face matching | ✅ Done (no ZK proof) |
+| ZK Face Match proofs | 📋 Phase 4 |
+| AML/Sanctions | ❌ Future Roadmap |
+| Accredited Investor | ❌ Future Roadmap |
+| Source of Funds | ❌ Future Roadmap |
 
 ---
 
@@ -292,16 +294,16 @@ The following features are documented but intentionally deferred:
 |-------|--------|----------|
 | Phase 1: Quick Wins | ✅ Complete | 100% |
 | Phase 2: Nationality ZK | ✅ Complete | 100% |
-| Phase 3: Multi-Gesture | 🚧 In Progress | 60% |
-| Phase 4: ZK Face Match | Not Started | 0% |
-| Phase 5: Documentation | Not Started | 0% |
+| Phase 3: Multi-Gesture | ✅ Complete | 100% |
+| Phase 4: ZK Face Match | 📋 Not Started | 0% |
+| Phase 5: Documentation | ✅ Complete | 100% |
 
-### Phase 3 Progress
+### Phase 3 Complete
 - ✅ Head pose detection module (`head_pose.py`)
 - ✅ Challenge engine module (`challenge_engine.py`)
 - ✅ Backend API endpoints (head-pose, head-turn-check, challenge/session, challenge/complete, challenge/validate-multi)
 - ✅ Frontend API client functions (`face-detection.ts`)
-- ⏳ Frontend UI updates (step-selfie.tsx) - requires state machine refactor
+- ✅ Frontend UI integration with multi-challenge flow
 
 ### Phase 2 Completed
 - ✅ circomlib/circomlibjs dependencies installed
@@ -331,23 +333,23 @@ The following features are documented but intentionally deferred:
 
 | Category | Documented | Implemented | Gap |
 |----------|------------|-------------|-----|
-| Document OCR | Full | Full | None |
-| Privacy Commitments | Name, Doc#, Nationality | Name, Doc#, Nationality | None |
-| FHE Encryption | DOB, Gender, Liveness, Income, Address | DOB, Gender | Medium |
-| ZK Age Proofs | 18, 21, 25 | 18, 21, 25 | None |
-| ZK Document Validity | Expiry check | Expiry check | None |
-| ZK Nationality Group | Merkle membership | Code exists, not integrated | Low |
-| ZK Face Match | Groth16 proof | Not implemented | High |
-| Liveness - Smile | Smile challenge | Smile challenge | None |
-| Liveness - Blink | Blink detection | Scaffolded only | Low |
-| Liveness - Head Turn | Head turn challenge | Not implemented | Medium |
-| AML Screening | Full compliance | Nothing | Critical (deferred) |
-| Sanctions Checking | OFAC, UN, PEP | Nothing | Critical (deferred) |
-| Financial Data | Income, SOF, Credit | Nothing | Critical (deferred) |
+| Document OCR | Full | Full | ✅ None |
+| Privacy Commitments | Name, Doc#, Nationality | Name, Doc#, Nationality | ✅ None |
+| FHE Encryption | DOB, Gender, Liveness | DOB, Gender, Liveness | ✅ None |
+| ZK Age Proofs | 18, 21, 25 | 18, 21, 25 | ✅ None |
+| ZK Document Validity | Expiry check | Expiry check | ✅ None |
+| ZK Nationality Group | Merkle membership | Full (EU, SCHENGEN, LATAM, FIVE_EYES) | ✅ None |
+| ZK Face Match | Groth16 proof | Not implemented | 📋 Phase 4 |
+| Liveness - Smile | Smile challenge | Smile challenge | ✅ None |
+| Liveness - Blink | Blink detection | Full (EAR algorithm) | ✅ None |
+| Liveness - Head Turn | Head turn challenge | Full (left/right) | ✅ None |
+| AML Screening | Full compliance | Not implemented | ❌ Future |
+| Sanctions Checking | OFAC, UN, PEP | Not implemented | ❌ Future |
+| Financial Data | Income, SOF, Credit | Not implemented | ❌ Future |
 
-### Key Discoveries
+### Key Takeaways
 
-1. **Blink detection already exists** in `/apps/liveness/app/blink_detection.py` - just needs UI integration
-2. **Nationality ZK circuit already exists** in `/apps/zk/circuits/nationality_membership.circom` - needs compilation + integration
-3. **ZK Face Match requires new circuit** with 512D embedding quantization (research-level complexity)
-4. **AML/Sanctions completely missing** - deferred to future roadmap
+1. **Core KYC features fully implemented** - Age verification, document validity, nationality groups, multi-gesture liveness
+2. **ZK Face Match is the main gap** - Requires new circuit with 512D embedding quantization (Phase 4)
+3. **AML/Sanctions deferred** - Not in current scope, marked as future roadmap
+4. **Documentation now accurate** - No longer over-promises unimplemented features
