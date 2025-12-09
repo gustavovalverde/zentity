@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   return (
@@ -30,9 +30,9 @@ export default function Home() {
             Identity Verification
           </h1>
           <p className="mt-6 text-lg leading-8 text-muted-foreground">
-            Prove who you are without revealing your personal data.
-            Zentity uses zero-knowledge proofs and homomorphic encryption
-            to verify your identity while keeping your information private.
+            Prove who you are without revealing your personal data. Zentity uses
+            zero-knowledge proofs and homomorphic encryption to verify your
+            identity while keeping your information private.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link href="/sign-up">
@@ -57,7 +57,8 @@ export default function Home() {
               </div>
               <h3 className="text-lg font-semibold">Enter Your Details</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Provide your date of birth. Your data is encrypted immediately on your device.
+                Provide your date of birth. Your data is encrypted immediately
+                on your device.
               </p>
             </div>
             <div className="rounded-lg border border-border p-6">
@@ -66,7 +67,8 @@ export default function Home() {
               </div>
               <h3 className="text-lg font-semibold">Generate Proof</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                We create a cryptographic proof that you meet the requirements without revealing your actual data.
+                We create a cryptographic proof that you meet the requirements
+                without revealing your actual data.
               </p>
             </div>
             <div className="rounded-lg border border-border p-6">
@@ -75,7 +77,8 @@ export default function Home() {
               </div>
               <h3 className="text-lg font-semibold">Verify Instantly</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Services can verify your proof without ever seeing your personal information.
+                Services can verify your proof without ever seeing your personal
+                information.
               </p>
             </div>
           </div>
@@ -84,7 +87,8 @@ export default function Home() {
 
       <footer className="mt-auto border-t border-border py-8">
         <div className="mx-auto max-w-6xl px-4 text-center text-sm text-muted-foreground">
-          Your data is encrypted end-to-end. We never see or store your personal information in plain text.
+          Your data is encrypted end-to-end. We never see or store your personal
+          information in plain text.
         </div>
       </footer>
     </div>

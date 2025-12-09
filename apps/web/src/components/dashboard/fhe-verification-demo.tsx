@@ -1,18 +1,34 @@
 "use client";
 
+import {
+  Calculator,
+  CheckCircle,
+  Clock,
+  Loader2,
+  Lock,
+  XCircle,
+} from "lucide-react";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, XCircle, Lock, Clock, Calculator } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 interface FheVerificationDemoProps {
   dobCiphertext?: string;
   fheClientKeyId?: string;
 }
 
-export function FheVerificationDemo({ dobCiphertext, fheClientKeyId }: FheVerificationDemoProps) {
+export function FheVerificationDemo({
+  dobCiphertext,
+  fheClientKeyId,
+}: FheVerificationDemoProps) {
   const [computing, setComputing] = useState(false);
   const [result, setResult] = useState<{
     isOver18: boolean;
@@ -58,7 +74,7 @@ export function FheVerificationDemo({ dobCiphertext, fheClientKeyId }: FheVerifi
 
   const truncateCiphertext = (ct: string) => {
     if (ct.length <= 60) return ct;
-    return ct.substring(0, 30) + "..." + ct.substring(ct.length - 30);
+    return `${ct.substring(0, 30)}...${ct.substring(ct.length - 30)}`;
   };
 
   return (
@@ -77,21 +93,26 @@ export function FheVerificationDemo({ dobCiphertext, fheClientKeyId }: FheVerifi
           <Alert>
             <Lock className="h-4 w-4" />
             <AlertDescription>
-              No encrypted DOB available. Complete identity verification to encrypt your birth year.
+              No encrypted DOB available. Complete identity verification to
+              encrypt your birth year.
             </AlertDescription>
           </Alert>
         ) : (
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Encrypted Birth Year</span>
+                <span className="text-sm font-medium">
+                  Encrypted Birth Year
+                </span>
                 <Badge variant="secondary">
                   <Lock className="h-3 w-3 mr-1" />
                   FHE Encrypted
                 </Badge>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
-                <code className="break-all">{truncateCiphertext(dobCiphertext)}</code>
+                <code className="break-all">
+                  {truncateCiphertext(dobCiphertext)}
+                </code>
               </div>
             </div>
 
@@ -152,9 +173,10 @@ export function FheVerificationDemo({ dobCiphertext, fheClientKeyId }: FheVerifi
             <Alert>
               <Lock className="h-4 w-4" />
               <AlertDescription className="text-xs">
-                <strong>Fully Homomorphic Encryption:</strong> The server computed
-                {" "}(current_year - birth_year {"≥"} 18) on encrypted data without
-                ever decrypting it. The actual birth year remains secret.
+                <strong>Fully Homomorphic Encryption:</strong> The server
+                computed (current_year - birth_year {"≥"} 18) on encrypted data
+                without ever decrypting it. The actual birth year remains
+                secret.
               </AlertDescription>
             </Alert>
           </>

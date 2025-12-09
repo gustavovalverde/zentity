@@ -13,11 +13,11 @@
  * NO PII IS REVEALED IN THIS PROCESS.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import crypto from "node:crypto";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { getIdentityProofByUserId } from "@/lib/db";
-import crypto from "crypto";
 
 interface VerifyNameRequest {
   // The name to verify (claimed by relying party)
@@ -56,7 +56,7 @@ function generateNameCommitment(fullName: string, userSalt: string): string {
 }
 
 export async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<VerifyNameResponse | { error: string }>> {
   try {
     const session = await auth.api.getSession({
@@ -72,7 +72,7 @@ export async function POST(
     if (!body.claimedName || body.claimedName.trim().length === 0) {
       return NextResponse.json(
         { error: "Claimed name is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -82,28 +82,27 @@ export async function POST(
     if (!proof) {
       return NextResponse.json(
         { error: "User has not completed identity verification" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // Generate commitment for claimed name
     const claimedCommitment = generateNameCommitment(
       body.claimedName,
-      proof.userSalt
+      proof.userSalt,
     );
 
     // Compare with stored commitment using timing-safe comparison
     const matches = crypto.timingSafeEqual(
       Buffer.from(claimedCommitment),
-      Buffer.from(proof.nameCommitment)
+      Buffer.from(proof.nameCommitment),
     );
 
     return NextResponse.json({ matches });
-  } catch (error) {
-    console.error("Name verification error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to verify name" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

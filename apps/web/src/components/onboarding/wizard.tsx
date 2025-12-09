@@ -1,13 +1,13 @@
 "use client";
 
-import { useWizard } from "./wizard-provider";
-import { WizardStepper } from "./wizard-stepper";
 import {
   StepEmail,
   StepIdUpload,
-  StepSelfie,
   StepReviewComplete,
+  StepSelfie,
 } from "./steps";
+import { useWizard } from "./wizard-provider";
+import { WizardStepper } from "./wizard-stepper";
 
 /**
  * New 4-step wizard flow:
@@ -17,9 +17,9 @@ import {
  * 4. Review & Complete - review extracted data, set password, create account
  */
 const STEPS = [
-  StepEmail,         // Step 1: Just email
-  StepIdUpload,      // Step 2: Upload + extract data
-  StepSelfie,        // Step 3: Liveness verification
+  StepEmail, // Step 1: Just email
+  StepIdUpload, // Step 2: Upload + extract data
+  StepSelfie, // Step 3: Liveness verification
   StepReviewComplete, // Step 4: Review + password + create account
 ];
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Hook that delays showing loading indicators to prevent flicker.
@@ -33,7 +33,7 @@ export function useDelayedVisibility(
   options: {
     showDelay?: number;
     minShowTime?: number;
-  } = {}
+  } = {},
 ): boolean {
   const { showDelay = 200, minShowTime = 300 } = options;
 

@@ -49,7 +49,7 @@ export async function isLivenessServiceAvailable(): Promise<boolean> {
  * @returns Liveness check result
  */
 export async function checkLiveness(
-  imageBase64: string
+  imageBase64: string,
 ): Promise<LivenessResult> {
   try {
     const response = await fetch("/api/liveness", {
@@ -113,15 +113,12 @@ export async function checkLiveness(
  * @returns Validation result with issues list
  */
 export async function validateSelfie(
-  imageBase64: string
+  imageBase64: string,
 ): Promise<SelfieValidationResult> {
   // Check if service is available
   const serviceAvailable = await isLivenessServiceAvailable();
 
   if (!serviceAvailable) {
-    // Fallback: Skip liveness check if service unavailable
-    // In production, you may want to fail instead
-    console.warn("Liveness service unavailable, skipping validation");
     return {
       isValid: true, // Allow through with warning
       issues: [],
@@ -156,8 +153,7 @@ export function getIssueDescription(issue: string): string {
     face_too_small: "Face is too small. Please move closer to the camera.",
     face_obscured:
       "Your face appears to be covered. Please remove any obstructions.",
-    low_face_confidence:
-      "Face not clearly visible. Please improve lighting.",
+    low_face_confidence: "Face not clearly visible. Please improve lighting.",
     processing_error: "An error occurred during processing. Please try again.",
     service_error: "Liveness service unavailable. Please try again later.",
     network_error: "Network error. Please check your connection and try again.",
@@ -200,7 +196,7 @@ export interface ChallengeResult {
 export async function validateLivenessChallenge(
   baselineImage: string,
   challengeImage: string,
-  challengeType: string = "smile"
+  challengeType: string = "smile",
 ): Promise<ChallengeResult> {
   try {
     const response = await fetch("/api/liveness/challenge/validate", {
@@ -337,7 +333,7 @@ export async function detectFaces(imageBase64: string): Promise<{
         (f: { bounding_box: BoundingBox; confidence: number }) => ({
           boundingBox: f.bounding_box,
           confidence: f.confidence,
-        })
+        }),
       ),
       processingTimeMs: result.processing_time_ms ?? 0,
       error: result.error,
@@ -376,7 +372,7 @@ export interface BlinkCheckResult {
  */
 export async function checkBlink(
   imageBase64: string,
-  resetSession: boolean = false
+  resetSession: boolean = false,
 ): Promise<BlinkCheckResult> {
   try {
     const response = await fetch("/api/liveness/blink-check", {
@@ -443,7 +439,7 @@ export interface PassiveMonitorResult {
  * @returns Passive monitoring analysis result
  */
 export async function analyzePassiveMonitor(
-  frames: string[]
+  frames: string[],
 ): Promise<PassiveMonitorResult> {
   try {
     const response = await fetch("/api/liveness/passive-monitor", {
@@ -498,7 +494,7 @@ export interface FaceMatchResult {
   threshold: number;
   processingTimeMs: number;
   idFaceExtracted: boolean;
-  idFaceImage?: string;  // Cropped face from ID for UI display
+  idFaceImage?: string; // Cropped face from ID for UI display
   error?: string;
 }
 
@@ -515,7 +511,7 @@ export interface FaceMatchResult {
 export async function matchFaces(
   idImage: string,
   selfieImage: string,
-  minConfidence: number = 0.6
+  minConfidence: number = 0.6,
 ): Promise<FaceMatchResult> {
   try {
     const response = await fetch("/api/liveness/face-match", {

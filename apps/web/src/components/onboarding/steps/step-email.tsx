@@ -1,17 +1,17 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { useWizard } from "../wizard-provider";
-import { WizardNavigation } from "../wizard-navigation";
-import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
+import { Input } from "@/components/ui/input";
 import {
   Field,
   FieldControl,
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
-import { Input } from "@/components/ui/input";
+import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
 import { makeFieldValidator } from "@/lib/validation";
+import { WizardNavigation } from "../wizard-navigation";
+import { useWizard } from "../wizard-provider";
 
 /**
  * Step 1: Email Only
@@ -21,7 +21,11 @@ import { makeFieldValidator } from "@/lib/validation";
  */
 export function StepEmail() {
   const { state, updateData, nextStep } = useWizard();
-  const validateEmail = makeFieldValidator(emailSchema, "email", (value: string) => ({ email: value }));
+  const validateEmail = makeFieldValidator(
+    emailSchema,
+    "email",
+    (value: string) => ({ email: value }),
+  );
 
   const form = useForm({
     defaultValues: {
@@ -80,7 +84,8 @@ export function StepEmail() {
       </form.Field>
 
       <p className="text-xs text-muted-foreground">
-        We&apos;ll use this email to contact you if needed and for account recovery.
+        We&apos;ll use this email to contact you if needed and for account
+        recovery.
       </p>
 
       <WizardNavigation />

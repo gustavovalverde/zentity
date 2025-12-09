@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
 
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     if (!proof || !publicSignals) {
       return NextResponse.json(
         { error: "proof and publicSignals are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -24,17 +24,16 @@ export async function POST(request: NextRequest) {
       const errorData = await response.json().catch(() => ({}));
       return NextResponse.json(
         { error: errorData.error || "ZK service error" },
-        { status: response.status }
+        { status: response.status },
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error("Verify proof error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to connect to ZK service" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 }

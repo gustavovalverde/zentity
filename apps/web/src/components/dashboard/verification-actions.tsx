@@ -1,12 +1,23 @@
 "use client";
 
+import {
+  CheckCircle,
+  Clock,
+  Key,
+  Loader2,
+  Shield,
+  XCircle,
+} from "lucide-react";
 import { useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { verifyAgeProof, verifyAgeViaFHE, getUserProof } from "@/lib/crypto-client";
-import { Shield, Key, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import {
+  getUserProof,
+  verifyAgeProof,
+  verifyAgeViaFHE,
+} from "@/lib/crypto-client";
 
 interface VerificationResult {
   method: "zk" | "fhe";
@@ -46,7 +57,9 @@ export function VerificationActions() {
       setProofData(loaded);
       return loaded;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load proof data");
+      setError(
+        err instanceof Error ? err.message : "Failed to load proof data",
+      );
       return null;
     } finally {
       setIsLoadingData(false);
@@ -88,7 +101,9 @@ export function VerificationActions() {
     try {
       const data = await loadProofData();
       if (!data || !data.dobCiphertext) {
-        throw new Error("FHE ciphertext not available. FHE service may have been unavailable during registration.");
+        throw new Error(
+          "FHE ciphertext not available. FHE service may have been unavailable during registration.",
+        );
       }
 
       const result = await verifyAgeViaFHE(data.dobCiphertext);
@@ -196,9 +211,11 @@ export function VerificationActions() {
         {(zkResult || fheResult) && (
           <Alert>
             <AlertDescription className="text-xs">
-              <strong>Comparison:</strong> ZK proofs are fast to verify (~{zkResult?.timeMs || "N/A"}ms)
-              but require the original proof. FHE computation takes longer (~{fheResult?.timeMs || "N/A"}ms)
-              but allows verification without storing the proof, only the encrypted data.
+              <strong>Comparison:</strong> ZK proofs are fast to verify (~
+              {zkResult?.timeMs || "N/A"}ms) but require the original proof. FHE
+              computation takes longer (~{fheResult?.timeMs || "N/A"}ms) but
+              allows verification without storing the proof, only the encrypted
+              data.
             </AlertDescription>
           </Alert>
         )}

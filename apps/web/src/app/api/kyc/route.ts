@@ -1,7 +1,7 @@
+import Database from "better-sqlite3";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import Database from "better-sqlite3";
 
 const db = new Database("./dev.db");
 
@@ -53,14 +53,17 @@ db.exec(`
 // This handles existing databases that had file_data stored before the privacy fix
 try {
   // Check if file_data column exists and null it out
-  const hasFileData = db.prepare(`
+  const hasFileData = db
+    .prepare(`
     SELECT COUNT(*) as count FROM pragma_table_info('kyc_documents') WHERE name = 'file_data'
-  `).get() as { count: number };
+  `)
+    .get() as { count: number };
 
   if (hasFileData.count > 0) {
     // Set file_data to NULL for all existing records (can't drop column in SQLite easily)
-    db.exec(`UPDATE kyc_documents SET file_data = NULL WHERE file_data IS NOT NULL`);
-    console.log('[Privacy] Cleared legacy file_data from kyc_documents table');
+    db.exec(
+      `UPDATE kyc_documents SET file_data = NULL WHERE file_data IS NOT NULL`,
+    );
   }
 } catch {
   // Table might not exist yet or column might not exist - that's fine
@@ -77,7 +80,9 @@ export interface KycStatusResponse {
   updatedAt: string | null;
 }
 
-export async function GET(): Promise<NextResponse<KycStatusResponse | { error: string }>> {
+export async function GET(): Promise<
+  NextResponse<KycStatusResponse | { error: string }>
+> {
   try {
     const session = await auth.api.getSession({
       headers: await headers(),
@@ -101,16 +106,18 @@ export async function GET(): Promise<NextResponse<KycStatusResponse | { error: s
       WHERE user_id = ?
     `);
 
-    const status = stmt.get(session.user.id) as {
-      document_uploaded: number;
-      document_verified: number;
-      selfie_uploaded: number;
-      selfie_verified: number;
-      face_match_score: number | null;
-      kyc_completed: number;
-      kyc_level: string;
-      updated_at: string | null;
-    } | undefined;
+    const status = stmt.get(session.user.id) as
+      | {
+          document_uploaded: number;
+          document_verified: number;
+          selfie_uploaded: number;
+          selfie_verified: number;
+          face_match_score: number | null;
+          kyc_completed: number;
+          kyc_level: string;
+          updated_at: string | null;
+        }
+      | undefined;
 
     if (!status) {
       return NextResponse.json({
@@ -135,11 +142,10 @@ export async function GET(): Promise<NextResponse<KycStatusResponse | { error: s
       kycLevel: status.kyc_level as "none" | "basic" | "enhanced" | "full",
       updatedAt: status.updated_at,
     });
-  } catch (error) {
-    console.error("Get KYC status error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to retrieve KYC status" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -163,7 +169,7 @@ export function calculateKycLevel(
   documentUploaded: boolean,
   documentVerified: boolean,
   selfieUploaded: boolean,
-  selfieVerified: boolean
+  selfieVerified: boolean,
 ): "none" | "basic" | "enhanced" | "full" {
   if (documentVerified && selfieVerified) return "full";
   if (documentVerified || selfieVerified) return "enhanced";

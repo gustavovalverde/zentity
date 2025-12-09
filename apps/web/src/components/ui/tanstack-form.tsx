@@ -1,9 +1,9 @@
 "use client";
 
+import type * as LabelPrimitive from "@radix-ui/react-label";
 import * as React from "react";
-import * as LabelPrimitive from "@radix-ui/react-label";
-import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 /**
  * TanStack Form primitives for shadcn/ui integration
@@ -134,10 +134,7 @@ interface FieldDescriptionProps {
   children?: React.ReactNode;
 }
 
-function FieldDescription({
-  className,
-  children,
-}: FieldDescriptionProps) {
+function FieldDescription({ className, children }: FieldDescriptionProps) {
   const { id } = useFieldContext();
 
   return (
@@ -159,11 +156,7 @@ interface FieldMessageProps {
   children?: React.ReactNode;
 }
 
-function FieldMessage({
-  className,
-  message,
-  children,
-}: FieldMessageProps) {
+function FieldMessage({ className, message, children }: FieldMessageProps) {
   const { id, errors, isTouched } = useFieldContext();
   const hasError = errors.length > 0 && isTouched;
   const body = message || (hasError ? errors[0] : children);

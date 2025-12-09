@@ -8,9 +8,9 @@
  * The proof can be verified by third parties without revealing the actual DOB.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { getIdentityProofByUserId } from "@/lib/db";
 
 interface GenerateAgeProofRequest {
@@ -28,7 +28,7 @@ interface GenerateAgeProofResponse {
 }
 
 export async function POST(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<NextResponse<GenerateAgeProofResponse>> {
   try {
     // Authenticate user
@@ -44,7 +44,7 @@ export async function POST(
           minAge: 0,
           error: "Authentication required",
         },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -61,7 +61,7 @@ export async function POST(
           minAge: minAge || 0,
           error: "minAge must be between 1 and 150",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -75,7 +75,7 @@ export async function POST(
           minAge,
           error: "User has not completed identity verification",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -117,10 +117,9 @@ export async function POST(
         minAge,
         error: `Age proof for ${minAge} not cached. Please complete identity verification again to generate this proof, or contact support for alternative verification methods.`,
       },
-      { status: 400 }
+      { status: 400 },
     );
   } catch (error) {
-    console.error("Generate age proof error:", error);
     return NextResponse.json(
       {
         success: false,
@@ -128,7 +127,7 @@ export async function POST(
         minAge: 0,
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -146,7 +145,7 @@ export async function GET(): Promise<NextResponse> {
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: "Authentication required" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -156,7 +155,7 @@ export async function GET(): Promise<NextResponse> {
     if (!identityProof) {
       return NextResponse.json(
         { error: "User has not completed identity verification" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -186,10 +185,9 @@ export async function GET(): Promise<NextResponse> {
       hasVerifiedIdentity: identityProof.isDocumentVerified,
     });
   } catch (error) {
-    console.error("Get age proofs error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

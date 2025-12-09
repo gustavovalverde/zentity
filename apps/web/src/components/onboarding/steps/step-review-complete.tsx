@@ -2,32 +2,48 @@
 
 /* eslint @next/next/no-img-element: off */
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useForm } from "@tanstack/react-form";
-import { useWizard } from "../wizard-provider";
-import { WizardNavigation } from "../wizard-navigation";
-import { signUp } from "@/lib/auth-client";
-import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import {
+  ArrowLeftRight,
+  Check,
+  Database,
+  Edit2,
+  Key,
+  Loader2,
+  Lock,
+  Shield,
+  UserCheck,
+  XCircle,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Field,
   FieldControl,
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
-import { generateAgeProof, verifyAgeProof, storeAgeProof, encryptDOB } from "@/lib/crypto-client";
-import { matchFaces, type FaceMatchResult } from "@/lib/face-detection";
-import { Check, Loader2, Shield, Lock, Database, Key, UserCheck, XCircle, ArrowLeftRight, Edit2 } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { makeFieldValidator } from "@/lib/validation";
+import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
 import { trackFaceMatch } from "@/lib/analytics";
+import { signUp } from "@/lib/auth-client";
+import {
+  encryptDOB,
+  generateAgeProof,
+  storeAgeProof,
+  verifyAgeProof,
+} from "@/lib/crypto-client";
+import { type FaceMatchResult, matchFaces } from "@/lib/face-detection";
+import { cn } from "@/lib/utils";
+import { makeFieldValidator } from "@/lib/validation";
+import { WizardNavigation } from "../wizard-navigation";
+import { useWizard } from "../wizard-provider";
 
 type ProofStatus =
   | "idle"
@@ -58,7 +74,7 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
           "flex h-8 w-8 items-center justify-center rounded-full transition-all",
           status === "complete" && "bg-green-600 text-white",
           status === "active" && "bg-blue-600 text-white animate-pulse",
-          status === "pending" && "bg-muted text-muted-foreground"
+          status === "pending" && "bg-muted text-muted-foreground",
         )}
       >
         {status === "complete" ? (
@@ -74,7 +90,7 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
           "text-sm transition-colors",
           status === "complete" && "text-green-600 font-medium",
           status === "active" && "text-blue-600 font-medium",
-          status === "pending" && "text-muted-foreground"
+          status === "pending" && "text-muted-foreground",
         )}
       >
         {label}
@@ -103,8 +119,10 @@ export function StepReviewComplete() {
   const [editedName, setEditedName] = useState(data.extractedName || "");
 
   // Face matching state
-  const [faceMatchStatus, setFaceMatchStatus] = useState<FaceMatchStatus>("idle");
-  const [faceMatchResult, setFaceMatchResult] = useState<FaceMatchResult | null>(null);
+  const [faceMatchStatus, setFaceMatchStatus] =
+    useState<FaceMatchStatus>("idle");
+  const [faceMatchResult, setFaceMatchResult] =
+    useState<FaceMatchResult | null>(null);
 
   // Password form with TanStack Form
   const form = useForm({
@@ -118,25 +136,36 @@ export function StepReviewComplete() {
   });
 
   // Validate password field
-  const validatePassword = makeFieldValidator(passwordSchema, "password", (value: string) => ({
-    password: value,
-    confirmPassword: form.getFieldValue("confirmPassword"),
-  }));
+  const validatePassword = makeFieldValidator(
+    passwordSchema,
+    "password",
+    (value: string) => ({
+      password: value,
+      confirmPassword: form.getFieldValue("confirmPassword"),
+    }),
+  );
 
   // Validate confirm password field (includes cross-field validation)
-  const validateConfirmPassword = makeFieldValidator(passwordSchema, "confirmPassword", (value: string) => ({
-    password: form.getFieldValue("password"),
-    confirmPassword: value,
-  }));
+  const validateConfirmPassword = makeFieldValidator(
+    passwordSchema,
+    "confirmPassword",
+    (value: string) => ({
+      password: form.getFieldValue("password"),
+      confirmPassword: value,
+    }),
+  );
 
   const calculateAge = (dob: string | null): number | null => {
     if (!dob) return null;
     const birthDate = new Date(dob);
-    if (isNaN(birthDate.getTime())) return null;
+    if (Number.isNaN(birthDate.getTime())) return null;
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
       age--;
     }
     return age;
@@ -145,7 +174,7 @@ export function StepReviewComplete() {
   const getBirthYear = (dob: string | null): number | null => {
     if (!dob) return null;
     const date = new Date(dob);
-    if (isNaN(date.getTime())) return null;
+    if (Number.isNaN(date.getTime())) return null;
     return date.getFullYear();
   };
 
@@ -159,7 +188,10 @@ export function StepReviewComplete() {
 
       setFaceMatchStatus("matching");
       try {
-        const result = await matchFaces(data.idDocumentBase64, selfieForMatching);
+        const result = await matchFaces(
+          data.idDocumentBase64,
+          selfieForMatching,
+        );
         setFaceMatchResult(result);
 
         if (result.error) {
@@ -173,7 +205,6 @@ export function StepReviewComplete() {
           trackFaceMatch("no_match", { confidence: result.confidence });
         }
       } catch (err) {
-        console.error("Face match error:", err);
         setFaceMatchStatus("error");
         setFaceMatchResult({
           matched: false,
@@ -184,41 +215,63 @@ export function StepReviewComplete() {
           idFaceExtracted: false,
           error: err instanceof Error ? err.message : "Unknown error",
         });
-        trackFaceMatch("error", { error: err instanceof Error ? err.message : "Unknown error" });
+        trackFaceMatch("error", {
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     };
 
-    if (data.idDocumentBase64 && selfieForMatching && faceMatchStatus === "idle") {
+    if (
+      data.idDocumentBase64 &&
+      selfieForMatching &&
+      faceMatchStatus === "idle"
+    ) {
       performFaceMatch();
     }
   }, [data.idDocumentBase64, selfieForMatching, faceMatchStatus]);
 
-  const handleSubmit = async (formData: { password: string; confirmPassword: string }) => {
+  const handleSubmit = async (formData: {
+    password: string;
+    confirmPassword: string;
+  }) => {
     // Validate the full schema before proceeding
     const validation = passwordSchema.safeParse(formData);
     if (!validation.success) {
       toast.error("Validation failed", {
-        description: validation.error.issues[0]?.message || "Please check your password",
+        description:
+          validation.error.issues[0]?.message || "Please check your password",
       });
       return;
     }
 
     // Save password to wizard state
-    updateData({ password: formData.password, confirmPassword: formData.confirmPassword });
+    updateData({
+      password: formData.password,
+      confirmPassword: formData.confirmPassword,
+    });
 
     setSubmitting(true);
     setError(null);
 
     try {
       // Use extracted name or edited name, fallback to email prefix
-      const accountName = editedName || data.extractedName || data.email.split("@")[0];
+      const accountName =
+        editedName || data.extractedName || data.email.split("@")[0];
 
       // Get birth year from extracted DOB
       const birthYear = getBirthYear(data.extractedDOB);
 
       // Variables to hold crypto results (generated BEFORE account creation)
-      let fheResult: { ciphertext: string; clientKeyId: string; encryptionTimeMs: number } | null = null;
-      let proofResult: { proof: object; publicSignals: string[]; generationTimeMs: number } | null = null;
+      let fheResult: {
+        ciphertext: string;
+        clientKeyId: string;
+        encryptionTimeMs: number;
+      } | null = null;
+      let proofResult: {
+        proof: object;
+        publicSignals: string[];
+        generationTimeMs: number;
+      } | null = null;
 
       // If we have DOB, we MUST generate proofs BEFORE creating account
       // This is critical: DOB is extracted from document which is NOT stored
@@ -230,22 +283,16 @@ export function StepReviewComplete() {
         setProofStatus("encrypting");
         try {
           fheResult = await encryptDOB(birthYear);
-        } catch (fheError) {
-          // FHE is for future use, can continue without it
-          console.warn("FHE encryption skipped:", fheError);
-        }
+        } catch (_fheError) {}
 
         // Generate ZK proof of age (privacy-preserving) - THIS IS REQUIRED
         setProofStatus("generating");
         try {
           proofResult = await generateAgeProof(birthYear, currentYear, 18);
-        } catch (zkError) {
-          // ZK service is unavailable - we CANNOT proceed
-          // Creating account without proof would lose the DOB forever
-          console.error("Age proof generation failed", zkError);
+        } catch (_zkError) {
           setError(
             "Privacy verification services are temporarily unavailable. " +
-            "Your information has not been stored. Please try again in a few minutes."
+              "Your information has not been stored. Please try again in a few minutes.",
           );
           setProofStatus("error");
           setSubmitting(false);
@@ -254,7 +301,10 @@ export function StepReviewComplete() {
 
         // Verify the proof locally to ensure it's valid
         setProofStatus("verifying");
-        const verifyResult = await verifyAgeProof(proofResult.proof, proofResult.publicSignals);
+        const verifyResult = await verifyAgeProof(
+          proofResult.proof,
+          proofResult.publicSignals,
+        );
 
         if (!verifyResult.isValid) {
           setError("Age verification failed. Please try again.");
@@ -293,25 +343,23 @@ export function StepReviewComplete() {
               documentImage: data.idDocumentBase64,
               selfieImage: selfieToVerify,
               // Pass local face match result for comparison/logging
-              localFaceMatch: faceMatchResult ? {
-                matched: faceMatchResult.matched,
-                confidence: faceMatchResult.confidence,
-              } : undefined,
+              localFaceMatch: faceMatchResult
+                ? {
+                    matched: faceMatchResult.matched,
+                    confidence: faceMatchResult.confidence,
+                  }
+                : undefined,
             }),
           });
 
           if (!identityResponse.ok) {
-            const errorData = await identityResponse.json();
-            console.warn("Identity verification warning:", errorData.error);
+            const _errorData = await identityResponse.json();
           } else {
             const identityResult = await identityResponse.json();
             if (!identityResult.verified) {
-              console.warn("Identity verification incomplete:", identityResult.issues);
             }
           }
-        } catch (identityError) {
-          console.warn("Identity verification skipped:", identityError);
-        }
+        } catch (_identityError) {}
       }
 
       // Store the proof AND FHE ciphertext
@@ -322,11 +370,13 @@ export function StepReviewComplete() {
           proofResult.publicSignals,
           true,
           proofResult.generationTimeMs,
-          fheResult ? {
-            dobCiphertext: fheResult.ciphertext,
-            fheClientKeyId: fheResult.clientKeyId,
-            fheEncryptionTimeMs: fheResult.encryptionTimeMs,
-          } : undefined
+          fheResult
+            ? {
+                dobCiphertext: fheResult.ciphertext,
+                fheClientKeyId: fheResult.clientKeyId,
+                fheEncryptionTimeMs: fheResult.encryptionTimeMs,
+              }
+            : undefined,
         );
       }
 
@@ -335,21 +385,24 @@ export function StepReviewComplete() {
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
-      console.error("Registration error:", err);
       setError(
         err instanceof Error
           ? err.message
-          : "An unexpected error occurred. Please try again."
+          : "An unexpected error occurred. Please try again.",
       );
       setProofStatus("error");
       setSubmitting(false);
     }
   };
 
-  const hasIdentityDocs = Boolean(data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage));
+  const hasIdentityDocs = Boolean(
+    data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
+  );
   const hasDOB = Boolean(data.extractedDOB);
 
-  const getStepStatus = (step: "account" | "encrypt" | "proof" | "verify" | "identity" | "store"): "pending" | "active" | "complete" | "skipped" => {
+  const getStepStatus = (
+    step: "account" | "encrypt" | "proof" | "verify" | "identity" | "store",
+  ): "pending" | "active" | "complete" | "skipped" => {
     const statusOrder: ProofStatus[] = [
       "idle",
       "creating-account",
@@ -358,7 +411,7 @@ export function StepReviewComplete() {
       "verifying",
       "verifying-identity",
       "storing",
-      "complete"
+      "complete",
     ];
     const currentIndex = statusOrder.indexOf(proofStatus);
 
@@ -377,7 +430,13 @@ export function StepReviewComplete() {
     }
 
     // Skip crypto steps if no DOB
-    if ((step === "encrypt" || step === "proof" || step === "verify" || step === "store") && !hasDOB) {
+    if (
+      (step === "encrypt" ||
+        step === "proof" ||
+        step === "verify" ||
+        step === "store") &&
+      !hasDOB
+    ) {
       return "skipped";
     }
 
@@ -397,7 +456,8 @@ export function StepReviewComplete() {
       <div className="space-y-2">
         <h3 className="text-lg font-medium">Review & Complete</h3>
         <p className="text-sm text-muted-foreground">
-          Review your information and create your password to complete registration.
+          Review your information and create your password to complete
+          registration.
         </p>
       </div>
 
@@ -518,20 +578,28 @@ export function StepReviewComplete() {
 
           <div className="flex items-center justify-center gap-4">
             <div className="flex flex-col items-center gap-2">
-              <div className={cn(
-                "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
-                faceMatchStatus === "matching" && "ring-2 ring-blue-400 ring-offset-2"
-              )}>
-                {faceMatchStatus === "matching" && !faceMatchResult?.idFaceImage && (
-                  <Skeleton className="h-full w-full" />
+              <div
+                className={cn(
+                  "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                  faceMatchStatus === "matching" &&
+                    "ring-2 ring-blue-400 ring-offset-2",
                 )}
+              >
+                {faceMatchStatus === "matching" &&
+                  !faceMatchResult?.idFaceImage && (
+                    <Skeleton className="h-full w-full" />
+                  )}
                 {(faceMatchResult?.idFaceImage || data.idDocumentBase64) && (
                   <img
-                    src={faceMatchResult?.idFaceImage || data.idDocumentBase64 || ""}
+                    src={
+                      faceMatchResult?.idFaceImage ||
+                      data.idDocumentBase64 ||
+                      ""
+                    }
                     alt="ID Photo"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
-                      faceMatchStatus === "matching" && "opacity-70"
+                      faceMatchStatus === "matching" && "opacity-70",
                     )}
                   />
                 )}
@@ -556,29 +624,37 @@ export function StepReviewComplete() {
                 <div className="animate-in zoom-in duration-300">
                   <Check className="h-6 w-6 text-green-600" />
                   <span className="text-xs font-medium text-green-600">
-                    {Math.round((faceMatchResult?.confidence || 0) * 100)}% match
+                    {Math.round((faceMatchResult?.confidence || 0) * 100)}%
+                    match
                   </span>
                 </div>
               )}
               {faceMatchStatus === "no_match" && (
                 <>
                   <XCircle className="h-6 w-6 text-red-600" />
-                  <span className="text-xs font-medium text-red-600">No match</span>
+                  <span className="text-xs font-medium text-red-600">
+                    No match
+                  </span>
                 </>
               )}
               {faceMatchStatus === "error" && (
                 <>
                   <XCircle className="h-6 w-6 text-yellow-600" />
-                  <span className="text-xs font-medium text-yellow-600">Error</span>
+                  <span className="text-xs font-medium text-yellow-600">
+                    Error
+                  </span>
                 </>
               )}
             </div>
 
             <div className="flex flex-col items-center gap-2">
-              <div className={cn(
-                "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
-                faceMatchStatus === "matching" && "ring-2 ring-blue-400 ring-offset-2"
-              )}>
+              <div
+                className={cn(
+                  "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                  faceMatchStatus === "matching" &&
+                    "ring-2 ring-blue-400 ring-offset-2",
+                )}
+              >
                 {faceMatchStatus === "matching" && !selfieForMatching && (
                   <Skeleton className="h-full w-full" />
                 )}
@@ -588,7 +664,7 @@ export function StepReviewComplete() {
                     alt="Selfie"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
-                      faceMatchStatus === "matching" && "opacity-70"
+                      faceMatchStatus === "matching" && "opacity-70",
                     )}
                   />
                 )}
@@ -606,7 +682,8 @@ export function StepReviewComplete() {
             <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
               <Check className="h-4 w-4 text-green-600" />
               <AlertDescription className="ml-2 text-green-700 dark:text-green-300">
-                Face verification successful. The selfie matches the ID document.
+                Face verification successful. The selfie matches the ID
+                document.
               </AlertDescription>
             </Alert>
           )}
@@ -614,14 +691,16 @@ export function StepReviewComplete() {
             <Alert variant="destructive">
               <XCircle className="h-4 w-4" />
               <AlertDescription className="ml-2">
-                The selfie does not match the ID document photo. You may proceed, but additional verification may be required.
+                The selfie does not match the ID document photo. You may
+                proceed, but additional verification may be required.
               </AlertDescription>
             </Alert>
           )}
           {faceMatchStatus === "error" && (
             <Alert>
               <AlertDescription>
-                Face verification could not be completed. You may proceed, but please ensure your ID and selfie are clear.
+                Face verification could not be completed. You may proceed, but
+                please ensure your ID and selfie are clear.
               </AlertDescription>
             </Alert>
           )}
@@ -704,7 +783,8 @@ export function StepReviewComplete() {
             </form.Field>
 
             <p className="text-xs text-muted-foreground">
-              Password must be at least 8 characters with uppercase, lowercase, and a number.
+              Password must be at least 8 characters with uppercase, lowercase,
+              and a number.
             </p>
           </div>
 
@@ -759,7 +839,8 @@ export function StepReviewComplete() {
           </div>
 
           <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-blue-200 dark:border-blue-800">
-            Your personal data is processed transiently. Only cryptographic proofs are stored.
+            Your personal data is processed transiently. Only cryptographic
+            proofs are stored.
           </p>
         </div>
       )}
@@ -772,17 +853,32 @@ export function StepReviewComplete() {
             <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
               {hasDOB && (
                 <>
-                  <li>Your birth year is encrypted using FHE (Fully Homomorphic Encryption)</li>
-                  <li>A zero-knowledge proof verifies you are 18+ without revealing your age</li>
+                  <li>
+                    Your birth year is encrypted using FHE (Fully Homomorphic
+                    Encryption)
+                  </li>
+                  <li>
+                    A zero-knowledge proof verifies you are 18+ without
+                    revealing your age
+                  </li>
                 </>
               )}
               {hasIdentityDocs && (
                 <>
-                  <li>Your ID document is processed to generate cryptographic commitments</li>
-                  <li>Face matching compares your selfie to your ID photo, then both are deleted</li>
+                  <li>
+                    Your ID document is processed to generate cryptographic
+                    commitments
+                  </li>
+                  <li>
+                    Face matching compares your selfie to your ID photo, then
+                    both are deleted
+                  </li>
                 </>
               )}
-              <li>Only proofs and commitments are stored - all PII is deleted immediately</li>
+              <li>
+                Only proofs and commitments are stored - all PII is deleted
+                immediately
+              </li>
             </ul>
           </AlertDescription>
         </Alert>
@@ -809,7 +905,9 @@ export function StepReviewComplete() {
           <div>
             <p className="text-sm font-medium">Why</p>
             <p className="text-sm text-muted-foreground">
-              You keep control of PII; we keep only the cryptographic evidence required to prove you&apos;re over 18 and matched to your document.
+              You keep control of PII; we keep only the cryptographic evidence
+              required to prove you&apos;re over 18 and matched to your
+              document.
             </p>
           </div>
         </div>

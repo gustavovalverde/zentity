@@ -1,6 +1,11 @@
+import Database from "better-sqlite3";
+import { CheckCircle, Clock, Code, Hash, Shield } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { VerificationActions } from "@/components/dashboard/verification-actions";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -8,12 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Shield, Clock, Hash, CheckCircle, Code } from "lucide-react";
-import { VerificationActions } from "@/components/dashboard/verification-actions";
-import Database from "better-sqlite3";
+import { auth } from "@/lib/auth";
 
 const db = new Database("./dev.db");
 
@@ -27,12 +27,14 @@ async function getUserProof(userId: string) {
       LIMIT 1
     `);
 
-    const proof = stmt.get(userId) as {
-      id: string;
-      is_over_18: number;
-      generation_time_ms: number;
-      created_at: string;
-    } | undefined;
+    const proof = stmt.get(userId) as
+      | {
+          id: string;
+          is_over_18: number;
+          generation_time_ms: number;
+          created_at: string;
+        }
+      | undefined;
 
     if (!proof) return null;
 
@@ -77,7 +79,8 @@ export default async function VerificationPage() {
                 </div>
               </CardTitle>
               <CardDescription>
-                Your age has been cryptographically verified using zero-knowledge proofs
+                Your age has been cryptographically verified using
+                zero-knowledge proofs
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -112,7 +115,9 @@ export default async function VerificationPage() {
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
                   <div>
                     <p className="text-muted-foreground">Generation Time</p>
-                    <p className="font-mono font-medium">{proof.generationTimeMs}ms</p>
+                    <p className="font-mono font-medium">
+                      {proof.generationTimeMs}ms
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Proof Type</p>
@@ -132,10 +137,11 @@ export default async function VerificationPage() {
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription>
-              <strong>How it works:</strong> Your zero-knowledge proof mathematically
-              proves you are 18+ without revealing your actual date of birth. The proof
-              can be independently verified by any third party using the verification key,
-              while your age remains private.
+              <strong>How it works:</strong> Your zero-knowledge proof
+              mathematically proves you are 18+ without revealing your actual
+              date of birth. The proof can be independently verified by any
+              third party using the verification key, while your age remains
+              private.
             </AlertDescription>
           </Alert>
 
@@ -145,7 +151,9 @@ export default async function VerificationPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Cryptographic Scheme</span>
+                <span className="text-muted-foreground">
+                  Cryptographic Scheme
+                </span>
                 <span>Groth16 zk-SNARK</span>
               </div>
               <div className="flex justify-between">
@@ -189,7 +197,8 @@ export default async function VerificationPage() {
             </div>
             <h3 className="font-medium">No Verification Found</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Complete the registration process to generate your age verification proof.
+              Complete the registration process to generate your age
+              verification proof.
             </p>
             <Button asChild className="mt-4">
               <Link href="/sign-up">Complete Registration</Link>

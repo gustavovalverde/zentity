@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 const LIVENESS_SERVICE_URL =
   process.env.LIVENESS_SERVICE_URL || "http://localhost:5003";
@@ -22,45 +22,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!body.baselineImage) {
       return NextResponse.json(
         { error: "Baseline image is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!body.challengeImage) {
       return NextResponse.json(
         { error: "Challenge image is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const response = await fetch(
-      `${LIVENESS_SERVICE_URL}/challenge/validate`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
+    const response = await fetch(`${LIVENESS_SERVICE_URL}/challenge/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
     if (!response.ok) {
       const error = await response.text();
       return NextResponse.json(
         { error: `Challenge validation error: ${error}` },
-        { status: response.status }
+        { status: response.status },
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
-  } catch (error) {
-    console.error("Challenge validation error:", error);
+  } catch (_error) {
     return NextResponse.json(
       {
         error: "Failed to validate challenge",
         passed: false,
         message: "Service error during validation",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

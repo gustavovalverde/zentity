@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { createAuthenticatedUser } from "./fixtures/auth.fixture";
 
 test.describe("Onboarding Flow", () => {
@@ -7,7 +7,9 @@ test.describe("Onboarding Flow", () => {
     await createAuthenticatedUser(page, request);
   });
 
-  test("should show onboarding page with verification steps", async ({ page }) => {
+  test("should show onboarding page with verification steps", async ({
+    page,
+  }) => {
     await page.goto("/onboarding");
     await page.waitForLoadState("networkidle");
 
@@ -15,33 +17,46 @@ test.describe("Onboarding Flow", () => {
     const pageContent = await page.textContent("body");
     expect(
       pageContent?.toLowerCase().includes("verif") ||
-      pageContent?.toLowerCase().includes("identity") ||
-      pageContent?.toLowerCase().includes("document") ||
-      pageContent?.toLowerCase().includes("upload") ||
-      pageContent?.toLowerCase().includes("onboarding")
+        pageContent?.toLowerCase().includes("identity") ||
+        pageContent?.toLowerCase().includes("document") ||
+        pageContent?.toLowerCase().includes("upload") ||
+        pageContent?.toLowerCase().includes("onboarding"),
     ).toBeTruthy();
   });
 
-  test("should have document upload or verification content", async ({ page }) => {
+  test("should have document upload or verification content", async ({
+    page,
+  }) => {
     await page.goto("/onboarding");
     await page.waitForLoadState("networkidle");
 
     // Look for upload elements or verification-related content
-    const hasUpload = await page.locator(
-      '[data-testid="document-upload"], input[type="file"], button:has-text("upload"), [class*="upload"], [class*="dropzone"]'
-    ).first().isVisible({ timeout: 5000 }).catch(() => false);
+    const hasUpload = await page
+      .locator(
+        '[data-testid="document-upload"], input[type="file"], button:has-text("upload"), [class*="upload"], [class*="dropzone"]',
+      )
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
 
-    const hasSteps = await page.locator('[class*="step"], [class*="progress"]').first().isVisible({ timeout: 5000 }).catch(() => false);
+    const hasSteps = await page
+      .locator('[class*="step"], [class*="progress"]')
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
 
     const pageContent = await page.textContent("body");
-    const hasVerificationText = pageContent?.toLowerCase().includes("verif") ||
-                                 pageContent?.toLowerCase().includes("document") ||
-                                 pageContent?.toLowerCase().includes("identity");
+    const hasVerificationText =
+      pageContent?.toLowerCase().includes("verif") ||
+      pageContent?.toLowerCase().includes("document") ||
+      pageContent?.toLowerCase().includes("identity");
 
     expect(hasUpload || hasSteps || hasVerificationText).toBeTruthy();
   });
 
-  test("should show camera/selfie or verification content", async ({ page }) => {
+  test("should show camera/selfie or verification content", async ({
+    page,
+  }) => {
     await page.goto("/onboarding");
     await page.waitForLoadState("networkidle");
 
@@ -62,7 +77,11 @@ test.describe("Onboarding Flow", () => {
     await page.waitForLoadState("networkidle");
 
     // Try to find and click a dashboard link, or navigate directly
-    const dashboardLink = page.locator('a[href*="dashboard"], button:has-text("skip"), button:has-text("back"), button:has-text("dashboard")').first();
+    const dashboardLink = page
+      .locator(
+        'a[href*="dashboard"], button:has-text("skip"), button:has-text("back"), button:has-text("dashboard")',
+      )
+      .first();
 
     if (await dashboardLink.isVisible({ timeout: 3000 }).catch(() => false)) {
       await dashboardLink.click();

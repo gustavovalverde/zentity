@@ -1,15 +1,15 @@
 "use client";
 
+import { ChevronDown, Database, Eye, EyeOff, Lock, Shield } from "lucide-react";
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ChevronDown, Eye, EyeOff, Database, Shield, Lock } from "lucide-react";
-import { useState } from "react";
 
 interface TransparencySectionProps {
   documentHash?: string;
@@ -85,7 +85,9 @@ export function TransparencySection({
                     </Badge>
                   </div>
                   <code className="text-xs text-muted-foreground block font-mono">
-                    {nameCommitment ? truncateHash(nameCommitment) : "Not verified"}
+                    {nameCommitment
+                      ? truncateHash(nameCommitment)
+                      : "Not verified"}
                   </code>
                   <p className="text-xs text-muted-foreground">
                     One-way hash of normalized name + salt
@@ -103,7 +105,9 @@ export function TransparencySection({
                     </Badge>
                   </div>
                   <code className="text-xs text-muted-foreground block font-mono">
-                    {dobCiphertext ? truncateHash(dobCiphertext) : "Not encrypted"}
+                    {dobCiphertext
+                      ? truncateHash(dobCiphertext)
+                      : "Not encrypted"}
                   </code>
                   <p className="text-xs text-muted-foreground">
                     Homomorphically encrypted birth year
@@ -129,7 +133,8 @@ export function TransparencySection({
                     {ageProof ? truncateHash(ageProof) : "No proof generated"}
                   </code>
                   <p className="text-xs text-muted-foreground">
-                    Cryptographic proof that age {"\u2265"} 18 without revealing birth date
+                    Cryptographic proof that age {"\u2265"} 18 without revealing
+                    birth date
                   </p>
                 </div>
               </div>

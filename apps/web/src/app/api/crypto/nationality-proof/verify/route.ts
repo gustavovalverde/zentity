@@ -4,9 +4,9 @@
  * POST /api/crypto/nationality-proof/verify - Verify a nationality membership ZK proof
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
 const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
 
@@ -32,16 +32,13 @@ export async function POST(request: NextRequest) {
 
     // Validate inputs
     if (!proof) {
-      return NextResponse.json(
-        { error: "proof is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "proof is required" }, { status: 400 });
     }
 
     if (!publicSignals || !Array.isArray(publicSignals)) {
       return NextResponse.json(
         { error: "publicSignals is required and must be an array" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -53,7 +50,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "ZK service error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "ZK service error" }));
       return NextResponse.json(error, { status: response.status });
     }
 
@@ -67,10 +66,12 @@ export async function POST(request: NextRequest) {
       verificationTimeMs: result.verificationTimeMs,
     });
   } catch (error) {
-    console.error("[Nationality Verify] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to verify proof" },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to verify proof",
+      },
+      { status: 500 },
     );
   }
 }

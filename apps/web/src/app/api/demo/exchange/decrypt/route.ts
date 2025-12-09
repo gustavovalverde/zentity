@@ -5,7 +5,7 @@
  * Demonstrates the hybrid RSA-OAEP + AES-GCM decryption process.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     if (!encryptedPii || !privateKey) {
       return NextResponse.json(
         { error: "encryptedPii and privateKey are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -27,28 +27,25 @@ export async function POST(request: NextRequest) {
       privateKeyJwk,
       { name: "RSA-OAEP", hash: "SHA-256" },
       false,
-      ["decrypt"]
+      ["decrypt"],
     );
 
     // Decode the encrypted data
-    const iv = Uint8Array.from(
-      atob(encryptedPii.iv),
-      (c) => c.charCodeAt(0)
-    );
+    const iv = Uint8Array.from(atob(encryptedPii.iv), (c) => c.charCodeAt(0));
     const encryptedData = Uint8Array.from(
       atob(encryptedPii.encryptedData),
-      (c) => c.charCodeAt(0)
+      (c) => c.charCodeAt(0),
     );
     const encryptedAesKey = Uint8Array.from(
       atob(encryptedPii.encryptedAesKey),
-      (c) => c.charCodeAt(0)
+      (c) => c.charCodeAt(0),
     );
 
     // Decrypt the AES key with RSA
     const aesKeyRaw = await crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
       rsaPrivateKey,
-      encryptedAesKey
+      encryptedAesKey,
     );
 
     // Import the AES key
@@ -57,25 +54,24 @@ export async function POST(request: NextRequest) {
       aesKeyRaw,
       { name: "AES-GCM", length: 256 },
       false,
-      ["decrypt"]
+      ["decrypt"],
     );
 
     // Decrypt the PII
     const decryptedPii = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv },
       aesKey,
-      encryptedData
+      encryptedData,
     );
 
     // Parse the decrypted PII
     const pii = JSON.parse(new TextDecoder().decode(decryptedPii));
 
     return NextResponse.json({ pii });
-  } catch (error) {
-    console.error("[Demo] Decryption error:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to decrypt PII" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

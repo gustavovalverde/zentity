@@ -43,7 +43,7 @@ export interface ServiceHealth {
 export async function generateAgeProof(
   birthYear: number,
   currentYear: number = new Date().getFullYear(),
-  minAge: number = 18
+  minAge: number = 18,
 ): Promise<ProofResult> {
   const response = await fetch("/api/crypto/generate-proof", {
     method: "POST",
@@ -52,8 +52,12 @@ export async function generateAgeProof(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Failed to generate proof: ${response.status}`);
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
+    throw new Error(
+      error.error || `Failed to generate proof: ${response.status}`,
+    );
   }
 
   return response.json();
@@ -66,7 +70,7 @@ export async function generateAgeProof(
  */
 export async function verifyAgeProof(
   proof: object,
-  publicSignals: string[]
+  publicSignals: string[],
 ): Promise<VerifyResult> {
   const response = await fetch("/api/crypto/verify-proof", {
     method: "POST",
@@ -75,8 +79,12 @@ export async function verifyAgeProof(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Failed to verify proof: ${response.status}`);
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
+    throw new Error(
+      error.error || `Failed to verify proof: ${response.status}`,
+    );
   }
 
   return response.json();
@@ -112,7 +120,7 @@ export async function storeAgeProof(
     dobCiphertext: string;
     fheClientKeyId: string;
     fheEncryptionTimeMs: number;
-  }
+  },
 ): Promise<{ success: boolean; proofId: string }> {
   const response = await fetch("/api/user/proof", {
     method: "POST",
@@ -131,7 +139,9 @@ export async function storeAgeProof(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
     throw new Error(error.error || `Failed to store proof: ${response.status}`);
   }
 
@@ -162,7 +172,9 @@ export async function getUserProof(full: boolean = false): Promise<{
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
     throw new Error(error.error || `Failed to get proof: ${response.status}`);
   }
 
@@ -186,7 +198,9 @@ export async function encryptDOB(birthYear: number): Promise<EncryptDOBResult> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
     throw new Error(error.error || `Failed to encrypt DOB: ${response.status}`);
   }
 
@@ -203,7 +217,7 @@ export async function encryptDOB(birthYear: number): Promise<EncryptDOBResult> {
 export async function verifyAgeViaFHE(
   ciphertext: string,
   currentYear: number = new Date().getFullYear(),
-  minAge: number = 18
+  minAge: number = 18,
 ): Promise<VerifyAgeFHEResult> {
   const response = await fetch("/api/crypto/verify-age-fhe", {
     method: "POST",
@@ -212,8 +226,12 @@ export async function verifyAgeViaFHE(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Failed to verify age via FHE: ${response.status}`);
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
+    throw new Error(
+      error.error || `Failed to verify age via FHE: ${response.status}`,
+    );
   }
 
   return response.json();

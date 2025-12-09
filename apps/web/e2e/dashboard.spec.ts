@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { createAuthenticatedUser } from "./fixtures/auth.fixture";
 
 test.describe("Dashboard - Basic", () => {
@@ -22,16 +22,22 @@ test.describe("Dashboard - Authenticated User", () => {
     await page.waitForLoadState("networkidle");
   });
 
-  test("should display dashboard content for authenticated user", async ({ page }) => {
+  test("should display dashboard content for authenticated user", async ({
+    page,
+  }) => {
     // Check we're on the dashboard (not redirected to sign-in)
     await expect(page).toHaveURL(/dashboard/);
 
     // Dashboard should have some content - look for common dashboard elements
-    const dashboardContent = page.locator("main, [role='main'], .dashboard, #dashboard").first();
+    const dashboardContent = page
+      .locator("main, [role='main'], .dashboard, #dashboard")
+      .first();
     await expect(dashboardContent).toBeVisible({ timeout: 10000 });
   });
 
-  test("should show verification status or welcome content", async ({ page }) => {
+  test("should show verification status or welcome content", async ({
+    page,
+  }) => {
     // Look for any verification-related text or welcome message
     const pageContent = await page.textContent("body");
     const hasExpectedContent =

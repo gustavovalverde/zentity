@@ -1,8 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Clock,
+  Code,
+  Copy,
+  Database,
+  Key,
+  Shield,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
-import { getUserProof } from "@/lib/crypto-client";
+import { useEffect, useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -10,26 +24,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  Shield,
-  Key,
-  Clock,
-  ChevronDown,
-  Copy,
-  Check,
-  Code,
-  Database,
-  Zap,
-  AlertTriangle,
-} from "lucide-react";
+import { getUserProof } from "@/lib/crypto-client";
 
 interface FullProofData {
   proofId: string;
@@ -58,7 +58,9 @@ export default function DevViewPage() {
         const data = await getUserProof(true);
         setProofData(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load proof data");
+        setError(
+          err instanceof Error ? err.message : "Failed to load proof data",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -82,7 +84,9 @@ export default function DevViewPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-pulse text-muted-foreground">Loading proof data...</div>
+        <div className="animate-pulse text-muted-foreground">
+          Loading proof data...
+        </div>
       </div>
     );
   }
@@ -114,7 +118,9 @@ export default function DevViewPage() {
     );
   }
 
-  const proofJson = proofData.proof ? JSON.stringify(proofData.proof, null, 2) : null;
+  const proofJson = proofData.proof
+    ? JSON.stringify(proofData.proof, null, 2)
+    : null;
   const signalsJson = proofData.publicSignals
     ? JSON.stringify(proofData.publicSignals, null, 2)
     : null;
@@ -143,12 +149,16 @@ export default function DevViewPage() {
             <Zap className="h-5 w-5 text-yellow-500" />
             Performance Metrics
           </CardTitle>
-          <CardDescription>Timing data for cryptographic operations</CardDescription>
+          <CardDescription>
+            Timing data for cryptographic operations
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">ZK Proof Generation</p>
+              <p className="text-sm text-muted-foreground">
+                ZK Proof Generation
+              </p>
               <p className="text-2xl font-mono font-bold">
                 {proofData.generationTimeMs}ms
               </p>
@@ -156,7 +166,9 @@ export default function DevViewPage() {
             <div className="rounded-lg border p-4">
               <p className="text-sm text-muted-foreground">FHE Encryption</p>
               <p className="text-2xl font-mono font-bold">
-                {proofData.fheEncryptionTimeMs ? `${proofData.fheEncryptionTimeMs}ms` : "N/A"}
+                {proofData.fheEncryptionTimeMs
+                  ? `${proofData.fheEncryptionTimeMs}ms`
+                  : "N/A"}
               </p>
             </div>
             <div className="rounded-lg border p-4">
@@ -168,7 +180,9 @@ export default function DevViewPage() {
             <div className="rounded-lg border p-4">
               <p className="text-sm text-muted-foreground">Ciphertext Size</p>
               <p className="text-2xl font-mono font-bold">
-                {proofData.dobCiphertext ? formatBytes(proofData.dobCiphertext) : "N/A"}
+                {proofData.dobCiphertext
+                  ? formatBytes(proofData.dobCiphertext)
+                  : "N/A"}
               </p>
             </div>
           </div>
@@ -182,7 +196,9 @@ export default function DevViewPage() {
             <Shield className="h-5 w-5 text-blue-500" />
             ZK Proof (Groth16)
           </CardTitle>
-          <CardDescription>Zero-knowledge proof of age verification</CardDescription>
+          <CardDescription>
+            Zero-knowledge proof of age verification
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -282,7 +298,10 @@ export default function DevViewPage() {
                 </Badge>
               </div>
 
-              <Collapsible open={ciphertextOpen} onOpenChange={setCiphertextOpen}>
+              <Collapsible
+                open={ciphertextOpen}
+                onOpenChange={setCiphertextOpen}
+              >
                 <CollapsibleTrigger asChild>
                   <Button variant="outline" className="w-full justify-between">
                     <span>View Ciphertext (truncated)</span>
@@ -298,7 +317,10 @@ export default function DevViewPage() {
                       size="sm"
                       className="absolute right-2 top-2 z-10"
                       onClick={() =>
-                        copyToClipboard(proofData.dobCiphertext || "", "ciphertext")
+                        copyToClipboard(
+                          proofData.dobCiphertext || "",
+                          "ciphertext",
+                        )
                       }
                     >
                       {copiedField === "ciphertext" ? (
@@ -319,9 +341,9 @@ export default function DevViewPage() {
               <Alert>
                 <Database className="h-4 w-4" />
                 <AlertDescription>
-                  The FHE ciphertext enables age verification without decryption.
-                  The server can compute on this encrypted data to verify your age
-                  at any time in the future.
+                  The FHE ciphertext enables age verification without
+                  decryption. The server can compute on this encrypted data to
+                  verify your age at any time in the future.
                 </AlertDescription>
               </Alert>
             </>
@@ -330,8 +352,8 @@ export default function DevViewPage() {
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 No FHE ciphertext found. This could mean the FHE service was
-                unavailable during registration. Your ZK proof is still valid for
-                age verification.
+                unavailable during registration. Your ZK proof is still valid
+                for age verification.
               </AlertDescription>
             </Alert>
           )}
@@ -353,9 +375,7 @@ export default function DevViewPage() {
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Created At</span>
-            <span>
-              {new Date(proofData.createdAt).toLocaleString()}
-            </span>
+            <span>{new Date(proofData.createdAt).toLocaleString()}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Age Status</span>

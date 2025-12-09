@@ -2,31 +2,31 @@
 
 /* eslint @next/next/no-img-element: off */
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useWizard } from "../wizard-provider";
-import { WizardNavigation } from "../wizard-navigation";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import {
   Camera,
   CameraOff,
   CheckCircle2,
   Loader2,
-  Smile,
   RotateCcw,
+  Smile,
 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  validateLivenessChallenge,
-  checkLiveness,
-  checkSmile,
-  checkBlink,
-  analyzePassiveMonitor,
-  type ChallengeResult,
-} from "@/lib/face-detection";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 import { trackCameraPermission, trackLiveness } from "@/lib/analytics";
+import {
+  analyzePassiveMonitor,
+  type ChallengeResult,
+  checkBlink,
+  checkLiveness,
+  checkSmile,
+  validateLivenessChallenge,
+} from "@/lib/face-detection";
+import { WizardNavigation } from "../wizard-navigation";
+import { useWizard } from "../wizard-provider";
 
 /**
  * Automatic challenge flow states:
@@ -74,13 +74,17 @@ export function StepSelfie() {
     startCamera,
     stopCamera,
     captureFrame,
-  } = useLivenessCamera({ facingMode: "user", idealWidth: 640, idealHeight: 480 });
+  } = useLivenessCamera({
+    facingMode: "user",
+    idealWidth: 640,
+    idealHeight: 480,
+  });
 
   // Challenge state
   const [challengeState, setChallengeState] = useState<ChallengeState>("idle");
   const [baselineImage, setBaselineImage] = useState<string | null>(null);
   const [challengeImage, setChallengeImage] = useState<string | null>(
-    state.data.selfieImage || null
+    state.data.selfieImage || null,
   );
   const [challengeResult, setChallengeResult] =
     useState<ChallengeResult | null>(null);
@@ -91,7 +95,9 @@ export function StepSelfie() {
   const [countdown, setCountdown] = useState(3);
   const [timeoutMessage, setTimeoutMessage] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [warmupStatus, setWarmupStatus] = useState<"idle" | "warming" | "ready" | "failed">("idle");
+  const [warmupStatus, setWarmupStatus] = useState<
+    "idle" | "warming" | "ready" | "failed"
+  >("idle");
 
   // Passive monitoring state
   const [passiveFrames, setPassiveFrames] = useState<string[]>([]);
@@ -154,11 +160,11 @@ export function StepSelfie() {
       setChallengeState("detecting");
       setStatusMessage("Position your face in the frame");
     } catch {
-      const errorMsg = "Unable to access camera. Please check permissions and try again.";
+      const errorMsg =
+        "Unable to access camera. Please check permissions and try again.";
       toast.error("Camera access denied", { description: errorMsg });
     }
   }, [startCamera, warmupLiveness]);
-
 
   // Face detection check
   const checkForFace = useCallback(
@@ -178,23 +184,26 @@ export function StepSelfie() {
         if (result.isReal && result.faceCount === 1) {
           consecutiveDetectionsRef.current++;
           setDetectionProgress(
-            (consecutiveDetectionsRef.current / STABILITY_FRAMES) * 100
+            (consecutiveDetectionsRef.current / STABILITY_FRAMES) * 100,
           );
 
           // Collect frames for passive monitoring (at slower interval)
           if (
-            timestamp - lastPassiveFrameTimeRef.current >= PASSIVE_FRAME_INTERVAL &&
+            timestamp - lastPassiveFrameTimeRef.current >=
+              PASSIVE_FRAME_INTERVAL &&
             passiveFrames.length < MAX_PASSIVE_FRAMES
           ) {
             lastPassiveFrameTimeRef.current = timestamp;
             setPassiveFrames((prev) => [...prev, frame]);
 
             // Background blink check (non-blocking)
-            checkBlink(frame, passiveFrames.length === 0).then((blinkResult) => {
-              if (blinkResult.blinkDetected) {
-                setBlinkCount(blinkResult.blinkCount);
-              }
-            });
+            await checkBlink(frame, passiveFrames.length === 0).then(
+              (blinkResult) => {
+                if (blinkResult.blinkDetected) {
+                  setBlinkCount(blinkResult.blinkCount);
+                }
+              },
+            );
           }
 
           if (consecutiveDetectionsRef.current >= STABILITY_FRAMES) {
@@ -217,13 +226,12 @@ export function StepSelfie() {
             setStatusMessage("Make sure your face is clearly visible");
           }
         }
-      } catch (error) {
-        console.error("Face detection error:", error);
+      } catch (_error) {
       } finally {
         isCheckingRef.current = false;
       }
     },
-    [passiveFrames.length]
+    [passiveFrames.length],
   );
 
   // Capture and validate challenge
@@ -239,7 +247,7 @@ export function StepSelfie() {
         const result = await validateLivenessChallenge(
           baselineImage,
           smileFrame,
-          "smile"
+          "smile",
         );
         setChallengeResult(result);
 
@@ -264,20 +272,23 @@ export function StepSelfie() {
                 passiveResult.bestFrameIndex < passiveFrames.length &&
                 passiveResult.bestFrameScore > 0.7 // Only use if quality is high
               ) {
-                const candidateFrame = passiveFrames[passiveResult.bestFrameIndex];
-                if (candidateFrame && candidateFrame.length > 1000 && candidateFrame.startsWith("data:image/")) {
+                const candidateFrame =
+                  passiveFrames[passiveResult.bestFrameIndex];
+                if (
+                  candidateFrame &&
+                  candidateFrame.length > 1000 &&
+                  candidateFrame.startsWith("data:image/")
+                ) {
                   selectedBestFrame = candidateFrame;
                 }
               }
-            } catch (passiveError) {
-              console.warn("Passive monitoring analysis failed, using baseline:", passiveError);
+            } catch (_passiveError) {
               // Continue with baseline - it has a neutral expression ideal for matching
             }
           }
 
           // Fallback to smile frame only if baseline is somehow missing
           if (!selectedBestFrame) {
-            console.warn("No baseline available, falling back to smile frame");
             selectedBestFrame = smileFrame;
           }
 
@@ -299,7 +310,7 @@ export function StepSelfie() {
         });
       }
     },
-    [baselineImage, stopCamera, updateData, passiveFrames, blinkCount]
+    [baselineImage, stopCamera, updateData, passiveFrames, blinkCount],
   );
 
   // Smile detection check
@@ -335,13 +346,12 @@ export function StepSelfie() {
           setStatusMessage("Face lost - position your face in the frame");
           consecutiveSmilesRef.current = 0;
         }
-      } catch (error) {
-        console.error("Smile detection error:", error);
+      } catch (_error) {
       } finally {
         isCheckingRef.current = false;
       }
     },
-    [captureAndValidate]
+    [captureAndValidate],
   );
 
   // Countdown effect for baseline capture
@@ -376,10 +386,7 @@ export function StepSelfie() {
   // Main detection loop
   useEffect(() => {
     if (!isStreaming) return;
-    if (
-      challengeState !== "detecting" &&
-      challengeState !== "waiting_smile"
-    )
+    if (challengeState !== "detecting" && challengeState !== "waiting_smile")
       return;
 
     let lastCheck = 0;
@@ -450,9 +457,10 @@ export function StepSelfie() {
   useEffect(() => {
     if (challengeState === "passed") {
       toast.success("Liveness verified!", {
-        description: blinkCount > 0
-          ? `You've been confirmed as a real person. (${blinkCount} blink${blinkCount !== 1 ? "s" : ""} detected)`
-          : "You've been confirmed as a real person.",
+        description:
+          blinkCount > 0
+            ? `You've been confirmed as a real person. (${blinkCount} blink${blinkCount !== 1 ? "s" : ""} detected)`
+            : "You've been confirmed as a real person.",
       });
       trackLiveness("passed", { blinkCount });
     }
@@ -525,7 +533,9 @@ export function StepSelfie() {
         challengeImage ? (
           <img
             src={challengeImage}
-            alt={challengeState === "passed" ? "Verified selfie" : "Failed selfie"}
+            alt={
+              challengeState === "passed" ? "Verified selfie" : "Failed selfie"
+            }
             className={`h-full w-full object-cover ${
               challengeState === "failed" ? "opacity-50" : ""
             }`}
@@ -565,9 +575,14 @@ export function StepSelfie() {
         )}
 
         {/* Face positioning guide - visible during detection and smile states */}
-        {(challengeState === "detecting" || challengeState === "waiting_smile") && (
+        {(challengeState === "detecting" ||
+          challengeState === "waiting_smile") && (
           <div className="pointer-events-none absolute inset-0">
-            <svg className="h-full w-full" viewBox="0 0 640 480" preserveAspectRatio="xMidYMid slice">
+            <svg
+              className="h-full w-full"
+              viewBox="0 0 640 480"
+              preserveAspectRatio="xMidYMid slice"
+            >
               {/* Semi-transparent overlay with face cutout */}
               <defs>
                 <mask id="face-mask">
@@ -576,21 +591,39 @@ export function StepSelfie() {
                 </mask>
               </defs>
               <rect
-                x="0" y="0" width="640" height="480"
+                x="0"
+                y="0"
+                width="640"
+                height="480"
                 fill="rgba(0,0,0,0.3)"
                 mask="url(#face-mask)"
               />
               {/* Face oval guide */}
               <ellipse
-                cx="320" cy="200" rx="130" ry="170"
+                cx="320"
+                cy="200"
+                rx="130"
+                ry="170"
                 fill="none"
-                stroke={challengeState === "waiting_smile" ? "#eab308" : "#ffffff"}
+                stroke={
+                  challengeState === "waiting_smile" ? "#eab308" : "#ffffff"
+                }
                 strokeWidth="3"
-                strokeDasharray={challengeState === "detecting" ? "12,6" : "none"}
-                className={challengeState === "detecting" ? "animate-pulse" : ""}
+                strokeDasharray={
+                  challengeState === "detecting" ? "12,6" : "none"
+                }
+                className={
+                  challengeState === "detecting" ? "animate-pulse" : ""
+                }
               />
               {/* Corner guides */}
-              <g stroke={challengeState === "waiting_smile" ? "#eab308" : "#ffffff"} strokeWidth="3" strokeLinecap="round">
+              <g
+                stroke={
+                  challengeState === "waiting_smile" ? "#eab308" : "#ffffff"
+                }
+                strokeWidth="3"
+                strokeLinecap="round"
+              >
                 {/* Top-left */}
                 <path d="M 170 50 L 170 90 M 170 50 L 210 50" fill="none" />
                 {/* Top-right */}
@@ -614,10 +647,17 @@ export function StepSelfie() {
               className="rounded-lg bg-background/90 px-4 py-3 shadow-lg backdrop-blur"
             >
               <div className="flex items-center gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
+                <Loader2
+                  className="h-5 w-5 animate-spin text-primary"
+                  aria-hidden="true"
+                />
                 <div>
                   <p className="font-medium">{statusMessage}</p>
-                  <Progress value={detectionProgress} className="mt-1 h-1 w-32" aria-label={`Face detection progress: ${Math.round(detectionProgress)}%`} />
+                  <Progress
+                    value={detectionProgress}
+                    className="mt-1 h-1 w-32"
+                    aria-label={`Face detection progress: ${Math.round(detectionProgress)}%`}
+                  />
                 </div>
               </div>
             </div>
@@ -634,7 +674,9 @@ export function StepSelfie() {
               className="flex flex-col items-center gap-2"
             >
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary text-5xl font-bold text-primary-foreground">
-                <span aria-label={`${countdown} seconds remaining`}>{countdown}</span>
+                <span aria-label={`${countdown} seconds remaining`}>
+                  {countdown}
+                </span>
               </div>
               <p className="text-lg font-medium text-white drop-shadow-lg">
                 Hold still...
@@ -673,7 +715,11 @@ export function StepSelfie() {
         {/* Capturing overlay */}
         {challengeState === "capturing" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div role="status" aria-live="polite" className="rounded-lg bg-green-500/95 px-6 py-4">
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-lg bg-green-500/95 px-6 py-4"
+            >
               <div className="flex items-center gap-2 text-white">
                 <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                 <p className="font-medium">Smile detected!</p>
@@ -685,9 +731,16 @@ export function StepSelfie() {
         {/* Validating overlay */}
         {challengeState === "validating" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <div role="status" aria-live="polite" className="rounded-lg bg-background/95 px-6 py-4 shadow-lg">
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-lg bg-background/95 px-6 py-4 shadow-lg"
+            >
               <div className="flex items-center gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden="true" />
+                <Loader2
+                  className="h-6 w-6 animate-spin text-primary"
+                  aria-hidden="true"
+                />
                 <p className="font-medium">Verifying your identity...</p>
               </div>
             </div>

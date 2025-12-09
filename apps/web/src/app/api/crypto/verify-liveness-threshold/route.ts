@@ -7,9 +7,9 @@
  * Only reveals whether the threshold was met, not the actual score.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { type NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
 const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (!body.ciphertext) {
       return NextResponse.json(
         { error: "ciphertext is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -48,23 +48,28 @@ export async function POST(request: NextRequest) {
     if (typeof threshold !== "number" || threshold < 0 || threshold > 1) {
       return NextResponse.json(
         { error: "threshold must be a number between 0.0 and 1.0" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Call FHE service
-    const response = await fetch(`${FHE_SERVICE_URL}/verify-liveness-threshold`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ciphertext: body.ciphertext,
-        threshold,
-        clientKeyId: body.clientKeyId || "default",
-      }),
-    });
+    const response = await fetch(
+      `${FHE_SERVICE_URL}/verify-liveness-threshold`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ciphertext: body.ciphertext,
+          threshold,
+          clientKeyId: body.clientKeyId || "default",
+        }),
+      },
+    );
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "FHE service error" }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "FHE service error" }));
       return NextResponse.json(error, { status: response.status });
     }
 
@@ -77,10 +82,14 @@ export async function POST(request: NextRequest) {
       computationTimeMs: result.computationTimeMs,
     });
   } catch (error) {
-    console.error("[Verify Liveness Threshold] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to verify liveness threshold" },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to verify liveness threshold",
+      },
+      { status: 500 },
     );
   }
 }

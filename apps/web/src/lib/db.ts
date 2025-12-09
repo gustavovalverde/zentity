@@ -108,23 +108,25 @@ export interface IdentityProof {
   updatedAt: string;
 
   // Sprint 1 additions
-  docValidityProof?: string;       // ZK proof that document is not expired
-  nationalityCommitment?: string;  // SHA256(nationality_code + user_salt)
-  ageProofsJson?: string;          // JSON: {"18": proof, "21": proof, "25": proof}
+  docValidityProof?: string; // ZK proof that document is not expired
+  nationalityCommitment?: string; // SHA256(nationality_code + user_salt)
+  ageProofsJson?: string; // JSON: {"18": proof, "21": proof, "25": proof}
 
   // Sprint 2 additions: FHE expansion
-  genderCiphertext?: string;       // FHE encrypted gender (ISO 5218)
-  dobFullCiphertext?: string;      // FHE encrypted full DOB as YYYYMMDD (u32)
+  genderCiphertext?: string; // FHE encrypted gender (ISO 5218)
+  dobFullCiphertext?: string; // FHE encrypted full DOB as YYYYMMDD (u32)
 
   // Sprint 3 additions: Advanced ZK + Liveness FHE
-  nationalityMembershipProof?: string;  // ZK proof of nationality group membership
-  livenessScoreCiphertext?: string;     // FHE encrypted liveness score (0.0-1.0 as u16)
+  nationalityMembershipProof?: string; // ZK proof of nationality group membership
+  livenessScoreCiphertext?: string; // FHE encrypted liveness score (0.0-1.0 as u16)
 }
 
 /**
  * Create a new identity proof record
  */
-export function createIdentityProof(proof: Omit<IdentityProof, "createdAt" | "updatedAt">): void {
+export function createIdentityProof(
+  proof: Omit<IdentityProof, "createdAt" | "updatedAt">,
+): void {
   const stmt = db.prepare(`
     INSERT INTO identity_proofs (
       id, user_id, document_hash, name_commitment, user_salt,
@@ -171,7 +173,7 @@ export function createIdentityProof(proof: Omit<IdentityProof, "createdAt" | "up
     proof.genderCiphertext || null,
     proof.dobFullCiphertext || null,
     proof.nationalityMembershipProof || null,
-    proof.livenessScoreCiphertext || null
+    proof.livenessScoreCiphertext || null,
   );
 }
 
@@ -238,7 +240,7 @@ export function updateIdentityProofFlags(
     // Sprint 3 additions
     nationalityMembershipProof?: string;
     livenessScoreCiphertext?: string;
-  }
+  },
 ): void {
   const updates: string[] = [];
   const values: (string | number)[] = [];
@@ -334,7 +336,7 @@ export function documentHashExists(documentHash: string): boolean {
  */
 export function verifyNameClaimForUser(
   userId: string,
-  claimedNameHash: string
+  claimedNameHash: string,
 ): boolean {
   const stmt = db.prepare(`
     SELECT name_commitment FROM identity_proofs WHERE user_id = ?
@@ -462,14 +464,16 @@ export function getUserAgeProof(userId: string): AgeProof | null {
       LIMIT 1
     `);
 
-    const proof = stmt.get(userId) as {
-      id: string;
-      is_over_18: number;
-      generation_time_ms: number;
-      created_at: string;
-      dob_ciphertext: string | null;
-      fhe_encryption_time_ms: number | null;
-    } | undefined;
+    const proof = stmt.get(userId) as
+      | {
+          id: string;
+          is_over_18: number;
+          generation_time_ms: number;
+          created_at: string;
+          dob_ciphertext: string | null;
+          fhe_encryption_time_ms: number | null;
+        }
+      | undefined;
 
     if (!proof) return null;
 

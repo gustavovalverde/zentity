@@ -37,7 +37,7 @@ export function getFirstPart(name: string | undefined | null): string {
  */
 export function buildDisplayName(
   firstName: string | undefined | null,
-  lastName: string | undefined | null
+  lastName: string | undefined | null,
 ): string {
   const firstPart = getFirstPart(firstName);
   const lastPart = getFirstPart(lastName);
@@ -73,7 +73,7 @@ export function getGreetingName(fullName: string | undefined | null): string {
  * buildDisplayNameFromFull("Ana Rodriguez") // "Ana Rodriguez"
  */
 export function buildDisplayNameFromFull(
-  fullName: string | undefined | null
+  fullName: string | undefined | null,
 ): string {
   if (!fullName) return "";
 

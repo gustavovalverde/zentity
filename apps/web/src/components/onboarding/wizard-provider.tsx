@@ -1,7 +1,18 @@
 "use client";
 
-import { createContext, useContext, useReducer, useEffect, useRef, useState, ReactNode } from "react";
-import { WizardData, defaultWizardData } from "@/features/auth/schemas/sign-up.schema";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import {
+  defaultWizardData,
+  type WizardData,
+} from "@/features/auth/schemas/sign-up.schema";
 import { trackStep } from "@/lib/analytics";
 
 const TOTAL_STEPS = 4;
@@ -97,9 +108,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(saved);
         dispatch({ type: "LOAD_STATE", state: parsed });
       }
-    } catch (error) {
-      console.warn("Failed to load wizard state:", error);
-    }
+    } catch (_error) {}
     isInitializedRef.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsHydrated(true);
@@ -111,23 +120,21 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.warn("Failed to save wizard state:", error);
-    }
+    } catch (_error) {}
   }, [state]);
 
   const nextStep = () => dispatch({ type: "NEXT_STEP" });
   const prevStep = () => dispatch({ type: "PREV_STEP" });
   const goToStep = (step: number) => dispatch({ type: "GO_TO_STEP", step });
-  const updateData = (data: Partial<WizardData>) => dispatch({ type: "UPDATE_DATA", data });
-  const setSubmitting = (isSubmitting: boolean) => dispatch({ type: "SET_SUBMITTING", isSubmitting });
+  const updateData = (data: Partial<WizardData>) =>
+    dispatch({ type: "UPDATE_DATA", data });
+  const setSubmitting = (isSubmitting: boolean) =>
+    dispatch({ type: "SET_SUBMITTING", isSubmitting });
   const reset = () => {
     dispatch({ type: "RESET" });
     try {
       localStorage.removeItem(STORAGE_KEY);
-    } catch (error) {
-      console.warn("Failed to remove wizard state:", error);
-    }
+    } catch (_error) {}
   };
 
   const value: WizardContextType = {
@@ -159,13 +166,14 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     // Check if user has entered meaningful data
     const hasUnsavedData = Boolean(
       state.data.email ||
-      state.data.idDocument ||
-      state.data.selfieImage ||
-      state.data.extractedName
+        state.data.idDocument ||
+        state.data.selfieImage ||
+        state.data.extractedName,
     );
 
     // Only warn if user is mid-process (not on first or last step with completion)
-    const isInProgress = state.currentStep > 1 && state.currentStep < TOTAL_STEPS;
+    const isInProgress =
+      state.currentStep > 1 && state.currentStep < TOTAL_STEPS;
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedData && isInProgress) {
@@ -191,7 +199,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  return <WizardContext.Provider value={value}>{children}</WizardContext.Provider>;
+  return (
+    <WizardContext.Provider value={value}>{children}</WizardContext.Provider>
+  );
 }
 
 export function useWizard() {
