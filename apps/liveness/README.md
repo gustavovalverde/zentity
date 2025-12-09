@@ -133,6 +133,125 @@ Eye blink detection using EAR (Eye Aspect Ratio).
 #### `POST /passive-monitor`
 Analyze multiple frames for passive liveness indicators.
 
+### Head Pose Detection
+
+#### `POST /head-pose`
+Detect head orientation using 106-point facial landmarks.
+
+**Request:**
+```json
+{
+  "image": "base64-encoded-image",
+  "resetSession": false
+}
+```
+
+**Response:**
+```json
+{
+  "yaw": 0.25,
+  "pitch": -0.1,
+  "direction": "right",
+  "isTurningLeft": false,
+  "isTurningRight": true,
+  "leftTurnCompleted": false,
+  "rightTurnCompleted": false,
+  "faceDetected": true,
+  "processingTimeMs": 45
+}
+```
+
+#### `POST /head-turn-check`
+Check if head is turned in a specific direction.
+
+**Request:**
+```json
+{
+  "image": "base64-encoded-image",
+  "direction": "left",
+  "threshold": 0.15
+}
+```
+
+### Multi-Challenge Sessions
+
+For multi-gesture liveness verification (smile + blink + head turns).
+
+#### `POST /challenge/session`
+Create a new multi-challenge session with randomized challenges.
+
+**Request:**
+```json
+{
+  "numChallenges": 2,
+  "excludeChallenges": ["blink"],
+  "requireHeadTurn": true
+}
+```
+
+**Response:**
+```json
+{
+  "sessionId": "abc123...",
+  "challenges": ["turn_left", "smile"],
+  "currentIndex": 0,
+  "isComplete": false,
+  "currentChallenge": {
+    "challengeType": "turn_left",
+    "index": 0,
+    "total": 2,
+    "title": "Turn Left",
+    "instruction": "Turn your head to the left",
+    "icon": "arrow-left",
+    "timeoutSeconds": 8
+  }
+}
+```
+
+#### `POST /challenge/complete`
+Mark a challenge as completed and get the next challenge.
+
+**Request:**
+```json
+{
+  "sessionId": "abc123...",
+  "challengeType": "turn_left",
+  "passed": true,
+  "metadata": { "yaw": -0.25 }
+}
+```
+
+#### `GET /challenge/session/{session_id}`
+Get current state of a challenge session.
+
+#### `POST /challenge/validate-multi`
+Validate multiple challenges at once (batch mode).
+
+**Request:**
+```json
+{
+  "baselineImage": "base64-neutral-face",
+  "challengeResults": [
+    { "challenge_type": "smile", "image": "base64-smiling" },
+    { "challenge_type": "turn_left", "image": "base64-turned-left" }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "allPassed": true,
+  "totalChallenges": 2,
+  "passedCount": 2,
+  "results": [
+    { "index": 0, "challengeType": "smile", "passed": true, "score": 75.5 },
+    { "index": 1, "challengeType": "turn_left", "passed": true, "score": -0.28 }
+  ],
+  "processingTimeMs": 320
+}
+```
+
 ### Full Verification
 
 #### `POST /verify`
@@ -244,7 +363,12 @@ apps/liveness/
 ├── app/
 │   ├── main.py              # FastAPI endpoints
 │   ├── blink_detection.py   # Eye Aspect Ratio (EAR) blink detection
-│   └── ...
+│   ├── head_pose.py         # Head pose estimation (yaw/pitch)
+│   ├── challenge_engine.py  # Multi-challenge session management
+│   ├── facial_analysis.py   # Emotion detection (smile challenge)
+│   ├── face_match.py        # Face comparison
+│   ├── antispoof.py         # FasNet anti-spoofing
+│   └── liveness.py          # Core liveness checks
 ├── entrypoint.sh            # Multi-step model warmup
 ├── requirements.txt
 └── Dockerfile
