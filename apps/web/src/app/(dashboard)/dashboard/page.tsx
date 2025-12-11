@@ -45,6 +45,8 @@ export default async function DashboardPage() {
     fheClientKeyId: identityProof?.fheClientKeyId,
     ageProof: identityProof?.ageProof,
     ageProofVerified: identityProof?.ageProofVerified,
+    // Full age proofs with publicSignals (for ZK verification)
+    ageProofsJson: identityProof?.ageProofsJson,
     // Document metadata (non-PII, safe to display)
     documentType: identityProof?.documentType,
     countryVerified: identityProof?.countryVerified,

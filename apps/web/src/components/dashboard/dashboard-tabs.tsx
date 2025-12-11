@@ -71,6 +71,7 @@ interface DashboardTabsProps {
     fheClientKeyId?: string;
     ageProof?: string;
     ageProofVerified?: boolean;
+    ageProofsJson?: string; // Full proofs with publicSignals for ZK verification
     // Document metadata (non-PII)
     documentType?: string;
     countryVerified?: string; // ISO 3166-1 alpha-3 code (e.g., "DOM")
@@ -284,6 +285,7 @@ export function DashboardTabs({
           <AgeProofDemo
             ageProof={identityData?.ageProof}
             ageProofVerified={identityData?.ageProofVerified}
+            ageProofsJson={identityData?.ageProofsJson}
           />
         </div>
 

@@ -23,11 +23,13 @@ import {
 interface AgeProofDemoProps {
   ageProof?: string;
   ageProofVerified?: boolean;
+  ageProofsJson?: string; // Full proofs with publicSignals
 }
 
 export function AgeProofDemo({
   ageProof,
   ageProofVerified,
+  ageProofsJson,
 }: AgeProofDemoProps) {
   const [verifying, setVerifying] = useState(false);
   const [result, setResult] = useState<{
@@ -37,7 +39,7 @@ export function AgeProofDemo({
   const [error, setError] = useState<string | null>(null);
 
   const handleVerifyProof = async () => {
-    if (!ageProof) return;
+    if (!ageProof && !ageProofsJson) return;
 
     setVerifying(true);
     setError(null);
@@ -45,15 +47,34 @@ export function AgeProofDemo({
 
     try {
       const startTime = Date.now();
+
+      // Try to get the full proof with publicSignals from ageProofsJson first
+      let proof: unknown;
+      let publicSignals: string[];
+
+      if (ageProofsJson) {
+        // ageProofsJson contains full proofs: { "18": { proof: {...}, publicSignals: [...] }, ... }
+        const proofs = JSON.parse(ageProofsJson);
+        const age18Proof = proofs["18"];
+        if (age18Proof?.proof && age18Proof?.publicSignals) {
+          proof = age18Proof.proof;
+          publicSignals = age18Proof.publicSignals;
+        } else {
+          throw new Error("No valid age 18 proof found in ageProofsJson");
+        }
+      } else if (ageProof) {
+        // Fallback to legacy ageProof (only contains proof, no publicSignals)
+        proof = JSON.parse(ageProof);
+        // Best effort: assume publicSignals based on ageProofVerified flag
+        publicSignals = ageProofVerified ? ["1", "18"] : ["0", "18"];
+      } else {
+        throw new Error("No proof data available");
+      }
+
       const response = await fetch("/api/crypto/verify-proof", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          proof: JSON.parse(ageProof),
-          // We need public signals for verification - this is a simplified demo
-          // In production, these would come from the stored proof data
-          publicSignals: ["1"], // Simplified: 1 = is_over_18
-        }),
+        body: JSON.stringify({ proof, publicSignals }),
       });
 
       const verificationTimeMs = Date.now() - startTime;
@@ -91,7 +112,7 @@ export function AgeProofDemo({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!ageProof ? (
+        {!ageProof && !ageProofsJson ? (
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription>
@@ -109,7 +130,9 @@ export function AgeProofDemo({
                 </Badge>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
-                <code className="break-all">{truncateProof(ageProof)}</code>
+                <code className="break-all">
+                  {truncateProof(ageProof ?? ageProofsJson ?? "")}
+                </code>
               </div>
             </div>
 
