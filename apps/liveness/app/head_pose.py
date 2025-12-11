@@ -24,7 +24,7 @@ from uniface import Landmark106, RetinaFace
 from .antispoof import decode_base64_image
 
 # Head pose thresholds
-YAW_THRESHOLD = 0.15  # Ratio difference indicating head turn
+YAW_THRESHOLD = 0.10  # Ratio difference indicating head turn (lowered for easier detection)
 YAW_STRONG_THRESHOLD = 0.25  # Strong turn indication
 CONSECUTIVE_FRAMES_FOR_TURN = 2  # Frames with turn to confirm
 
@@ -204,16 +204,18 @@ class HeadPoseDetector:
             yaw = calculate_head_yaw(landmarks)
             pitch = calculate_head_pitch(landmarks)
 
-            # Determine direction
+            # Determine direction (from user's perspective, not camera)
+            # Positive yaw = nose moved right in camera = user turned LEFT
+            # Negative yaw = nose moved left in camera = user turned RIGHT
             direction = "forward"
             if abs(yaw) > YAW_THRESHOLD:
-                direction = "left" if yaw < 0 else "right"
+                direction = "left" if yaw > 0 else "right"
             elif abs(pitch) > 0.2:
                 direction = "up" if pitch > 0 else "down"
 
-            # Track turn state
-            is_turning_left = yaw < -YAW_THRESHOLD
-            is_turning_right = yaw > YAW_THRESHOLD
+            # Track turn state (from user's perspective)
+            is_turning_left = yaw > YAW_THRESHOLD
+            is_turning_right = yaw < -YAW_THRESHOLD
 
             # Count consecutive frames for turn confirmation
             if is_turning_left:
@@ -348,18 +350,22 @@ def detect_head_turn(base64_image: str, required_direction: str, threshold: floa
 
         yaw = calculate_head_yaw(landmarks)
 
+        # Note: Yaw sign is relative to camera view, not user's perspective
+        # When user turns RIGHT (their right), nose moves LEFT in camera → yaw is NEGATIVE
+        # When user turns LEFT (their left), nose moves RIGHT in camera → yaw is POSITIVE
+        # So we INVERT the comparison to match user's perspective
         if required_direction == "left":
-            turn_detected = yaw < -threshold
+            turn_detected = yaw > threshold  # positive yaw = user turned left
         elif required_direction == "right":
-            turn_detected = yaw > threshold
+            turn_detected = yaw < -threshold  # negative yaw = user turned right
         else:
             turn_detected = False
 
         direction = "forward"
-        if yaw < -threshold:
-            direction = "left"
-        elif yaw > threshold:
-            direction = "right"
+        if yaw > threshold:
+            direction = "left"  # user's left
+        elif yaw < -threshold:
+            direction = "right"  # user's right
 
         return {
             "turn_detected": turn_detected,

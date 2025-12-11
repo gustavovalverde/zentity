@@ -790,7 +790,9 @@ export async function getChallengeSession(
   sessionId: string,
 ): Promise<ChallengeSession> {
   try {
-    const response = await fetch(`/api/liveness/challenge/session/${sessionId}`);
+    const response = await fetch(
+      `/api/liveness/challenge/session/${sessionId}`,
+    );
 
     if (!response.ok) {
       throw new Error(`Session not found: ${response.status}`);

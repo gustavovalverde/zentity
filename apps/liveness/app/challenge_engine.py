@@ -6,9 +6,11 @@ verification. It generates random challenge sequences and validates them.
 
 Supported challenges:
 - smile: Smile detection using DeepFace emotion analysis
-- blink: Eye blink detection using EAR (Eye Aspect Ratio)
 - turn_left: Head turn to the left
 - turn_right: Head turn to the right
+
+Note: Blink detection was removed due to timing issues (blink duration ~100-400ms
+is faster than typical frame capture intervals of 300ms).
 
 A session consists of 2-3 random challenges that must be completed
 to prove liveness. This prevents replay attacks using static photos
@@ -25,7 +27,6 @@ from typing import Optional
 class ChallengeType(str, Enum):
     """Available challenge types for liveness verification."""
     SMILE = "smile"
-    BLINK = "blink"
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
 
@@ -37,12 +38,6 @@ CHALLENGE_INSTRUCTIONS = {
         "instruction": "Please smile!",
         "icon": "smile",
         "timeout_seconds": 10,
-    },
-    ChallengeType.BLINK: {
-        "title": "Blink",
-        "instruction": "Please blink your eyes",
-        "icon": "eye",
-        "timeout_seconds": 8,
     },
     ChallengeType.TURN_LEFT: {
         "title": "Turn Left",
@@ -119,7 +114,7 @@ class ChallengeSession:
         # Fill remaining slots randomly
         remaining = self.num_challenges - len(challenges)
         if remaining > 0:
-            # Avoid duplicates (except head turns can appear with smile/blink)
+            # Avoid duplicates (except head turns can appear with smile)
             selected = random.sample(available, min(remaining, len(available)))
             challenges.extend(selected)
 
@@ -304,7 +299,6 @@ def validate_multi_challenge_batch(
         Validation result dict
     """
     from .facial_analysis import check_smile
-    from .blink_detection import check_blink_from_base64
     from .head_pose import check_head_pose_from_base64
     from .antispoof import decode_base64_image
 
@@ -340,28 +334,19 @@ def validate_multi_challenge_batch(
                     "score": result.get("happy_score", 0),
                 })
 
-            elif challenge_type == ChallengeType.BLINK.value:
-                # Check if blink occurred (need multiple frames ideally)
-                result = check_blink_from_base64(image, reset_session=True)
-                # For single frame, check if eyes are closed
-                passed = result.get("ear_value", 1.0) < 0.21
-                results.append({
-                    "index": i,
-                    "challenge_type": challenge_type,
-                    "passed": passed,
-                    "ear_value": result.get("ear_value", 0),
-                })
-
             elif challenge_type in [ChallengeType.TURN_LEFT.value, ChallengeType.TURN_RIGHT.value]:
                 # Check head turn
                 result = check_head_pose_from_base64(image, reset_session=True)
                 direction = "left" if challenge_type == ChallengeType.TURN_LEFT.value else "right"
                 yaw = result.get("yaw", 0)
 
+                # Note: Yaw sign is relative to camera view
+                # Positive yaw = nose moved right in camera = user turned LEFT
+                # Negative yaw = nose moved left in camera = user turned RIGHT
                 if direction == "left":
-                    passed = yaw < -0.15
+                    passed = yaw > 0.10  # positive yaw = user turned left
                 else:
-                    passed = yaw > 0.15
+                    passed = yaw < -0.10  # negative yaw = user turned right
 
                 results.append({
                     "index": i,
