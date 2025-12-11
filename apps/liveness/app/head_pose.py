@@ -204,18 +204,19 @@ class HeadPoseDetector:
             yaw = calculate_head_yaw(landmarks)
             pitch = calculate_head_pitch(landmarks)
 
-            # Determine direction (from user's perspective, not camera)
-            # Positive yaw = nose moved right in camera = user turned LEFT
-            # Negative yaw = nose moved left in camera = user turned RIGHT
+            # Determine direction (from user's perspective)
+            # Negative yaw = nose moved left in camera = user turned LEFT
+            # Positive yaw = nose moved right in camera = user turned RIGHT
+            # (The video is displayed mirrored, but captured frames are not mirrored)
             direction = "forward"
             if abs(yaw) > YAW_THRESHOLD:
-                direction = "left" if yaw > 0 else "right"
+                direction = "left" if yaw < 0 else "right"
             elif abs(pitch) > 0.2:
                 direction = "up" if pitch > 0 else "down"
 
             # Track turn state (from user's perspective)
-            is_turning_left = yaw > YAW_THRESHOLD
-            is_turning_right = yaw < -YAW_THRESHOLD
+            is_turning_left = yaw < -YAW_THRESHOLD
+            is_turning_right = yaw > YAW_THRESHOLD
 
             # Count consecutive frames for turn confirmation
             if is_turning_left:
@@ -350,22 +351,22 @@ def detect_head_turn(base64_image: str, required_direction: str, threshold: floa
 
         yaw = calculate_head_yaw(landmarks)
 
-        # Note: Yaw sign is relative to camera view, not user's perspective
-        # When user turns RIGHT (their right), nose moves LEFT in camera → yaw is NEGATIVE
-        # When user turns LEFT (their left), nose moves RIGHT in camera → yaw is POSITIVE
-        # So we INVERT the comparison to match user's perspective
+        # Note: Yaw sign is relative to the captured image (NOT mirrored)
+        # When user turns LEFT (their left), nose moves LEFT in camera → yaw is NEGATIVE
+        # When user turns RIGHT (their right), nose moves RIGHT in camera → yaw is POSITIVE
+        # The video is displayed mirrored, but the captured frame is not
         if required_direction == "left":
-            turn_detected = yaw > threshold  # positive yaw = user turned left
+            turn_detected = yaw < -threshold  # negative yaw = user turned left
         elif required_direction == "right":
-            turn_detected = yaw < -threshold  # negative yaw = user turned right
+            turn_detected = yaw > threshold  # positive yaw = user turned right
         else:
             turn_detected = False
 
         direction = "forward"
-        if yaw > threshold:
-            direction = "left"  # user's left
-        elif yaw < -threshold:
-            direction = "right"  # user's right
+        if yaw < -threshold:
+            direction = "left"  # user turned their head to their left
+        elif yaw > threshold:
+            direction = "right"  # user turned their head to their right
 
         return {
             "turn_detected": turn_detected,

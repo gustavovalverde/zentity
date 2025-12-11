@@ -451,3 +451,6 @@ playwright/.cache/
 *.db-shm
 *.db-wal
 *.db-journal
+
+# SQLite database files
+*.db

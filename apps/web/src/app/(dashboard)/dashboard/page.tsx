@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import {
   getIdentityProofByUserId,
   getUserAgeProof,
+  getUserFirstName,
   getVerificationStatus,
 } from "@/lib/db";
 import { getGreetingName } from "@/lib/name-utils";
@@ -24,6 +25,9 @@ export default async function DashboardPage() {
 
   // Get verification status
   const verificationStatus = userId ? getVerificationStatus(userId) : null;
+
+  // Fetch decrypted first name for personalized greeting
+  const firstName = userId ? await getUserFirstName(userId) : null;
 
   // Build verification checks combining both sources
   const checks = {
@@ -53,13 +57,14 @@ export default async function DashboardPage() {
     verifiedAt: identityProof?.verifiedAt,
   };
 
+  // Determine the best name to display (priority: decrypted first name > display name > "User")
+  const displayName = firstName || getGreetingName(session?.user.name) || "User";
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">
-            Welcome, {getGreetingName(session?.user.name) || "User"}
-          </h1>
+          <h1 className="text-3xl font-bold">Welcome, {displayName}</h1>
           <p className="text-muted-foreground">
             Manage your privacy-preserving identity verification
           </p>

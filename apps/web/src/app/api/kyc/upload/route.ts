@@ -1,10 +1,17 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import Database from "better-sqlite3";
 import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { calculateKycLevel, ensureKycStatus } from "../route";
 
-const db = new Database("./dev.db");
+const dbPath = process.env.DATABASE_PATH || "./dev.db";
+const dbDir = path.dirname(dbPath);
+if (dbDir !== "." && !fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+const db = new Database(dbPath);
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME_TYPES = [

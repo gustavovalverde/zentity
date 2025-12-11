@@ -22,6 +22,7 @@ import { auth } from "@/lib/auth";
 import {
   createIdentityProof,
   documentHashExists,
+  encryptFirstName,
   getIdentityProofByUserId,
   updateIdentityProofFlags,
   updateUserName,
@@ -318,6 +319,9 @@ export async function POST(
       score: number;
     } | null = null;
 
+    // Encrypted first name for user display (JWE encrypted, reversible)
+    let firstNameEncrypted: string | null = null;
+
     const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
     if (dateOfBirth) {
       // Parse birth year from DOB (format: DD/MM/YYYY or YYYY-MM-DD)
@@ -580,6 +584,20 @@ export async function POST(
     }
 
     // =========================================================================
+    // STEP 3.10: Encrypt First Name for User Display
+    // =========================================================================
+    // Encrypt the first name using JWE so we can display it back to the user
+    // on their dashboard. This is reversible encryption (unlike SHA256 commitments).
+    const firstName = documentResult?.extractedData?.firstName;
+    if (firstName) {
+      try {
+        firstNameEncrypted = await encryptFirstName(firstName);
+      } catch (_error) {
+        issues.push("first_name_encryption_failed");
+      }
+    }
+
+    // =========================================================================
     // STEP 4: Store Identity Proof (Only commitments and flags)
     // =========================================================================
     const documentProcessed = Boolean(documentResult?.commitments);
@@ -642,6 +660,8 @@ export async function POST(
           dobFullCiphertext: dobFullFheResult?.ciphertext,
           // Sprint 3: Liveness score FHE encryption
           livenessScoreCiphertext: livenessScoreFheResult?.ciphertext,
+          // User display data: Encrypted first name
+          firstNameEncrypted: firstNameEncrypted || undefined,
         });
       } catch (_error) {
         issues.push("failed_to_save_proof");
@@ -685,6 +705,10 @@ export async function POST(
           // Sprint 3: Liveness score FHE encryption
           ...(livenessScoreFheResult && {
             livenessScoreCiphertext: livenessScoreFheResult.ciphertext,
+          }),
+          // User display data: Encrypted first name
+          ...(firstNameEncrypted && {
+            firstNameEncrypted,
           }),
         });
       } catch (_error) {

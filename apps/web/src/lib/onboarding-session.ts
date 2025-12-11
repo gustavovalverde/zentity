@@ -21,13 +21,23 @@ import {
   type OnboardingSession,
 } from "./db";
 
-// Get encryption secret from environment (same as better-auth)
-const getSecret = () => {
+/**
+ * Get encryption secret from environment (same as better-auth)
+ *
+ * AES-256-GCM requires exactly 256 bits (32 bytes).
+ * We derive a fixed-length key from the secret using SHA-256.
+ */
+const getSecret = async (): Promise<Uint8Array> => {
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret) {
     throw new Error("BETTER_AUTH_SECRET environment variable is required");
   }
-  return new TextEncoder().encode(secret);
+
+  // Derive a 256-bit key from the secret using SHA-256
+  const encoder = new TextEncoder();
+  const data = encoder.encode(secret);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return new Uint8Array(hashBuffer);
 };
 
 const WIZARD_COOKIE_NAME = "zentity-wizard";
@@ -67,7 +77,7 @@ export interface FullWizardState {
  * Encrypt PII data using jose JWE (AES-256-GCM)
  */
 export async function encryptPii(pii: EncryptedPiiData): Promise<string> {
-  const secret = getSecret();
+  const secret = await getSecret();
 
   const token = await new EncryptJWT({ pii })
     .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
@@ -85,7 +95,7 @@ export async function decryptPii(
   token: string,
 ): Promise<EncryptedPiiData | null> {
   try {
-    const secret = getSecret();
+    const secret = await getSecret();
     const { payload } = await jwtDecrypt(token, secret);
     return (payload.pii as EncryptedPiiData) || null;
   } catch {
@@ -98,7 +108,7 @@ export async function decryptPii(
  * Set wizard navigation cookie (email + step only)
  */
 export async function setWizardCookie(state: WizardNavState): Promise<void> {
-  const secret = getSecret();
+  const secret = await getSecret();
 
   const token = await new EncryptJWT({ email: state.email, step: state.step })
     .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
@@ -125,7 +135,7 @@ export async function getWizardCookie(): Promise<WizardNavState | null> {
     const token = cookieStore.get(WIZARD_COOKIE_NAME)?.value;
     if (!token) return null;
 
-    const secret = getSecret();
+    const secret = await getSecret();
     const { payload } = await jwtDecrypt(token, secret);
 
     return {

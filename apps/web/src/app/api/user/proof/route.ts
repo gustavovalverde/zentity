@@ -1,9 +1,20 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import Database from "better-sqlite3";
 import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
-const db = new Database("./dev.db");
+// Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
+const dbPath = process.env.DATABASE_PATH || "./dev.db";
+
+// Ensure the database directory exists
+const dbDir = path.dirname(dbPath);
+if (dbDir !== "." && !fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new Database(dbPath);
 
 // Initialize the age_proofs table if it doesn't exist
 db.exec(`

@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import Database from "better-sqlite3";
 import { CheckCircle, Clock, Code, Hash, Shield } from "lucide-react";
 import { headers } from "next/headers";
@@ -15,7 +17,12 @@ import {
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 
-const db = new Database("./dev.db");
+const dbPath = process.env.DATABASE_PATH || "./dev.db";
+const dbDir = path.dirname(dbPath);
+if (dbDir !== "." && !fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+const db = new Database(dbPath);
 
 async function getUserProof(userId: string) {
   try {

@@ -56,8 +56,11 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
+# Create data directory for persistent database storage
+RUN mkdir -p ./data
+
 # Create empty database file (will be initialized by entrypoint)
-RUN touch ./dev.db
+RUN touch ./dev.db ./data/dev.db
 
 # Set correct permissions
 RUN chown -R nextjs:nodejs /app

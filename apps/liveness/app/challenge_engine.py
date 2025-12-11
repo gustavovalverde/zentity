@@ -340,13 +340,13 @@ def validate_multi_challenge_batch(
                 direction = "left" if challenge_type == ChallengeType.TURN_LEFT.value else "right"
                 yaw = result.get("yaw", 0)
 
-                # Note: Yaw sign is relative to camera view
-                # Positive yaw = nose moved right in camera = user turned LEFT
-                # Negative yaw = nose moved left in camera = user turned RIGHT
+                # Note: Yaw sign is relative to the captured image (NOT mirrored)
+                # Negative yaw = nose moved left in camera = user turned LEFT
+                # Positive yaw = nose moved right in camera = user turned RIGHT
                 if direction == "left":
-                    passed = yaw > 0.10  # positive yaw = user turned left
+                    passed = yaw < -0.10  # negative yaw = user turned left
                 else:
-                    passed = yaw < -0.10  # negative yaw = user turned right
+                    passed = yaw > 0.10  # positive yaw = user turned right
 
                 results.append({
                     "index": i,

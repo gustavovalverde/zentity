@@ -5,10 +5,21 @@
  * Uses the same better-sqlite3 instance as Better Auth.
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import Database from "better-sqlite3";
+import { EncryptJWT, jwtDecrypt } from "jose";
 
-// Use the same database as Better Auth
-const db = new Database("./dev.db");
+// Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
+const dbPath = process.env.DATABASE_PATH || "./dev.db";
+
+// Ensure the database directory exists
+const dbDir = path.dirname(dbPath);
+if (dbDir !== "." && !fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new Database(dbPath);
 
 /**
  * Initialize the identity_proofs table.
@@ -71,7 +82,10 @@ export function initializeIdentityProofsTable(): void {
 
       -- Sprint 3: Advanced ZK + Liveness FHE
       nationality_membership_proof TEXT,  -- ZK proof of nationality group membership
-      liveness_score_ciphertext TEXT      -- FHE encrypted liveness score (0.0-1.0 as u16)
+      liveness_score_ciphertext TEXT,     -- FHE encrypted liveness score (0.0-1.0 as u16)
+
+      -- User display data (JWE encrypted, reversible for user display)
+      first_name_encrypted TEXT           -- JWE encrypted first name for dashboard display
     );
 
     -- Unique constraint: one identity proof per user
@@ -93,6 +107,7 @@ export function initializeIdentityProofsTable(): void {
     { name: "dob_full_ciphertext", type: "TEXT" },
     { name: "nationality_membership_proof", type: "TEXT" },
     { name: "liveness_score_ciphertext", type: "TEXT" },
+    { name: "first_name_encrypted", type: "TEXT" },
   ];
 
   for (const col of columnsToAdd) {
@@ -152,6 +167,9 @@ export interface IdentityProof {
   // Sprint 3 additions: Advanced ZK + Liveness FHE
   nationalityMembershipProof?: string; // ZK proof of nationality group membership
   livenessScoreCiphertext?: string; // FHE encrypted liveness score (0.0-1.0 as u16)
+
+  // User display data (JWE encrypted, reversible)
+  firstNameEncrypted?: string; // JWE encrypted first name for dashboard display
 }
 
 /**
@@ -169,7 +187,8 @@ export function createIdentityProof(
       verified_at, confidence_score,
       doc_validity_proof, nationality_commitment, age_proofs_json,
       gender_ciphertext, dob_full_ciphertext,
-      nationality_membership_proof, liveness_score_ciphertext
+      nationality_membership_proof, liveness_score_ciphertext,
+      first_name_encrypted
     ) VALUES (
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
@@ -178,7 +197,8 @@ export function createIdentityProof(
       ?, ?,
       ?, ?, ?,
       ?, ?,
-      ?, ?
+      ?, ?,
+      ?
     )
   `);
 
@@ -207,6 +227,7 @@ export function createIdentityProof(
     proof.dobFullCiphertext || null,
     proof.nationalityMembershipProof || null,
     proof.livenessScoreCiphertext || null,
+    proof.firstNameEncrypted || null,
   );
 }
 
@@ -232,7 +253,8 @@ export function getIdentityProofByUserId(userId: string): IdentityProof | null {
       gender_ciphertext as genderCiphertext,
       dob_full_ciphertext as dobFullCiphertext,
       nationality_membership_proof as nationalityMembershipProof,
-      liveness_score_ciphertext as livenessScoreCiphertext
+      liveness_score_ciphertext as livenessScoreCiphertext,
+      first_name_encrypted as firstNameEncrypted
     FROM identity_proofs
     WHERE user_id = ?
   `);
@@ -273,6 +295,8 @@ export function updateIdentityProofFlags(
     // Sprint 3 additions
     nationalityMembershipProof?: string;
     livenessScoreCiphertext?: string;
+    // User display data
+    firstNameEncrypted?: string;
   },
 ): void {
   const updates: string[] = [];
@@ -340,6 +364,11 @@ export function updateIdentityProofFlags(
   if (flags.livenessScoreCiphertext !== undefined) {
     updates.push("liveness_score_ciphertext = ?");
     values.push(flags.livenessScoreCiphertext);
+  }
+  // User display data
+  if (flags.firstNameEncrypted !== undefined) {
+    updates.push("first_name_encrypted = ?");
+    values.push(flags.firstNameEncrypted);
   }
 
   updates.push("updated_at = datetime('now')");
@@ -526,6 +555,80 @@ export function getUserAgeProof(userId: string): AgeProof | null {
 
 // Initialize table on module load
 initializeIdentityProofsTable();
+
+// ============================================================================
+// First Name Encryption Utilities
+// ============================================================================
+
+/**
+ * Get encryption secret from environment
+ * Uses the same secret as Better Auth for consistency
+ *
+ * AES-256-GCM requires exactly 256 bits (32 bytes).
+ * We derive a fixed-length key from the secret using SHA-256.
+ */
+async function getEncryptionSecret(): Promise<Uint8Array> {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    throw new Error("BETTER_AUTH_SECRET environment variable is required");
+  }
+
+  // Derive a 256-bit key from the secret using SHA-256
+  const encoder = new TextEncoder();
+  const data = encoder.encode(secret);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return new Uint8Array(hashBuffer);
+}
+
+/**
+ * Encrypt first name using JWE (AES-256-GCM)
+ *
+ * This allows us to store the first name reversibly (unlike SHA256 commitments)
+ * so we can display it back to the user on their dashboard.
+ *
+ * Security: Same encryption used for session cookies (JWE with AES-256-GCM)
+ */
+export async function encryptFirstName(firstName: string): Promise<string> {
+  const secret = await getEncryptionSecret();
+
+  const token = await new EncryptJWT({ firstName })
+    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
+    .setIssuedAt()
+    .encrypt(secret);
+
+  return token;
+}
+
+/**
+ * Decrypt first name from JWE token
+ *
+ * @returns The decrypted first name, or null if decryption fails
+ */
+export async function decryptFirstName(
+  encryptedToken: string,
+): Promise<string | null> {
+  try {
+    const secret = await getEncryptionSecret();
+    const { payload } = await jwtDecrypt(encryptedToken, secret);
+    return (payload.firstName as string) || null;
+  } catch {
+    // Token invalid or corrupted
+    return null;
+  }
+}
+
+/**
+ * Get user's decrypted first name for display
+ *
+ * Fetches the identity proof and decrypts the stored first name.
+ * Returns null if no proof exists or decryption fails.
+ */
+export async function getUserFirstName(userId: string): Promise<string | null> {
+  const proof = getIdentityProofByUserId(userId);
+  if (!proof?.firstNameEncrypted) return null;
+
+  return decryptFirstName(proof.firstNameEncrypted);
+}
 
 /**
  * Initialize the onboarding_sessions table.

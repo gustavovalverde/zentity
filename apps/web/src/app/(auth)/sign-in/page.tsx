@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MagicLinkForm } from "@/components/auth/magic-link-form";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import {
   Card,
@@ -7,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function SignInPage() {
   return (
@@ -16,7 +18,18 @@ export default function SignInPage() {
         <CardDescription>Sign in to your Zentity account</CardDescription>
       </CardHeader>
       <CardContent>
-        <SignInForm />
+        <Tabs defaultValue="password" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="password">Password</TabsTrigger>
+            <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
+          </TabsList>
+          <TabsContent value="password" className="mt-4">
+            <SignInForm />
+          </TabsContent>
+          <TabsContent value="magic-link" className="mt-4">
+            <MagicLinkForm />
+          </TabsContent>
+        </Tabs>
         <div className="mt-6 text-center text-sm text-muted-foreground">
           Need an account?{" "}
           <Link

@@ -28,6 +28,12 @@ export default async function DashboardLayout({
             <span className="text-sm text-muted-foreground">
               {session.user.email}
             </span>
+            <Link
+              href="/dashboard/settings"
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Settings
+            </Link>
             <SignOutButton />
           </div>
         </nav>
