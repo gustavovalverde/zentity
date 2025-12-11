@@ -14,11 +14,15 @@ const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { dob, clientKeyId = "default" } = body;
+    const { dob, birthYear, clientKeyId = "default" } = body;
 
-    if (!dob) {
+    // Accept either full DOB (YYYY-MM-DD or YYYYMMDD) or just birth year
+    // When only birthYear is provided, construct a DOB using Jan 1
+    const dobValue = dob || (birthYear ? `${birthYear}-01-01` : null);
+
+    if (!dobValue) {
       return NextResponse.json(
-        { error: "dob is required (YYYY-MM-DD or YYYYMMDD format)" },
+        { error: "dob or birthYear is required" },
         { status: 400 },
       );
     }
@@ -26,7 +30,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`${FHE_SERVICE_URL}/encrypt-dob`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dob: String(dob), clientKeyId }),
+      body: JSON.stringify({ dob: String(dobValue), clientKeyId }),
     });
 
     if (!response.ok) {

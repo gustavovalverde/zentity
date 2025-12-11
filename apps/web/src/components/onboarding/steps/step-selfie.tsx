@@ -71,7 +71,7 @@ const CHALLENGE_TIMEOUT = 10000; // 10 seconds per challenge
 const FACE_TIMEOUT = 30000; // 30 seconds to show face
 const SMILE_THRESHOLD = 30; // happiness score threshold (lowered for better detection)
 const BLINK_EAR_THRESHOLD = 0.21; // EAR threshold for blink detection
-const HEAD_TURN_THRESHOLD = 0.15; // yaw threshold for head turn
+const HEAD_TURN_THRESHOLD = 0.10; // yaw threshold for head turn (lowered for easier detection)
 const MAX_PASSIVE_FRAMES = 20; // max frames to collect for passive monitoring
 const PASSIVE_FRAME_INTERVAL = 500; // ms between passive frame captures
 const WARMUP_TIMEOUT = 45_000; // allow models to load on cold start
@@ -478,14 +478,10 @@ export function StepSelfie() {
           setChallengeProgress(yawProgress);
 
           if (result.turnDetected && result.meetsThreshold) {
-            consecutiveChallengeDetectionsRef.current++;
-            if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
-              setChallengeState("capturing");
-              consecutiveChallengeDetectionsRef.current = 0;
-              await captureAndValidate(frame);
-            }
-          } else {
+            // Head turn needs only 1 detection (deliberate action, like blink)
+            setChallengeState("capturing");
             consecutiveChallengeDetectionsRef.current = 0;
+            await captureAndValidate(frame);
           }
 
           if (result.error?.includes("No face")) {
