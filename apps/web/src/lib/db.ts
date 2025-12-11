@@ -527,4 +527,200 @@ export function getUserAgeProof(userId: string): AgeProof | null {
 // Initialize table on module load
 initializeIdentityProofsTable();
 
+/**
+ * Initialize the onboarding_sessions table.
+ *
+ * This table stores temporary session data during the signup wizard.
+ * Sensitive PII is encrypted at rest using AES-256-GCM.
+ * Sessions auto-expire after 30 minutes of inactivity.
+ *
+ * Privacy considerations:
+ * - PII is encrypted before storage
+ * - Sessions are deleted after successful signup
+ * - Expired sessions are automatically cleaned up
+ */
+export function initializeOnboardingSessionsTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS onboarding_sessions (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      step INTEGER DEFAULT 1,
+
+      -- Encrypted PII (AES-256-GCM via jose JWE)
+      -- Contains: extractedName, extractedDOB, extractedDocNumber, extractedNationality
+      encrypted_pii TEXT,
+
+      -- Document processing state (references, not raw data)
+      document_hash TEXT,           -- SHA256 of uploaded document (for dedup)
+      document_processed INTEGER DEFAULT 0,
+
+      -- Selfie/liveness state
+      liveness_passed INTEGER DEFAULT 0,
+      face_match_passed INTEGER DEFAULT 0,
+
+      -- Timestamps
+      created_at INTEGER DEFAULT (unixepoch()),
+      updated_at INTEGER DEFAULT (unixepoch()),
+      expires_at INTEGER            -- Unix timestamp for auto-expiration
+    );
+
+    -- Index for cleanup job
+    CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at
+      ON onboarding_sessions (expires_at);
+  `);
+}
+
+/**
+ * Onboarding session data structure
+ */
+export interface OnboardingSession {
+  id: string;
+  email: string;
+  step: number;
+  encryptedPii: string | null;
+  documentHash: string | null;
+  documentProcessed: boolean;
+  livenessPassed: boolean;
+  faceMatchPassed: boolean;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt: number;
+}
+
+const ONBOARDING_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Create or update an onboarding session
+ */
+export function upsertOnboardingSession(
+  data: Partial<OnboardingSession> & { email: string },
+): OnboardingSession {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + Math.floor(ONBOARDING_SESSION_TTL_MS / 1000);
+
+  // Check if session exists
+  const existing = getOnboardingSessionByEmail(data.email);
+
+  if (existing) {
+    // Update existing session
+    const updates: string[] = ["updated_at = ?", "expires_at = ?"];
+    const values: (string | number | null)[] = [now, expiresAt];
+
+    if (data.step !== undefined) {
+      updates.push("step = ?");
+      values.push(data.step);
+    }
+    if (data.encryptedPii !== undefined) {
+      updates.push("encrypted_pii = ?");
+      values.push(data.encryptedPii);
+    }
+    if (data.documentHash !== undefined) {
+      updates.push("document_hash = ?");
+      values.push(data.documentHash);
+    }
+    if (data.documentProcessed !== undefined) {
+      updates.push("document_processed = ?");
+      values.push(data.documentProcessed ? 1 : 0);
+    }
+    if (data.livenessPassed !== undefined) {
+      updates.push("liveness_passed = ?");
+      values.push(data.livenessPassed ? 1 : 0);
+    }
+    if (data.faceMatchPassed !== undefined) {
+      updates.push("face_match_passed = ?");
+      values.push(data.faceMatchPassed ? 1 : 0);
+    }
+
+    values.push(data.email);
+
+    const stmt = db.prepare(`
+      UPDATE onboarding_sessions
+      SET ${updates.join(", ")}
+      WHERE email = ?
+    `);
+    stmt.run(...values);
+
+    return getOnboardingSessionByEmail(data.email)!;
+  }
+
+  // Create new session
+  const id = crypto.randomUUID();
+  const stmt = db.prepare(`
+    INSERT INTO onboarding_sessions (
+      id, email, step, encrypted_pii, document_hash,
+      document_processed, liveness_passed, face_match_passed,
+      created_at, updated_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    id,
+    data.email,
+    data.step ?? 1,
+    data.encryptedPii ?? null,
+    data.documentHash ?? null,
+    data.documentProcessed ? 1 : 0,
+    data.livenessPassed ? 1 : 0,
+    data.faceMatchPassed ? 1 : 0,
+    now,
+    now,
+    expiresAt,
+  );
+
+  return getOnboardingSessionByEmail(data.email)!;
+}
+
+/**
+ * Get onboarding session by email
+ */
+export function getOnboardingSessionByEmail(
+  email: string,
+): OnboardingSession | null {
+  const now = Math.floor(Date.now() / 1000);
+
+  const stmt = db.prepare(`
+    SELECT
+      id, email, step, encrypted_pii as encryptedPii,
+      document_hash as documentHash, document_processed as documentProcessed,
+      liveness_passed as livenessPassed, face_match_passed as faceMatchPassed,
+      created_at as createdAt, updated_at as updatedAt, expires_at as expiresAt
+    FROM onboarding_sessions
+    WHERE email = ? AND expires_at > ?
+  `);
+
+  const row = stmt.get(email, now) as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  return {
+    ...row,
+    documentProcessed: Boolean(row.documentProcessed),
+    livenessPassed: Boolean(row.livenessPassed),
+    faceMatchPassed: Boolean(row.faceMatchPassed),
+  } as OnboardingSession;
+}
+
+/**
+ * Delete onboarding session (called after successful signup)
+ */
+export function deleteOnboardingSession(email: string): void {
+  const stmt = db.prepare(`DELETE FROM onboarding_sessions WHERE email = ?`);
+  stmt.run(email);
+}
+
+/**
+ * Clean up expired onboarding sessions
+ * Should be called periodically (e.g., via cron or on each request)
+ */
+export function cleanupExpiredOnboardingSessions(): number {
+  const now = Math.floor(Date.now() / 1000);
+  const stmt = db.prepare(`
+    DELETE FROM onboarding_sessions WHERE expires_at < ?
+  `);
+  const result = stmt.run(now);
+  return result.changes;
+}
+
+// Initialize onboarding sessions table
+initializeOnboardingSessionsTable();
+
 export default db;

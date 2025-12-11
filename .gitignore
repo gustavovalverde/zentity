@@ -220,8 +220,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -446,3 +446,8 @@ $RECYCLE.BIN/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# SQLite WAL files
+*.db-shm
+*.db-wal
+*.db-journal
