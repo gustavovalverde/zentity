@@ -3,6 +3,7 @@
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useReducer,
@@ -16,12 +17,32 @@ import {
 import { trackStep } from "@/lib/analytics";
 
 const TOTAL_STEPS = 4;
-const STORAGE_KEY = "zentity-signup-wizard";
+
+/**
+ * Server session state (returned from API)
+ */
+interface ServerSessionState {
+  hasSession: boolean;
+  email?: string;
+  step?: number;
+  documentProcessed?: boolean;
+  livenessPassed?: boolean;
+  faceMatchPassed?: boolean;
+  hasPii?: boolean;
+  hasExtractedName?: boolean;
+  hasExtractedDOB?: boolean;
+}
 
 type WizardState = {
   currentStep: number;
   data: WizardData;
   isSubmitting: boolean;
+  // Server-side verification flags
+  serverState: {
+    documentProcessed: boolean;
+    livenessPassed: boolean;
+    faceMatchPassed: boolean;
+  };
 };
 
 type WizardAction =
@@ -31,12 +52,28 @@ type WizardAction =
   | { type: "UPDATE_DATA"; data: Partial<WizardData> }
   | { type: "SET_SUBMITTING"; isSubmitting: boolean }
   | { type: "RESET" }
-  | { type: "LOAD_STATE"; state: WizardState };
+  | {
+      type: "LOAD_STATE";
+      state: {
+        currentStep?: number;
+        data?: Partial<WizardData>;
+        serverState?: Partial<WizardState["serverState"]>;
+      };
+    }
+  | {
+      type: "UPDATE_SERVER_STATE";
+      serverState: Partial<WizardState["serverState"]>;
+    };
 
 const initialState: WizardState = {
   currentStep: 1,
   data: defaultWizardData,
   isSubmitting: false,
+  serverState: {
+    documentProcessed: false,
+    livenessPassed: false,
+    faceMatchPassed: false,
+  },
 };
 
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -69,7 +106,20 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
     case "RESET":
       return initialState;
     case "LOAD_STATE":
-      return action.state;
+      return {
+        ...state,
+        currentStep: action.state.currentStep ?? state.currentStep,
+        data: { ...state.data, ...(action.state.data ?? {}) },
+        serverState: {
+          ...state.serverState,
+          ...(action.state.serverState ?? {}),
+        },
+      };
+    case "UPDATE_SERVER_STATE":
+      return {
+        ...state,
+        serverState: { ...state.serverState, ...action.serverState },
+      };
     default:
       return state;
   }
@@ -84,6 +134,20 @@ type WizardContextType = {
   updateData: (data: Partial<WizardData>) => void;
   setSubmitting: (isSubmitting: boolean) => void;
   reset: () => void;
+  /** Save PII to server (encrypted) */
+  savePiiToServer: (pii: {
+    extractedName?: string;
+    extractedDOB?: string;
+    extractedDocNumber?: string;
+    extractedNationality?: string;
+  }) => Promise<void>;
+  /** Update verification progress on server */
+  updateServerProgress: (updates: {
+    step?: number;
+    documentProcessed?: boolean;
+    livenessPassed?: boolean;
+    faceMatchPassed?: boolean;
+  }) => Promise<void>;
   canGoBack: boolean;
   canGoNext: boolean;
   isFirstStep: boolean;
@@ -97,31 +161,137 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const [isHydrated, setIsHydrated] = useState(false);
   const isInitializedRef = useRef(false);
+  const lastSavedStepRef = useRef<number>(1);
 
-  // Load saved state ONCE on mount and mark as hydrated
+  // Load session state from server on mount
   useEffect(() => {
     if (isHydrated) return;
 
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        dispatch({ type: "LOAD_STATE", state: parsed });
+    const loadServerSession = async () => {
+      try {
+        const response = await fetch("/api/onboarding/session");
+        if (response.ok) {
+          const serverState: ServerSessionState = await response.json();
+
+          if (serverState.hasSession && serverState.email) {
+            // Restore state from server
+            dispatch({
+              type: "LOAD_STATE",
+              state: {
+                currentStep: serverState.step ?? 1,
+                data: {
+                  email: serverState.email,
+                },
+                serverState: {
+                  documentProcessed: serverState.documentProcessed ?? false,
+                  livenessPassed: serverState.livenessPassed ?? false,
+                  faceMatchPassed: serverState.faceMatchPassed ?? false,
+                },
+              },
+            });
+            lastSavedStepRef.current = serverState.step ?? 1;
+          }
+        }
+      } catch {
+        // Server session not available, start fresh
       }
-    } catch (_error) {}
-    isInitializedRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsHydrated(true);
+
+      isInitializedRef.current = true;
+      setIsHydrated(true);
+    };
+
+    loadServerSession();
   }, [isHydrated]);
 
-  // Save state on changes (skip initial load)
+  // Save step changes to server (debounced)
   useEffect(() => {
     if (!isInitializedRef.current) return;
+    if (!state.data.email) return;
+    if (state.currentStep === lastSavedStepRef.current) return;
 
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (_error) {}
-  }, [state]);
+    const saveStep = async () => {
+      try {
+        await fetch("/api/onboarding/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: state.data.email,
+            step: state.currentStep,
+          }),
+        });
+        lastSavedStepRef.current = state.currentStep;
+      } catch {
+        // Ignore save errors
+      }
+    };
+
+    // Debounce to avoid excessive API calls
+    const timeout = setTimeout(saveStep, 500);
+    return () => clearTimeout(timeout);
+  }, [state.currentStep, state.data.email]);
+
+  // Save PII to server (encrypted)
+  const savePiiToServer = useCallback(
+    async (pii: {
+      extractedName?: string;
+      extractedDOB?: string;
+      extractedDocNumber?: string;
+      extractedNationality?: string;
+    }) => {
+      if (!state.data.email) return;
+
+      try {
+        await fetch("/api/onboarding/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: state.data.email,
+            step: state.currentStep,
+            pii,
+          }),
+        });
+      } catch {
+        console.error("Failed to save PII to server");
+      }
+    },
+    [state.data.email, state.currentStep],
+  );
+
+  // Update verification progress on server
+  const updateServerProgress = useCallback(
+    async (updates: {
+      step?: number;
+      documentProcessed?: boolean;
+      livenessPassed?: boolean;
+      faceMatchPassed?: boolean;
+    }) => {
+      if (!state.data.email) return;
+
+      try {
+        await fetch("/api/onboarding/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: state.data.email,
+            ...updates,
+          }),
+        });
+
+        // Update local server state
+        dispatch({
+          type: "UPDATE_SERVER_STATE",
+          serverState: {
+            documentProcessed: updates.documentProcessed,
+            livenessPassed: updates.livenessPassed,
+            faceMatchPassed: updates.faceMatchPassed,
+          },
+        });
+      } catch {
+        console.error("Failed to update server progress");
+      }
+    },
+    [state.data.email],
+  );
 
   const nextStep = () => dispatch({ type: "NEXT_STEP" });
   const prevStep = () => dispatch({ type: "PREV_STEP" });
@@ -130,12 +300,17 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "UPDATE_DATA", data });
   const setSubmitting = (isSubmitting: boolean) =>
     dispatch({ type: "SET_SUBMITTING", isSubmitting });
-  const reset = () => {
+
+  const reset = useCallback(async () => {
     dispatch({ type: "RESET" });
+
+    // Clear server session
     try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (_error) {}
-  };
+      await fetch("/api/onboarding/session", { method: "DELETE" });
+    } catch {
+      // Ignore errors
+    }
+  }, []);
 
   const value: WizardContextType = {
     state,
@@ -146,6 +321,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     updateData,
     setSubmitting,
     reset,
+    savePiiToServer,
+    updateServerProgress,
     canGoBack: state.currentStep > 1,
     canGoNext: state.currentStep < TOTAL_STEPS,
     isFirstStep: state.currentStep === 1,
@@ -163,12 +340,11 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isHydrated) return;
 
-    // Check if user has entered meaningful data
+    // Check if user has entered meaningful data (in-memory only)
     const hasUnsavedData = Boolean(
-      state.data.email ||
-        state.data.idDocument ||
+      state.data.idDocument ||
         state.data.selfieImage ||
-        state.data.extractedName,
+        state.data.password,
     );
 
     // Only warn if user is mid-process (not on first or last step with completion)
@@ -178,7 +354,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedData && isInProgress) {
         e.preventDefault();
-        // Modern browsers ignore custom messages, but setting returnValue is required
         e.returnValue = "";
       }
     };
@@ -188,7 +363,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   }, [isHydrated, state.currentStep, state.data]);
 
   // Show loading state until hydrated to prevent hydration mismatch
-  // Server renders this, client also renders this initially, then switches to actual content
   if (!isHydrated) {
     return (
       <WizardContext.Provider value={value}>
