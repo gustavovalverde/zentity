@@ -30,34 +30,3 @@ export const reducedMotion: typeof motion = {
 };
 
 export type MotionKey = keyof typeof motion;
-
-/**
- * Check if user prefers reduced motion.
- * Safe for SSR - returns false on server.
- */
-export function getPrefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-/**
- * Get motion class based on user's motion preference.
- * @param key - The motion type to retrieve
- * @param forceReduced - Override to force reduced motion (useful for testing)
- * @returns The appropriate CSS class string
- */
-export function getMotion(key: MotionKey, forceReduced?: boolean): string {
-  const shouldReduce = forceReduced ?? getPrefersReducedMotion();
-  return shouldReduce ? reducedMotion[key] : motion[key];
-}
-
-/**
- * Get all motion classes as an object based on user's motion preference.
- * Useful when you need multiple motion classes in a component.
- * @param forceReduced - Override to force reduced motion
- * @returns Motion classes object
- */
-export function getMotionClasses(forceReduced?: boolean): typeof motion {
-  const shouldReduce = forceReduced ?? getPrefersReducedMotion();
-  return shouldReduce ? reducedMotion : motion;
-}

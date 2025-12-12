@@ -449,7 +449,6 @@ def calculate_confidence(
     text_length: int,
     fields_extracted: int,
     ocr_avg_confidence: float,
-    document_recognized: bool = True,
 ) -> float:
     """
     Calculate overall document confidence score.
@@ -458,7 +457,6 @@ def calculate_confidence(
     - Amount of text extracted
     - Number of fields successfully parsed
     - OCR confidence scores
-    - Document origin recognized
     """
     score = 0.0
 

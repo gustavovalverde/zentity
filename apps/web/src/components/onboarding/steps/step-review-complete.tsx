@@ -31,7 +31,6 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
-import { trackFaceMatch } from "@/lib/analytics";
 import { signUp } from "@/lib/auth-client";
 import {
   encryptDOB,
@@ -196,13 +195,10 @@ export function StepReviewComplete() {
 
         if (result.error) {
           setFaceMatchStatus("error");
-          trackFaceMatch("error", { error: result.error });
         } else if (result.matched) {
           setFaceMatchStatus("matched");
-          trackFaceMatch("matched", { confidence: result.confidence });
         } else {
           setFaceMatchStatus("no_match");
-          trackFaceMatch("no_match", { confidence: result.confidence });
         }
       } catch (err) {
         setFaceMatchStatus("error");
@@ -213,9 +209,6 @@ export function StepReviewComplete() {
           threshold: 0.6,
           processingTimeMs: 0,
           idFaceExtracted: false,
-          error: err instanceof Error ? err.message : "Unknown error",
-        });
-        trackFaceMatch("error", {
           error: err instanceof Error ? err.message : "Unknown error",
         });
       }

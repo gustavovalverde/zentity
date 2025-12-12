@@ -47,7 +47,6 @@ from .commitments import (
     generate_user_salt,
     generate_identity_commitments,
     verify_name_claim,
-    verify_document_claim,
 )
 
 # Configuration

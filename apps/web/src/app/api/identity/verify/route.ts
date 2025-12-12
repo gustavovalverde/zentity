@@ -27,11 +27,8 @@ import {
   updateIdentityProofFlags,
   updateUserName,
 } from "@/lib/db";
-import {
-  detectFromBase64,
-  getHumanServer,
-  stripDataUrl,
-} from "@/lib/human-server";
+import { detectFromBase64, getHumanServer } from "@/lib/human-server";
+import { cropFaceRegion } from "@/lib/image-processing";
 import { buildDisplayName } from "@/lib/name-utils";
 import {
   getSessionFromCookie,
@@ -44,55 +41,6 @@ import { type FaceBox, getBoxArea } from "@/types/human";
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
 const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
 const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
-
-/**
- * Crop face region from image and return as base64 data URL.
- * This improves embedding quality for small faces in large documents.
- */
-async function cropFaceRegion(
-  dataUrl: string,
-  box: { x: number; y: number; width: number; height: number },
-  padding = 0.3,
-): Promise<string> {
-  const tf = await import("@tensorflow/tfjs-node");
-
-  const base64 = stripDataUrl(dataUrl);
-  const buffer = Buffer.from(base64, "base64");
-  const decoded = tf.node.decodeImage(buffer, 3);
-  if (decoded.rank !== 3) {
-    decoded.dispose();
-    throw new Error("Animated images are not supported");
-  }
-  // Tensor is already the correct type after decodeImage with channels=3
-  const tensor = decoded;
-
-  const height = tensor.shape[0];
-  const width = tensor.shape[1];
-
-  const padW = box.width * padding;
-  const padH = box.height * padding;
-  const x1 = Math.max(0, Math.floor(box.x - padW));
-  const y1 = Math.max(0, Math.floor(box.y - padH));
-  const x2 = Math.min(width, Math.ceil(box.x + box.width + padW));
-  const y2 = Math.min(height, Math.ceil(box.y + box.height + padH));
-
-  const cropWidth = x2 - x1;
-  const cropHeight = y2 - y1;
-
-  const cropped = tf.slice(tensor, [y1, x1, 0], [cropHeight, cropWidth, 3]);
-  tensor.dispose();
-
-  // Cast to unknown first to bypass TypeScript's strict union type checking
-  // Safe because we verified rank === 3 above
-  const encoded = await tf.node.encodeJpeg(
-    cropped as unknown as Parameters<typeof tf.node.encodeJpeg>[0],
-    "rgb",
-    95,
-  );
-  cropped.dispose();
-
-  return `data:image/jpeg;base64,${Buffer.from(encoded).toString("base64")}`;
-}
 
 interface VerifyIdentityRequest {
   // Document image (base64)

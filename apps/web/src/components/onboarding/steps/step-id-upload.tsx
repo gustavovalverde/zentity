@@ -16,7 +16,6 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { trackDocResult, trackError } from "@/lib/analytics";
 import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ocr";
 import { resizeImageFile } from "@/lib/image";
 import { cn } from "@/lib/utils";
@@ -91,7 +90,6 @@ export function StepIdUpload() {
         description:
           "The document took too long to process. Please try uploading again.",
       });
-      trackError("document_timeout", "Processing exceeded 30 seconds");
     }, PROCESSING_TIMEOUT);
 
     return () => clearTimeout(timeout);
@@ -168,10 +166,6 @@ export function StepIdUpload() {
           toast.success("Document verified!", {
             description: `${DOCUMENT_TYPE_LABELS[result.documentType]} detected successfully.`,
           });
-          trackDocResult("verified", {
-            type: result.documentType,
-            confidence: result.confidence,
-          });
           // Mark document as processed on server (required for step validation)
           await updateServerProgress({ documentProcessed: true, step: 2 });
           // Store extracted data in wizard state for later use
@@ -193,10 +187,6 @@ export function StepIdUpload() {
                 ? "Unable to identify document type. Please try a different document."
                 : "Could not extract required information. Please ensure the document is clear and visible.",
           });
-          trackDocResult("rejected", {
-            type: result.documentType,
-            issues: result.validationIssues,
-          });
         }
       } catch (error) {
         const errorMsg =
@@ -206,7 +196,6 @@ export function StepIdUpload() {
           description: errorMsg,
         });
         setProcessingState("idle");
-        trackError("document_upload", String(errorMsg));
       }
     },
     [updateData, processDocument, updateServerProgress],
