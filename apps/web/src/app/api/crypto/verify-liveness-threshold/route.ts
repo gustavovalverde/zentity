@@ -7,11 +7,10 @@
  * Only reveals whether the threshold was met, not the actual score.
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-
-const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
+import { requireSession } from "@/lib/api-auth";
+import { verifyLivenessThresholdFhe } from "@/lib/fhe-client";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
 
 interface VerifyLivenessThresholdRequest {
   /** Base64-encoded FHE ciphertext of the liveness score */
@@ -24,14 +23,8 @@ interface VerifyLivenessThresholdRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = (await request.json()) as VerifyLivenessThresholdRequest;
 
@@ -52,28 +45,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call FHE service
-    const response = await fetch(
-      `${FHE_SERVICE_URL}/verify-liveness-threshold`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ciphertext: body.ciphertext,
-          threshold,
-          clientKeyId: body.clientKeyId || "default",
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "FHE service error" }));
-      return NextResponse.json(error, { status: response.status });
-    }
-
-    const result = await response.json();
+    const result = await verifyLivenessThresholdFhe({
+      ciphertext: body.ciphertext,
+      threshold,
+      clientKeyId: body.clientKeyId || "default",
+    });
 
     return NextResponse.json({
       success: true,
@@ -82,14 +58,10 @@ export async function POST(request: NextRequest) {
       computationTimeMs: result.computationTimeMs,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to verify liveness threshold",
-      },
-      { status: 500 },
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to verify liveness threshold",
     );
+    return NextResponse.json(payload, { status });
   }
 }

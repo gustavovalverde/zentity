@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-
-const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
+import { verifyAgeFhe } from "@/lib/fhe-client";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,35 +15,22 @@ export async function POST(request: NextRequest) {
     }
 
     const startTime = Date.now();
-    const response = await fetch(`${FHE_SERVICE_URL}/verify-age`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ciphertext,
-        currentYear: currentYear || new Date().getFullYear(),
-        minAge,
-      }),
+    const data = await verifyAgeFhe({
+      ciphertext,
+      currentYear: currentYear || new Date().getFullYear(),
+      minAge,
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errorData.error || "FHE service verification error" },
-        { status: response.status },
-      );
-    }
-
-    const data = await response.json();
     const computationTimeMs = Date.now() - startTime;
 
     return NextResponse.json({
       isOver18: data.isOver18,
       computationTimeMs,
     });
-  } catch (_error) {
-    return NextResponse.json(
-      { error: "Failed to connect to FHE service" },
-      { status: 503 },
+  } catch (error) {
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to connect to FHE service",
     );
+    return NextResponse.json(payload, { status });
   }
 }

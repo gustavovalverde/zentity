@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import Database from "better-sqlite3";
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 
 // Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
 const dbPath = process.env.DATABASE_PATH || "./dev.db";
@@ -51,13 +50,8 @@ db.exec(`
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     // Check if full details are requested
     const { searchParams } = new URL(request.url);
@@ -77,7 +71,7 @@ export async function GET(request: NextRequest) {
       LIMIT 1
     `);
 
-    const proofData = stmt.get(session.user.id) as
+    const proofData = stmt.get(authResult.session.user.id) as
       | {
           id: string;
           is_over_18: number;
@@ -124,13 +118,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = await request.json();
     const {
@@ -170,7 +159,7 @@ export async function POST(request: NextRequest) {
 
     stmt.run(
       proofId,
-      session.user.id,
+      authResult.session.user.id,
       JSON.stringify(proof),
       JSON.stringify(publicSignals),
       isOver18 ? 1 : 0,

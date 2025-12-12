@@ -15,10 +15,10 @@
  * - GDPR compliance: delete user_salt to "forget" the user
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
+import { sha256CommitmentHex } from "@/lib/commitments";
 import {
   createIdentityProof,
   documentHashExists,
@@ -27,20 +27,31 @@ import {
   updateIdentityProofFlags,
   updateUserName,
 } from "@/lib/db";
+import {
+  encryptBirthYearFhe,
+  encryptDobFhe,
+  encryptGenderFhe,
+  encryptLivenessScoreFhe,
+} from "@/lib/fhe-client";
+import { HttpError } from "@/lib/http";
+import {
+  getEmbeddingVector,
+  getLargestFace,
+  getLiveScore,
+  getRealScore,
+} from "@/lib/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/human-server";
 import { cropFaceRegion } from "@/lib/image-processing";
 import { buildDisplayName } from "@/lib/name-utils";
+import { type OcrProcessResult, processDocumentOcr } from "@/lib/ocr-client";
 import {
   getSessionFromCookie,
   validateStepAccess,
 } from "@/lib/onboarding-session";
-import type { EmbeddingData } from "@/types/human";
-import { type FaceBox, getBoxArea } from "@/types/human";
-
-// Service URLs
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
-const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import {
+  generateAgeProofZk,
+  generateDocValidityProofZk,
+} from "@/lib/zk-client";
 
 interface VerifyIdentityRequest {
   // Document image (base64)
@@ -88,41 +99,47 @@ interface VerifyIdentityResponse {
   error?: string;
 }
 
+const emptyVerifyResults: VerifyIdentityResponse["results"] = {
+  documentProcessed: false,
+  isDocumentValid: false,
+  livenessPassed: false,
+  faceMatched: false,
+  isDuplicateDocument: false,
+  ageProofGenerated: false,
+  dobEncrypted: false,
+  docValidityProofGenerated: false,
+  nationalityCommitmentGenerated: false,
+  livenessScoreEncrypted: false,
+};
+
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<VerifyIdentityResponse>> {
   const startTime = Date.now();
   const issues: string[] = [];
 
-  try {
-    // Authenticate user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
+  const fail = (
+    status: number,
+    failIssues: string[],
+    error: string,
+  ): NextResponse<VerifyIdentityResponse> => {
+    return NextResponse.json(
+      {
+        success: false,
+        verified: false,
+        results: emptyVerifyResults,
+        processingTimeMs: Date.now() - startTime,
+        issues: failIssues,
+        error,
+      },
+      { status },
+    );
+  };
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["unauthorized"],
-          error: "Authentication required",
-        },
-        { status: 401 },
-      );
+  try {
+    const authResult = await requireSession();
+    if (!authResult.ok) {
+      return fail(401, ["unauthorized"], "Authentication required");
     }
 
     // Validate onboarding session - must have completed document verification
@@ -132,82 +149,27 @@ export async function POST(
       "identity-verify",
     );
     if (!stepValidation.valid) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["step_validation_failed"],
-          error: stepValidation.error || "Complete previous steps first",
-        },
-        { status: 403 },
+      return fail(
+        403,
+        ["step_validation_failed"],
+        stepValidation.error || "Complete previous steps first",
       );
     }
 
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
     const body = (await request.json()) as VerifyIdentityRequest;
 
     // Validate input
     if (!body.documentImage) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["missing_document_image"],
-          error: "Document image is required",
-        },
-        { status: 400 },
+      return fail(
+        400,
+        ["missing_document_image"],
+        "Document image is required",
       );
     }
 
     if (!body.selfieImage) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["missing_selfie_image"],
-          error: "Selfie image is required",
-        },
-        { status: 400 },
-      );
+      return fail(400, ["missing_selfie_image"], "Selfie image is required");
     }
 
     // Check if user already has identity proof
@@ -217,43 +179,13 @@ export async function POST(
     // =========================================================================
     // STEP 1: Privacy-Preserving Document Processing
     // =========================================================================
-    let documentResult: {
-      commitments?: {
-        documentHash: string;
-        nameCommitment: string;
-        userSalt: string;
-      };
-      documentType: string;
-      documentOrigin?: string; // ISO 3166-1 alpha-3 country code
-      confidence: number;
-      extractedData?: {
-        fullName?: string;
-        firstName?: string;
-        lastName?: string;
-        documentNumber?: string;
-        dateOfBirth?: string;
-        expirationDate?: string; // ISO 8601: YYYY-MM-DD
-        nationalityCode?: string; // ISO 3166-1 alpha-3
-        gender?: string; // M or F from OCR
-      };
-      validationIssues: string[];
-    } | null = null;
+    let documentResult: OcrProcessResult | null = null;
 
     try {
-      const ocrResponse = await fetch(`${OCR_SERVICE_URL}/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: body.documentImage,
-          userSalt: userSalt,
-        }),
+      documentResult = await processDocumentOcr({
+        image: body.documentImage,
+        userSalt: userSalt,
       });
-
-      if (!ocrResponse.ok) {
-        throw new Error(`OCR service returned ${ocrResponse.status}`);
-      }
-
-      documentResult = await ocrResponse.json();
       issues.push(...(documentResult?.validationIssues || []));
     } catch (_error) {
       issues.push("document_processing_failed");
@@ -290,101 +222,41 @@ export async function POST(
 
       // First pass: detect faces in document to get bounding box
       const docResultInitial = await detectFromBase64(body.documentImage);
-      const docFacesInitial = Array.isArray(docResultInitial?.face)
-        ? docResultInitial.face
-        : [];
+      const docFaceInitial = getLargestFace(docResultInitial);
 
       let docResult = docResultInitial;
 
       // If face found, crop and re-detect for better embedding quality
-      if (docFacesInitial.length > 0) {
-        const largestFaceInitial = docFacesInitial.reduce((best, f) => {
-          const bestArea = getBoxArea(best?.box as FaceBox | undefined);
-          const area = getBoxArea(f?.box as FaceBox | undefined);
-          return area > bestArea ? f : best;
-        }, docFacesInitial[0]);
+      if (docFaceInitial?.box) {
+        try {
+          // Human.js box can be array [x,y,w,h] or object {x,y,width,height}
+          const box = Array.isArray(docFaceInitial.box)
+            ? {
+                x: docFaceInitial.box[0],
+                y: docFaceInitial.box[1],
+                width: docFaceInitial.box[2],
+                height: docFaceInitial.box[3],
+              }
+            : docFaceInitial.box;
 
-        if (largestFaceInitial?.box) {
-          try {
-            // Human.js box can be array [x,y,w,h] or object {x,y,width,height}
-            const box = Array.isArray(largestFaceInitial.box)
-              ? {
-                  x: largestFaceInitial.box[0],
-                  y: largestFaceInitial.box[1],
-                  width: largestFaceInitial.box[2],
-                  height: largestFaceInitial.box[3],
-                }
-              : largestFaceInitial.box;
-
-            const croppedFaceDataUrl = await cropFaceRegion(
-              body.documentImage,
-              box,
-            );
-            docResult = await detectFromBase64(croppedFaceDataUrl);
-          } catch (_err) {}
-        }
+          const croppedFaceDataUrl = await cropFaceRegion(
+            body.documentImage,
+            box,
+          );
+          docResult = await detectFromBase64(croppedFaceDataUrl);
+        } catch (_err) {}
       }
 
-      // Select largest face from detection result
-      // Using unknown to handle Human.js library's complex types
-      const selectLargestFace = (res: unknown) => {
-        const result = res as { face?: Array<{ box?: unknown }> } | null;
-        const faces = Array.isArray(result?.face) ? result.face : [];
-        if (faces.length === 0) return null;
-        return faces.reduce((best, f) => {
-          const bestArea = getBoxArea(best?.box as FaceBox | undefined);
-          const area = getBoxArea(f?.box as FaceBox | undefined);
-          return area > bestArea ? f : best;
-        }, faces[0]);
-      };
-
-      // Face result type with descriptor properties - permissive for Human.js
-      interface FaceWithDescriptor {
-        embedding?: EmbeddingData;
-        descriptor?: EmbeddingData;
-        description?: { embedding?: EmbeddingData } | EmbeddingData;
-        box?: unknown;
-        real?: number | null;
-        live?: number | null;
-      }
-
-      const getEmbedding = (
-        face: FaceWithDescriptor | null,
-      ): number[] | null => {
-        const emb: EmbeddingData =
-          face?.embedding ??
-          face?.descriptor ??
-          (face?.description &&
-          typeof face.description === "object" &&
-          "embedding" in face.description
-            ? face.description.embedding
-            : (face?.description as EmbeddingData));
-        if (!emb) return null;
-        if (Array.isArray(emb)) return emb.map((n) => Number(n));
-        if (emb instanceof Float32Array) return Array.from(emb);
-        if (
-          typeof emb === "object" &&
-          "data" in emb &&
-          Array.isArray(emb.data)
-        ) {
-          return emb.data.map((n: number) => Number(n));
-        }
-        return null;
-      };
-
-      // Cast faces to FaceWithDescriptor for property access
-      const selfieFace = selectLargestFace(
-        selfieResult,
-      ) as FaceWithDescriptor | null;
-      const docFace = selectLargestFace(docResult) as FaceWithDescriptor | null;
+      const selfieFace = getLargestFace(selfieResult);
+      const docFace = getLargestFace(docResult);
       const localIssues: string[] = [];
 
       let antispoofScore = 0;
       let liveScore = 0;
       let livenessPassed = false;
       if (selfieFace) {
-        antispoofScore = Number(selfieFace.real ?? 0);
-        liveScore = Number(selfieFace.live ?? 0);
+        antispoofScore = getRealScore(selfieFace);
+        liveScore = getLiveScore(selfieFace);
         livenessPassed = antispoofScore >= 0.5 && liveScore >= 0.5;
       } else {
         localIssues.push("no_selfie_face");
@@ -393,8 +265,8 @@ export async function POST(
       let facesMatch = false;
       let faceMatchConfidence = 0;
       if (selfieFace && docFace) {
-        const selfieEmb = getEmbedding(selfieFace);
-        const docEmb = getEmbedding(docFace);
+        const selfieEmb = getEmbeddingVector(selfieFace);
+        const docEmb = getEmbeddingVector(docFace);
         if (selfieEmb && docEmb) {
           faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
           facesMatch = faceMatchConfidence >= 0.6;
@@ -492,49 +364,40 @@ export async function POST(
 
         // FHE Encryption (encrypt birth year)
         try {
-          const fheResponse = await fetch(`${FHE_SERVICE_URL}/encrypt`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              birthYear,
-              clientKeyId: "default",
-            }),
+          fheResult = await encryptBirthYearFhe({
+            birthYear,
+            clientKeyId: "default",
           });
-
-          if (fheResponse.ok) {
-            const fheData = await fheResponse.json();
-            fheResult = {
-              ciphertext: fheData.ciphertext,
-              clientKeyId: fheData.clientKeyId,
-            };
-          } else {
+        } catch (error) {
+          if (error instanceof HttpError) {
             issues.push("fhe_encryption_failed");
+          } else {
+            issues.push("fhe_service_unavailable");
           }
-        } catch (_error) {
-          issues.push("fhe_service_unavailable");
         }
 
         // ZK Proof Generation (prove age >= 18, 21, 25 in parallel)
         const ageThresholds = [18, 21, 25];
         try {
           // Generate all age proofs in parallel
-          const zkPromises = ageThresholds.map((minAge) =>
-            fetch(`${ZK_SERVICE_URL}/generate-proof`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+          const zkPromises = ageThresholds.map(async (minAge) => {
+            try {
+              const data = await generateAgeProofZk({
                 birthYear,
                 currentYear,
                 minAge,
-              }),
-            }).then(async (res) => {
-              if (res.ok) {
-                const data = await res.json();
-                return { minAge, data, success: true };
+              });
+              return { minAge, data, success: true as const };
+            } catch (error) {
+              // Preserve previous behavior:
+              // - non-OK responses are treated as a proof failure
+              // - network/service issues bubble and mark the whole step unavailable
+              if (error instanceof HttpError) {
+                return { minAge, success: false as const, data: null };
               }
-              return { minAge, success: false, error: await res.text() };
-            }),
-          );
+              throw error;
+            }
+          });
 
           const zkResults = await Promise.all(zkPromises);
           const ageProofs: Record<string, unknown> = {};
@@ -583,30 +446,15 @@ export async function POST(
     const expirationDate = documentResult?.extractedData?.expirationDate;
     if (expirationDate) {
       try {
-        const docValidityResponse = await fetch(
-          `${ZK_SERVICE_URL}/docvalidity/generate`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              expiryDate: expirationDate, // Already in YYYY-MM-DD format from OCR
-            }),
-          },
-        );
-
-        if (docValidityResponse.ok) {
-          const docValidityData = await docValidityResponse.json();
-          docValidityResult = {
-            proof: docValidityData.proof,
-            publicSignals: docValidityData.publicSignals,
-            isValid: docValidityData.isValid,
-            generationTimeMs: docValidityData.generationTimeMs,
-          };
-        } else {
+        docValidityResult = await generateDocValidityProofZk({
+          expiryDate: expirationDate,
+        });
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("doc_validity_proof_failed");
+        } else {
+          issues.push("doc_validity_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("doc_validity_service_unavailable");
       }
     }
 
@@ -617,16 +465,10 @@ export async function POST(
     const nationalityCode = documentResult?.extractedData?.nationalityCode;
     if (nationalityCode && documentResult?.commitments?.userSalt) {
       try {
-        // Generate commitment: SHA256(nationalityCode + userSalt)
-        const encoder = new TextEncoder();
-        const data = encoder.encode(
-          nationalityCode + documentResult.commitments.userSalt,
-        );
-        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        nationalityCommitment = hashArray
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
+        nationalityCommitment = await sha256CommitmentHex({
+          value: nationalityCode,
+          salt: documentResult.commitments.userSalt,
+        });
       } catch (_error) {
         issues.push("nationality_commitment_failed");
       }
@@ -640,31 +482,20 @@ export async function POST(
       try {
         // Convert M/F to ISO 5218 code
         const genderCode = gender === "M" ? 1 : gender === "F" ? 2 : 0;
-
-        const genderResponse = await fetch(
-          `${FHE_SERVICE_URL}/encrypt-gender`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              genderCode,
-              clientKeyId: "default",
-            }),
-          },
-        );
-
-        if (genderResponse.ok) {
-          const genderData = await genderResponse.json();
-          genderFheResult = {
-            ciphertext: genderData.ciphertext,
-            clientKeyId: genderData.clientKeyId,
-            genderCode,
-          };
-        } else {
+        const genderData = await encryptGenderFhe({
+          genderCode,
+          clientKeyId: "default",
+        });
+        genderFheResult = {
+          ...genderData,
+          genderCode,
+        };
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("gender_fhe_encryption_failed");
+        } else {
+          issues.push("gender_fhe_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("gender_fhe_service_unavailable");
       }
     }
 
@@ -674,27 +505,16 @@ export async function POST(
     // Encrypt full DOB as YYYYMMDD for precise age calculations
     if (dateOfBirth) {
       try {
-        const dobFullResponse = await fetch(`${FHE_SERVICE_URL}/encrypt-dob`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            dob: dateOfBirth,
-            clientKeyId: "default",
-          }),
+        dobFullFheResult = await encryptDobFhe({
+          dob: dateOfBirth,
+          clientKeyId: "default",
         });
-
-        if (dobFullResponse.ok) {
-          const dobFullData = await dobFullResponse.json();
-          dobFullFheResult = {
-            ciphertext: dobFullData.ciphertext,
-            clientKeyId: dobFullData.clientKeyId,
-            dobInt: dobFullData.dobInt,
-          };
-        } else {
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("dob_full_fhe_encryption_failed");
+        } else {
+          issues.push("dob_full_fhe_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("dob_full_fhe_service_unavailable");
       }
     }
 
@@ -706,30 +526,16 @@ export async function POST(
     const livenessScore = verificationResult?.antispoof_score;
     if (livenessScore !== undefined && livenessScore !== null) {
       try {
-        const livenessScoreResponse = await fetch(
-          `${FHE_SERVICE_URL}/encrypt-liveness`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              score: livenessScore,
-              clientKeyId: "default",
-            }),
-          },
-        );
-
-        if (livenessScoreResponse.ok) {
-          const livenessScoreData = await livenessScoreResponse.json();
-          livenessScoreFheResult = {
-            ciphertext: livenessScoreData.ciphertext,
-            clientKeyId: livenessScoreData.clientKeyId,
-            score: livenessScoreData.score,
-          };
-        } else {
+        livenessScoreFheResult = await encryptLivenessScoreFhe({
+          score: livenessScore,
+          clientKeyId: "default",
+        });
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("liveness_score_fhe_encryption_failed");
+        } else {
+          issues.push("liveness_score_fhe_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("liveness_score_fhe_service_unavailable");
       }
     }
 

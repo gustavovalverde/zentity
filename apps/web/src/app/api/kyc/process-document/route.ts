@@ -31,8 +31,24 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
 
+let lastRateLimitCleanupTimeMs = 0;
+
+function cleanupRateLimitMap(now: number): void {
+  // Avoid doing O(n) work on every request.
+  if (now - lastRateLimitCleanupTimeMs < RATE_LIMIT_WINDOW_MS) return;
+  lastRateLimitCleanupTimeMs = now;
+
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}
+
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
+  cleanupRateLimitMap(now);
+
   const record = rateLimitMap.get(ip);
 
   if (!record || now > record.resetTime) {
@@ -47,16 +63,6 @@ function isRateLimited(ip: string): boolean {
   record.count++;
   return false;
 }
-
-// Clean up old entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, record] of rateLimitMap.entries()) {
-    if (now > record.resetTime) {
-      rateLimitMap.delete(ip);
-    }
-  }
-}, RATE_LIMIT_WINDOW_MS);
 
 export async function POST(
   request: NextRequest,

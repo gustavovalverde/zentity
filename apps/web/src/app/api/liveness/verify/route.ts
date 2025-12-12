@@ -1,12 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  getEmbeddingVector,
+  getFacingDirection,
+  getHappyScore,
+  getLiveScore,
+  getPrimaryFace,
+  getRealScore,
+  getYawDegrees,
+} from "@/lib/human-metrics";
 import { detectFromBase64 } from "@/lib/human-server";
 import type { ChallengeType } from "@/lib/liveness-challenges";
+import {
+  BASELINE_CENTERED_THRESHOLD_DEG,
+  SMILE_DELTA_THRESHOLD,
+  SMILE_HIGH_THRESHOLD,
+  SMILE_SCORE_THRESHOLD,
+  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
+  TURN_YAW_SIGNIFICANT_DELTA_DEG,
+} from "@/lib/liveness-policy";
 import { getLivenessSession } from "@/lib/liveness-session-store";
 import {
   getSessionFromCookie,
   validateStepAccess,
 } from "@/lib/onboarding-session";
-import type { EmbeddingData } from "@/types/human";
 
 export const runtime = "nodejs";
 
@@ -14,116 +30,6 @@ interface VerifyRequest {
   sessionId: string; // REQUIRED - no longer optional
   baselineImage: string;
   challenges: Array<{ challengeType: ChallengeType; image: string }>;
-}
-
-// Face result type for Human.js - using permissive types
-interface FaceResult {
-  emotion?:
-    | Array<{ score: number; emotion: string }>
-    | { happy?: number }
-    | null;
-  real?: number | null;
-  live?: number | null;
-  liveness?: { live?: number; score?: number } | null;
-  antispoof?: { real?: number; score?: number } | null;
-  rotation?: {
-    angle?: { yaw?: number; pitch?: number; roll?: number } | null;
-  } | null;
-  angle?: { yaw?: number } | null;
-  embedding?: EmbeddingData;
-  descriptor?: EmbeddingData;
-  description?: { embedding?: EmbeddingData } | EmbeddingData | null;
-}
-
-// Detection result from Human.js
-interface DetectionResult {
-  face?: FaceResult[] | null;
-  gesture?: Array<{ gesture?: string; name?: string }> | null;
-}
-
-function getPrimaryFace(result: unknown): FaceResult | null {
-  const res = result as DetectionResult | null;
-  return res?.face?.[0] ?? null;
-}
-
-function getHappyScore(face: FaceResult | null): number {
-  const emo = face?.emotion;
-  if (!emo) return 0;
-  // Human.js returns emotion as array: [{ score, emotion }]
-  if (Array.isArray(emo)) {
-    const happy = emo.find(
-      (e) => e?.emotion === "happy" || e?.emotion === "Happy",
-    );
-    return happy?.score ?? 0;
-  }
-  // Some versions may return object format with happy property
-  if (typeof emo === "object" && "happy" in emo) {
-    const happyVal = (emo as { happy?: number }).happy;
-    if (typeof happyVal === "number") return happyVal;
-  }
-  return 0;
-}
-
-function getRealScore(face: FaceResult | null): number {
-  const val = face?.real ?? face?.antispoof?.real ?? face?.antispoof?.score;
-  return typeof val === "number" ? val : 0;
-}
-
-function getLiveScore(face: FaceResult | null): number {
-  const val = face?.live ?? face?.liveness?.live ?? face?.liveness?.score;
-  return typeof val === "number" ? val : 0;
-}
-
-function radToDeg(radians: number): number {
-  return (radians * 180) / Math.PI;
-}
-
-function getYaw(face: FaceResult | null): number {
-  const yawRad = face?.rotation?.angle?.yaw;
-  if (typeof yawRad === "number") return radToDeg(yawRad);
-  const yaw = face?.angle?.yaw;
-  return typeof yaw === "number" ? yaw : 0;
-}
-
-function getFacingDirection(
-  result: unknown,
-  face: FaceResult | null,
-): "left" | "right" | "center" {
-  const res = result as DetectionResult | null;
-  const gestures = res?.gesture;
-  if (Array.isArray(gestures)) {
-    for (const g of gestures) {
-      const name = g?.gesture ?? g?.name ?? "";
-      if (typeof name === "string" && name.startsWith("facing")) {
-        if (name.includes("left")) return "left";
-        if (name.includes("right")) return "right";
-        return "center";
-      }
-    }
-  }
-
-  const yaw = getYaw(face);
-  if (yaw < -10) return "left";
-  if (yaw > 10) return "right";
-  return "center";
-}
-
-function getEmbedding(face: FaceResult | null): number[] | null {
-  const emb: EmbeddingData =
-    face?.embedding ??
-    face?.descriptor ??
-    (face?.description &&
-    typeof face.description === "object" &&
-    "embedding" in face.description
-      ? face.description.embedding
-      : (face?.description as EmbeddingData));
-  if (!emb) return null;
-  if (Array.isArray(emb)) return emb.map((n) => Number(n));
-  if (emb instanceof Float32Array) return Array.from(emb);
-  if (typeof emb === "object" && "data" in emb && Array.isArray(emb.data)) {
-    return emb.data.map((n: number) => Number(n));
-  }
-  return null;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -197,7 +103,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const baselineHappy = getHappyScore(baselineFace);
     const baselineReal = getRealScore(baselineFace);
     const baselineLive = getLiveScore(baselineFace);
-    const baselineYaw = getYaw(baselineFace);
+    const baselineYaw = getYawDegrees(baselineFace);
 
     const results: Array<{
       challengeType: ChallengeType;
@@ -228,7 +134,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // Pass conditions (stricter to prevent false positives):
         // 1. Standard: happy >= 60% AND delta >= 10% (must smile noticeably more than baseline)
         // 2. Very high: happy >= 85% (clearly smiling - this is a real smile)
-        const passed = (happy >= 0.6 && delta >= 0.1) || happy >= 0.85;
+        const passed =
+          (happy >= SMILE_SCORE_THRESHOLD && delta >= SMILE_DELTA_THRESHOLD) ||
+          happy >= SMILE_HIGH_THRESHOLD;
         results.push({
           challengeType: "smile",
           passed,
@@ -239,7 +147,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         challenge.challengeType === "turn_left" ||
         challenge.challengeType === "turn_right"
       ) {
-        const yaw = getYaw(face);
+        const yaw = getYawDegrees(face);
         const dir = getFacingDirection(res, face);
         const yawDelta = Math.abs(yaw - baselineYaw);
         // Requirements:
@@ -247,9 +155,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // 2. Either: final yaw exceeds absolute threshold (±18°)
         //    OR: moved at least 20° from baseline (significant movement)
         // 3. Direction must be correct (turned the right way)
-        const baselineWasCentered = Math.abs(baselineYaw) <= 10;
-        const yawThreshold = 18;
-        const significantMovement = 20;
+        const baselineWasCentered =
+          Math.abs(baselineYaw) <= BASELINE_CENTERED_THRESHOLD_DEG;
+        const yawThreshold = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
+        const significantMovement = TURN_YAW_SIGNIFICANT_DELTA_DEG;
         const yawPassesAbsolute =
           challenge.challengeType === "turn_left"
             ? yaw < -yawThreshold
@@ -278,7 +187,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       allPassed = false;
     }
 
-    const embedding = getEmbedding(baselineFace);
+    const embedding = getEmbeddingVector(baselineFace);
 
     // Final summary log
     const _challengesPassed = results.every((r) => r.passed);

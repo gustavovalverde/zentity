@@ -5,11 +5,15 @@
  * GET /api/crypto/nationality-proof - List country groups or check membership
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import { requireSession } from "@/lib/api-auth";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
+import {
+  checkNationalityMembershipZk,
+  generateNationalityProofZk,
+  getNationalityGroupZk,
+  listNationalityGroupsZk,
+} from "@/lib/zk-client";
 
 /**
  * POST - Generate nationality membership ZK proof
@@ -19,14 +23,8 @@ const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = await request.json();
     const { nationalityCode, groupName } = body;
@@ -51,24 +49,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call ZK service to generate proof
-    const response = await fetch(`${ZK_SERVICE_URL}/nationality/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nationalityCode: nationalityCode.toUpperCase(),
-        groupName: groupName.toUpperCase(),
-      }),
+    const result = await generateNationalityProofZk({
+      nationalityCode,
+      groupName,
     });
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "ZK service error" }));
-      return NextResponse.json(error, { status: response.status });
-    }
-
-    const result = await response.json();
 
     return NextResponse.json({
       success: true,
@@ -81,13 +65,11 @@ export async function POST(request: NextRequest) {
       solidityCalldata: result.solidityCalldata,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to generate proof",
-      },
-      { status: 500 },
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to generate proof",
     );
+    return NextResponse.json(payload, { status });
   }
 }
 
@@ -101,14 +83,8 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
@@ -116,54 +92,24 @@ export async function GET(request: NextRequest) {
 
     // Check membership if both code and group provided
     if (code && group) {
-      const response = await fetch(
-        `${ZK_SERVICE_URL}/nationality/check?code=${encodeURIComponent(code)}&group=${encodeURIComponent(group)}`,
-      );
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: "ZK service error" }));
-        return NextResponse.json(error, { status: response.status });
-      }
-
-      return NextResponse.json(await response.json());
+      const result = await checkNationalityMembershipZk({ code, group });
+      return NextResponse.json(result);
     }
 
     // Get specific group if group provided
     if (group) {
-      const response = await fetch(
-        `${ZK_SERVICE_URL}/nationality/groups/${encodeURIComponent(group)}`,
-      );
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: "ZK service error" }));
-        return NextResponse.json(error, { status: response.status });
-      }
-
-      return NextResponse.json(await response.json());
+      const result = await getNationalityGroupZk({ group });
+      return NextResponse.json(result);
     }
 
     // List all groups
-    const response = await fetch(`${ZK_SERVICE_URL}/nationality/groups`);
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "ZK service error" }));
-      return NextResponse.json(error, { status: response.status });
-    }
-
-    return NextResponse.json(await response.json());
+    const result = await listNationalityGroupsZk();
+    return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to fetch groups",
-      },
-      { status: 500 },
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to fetch groups",
     );
+    return NextResponse.json(payload, { status });
   }
 }

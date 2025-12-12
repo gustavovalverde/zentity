@@ -9,8 +9,8 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-
-const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
+import { encryptGenderFhe } from "@/lib/fhe-client";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,26 +28,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(`${FHE_SERVICE_URL}/encrypt-gender`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ genderCode, clientKeyId }),
+    const data = await encryptGenderFhe({
+      genderCode,
+      clientKeyId,
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errorData.error || "FHE service error" },
-        { status: response.status },
-      );
-    }
-
-    const data = await response.json();
     return NextResponse.json(data);
-  } catch (_error) {
-    return NextResponse.json(
-      { error: "Failed to connect to FHE service" },
-      { status: 503 },
+  } catch (error) {
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "FHE service error",
     );
+    return NextResponse.json(payload, { status });
   }
 }
