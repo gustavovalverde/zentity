@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { getFheServiceUrl, getZkServiceUrl } from "@/lib/service-urls";
 
-const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+const FHE_SERVICE_URL = getFheServiceUrl();
+const ZK_SERVICE_URL = getZkServiceUrl();
 
 async function checkService(url: string, timeout = 5000) {
   const controller = new AbortController();

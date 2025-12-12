@@ -10,9 +10,8 @@
  * - Checking which verification steps are complete
  */
 
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { getVerificationStatus } from "@/lib/db";
 
 interface StatusResponse {
@@ -30,15 +29,10 @@ export async function GET(): Promise<
   NextResponse<StatusResponse | { error: string }>
 > {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const status = getVerificationStatus(session.user.id);
+    const status = getVerificationStatus(authResult.session.user.id);
 
     return NextResponse.json(status);
   } catch (_error) {

@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import Database from "better-sqlite3";
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 
 const dbPath = process.env.DATABASE_PATH || "./dev.db";
 const dbDir = path.dirname(dbPath);
@@ -91,13 +90,8 @@ export async function GET(): Promise<
   NextResponse<KycStatusResponse | { error: string }>
 > {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const stmt = db.prepare(`
       SELECT
@@ -113,7 +107,7 @@ export async function GET(): Promise<
       WHERE user_id = ?
     `);
 
-    const status = stmt.get(session.user.id) as
+    const status = stmt.get(authResult.session.user.id) as
       | {
           document_uploaded: number;
           document_verified: number;

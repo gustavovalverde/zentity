@@ -8,9 +8,8 @@
  * The proof can be verified by third parties without revealing the actual DOB.
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { getIdentityProofByUserId } from "@/lib/db";
 
 interface GenerateAgeProofRequest {
@@ -31,12 +30,8 @@ export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<GenerateAgeProofResponse>> {
   try {
-    // Authenticate user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
+    const authResult = await requireSession();
+    if (!authResult.ok) {
       return NextResponse.json(
         {
           success: false,
@@ -48,7 +43,7 @@ export async function POST(
       );
     }
 
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
     const body = (await request.json()) as GenerateAgeProofRequest;
 
     // Validate minAge
@@ -137,19 +132,15 @@ export async function POST(
  */
 export async function GET(): Promise<NextResponse> {
   try {
-    // Authenticate user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
+    const authResult = await requireSession();
+    if (!authResult.ok) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 },
       );
     }
 
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
     const identityProof = getIdentityProofByUserId(userId);
 
     if (!identityProof) {

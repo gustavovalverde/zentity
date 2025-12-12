@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { getEmbeddingVector, getLargestFace } from "@/lib/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/human-server";
 import { cropFaceRegion } from "@/lib/image-processing";
-import type { EmbeddingData, FaceBox } from "@/types/human";
-import { getBoxArea } from "@/types/human";
 
 export const runtime = "nodejs";
 
@@ -46,87 +45,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // First pass: detect faces in ID document to get bounding box
     const idResultInitial = await detectFromBase64(body.idImage);
-    const idFacesInitial = Array.isArray(idResultInitial?.face)
-      ? idResultInitial.face
-      : [];
+    const idFaceInitial = getLargestFace(idResultInitial);
 
     let idResult = idResultInitial;
     // Track cropped face for UI display
     let croppedFaceDataUrl: string | null = null;
 
     // If we found a face in the document, crop and re-process for better embedding
-    if (idFacesInitial.length > 0) {
-      const largestFace = idFacesInitial.reduce((best, f) => {
-        const bestArea = getBoxArea(best?.box as FaceBox | undefined);
-        const area = getBoxArea(f?.box as FaceBox | undefined);
-        return area > bestArea ? f : best;
-      }, idFacesInitial[0]);
+    if (idFaceInitial?.box) {
+      try {
+        // Human.js box can be array [x,y,w,h] or object {x,y,width,height}
+        const box = Array.isArray(idFaceInitial.box)
+          ? {
+              x: idFaceInitial.box[0],
+              y: idFaceInitial.box[1],
+              width: idFaceInitial.box[2],
+              height: idFaceInitial.box[3],
+            }
+          : idFaceInitial.box;
 
-      if (largestFace?.box) {
-        try {
-          // Human.js box can be array [x,y,w,h] or object {x,y,width,height}
-          const box = Array.isArray(largestFace.box)
-            ? {
-                x: largestFace.box[0],
-                y: largestFace.box[1],
-                width: largestFace.box[2],
-                height: largestFace.box[3],
-              }
-            : largestFace.box;
-
-          // Crop face region and re-process
-          croppedFaceDataUrl = await cropFaceRegion(body.idImage, box);
-          idResult = await detectFromBase64(croppedFaceDataUrl);
-        } catch (_err) {}
-      }
+        // Crop face region and re-process
+        croppedFaceDataUrl = await cropFaceRegion(body.idImage, box);
+        idResult = await detectFromBase64(croppedFaceDataUrl);
+      } catch (_err) {}
     }
 
     const selfieResult = await detectFromBase64(body.selfieImage);
 
-    // Select largest face from detection result
-    // Using unknown to handle Human.js library's complex types
-    const selectLargestFace = (res: unknown) => {
-      const result = res as { face?: Array<{ box?: unknown }> } | null;
-      const faces = Array.isArray(result?.face) ? result.face : [];
-      if (faces.length === 0) return null;
-      return faces.reduce((best, f) => {
-        const bestArea = getBoxArea(best?.box as FaceBox | undefined);
-        const area = getBoxArea(f?.box as FaceBox | undefined);
-        return area > bestArea ? f : best;
-      }, faces[0]);
-    };
-
-    // Face result type with descriptor properties - permissive for Human.js
-    interface FaceWithDescriptor {
-      embedding?: EmbeddingData;
-      descriptor?: EmbeddingData;
-      description?: { embedding?: EmbeddingData } | EmbeddingData;
-      box?: unknown;
-    }
-
-    const getEmbedding = (face: FaceWithDescriptor | null): number[] | null => {
-      const emb: EmbeddingData =
-        face?.embedding ??
-        face?.descriptor ??
-        (face?.description &&
-        typeof face.description === "object" &&
-        "embedding" in face.description
-          ? face.description.embedding
-          : (face?.description as EmbeddingData));
-      if (!emb) return null;
-      if (Array.isArray(emb)) return emb.map((n) => Number(n));
-      if (emb instanceof Float32Array) return Array.from(emb);
-      if (typeof emb === "object" && "data" in emb && Array.isArray(emb.data)) {
-        return emb.data.map((n: number) => Number(n));
-      }
-      return null;
-    };
-
-    // Cast faces to FaceWithDescriptor for property access
-    const idFace = selectLargestFace(idResult) as FaceWithDescriptor | null;
-    const selfieFace = selectLargestFace(
-      selfieResult,
-    ) as FaceWithDescriptor | null;
+    const idFace = getLargestFace(idResult);
+    const selfieFace = getLargestFace(selfieResult);
 
     if (!idFace || !selfieFace) {
       return NextResponse.json(
@@ -142,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             ? "No face detected in ID document"
             : "No face detected in selfie",
           debug: {
-            id_faces_detected: idFacesInitial.length,
+            id_faces_detected: idFaceInitial ? 1 : 0,
             selfie_faces_detected: selfieResult?.face?.length ?? 0,
             cropping_applied: Boolean(croppedFaceDataUrl),
           },
@@ -151,8 +98,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const idEmb = getEmbedding(idFace);
-    const selfieEmb = getEmbedding(selfieFace);
+    const idEmb = getEmbeddingVector(idFace);
+    const selfieEmb = getEmbeddingVector(selfieFace);
 
     if (!idEmb || !selfieEmb) {
       return NextResponse.json(
@@ -168,7 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             ? "Failed to extract ID face embedding"
             : "Failed to extract selfie face embedding",
           debug: {
-            id_faces_detected: idFacesInitial.length,
+            id_faces_detected: idFaceInitial ? 1 : 0,
             selfie_faces_detected: selfieResult?.face?.length ?? 0,
             cropping_applied: Boolean(croppedFaceDataUrl),
           },
@@ -189,7 +136,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       id_face_extracted: true,
       id_face_image: croppedFaceDataUrl,
       debug: {
-        id_faces_detected: idFacesInitial.length,
+        id_faces_detected: idFaceInitial ? 1 : 0,
         selfie_faces_detected: selfieResult?.face?.length ?? 0,
         cropping_applied: Boolean(croppedFaceDataUrl),
       },

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
+import { HttpError } from "@/lib/http";
+import { getOcrHealth } from "@/lib/ocr-client";
 
 /**
  * GET /api/ocr/health
@@ -8,21 +8,16 @@ const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
  */
 export async function GET(): Promise<NextResponse> {
   try {
-    const response = await fetch(`${OCR_SERVICE_URL}/health`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!response.ok) {
+    const data = await getOcrHealth();
+    return NextResponse.json(data);
+  } catch (error) {
+    if (error instanceof HttpError) {
       return NextResponse.json(
         { status: "unhealthy", error: "OCR service unavailable" },
-        { status: response.status },
+        { status: error.status },
       );
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (_error) {
     return NextResponse.json(
       { status: "unhealthy", error: "OCR service unreachable" },
       { status: 503 },

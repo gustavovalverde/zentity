@@ -19,16 +19,14 @@
  * 3. Minimizing Zentity's liability (no PII storage)
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { getIdentityProofByUserId, getVerificationStatus } from "@/lib/db";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
 import { detectFromBase64, getHumanServer } from "@/lib/human-server";
-
-// Service URLs
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import { processDocumentOcr } from "@/lib/ocr-client";
+import { generateFaceMatchProofZk } from "@/lib/zk-client";
 
 interface DisclosureRequest {
   // RP identification
@@ -163,12 +161,8 @@ export async function POST(
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
   try {
-    // Authenticate user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
+    const authResult = await requireSession();
+    if (!authResult.ok) {
       return NextResponse.json(
         {
           success: false,
@@ -184,7 +178,7 @@ export async function POST(
       );
     }
 
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
 
     // Check if user is verified
     const verificationStatus = getVerificationStatus(userId);
@@ -260,21 +254,15 @@ export async function POST(
     } | null = null;
 
     try {
-      const ocrResponse = await fetch(`${OCR_SERVICE_URL}/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: body.documentImage,
-          userSalt: identityProof?.userSalt,
-        }),
+      documentResult = await processDocumentOcr({
+        image: body.documentImage,
+        userSalt: identityProof?.userSalt,
       });
-
-      if (!ocrResponse.ok) {
-        throw new Error(`OCR service returned ${ocrResponse.status}`);
-      }
-
-      documentResult = await ocrResponse.json();
-    } catch (_error) {
+    } catch (error) {
+      const { status } = toServiceErrorPayload(
+        error,
+        "Failed to process document",
+      );
       return NextResponse.json(
         {
           success: false,
@@ -286,7 +274,7 @@ export async function POST(
           expiresAt,
           error: "Failed to process document",
         },
-        { status: 500 },
+        { status },
       );
     }
 
@@ -357,30 +345,17 @@ export async function POST(
           // Calculate similarity using Human.js
           const similarityScore = human.match.similarity(docEmb, selfieEmb);
 
-          // Call ZK service directly to generate proof
-          const zkResponse = await fetch(
-            `${ZK_SERVICE_URL}/facematch/generate`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                similarityScore,
-                threshold: proofThreshold,
-              }),
-            },
-          );
+          const zkResult = await generateFaceMatchProofZk({
+            similarityScore,
+            threshold: proofThreshold,
+          });
 
-          if (zkResponse.ok) {
-            const zkResult = await zkResponse.json();
-            if (zkResult.proof) {
-              faceMatchProof = {
-                proof: zkResult.proof,
-                publicSignals: zkResult.publicSignals,
-                isMatch: zkResult.isMatch,
-                threshold: zkResult.threshold,
-              };
-            }
-          }
+          faceMatchProof = {
+            proof: zkResult.proof,
+            publicSignals: zkResult.publicSignals,
+            isMatch: zkResult.isMatch,
+            threshold: zkResult.threshold,
+          };
         }
       }
     } catch (_error) {

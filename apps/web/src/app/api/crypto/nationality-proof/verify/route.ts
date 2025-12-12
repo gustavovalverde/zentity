@@ -4,11 +4,10 @@
  * POST /api/crypto/nationality-proof/verify - Verify a nationality membership ZK proof
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import { requireSession } from "@/lib/api-auth";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
+import { verifyNationalityProofZk } from "@/lib/zk-client";
 
 /**
  * POST - Verify nationality membership ZK proof
@@ -18,14 +17,8 @@ const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = await request.json();
     const { proof, publicSignals } = body;
@@ -42,21 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call ZK service to verify proof
-    const response = await fetch(`${ZK_SERVICE_URL}/nationality/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ proof, publicSignals }),
-    });
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "ZK service error" }));
-      return NextResponse.json(error, { status: response.status });
-    }
-
-    const result = await response.json();
+    const result = await verifyNationalityProofZk({ proof, publicSignals });
 
     return NextResponse.json({
       success: true,
@@ -66,12 +45,10 @@ export async function POST(request: NextRequest) {
       verificationTimeMs: result.verificationTimeMs,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to verify proof",
-      },
-      { status: 500 },
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to verify proof",
     );
+    return NextResponse.json(payload, { status });
   }
 }

@@ -6,8 +6,11 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import {
+  verifyDocValidityProofZk,
+  verifyFaceMatchProofZk,
+  verifyProofZk,
+} from "@/lib/zk-client";
 
 interface Proof {
   proof: object;
@@ -43,18 +46,11 @@ export async function POST(request: NextRequest) {
     // Verify age proof
     if (proofs.ageProof) {
       try {
-        const res = await fetch(`${ZK_SERVICE_URL}/verify-proof`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proofs.ageProof),
+        const data = await verifyProofZk({
+          proof: proofs.ageProof.proof,
+          publicSignals: proofs.ageProof.publicSignals,
         });
-        if (res.ok) {
-          const data = await res.json();
-          results.ageProofValid = data.isValid;
-        } else {
-          // Mock verification for demo
-          results.ageProofValid = proofs.ageProof.publicSignals[0] === "1";
-        }
+        results.ageProofValid = data.isValid;
       } catch {
         // ZK service not available, mock verification
         results.ageProofValid = proofs.ageProof.publicSignals[0] === "1";
@@ -64,19 +60,11 @@ export async function POST(request: NextRequest) {
     // Verify face match proof
     if (proofs.faceMatchProof) {
       try {
-        const res = await fetch(`${ZK_SERVICE_URL}/facematch/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proofs.faceMatchProof),
+        const data = await verifyFaceMatchProofZk({
+          proof: proofs.faceMatchProof.proof,
+          publicSignals: proofs.faceMatchProof.publicSignals,
         });
-        if (res.ok) {
-          const data = await res.json();
-          results.faceMatchValid = data.isValid;
-        } else {
-          // Mock verification
-          results.faceMatchValid =
-            proofs.faceMatchProof.publicSignals[0] === "1";
-        }
+        results.faceMatchValid = data.isValid;
       } catch {
         // Mock verification
         results.faceMatchValid = proofs.faceMatchProof.publicSignals[0] === "1";
@@ -86,19 +74,11 @@ export async function POST(request: NextRequest) {
     // Verify document validity proof
     if (proofs.docValidityProof) {
       try {
-        const res = await fetch(`${ZK_SERVICE_URL}/docvalidity/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(proofs.docValidityProof),
+        const data = await verifyDocValidityProofZk({
+          proof: proofs.docValidityProof.proof,
+          publicSignals: proofs.docValidityProof.publicSignals,
         });
-        if (res.ok) {
-          const data = await res.json();
-          results.docValidityValid = data.isValid;
-        } else {
-          // Mock verification
-          results.docValidityValid =
-            proofs.docValidityProof.publicSignals[0] === "1";
-        }
+        results.docValidityValid = data.isValid;
       } catch {
         // Mock verification
         results.docValidityValid =
