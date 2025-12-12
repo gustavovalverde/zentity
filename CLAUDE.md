@@ -8,17 +8,16 @@ Zentity is a privacy-preserving KYC platform using zero-knowledge proofs (ZK), f
 
 ## Architecture
 
-Monorepo with 5 services communicating via REST APIs:
+Monorepo with 4 services communicating via REST APIs:
 
 | Service | Location | Stack | Port |
 |---------|----------|-------|------|
-| Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript | 3000 |
+| Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs | 5001 |
 | ZK Service | `apps/zk` | TypeScript, Express, snarkjs | 5002 |
-| Liveness | `apps/liveness` | Python, FastAPI, DeepFace | 5003 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
 
-The frontend proxies API calls to backend services via Next.js API routes (`/api/crypto/*`, `/api/liveness/*`, `/api/kyc/*`, `/api/identity/*`).
+The frontend handles face detection and liveness verification using Human.js (server-side via tfjs-node), and proxies other API calls to backend services via Next.js API routes (`/api/crypto/*`, `/api/liveness/*`, `/api/kyc/*`, `/api/identity/*`).
 
 ## Build & Development Commands
 
@@ -47,13 +46,12 @@ cargo run --release      # Run (compiles TFHE keys on first start)
 cargo test               # Run tests
 ```
 
-### Python Services (apps/liveness, apps/ocr)
+### OCR Service (apps/ocr)
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --port 5003 --reload  # liveness
-uvicorn app.main:app --port 5004 --reload  # ocr
-pytest                                      # tests
+uvicorn app.main:app --port 5004 --reload
+pytest
 ```
 
 ### Docker (all services)
@@ -68,7 +66,7 @@ The main verification endpoint is `POST /api/identity/verify` which orchestrates
 1. OCR Service → Extract document data, generate SHA256 commitments
 2. FHE Service → Encrypt DOB, gender, liveness score with TFHE-rs
 3. ZK Service → Generate Groth16 proofs (age, document validity, nationality)
-4. Liveness Service → Multi-gesture challenges (smile, blink, head turns), face matching
+4. Human.js (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
 
 **Privacy principle**: Raw PII is never stored. Only cryptographic commitments, FHE ciphertexts, and ZK proofs are persisted. Images are processed transiently.
 
@@ -92,6 +90,5 @@ ZK circuits are in `apps/zk/circuits/` using Circom. Build process:
 ```
 FHE_SERVICE_URL=http://localhost:5001
 ZK_SERVICE_URL=http://localhost:5002
-LIVENESS_SERVICE_URL=http://localhost:5003
 OCR_SERVICE_URL=http://localhost:5004
 ```
