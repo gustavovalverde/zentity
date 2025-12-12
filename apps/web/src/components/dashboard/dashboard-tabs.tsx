@@ -5,7 +5,6 @@ import {
   Calendar,
   CheckCircle,
   Code,
-  ExternalLink,
   FileCheck,
   Globe,
   Shield,
@@ -165,7 +164,7 @@ export function DashboardTabs({
                     proofs.
                   </p>
                   <Button asChild size="sm">
-                    <Link href="/onboarding">
+                    <Link href="/sign-up">
                       Start Verification
                       <ArrowRight className="ml-2 h-3 w-3" />
                     </Link>
@@ -361,22 +360,12 @@ const result = await fetch('/api/identity/verify-name', {
 const { matches } = await result.json();
 // Returns: { matches: true } - NO NAME REVEALED`}</pre>
             </div>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4">
               <Button variant="outline" size="sm" asChild>
                 <Link href="/dashboard/dev">
                   <Code className="mr-2 h-4 w-4" />
                   Developer Tools
                 </Link>
-              </Button>
-              <Button variant="ghost" size="sm" asChild>
-                <a
-                  href="https://github.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  API Docs
-                </a>
               </Button>
             </div>
           </CardContent>
