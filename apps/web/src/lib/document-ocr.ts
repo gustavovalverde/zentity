@@ -1,9 +1,8 @@
 /**
- * Document AI processing with local-first approach.
+ * Document OCR processing with local-first approach.
  *
- * Priority order:
- * 1. RapidOCR service (fast, local, privacy-first)
- * 2. Vercel AI Gateway (cloud fallback)
+ * Uses RapidOCR service for fast, local, privacy-first document processing.
+ * All processing is done locally - no data is sent to external services.
  *
  * Supports:
  * - Document type detection (passport, national ID, driver's license)
@@ -11,7 +10,6 @@
  * - Field extraction (name, document number, DOB, etc.)
  */
 
-import { gateway, generateObject } from "ai";
 import { z } from "zod";
 
 // Schema for extracted document data
@@ -53,9 +51,6 @@ export const DOCUMENT_TYPE_LABELS: Record<
   unknown: "Unknown Document",
 };
 
-// Configuration
-const USE_OCR_SERVICE = process.env.USE_OCR_SERVICE !== "false";
-
 // Helper to get the base URL for API calls (works both client and server side)
 function getBaseUrl(): string {
   // Server-side: use environment variable
@@ -67,55 +62,7 @@ function getBaseUrl(): string {
 }
 
 /**
- * Process document using Vercel AI Gateway (cloud)
- */
-async function processDocumentCloud(
-  imageBase64: string,
-): Promise<DocumentResult> {
-  // Remove data URL prefix if present
-  const cleanImage = imageBase64.includes(",")
-    ? imageBase64.split(",")[1]
-    : imageBase64;
-
-  const result = await generateObject({
-    model: gateway("anthropic/claude-sonnet-4.5"),
-    schema: DocumentSchema,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "image", image: cleanImage },
-          {
-            type: "text",
-            text: `Analyze this identity document image.
-
-1. Identify the document type: passport, national_id (cedula, DNI, ID card), or drivers_license
-2. Identify the issuing country if visible (set documentOrigin to ISO 3166-1 alpha-3 code)
-3. Extract key fields if visible:
-   - Full name
-   - Document number
-   - Date of birth (format: YYYY-MM-DD)
-   - Expiration date (format: YYYY-MM-DD)
-   - Nationality (full country name)
-   - Nationality code (ISO 3166-1 alpha-3)
-   - Gender (M or F)
-
-Rules:
-- If any fields are unclear, blurry, or not visible, omit them from extractedData
-- List any validation concerns in validationIssues (e.g., "document_expired", "image_quality_low", "mrz_checksum_invalid")
-- Set confidence based on how clearly you can read and verify the document (0.0-1.0)
-- For passports, try to read the MRZ (Machine Readable Zone) at the bottom`,
-          },
-        ],
-      },
-    ],
-  });
-
-  return result.object;
-}
-
-/**
- * Process document using RapidOCR service
+ * Process document using RapidOCR service (local processing)
  */
 async function processDocumentOCR(
   imageBase64: string,
@@ -161,11 +108,9 @@ async function processDocumentOCR(
 }
 
 /**
- * Process a document image using AI vision.
+ * Process a document image using local OCR.
  *
- * Priority order:
- * 1. RapidOCR service (fast, local, ~2-5s)
- * 2. Vercel AI Gateway (cloud fallback)
+ * All processing is done locally via RapidOCR - no data is sent to external services.
  *
  * @param imageBase64 - Base64 encoded image (with or without data URL prefix)
  * @returns Document analysis result with type, validation, and extracted data
@@ -173,26 +118,16 @@ async function processDocumentOCR(
 export async function processDocument(
   imageBase64: string,
 ): Promise<DocumentResult> {
-  // Try RapidOCR service first (fastest, privacy-first)
-  if (USE_OCR_SERVICE) {
-    try {
-      return await processDocumentOCR(imageBase64);
-    } catch (_error) {
-      // Fall through to cloud
-    }
+  try {
+    return await processDocumentOCR(imageBase64);
+  } catch (_error) {
+    // OCR service unavailable
+    return {
+      documentType: "unknown",
+      confidence: 0,
+      validationIssues: ["ocr_service_unavailable"],
+    };
   }
-
-  // Cloud fallback
-  if (process.env.AI_GATEWAY_API_KEY) {
-    return await processDocumentCloud(imageBase64);
-  }
-
-  // No processing method available
-  return {
-    documentType: "unknown",
-    confidence: 0,
-    validationIssues: ["no_ocr_service_available"],
-  };
 }
 
 /**

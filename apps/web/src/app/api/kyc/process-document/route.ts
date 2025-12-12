@@ -1,8 +1,8 @@
 /**
  * Document Processing API Route
  *
- * Privacy-first document analysis using RapidOCR service.
- * Falls back to cloud AI if local service is unavailable.
+ * Privacy-first document analysis using local RapidOCR service.
+ * All processing is done locally - no data is sent to external services.
  *
  * Features:
  * - Document type detection (passport, national ID, driver's license)
@@ -16,7 +16,7 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { type DocumentResult, processDocument } from "@/lib/document-ai";
+import { type DocumentResult, processDocument } from "@/lib/document-ocr";
 import {
   getSessionFromCookie,
   validateStepAccess,
@@ -90,7 +90,7 @@ export async function POST(
       return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
-    // Process the document using AI vision (local-first)
+    // Process the document using local OCR
     const result = await processDocument(body.image);
 
     return NextResponse.json(result);
@@ -107,21 +107,6 @@ export async function POST(
               "Document processing service unavailable. Please try again later.",
           },
           { status: 503 },
-        );
-      }
-
-      // Cloud AI errors
-      if (error.message.includes("API key")) {
-        return NextResponse.json(
-          { error: "AI service configuration error" },
-          { status: 500 },
-        );
-      }
-
-      if (error.message.includes("rate limit")) {
-        return NextResponse.json(
-          { error: "Service temporarily unavailable, please try again" },
-          { status: 429 },
         );
       }
     }

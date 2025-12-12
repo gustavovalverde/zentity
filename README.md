@@ -285,69 +285,58 @@ Biometrics: NEVER stored by either party
 ```
 zentity/
 ├── apps/
-│   └── web/                  # Next.js 16 frontend
-├── services/
+│   ├── web/                  # Next.js 16 frontend (includes liveness via Human.js)
 │   ├── fhe/                  # Rust/Axum - Homomorphic Encryption
 │   ├── zk/                   # TypeScript/Express - Zero-Knowledge Proofs
-│   ├── liveness/             # Python/FastAPI - Face/Liveness Detection
-│   └── ocr/                  # Python/FastAPI - Document OCR
-├── packages/                 # Shared libraries (future)
+│   └── ocr/                  # Python/FastAPI - Document OCR (local RapidOCR)
 ├── tooling/
 │   └── bruno-collection/     # API testing
-├── infra/
-│   └── docker-compose.yml    # Container orchestration
 └── docs/                     # Documentation
 ```
 
 ### System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (Next.js 16)                       │
-│                         http://localhost:3000                       │
-│   ┌─────────────────────────────────────────────────────────────┐   │
-│   │ /api/crypto/*    /api/liveness/*    /api/kyc/*    /api/identity/* │
-│   └──────────┬────────────────┬──────────────┬───────────────┬──┘   │
-└──────────────┼────────────────┼──────────────┼───────────────┼──────┘
-               │                │              │               │
-    ┌──────────▼──────────┐  ┌──▼──────────┐  │  ┌────────────▼───────┐
-    │   FHE SERVICE       │  │ ZK SERVICE  │  │  │   OCR SERVICE      │
-    │   Rust/Axum         │  │ TS/Express  │  │  │   Python/FastAPI   │
-    │   Port 5001         │  │ Port 5002   │  │  │   Port 5004        │
-    │                     │  │             │  │  │                    │
-    │ • /encrypt          │  │ • /generate │  │  │ • /process         │
-    │ • /verify-age       │  │ • /verify   │  │  │ • /extract         │
-    │ • /keys/generate    │  │ • /facematch│  │  │ • /ocr             │
-    │ • /encrypt-liveness │  │ • /docvalid │  │  │                    │
-    │ • /verify-liveness  │  │ • /national │  │  │                    │
-    │ TFHE-rs v1.4.2      │  │ snarkjs     │  │  │ RapidOCR (PPOCRv5) │
-    └─────────────────────┘  └─────────────┘  │  └────────────────────┘
-                                              │
-                            ┌─────────────────▼────────────────────────┐
-                            │        LIVENESS SERVICE                  │
-                            │        Python/FastAPI                    │
-                            │        Port 5003                         │
-                            │                                          │
-                            │ • /verify           • /face-match        │
-                            │ • /smile-check      • /blink-check       │
-                            │ • /head-pose        • /head-turn-check   │
-                            │ • /challenge/session                     │
-                            │ • /challenge/complete                    │
-                            │ • /challenge/validate-multi              │
-                            │                                          │
-                            │ DeepFace, FasNet, UniFace               │
-                            └──────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│                           FRONTEND (Next.js 16)                           │
+│                           http://localhost:3000                           │
+│                                                                           │
+│   ┌─────────────────────────────────────────────────────────────────┐     │
+│   │  LIVENESS (Human.js)                                            │     │
+│   │  • Multi-gesture challenges (smile, blink, head turns)          │     │
+│   │  • Face detection and matching                                  │     │
+│   │  • Runs locally via tfjs-node (no external API calls)           │     │
+│   └─────────────────────────────────────────────────────────────────┘     │
+│                                                                           │
+│   ┌─────────────────────────────────────────────────────────────────┐     │
+│   │ /api/crypto/*    /api/liveness/*    /api/kyc/*    /api/identity/*│     │
+│   └──────────┬──────────────────────────────────┬───────────────────┘     │
+└──────────────┼──────────────────────────────────┼─────────────────────────┘
+               │                                  │
+    ┌──────────▼──────────┐  ┌────────────────┐  │  ┌────────────────────┐
+    │   FHE SERVICE       │  │ ZK SERVICE     │  │  │   OCR SERVICE      │
+    │   Rust/Axum         │  │ TS/Express     │  │  │   Python/FastAPI   │
+    │   Port 5001         │  │ Port 5002      │  │  │   Port 5004        │
+    │                     │  │                │  │  │                    │
+    │ • /encrypt          │  │ • /generate    │  │  │ • /process         │
+    │ • /verify-age       │  │ • /verify      │  │  │ • /extract         │
+    │ • /keys/generate    │  │ • /facematch   │  │  │ • /ocr             │
+    │ • /encrypt-liveness │  │ • /docvalid    │  │  │                    │
+    │ • /verify-liveness  │  │ • /national    │  │  │ Local RapidOCR     │
+    │ TFHE-rs v1.4.2      │  │ snarkjs        │  │  │ (no external calls)│
+    └─────────────────────┘  └────────────────┘  │  └────────────────────┘
+                                                 │
+                                                 └──► All processing local
 ```
 
 ### Technology Stack
 
 | Service | Language | Framework | Crypto Library | Port |
 |---------|----------|-----------|----------------|------|
-| Frontend | TypeScript | Next.js 16 | - | 3000 |
+| Frontend + Liveness | TypeScript | Next.js 16, Human.js | - | 3000 |
 | FHE Service | Rust | Axum | TFHE-rs v1.4.2 | 5001 |
 | ZK Service | TypeScript | Express | snarkjs (Groth16) | 5002 |
-| Liveness | Python 3.10+ | FastAPI | DeepFace | 5003 |
-| OCR | Python 3.10+ | FastAPI | SHA256 | 5004 |
+| OCR | Python 3.10+ | FastAPI, RapidOCR | SHA256 | 5004 |
 
 ### ZK Proof Circuits
 
