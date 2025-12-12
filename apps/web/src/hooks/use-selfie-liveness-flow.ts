@@ -134,6 +134,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const debugCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const debugLastUpdateRef = useRef(0);
   const [debugFrame, setDebugFrame] = useState<LivenessDebugFrame | null>(null);
+  const [lastVerifyError, setLastVerifyError] = useState<string>("");
+  const [lastVerifyResponse, setLastVerifyResponse] = useState<unknown>(null);
 
   const buildChallengeInfo = useCallback(
     (
@@ -374,16 +376,26 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
               challengeType: c.type,
               image: c.image,
             })),
+            debug: livenessDebugEnabled,
           }),
         });
-        const data = (await res.json()) as {
+        const data = (await res.json().catch(() => null)) as {
           verified?: boolean;
           error?: string;
-        };
-        if (!res.ok || !data.verified) {
-          throw new Error(data.error || "Liveness verification failed");
+        } | null;
+
+        if (!data) {
+          throw new Error("Liveness verification failed (invalid response)");
         }
 
+        setLastVerifyResponse(data);
+        if (!res.ok || !data.verified) {
+          const message = data.error || "Liveness verification failed";
+          setLastVerifyError(message);
+          throw new Error(message);
+        }
+
+        setLastVerifyError("");
         setChallengeState("all_passed");
         stopCamera();
         onVerified({
@@ -392,6 +404,10 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           blinkCount: null,
         });
       } catch (err) {
+        if (livenessDebugEnabled) {
+          // biome-ignore lint/suspicious/noConsole: debug-only liveness diagnostics
+          console.warn("Liveness verify failed", { err, lastVerifyResponse });
+        }
         setChallengeState("failed");
         toast.error("Verification failed", {
           description: err instanceof Error ? err.message : "Please try again.",
@@ -404,9 +420,11 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       baselineImage,
       completedChallenges,
       currentChallenge,
+      livenessDebugEnabled,
       buildChallengeInfo,
       stopCamera,
       onVerified,
+      lastVerifyResponse,
     ],
   );
 
@@ -490,8 +508,15 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           : yaw > headTurnStartYawRef.current;
         const passed = correctDirection && (absolutePass || deltaPass);
         if (passed) {
+          consecutiveChallengeDetectionsRef.current++;
+          setStatusMessage("Hold the turn…");
+          if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
+            consecutiveChallengeDetectionsRef.current = 0;
+            setStatusMessage("");
+            await handleCapturedChallenge(type, frameDataUrl);
+          }
+        } else {
           consecutiveChallengeDetectionsRef.current = 0;
-          await handleCapturedChallenge(type, frameDataUrl);
         }
       }
     } catch {
@@ -663,6 +688,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     statusMessage,
     debugCanvasRef,
     debugFrame,
+    lastVerifyError,
+    lastVerifyResponse,
     livenessDebugEnabled,
     beginCamera,
     retryChallenge,

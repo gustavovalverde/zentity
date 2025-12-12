@@ -30,6 +30,7 @@ interface VerifyRequest {
   sessionId: string; // REQUIRED - no longer optional
   baselineImage: string;
   challenges: Array<{ challengeType: ChallengeType; image: string }>;
+  debug?: boolean;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -56,6 +57,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
+
+    const debugEnabled =
+      body.debug === true ||
+      request.headers.get("x-liveness-debug") === "1" ||
+      process.env.LIVENESS_DEBUG === "1" ||
+      process.env.NEXT_PUBLIC_LIVENESS_DEBUG === "1";
 
     // sessionId is now REQUIRED (security fix)
     if (!body.sessionId) {
@@ -115,6 +122,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }> = [];
 
     let allPassed = true;
+    const failureReasons: string[] = [];
     for (const challenge of body.challenges) {
       const res = await detectFromBase64(challenge.image);
       const face = getPrimaryFace(res);
@@ -125,6 +133,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           error: "No face detected",
         });
         allPassed = false;
+        failureReasons.push(`${challenge.challengeType}: no face detected`);
         continue;
       }
 
@@ -142,7 +151,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           passed,
           score: happy,
         });
-        if (!passed) allPassed = false;
+        if (!passed) {
+          allPassed = false;
+          failureReasons.push(
+            `smile: happy ${(happy * 100).toFixed(0)}% Δ${(delta * 100).toFixed(0)}% (req ≥${Math.round(
+              SMILE_SCORE_THRESHOLD * 100,
+            )}%+Δ≥${Math.round(SMILE_DELTA_THRESHOLD * 100)}% OR ≥${Math.round(
+              SMILE_HIGH_THRESHOLD * 100,
+            )}%)`,
+          );
+        }
       } else if (
         challenge.challengeType === "turn_left" ||
         challenge.challengeType === "turn_right"
@@ -178,32 +196,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           direction: dir,
           yaw,
         });
-        if (!passed) allPassed = false;
+        if (!passed) {
+          allPassed = false;
+          failureReasons.push(
+            `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° base ${baselineYaw.toFixed(1)}° (baseCentered=${baselineWasCentered ? "yes" : "no"} abs=${yawPassesAbsolute ? "yes" : "no"} delta=${yawPassesDelta ? "yes" : "no"} dir=${turnedCorrectDirection ? "yes" : "no"})`,
+          );
+        }
       }
     }
 
     const livenessPassed = baselineReal >= 0.5 && baselineLive >= 0.5;
     if (!livenessPassed) {
       allPassed = false;
+      failureReasons.push(
+        `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}% (req ≥50%/50%)`,
+      );
     }
 
-    const embedding = getEmbeddingVector(baselineFace);
-
-    // Final summary log
-    const _challengesPassed = results.every((r) => r.passed);
-
-    return NextResponse.json({
+    const error = allPassed
+      ? undefined
+      : failureReasons[0] || "Verification failed";
+    const response: Record<string, unknown> = {
       verified: allPassed,
       livenessPassed,
-      baseline: {
-        realScore: baselineReal,
-        liveScore: baselineLive,
-        happyScore: baselineHappy,
-      },
-      results,
-      embedding,
+      error,
       processingTimeMs: Date.now() - start,
-    });
+    };
+
+    if (debugEnabled) {
+      response.debug = {
+        baseline: {
+          realScore: baselineReal,
+          liveScore: baselineLive,
+          happyScore: baselineHappy,
+          yawDeg: baselineYaw,
+        },
+        results,
+        failureReasons,
+        embedding: getEmbeddingVector(baselineFace),
+      };
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
     return NextResponse.json(
       {
