@@ -58,7 +58,9 @@ export default async function DashboardPage() {
   };
 
   // Determine the best name to display (priority: decrypted first name > display name > "User")
-  const displayName = firstName || getFirstPart(session?.user.name) || "User";
+  // Always use first part only (e.g., "Juan" from "Juan Carlos")
+  const displayName =
+    getFirstPart(firstName) || getFirstPart(session?.user.name) || "User";
 
   return (
     <div className="space-y-8">
