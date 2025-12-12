@@ -1,6 +1,6 @@
 import "server-only";
 
-import util from "util";
+import util from "node:util";
 import type { Config, Human } from "@vladmandic/human";
 import { HUMAN_MODELS_URL } from "./human-models-path";
 
@@ -61,7 +61,12 @@ export function stripDataUrl(input: string): string {
  * Decode a base64 data URL to a tensor for server-side Human.js detection.
  * tfjs-node cannot directly process base64 strings like the browser version.
  */
-export async function decodeBase64Image(dataUrl: string): Promise<any> {
+// TensorFlow tensor type from dynamic import
+type TfTensor = Awaited<
+  ReturnType<typeof import("@tensorflow/tfjs-node")["node"]["decodeImage"]>
+>;
+
+export async function decodeBase64Image(dataUrl: string): Promise<TfTensor> {
   const tf = await import("@tensorflow/tfjs-node");
   const base64 = stripDataUrl(dataUrl);
   const buffer = Buffer.from(base64, "base64");

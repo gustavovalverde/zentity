@@ -1,8 +1,8 @@
 import "server-only";
 
-import fs from "fs";
-import path from "path";
-import { pathToFileURL } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // In Docker standalone builds we copy models to `/app/human-models`.
 // For local dev we fall back to node_modules.

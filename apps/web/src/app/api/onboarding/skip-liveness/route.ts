@@ -43,16 +43,11 @@ export async function POST(
     // Skip liveness and advance to step 3
     await skipLiveness(validSession.email);
 
-    console.log(
-      `[onboarding/skip-liveness] ${validSession.email} skipped liveness verification`,
-    );
-
     return NextResponse.json({
       success: true,
       newStep: 3,
     });
-  } catch (error) {
-    console.error("Failed to skip liveness:", error);
+  } catch (_error) {
     return NextResponse.json(
       { success: false, error: "Failed to skip liveness" },
       { status: 500 },

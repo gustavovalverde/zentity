@@ -19,7 +19,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     // Validate onboarding session - must have completed step 2 (document upload)
     const onboardingSession = await getSessionFromCookie();
-    const validation = validateStepAccess(onboardingSession, "liveness-session");
+    const validation = validateStepAccess(
+      onboardingSession,
+      "liveness-session",
+    );
     if (!validation.valid) {
       return NextResponse.json(
         { error: validation.error || "Document verification required first" },
@@ -55,4 +58,3 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
-

@@ -25,6 +25,27 @@ import {
   type ChallengeInfo,
   type ChallengeType,
 } from "@/lib/liveness-challenges";
+import type { EmotionItem, EmotionScoresObject } from "@/types/human";
+
+// Local types compatible with actual Human.js library output
+// Human.js returns emotion as an array of { score, emotion } objects
+// Uses permissive types with null to handle Human.js variations
+interface LocalFaceResult {
+  emotion?: EmotionItem[] | EmotionScoresObject | null;
+  rotation?: {
+    angle?: {
+      yaw?: number;
+      pitch?: number;
+      roll?: number;
+    } | null;
+  } | null;
+}
+
+interface LocalDetectionResult {
+  face?: LocalFaceResult[] | null;
+  gesture?: Array<{ gesture?: string; name?: string }> | null;
+}
+
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
 
@@ -229,8 +250,10 @@ export function StepSelfie() {
     [],
   );
 
-  const getHappyScore = useCallback((face: any): number => {
-    const emo = face?.emotion;
+  // Using unknown for Human.js compatibility - cast internally
+  const getHappyScore = useCallback((face: unknown): number => {
+    const f = face as LocalFaceResult | null;
+    const emo = f?.emotion;
     if (!emo) return 0;
     if (Array.isArray(emo)) {
       const happy = emo.find(
@@ -239,36 +262,34 @@ export function StepSelfie() {
       return happy?.score ?? 0;
     }
     if (typeof emo === "object") {
-      if (typeof emo.happy === "number") return emo.happy;
-      if (
-        emo.emotion &&
-        (emo.emotion === "happy" || emo.emotion === "Happy") &&
-        typeof emo.score === "number"
-      ) {
-        return emo.score;
-      }
+      const emoObj = emo as EmotionScoresObject;
+      if (typeof emoObj.happy === "number") return emoObj.happy;
     }
     return 0;
   }, []);
 
-  const getYaw = useCallback((face: any): number => {
-    const yawRad = face?.rotation?.angle?.yaw;
+  const getYaw = useCallback((face: unknown): number => {
+    const f = face as LocalFaceResult | null;
+    const yawRad = f?.rotation?.angle?.yaw;
     return typeof yawRad === "number" ? radToDeg(yawRad) : 0;
   }, []);
 
-  const getPitch = useCallback((face: any): number => {
-    const pitchRad = face?.rotation?.angle?.pitch;
+  const getPitch = useCallback((face: unknown): number => {
+    const f = face as LocalFaceResult | null;
+    const pitchRad = f?.rotation?.angle?.pitch;
     return typeof pitchRad === "number" ? radToDeg(pitchRad) : 0;
   }, []);
 
-  const getRoll = useCallback((face: any): number => {
-    const rollRad = face?.rotation?.angle?.roll;
+  const getRoll = useCallback((face: unknown): number => {
+    const f = face as LocalFaceResult | null;
+    const rollRad = f?.rotation?.angle?.roll;
     return typeof rollRad === "number" ? radToDeg(rollRad) : 0;
   }, []);
 
   const getFacingDirection = useCallback(
-    (result: any, face: any): FacingDirection => {
-      const gestures = result?.gesture;
+    (result: unknown, face: unknown): FacingDirection => {
+      const res = result as LocalDetectionResult | null;
+      const gestures = res?.gesture;
       if (Array.isArray(gestures)) {
         for (const g of gestures) {
           const name = g?.gesture ?? g?.name ?? "";
@@ -300,7 +321,7 @@ export function StepSelfie() {
   }, [livenessDebugEnabled, videoRef]);
 
   const drawDebugOverlay = useCallback(
-    (result: any) => {
+    (result: unknown) => {
       if (!livenessDebugEnabled) return;
       if (!human || !videoRef.current) return;
       const canvas = debugCanvasRef.current;
@@ -312,14 +333,21 @@ export function StepSelfie() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       try {
-        human.draw?.face?.(canvas as any, result?.face ?? [], {
-          drawBoxes: true,
-          drawLabels: true,
-          drawPolygons: true,
-          drawPoints: false,
-          drawGaze: false,
-          drawAttention: false,
-        });
+        // Cast result for Human.js draw API - the actual result from human.detect is compatible
+        const res = result as { face?: unknown[] } | null;
+        human.draw?.face?.(
+          canvas as HTMLCanvasElement,
+          // biome-ignore lint/suspicious/noExplicitAny: Human.js draw API requires their specific FaceResult type
+          (res?.face ?? []) as any,
+          {
+            drawBoxes: true,
+            drawLabels: true,
+            drawPolygons: true,
+            drawPoints: false,
+            drawGaze: false,
+            drawAttention: false,
+          },
+        );
       } catch {
         // ignore draw errors in debug mode
       }
@@ -328,18 +356,19 @@ export function StepSelfie() {
   );
 
   const updateDebug = useCallback(
-    (result: any, face: any | null) => {
+    (result: unknown, face: unknown) => {
       if (!livenessDebugEnabled) return;
 
       const now = performance.now();
       if (now - debugLastUpdateRef.current < 250) return;
       debugLastUpdateRef.current = now;
 
+      const res = result as LocalDetectionResult | null;
       const video = videoRef.current;
-      const gestureNames = Array.isArray(result?.gesture)
-        ? result.gesture
-            .map((g: any) => g?.gesture ?? g?.name)
-            .filter((n: unknown): n is string => typeof n === "string")
+      const gestureNames = Array.isArray(res?.gesture)
+        ? res.gesture
+            .map((g) => g?.gesture ?? g?.name)
+            .filter((n): n is string => typeof n === "string")
         : [];
 
       const happy = face ? getHappyScore(face) : 0;
@@ -397,15 +426,7 @@ export function StepSelfie() {
 
   useEffect(() => {
     if (!livenessDebugEnabled) return;
-    // Low-frequency breadcrumbs for devtools.
-    // eslint-disable-next-line no-console
-    console.debug("[liveness]", {
-      state: challengeState,
-      challenge: currentChallenge?.challengeType ?? null,
-      index: currentChallenge?.index ?? null,
-      total: currentChallenge?.total ?? null,
-    });
-  }, [livenessDebugEnabled, challengeState, currentChallenge]);
+  }, [livenessDebugEnabled]);
 
   const checkForFace = useCallback(async () => {
     if (!human || !humanReady || !videoRef.current) return;
@@ -716,13 +737,7 @@ export function StepSelfie() {
 
     animationId = requestAnimationFrame(detectLoop);
     return () => cancelAnimationFrame(animationId);
-  }, [
-    isStreaming,
-    challengeState,
-    captureFrame,
-    checkForFace,
-    checkCurrentChallenge,
-  ]);
+  }, [isStreaming, challengeState, checkForFace, checkCurrentChallenge]);
 
   // Face detection timeout
   useEffect(() => {
@@ -1125,13 +1140,22 @@ export function StepSelfie() {
             >
               <div className="flex flex-col items-center gap-3">
                 {currentChallenge.challengeType === "smile" && (
-                  <Smile className="h-12 w-12 text-primary" aria-hidden="true" />
+                  <Smile
+                    className="h-12 w-12 text-primary"
+                    aria-hidden="true"
+                  />
                 )}
                 {currentChallenge.challengeType === "turn_left" && (
-                  <ArrowLeft className="h-12 w-12 text-primary" aria-hidden="true" />
+                  <ArrowLeft
+                    className="h-12 w-12 text-primary"
+                    aria-hidden="true"
+                  />
                 )}
                 {currentChallenge.challengeType === "turn_right" && (
-                  <ArrowRight className="h-12 w-12 text-primary" aria-hidden="true" />
+                  <ArrowRight
+                    className="h-12 w-12 text-primary"
+                    aria-hidden="true"
+                  />
                 )}
                 <p className="text-lg font-bold">Get Ready!</p>
                 <p className="text-sm text-muted-foreground">

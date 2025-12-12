@@ -73,12 +73,6 @@ export function createLivenessSession(
   };
 
   sessions.set(session.sessionId, session);
-  console.log(
-    "[liveness-session-store] Created session:",
-    session.sessionId,
-    "Total sessions:",
-    sessions.size,
-  );
   return session;
 }
 
@@ -87,14 +81,6 @@ export function getLivenessSession(
 ): LivenessSession | undefined {
   cleanupExpiredSessions();
   const session = sessions.get(sessionId);
-  console.log(
-    "[liveness-session-store] Get session:",
-    sessionId,
-    "Found:",
-    !!session,
-    "Total sessions:",
-    sessions.size,
-  );
   return session;
 }
 

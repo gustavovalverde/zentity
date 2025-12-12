@@ -257,9 +257,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             pii,
           }),
         });
-      } catch {
-        console.error("Failed to save PII to server");
-      }
+      } catch {}
     },
     [state.data.email, state.currentStep],
   );
@@ -293,9 +291,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             faceMatchPassed: updates.faceMatchPassed,
           },
         });
-      } catch {
-        console.error("Failed to update server progress");
-      }
+      } catch {}
     },
     [state.data.email],
   );
@@ -351,9 +347,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         });
         lastSavedStepRef.current = 1;
       }
-    } catch {
-      console.error("Failed to start fresh session");
-    }
+    } catch {}
   }, []);
 
   // Skip liveness verification

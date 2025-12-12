@@ -97,20 +97,23 @@ export function StepIdUpload() {
     return () => clearTimeout(timeout);
   }, [processingState]);
 
-  const processDocument = async (base64: string): Promise<DocumentResult> => {
-    const response = await fetch("/api/kyc/process-document", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: base64 }),
-    });
+  const processDocument = useCallback(
+    async (base64: string): Promise<DocumentResult> => {
+      const response = await fetch("/api/kyc/process-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64 }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to process document");
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to process document");
+      }
 
-    return response.json();
-  };
+      return response.json();
+    },
+    [],
+  );
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -447,8 +450,8 @@ export function StepIdUpload() {
               <div>
                 <h4 className="mb-2 text-sm font-medium">Issues Found:</h4>
                 <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                  {documentResult.validationIssues.map((issue, i) => (
-                    <li key={i}>{issue}</li>
+                  {documentResult.validationIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
                   ))}
                 </ul>
               </div>
@@ -459,7 +462,7 @@ export function StepIdUpload() {
                   How to fix:
                 </h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  {documentResult.validationIssues.map((issue, i) => {
+                  {documentResult.validationIssues.map((issue) => {
                     // Convert issue to key format (e.g., "Document is blurry" -> "document_blurry")
                     const issueKey = issue
                       .toLowerCase()
@@ -470,7 +473,10 @@ export function StepIdUpload() {
                       ERROR_RECOVERY_TIPS[issueKey.split("_")[0]] ||
                       "Ensure your document is clear, well-lit, and fully visible.";
                     return (
-                      <li key={i} className="flex items-start gap-2">
+                      <li
+                        key={`tip-${issue}`}
+                        className="flex items-start gap-2"
+                      >
                         <span className="text-primary mt-0.5">•</span>
                         <span>{tip}</span>
                       </li>

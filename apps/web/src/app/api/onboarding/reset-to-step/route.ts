@@ -57,16 +57,11 @@ export async function POST(
     // Perform the reset
     await resetToStep(session.email, step as OnboardingStep);
 
-    console.log(
-      `[onboarding/reset-to-step] Reset ${session.email} from step ${session.step} to step ${step}`,
-    );
-
     return NextResponse.json({
       success: true,
       newStep: step,
     });
-  } catch (error) {
-    console.error("Failed to reset to step:", error);
+  } catch (_error) {
     return NextResponse.json(
       { success: false, error: "Reset failed" },
       { status: 500 },

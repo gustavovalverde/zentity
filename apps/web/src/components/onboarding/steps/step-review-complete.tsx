@@ -596,7 +596,7 @@ export function StepReviewComplete() {
                       data.idDocumentBase64 ||
                       ""
                     }
-                    alt="ID Photo"
+                    alt="Face extracted from ID document"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
                       faceMatchStatus === "matching" && "opacity-70",

@@ -111,7 +111,11 @@ export function DashboardTabs({
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <svg className="h-16 w-16 -rotate-90" viewBox="0 0 36 36">
+                      <svg
+                        className="h-16 w-16 -rotate-90"
+                        viewBox="0 0 36 36"
+                        aria-hidden="true"
+                      >
                         <path
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                           fill="none"

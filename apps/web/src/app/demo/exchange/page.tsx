@@ -218,6 +218,7 @@ export default function ExchangeSimulatorPage() {
                   </ol>
                 </div>
                 <button
+                  type="button"
                   onClick={handleGenerateKeypair}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -248,6 +249,7 @@ export default function ExchangeSimulatorPage() {
                   encrypted to this key.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setStep("user-consent")}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium"
                 >
@@ -279,12 +281,14 @@ export default function ExchangeSimulatorPage() {
                 </div>
                 <div className="flex gap-4">
                   <button
+                    type="button"
                     onClick={resetDemo}
                     className="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded font-medium"
                   >
                     Deny
                   </button>
                   <button
+                    type="button"
                     onClick={handleUserConsent}
                     disabled={isLoading}
                     className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -342,6 +346,7 @@ export default function ExchangeSimulatorPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleDecryptPii}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -383,6 +388,7 @@ export default function ExchangeSimulatorPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleVerifyProofs}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -443,6 +449,7 @@ export default function ExchangeSimulatorPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={resetDemo}
                   className="w-full bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded font-medium"
                 >
