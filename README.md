@@ -375,9 +375,9 @@ Open http://localhost:3000
 
 #### Prerequisites
 
-- Node.js 20+ (managed via mise)
-- Rust 1.91+ (managed via mise)
-- Python 3.12+ (managed via mise)
+- Node.js 20+ (recommended: use `.nvmrc` or `mise`)
+- Rust 1.91+ (recommended: `mise`)
+- Python 3.12+ (recommended: `mise`)
 - pnpm
 
 #### Setup Toolchain
@@ -397,14 +397,13 @@ mise install
 cd apps/web && pnpm install
 
 # ZK Service
-cd services/zk && pnpm install
+cd apps/zk && pnpm install
 
-# Python services
-cd services/ocr && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
-cd services/liveness && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+# OCR service (Python)
+cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
 
 # FHE Service (Rust - compiles on first run)
-cd services/fhe && cargo build --release
+cd apps/fhe && cargo build --release
 ```
 
 #### Start Services
@@ -414,16 +413,13 @@ cd services/fhe && cargo build --release
 cd apps/web && pnpm dev
 
 # Terminal 2: FHE Service
-cd services/fhe && cargo run --release
+cd apps/fhe && cargo run --release
 
 # Terminal 3: ZK Service
-cd services/zk && pnpm start
+cd apps/zk && pnpm dev
 
 # Terminal 4: OCR Service
-cd services/ocr && source venv/bin/activate && uvicorn app.main:app --port 5004
-
-# Terminal 5: Liveness Service
-cd services/liveness && source venv/bin/activate && uvicorn app.main:app --port 5003
+cd apps/ocr && source venv/bin/activate && uvicorn app.main:app --reload --port 5004
 ```
 
 </details>
