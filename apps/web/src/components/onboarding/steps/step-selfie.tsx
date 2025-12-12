@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useHumanLiveness } from "@/hooks/use-human-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
-import { trackCameraPermission, trackLiveness } from "@/lib/analytics";
 import {
   CHALLENGE_INSTRUCTIONS,
   type ChallengeInfo,
@@ -176,11 +175,6 @@ export function StepSelfie() {
     ready: humanReady,
     error: humanError,
   } = useHumanLiveness(isStreaming);
-
-  // Track permission changes for analytics and UX hints
-  useEffect(() => {
-    trackCameraPermission(permissionStatus);
-  }, [permissionStatus]);
 
   // Reset head-turn gating when switching challenges
   useEffect(() => {
@@ -536,16 +530,10 @@ export function StepSelfie() {
           bestSelfieFrame: baselineImage,
           blinkCount: null,
         });
-        trackLiveness("passed", {
-          challengeCount: newCompleted.length,
-        });
       } catch (err) {
         setChallengeState("failed");
         toast.error("Verification failed", {
           description: err instanceof Error ? err.message : "Please try again.",
-        });
-        trackLiveness("failed", {
-          message: err instanceof Error ? err.message : "unknown",
         });
         stopCamera();
       }
@@ -791,7 +779,6 @@ export function StepSelfie() {
       toast.error("Timeout", {
         description: timeoutMessage || "Please try again.",
       });
-      trackLiveness("timeout", { reason: timeoutMessage });
     }
   }, [challengeState, timeoutMessage]);
 

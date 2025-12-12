@@ -15,7 +15,6 @@ import {
   defaultWizardData,
   type WizardData,
 } from "@/features/auth/schemas/sign-up.schema";
-import { trackStep } from "@/lib/analytics";
 
 const TOTAL_STEPS = 4;
 
@@ -468,12 +467,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     isLastStep: state.currentStep === TOTAL_STEPS,
     progress: (state.currentStep / TOTAL_STEPS) * 100,
   };
-
-  // Track step changes after hydration to avoid server/client mismatch
-  useEffect(() => {
-    if (!isHydrated) return;
-    trackStep(state.currentStep);
-  }, [isHydrated, state.currentStep]);
 
   // Warn before navigation with unsaved data to prevent accidental data loss
   useEffect(() => {

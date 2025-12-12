@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDisplayName, getFirstPart, getGreetingName } from "../name-utils";
+import { buildDisplayName, getFirstPart } from "../name-utils";
 
 describe("name-utils", () => {
   describe("getFirstPart", () => {
@@ -60,28 +60,6 @@ describe("name-utils", () => {
 
     it("handles whitespace-only strings", () => {
       expect(buildDisplayName("  ", "  ")).toBe("");
-    });
-  });
-
-  describe("getGreetingName", () => {
-    it("returns first part of full name", () => {
-      expect(getGreetingName("Juan Perez")).toBe("Juan");
-    });
-
-    it("returns full single name", () => {
-      expect(getGreetingName("Juan")).toBe("Juan");
-    });
-
-    it("handles null", () => {
-      expect(getGreetingName(null)).toBe("");
-    });
-
-    it("handles undefined", () => {
-      expect(getGreetingName(undefined)).toBe("");
-    });
-
-    it("handles empty string", () => {
-      expect(getGreetingName("")).toBe("");
     });
   });
 });
