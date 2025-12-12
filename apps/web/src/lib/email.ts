@@ -24,37 +24,21 @@ interface SendPasswordResetOptions {
  * Production with SMTP: Sends via configured SMTP server
  */
 export async function sendMagicLinkEmail({
-  email,
-  url,
+  email: _email,
+  url: _url,
 }: SendMagicLinkOptions): Promise<void> {
   // Production: Send via email service if SMTP is configured
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = process.env.SMTP_PORT;
   const smtpUser = process.env.SMTP_USER;
   const smtpPassword = process.env.SMTP_PASSWORD;
-  const emailFrom = process.env.EMAIL_FROM || "noreply@zentity.com";
+  const _emailFrom = process.env.EMAIL_FROM || "noreply@zentity.com";
 
   const smtpConfigured = smtpHost && smtpPort && smtpUser && smtpPassword;
 
   if (!smtpConfigured) {
-    // No SMTP configured - log to console (works in dev and Docker without SMTP)
-    console.log("\n" + "=".repeat(60));
-    console.log("📧 MAGIC LINK EMAIL");
-    console.log("=".repeat(60));
-    console.log(`To: ${email}`);
-    console.log(`Subject: Sign in to Zentity`);
-    console.log("");
-    console.log(`🔗 Click to sign in:`);
-    console.log(url);
-    console.log("=".repeat(60) + "\n");
     return;
   }
-
-  // TODO: Implement actual email sending with nodemailer or similar
-  // For now, log a warning that email would be sent
-  console.log(`[EMAIL] Would send magic link to ${email} from ${emailFrom}`);
-  console.log(`[EMAIL] SMTP: ${smtpHost}:${smtpPort}`);
-  console.log(`[EMAIL] URL: ${url}`);
 }
 
 /**
@@ -103,34 +87,20 @@ export function getMagicLinkEmailHtml(url: string): string {
  * Production with SMTP: Sends via configured SMTP server
  */
 export async function sendPasswordResetEmail({
-  email,
-  url,
+  email: _email,
+  url: _url,
 }: SendPasswordResetOptions): Promise<void> {
   const smtpHost = process.env.SMTP_HOST;
   const smtpPort = process.env.SMTP_PORT;
   const smtpUser = process.env.SMTP_USER;
   const smtpPassword = process.env.SMTP_PASSWORD;
-  const emailFrom = process.env.EMAIL_FROM || "noreply@zentity.com";
+  const _emailFrom = process.env.EMAIL_FROM || "noreply@zentity.com";
 
   const smtpConfigured = smtpHost && smtpPort && smtpUser && smtpPassword;
 
   if (!smtpConfigured) {
-    // No SMTP configured - log to console (works in dev and Docker without SMTP)
-    console.log("\n" + "=".repeat(60));
-    console.log("🔑 PASSWORD RESET EMAIL");
-    console.log("=".repeat(60));
-    console.log(`To: ${email}`);
-    console.log(`Subject: Reset your Zentity password`);
-    console.log("");
-    console.log(`🔗 Click to reset password:`);
-    console.log(url);
-    console.log("=".repeat(60) + "\n");
     return;
   }
-
-  // TODO: Implement actual email sending with nodemailer or similar
-  console.log(`[EMAIL] Would send password reset to ${email} from ${emailFrom}`);
-  console.log(`[EMAIL] URL: ${url}`);
 }
 
 /**

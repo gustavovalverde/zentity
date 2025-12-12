@@ -4,6 +4,8 @@ import {
   getHumanServer,
   stripDataUrl,
 } from "@/lib/human-server";
+import type { EmbeddingData, FaceBox } from "@/types/human";
+import { getBoxArea } from "@/types/human";
 
 export const runtime = "nodejs";
 
@@ -23,7 +25,6 @@ async function cropFaceRegion(
   padding = 0.3, // Add 30% padding around face
 ): Promise<string> {
   const tf = await import("@tensorflow/tfjs-node");
-  type Tensor3D = any;
 
   const base64 = stripDataUrl(dataUrl);
   const buffer = Buffer.from(base64, "base64");
@@ -32,7 +33,8 @@ async function cropFaceRegion(
     decoded.dispose();
     throw new Error("Animated images are not supported");
   }
-  const tensor = decoded as Tensor3D;
+  // Tensor is already the correct type after decodeImage with channels=3
+  const tensor = decoded;
 
   const height = tensor.shape[0];
   const width = tensor.shape[1];
@@ -49,15 +51,16 @@ async function cropFaceRegion(
   const cropHeight = y2 - y1;
 
   // Crop the face region
-  const cropped = tf.slice(tensor, [y1, x1, 0], [
-    cropHeight,
-    cropWidth,
-    3,
-  ]) as Tensor3D;
+  const cropped = tf.slice(tensor, [y1, x1, 0], [cropHeight, cropWidth, 3]);
   tensor.dispose();
 
-  // Encode back to JPEG
-  const encoded = await tf.node.encodeJpeg(cropped, "rgb", 95);
+  // Cast to unknown first to bypass TypeScript's strict union type checking
+  // Safe because we verified rank === 3 above
+  const encoded = await tf.node.encodeJpeg(
+    cropped as unknown as Parameters<typeof tf.node.encodeJpeg>[0],
+    "rgb",
+    95,
+  );
   cropped.dispose();
 
   const croppedBase64 = Buffer.from(encoded).toString("base64");
@@ -106,18 +109,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Track cropped face for UI display
     let croppedFaceDataUrl: string | null = null;
 
-    // Helper to get box dimensions (handles array or object format)
-    const getBoxArea = (box: any): number => {
-      if (!box) return 0;
-      if (Array.isArray(box)) return (box[2] ?? 0) * (box[3] ?? 0);
-      return (box.width ?? 0) * (box.height ?? 0);
-    };
-
     // If we found a face in the document, crop and re-process for better embedding
     if (idFacesInitial.length > 0) {
-      const largestFace = idFacesInitial.reduce((best: any, f: any) => {
-        const bestArea = getBoxArea(best?.box);
-        const area = getBoxArea(f?.box);
+      const largestFace = idFacesInitial.reduce((best, f) => {
+        const bestArea = getBoxArea(best?.box as FaceBox | undefined);
+        const area = getBoxArea(f?.box as FaceBox | undefined);
         return area > bestArea ? f : best;
       }, idFacesInitial[0]);
 
@@ -133,50 +129,59 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               }
             : largestFace.box;
 
-          console.log("[face-match] Box format:", {
-            original: largestFace.box,
-            normalized: box,
-          });
-
           // Crop face region and re-process
           croppedFaceDataUrl = await cropFaceRegion(body.idImage, box);
           idResult = await detectFromBase64(croppedFaceDataUrl);
-        } catch (err) {
-          // Fall back to original result if cropping fails
-          console.warn("[face-match] Face cropping failed:", err);
-        }
+        } catch (_err) {}
       }
     }
 
     const selfieResult = await detectFromBase64(body.selfieImage);
 
-    const selectLargestFace = (res: any) => {
-      const faces = Array.isArray(res?.face) ? res.face : [];
+    // Select largest face from detection result
+    // Using unknown to handle Human.js library's complex types
+    const selectLargestFace = (res: unknown) => {
+      const result = res as { face?: Array<{ box?: unknown }> } | null;
+      const faces = Array.isArray(result?.face) ? result.face : [];
       if (faces.length === 0) return null;
-      return faces.reduce((best: any, f: any) => {
-        const bestArea = getBoxArea(best?.box);
-        const area = getBoxArea(f?.box);
+      return faces.reduce((best, f) => {
+        const bestArea = getBoxArea(best?.box as FaceBox | undefined);
+        const area = getBoxArea(f?.box as FaceBox | undefined);
         return area > bestArea ? f : best;
       }, faces[0]);
     };
 
-    const getEmbedding = (face: any): number[] | null => {
-      const emb =
+    // Face result type with descriptor properties - permissive for Human.js
+    interface FaceWithDescriptor {
+      embedding?: EmbeddingData;
+      descriptor?: EmbeddingData;
+      description?: { embedding?: EmbeddingData } | EmbeddingData;
+      box?: unknown;
+    }
+
+    const getEmbedding = (face: FaceWithDescriptor | null): number[] | null => {
+      const emb: EmbeddingData =
         face?.embedding ??
         face?.descriptor ??
-        face?.description?.embedding ??
-        face?.description;
+        (face?.description &&
+        typeof face.description === "object" &&
+        "embedding" in face.description
+          ? face.description.embedding
+          : (face?.description as EmbeddingData));
       if (!emb) return null;
       if (Array.isArray(emb)) return emb.map((n) => Number(n));
       if (emb instanceof Float32Array) return Array.from(emb);
-      if (typeof emb === "object" && Array.isArray(emb.data)) {
-        return emb.data.map((n: any) => Number(n));
+      if (typeof emb === "object" && "data" in emb && Array.isArray(emb.data)) {
+        return emb.data.map((n: number) => Number(n));
       }
       return null;
     };
 
-    const idFace = selectLargestFace(idResult);
-    const selfieFace = selectLargestFace(selfieResult);
+    // Cast faces to FaceWithDescriptor for property access
+    const idFace = selectLargestFace(idResult) as FaceWithDescriptor | null;
+    const selfieFace = selectLargestFace(
+      selfieResult,
+    ) as FaceWithDescriptor | null;
 
     if (!idFace || !selfieFace) {
       return NextResponse.json(
@@ -229,14 +234,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const confidence = human.match.similarity(idEmb, selfieEmb);
     const matched = confidence >= minConfidence;
-
-    console.log("[face-match] Result:", {
-      confidence: confidence.toFixed(4),
-      threshold: minConfidence,
-      matched,
-      idEmbeddingLength: idEmb.length,
-      selfieEmbeddingLength: selfieEmb.length,
-    });
 
     return NextResponse.json({
       matched,

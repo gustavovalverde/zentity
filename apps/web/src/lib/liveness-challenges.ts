@@ -33,4 +33,3 @@ export const CHALLENGE_INSTRUCTIONS: Record<
     timeoutSeconds: 8,
   },
 };
-

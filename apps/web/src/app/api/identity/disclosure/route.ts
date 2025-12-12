@@ -311,24 +311,34 @@ export async function POST(
       ]);
 
       // Helper to get largest face
-      const selectLargestFace = (res: ReturnType<typeof detectFromBase64> extends Promise<infer T> ? T : never) => {
+      const selectLargestFace = (
+        res: ReturnType<typeof detectFromBase64> extends Promise<infer T>
+          ? T
+          : never,
+      ) => {
         const faces = Array.isArray(res?.face) ? res.face : [];
         if (faces.length === 0) return null;
-        return faces.reduce((best: typeof faces[0], f: typeof faces[0]) => {
-          const getArea = (face: typeof faces[0]) => {
+        return faces.reduce((best: (typeof faces)[0], f: (typeof faces)[0]) => {
+          const getArea = (face: (typeof faces)[0]) => {
             const box = face?.box;
             if (!box) return 0;
             if (Array.isArray(box)) return (box[2] ?? 0) * (box[3] ?? 0);
-            return ((box as { width?: number }).width ?? 0) * ((box as { height?: number }).height ?? 0);
+            return (
+              ((box as { width?: number }).width ?? 0) *
+              ((box as { height?: number }).height ?? 0)
+            );
           };
           return getArea(f) > getArea(best) ? f : best;
         }, faces[0]);
       };
 
       // Helper to get embedding
-      const getEmbedding = (face: ReturnType<typeof selectLargestFace>): number[] | null => {
+      const getEmbedding = (
+        face: ReturnType<typeof selectLargestFace>,
+      ): number[] | null => {
         if (!face) return null;
-        const emb = (face as { embedding?: number[] | Float32Array }).embedding ??
+        const emb =
+          (face as { embedding?: number[] | Float32Array }).embedding ??
           (face as { descriptor?: number[] | Float32Array }).descriptor;
         if (!emb) return null;
         if (Array.isArray(emb)) return emb.map((n) => Number(n));
@@ -348,14 +358,17 @@ export async function POST(
           const similarityScore = human.match.similarity(docEmb, selfieEmb);
 
           // Call ZK service directly to generate proof
-          const zkResponse = await fetch(`${ZK_SERVICE_URL}/facematch/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              similarityScore,
-              threshold: proofThreshold,
-            }),
-          });
+          const zkResponse = await fetch(
+            `${ZK_SERVICE_URL}/facematch/generate`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                similarityScore,
+                threshold: proofThreshold,
+              }),
+            },
+          );
 
           if (zkResponse.ok) {
             const zkResult = await zkResponse.json();

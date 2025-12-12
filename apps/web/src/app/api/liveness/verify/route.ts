@@ -6,6 +6,7 @@ import {
   getSessionFromCookie,
   validateStepAccess,
 } from "@/lib/onboarding-session";
+import type { EmbeddingData } from "@/types/human";
 
 export const runtime = "nodejs";
 
@@ -15,34 +16,60 @@ interface VerifyRequest {
   challenges: Array<{ challengeType: ChallengeType; image: string }>;
 }
 
-function getPrimaryFace(result: any) {
-  return result?.face?.[0] ?? null;
+// Face result type for Human.js - using permissive types
+interface FaceResult {
+  emotion?:
+    | Array<{ score: number; emotion: string }>
+    | { happy?: number }
+    | null;
+  real?: number | null;
+  live?: number | null;
+  liveness?: { live?: number; score?: number } | null;
+  antispoof?: { real?: number; score?: number } | null;
+  rotation?: {
+    angle?: { yaw?: number; pitch?: number; roll?: number } | null;
+  } | null;
+  angle?: { yaw?: number } | null;
+  embedding?: EmbeddingData;
+  descriptor?: EmbeddingData;
+  description?: { embedding?: EmbeddingData } | EmbeddingData | null;
 }
 
-function getHappyScore(face: any): number {
+// Detection result from Human.js
+interface DetectionResult {
+  face?: FaceResult[] | null;
+  gesture?: Array<{ gesture?: string; name?: string }> | null;
+}
+
+function getPrimaryFace(result: unknown): FaceResult | null {
+  const res = result as DetectionResult | null;
+  return res?.face?.[0] ?? null;
+}
+
+function getHappyScore(face: FaceResult | null): number {
   const emo = face?.emotion;
   if (!emo) return 0;
+  // Human.js returns emotion as array: [{ score, emotion }]
   if (Array.isArray(emo)) {
     const happy = emo.find(
       (e) => e?.emotion === "happy" || e?.emotion === "Happy",
     );
     return happy?.score ?? 0;
   }
-  if (typeof emo === "object") {
-    if (typeof emo.happy === "number") return emo.happy;
-    if (emo.emotion && (emo.emotion === "happy" || emo.emotion === "Happy")) {
-      return typeof emo.score === "number" ? emo.score : 0;
-    }
+  // Some versions may return object format with happy property
+  if (typeof emo === "object" && "happy" in emo) {
+    const happyVal = (emo as { happy?: number }).happy;
+    if (typeof happyVal === "number") return happyVal;
   }
   return 0;
 }
 
-function getRealScore(face: any): number {
+function getRealScore(face: FaceResult | null): number {
   const val = face?.real ?? face?.antispoof?.real ?? face?.antispoof?.score;
   return typeof val === "number" ? val : 0;
 }
 
-function getLiveScore(face: any): number {
+function getLiveScore(face: FaceResult | null): number {
   const val = face?.live ?? face?.liveness?.live ?? face?.liveness?.score;
   return typeof val === "number" ? val : 0;
 }
@@ -51,18 +78,19 @@ function radToDeg(radians: number): number {
   return (radians * 180) / Math.PI;
 }
 
-function getYaw(face: any): number {
+function getYaw(face: FaceResult | null): number {
   const yawRad = face?.rotation?.angle?.yaw;
   if (typeof yawRad === "number") return radToDeg(yawRad);
-  const yaw = face?.rotation?.yaw ?? face?.angle?.yaw;
+  const yaw = face?.angle?.yaw;
   return typeof yaw === "number" ? yaw : 0;
 }
 
 function getFacingDirection(
-  result: any,
-  face: any,
+  result: unknown,
+  face: FaceResult | null,
 ): "left" | "right" | "center" {
-  const gestures = result?.gesture;
+  const res = result as DetectionResult | null;
+  const gestures = res?.gesture;
   if (Array.isArray(gestures)) {
     for (const g of gestures) {
       const name = g?.gesture ?? g?.name ?? "";
@@ -80,17 +108,20 @@ function getFacingDirection(
   return "center";
 }
 
-function getEmbedding(face: any): number[] | null {
-  const emb =
+function getEmbedding(face: FaceResult | null): number[] | null {
+  const emb: EmbeddingData =
     face?.embedding ??
     face?.descriptor ??
-    face?.description?.embedding ??
-    face?.description;
+    (face?.description &&
+    typeof face.description === "object" &&
+    "embedding" in face.description
+      ? face.description.embedding
+      : (face?.description as EmbeddingData));
   if (!emb) return null;
   if (Array.isArray(emb)) return emb.map((n) => Number(n));
   if (emb instanceof Float32Array) return Array.from(emb);
-  if (typeof emb === "object" && Array.isArray(emb.data)) {
-    return emb.data.map((n: any) => Number(n));
+  if (typeof emb === "object" && "data" in emb && Array.isArray(emb.data)) {
+    return emb.data.map((n: number) => Number(n));
   }
   return null;
 }
@@ -104,7 +135,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const validation = validateStepAccess(onboardingSession, "liveness-verify");
     if (!validation.valid) {
       return NextResponse.json(
-        { verified: false, error: validation.error || "Document verification required first" },
+        {
+          verified: false,
+          error: validation.error || "Document verification required first",
+        },
         { status: 403 },
       );
     }
@@ -119,7 +153,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // sessionId is now REQUIRED (security fix)
     if (!body.sessionId) {
-      console.log("[liveness/verify] 400: Missing sessionId");
       return NextResponse.json(
         { verified: false, error: "Session ID is required" },
         { status: 400 },
@@ -128,7 +161,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const livenessSession = getLivenessSession(body.sessionId);
     if (!livenessSession) {
-      console.log("[liveness/verify] 400: Session not found:", body.sessionId);
       return NextResponse.json(
         { verified: false, error: "Invalid or expired liveness session" },
         { status: 400 },
@@ -142,7 +174,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       expected.length === received.length &&
       expected.every((c, i) => c === received[i]);
     if (!matches) {
-      console.log("[liveness/verify] 400: Challenge mismatch", { expected, received });
       return NextResponse.json(
         {
           verified: false,
@@ -156,7 +187,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const baselineResult = await detectFromBase64(body.baselineImage);
     const baselineFace = getPrimaryFace(baselineResult);
     if (!baselineFace) {
-      console.log("[liveness/verify] No face detected in baseline image");
       return NextResponse.json({
         verified: false,
         error: "No face detected in baseline",
@@ -168,14 +198,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const baselineReal = getRealScore(baselineFace);
     const baselineLive = getLiveScore(baselineFace);
     const baselineYaw = getYaw(baselineFace);
-
-    console.log("[liveness/verify] Baseline scores:", {
-      happy: baselineHappy.toFixed(3),
-      real: baselineReal.toFixed(3),
-      live: baselineLive.toFixed(3),
-      yaw: baselineYaw.toFixed(1),
-      thresholds: { real: 0.5, live: 0.5 },
-    });
 
     const results: Array<{
       challengeType: ChallengeType;
@@ -191,7 +213,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const res = await detectFromBase64(challenge.image);
       const face = getPrimaryFace(res);
       if (!face) {
-        console.log(`[liveness/verify] ${challenge.challengeType}: No face detected in image`);
         results.push({
           challengeType: challenge.challengeType,
           passed: false,
@@ -208,18 +229,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // 1. Standard: happy >= 60% AND delta >= 10% (must smile noticeably more than baseline)
         // 2. Very high: happy >= 85% (clearly smiling - this is a real smile)
         const passed = (happy >= 0.6 && delta >= 0.1) || happy >= 0.85;
-        console.log("[liveness/verify] Smile challenge:", {
-          happy: happy.toFixed(3),
-          baseline: baselineHappy.toFixed(3),
-          delta: delta.toFixed(3),
-          passed,
-          thresholds: { happy: 0.6, delta: 0.1, highHappy: 0.85 },
-          reason: !passed
-            ? happy < 0.6
-              ? `happy ${happy.toFixed(2)} < 0.6`
-              : `delta ${delta.toFixed(2)} < 0.10 AND happy ${happy.toFixed(2)} < 0.85`
-            : "OK",
-        });
         results.push({
           challengeType: "smile",
           passed,
@@ -254,29 +263,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           baselineWasCentered &&
           turnedCorrectDirection &&
           (yawPassesAbsolute || yawPassesDelta);
-        console.log(`[liveness/verify] ${challenge.challengeType} challenge:`, {
-          yaw: yaw.toFixed(1),
-          baselineYaw: baselineYaw.toFixed(1),
-          yawDelta: yawDelta.toFixed(1),
-          direction: dir,
-          baselineWasCentered,
-          yawPassesAbsolute,
-          yawPassesDelta,
-          turnedCorrectDirection,
-          passed,
-          thresholds: {
-            absolute: challenge.challengeType === "turn_left" ? `< -${yawThreshold}°` : `> ${yawThreshold}°`,
-            delta: `>= ${significantMovement}°`,
-            baselineCentered: "±10°",
-          },
-          reason: !passed
-            ? !baselineWasCentered
-              ? `baseline yaw ${baselineYaw.toFixed(1)}° not centered (need ±10°)`
-              : !turnedCorrectDirection
-                ? `turned wrong direction`
-                : `yaw ${yaw.toFixed(1)}° didn't reach ±${yawThreshold}° AND delta ${yawDelta.toFixed(1)}° < ${significantMovement}°`
-            : "OK",
-        });
         results.push({
           challengeType: challenge.challengeType,
           passed,
@@ -295,19 +281,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const embedding = getEmbedding(baselineFace);
 
     // Final summary log
-    const challengesPassed = results.every((r) => r.passed);
-    console.log("[liveness/verify] === FINAL RESULT ===", {
-      verified: allPassed,
-      livenessPassed,
-      challengesPassed,
-      livenessReason: !livenessPassed
-        ? baselineReal < 0.5
-          ? `realScore ${baselineReal.toFixed(2)} < 0.5`
-          : `liveScore ${baselineLive.toFixed(2)} < 0.5`
-        : "OK",
-      failedChallenges: results.filter((r) => !r.passed).map((r) => r.challengeType),
-      processingTimeMs: Date.now() - start,
-    });
+    const _challengesPassed = results.every((r) => r.passed);
 
     return NextResponse.json({
       verified: allPassed,

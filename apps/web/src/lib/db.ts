@@ -743,7 +743,11 @@ export function upsertOnboardingSession(
     `);
     stmt.run(...values);
 
-    return getOnboardingSessionByEmail(data.email)!;
+    const updatedSession = getOnboardingSessionByEmail(data.email);
+    if (!updatedSession) {
+      throw new Error("Failed to retrieve updated onboarding session");
+    }
+    return updatedSession;
   }
 
   // Create new session
@@ -770,7 +774,11 @@ export function upsertOnboardingSession(
     expiresAt,
   );
 
-  return getOnboardingSessionByEmail(data.email)!;
+  const newSession = getOnboardingSessionByEmail(data.email);
+  if (!newSession) {
+    throw new Error("Failed to create onboarding session");
+  }
+  return newSession;
 }
 
 /**

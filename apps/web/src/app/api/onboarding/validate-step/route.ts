@@ -104,8 +104,7 @@ export async function POST(
 
     // Staying on current step
     return NextResponse.json({ valid: true, currentStep: session.step });
-  } catch (error) {
-    console.error("Failed to validate step:", error);
+  } catch (_error) {
     return NextResponse.json(
       { valid: false, error: "Validation failed" },
       { status: 500 },

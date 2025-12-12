@@ -58,8 +58,7 @@ export async function GET() {
       hasExtractedName: !!state.pii?.extractedName,
       hasExtractedDOB: !!state.pii?.extractedDOB,
     });
-  } catch (error) {
-    console.error("Failed to load wizard state:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to load session" },
       { status: 500 },
@@ -125,8 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Failed to save wizard state:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to save session" },
       { status: 500 },
@@ -159,8 +157,7 @@ export async function DELETE(request: NextRequest) {
 
     await completeOnboarding(email);
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Failed to delete wizard session:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to delete session" },
       { status: 500 },
