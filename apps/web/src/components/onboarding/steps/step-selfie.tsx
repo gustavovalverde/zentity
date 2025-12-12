@@ -21,6 +21,7 @@ import {
   STABILITY_FRAMES,
   useSelfieLivenessFlow,
 } from "@/hooks/use-selfie-liveness-flow";
+import { getLivenessDebugEnabled } from "@/lib/liveness-debug";
 import {
   SMILE_DELTA_THRESHOLD,
   SMILE_HIGH_THRESHOLD,
@@ -49,7 +50,7 @@ export function StepSelfie() {
     idealWidth: 640,
     idealHeight: 480,
   });
-  const livenessDebugEnabled = process.env.NEXT_PUBLIC_LIVENESS_DEBUG === "1";
+  const livenessDebugEnabled = getLivenessDebugEnabled();
 
   const {
     human,
@@ -68,6 +69,8 @@ export function StepSelfie() {
     statusMessage,
     debugCanvasRef,
     debugFrame,
+    lastVerifyError,
+    lastVerifyResponse,
     beginCamera,
     retryChallenge,
   } = useSelfieLivenessFlow({
@@ -183,6 +186,21 @@ export function StepSelfie() {
                     <div className="opacity-80">
                       gesture: {debugFrame.gesture.join(", ")}
                     </div>
+                  )}
+                  {lastVerifyError && (
+                    <div className="mt-1 text-red-200">
+                      verify: {lastVerifyError}
+                    </div>
+                  )}
+                  {Boolean(lastVerifyResponse) && (
+                    <details className="mt-1 opacity-80">
+                      <summary className="cursor-pointer">
+                        verify payload
+                      </summary>
+                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-words">
+                        {JSON.stringify(lastVerifyResponse, null, 2)}
+                      </pre>
+                    </details>
                   )}
                 </div>
               </div>
