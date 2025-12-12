@@ -54,7 +54,7 @@ const ERROR_RECOVERY_TIPS: Record<string, string> = {
 };
 
 export function StepIdUpload() {
-  const { state, updateData, nextStep } = useWizard();
+  const { state, updateData, nextStep, updateServerProgress } = useWizard();
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(
     state.data.idDocument?.name || null,
@@ -169,6 +169,8 @@ export function StepIdUpload() {
             type: result.documentType,
             confidence: result.confidence,
           });
+          // Mark document as processed on server (required for step validation)
+          await updateServerProgress({ documentProcessed: true, step: 2 });
           // Store extracted data in wizard state for later use
           if (result.extractedData) {
             updateData({
@@ -204,7 +206,7 @@ export function StepIdUpload() {
         trackError("document_upload", String(errorMsg));
       }
     },
-    [updateData, processDocument],
+    [updateData, processDocument, updateServerProgress],
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {

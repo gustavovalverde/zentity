@@ -5,7 +5,11 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   // Mark better-sqlite3 as external for server-side usage
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: [
+    "better-sqlite3",
+    "@vladmandic/human",
+    "@tensorflow/tfjs-node",
+  ],
 };
 
 export default nextConfig;

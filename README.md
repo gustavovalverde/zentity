@@ -80,6 +80,17 @@ FHE → Verifier: true/false (score never revealed)
 - Protects biometric scoring algorithms from reverse engineering
 - Enables different threshold policies per use case
 
+**Current POC implementation (Human.js):**
+- Real-time challenges (smile + head turns) run in the browser for instant feedback.
+- The client captures a baseline frame and one frame per challenge.
+- Those frames are sent to `POST /api/liveness/verify`, where Next.js re-runs Human.js on Node to make the authoritative decision and return a face embedding.
+
+**Limitations (non-production):**
+- Server-side re-scoring blocks simple UI tampering, but can’t prove frames came from a live camera; replayed or edited frames can still be submitted.
+- Human’s antispoof/liveness models are lightweight “quick checks” and not KYC‑grade on their own.
+- Model weights are bundled locally via `@vladmandic/human-models` and served from `/human-models/*`; first run may still be slow while models initialize, but no external download is needed.
+- Liveness sessions are stored in memory and reset on server restart.
+
 ### Nationality Group Membership
 
 Proving citizenship often requires revealing exact nationality, which can lead to discrimination. Zentity's ZK Merkle proofs enable group membership verification:

@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { useState } from "react";
 import { Progress } from "@/components/ui/progress";
 import { motion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -9,7 +10,19 @@ import { useWizard } from "./wizard-provider";
 const STEP_TITLES = ["Email", "Upload ID", "Liveness", "Complete"];
 
 export function WizardStepper() {
-  const { state, totalSteps, progress, goToStep } = useWizard();
+  const { state, totalSteps, progress, goToStepWithValidation } = useWizard();
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const handleStepClick = async (stepNumber: number) => {
+    if (isNavigating) return;
+
+    setIsNavigating(true);
+    try {
+      await goToStepWithValidation(stepNumber);
+    } finally {
+      setIsNavigating(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -32,17 +45,20 @@ export function WizardStepper() {
           const stepNumber = index + 1;
           const isCompleted = stepNumber < state.currentStep;
           const isCurrent = stepNumber === state.currentStep;
-          const canNavigate = stepNumber < state.currentStep;
+          // Allow navigating to completed steps (will show warning and reset progress)
+          const canNavigate = stepNumber < state.currentStep && !isNavigating;
 
           return (
             <button
+              type="button"
               key={stepNumber}
-              onClick={() => canNavigate && goToStep(stepNumber)}
+              onClick={() => canNavigate && handleStepClick(stepNumber)}
               disabled={!canNavigate}
               className={cn(
                 // Ensure minimum 44px touch target for accessibility
                 "flex flex-col items-center gap-1 group transition-transform duration-200 min-w-[44px] min-h-[44px] p-1",
                 canNavigate && "cursor-pointer hover:scale-105",
+                isNavigating && "opacity-50 cursor-not-allowed",
               )}
               aria-label={`${title} - Step ${stepNumber}${isCompleted ? " (completed)" : isCurrent ? " (current)" : ""}`}
               aria-current={isCurrent ? "step" : undefined}

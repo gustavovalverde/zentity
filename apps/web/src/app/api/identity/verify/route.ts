@@ -28,13 +28,67 @@ import {
   updateUserName,
 } from "@/lib/db";
 import { buildDisplayName } from "@/lib/name-utils";
+import {
+  detectFromBase64,
+  getHumanServer,
+  stripDataUrl,
+} from "@/lib/human-server";
+import {
+  getSessionFromCookie,
+  validateStepAccess,
+} from "@/lib/onboarding-session";
 
 // Service URLs
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
-const LIVENESS_SERVICE_URL =
-  process.env.LIVENESS_SERVICE_URL || "http://localhost:5003";
 const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
 const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+
+/**
+ * Crop face region from image and return as base64 data URL.
+ * This improves embedding quality for small faces in large documents.
+ */
+async function cropFaceRegion(
+  dataUrl: string,
+  box: { x: number; y: number; width: number; height: number },
+  padding = 0.3,
+): Promise<string> {
+  const tf = await import("@tensorflow/tfjs-node");
+  type Tensor3D = any;
+
+  const base64 = stripDataUrl(dataUrl);
+  const buffer = Buffer.from(base64, "base64");
+  const decoded = tf.node.decodeImage(buffer, 3);
+  if (decoded.rank !== 3) {
+    decoded.dispose();
+    throw new Error("Animated images are not supported");
+  }
+  const tensor = decoded as Tensor3D;
+
+  const height = tensor.shape[0];
+  const width = tensor.shape[1];
+
+  const padW = box.width * padding;
+  const padH = box.height * padding;
+  const x1 = Math.max(0, Math.floor(box.x - padW));
+  const y1 = Math.max(0, Math.floor(box.y - padH));
+  const x2 = Math.min(width, Math.ceil(box.x + box.width + padW));
+  const y2 = Math.min(height, Math.ceil(box.y + box.height + padH));
+
+  const cropWidth = x2 - x1;
+  const cropHeight = y2 - y1;
+
+  const cropped = tf.slice(tensor, [y1, x1, 0], [
+    cropHeight,
+    cropWidth,
+    3,
+  ]) as Tensor3D;
+  tensor.dispose();
+
+  const encoded = await tf.node.encodeJpeg(cropped, "rgb", 95);
+  cropped.dispose();
+
+  return `data:image/jpeg;base64,${Buffer.from(encoded).toString("base64")}`;
+}
 
 interface VerifyIdentityRequest {
   // Document image (base64)
@@ -116,6 +170,34 @@ export async function POST(
           error: "Authentication required",
         },
         { status: 401 },
+      );
+    }
+
+    // Validate onboarding session - must have completed document verification
+    const onboardingSession = await getSessionFromCookie();
+    const stepValidation = validateStepAccess(onboardingSession, "identity-verify");
+    if (!stepValidation.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          verified: false,
+          results: {
+            documentProcessed: false,
+            isDocumentValid: false,
+            livenessPassed: false,
+            faceMatched: false,
+            isDuplicateDocument: false,
+            ageProofGenerated: false,
+            dobEncrypted: false,
+            docValidityProofGenerated: false,
+            nationalityCommitmentGenerated: false,
+            livenessScoreEncrypted: false,
+          },
+          processingTimeMs: Date.now() - startTime,
+          issues: ["step_validation_failed"],
+          error: stepValidation.error || "Complete previous steps first",
+        },
+        { status: 403 },
       );
     }
 
@@ -247,24 +329,127 @@ export async function POST(
     } | null = null;
 
     try {
-      const verifyResponse = await fetch(`${LIVENESS_SERVICE_URL}/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          idImage: body.documentImage,
-          selfieImage: body.selfieImage,
-        }),
-      });
+      const human = await getHumanServer();
 
-      if (!verifyResponse.ok) {
-        throw new Error(
-          `Verification service returned ${verifyResponse.status}`,
+      const selfieResult = await detectFromBase64(body.selfieImage);
+
+      // First pass: detect faces in document to get bounding box
+      const docResultInitial = await detectFromBase64(body.documentImage);
+      const docFacesInitial = Array.isArray(docResultInitial?.face)
+        ? docResultInitial.face
+        : [];
+
+      let docResult = docResultInitial;
+
+      // Helper to get box dimensions (handles array or object format)
+      const getBoxArea = (box: any): number => {
+        if (!box) return 0;
+        if (Array.isArray(box)) return (box[2] ?? 0) * (box[3] ?? 0);
+        return (box.width ?? 0) * (box.height ?? 0);
+      };
+
+      // If face found, crop and re-detect for better embedding quality
+      if (docFacesInitial.length > 0) {
+        const largestFaceInitial = docFacesInitial.reduce(
+          (best: any, f: any) => {
+            const bestArea = getBoxArea(best?.box);
+            const area = getBoxArea(f?.box);
+            return area > bestArea ? f : best;
+          },
+          docFacesInitial[0],
         );
+
+        if (largestFaceInitial?.box) {
+          try {
+            // Human.js box can be array [x,y,w,h] or object {x,y,width,height}
+            const box = Array.isArray(largestFaceInitial.box)
+              ? {
+                  x: largestFaceInitial.box[0],
+                  y: largestFaceInitial.box[1],
+                  width: largestFaceInitial.box[2],
+                  height: largestFaceInitial.box[3],
+                }
+              : largestFaceInitial.box;
+
+            const croppedFaceDataUrl = await cropFaceRegion(
+              body.documentImage,
+              box,
+            );
+            docResult = await detectFromBase64(croppedFaceDataUrl);
+          } catch (err) {
+            console.warn(
+              "[identity/verify] Face cropping failed:",
+              err,
+            );
+          }
+        }
       }
 
-      verificationResult = await verifyResponse.json();
+      const selectLargestFace = (res: any) => {
+        const faces = Array.isArray(res?.face) ? res.face : [];
+        if (faces.length === 0) return null;
+        return faces.reduce((best: any, f: any) => {
+          const bestArea = getBoxArea(best?.box);
+          const area = getBoxArea(f?.box);
+          return area > bestArea ? f : best;
+        }, faces[0]);
+      };
 
-      issues.push(...(verificationResult?.issues || []));
+      const getEmbedding = (face: any): number[] | null => {
+        const emb =
+          face?.embedding ??
+          face?.descriptor ??
+          face?.description?.embedding ??
+          face?.description;
+        if (!emb) return null;
+        if (Array.isArray(emb)) return emb.map((n) => Number(n));
+        if (emb instanceof Float32Array) return Array.from(emb);
+        if (typeof emb === "object" && Array.isArray(emb.data)) {
+          return emb.data.map((n: any) => Number(n));
+        }
+        return null;
+      };
+
+      const selfieFace = selectLargestFace(selfieResult);
+      const docFace = selectLargestFace(docResult);
+      const localIssues: string[] = [];
+
+      let antispoofScore = 0;
+      let liveScore = 0;
+      let livenessPassed = false;
+      if (selfieFace) {
+        antispoofScore = Number(selfieFace.real ?? 0);
+        liveScore = Number(selfieFace.live ?? 0);
+        livenessPassed = antispoofScore >= 0.5 && liveScore >= 0.5;
+      } else {
+        localIssues.push("no_selfie_face");
+      }
+
+      let facesMatch = false;
+      let faceMatchConfidence = 0;
+      if (selfieFace && docFace) {
+        const selfieEmb = getEmbedding(selfieFace);
+        const docEmb = getEmbedding(docFace);
+        if (selfieEmb && docEmb) {
+          faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
+          facesMatch = faceMatchConfidence >= 0.6;
+        } else {
+          localIssues.push("embedding_failed");
+        }
+      } else {
+        localIssues.push("no_document_face");
+      }
+
+      verificationResult = {
+        verified: livenessPassed && facesMatch,
+        is_live: livenessPassed,
+        antispoof_score: antispoofScore,
+        faces_match: facesMatch,
+        face_match_confidence: faceMatchConfidence,
+        issues: localIssues,
+      };
+
+      issues.push(...localIssues);
     } catch (_error) {
       issues.push("verification_service_failed");
     }

@@ -15,8 +15,15 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 # Copy package files
 COPY package.json pnpm-lock.yaml* ./
 
-# Install all dependencies (including native ones)
+# Install all dependencies
 RUN pnpm install --frozen-lockfile
+
+# Build TensorFlow.js native bindings (pnpm 10+ blocks postinstall scripts by default)
+# This downloads pre-built binaries or compiles from source
+RUN TFJS_DIR=$(find /app/node_modules/.pnpm -path "*/@tensorflow/tfjs-node" -type d | head -1) && \
+    cd "$TFJS_DIR" && \
+    export PATH="$TFJS_DIR/node_modules/.bin:$PATH" && \
+    node scripts/install.js
 
 # Copy source code
 COPY . .
@@ -30,6 +37,14 @@ ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 
 # Build the application
 RUN pnpm build
+
+# Prepare TensorFlow.js native bindings for standalone deployment
+# Next.js standalone doesn't copy native .node binaries from pnpm store
+RUN TFJS_PATH=$(find /app/node_modules/.pnpm -name "tfjs-node" -type d -path "*/@tensorflow/tfjs-node" | head -1) && \
+    mkdir -p /app/tfjs-native && \
+    if [ -n "$TFJS_PATH" ] && [ -d "$TFJS_PATH/lib" ]; then \
+      cp -r "$TFJS_PATH/lib" /app/tfjs-native/; \
+    fi
 
 # Production stage
 FROM node:20-alpine AS runner
@@ -51,6 +66,12 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+
+# Copy Human.js models into runtime (used by /human-models route and server-side Human)
+COPY --from=builder /app/node_modules/@vladmandic/human-models/models ./human-models
+
+# Copy TensorFlow.js native bindings for server-side Human.js
+COPY --from=builder /app/tfjs-native/lib ./node_modules/@tensorflow/tfjs-node/lib
 
 # Copy scripts for database initialization
 COPY --from=builder /app/scripts ./scripts

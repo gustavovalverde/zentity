@@ -505,13 +505,13 @@ export interface FaceMatchResult {
  *
  * @param idImage - Base64 encoded ID document image
  * @param selfieImage - Base64 encoded selfie image
- * @param minConfidence - Minimum confidence threshold (0.0-1.0, default: 0.6)
+ * @param minConfidence - Minimum confidence threshold (0.0-1.0, default: 0.35 for ID-to-selfie)
  * @returns Face matching result
  */
 export async function matchFaces(
   idImage: string,
   selfieImage: string,
-  minConfidence: number = 0.6,
+  minConfidence: number = 0.35,
 ): Promise<FaceMatchResult> {
   try {
     const response = await fetch("/api/liveness/face-match", {

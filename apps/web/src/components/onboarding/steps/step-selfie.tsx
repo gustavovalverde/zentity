@@ -8,7 +8,6 @@ import {
   Camera,
   CameraOff,
   CheckCircle2,
-  Eye,
   Loader2,
   RotateCcw,
   Smile,
@@ -18,22 +17,14 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { useHumanLiveness } from "@/hooks/use-human-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 import { trackCameraPermission, trackLiveness } from "@/lib/analytics";
 import {
-  analyzePassiveMonitor,
+  CHALLENGE_INSTRUCTIONS,
   type ChallengeInfo,
-  type ChallengeResult,
-  type ChallengeSession,
   type ChallengeType,
-  checkBlink,
-  checkHeadTurn,
-  checkLiveness,
-  checkSmile,
-  completeChallengeInSession,
-  createChallengeSession,
-  validateLivenessChallenge,
-} from "@/lib/face-detection";
+} from "@/lib/liveness-challenges";
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
 
@@ -43,6 +34,7 @@ import { useWizard } from "../wizard-provider";
  * - loading_session: Creating challenge session from backend
  * - detecting: Auto-detecting face position
  * - countdown: Face found, counting down for baseline capture
+ * - preparing_challenge: Get ready for next challenge (2s delay)
  * - waiting_challenge: Baseline captured, waiting for current challenge
  * - capturing: Challenge detected, capturing image
  * - validating: Sending to server for validation
@@ -56,6 +48,7 @@ type ChallengeState =
   | "loading_session"
   | "detecting"
   | "countdown"
+  | "preparing_challenge"
   | "waiting_challenge"
   | "capturing"
   | "validating"
@@ -69,18 +62,40 @@ const DETECTION_INTERVAL = 300; // ms between detection checks
 const STABILITY_FRAMES = 3; // consecutive positive detections needed
 const CHALLENGE_TIMEOUT = 10000; // 10 seconds per challenge
 const FACE_TIMEOUT = 30000; // 30 seconds to show face
-const SMILE_THRESHOLD = 30; // happiness score threshold (lowered for better detection)
-const BLINK_EAR_THRESHOLD = 0.21; // EAR threshold for blink detection
-const HEAD_TURN_THRESHOLD = 0.1; // yaw threshold for head turn (lowered for easier detection)
-const MAX_PASSIVE_FRAMES = 20; // max frames to collect for passive monitoring
-const PASSIVE_FRAME_INTERVAL = 500; // ms between passive frame captures
-const WARMUP_TIMEOUT = 45_000; // allow models to load on cold start
-const LIVENESS_PING_INTERVAL = 3000;
-const LIVENESS_THROTTLE_MS = 800;
+const SMILE_SCORE_THRESHOLD = 0.6; // Human happy score (0-1)
+const SMILE_DELTA_THRESHOLD = 0.1; // required increase vs baseline (stricter)
+const SMILE_HIGH_THRESHOLD = 0.85; // pass if happy score alone is very high
+const HEAD_TURN_YAW_THRESHOLD = 18; // degrees absolute threshold
+const HEAD_TURN_DELTA_THRESHOLD = 20; // degrees movement from baseline (alternative)
+const HEAD_CENTER_THRESHOLD = 5; // degrees deadzone to ensure forward start
 const NUM_CHALLENGES = 2; // number of random challenges
 const CHALLENGE_PASSED_DELAY = 1000; // ms to show "passed" before next challenge
-const DUMMY_PIXEL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6nXegAAAAASUVORK5CYII=";
+const CHALLENGE_PREP_DELAY = 2000; // ms to prepare before next challenge starts
+
+type FacingDirection = "left" | "right" | "center";
+
+type LivenessDebugFrame = {
+  ts: number;
+  state: ChallengeState;
+  faceDetected: boolean;
+  happy: number;
+  baselineHappy: number;
+  deltaHappy: number;
+  yawDeg: number;
+  pitchDeg: number;
+  rollDeg: number;
+  dir: FacingDirection;
+  headTurnCentered: boolean;
+  consecutiveDetections: number;
+  consecutiveChallengeDetections: number;
+  videoWidth: number;
+  videoHeight: number;
+  gesture: string[];
+};
+
+function radToDeg(radians: number): number {
+  return (radians * 180) / Math.PI;
+}
 
 export function StepSelfie() {
   const { state, updateData, nextStep } = useWizard();
@@ -103,16 +118,18 @@ export function StepSelfie() {
   const [challengeImage, setChallengeImage] = useState<string | null>(
     state.data.selfieImage || null,
   );
-  const [challengeResult, setChallengeResult] =
-    useState<ChallengeResult | null>(null);
 
   // Multi-challenge session state
-  const [session, setSession] = useState<ChallengeSession | null>(null);
+  const [session, setSession] = useState<{
+    sessionId: string;
+    challenges: ChallengeType[];
+  } | null>(null);
   const [currentChallenge, setCurrentChallenge] =
     useState<ChallengeInfo | null>(null);
   const [completedChallenges, setCompletedChallenges] = useState<
-    Array<{ type: ChallengeType; passed: boolean }>
+    Array<{ type: ChallengeType; image: string }>
   >([]);
+  const [baselineHappyScore, setBaselineHappyScore] = useState(0);
 
   // Progress indicators
   const [detectionProgress, setDetectionProgress] = useState(0);
@@ -120,72 +137,59 @@ export function StepSelfie() {
   const [countdown, setCountdown] = useState(3);
   const [timeoutMessage, setTimeoutMessage] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [warmupStatus, setWarmupStatus] = useState<
-    "idle" | "warming" | "ready" | "failed"
-  >("idle");
-
-  // Passive monitoring state
-  const [passiveFrames, setPassiveFrames] = useState<string[]>([]);
-  const [blinkCount, setBlinkCount] = useState(0);
-  const lastPassiveFrameTimeRef = useRef<number>(0);
 
   // Refs for detection loop
   const consecutiveDetectionsRef = useRef(0);
   const consecutiveChallengeDetectionsRef = useRef(0); // For any challenge type
   const isCheckingRef = useRef(false);
-  const lastLivenessCallRef = useRef(0);
+  const headTurnCenteredRef = useRef(false);
+  const headTurnStartYawRef = useRef(0); // Track yaw when turn starts
+
+  const livenessDebugEnabled = process.env.NEXT_PUBLIC_LIVENESS_DEBUG === "1";
+  const debugCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const debugLastUpdateRef = useRef(0);
+  const [debugFrame, setDebugFrame] = useState<LivenessDebugFrame | null>(null);
+
+  const {
+    human,
+    ready: humanReady,
+    error: humanError,
+  } = useHumanLiveness(isStreaming);
 
   // Track permission changes for analytics and UX hints
   useEffect(() => {
     trackCameraPermission(permissionStatus);
   }, [permissionStatus]);
 
-  // Warmup liveness service - defined before useEffect that calls it
-  const warmupLiveness = useCallback(async () => {
-    if (warmupStatus === "ready") return true;
-    setWarmupStatus("warming");
-
-    // Fire-and-forget a dummy liveness call to trigger model downloads
-    void fetch("/api/liveness", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: DUMMY_PIXEL, threshold: 0 }),
-    }).catch(() => {});
-
-    const start = Date.now();
-    while (Date.now() - start < WARMUP_TIMEOUT) {
-      try {
-        const res = await fetch("/api/liveness/health");
-        if (res.ok) {
-          setWarmupStatus("ready");
-          return true;
-        }
-      } catch {
-        // ignore and retry
-      }
-      await new Promise((r) => setTimeout(r, LIVENESS_PING_INTERVAL));
-    }
-    setWarmupStatus("failed");
-    toast.error("Liveness service still warming up", {
-      description: "Models are downloading. Please wait 30-60s then retry.",
-    });
-    return false;
-  }, [warmupStatus]);
-
-  // Start warmup as soon as the step renders to reduce first-call wait
+  // Reset head-turn gating when switching challenges
   useEffect(() => {
-    void warmupLiveness();
-  }, [warmupLiveness]);
+    if (
+      currentChallenge?.challengeType === "turn_left" ||
+      currentChallenge?.challengeType === "turn_right"
+    ) {
+      headTurnCenteredRef.current = false;
+      headTurnStartYawRef.current = 0;
+    }
+  }, [currentChallenge?.challengeType]);
 
   const beginCamera = useCallback(async () => {
-    const ready = await warmupLiveness();
-    if (!ready) return;
-
-    // Create a challenge session first
     setChallengeState("loading_session");
     try {
-      const newSession = await createChallengeSession(NUM_CHALLENGES);
-      setSession(newSession);
+      const res = await fetch("/api/liveness/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numChallenges: NUM_CHALLENGES }),
+      });
+      if (!res.ok) throw new Error(`Session error: ${res.status}`);
+      const newSession = (await res.json()) as {
+        sessionId: string;
+        challenges: ChallengeType[];
+        currentChallenge: ChallengeInfo | null;
+      };
+      setSession({
+        sessionId: newSession.sessionId,
+        challenges: newSession.challenges,
+      });
       setCurrentChallenge(newSession.currentChallenge);
     } catch (err) {
       toast.error("Failed to create challenge session", {
@@ -205,299 +209,449 @@ export function StepSelfie() {
       toast.error("Camera access denied", { description: errorMsg });
       setChallengeState("idle");
     }
-  }, [startCamera, warmupLiveness]);
+  }, [startCamera]);
 
-  // Face detection check
-  const checkForFace = useCallback(
-    async (frame: string, timestamp: number) => {
-      if (isCheckingRef.current) return;
-      isCheckingRef.current = true;
+  const lastHappyRef = useRef(0);
+
+  const buildChallengeInfo = useCallback(
+    (
+      challengeType: ChallengeType,
+      index: number,
+      total: number,
+    ): ChallengeInfo => {
+      return {
+        challengeType,
+        index,
+        total,
+        ...CHALLENGE_INSTRUCTIONS[challengeType],
+      };
+    },
+    [],
+  );
+
+  const getHappyScore = useCallback((face: any): number => {
+    const emo = face?.emotion;
+    if (!emo) return 0;
+    if (Array.isArray(emo)) {
+      const happy = emo.find(
+        (e) => e?.emotion === "happy" || e?.emotion === "Happy",
+      );
+      return happy?.score ?? 0;
+    }
+    if (typeof emo === "object") {
+      if (typeof emo.happy === "number") return emo.happy;
+      if (
+        emo.emotion &&
+        (emo.emotion === "happy" || emo.emotion === "Happy") &&
+        typeof emo.score === "number"
+      ) {
+        return emo.score;
+      }
+    }
+    return 0;
+  }, []);
+
+  const getYaw = useCallback((face: any): number => {
+    const yawRad = face?.rotation?.angle?.yaw;
+    return typeof yawRad === "number" ? radToDeg(yawRad) : 0;
+  }, []);
+
+  const getPitch = useCallback((face: any): number => {
+    const pitchRad = face?.rotation?.angle?.pitch;
+    return typeof pitchRad === "number" ? radToDeg(pitchRad) : 0;
+  }, []);
+
+  const getRoll = useCallback((face: any): number => {
+    const rollRad = face?.rotation?.angle?.roll;
+    return typeof rollRad === "number" ? radToDeg(rollRad) : 0;
+  }, []);
+
+  const getFacingDirection = useCallback(
+    (result: any, face: any): FacingDirection => {
+      const gestures = result?.gesture;
+      if (Array.isArray(gestures)) {
+        for (const g of gestures) {
+          const name = g?.gesture ?? g?.name ?? "";
+          if (typeof name === "string" && name.startsWith("facing")) {
+            if (name.includes("left")) return "left";
+            if (name.includes("right")) return "right";
+            return "center";
+          }
+        }
+      }
+      const yaw = getYaw(face);
+      if (yaw < -HEAD_CENTER_THRESHOLD) return "left";
+      if (yaw > HEAD_CENTER_THRESHOLD) return "right";
+      return "center";
+    },
+    [getYaw],
+  );
+
+  const syncDebugCanvasSize = useCallback(() => {
+    if (!livenessDebugEnabled) return;
+    const video = videoRef.current;
+    const canvas = debugCanvasRef.current;
+    if (!video || !canvas) return;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    if (!width || !height) return;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+  }, [livenessDebugEnabled, videoRef]);
+
+  const drawDebugOverlay = useCallback(
+    (result: any) => {
+      if (!livenessDebugEnabled) return;
+      if (!human || !videoRef.current) return;
+      const canvas = debugCanvasRef.current;
+      if (!canvas) return;
+
+      syncDebugCanvasSize();
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       try {
-        const now = performance.now();
-        if (now - lastLivenessCallRef.current < LIVENESS_THROTTLE_MS) {
-          return;
-        }
-        lastLivenessCallRef.current = now;
+        human.draw?.face?.(canvas as any, result?.face ?? [], {
+          drawBoxes: true,
+          drawLabels: true,
+          drawPolygons: true,
+          drawPoints: false,
+          drawGaze: false,
+          drawAttention: false,
+        });
+      } catch {
+        // ignore draw errors in debug mode
+      }
+    },
+    [livenessDebugEnabled, human, syncDebugCanvasSize, videoRef],
+  );
 
-        const result = await checkLiveness(frame);
+  const updateDebug = useCallback(
+    (result: any, face: any | null) => {
+      if (!livenessDebugEnabled) return;
 
-        if (result.isReal && result.faceCount === 1) {
+      const now = performance.now();
+      if (now - debugLastUpdateRef.current < 250) return;
+      debugLastUpdateRef.current = now;
+
+      const video = videoRef.current;
+      const gestureNames = Array.isArray(result?.gesture)
+        ? result.gesture
+            .map((g: any) => g?.gesture ?? g?.name)
+            .filter((n: unknown): n is string => typeof n === "string")
+        : [];
+
+      const happy = face ? getHappyScore(face) : 0;
+      setDebugFrame({
+        ts: Date.now(),
+        state: challengeState,
+        faceDetected: Boolean(face),
+        happy,
+        baselineHappy: baselineHappyScore,
+        deltaHappy: happy - baselineHappyScore,
+        yawDeg: face ? getYaw(face) : 0,
+        pitchDeg: face ? getPitch(face) : 0,
+        rollDeg: face ? getRoll(face) : 0,
+        dir: face ? getFacingDirection(result, face) : "center",
+        headTurnCentered: headTurnCenteredRef.current,
+        consecutiveDetections: consecutiveDetectionsRef.current,
+        consecutiveChallengeDetections:
+          consecutiveChallengeDetectionsRef.current,
+        videoWidth: video?.videoWidth ?? 0,
+        videoHeight: video?.videoHeight ?? 0,
+        gesture: gestureNames,
+      });
+    },
+    [
+      livenessDebugEnabled,
+      videoRef,
+      challengeState,
+      baselineHappyScore,
+      getHappyScore,
+      getYaw,
+      getPitch,
+      getRoll,
+      getFacingDirection,
+    ],
+  );
+
+  useEffect(() => {
+    if (!livenessDebugEnabled) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const handle = () => syncDebugCanvasSize();
+    video.addEventListener("loadedmetadata", handle);
+    handle();
+    return () => video.removeEventListener("loadedmetadata", handle);
+  }, [livenessDebugEnabled, syncDebugCanvasSize, videoRef]);
+
+  useEffect(() => {
+    if (!livenessDebugEnabled) return;
+    const canvas = debugCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    if (!isStreaming) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, [livenessDebugEnabled, isStreaming]);
+
+  useEffect(() => {
+    if (!livenessDebugEnabled) return;
+    // Low-frequency breadcrumbs for devtools.
+    // eslint-disable-next-line no-console
+    console.debug("[liveness]", {
+      state: challengeState,
+      challenge: currentChallenge?.challengeType ?? null,
+      index: currentChallenge?.index ?? null,
+      total: currentChallenge?.total ?? null,
+    });
+  }, [livenessDebugEnabled, challengeState, currentChallenge]);
+
+  const checkForFace = useCallback(async () => {
+    if (!human || !humanReady || !videoRef.current) return;
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    try {
+      const raw = await human.detect(videoRef.current);
+      const result = human.next(raw);
+      const face = result.face?.[0];
+      drawDebugOverlay(result);
+      updateDebug(result, face ?? null);
+
+      if (face) {
+        const dir = getFacingDirection(result, face);
+        lastHappyRef.current = getHappyScore(face);
+
+        if (dir === "center") {
           consecutiveDetectionsRef.current++;
           setDetectionProgress(
             (consecutiveDetectionsRef.current / STABILITY_FRAMES) * 100,
           );
-
-          // Collect frames for passive monitoring (at slower interval)
-          if (
-            timestamp - lastPassiveFrameTimeRef.current >=
-              PASSIVE_FRAME_INTERVAL &&
-            passiveFrames.length < MAX_PASSIVE_FRAMES
-          ) {
-            lastPassiveFrameTimeRef.current = timestamp;
-            setPassiveFrames((prev) => [...prev, frame]);
-
-            // Background blink check (non-blocking)
-            await checkBlink(frame, passiveFrames.length === 0).then(
-              (blinkResult) => {
-                if (blinkResult.blinkDetected) {
-                  setBlinkCount(blinkResult.blinkCount);
-                }
-              },
-            );
-          }
-
           if (consecutiveDetectionsRef.current >= STABILITY_FRAMES) {
-            // Face stable - start countdown
             setChallengeState("countdown");
             consecutiveDetectionsRef.current = 0;
           }
         } else {
           consecutiveDetectionsRef.current = 0;
           setDetectionProgress(0);
-
-          // Provide feedback on what's wrong
-          if (result.faceCount === 0) {
-            setStatusMessage("Position your face in the frame");
-          } else if (result.faceCount > 1) {
-            setStatusMessage("Only one person should be in frame");
-          } else if (result.issues?.includes("face_too_small")) {
-            setStatusMessage("Move closer to the camera");
-          } else if (result.issues?.includes("face_obscured")) {
-            setStatusMessage("Make sure your face is clearly visible");
-          }
+          setStatusMessage("Center your face in the frame");
         }
-      } catch (_error) {
-      } finally {
-        isCheckingRef.current = false;
+      } else {
+        consecutiveDetectionsRef.current = 0;
+        setDetectionProgress(0);
+        setStatusMessage("Position your face in the frame");
       }
-    },
-    [passiveFrames.length],
-  );
+    } catch {
+      // ignore per-frame errors
+    } finally {
+      isCheckingRef.current = false;
+    }
+  }, [
+    human,
+    humanReady,
+    videoRef,
+    drawDebugOverlay,
+    updateDebug,
+    getFacingDirection,
+    getHappyScore,
+  ]);
 
-  // Handle challenge completion and move to next
-  const handleChallengeComplete = useCallback(
-    async (
-      challengeFrame: string,
-      challengeType: ChallengeType,
-      passed: boolean,
-    ) => {
+  const handleCapturedChallenge = useCallback(
+    async (challengeType: ChallengeType, image: string) => {
       if (!session || !baselineImage) return;
 
-      setChallengeImage(challengeFrame);
+      const newCompleted = [
+        ...completedChallenges,
+        { type: challengeType, image },
+      ];
+      setCompletedChallenges(newCompleted);
+      setChallengeImage(image);
 
-      // Record completion in session
-      const result = await completeChallengeInSession(
-        session.sessionId,
-        challengeType,
-        passed,
-      );
-
-      // Track this challenge as completed
-      setCompletedChallenges((prev) => [
-        ...prev,
-        { type: challengeType, passed },
-      ]);
-
-      if (!passed) {
-        setChallengeState("failed");
-        setChallengeResult({
-          passed: false,
-          challengeType,
-          message: `${currentChallenge?.title || "Challenge"} failed. Please try again.`,
-          processingTimeMs: 0,
-        });
-        stopCamera();
+      const nextIndex = (currentChallenge?.index ?? 0) + 1;
+      if (nextIndex < session.challenges.length) {
+        setChallengeState("challenge_passed");
+        setTimeout(() => {
+          const nextType = session.challenges[nextIndex];
+          setCurrentChallenge(
+            buildChallengeInfo(nextType, nextIndex, session.challenges.length),
+          );
+          setChallengeProgress(0);
+          consecutiveChallengeDetectionsRef.current = 0;
+          headTurnCenteredRef.current = false;
+          headTurnStartYawRef.current = 0;
+          // Enter preparation state to give user time to get ready
+          setChallengeState("preparing_challenge");
+          setTimeout(() => {
+            setChallengeState("waiting_challenge");
+          }, CHALLENGE_PREP_DELAY);
+        }, CHALLENGE_PASSED_DELAY);
         return;
       }
 
-      if (result.sessionComplete && result.sessionPassed) {
-        // All challenges passed!
-        setChallengeState("all_passed");
-        stopCamera();
-
-        // Select the best frame for face matching
-        let selectedBestFrame = baselineImage;
-        if (passiveFrames.length > 0) {
-          try {
-            const passiveResult = await analyzePassiveMonitor(passiveFrames);
-            setBlinkCount(passiveResult.totalBlinks);
-            if (
-              passiveResult.bestFrameIndex >= 0 &&
-              passiveResult.bestFrameIndex < passiveFrames.length &&
-              passiveResult.bestFrameScore > 0.7
-            ) {
-              const candidateFrame =
-                passiveFrames[passiveResult.bestFrameIndex];
-              if (
-                candidateFrame &&
-                candidateFrame.length > 1000 &&
-                candidateFrame.startsWith("data:image/")
-              ) {
-                selectedBestFrame = candidateFrame;
-              }
-            }
-          } catch {
-            // Continue with baseline
-          }
+      // Final verification on server
+      setChallengeState("validating");
+      try {
+        const res = await fetch("/api/liveness/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            baselineImage,
+            challenges: newCompleted.map((c) => ({
+              challengeType: c.type,
+              image: c.image,
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.verified) {
+          throw new Error(data.error || "Liveness verification failed");
         }
 
+        setChallengeState("all_passed");
+        stopCamera();
         updateData({
-          selfieImage: challengeFrame,
-          bestSelfieFrame: selectedBestFrame,
-          blinkCount: blinkCount,
+          selfieImage: baselineImage,
+          bestSelfieFrame: baselineImage,
+          blinkCount: null,
         });
-      } else if (result.nextChallenge) {
-        // More challenges to go - show passed briefly then move to next
-        setChallengeState("challenge_passed");
-
-        // After a brief delay, start the next challenge
-        setTimeout(() => {
-          setCurrentChallenge(result.nextChallenge);
-          setChallengeProgress(0);
-          consecutiveChallengeDetectionsRef.current = 0;
-          setChallengeState("waiting_challenge");
-        }, CHALLENGE_PASSED_DELAY);
+        trackLiveness("passed", {
+          challengeCount: newCompleted.length,
+        });
+      } catch (err) {
+        setChallengeState("failed");
+        toast.error("Verification failed", {
+          description: err instanceof Error ? err.message : "Please try again.",
+        });
+        trackLiveness("failed", {
+          message: err instanceof Error ? err.message : "unknown",
+        });
+        stopCamera();
       }
     },
     [
       session,
       baselineImage,
+      completedChallenges,
       currentChallenge,
-      passiveFrames,
-      blinkCount,
+      buildChallengeInfo,
       stopCamera,
       updateData,
     ],
   );
 
-  // Capture and validate challenge
-  const captureAndValidate = useCallback(
-    async (challengeFrame: string) => {
-      if (!baselineImage || !currentChallenge) return;
+  const checkCurrentChallenge = useCallback(async () => {
+    if (!human || !humanReady || !videoRef.current || !currentChallenge) return;
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    try {
+      // Capture frame FIRST to ensure we analyze what we submit (fixes race condition)
+      const frameDataUrl = captureFrame();
+      if (!frameDataUrl) return;
 
-      setChallengeState("validating");
+      // Create Image element from captured frame for Human.js detection
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = frameDataUrl;
+      });
 
-      try {
-        // For smile, use the existing validation endpoint
-        if (currentChallenge.challengeType === "smile") {
-          const result = await validateLivenessChallenge(
-            baselineImage,
-            challengeFrame,
-            "smile",
-          );
-          setChallengeResult(result);
-          await handleChallengeComplete(challengeFrame, "smile", result.passed);
+      // Detect on the captured image, not the live video
+      const raw = await human.detect(img);
+      const result = human.next(raw);
+      const face = result.face?.[0];
+      drawDebugOverlay(result);
+      updateDebug(result, face ?? null);
+      if (!face) {
+        setChallengeState("detecting");
+        setStatusMessage("Face lost - position your face in the frame");
+        consecutiveChallengeDetectionsRef.current = 0;
+        headTurnCenteredRef.current = false;
+        headTurnStartYawRef.current = 0;
+        return;
+      }
+
+      const type = currentChallenge.challengeType;
+      const happy = getHappyScore(face);
+      lastHappyRef.current = happy;
+      const dir = getFacingDirection(result, face);
+      const yaw = getYaw(face);
+
+      if (type === "smile") {
+        const happyPct = Math.round(happy * 100);
+        setChallengeProgress(happyPct);
+        const delta = happy - baselineHappyScore;
+        // Pass conditions (stricter - must match backend):
+        // 1. Standard: happy >= 60% AND delta >= 10%
+        // 2. Very high: happy >= 85% (clearly smiling)
+        const smilePassed =
+          (happy >= SMILE_SCORE_THRESHOLD && delta >= SMILE_DELTA_THRESHOLD) ||
+          happy >= SMILE_HIGH_THRESHOLD;
+        if (smilePassed) {
+          consecutiveChallengeDetectionsRef.current++;
+          if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
+            consecutiveChallengeDetectionsRef.current = 0;
+            // Use the same frame we analyzed (fixes race condition)
+            await handleCapturedChallenge("smile", frameDataUrl);
+          }
         } else {
-          // For other challenges, they're validated in real-time during detection
-          // Just mark as passed since we got here via successful detection
-          await handleChallengeComplete(
-            challengeFrame,
-            currentChallenge.challengeType,
-            true,
-          );
+          consecutiveChallengeDetectionsRef.current = 0;
         }
-      } catch {
-        // Service error - allow through with warning
-        await handleChallengeComplete(
-          challengeFrame,
-          currentChallenge.challengeType,
-          true,
+      } else if (type === "turn_left" || type === "turn_right") {
+        const yawProgress = Math.min(
+          (Math.abs(yaw) / HEAD_TURN_YAW_THRESHOLD) * 100,
+          100,
         );
-      }
-    },
-    [baselineImage, currentChallenge, handleChallengeComplete],
-  );
+        setChallengeProgress(yawProgress);
 
-  // Generic challenge detection for current challenge type
-  const checkCurrentChallenge = useCallback(
-    async (frame: string) => {
-      if (isCheckingRef.current || !currentChallenge) return;
-      isCheckingRef.current = true;
-
-      try {
-        const challengeType = currentChallenge.challengeType;
-
-        if (challengeType === "smile") {
-          const result = await checkSmile(frame);
-          setChallengeProgress(result.happyScore);
-
-          if (result.isSmiling && result.happyScore >= SMILE_THRESHOLD) {
-            consecutiveChallengeDetectionsRef.current++;
-            if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
-              setChallengeState("capturing");
-              consecutiveChallengeDetectionsRef.current = 0;
-              await captureAndValidate(frame);
-            }
+        if (!headTurnCenteredRef.current) {
+          if (dir === "center") {
+            headTurnCenteredRef.current = true;
+            headTurnStartYawRef.current = yaw; // Store starting yaw
+            setStatusMessage("");
           } else {
-            consecutiveChallengeDetectionsRef.current = 0;
-          }
-
-          if (result.error === "face_not_detected") {
-            setChallengeState("detecting");
-            setStatusMessage("Face lost - position your face in the frame");
-            consecutiveChallengeDetectionsRef.current = 0;
-          }
-        } else if (challengeType === "blink") {
-          const result = await checkBlink(frame, false);
-          setChallengeProgress(
-            result.blinkDetected ? 100 : (1 - result.earValue / 0.3) * 100,
-          );
-
-          if (result.blinkDetected || result.earValue < BLINK_EAR_THRESHOLD) {
-            consecutiveChallengeDetectionsRef.current++;
-            if (consecutiveChallengeDetectionsRef.current >= 1) {
-              // Blink needs only 1 detection
-              setChallengeState("capturing");
-              consecutiveChallengeDetectionsRef.current = 0;
-              await captureAndValidate(frame);
-            }
-          }
-
-          if (!result.faceDetected) {
-            setChallengeState("detecting");
-            setStatusMessage("Face lost - position your face in the frame");
-            consecutiveChallengeDetectionsRef.current = 0;
-          }
-        } else if (
-          challengeType === "turn_left" ||
-          challengeType === "turn_right"
-        ) {
-          const direction = challengeType === "turn_left" ? "left" : "right";
-          const result = await checkHeadTurn(
-            frame,
-            direction,
-            HEAD_TURN_THRESHOLD,
-          );
-
-          // Show yaw as progress (normalized)
-          const yawProgress = Math.min(
-            (Math.abs(result.yaw) / HEAD_TURN_THRESHOLD) * 100,
-            100,
-          );
-          setChallengeProgress(yawProgress);
-
-          if (result.turnDetected && result.meetsThreshold) {
-            // Head turn needs only 1 detection (deliberate action, like blink)
-            setChallengeState("capturing");
-            consecutiveChallengeDetectionsRef.current = 0;
-            await captureAndValidate(frame);
-          }
-
-          if (result.error?.includes("No face")) {
-            setChallengeState("detecting");
-            setStatusMessage("Face lost - position your face in the frame");
-            consecutiveChallengeDetectionsRef.current = 0;
+            setStatusMessage("Center your head to start the turn");
+            return;
           }
         }
-      } catch (_error) {
-        // Ignore errors during detection loop
-      } finally {
-        isCheckingRef.current = false;
+
+        const wantsLeft = type === "turn_left";
+        const yawDelta = Math.abs(yaw - headTurnStartYawRef.current);
+        // Pass if: absolute threshold met OR significant movement from start
+        const absolutePass = wantsLeft
+          ? yaw < -HEAD_TURN_YAW_THRESHOLD
+          : yaw > HEAD_TURN_YAW_THRESHOLD;
+        const deltaPass = yawDelta >= HEAD_TURN_DELTA_THRESHOLD;
+        const correctDirection = wantsLeft
+          ? yaw < headTurnStartYawRef.current
+          : yaw > headTurnStartYawRef.current;
+        const passed = correctDirection && (absolutePass || deltaPass);
+        if (passed) {
+          consecutiveChallengeDetectionsRef.current = 0;
+          // Use the same frame we analyzed (fixes race condition)
+          await handleCapturedChallenge(type, frameDataUrl);
+        }
       }
-    },
-    [currentChallenge, captureAndValidate],
-  );
+    } catch {
+      // ignore per-frame errors
+    } finally {
+      isCheckingRef.current = false;
+    }
+  }, [
+    human,
+    humanReady,
+    videoRef,
+    currentChallenge,
+    drawDebugOverlay,
+    updateDebug,
+    getHappyScore,
+    getFacingDirection,
+    getYaw,
+    baselineHappyScore,
+    captureFrame,
+    handleCapturedChallenge,
+  ]);
 
   // Countdown effect for baseline capture
   useEffect(() => {
@@ -516,8 +670,10 @@ export function StepSelfie() {
         const baseline = captureFrame();
         if (baseline) {
           setBaselineImage(baseline);
+          setBaselineHappyScore(lastHappyRef.current);
           setChallengeState("waiting_challenge");
           setChallengeProgress(0);
+          setStatusMessage("");
           consecutiveChallengeDetectionsRef.current = 0;
         } else {
           // Failed to capture - retry
@@ -549,18 +705,10 @@ export function StepSelfie() {
       }
       lastCheck = timestamp;
 
-      // Capture current frame
-      const frame = captureFrame();
-      if (!frame) {
-        animationId = requestAnimationFrame(detectLoop);
-        return;
-      }
-
-      // Detection based on current state
       if (challengeState === "detecting") {
-        checkForFace(frame, timestamp);
+        void checkForFace();
       } else if (challengeState === "waiting_challenge") {
-        checkCurrentChallenge(frame);
+        void checkCurrentChallenge();
       }
 
       animationId = requestAnimationFrame(detectLoop);
@@ -611,12 +759,8 @@ export function StepSelfie() {
       toast.success("Liveness verified!", {
         description: `All ${completedChallenges.length} challenges completed successfully!`,
       });
-      trackLiveness("passed", {
-        blinkCount,
-        challengeCount: completedChallenges.length,
-      });
     }
-  }, [challengeState, blinkCount, completedChallenges.length]);
+  }, [challengeState, completedChallenges.length]);
 
   useEffect(() => {
     if (challengeState === "challenge_passed" && currentChallenge) {
@@ -626,15 +770,6 @@ export function StepSelfie() {
       });
     }
   }, [challengeState, currentChallenge]);
-
-  useEffect(() => {
-    if (challengeState === "failed" && challengeResult) {
-      toast.error("Verification failed", {
-        description: challengeResult.message || "Please try again.",
-      });
-      trackLiveness("failed", { message: challengeResult.message });
-    }
-  }, [challengeState, challengeResult]);
 
   useEffect(() => {
     if (challengeState === "timeout") {
@@ -648,22 +783,20 @@ export function StepSelfie() {
   const retryChallenge = useCallback(() => {
     setBaselineImage(null);
     setChallengeImage(null);
-    setChallengeResult(null);
     setChallengeState("idle");
     setDetectionProgress(0);
     setChallengeProgress(0);
     setTimeoutMessage("");
     setStatusMessage("");
+    setBaselineHappyScore(0);
     // Reset session state
     setSession(null);
     setCurrentChallenge(null);
     setCompletedChallenges([]);
-    // Reset passive monitoring state
-    setPassiveFrames([]);
-    setBlinkCount(0);
-    lastPassiveFrameTimeRef.current = 0;
     consecutiveDetectionsRef.current = 0;
     consecutiveChallengeDetectionsRef.current = 0;
+    headTurnCenteredRef.current = false;
+    headTurnStartYawRef.current = 0;
     updateData({ selfieImage: null, bestSelfieFrame: null, blinkCount: null });
     beginCamera();
   }, [beginCamera, updateData]);
@@ -681,13 +814,14 @@ export function StepSelfie() {
           We&apos;ll automatically verify you&apos;re a real person. Just start
           the camera and follow the prompts.
         </p>
-        {warmupStatus !== "ready" && (
+        {isStreaming && !humanReady && !humanError && (
           <p className="text-xs text-muted-foreground">
-            {warmupStatus === "warming"
-              ? "Warming up liveness models (first run may take up to a minute)."
-              : warmupStatus === "failed"
-                ? "Liveness models are still loading. Please wait a bit and retry."
-                : "We&apos;ll warm up liveness models when you start."}
+            Loading liveness models (first run may take up to a minute).
+          </p>
+        )}
+        {humanError && (
+          <p className="text-xs text-muted-foreground">
+            Liveness models failed to load. Please retry.
           </p>
         )}
       </div>
@@ -718,6 +852,51 @@ export function StepSelfie() {
                 isStreaming ? "" : "hidden"
               }`}
             />
+            {livenessDebugEnabled && (
+              <canvas
+                ref={debugCanvasRef}
+                className={`pointer-events-none absolute inset-0 h-full w-full object-cover transform -scale-x-100 ${
+                  isStreaming ? "" : "hidden"
+                }`}
+              />
+            )}
+            {livenessDebugEnabled && debugFrame && (
+              <div className="absolute left-2 top-2 z-10 max-w-[95%] rounded-md bg-black/70 px-2 py-1 text-[10px] leading-snug text-white">
+                <div className="font-mono">
+                  <div>state: {debugFrame.state}</div>
+                  <div>
+                    face: {debugFrame.faceDetected ? "yes" : "no"} | video:{" "}
+                    {debugFrame.videoWidth}x{debugFrame.videoHeight}
+                  </div>
+                  <div>
+                    happy: {(debugFrame.happy * 100).toFixed(0)}% | base:{" "}
+                    {(debugFrame.baselineHappy * 100).toFixed(0)}% | Δ:{" "}
+                    {(debugFrame.deltaHappy * 100).toFixed(0)}%
+                  </div>
+                  <div>
+                    yaw: {debugFrame.yawDeg.toFixed(1)}° ({debugFrame.dir}) |
+                    centered: {debugFrame.headTurnCentered ? "yes" : "no"}
+                  </div>
+                  <div>
+                    stable: face {debugFrame.consecutiveDetections}/
+                    {STABILITY_FRAMES} | challenge{" "}
+                    {debugFrame.consecutiveChallengeDetections}/
+                    {STABILITY_FRAMES}
+                  </div>
+                  <div className="opacity-80">
+                    req: smile (≥{Math.round(SMILE_SCORE_THRESHOLD * 100)}%+Δ≥
+                    {Math.round(SMILE_DELTA_THRESHOLD * 100)}%) OR ≥
+                    {Math.round(SMILE_HIGH_THRESHOLD * 100)}%; turn≥
+                    {HEAD_TURN_YAW_THRESHOLD}° OR Δ≥{HEAD_TURN_DELTA_THRESHOLD}°
+                  </div>
+                  {debugFrame.gesture.length > 0 && (
+                    <div className="opacity-80">
+                      gesture: {debugFrame.gesture.join(", ")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {!isStreaming && (
               <div className="absolute inset-0 flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
                 {permissionStatus === "denied" ? (
@@ -871,9 +1050,6 @@ export function StepSelfie() {
                 {currentChallenge.challengeType === "smile" && (
                   <Smile className="h-8 w-8" aria-hidden="true" />
                 )}
-                {currentChallenge.challengeType === "blink" && (
-                  <Eye className="h-8 w-8" aria-hidden="true" />
-                )}
                 {currentChallenge.challengeType === "turn_left" && (
                   <ArrowLeft className="h-8 w-8" aria-hidden="true" />
                 )}
@@ -889,6 +1065,13 @@ export function StepSelfie() {
                     className="mt-1 h-2 w-40 bg-yellow-200"
                     aria-label={`Challenge progress: ${challengeProgress.toFixed(0)}%`}
                   />
+                  {statusMessage &&
+                    (currentChallenge.challengeType === "turn_left" ||
+                      currentChallenge.challengeType === "turn_right") && (
+                      <p className="mt-1 text-xs text-yellow-900">
+                        {statusMessage}
+                      </p>
+                    )}
                   <p className="mt-1 text-xs" aria-hidden="true">
                     {currentChallenge.index + 1} of {currentChallenge.total}
                   </p>
@@ -927,6 +1110,33 @@ export function StepSelfie() {
               <div className="flex items-center gap-2 text-white">
                 <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                 <p className="font-medium">Great! Next challenge...</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Preparing for next challenge overlay */}
+        {challengeState === "preparing_challenge" && currentChallenge && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-lg bg-background/95 px-6 py-4 shadow-lg text-center"
+            >
+              <div className="flex flex-col items-center gap-3">
+                {currentChallenge.challengeType === "smile" && (
+                  <Smile className="h-12 w-12 text-primary" aria-hidden="true" />
+                )}
+                {currentChallenge.challengeType === "turn_left" && (
+                  <ArrowLeft className="h-12 w-12 text-primary" aria-hidden="true" />
+                )}
+                {currentChallenge.challengeType === "turn_right" && (
+                  <ArrowRight className="h-12 w-12 text-primary" aria-hidden="true" />
+                )}
+                <p className="text-lg font-bold">Get Ready!</p>
+                <p className="text-sm text-muted-foreground">
+                  Next: {currentChallenge.instruction}
+                </p>
               </div>
             </div>
           </div>
@@ -985,17 +1195,12 @@ export function StepSelfie() {
               type="button"
               onClick={beginCamera}
               className="flex-1"
-              disabled={
-                warmupStatus === "warming" ||
-                challengeState === "loading_session"
-              }
+              disabled={challengeState === "loading_session"}
             >
               <Camera className="mr-2 h-4 w-4" />
               {challengeState === "loading_session"
                 ? "Loading..."
-                : warmupStatus === "warming"
-                  ? "Warming up..."
-                  : "Start Camera"}
+                : "Start Camera"}
             </Button>
           )}
 
@@ -1020,6 +1225,7 @@ export function StepSelfie() {
             <div className="flex-1 text-center text-sm text-muted-foreground">
               {challengeState === "detecting" && "Looking for your face..."}
               {challengeState === "countdown" && "Get ready..."}
+              {challengeState === "preparing_challenge" && "Get ready..."}
               {challengeState === "waiting_challenge" &&
                 currentChallenge?.instruction}
               {challengeState === "capturing" && "Capturing..."}

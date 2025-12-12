@@ -9,12 +9,18 @@
  * - International document support
  * - Field extraction (name, document number, DOB, etc.)
  *
- * Note: This endpoint allows unauthenticated requests for the onboarding flow.
- * Rate limiting is applied to prevent abuse. No data is stored - only processed and returned.
+ * Security:
+ * - Requires valid onboarding session (step 1 must be complete)
+ * - Rate limiting is applied to prevent abuse
+ * - No data is stored - only processed and returned
  */
 
 import { type NextRequest, NextResponse } from "next/server";
 import { type DocumentResult, processDocument } from "@/lib/document-ai";
+import {
+  getSessionFromCookie,
+  validateStepAccess,
+} from "@/lib/onboarding-session";
 
 interface ProcessDocumentRequest {
   image: string;
@@ -56,6 +62,16 @@ export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<DocumentResult | { error: string }>> {
   try {
+    // Validate onboarding session - must have completed step 1 (email)
+    const session = await getSessionFromCookie();
+    const validation = validateStepAccess(session, "process-document");
+    if (!validation.valid) {
+      return NextResponse.json(
+        { error: validation.error || "Session required" },
+        { status: 403 },
+      );
+    }
+
     // Get client IP for rate limiting
     const forwarded = request.headers.get("x-forwarded-for");
     const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";

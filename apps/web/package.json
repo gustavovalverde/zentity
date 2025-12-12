@@ -4,6 +4,7 @@
   "private": true,
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@tensorflow/tfjs-node",
       "better-sqlite3"
     ]
   },
@@ -30,6 +31,9 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-form": "^1.27.1",
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "@vladmandic/human": "^3.3.6",
+    "@vladmandic/human-models": "^3.0.4",
     "ai": "^5.0.108",
     "better-auth": "^1.4.5",
     "better-sqlite3": "^12.5.0",
