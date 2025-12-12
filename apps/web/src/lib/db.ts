@@ -21,6 +21,17 @@ if (dbDir !== "." && !fs.existsSync(dbDir)) {
 
 const db = new Database(dbPath);
 
+const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
+  { name: "doc_validity_proof", type: "TEXT" },
+  { name: "nationality_commitment", type: "TEXT" },
+  { name: "age_proofs_json", type: "TEXT" },
+  { name: "gender_ciphertext", type: "TEXT" },
+  { name: "dob_full_ciphertext", type: "TEXT" },
+  { name: "nationality_membership_proof", type: "TEXT" },
+  { name: "liveness_score_ciphertext", type: "TEXT" },
+  { name: "first_name_encrypted", type: "TEXT" },
+];
+
 /**
  * Initialize the identity_proofs table.
  *
@@ -99,18 +110,7 @@ export function initializeIdentityProofsTable(): void {
 
   // Migration: Add missing columns to existing tables
   // SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN, so we use try/catch
-  const columnsToAdd = [
-    { name: "doc_validity_proof", type: "TEXT" },
-    { name: "nationality_commitment", type: "TEXT" },
-    { name: "age_proofs_json", type: "TEXT" },
-    { name: "gender_ciphertext", type: "TEXT" },
-    { name: "dob_full_ciphertext", type: "TEXT" },
-    { name: "nationality_membership_proof", type: "TEXT" },
-    { name: "liveness_score_ciphertext", type: "TEXT" },
-    { name: "first_name_encrypted", type: "TEXT" },
-  ];
-
-  for (const col of columnsToAdd) {
+  for (const col of identityProofsColumnsToAdd) {
     try {
       db.exec(`ALTER TABLE identity_proofs ADD COLUMN ${col.name} ${col.type}`);
     } catch {
