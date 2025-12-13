@@ -19,7 +19,7 @@ import {
   TREE_DEPTH,
 } from "./nationality-data";
 
-// Re-export for backwards compatibility
+// Re-export convenience helpers
 export {
   getCountriesInGroup,
   getNationalityCode,

@@ -116,16 +116,39 @@ src/
 
 The web application implements privacy-preserving patterns:
 
-1. **Hash Commitments** — Names, document numbers, nationality stored as SHA256 hashes
+1. **Salted Commitments** — Names, document numbers, nationality stored as salted SHA256 hashes
 2. **FHE Encryption** — DOB, gender, and liveness scores encrypted with TFHE-rs
 3. **ZK Proofs** — Age, document validity, face match, and nationality proofs via Noir/UltraHonk (client-side)
 4. **Transient Processing** — Images processed and discarded immediately
 
 No raw PII is stored in the database.
 
+## Commitment & Proof Model
+
+Zentity stores two kinds of privacy-preserving artifacts:
+
+- **Commitments (hashes)** in `identity_proofs`: salted SHA256 commitments to specific attributes (e.g. document number, full name, nationality). The per-user salt is stored encrypted so deleting it makes these commitments unlinkable.
+- **Proof material** in `age_proofs`: a server-verified Noir/UltraHonk proof + its public signals for `age ≥ 18`, plus optional FHE ciphertexts used for homomorphic computations.
+
+Important: in this PoC, the ZK proof statements are about values extracted in the browser (e.g. `birthYear` from OCR). They are not cryptographically bound to a signed passport/ID document.
+
+### Attribute Commitments vs. Single “Identity Commitment”
+
+There are two common ways to structure a zk-identity scheme:
+
+- **Commit individual attributes + prove claims directly** (what this repo does): store separate salted commitments (and separate proofs) per claim.
+- **Commit to the full document once + prove all future claims about the commitment**: prove that a single commitment contains the fields from a valid, signed document, then all future statements (age, nationality group, etc.) are proven about that committed data.
+
+Trade-offs:
+
+- The current approach is simpler to implement and iterate on, but it does less to bind claims to document integrity and can require re-parsing/re-proving for new claim types.
+- A single identity commitment enables stronger composability (one parse, many proofs) and can cryptographically bind all claims to signed data, but it typically requires larger circuits and more involved witness construction.
+
 ## Database Schema
 
-The `identity_proofs` table stores only cryptographic data:
+The database stores only cryptographic artifacts and non-PII metadata:
+
+### `identity_proofs` (commitments, flags, encrypted display data)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -139,9 +162,6 @@ The `identity_proofs` table stores only cryptographic data:
 | `dob_full_ciphertext` | TEXT | FHE encrypted full DOB (YYYYMMDD) |
 | `gender_ciphertext` | TEXT | FHE encrypted gender (ISO 5218) |
 | `liveness_score_ciphertext` | TEXT | FHE encrypted anti-spoof score |
-| `age_proof` | TEXT | ZK age proof payload (JSON) |
-| `age_proof_verified` | INTEGER | Whether `age_proof` is verified |
-| `age_proofs_json` | TEXT | JSON map of age proofs by threshold (e.g. `{\"18\": {...}}`) |
 | `doc_validity_proof` | TEXT | ZK proof that document is not expired |
 | `nationality_membership_proof` | TEXT | ZK proof of nationality group membership |
 | `document_type` | TEXT | Document type label |
@@ -156,9 +176,38 @@ The `identity_proofs` table stores only cryptographic data:
 | `created_at` | TEXT | Created timestamp |
 | `updated_at` | TEXT | Updated timestamp |
 
+### `age_proofs` (persisted proof payloads)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT | Primary key |
+| `user_id` | TEXT | Foreign key to users |
+| `proof` | TEXT | Base64 UltraHonk proof (JSON string) |
+| `public_signals` | TEXT | Public inputs (JSON array of strings) |
+| `is_over_18` | INTEGER | Server-derived result from verified proof |
+| `generation_time_ms` | INTEGER | Client-side proof generation time |
+| `dob_ciphertext` | TEXT | Optional FHE ciphertext stored alongside proof |
+| `fhe_client_key_id` | TEXT | Optional FHE key reference |
+| `fhe_encryption_time_ms` | INTEGER | Optional FHE encryption time |
+| `circuit_type` | TEXT | Circuit ID used for verification |
+| `noir_version` | TEXT | Noir.js version |
+| `circuit_hash` | TEXT | Circuit hash |
+| `bb_version` | TEXT | Barretenberg version |
+| `created_at` | TEXT | Created timestamp |
+
+### `zk_challenges` (one-time nonces for replay resistance)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `nonce` | TEXT | 128-bit nonce (hex, no `0x`) |
+| `circuit_type` | TEXT | Circuit ID bound to this nonce |
+| `user_id` | TEXT | Optional user binding |
+| `created_at` | INTEGER | Epoch milliseconds |
+| `expires_at` | INTEGER | Epoch milliseconds |
+
 ### Schema Updates
 
-On startup, the app ensures required tables and columns exist (see `src/lib/db.ts` and `src/app/api/user/proof/route.ts`).
+On startup, the app ensures required tables and columns exist (see `src/lib/db.ts`, `src/lib/challenge-store.ts`, and `src/app/api/user/proof/route.ts`).
 
 ## Docker
 

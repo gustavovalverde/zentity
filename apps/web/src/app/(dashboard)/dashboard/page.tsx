@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     document: identityProof?.isDocumentVerified ?? false,
     liveness: identityProof?.isLivenessPassed ?? false,
     faceMatch: identityProof?.isFaceMatched ?? false,
-    ageProof: ageProof?.isOver18 ?? identityProof?.ageProofVerified ?? false,
+    ageProof: Boolean(ageProof?.isOver18),
     fheEncryption:
       !!ageProof?.hasFheEncryption || !!identityProof?.dobCiphertext,
   };
@@ -47,10 +47,6 @@ export default async function DashboardPage() {
     nameCommitment: identityProof?.nameCommitment,
     dobCiphertext: ageProof?.dobCiphertext ?? identityProof?.dobCiphertext,
     fheClientKeyId: identityProof?.fheClientKeyId,
-    ageProof: identityProof?.ageProof,
-    ageProofVerified: identityProof?.ageProofVerified,
-    // Full age proofs with publicSignals (for ZK verification)
-    ageProofsJson: identityProof?.ageProofsJson,
     // Document metadata (non-PII, safe to display)
     documentType: identityProof?.documentType,
     countryVerified: identityProof?.countryVerified,
@@ -119,11 +115,11 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-lg font-semibold text-green-600">
-              {hasProof ? "Zero PII" : "N/A"}
+              {hasProof ? "No raw PII" : "N/A"}
             </p>
             <p className="text-xs text-muted-foreground">
               {hasProof
-                ? "Only cryptographic proofs stored"
+                ? "Only proofs, hashes, and encrypted values stored"
                 : "Complete verification for privacy"}
             </p>
           </CardContent>

@@ -8,6 +8,9 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import Database from "better-sqlite3";
 import type { CircuitType } from "./noir-verifier";
 
 export interface Challenge {
@@ -18,31 +21,47 @@ export interface Challenge {
   expiresAt: number;
 }
 
-// 5 minute TTL for challenges
-const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+// 15 minute TTL for challenges (covers slower client-side proving on low-end devices)
+const CHALLENGE_TTL_MS = 15 * 60 * 1000;
 
-// Use globalThis to persist challenges across hot reloads in development
-const globalForChallenges = globalThis as unknown as {
-  challengeStore: Map<string, Challenge> | undefined;
-};
+// Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
+const dbPath = process.env.DATABASE_PATH || "./dev.db";
 
-const challenges =
-  globalForChallenges.challengeStore ?? new Map<string, Challenge>();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForChallenges.challengeStore = challenges;
+// Ensure the database directory exists
+const dbDir = path.dirname(dbPath);
+if (dbDir !== "." && !fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
 }
+
+const db = new Database(dbPath);
+
+// Enable WAL mode for better concurrent read/write performance
+db.pragma("journal_mode = WAL");
+db.pragma("synchronous = normal");
+
+function initializeChallengeTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS zk_challenges (
+      nonce TEXT PRIMARY KEY,
+      circuit_type TEXT NOT NULL,
+      user_id TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_zk_challenges_expires_at
+      ON zk_challenges (expires_at);
+  `);
+}
+
+initializeChallengeTable();
 
 /**
  * Remove expired challenges
  */
 function cleanupExpiredChallenges(): void {
   const now = Date.now();
-  for (const [nonce, challenge] of challenges.entries()) {
-    if (challenge.expiresAt < now) {
-      challenges.delete(nonce);
-    }
-  }
+  db.prepare("DELETE FROM zk_challenges WHERE expires_at < ?").run(now);
 }
 
 /**
@@ -66,18 +85,25 @@ export function createChallenge(
   cleanupExpiredChallenges();
 
   const now = Date.now();
-  const nonce = generateNonce();
+  const expiresAt = now + CHALLENGE_TTL_MS;
 
-  const challenge: Challenge = {
-    nonce,
-    circuitType,
-    userId,
-    createdAt: now,
-    expiresAt: now + CHALLENGE_TTL_MS,
-  };
+  const insert = db.prepare(`
+    INSERT INTO zk_challenges (nonce, circuit_type, user_id, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
 
-  challenges.set(nonce, challenge);
-  return challenge;
+  // Extremely unlikely collision, but handle deterministically.
+  for (let i = 0; i < 3; i++) {
+    const nonce = generateNonce();
+    try {
+      insert.run(nonce, circuitType, userId ?? null, now, expiresAt);
+      return { nonce, circuitType, userId, createdAt: now, expiresAt };
+    } catch {
+      // Retry on collision
+    }
+  }
+
+  throw new Error("Failed to create challenge nonce");
 }
 
 /**
@@ -97,31 +123,49 @@ export function consumeChallenge(
 ): Challenge | null {
   cleanupExpiredChallenges();
 
-  const challenge = challenges.get(nonce);
+  const tx = db.transaction((): Challenge | null => {
+    const row = db
+      .prepare(
+        `
+          SELECT nonce, circuit_type, user_id, created_at, expires_at
+          FROM zk_challenges
+          WHERE nonce = ?
+          LIMIT 1
+        `,
+      )
+      .get(nonce) as
+      | {
+          nonce: string;
+          circuit_type: string;
+          user_id: string | null;
+          created_at: number;
+          expires_at: number;
+        }
+      | undefined;
 
-  if (!challenge) {
-    return null; // Unknown or already consumed
-  }
+    if (!row) return null;
+    if (row.circuit_type !== circuitType) return null;
+    if (row.user_id && row.user_id !== userId) return null;
+    if (row.expires_at < Date.now()) {
+      db.prepare("DELETE FROM zk_challenges WHERE nonce = ?").run(nonce);
+      return null;
+    }
 
-  // Validate circuit type matches
-  if (challenge.circuitType !== circuitType) {
-    return null;
-  }
+    const result = db
+      .prepare("DELETE FROM zk_challenges WHERE nonce = ?")
+      .run(nonce);
+    if (result.changes !== 1) return null;
 
-  // Validate user binding if specified in challenge
-  if (challenge.userId && challenge.userId !== userId) {
-    return null;
-  }
+    return {
+      nonce: row.nonce,
+      circuitType: row.circuit_type as CircuitType,
+      userId: row.user_id ?? undefined,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+    };
+  });
 
-  // Check expiration
-  if (challenge.expiresAt < Date.now()) {
-    challenges.delete(nonce);
-    return null;
-  }
-
-  // Consume the challenge (one-time use)
-  challenges.delete(nonce);
-  return challenge;
+  return tx();
 }
 
 /**
@@ -129,7 +173,38 @@ export function consumeChallenge(
  */
 export function getChallenge(nonce: string): Challenge | null {
   cleanupExpiredChallenges();
-  return challenges.get(nonce) ?? null;
+  const row = db
+    .prepare(
+      `
+        SELECT nonce, circuit_type, user_id, created_at, expires_at
+        FROM zk_challenges
+        WHERE nonce = ?
+        LIMIT 1
+      `,
+    )
+    .get(nonce) as
+    | {
+        nonce: string;
+        circuit_type: string;
+        user_id: string | null;
+        created_at: number;
+        expires_at: number;
+      }
+    | undefined;
+
+  if (!row) return null;
+  if (row.expires_at < Date.now()) {
+    db.prepare("DELETE FROM zk_challenges WHERE nonce = ?").run(nonce);
+    return null;
+  }
+
+  return {
+    nonce: row.nonce,
+    circuitType: row.circuit_type as CircuitType,
+    userId: row.user_id ?? undefined,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  };
 }
 
 /**
@@ -137,5 +212,8 @@ export function getChallenge(nonce: string): Challenge | null {
  */
 export function getActiveChallengeCount(): number {
   cleanupExpiredChallenges();
-  return challenges.size;
+  const row = db
+    .prepare("SELECT COUNT(1) as count FROM zk_challenges")
+    .get() as { count: number };
+  return row.count ?? 0;
 }

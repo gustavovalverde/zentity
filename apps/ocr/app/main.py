@@ -21,8 +21,11 @@ import time
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette import status
 
 from .ocr import extract_text_from_base64
 from .parser import (
@@ -36,7 +39,6 @@ from .document_detector import (
     detect_document_type,
 )
 from .validators import (
-    validate_national_id,
     validate_national_id_detailed,
     validate_passport_number,
     validate_expiration_date,
@@ -63,6 +65,17 @@ app = FastAPI(
     description="Document OCR and field extraction for identity documents",
     version="1.0.0",
 )
+
+# Privacy: Avoid echoing request bodies (e.g., base64 images) back in 422 responses.
+# FastAPI's default RequestValidationError response may include the invalid input.
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    _request, _exc: RequestValidationError
+):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"error": "Invalid request"},
+    )
 
 # CORS middleware - restrict to known frontend origins
 app.add_middleware(

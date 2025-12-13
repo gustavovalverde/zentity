@@ -8,7 +8,7 @@ import {
   Shield,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,23 +20,61 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-interface AgeProofDemoProps {
-  ageProof?: string;
-  ageProofVerified?: boolean;
-  ageProofsJson?: string; // Full proofs with publicSignals
-}
-
-export function AgeProofDemo({
-  ageProof,
-  ageProofVerified,
-  ageProofsJson,
-}: AgeProofDemoProps) {
+export function AgeProofDemo() {
+  const [storedProofSummary, setStoredProofSummary] = useState<{
+    proofId: string;
+    isOver18: boolean;
+  } | null>(null);
+  const [loadingStoredProof, setLoadingStoredProof] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [result, setResult] = useState<{
     isValid: boolean;
     verificationTimeMs: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStoredProof() {
+      try {
+        const res = await fetch("/api/user/proof");
+        if (!res.ok) {
+          if (res.status === 404) {
+            if (!cancelled) setStoredProofSummary(null);
+            return;
+          }
+          return;
+        }
+        const data = (await res.json()) as {
+          proofId?: unknown;
+          isOver18?: unknown;
+        };
+        if (!cancelled) {
+          if (
+            typeof data.proofId === "string" &&
+            typeof data.isOver18 === "boolean"
+          ) {
+            setStoredProofSummary({
+              proofId: data.proofId,
+              isOver18: data.isOver18,
+            });
+          } else {
+            setStoredProofSummary(null);
+          }
+        }
+      } catch {
+        // Ignore load errors; the verify button will surface errors when explicitly invoked.
+      } finally {
+        if (!cancelled) setLoadingStoredProof(false);
+      }
+    }
+
+    void loadStoredProof();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleVerifyProof = async () => {
     setVerifying(true);
@@ -49,7 +87,7 @@ export function AgeProofDemo({
       let proof: string;
       let publicInputs: string[];
 
-      // Prefer the stored proof from /api/user/proof (current format).
+      // Use the stored proof from /api/user/proof (current format).
       const storedRes = await fetch("/api/user/proof?full=true");
       if (storedRes.ok) {
         const stored = (await storedRes.json()) as {
@@ -64,23 +102,8 @@ export function AgeProofDemo({
         }
         proof = stored.proof;
         publicInputs = stored.publicSignals.map(String);
-      } else if (ageProofsJson) {
-        const proofs = JSON.parse(ageProofsJson) as Record<string, unknown>;
-        const age18 = proofs["18"] as
-          | { proof?: unknown; publicSignals?: unknown }
-          | undefined;
-        if (typeof age18?.proof !== "string") {
-          throw new Error("No stored age 18 proof found");
-        }
-        if (!Array.isArray(age18.publicSignals)) {
-          throw new Error("No stored age 18 public signals found");
-        }
-        proof = age18.proof;
-        publicInputs = age18.publicSignals.map(String);
-      } else if (ageProof) {
-        throw new Error("Stored proof is missing public signals");
       } else {
-        throw new Error("No proof available");
+        throw new Error("No stored proof available");
       }
 
       const response = await fetch("/api/crypto/verify-proof", {
@@ -111,10 +134,8 @@ export function AgeProofDemo({
     }
   };
 
-  const truncateProof = (proof: string) => {
-    if (proof.length <= 50) return proof;
-    return `${proof.substring(0, 25)}...${proof.substring(proof.length - 25)}`;
-  };
+  const hasAnyProof = Boolean(storedProofSummary);
+  const displayVerified = storedProofSummary?.isOver18 ?? false;
 
   return (
     <Card>
@@ -128,12 +149,12 @@ export function AgeProofDemo({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!ageProof && !ageProofsJson ? (
+        {!hasAnyProof && !loadingStoredProof ? (
           <Alert>
             <Shield className="h-4 w-4" />
             <AlertDescription>
-              No ZK proof available. Complete identity verification to generate
-              an age proof.
+              No ZK proof stored yet. Complete verification to generate an age
+              proof.
             </AlertDescription>
           </Alert>
         ) : (
@@ -141,13 +162,15 @@ export function AgeProofDemo({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Stored Proof</span>
-                <Badge variant={ageProofVerified ? "default" : "secondary"}>
-                  {ageProofVerified ? "Verified 18+" : "Not Verified"}
+                <Badge variant={displayVerified ? "default" : "secondary"}>
+                  {displayVerified ? "Verified 18+" : "Not Verified"}
                 </Badge>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
                 <code className="break-all">
-                  {truncateProof(ageProof ?? ageProofsJson ?? "")}
+                  {storedProofSummary
+                    ? `Proof ID: ${storedProofSummary.proofId}`
+                    : "Loading..."}
                 </code>
               </div>
             </div>
@@ -166,7 +189,7 @@ export function AgeProofDemo({
               ) : (
                 <>
                   <Shield className="mr-2 h-4 w-4" />
-                  Verify ZK Proof On-Chain
+                  Verify ZK Proof
                 </>
               )}
             </Button>

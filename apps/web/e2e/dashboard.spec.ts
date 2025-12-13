@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { createAuthenticatedUser } from "./fixtures/auth.fixture";
 
 test.describe("Dashboard - Basic", () => {
   test("shows dashboard page for authenticated users", async ({ page }) => {
     await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/(dashboard|sign-in)/);
+    await expect(page).toHaveURL(/\/dashboard/);
   });
 
   test("landing page loads correctly", async ({ page }) => {
@@ -14,17 +13,12 @@ test.describe("Dashboard - Basic", () => {
 });
 
 test.describe("Dashboard - Authenticated User", () => {
-  test.beforeEach(async ({ page, request }) => {
-    // Create and authenticate user via API
-    await createAuthenticatedUser(page, request);
-    await page.goto("/dashboard");
-    // Wait for page to load
-    await page.waitForLoadState("networkidle");
-  });
-
   test("should display dashboard content for authenticated user", async ({
     page,
   }) => {
+    await page.goto("/dashboard");
+    await page.waitForLoadState("networkidle");
+
     // Check we're on the dashboard (not redirected to sign-in)
     await expect(page).toHaveURL(/dashboard/);
 
@@ -38,6 +32,9 @@ test.describe("Dashboard - Authenticated User", () => {
   test("should show verification status or welcome content", async ({
     page,
   }) => {
+    await page.goto("/dashboard");
+    await page.waitForLoadState("networkidle");
+
     // Look for any verification-related text or welcome message
     const pageContent = await page.textContent("body");
     const hasExpectedContent =
