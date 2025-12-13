@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Smile,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -37,7 +38,7 @@ const HEAD_TURN_YAW_THRESHOLD = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
 const HEAD_TURN_DELTA_THRESHOLD = TURN_YAW_SIGNIFICANT_DELTA_DEG;
 
 export function StepSelfie() {
-  const { state, updateData, nextStep } = useWizard();
+  const { state, updateData, nextStep, skipLiveness } = useWizard();
   const {
     videoRef,
     isStreaming,
@@ -99,6 +100,45 @@ export function StepSelfie() {
     nextStep();
   };
 
+  const handleSkipChallenges = async () => {
+    try {
+      // Capture a single selfie frame (no challenge flow) and continue.
+      if (!isStreaming) {
+        await startCamera();
+      }
+
+      const deadline = Date.now() + 3000;
+      let frame: string | null = null;
+      while (!frame && Date.now() < deadline) {
+        frame = captureFrame();
+        if (!frame) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      }
+
+      if (!frame) {
+        toast.error("Could not capture selfie", {
+          description:
+            "Please try again. If the issue persists, ensure camera access is allowed.",
+        });
+        return;
+      }
+
+      updateData({
+        selfieImage: frame,
+        bestSelfieFrame: frame,
+        blinkCount: null,
+      });
+      stopCamera();
+      await skipLiveness();
+    } catch {
+      toast.error("Camera unavailable", {
+        description:
+          "Please allow camera access to continue, or try again in a different browser.",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -106,6 +146,10 @@ export function StepSelfie() {
         <p className="text-sm text-muted-foreground">
           We&apos;ll automatically verify you&apos;re a real person. Just start
           the camera and follow the prompts.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          We&apos;ll ask for camera access next. Photos are used only for
+          verification and are not stored.
         </p>
         {isStreaming && !humanReady && !humanError && (
           <p className="text-xs text-muted-foreground">
@@ -562,6 +606,8 @@ export function StepSelfie() {
       <WizardNavigation
         onNext={handleSubmit}
         showSkip
+        skipLabel="Skip challenges"
+        onSkip={handleSkipChallenges}
         disableNext={
           challengeState === "validating" ||
           challengeState === "failed" ||

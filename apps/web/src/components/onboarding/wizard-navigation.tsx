@@ -5,8 +5,9 @@ import { useWizard } from "./wizard-provider";
 
 interface WizardNavigationProps {
   onNext?: () => void | Promise<void>;
-  onSkip?: () => void;
+  onSkip?: () => void | Promise<void>;
   nextLabel?: string;
+  skipLabel?: string;
   showSkip?: boolean;
   disableNext?: boolean;
 }
@@ -15,6 +16,7 @@ export function WizardNavigation({
   onNext,
   onSkip,
   nextLabel = "Continue",
+  skipLabel = "Skip for now",
   showSkip = false,
   disableNext = false,
 }: WizardNavigationProps) {
@@ -28,9 +30,9 @@ export function WizardNavigation({
     }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (onSkip) {
-      onSkip();
+      await onSkip();
     } else {
       nextStep();
     }
@@ -71,7 +73,7 @@ export function WizardNavigation({
           disabled={state.isSubmitting}
           className="text-muted-foreground"
         >
-          Skip for now
+          {skipLabel}
         </Button>
       )}
     </div>

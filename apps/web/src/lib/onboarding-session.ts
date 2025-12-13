@@ -41,7 +41,7 @@ const getSecret = async (): Promise<Uint8Array> => {
 };
 
 const WIZARD_COOKIE_NAME = "zentity-wizard";
-const SESSION_TTL_SECONDS = 5 * 60; // 5 minutes
+const SESSION_TTL_SECONDS = 30 * 60; // 30 minutes
 
 /**
  * PII data that gets encrypted before storage
@@ -414,7 +414,8 @@ export async function resetToStep(
  */
 export async function skipLiveness(email: string): Promise<void> {
   await updateWizardProgress(email, {
-    step: 3,
+    // Skip step 3 (liveness challenges) and proceed to the final review step.
+    step: 4,
     livenessPassed: false, // Not passed, but step advances
   });
 }

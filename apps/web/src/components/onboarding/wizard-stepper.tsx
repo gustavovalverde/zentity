@@ -1,17 +1,43 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { motion } from "@/lib/motion";
+import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
+import { motion, reducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useWizard } from "./wizard-provider";
 
 const STEP_TITLES = ["Email", "Upload ID", "Liveness", "Complete"];
 
 export function WizardStepper() {
-  const { state, totalSteps, progress, goToStepWithValidation } = useWizard();
+  const {
+    state,
+    totalSteps,
+    progress,
+    goToStepWithValidation,
+    pendingNavigation,
+    confirmPendingNavigation,
+    cancelPendingNavigation,
+  } = useWizard();
   const [isNavigating, setIsNavigating] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const m = prefersReducedMotion ? reducedMotion : motion;
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focus the step header on step transitions for keyboard/screen reader users.
+  useEffect(() => {
+    headerRef.current?.focus();
+  }, [state.currentStep]);
 
   const handleStepClick = async (stepNumber: number) => {
     if (isNavigating) return;
@@ -26,18 +52,24 @@ export function WizardStepper() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between text-sm">
-        <span className={cn("font-medium", motion.fadeIn)}>
+      <div
+        ref={headerRef}
+        tabIndex={-1}
+        className="flex items-center justify-between text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md px-1"
+        role="group"
+        aria-label={`Onboarding progress: step ${state.currentStep} of ${totalSteps}`}
+      >
+        <span className={cn("font-medium", m.fadeIn)}>
           Step {state.currentStep} of {totalSteps}
         </span>
         <span
           key={state.currentStep}
-          className={cn("text-muted-foreground", motion.slideUp)}
+          className={cn("text-muted-foreground", m.slideUp)}
         >
           {STEP_TITLES[state.currentStep - 1]}
         </span>
       </div>
-      <Progress value={progress} className={cn("h-2", motion.progress)} />
+      <Progress value={progress} className={cn("h-2", m.progress)} />
 
       {/* Visual step indicators */}
       <div className="flex justify-between items-center">
@@ -105,6 +137,47 @@ export function WizardStepper() {
           );
         })}
       </div>
+
+      <Dialog
+        open={Boolean(pendingNavigation)}
+        onOpenChange={(open) => {
+          if (!open) cancelPendingNavigation();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Go back to an earlier step?</DialogTitle>
+            <DialogDescription>
+              {pendingNavigation?.warning ||
+                "Going back will reset progress for later steps."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={cancelPendingNavigation}
+              disabled={isNavigating}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                if (isNavigating) return;
+                setIsNavigating(true);
+                try {
+                  await confirmPendingNavigation();
+                } finally {
+                  setIsNavigating(false);
+                }
+              }}
+            >
+              Go back
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -133,6 +133,12 @@ type WizardContextType = {
   goToStep: (step: number) => void;
   /** Navigate to step with server-side validation and confirmation for backward navigation */
   goToStepWithValidation: (step: number) => Promise<boolean>;
+  /** Pending back-navigation confirmation request (set when going to a previous completed step). */
+  pendingNavigation: { targetStep: number; warning: string } | null;
+  /** Confirm and execute a pending back-navigation (resets server progress). */
+  confirmPendingNavigation: () => Promise<boolean>;
+  /** Cancel a pending back-navigation confirmation. */
+  cancelPendingNavigation: () => void;
   updateData: (data: Partial<WizardData>) => void;
   setSubmitting: (isSubmitting: boolean) => void;
   reset: () => void;
@@ -168,6 +174,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const isInitializedRef = useRef(false);
   const lastSavedStepRef = useRef<number>(1);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    targetStep: number;
+    warning: string;
+  } | null>(null);
 
   // Load session state from server on mount
   useEffect(() => {
@@ -394,44 +404,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
           return false;
         }
 
-        // If going backward, show warning and confirm
+        // If going backward, request confirmation via UI (Dialog).
         if (data.requiresConfirmation && data.warning) {
-          const confirmed = window.confirm(
-            `${data.warning}\n\nAre you sure you want to go back?`,
-          );
-
-          if (!confirmed) {
-            return false;
-          }
-
-          // Reset progress on server
-          const resetResponse = await fetch("/api/onboarding/reset-to-step", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ step: targetStep }),
-          });
-
-          if (!resetResponse.ok) {
-            const resetData = await resetResponse.json();
-            toast.error(resetData.error || "Failed to reset progress");
-            return false;
-          }
-
-          // Reset local server state for steps after target
-          const resetServerState: Partial<WizardState["serverState"]> = {};
-          if (targetStep <= 1) {
-            resetServerState.documentProcessed = false;
-            resetServerState.livenessPassed = false;
-            resetServerState.faceMatchPassed = false;
-          } else if (targetStep <= 2) {
-            resetServerState.livenessPassed = false;
-            resetServerState.faceMatchPassed = false;
-          }
-
-          dispatch({
-            type: "UPDATE_SERVER_STATE",
-            serverState: resetServerState,
-          });
+          setPendingNavigation({ targetStep, warning: data.warning });
+          return false;
         }
 
         // Navigate to the step
@@ -447,6 +423,53 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const cancelPendingNavigation = useCallback(() => {
+    setPendingNavigation(null);
+  }, []);
+
+  const confirmPendingNavigation = useCallback(async (): Promise<boolean> => {
+    if (!pendingNavigation) return false;
+
+    const targetStep = pendingNavigation.targetStep;
+    try {
+      const resetResponse = await fetch("/api/onboarding/reset-to-step", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: targetStep }),
+      });
+
+      if (!resetResponse.ok) {
+        const resetData = await resetResponse.json().catch(() => null);
+        toast.error(resetData?.error || "Failed to reset progress");
+        return false;
+      }
+
+      // Reset local server state for steps after target
+      const resetServerState: Partial<WizardState["serverState"]> = {};
+      if (targetStep <= 1) {
+        resetServerState.documentProcessed = false;
+        resetServerState.livenessPassed = false;
+        resetServerState.faceMatchPassed = false;
+      } else if (targetStep <= 2) {
+        resetServerState.livenessPassed = false;
+        resetServerState.faceMatchPassed = false;
+      }
+
+      dispatch({
+        type: "UPDATE_SERVER_STATE",
+        serverState: resetServerState,
+      });
+
+      dispatch({ type: "GO_TO_STEP", step: targetStep });
+      lastSavedStepRef.current = targetStep;
+      setPendingNavigation(null);
+      return true;
+    } catch {
+      toast.error("Failed to reset progress");
+      return false;
+    }
+  }, [pendingNavigation]);
+
   const value: WizardContextType = {
     state,
     totalSteps: TOTAL_STEPS,
@@ -454,6 +477,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     prevStep,
     goToStep,
     goToStepWithValidation,
+    pendingNavigation,
+    confirmPendingNavigation,
+    cancelPendingNavigation,
     updateData,
     setSubmitting,
     reset,
