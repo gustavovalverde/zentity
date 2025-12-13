@@ -1,8 +1,29 @@
 # Zentity
 
-**Privacy-preserving KYC PoC** using zero-knowledge proofs (Noir/UltraHonk), fully homomorphic encryption, and cryptographic commitments.
+<p align="center">
+  <img src="assets/logo.jpeg" alt="Zentity" width="280">
+</p>
 
-Status: This is a **PoC**. Breaking changes are expected and backward compatibility is not a goal.
+<div align="center">
+
+**Traditional KYC is a honeypot by design**
+
+"Prove you're over 18" → stores your exact birthday<br>
+"Prove your identity" → stores your passport photo<br>
+"Prove you're real" → stores biometric templates
+
+Every database is a breach waiting to happen. The model itself is broken.
+**We're storing data we don't need to store.**
+
+---
+
+**Zentity** proves you can verify identity claims without storing the underlying data.
+Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
+
+</div>
+
+> [!CAUTION]
+> This is a **PoC**. Breaking changes are expected and backward compatibility is not a goal.
 
 ## Contents
 
@@ -117,7 +138,8 @@ Zentity proves these cryptographic techniques **can work together** in a real ap
 
 The result: **complete identity verification with minimized plaintext storage** (no raw ID images/selfies stored; cryptographic artifacts persisted; authentication data stored as required).
 
-> **Note:** Zentity is a demonstration project showing that privacy-preserving KYC is technically feasible today. It serves as a reference architecture for teams building production systems.
+> [!NOTE]
+> Zentity is a demonstration project showing that privacy-preserving KYC is technically feasible today. It serves as a reference architecture for teams building production systems.
 
 ## What is Zentity?
 
@@ -163,11 +185,12 @@ FHE → Verifier: true/false (score never revealed)
 - The client captures a baseline frame and one frame per challenge.
 - Those frames are sent to `POST /api/liveness/verify`, where Next.js re-runs Human.js on Node to make the authoritative decision and return a face embedding.
 
-**Limitations (non-production):**
-- Server-side re-scoring blocks simple UI tampering, but can’t prove frames came from a live camera; replayed or edited frames can still be submitted.
-- Human’s antispoof/liveness models are lightweight “quick checks” and not KYC‑grade on their own.
-- Model weights are bundled locally via `@vladmandic/human-models` and served from `/human-models/*`; first run may still be slow while models initialize, but no external download is needed.
-- Liveness sessions are stored in memory and reset on server restart.
+> [!WARNING]
+> **Limitations (non-production):**
+> - Server-side re-scoring blocks simple UI tampering, but can't prove frames came from a live camera; replayed or edited frames can still be submitted.
+> - Human's antispoof/liveness models are lightweight "quick checks" and not KYC‑grade on their own.
+> - Model weights are bundled locally via `@vladmandic/human-models` and served from `/human-models/*`; first run may still be slow while models initialize, but no external download is needed.
+> - Liveness sessions are stored in memory and reset on server restart.
 
 ### Nationality Group Membership
 
@@ -196,9 +219,8 @@ Different jurisdictions require different age thresholds. The `age_verification`
 | 21+ | US alcohol/cannabis, car rental |
 | 25+ | Premium car rental, certain financial products |
 
-Current PoC status:
-- The onboarding flow persists an `age ≥ 18` proof payload in `age_proofs`.
-- Other thresholds can be generated/verified, but aren’t fully wired into the default UI/storage flows yet.
+> [!NOTE]
+> **Current PoC status:** The onboarding flow persists an `age ≥ 18` proof payload. Other thresholds can be generated/verified, but aren't fully wired into the default UI/storage flows yet.
 
 </details>
 
@@ -242,7 +264,8 @@ Each cryptographic primitive solves a specific problem:
 
 A commitment is a one-way hash that binds you to a value without revealing it.
 
-**Important clarification:** In Zentity, commitments are **per-attribute** (name, document number, nationality), not a single “commitment to the entire credential”.
+> [!IMPORTANT]
+> In Zentity, commitments are **per-attribute** (name, document number, nationality), not a single "commitment to the entire credential".
 
 **How it works:**
 1. During verification: `commitment = SHA256("John Doe" + random_salt)`
