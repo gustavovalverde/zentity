@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getFheServiceUrl, getZkServiceUrl } from "@/lib/service-urls";
+import { getBbJsVersion, getCircuitMetadata } from "@/lib/noir-verifier";
+import { getFheServiceUrl } from "@/lib/service-urls";
 
 const FHE_SERVICE_URL = getFheServiceUrl();
-const ZK_SERVICE_URL = getZkServiceUrl();
 
 async function checkService(url: string, timeout = 5000) {
   const controller = new AbortController();
@@ -25,16 +25,23 @@ async function checkService(url: string, timeout = 5000) {
 }
 
 export async function GET() {
-  const [fheHealth, zkHealth] = await Promise.all([
-    checkService(FHE_SERVICE_URL),
-    checkService(ZK_SERVICE_URL),
-  ]);
+  const fheHealth = await checkService(FHE_SERVICE_URL);
 
-  const allHealthy = fheHealth?.status === "ok" && zkHealth?.status === "ok";
+  const zk = {
+    bbVersion: getBbJsVersion(),
+    circuits: {
+      age_verification: getCircuitMetadata("age_verification"),
+      doc_validity: getCircuitMetadata("doc_validity"),
+      nationality_membership: getCircuitMetadata("nationality_membership"),
+      face_match: getCircuitMetadata("face_match"),
+    },
+  };
+
+  const allHealthy = fheHealth?.status === "ok" && Boolean(zk.bbVersion);
 
   return NextResponse.json({
     fhe: fheHealth,
-    zk: zkHealth,
+    zk,
     allHealthy,
   });
 }

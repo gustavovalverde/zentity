@@ -13,9 +13,3 @@ export function getFheServiceUrl(): string {
     process.env.FHE_SERVICE_URL || "http://localhost:5001",
   );
 }
-
-export function getZkServiceUrl(): string {
-  return normalizeServiceUrl(
-    process.env.ZK_SERVICE_URL || "http://localhost:5002",
-  );
-}

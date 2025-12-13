@@ -38,7 +38,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(routes::health))
         .route("/keys/generate", post(routes::generate_keys))
-        // Birth year encryption (legacy, u16)
+        // Birth year encryption (u16)
         .route("/encrypt", post(routes::encrypt))
         .route("/verify-age", post(routes::verify_age))
         // Gender encryption (ISO 5218, u8)

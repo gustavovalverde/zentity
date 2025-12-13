@@ -48,8 +48,6 @@ BETTER_AUTH_SECRET=your-secret-key
 
 # Service URLs (defaults for local development)
 FHE_SERVICE_URL=http://localhost:5001
-ZK_SERVICE_URL=http://localhost:5002
-LIVENESS_SERVICE_URL=http://localhost:5003
 OCR_SERVICE_URL=http://localhost:5004
 ```
 
@@ -108,8 +106,10 @@ src/
 | `/api/kyc/upload` | POST | Upload document |
 | `/api/kyc/process-document` | POST | OCR processing |
 | `/api/crypto/encrypt-dob` | POST | FHE encrypt DOB |
-| `/api/crypto/generate-proof` | POST | Generate ZK proof |
-| `/api/crypto/verify-proof` | POST | Verify ZK proof |
+| `/api/crypto/challenge` | POST | Issue a proof nonce (replay resistance) |
+| `/api/crypto/circuits` | GET | Circuit manifest (IDs, vkey hashes, public input spec) |
+| `/api/crypto/circuits/[circuitType]/vkey` | GET | Circuit verification key (base64) + hash |
+| `/api/crypto/verify-proof` | POST | Verify ZK proof (Noir/UltraHonk) |
 | `/api/liveness/verify` | POST | Full liveness check |
 
 ## Privacy Features
@@ -118,10 +118,10 @@ The web application implements privacy-preserving patterns:
 
 1. **Hash Commitments** — Names, document numbers, nationality stored as SHA256 hashes
 2. **FHE Encryption** — DOB, gender, and liveness scores encrypted with TFHE-rs
-3. **ZK Proofs** — Age, document validity, face match, and nationality membership proofs via Groth16
+3. **ZK Proofs** — Age, document validity, face match, and nationality proofs via Noir/UltraHonk (client-side)
 4. **Transient Processing** — Images processed and discarded immediately
 
-No raw PII is stored in the database. See [KYC Data Architecture](../../docs/kyc-data-architecture.md) for details.
+No raw PII is stored in the database.
 
 ## Database Schema
 
@@ -131,22 +131,34 @@ The `identity_proofs` table stores only cryptographic data:
 |--------|------|-------------|
 | `id` | TEXT | Primary key |
 | `user_id` | TEXT | Foreign key to users |
-| `name_commitment` | TEXT | SHA256(name + salt) |
-| `document_hash` | TEXT | SHA256(doc_number + salt) |
-| `nationality_commitment` | TEXT | SHA256(nationality + salt) |
+| `document_hash` | TEXT | SHA256(doc_number + user_salt) |
+| `name_commitment` | TEXT | SHA256(full_name + user_salt) |
+| `nationality_commitment` | TEXT | SHA256(nationality_code + user_salt) |
+| `user_salt` | TEXT | Encrypted salt (enables erasure) |
 | `dob_ciphertext` | TEXT | FHE encrypted birth year |
-| `dob_full_ciphertext` | TEXT | FHE encrypted YYYYMMDD |
-| `gender_ciphertext` | TEXT | FHE encrypted ISO 5218 code |
+| `dob_full_ciphertext` | TEXT | FHE encrypted full DOB (YYYYMMDD) |
+| `gender_ciphertext` | TEXT | FHE encrypted gender (ISO 5218) |
 | `liveness_score_ciphertext` | TEXT | FHE encrypted anti-spoof score |
-| `age_proofs_json` | TEXT | JSON array of age proofs (18, 21, 25) |
-| `doc_validity_proof` | TEXT | ZK proof document not expired |
-| `nationality_membership_proof` | TEXT | ZK proof nationality in group |
-| `face_match_result` | INTEGER | Boolean match result |
-| `verified` | INTEGER | Overall verification status |
+| `age_proof` | TEXT | ZK age proof payload (JSON) |
+| `age_proof_verified` | INTEGER | Whether `age_proof` is verified |
+| `age_proofs_json` | TEXT | JSON map of age proofs by threshold (e.g. `{\"18\": {...}}`) |
+| `doc_validity_proof` | TEXT | ZK proof that document is not expired |
+| `nationality_membership_proof` | TEXT | ZK proof of nationality group membership |
+| `document_type` | TEXT | Document type label |
+| `country_verified` | TEXT | ISO 3166-1 alpha-3 country code |
+| `is_document_verified` | INTEGER | Document validation result |
+| `is_liveness_passed` | INTEGER | Liveness result |
+| `is_face_matched` | INTEGER | Face match result |
+| `verification_method` | TEXT | Verification method label |
+| `verified_at` | TEXT | ISO timestamp (when verified) |
+| `confidence_score` | REAL | Overall confidence (0.0-1.0) |
+| `first_name_encrypted` | TEXT | JWE encrypted first name for display |
+| `created_at` | TEXT | Created timestamp |
+| `updated_at` | TEXT | Updated timestamp |
 
-### Schema Migrations
+### Schema Updates
 
-The database automatically adds missing columns on startup (see `src/lib/db.ts`). This handles upgrades from earlier schema versions.
+On startup, the app ensures required tables and columns exist (see `src/lib/db.ts` and `src/app/api/user/proof/route.ts`).
 
 ## Docker
 

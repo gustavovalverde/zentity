@@ -1,0 +1,6 @@
+[package]
+name = "face_match"
+type = "bin"
+authors = ["Zentity"]
+
+[dependencies]

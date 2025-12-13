@@ -4,10 +4,9 @@
 
 This is a polyglot monorepo. Each service lives under `apps/`:
 
-- `apps/web/` — Next.js 16 + React 19 frontend (App Router). Source in `src/`, static assets in `public/`, unit tests in `src/**/__tests__` / `*.test.ts`, E2E in `e2e/`.
-- `apps/zk/` — TypeScript/Express zero‑knowledge service and Circom circuits. Source in `src/`, circuits in `circuits/`, generated artifacts in `artifacts/`.
+- `apps/web/` — Next.js 16 + React 19 frontend (App Router). Source in `src/`, static assets in `public/`, unit tests in `src/**/__tests__` / `*.test.ts`, E2E in `e2e/`. Includes client-side ZK proof generation via Noir.js + Barretenberg. Noir circuits in `noir-circuits/`.
 - `apps/fhe/` — Rust/Axum fully homomorphic encryption service. Source in `src/`.
-- `apps/ocr/` and `apps/liveness/` — Python/FastAPI services. Source in `app/`, tests in `tests/`.
+- `apps/ocr/` — Python/FastAPI OCR service. Source in `app/`, tests in `tests/`.
 
 Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 
@@ -15,10 +14,9 @@ Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 
 - Full stack (recommended): `docker compose up --build` from repo root.
 - Toolchain versions are pinned in `.mise.toml` (Node 20, Rust 1.91, Python 3.12).
-- Web (`apps/web`): `pnpm install`, `pnpm dev` (localhost:3000), `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm test:e2e`.
-- ZK (`apps/zk`): `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm run circuit:build:nationality`.
+- Web (`apps/web`): `pnpm install`, `pnpm dev` (localhost:3000), `pnpm build`, `pnpm lint`, `pnpm test`, `pnpm test:e2e`, `pnpm circuits:compile` (Noir), `pnpm circuits:test`.
 - FHE (`apps/fhe`): `cargo run` (port 5001), `cargo test`.
-- Python services (`apps/ocr`, `apps/liveness`): `pip install -r requirements.txt`, `uvicorn app.main:app --reload --port 5004` (or 5003), `pytest`.
+- OCR (`apps/ocr`): `pip install -r requirements.txt`, `uvicorn app.main:app --reload --port 5004`, `pytest`.
 
 ## Coding Style & Naming Conventions
 

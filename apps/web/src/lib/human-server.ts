@@ -4,8 +4,7 @@ import util from "node:util";
 import type { Config, Human } from "@vladmandic/human";
 import { HUMAN_MODELS_URL } from "./human-models-path";
 
-// Polyfill for deprecated util.isNullOrUndefined (removed in Node.js 12+)
-// Required by @tensorflow/tfjs-node internals
+// Polyfill for util.isNullOrUndefined required by @tensorflow/tfjs-node
 const utilAny = util as unknown as {
   isNullOrUndefined?: (val: unknown) => boolean;
 };

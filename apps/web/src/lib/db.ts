@@ -82,16 +82,16 @@ export function initializeIdentityProofsTable(): void {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
 
-      -- Sprint 1: Document validity and nationality
+      -- Document validity and nationality
       doc_validity_proof TEXT,            -- ZK proof that document is not expired
       nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt)
       age_proofs_json TEXT,               -- JSON: {"18": proof, "21": proof, "25": proof}
 
-      -- Sprint 2: FHE expansion
+      -- FHE expansion
       gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218)
       dob_full_ciphertext TEXT,           -- FHE encrypted full DOB as YYYYMMDD (u32)
 
-      -- Sprint 3: Advanced ZK + Liveness FHE
+      -- Advanced ZK + liveness FHE
       nationality_membership_proof TEXT,  -- ZK proof of nationality group membership
       liveness_score_ciphertext TEXT,     -- FHE encrypted liveness score (0.0-1.0 as u16)
 
@@ -108,7 +108,7 @@ export function initializeIdentityProofsTable(): void {
       ON identity_proofs (document_hash);
   `);
 
-  // Migration: Add missing columns to existing tables
+  // Schema patch: add missing columns to existing tables
   // SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN, so we use try/catch
   for (const col of identityProofsColumnsToAdd) {
     try {
@@ -155,16 +155,16 @@ export interface IdentityProof {
   createdAt: string;
   updatedAt: string;
 
-  // Sprint 1 additions
+  // Document validity and nationality
   docValidityProof?: string; // ZK proof that document is not expired
   nationalityCommitment?: string; // SHA256(nationality_code + user_salt)
   ageProofsJson?: string; // JSON: {"18": proof, "21": proof, "25": proof}
 
-  // Sprint 2 additions: FHE expansion
+  // FHE expansion
   genderCiphertext?: string; // FHE encrypted gender (ISO 5218)
   dobFullCiphertext?: string; // FHE encrypted full DOB as YYYYMMDD (u32)
 
-  // Sprint 3 additions: Advanced ZK + Liveness FHE
+  // Advanced ZK + liveness FHE
   nationalityMembershipProof?: string; // ZK proof of nationality group membership
   livenessScoreCiphertext?: string; // FHE encrypted liveness score (0.0-1.0 as u16)
 
@@ -285,14 +285,14 @@ export function updateIdentityProofFlags(
     dobCiphertext?: string;
     fheClientKeyId?: string;
     ageProof?: string;
-    // Sprint 1 additions
+    // Document validity and nationality
     docValidityProof?: string;
     nationalityCommitment?: string;
     ageProofsJson?: string;
-    // Sprint 2 additions
+    // FHE expansion
     genderCiphertext?: string;
     dobFullCiphertext?: string;
-    // Sprint 3 additions
+    // Advanced ZK + liveness FHE
     nationalityMembershipProof?: string;
     livenessScoreCiphertext?: string;
     // User display data
@@ -334,7 +334,7 @@ export function updateIdentityProofFlags(
     updates.push("age_proof = ?");
     values.push(flags.ageProof);
   }
-  // Sprint 1 additions
+  // Document validity and nationality
   if (flags.docValidityProof !== undefined) {
     updates.push("doc_validity_proof = ?");
     values.push(flags.docValidityProof);
@@ -347,7 +347,7 @@ export function updateIdentityProofFlags(
     updates.push("age_proofs_json = ?");
     values.push(flags.ageProofsJson);
   }
-  // Sprint 2 additions
+  // FHE expansion
   if (flags.genderCiphertext !== undefined) {
     updates.push("gender_ciphertext = ?");
     values.push(flags.genderCiphertext);
@@ -356,7 +356,7 @@ export function updateIdentityProofFlags(
     updates.push("dob_full_ciphertext = ?");
     values.push(flags.dobFullCiphertext);
   }
-  // Sprint 3 additions
+  // Advanced ZK + liveness FHE
   if (flags.nationalityMembershipProof !== undefined) {
     updates.push("nationality_membership_proof = ?");
     values.push(flags.nationalityMembershipProof);

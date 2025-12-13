@@ -1,19 +1,16 @@
 /**
- * Verify ZK Proofs Route
+ * Verify ZK Proofs Route (Demo)
  *
- * Simulates the exchange verifying the ZK proofs.
- * In production, this would call the actual ZK service verification endpoints.
+ * Simulates the exchange verifying Noir/UltraHonk ZK proofs.
+ * Uses the same verifier as the main /api/crypto/verify-proof endpoint.
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import {
-  verifyDocValidityProofZk,
-  verifyFaceMatchProofZk,
-  verifyProofZk,
-} from "@/lib/zk-client";
+import { verifyNoirProof } from "@/lib/noir-verifier";
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
 
 interface Proof {
-  proof: object;
+  proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
 }
 
@@ -40,49 +37,67 @@ export async function POST(request: NextRequest) {
       docValidityValid?: boolean;
     } = {};
 
-    // Try to verify each proof against the real ZK service
-    // If ZK service is not available, use mock verification
-
-    // Verify age proof
+    // Verify age proof using Noir/UltraHonk
     if (proofs.ageProof) {
       try {
-        const data = await verifyProofZk({
+        const data = await verifyNoirProof({
           proof: proofs.ageProof.proof,
-          publicSignals: proofs.ageProof.publicSignals,
+          publicInputs: proofs.ageProof.publicSignals,
+          circuitType: "age_verification",
         });
-        results.ageProofValid = data.isValid;
+        // Check both cryptographic validity AND circuit output
+        // Public inputs: [current_year, min_age, nonce, is_old_enough]
+        const isOldEnough = parsePublicInputToNumber(
+          proofs.ageProof.publicSignals[
+            CIRCUIT_SPECS.age_verification.resultIndex
+          ],
+        );
+        results.ageProofValid = data.isValid && isOldEnough === 1;
       } catch {
-        // ZK service not available, mock verification
-        results.ageProofValid = proofs.ageProof.publicSignals[0] === "1";
+        // Verification failed
+        results.ageProofValid = false;
       }
     }
 
-    // Verify face match proof
+    // Verify face match proof using Noir/UltraHonk
     if (proofs.faceMatchProof) {
       try {
-        const data = await verifyFaceMatchProofZk({
+        const data = await verifyNoirProof({
           proof: proofs.faceMatchProof.proof,
-          publicSignals: proofs.faceMatchProof.publicSignals,
+          publicInputs: proofs.faceMatchProof.publicSignals,
+          circuitType: "face_match",
         });
-        results.faceMatchValid = data.isValid;
+        // Public inputs: [threshold, nonce, is_match]
+        const isMatch = parsePublicInputToNumber(
+          proofs.faceMatchProof.publicSignals[
+            CIRCUIT_SPECS.face_match.resultIndex
+          ],
+        );
+        results.faceMatchValid = data.isValid && isMatch === 1;
       } catch {
-        // Mock verification
-        results.faceMatchValid = proofs.faceMatchProof.publicSignals[0] === "1";
+        results.faceMatchValid = false;
       }
     }
 
-    // Verify document validity proof
+    // Verify document validity proof using Noir/UltraHonk
     if (proofs.docValidityProof) {
       try {
-        const data = await verifyDocValidityProofZk({
+        const data = await verifyNoirProof({
           proof: proofs.docValidityProof.proof,
-          publicSignals: proofs.docValidityProof.publicSignals,
+          publicInputs: proofs.docValidityProof.publicSignals,
+          circuitType: "doc_validity",
         });
-        results.docValidityValid = data.isValid;
+        // Check both cryptographic validity AND circuit output
+        // Public inputs: [current_date, nonce, is_valid]
+        const isDocValid = parsePublicInputToNumber(
+          proofs.docValidityProof.publicSignals[
+            CIRCUIT_SPECS.doc_validity.resultIndex
+          ],
+        );
+        results.docValidityValid = data.isValid && isDocValid === 1;
       } catch {
-        // Mock verification
-        results.docValidityValid =
-          proofs.docValidityProof.publicSignals[0] === "1";
+        // Verification failed
+        results.docValidityValid = false;
       }
     }
 

@@ -35,6 +35,7 @@ import { signUp } from "@/lib/auth-client";
 import {
   encryptDOB,
   generateAgeProof,
+  getProofChallenge,
   storeAgeProof,
   verifyAgeProof,
 } from "@/lib/crypto-client";
@@ -261,7 +262,7 @@ export function StepReviewComplete() {
         encryptionTimeMs: number;
       } | null = null;
       let proofResult: {
-        proof: object;
+        proof: string; // Base64 encoded UltraHonk ZK proof
         publicSignals: string[];
         generationTimeMs: number;
       } | null = null;
@@ -322,6 +323,33 @@ export function StepReviewComplete() {
         return;
       }
 
+      // For persisted proofs, require a server-issued nonce (replay resistance).
+      // The pre-signup proof uses a client nonce (no auth yet), so we generate
+      // a second proof after signup using a server challenge nonce.
+      let proofResultToStore = proofResult;
+      if (birthYear) {
+        try {
+          const currentYear = new Date().getFullYear();
+          const challenge = await getProofChallenge("age_verification");
+          proofResultToStore = await generateAgeProof(
+            birthYear,
+            currentYear,
+            18,
+            {
+              nonce: challenge.nonce,
+            },
+          );
+        } catch (_err) {
+          // If we can't generate a persisted proof, don't proceed to store anything.
+          setError(
+            "Failed to generate a replay-resistant age proof. Please try again.",
+          );
+          setProofStatus("error");
+          setSubmitting(false);
+          return;
+        }
+      }
+
       // Full identity verification (document + liveness + face matching)
       // Use the same selfie that was used for local face matching (bestSelfieFrame or fallback to selfieImage)
       const selfieToVerify = data.bestSelfieFrame || data.selfieImage;
@@ -356,13 +384,13 @@ export function StepReviewComplete() {
       }
 
       // Store the proof AND FHE ciphertext
-      if (proofResult) {
+      // NOTE: isOver18 is derived server-side from the verified proof
+      if (proofResultToStore) {
         setProofStatus("storing");
         await storeAgeProof(
-          proofResult.proof,
-          proofResult.publicSignals,
-          true,
-          proofResult.generationTimeMs,
+          proofResultToStore.proof,
+          proofResultToStore.publicSignals,
+          proofResultToStore.generationTimeMs,
           fheResult
             ? {
                 dobCiphertext: fheResult.ciphertext,

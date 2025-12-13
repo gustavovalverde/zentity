@@ -1,0 +1,33 @@
+{
+  "noir_version": "1.0.0-beta.16+2d46fca7203545cbbfb31a0d0328de6c10a8db95",
+  "hash": "10698606917699180032",
+  "abi": {
+    "parameters": [
+      {
+        "name": "expiry_date",
+        "type": { "kind": "field" },
+        "visibility": "private"
+      },
+      {
+        "name": "current_date",
+        "type": { "kind": "field" },
+        "visibility": "public"
+      },
+      { "name": "nonce", "type": { "kind": "field" }, "visibility": "public" }
+    ],
+    "return_type": {
+      "abi_type": { "kind": "boolean" },
+      "visibility": "public"
+    },
+    "error_types": {}
+  },
+  "bytecode": "H4sIAAAAAAAA/7VWvU7DQAz2JS0NSX8S1C6wZIQNxCMgJCbEyIIqRCOUgQJRqMTYRwBegKdA8DKVujF2YS5NOdPjeknO1+LF6dk+f/7JlzL4kQrXN5dxP5jpHencgmVhXIegJYzgq5Sw3GWeQ8SK+KtotbnODCPprKpIYusn/wWAvvu902R88Lr3fnb8NhyeX+wefp48ftw9HY2/nicz34qe78skB5uOWBL+sjwUTBvwF1ORv9jnLG7EczFYLNJSIw1x62BBqa2SsKZocFlsDfSXySHgMa3BAfWbXBTrAG0ZqUxR5bgsQlxrOp1S+rUJ+jWIy4tx62RGBrR+yhKWuywxo8u1h1YsMDPIzOjB6swoFlnGjC7oD9IDs+ZRmZGCqQ5mzJjFrZsZXSIWlMYqCRtAZ8YG6C9Tk4DHtIYm0JmxCf/LjB7HRWVGSr9aoF+DuLwYV8SMFNzAvwShJm5NImB5hhD0YsW6fK4DtGIzfFi8wXgWKJJU9JPPU5g2pIxxfcK9AZg1mjp8m4DJB9rSypgYf0abrfDZ5roXJ9FVGg+ibtxPo+so6d4/3KZx1E8d7oHaFW4XqykRC+M9s/j5P2xZXOHZkxNyXVHEsZzflqSLfIu+Y3WFDe/c4lrEi3XgqydOYxAl6SY/xx52hHyEHjKMb5vFK2fQEZ7xXswj9jEEmuC2VhU2eba2lBc1o+dneThU88ZZtoUz7Mc3I25L0ocQAAA=",
+  "debug_symbols": "nZLdaoQwEEbfZa69MEZ3ja9SikSNSyBEySaFIr57x5lNawuFZW++YzKe0fxsMJkh3Xrr5+UO3dsGQ7DO2VvvllFHu3ic3fYC8rCPwRicglMdrVUH4yN0PjlXwId2iV66r9oTow5YLQswfkJiw9k6czztxY9d/q+2KsuqbL/1RjzrK1FlX4oX/NP3//jvONKjDb92DEroRAGCsqKUlDVlQ3mhvFK2lIqth4w2/rSoGJJRMxrGhXFltAxFqEoGd6mwi0RIRs3ALnI/Fh2sHpx5nPWc/Hg6+vi55kq+HGtYRjOlYI5FUw234Qs=",
+  "file_map": {
+    "51": {
+      "source": "// Document Validity Circuit\n// Proves that a document has not expired without revealing the actual expiry date\n//\n// Public inputs:\n//   - current_date: Today's date as YYYYMMDD integer (e.g., 20251212)\n//   - nonce: Challenge nonce for replay resistance\n//\n// Private inputs:\n//   - expiry_date: The document's expiry date as YYYYMMDD integer\n//\n// Output:\n//   - Returns true if the document is valid (expiry_date >= current_date)\n\nfn main(\n    expiry_date: Field,        // Private: actual expiry date (YYYYMMDD)\n    current_date: pub Field,   // Public: current date for verification\n    nonce: pub Field           // Public: challenge nonce (replay resistance)\n) -> pub bool {\n    // Nonce is included as public input for replay resistance\n    let _ = nonce;\n\n    // Document is valid if expiry date is >= current date\n    // Using u32 comparison for date integers\n    let is_valid = expiry_date as u32 >= current_date as u32;\n\n    is_valid\n}\n\n#[test]\nfn test_valid_document() {\n    // Document expires in 2027, current date is 2025-12-12\n    let result = main(20271231, 20251212, 12345);\n    assert(result == true);\n}\n\n#[test]\nfn test_valid_document_same_day() {\n    // Document expires today\n    let result = main(20251212, 20251212, 99999);\n    assert(result == true);\n}\n\n#[test]\nfn test_expired_document() {\n    // Document expired in 2024, current date is 2025-12-12\n    let result = main(20241231, 20251212, 11111);\n    assert(result == false);\n}\n\n#[test]\nfn test_recently_expired() {\n    // Document expired yesterday\n    let result = main(20251211, 20251212, 22222);\n    assert(result == false);\n}\n\n#[test]\nfn test_far_future_expiry() {\n    // Document valid until 2030\n    let result = main(20301231, 20251212, 33333);\n    assert(result == true);\n}\n",
+      "path": "/Users/gustavovalverde/dev/personal/zentity/apps/web/noir-circuits/doc_validity/src/main.nr"
+    }
+  },
+  "expression_width": { "Bounded": { "width": 4 } }
+}

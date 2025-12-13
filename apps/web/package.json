@@ -20,9 +20,13 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "circuits:compile": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo compile && mkdir -p artifacts && cp -f target/*.json artifacts/); done",
+    "circuits:test": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo test); done"
   },
   "dependencies": {
+    "@aztec/bb.js": "^2.1.9",
+    "@noir-lang/noir_js": "1.0.0-beta.16",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",
@@ -37,6 +41,7 @@
     "@vladmandic/human-models": "^3.0.4",
     "better-auth": "^1.4.5",
     "better-sqlite3": "^12.5.0",
+    "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jose": "^6.1.3",

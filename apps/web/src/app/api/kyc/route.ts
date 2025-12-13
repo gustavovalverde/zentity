@@ -55,10 +55,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_kyc_status_user_id ON kyc_status(user_id)
 `);
 
-// PRIVACY MIGRATION: Remove any stored file_data from legacy records
-// This handles existing databases that had file_data stored before the privacy fix
+// Privacy: Ensure file_data column (if present) is always null
 try {
-  // Check if file_data column exists and null it out
   const hasFileData = db
     .prepare(`
     SELECT COUNT(*) as count FROM pragma_table_info('kyc_documents') WHERE name = 'file_data'
@@ -66,13 +64,12 @@ try {
     .get() as { count: number };
 
   if (hasFileData.count > 0) {
-    // Set file_data to NULL for all existing records (can't drop column in SQLite easily)
     db.exec(
       `UPDATE kyc_documents SET file_data = NULL WHERE file_data IS NOT NULL`,
     );
   }
 } catch {
-  // Table might not exist yet or column might not exist - that's fine
+  // Table might not exist yet
 }
 
 export interface KycStatusResponse {

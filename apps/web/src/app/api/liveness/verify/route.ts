@@ -27,7 +27,7 @@ import {
 export const runtime = "nodejs";
 
 interface VerifyRequest {
-  sessionId: string; // REQUIRED - no longer optional
+  sessionId: string; // REQUIRED
   baselineImage: string;
   challenges: Array<{ challengeType: ChallengeType; image: string }>;
   debug?: boolean;
@@ -64,7 +64,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       process.env.LIVENESS_DEBUG === "1" ||
       process.env.NEXT_PUBLIC_LIVENESS_DEBUG === "1";
 
-    // sessionId is now REQUIRED (security fix)
     if (!body.sessionId) {
       return NextResponse.json(
         { verified: false, error: "Session ID is required" },

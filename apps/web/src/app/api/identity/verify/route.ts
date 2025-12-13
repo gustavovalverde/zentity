@@ -48,10 +48,8 @@ import {
   getSessionFromCookie,
   validateStepAccess,
 } from "@/lib/onboarding-session";
-import {
-  generateAgeProofZk,
-  generateDocValidityProofZk,
-} from "@/lib/zk-client";
+
+// ZK proofs are generated client-side; this endpoint does not generate proofs.
 
 interface VerifyIdentityRequest {
   // Document image (base64)
@@ -292,49 +290,32 @@ export async function POST(
     }
 
     // =========================================================================
-    // STEP 3: Cryptographic Processing (FHE + ZK)
+    // STEP 3: Cryptographic Processing (FHE + commitments)
     // =========================================================================
-    // If we have a DOB, encrypt it with FHE and generate ZK proof
+    // If we have a DOB, encrypt it with FHE
     let fheResult: {
       ciphertext: string;
       clientKeyId: string;
-    } | null = null;
-    let zkResult: {
-      proof: unknown;
-      publicSignals: string[];
-      generationTimeMs: number;
-      isOver18: boolean;
-    } | null = null;
-
-    // Document validity ZK proof result
-    let docValidityResult: {
-      proof: unknown;
-      publicSignals: string[];
-      isValid: boolean;
-      generationTimeMs: number;
     } | null = null;
 
     // Nationality commitment (SHA256 hash)
     let nationalityCommitment: string | null = null;
 
-    // Multiple age proofs (18, 21, 25)
-    let ageProofsJson: Record<string, unknown> | null = null;
-
-    // Sprint 2: Gender FHE encryption result
+    // Gender FHE encryption result
     let genderFheResult: {
       ciphertext: string;
       clientKeyId: string;
       genderCode: number;
     } | null = null;
 
-    // Sprint 2: Full DOB FHE encryption result
+    // Full DOB FHE encryption result
     let dobFullFheResult: {
       ciphertext: string;
       clientKeyId: string;
       dobInt: number;
     } | null = null;
 
-    // Sprint 3: Liveness score FHE encryption result
+    // Liveness score FHE encryption result
     let livenessScoreFheResult: {
       ciphertext: string;
       clientKeyId: string;
@@ -360,9 +341,7 @@ export async function POST(
         birthYear > 1900 &&
         birthYear <= new Date().getFullYear()
       ) {
-        const currentYear = new Date().getFullYear();
-
-        // FHE Encryption (encrypt birth year)
+        // FHE Encryption (encrypt birth year for homomorphic computations)
         try {
           fheResult = await encryptBirthYearFhe({
             birthYear,
@@ -375,91 +354,11 @@ export async function POST(
             issues.push("fhe_service_unavailable");
           }
         }
-
-        // ZK Proof Generation (prove age >= 18, 21, 25 in parallel)
-        const ageThresholds = [18, 21, 25];
-        try {
-          // Generate all age proofs in parallel
-          const zkPromises = ageThresholds.map(async (minAge) => {
-            try {
-              const data = await generateAgeProofZk({
-                birthYear,
-                currentYear,
-                minAge,
-              });
-              return { minAge, data, success: true as const };
-            } catch (error) {
-              // Preserve previous behavior:
-              // - non-OK responses are treated as a proof failure
-              // - network/service issues bubble and mark the whole step unavailable
-              if (error instanceof HttpError) {
-                return { minAge, success: false as const, data: null };
-              }
-              throw error;
-            }
-          });
-
-          const zkResults = await Promise.all(zkPromises);
-          const ageProofs: Record<string, unknown> = {};
-          let primaryZkData = null;
-
-          for (const result of zkResults) {
-            if (result.success && result.data) {
-              ageProofs[result.minAge.toString()] = {
-                proof: result.data.proof,
-                publicSignals: result.data.publicSignals,
-                generationTimeMs: result.data.generationTimeMs,
-              };
-              // Use age 18 proof as the primary result
-              if (result.minAge === 18) {
-                primaryZkData = result.data;
-              }
-            } else {
-            }
-          }
-
-          if (Object.keys(ageProofs).length > 0) {
-            ageProofsJson = ageProofs;
-          }
-
-          if (primaryZkData) {
-            const isOver18 = primaryZkData.publicSignals?.[0] === "1";
-            zkResult = {
-              proof: primaryZkData.proof,
-              publicSignals: primaryZkData.publicSignals,
-              generationTimeMs: primaryZkData.generationTimeMs,
-              isOver18,
-            };
-          } else {
-            issues.push("zk_proof_failed");
-          }
-        } catch (_error) {
-          issues.push("zk_service_unavailable");
-        }
       }
     }
 
     // =========================================================================
-    // STEP 3.5: Document Validity ZK Proof
-    // =========================================================================
-    // Generate ZK proof that document is not expired (without revealing expiry date)
-    const expirationDate = documentResult?.extractedData?.expirationDate;
-    if (expirationDate) {
-      try {
-        docValidityResult = await generateDocValidityProofZk({
-          expiryDate: expirationDate,
-        });
-      } catch (error) {
-        if (error instanceof HttpError) {
-          issues.push("doc_validity_proof_failed");
-        } else {
-          issues.push("doc_validity_service_unavailable");
-        }
-      }
-    }
-
-    // =========================================================================
-    // STEP 3.6: Nationality Commitment
+    // STEP 3.5: Nationality Commitment
     // =========================================================================
     // Generate SHA256 commitment for nationality (ISO 3166-1 alpha-3 code)
     const nationalityCode = documentResult?.extractedData?.nationalityCode;
@@ -475,7 +374,7 @@ export async function POST(
     }
 
     // =========================================================================
-    // STEP 3.7: Gender FHE Encryption (Sprint 2)
+    // STEP 3.7: Gender FHE Encryption
     // =========================================================================
     const gender = documentResult?.extractedData?.gender;
     if (gender) {
@@ -500,7 +399,7 @@ export async function POST(
     }
 
     // =========================================================================
-    // STEP 3.8: Full DOB FHE Encryption (Sprint 2)
+    // STEP 3.8: Full DOB FHE Encryption
     // =========================================================================
     // Encrypt full DOB as YYYYMMDD for precise age calculations
     if (dateOfBirth) {
@@ -519,7 +418,7 @@ export async function POST(
     }
 
     // =========================================================================
-    // STEP 3.9: Liveness Score FHE Encryption (Sprint 3)
+    // STEP 3.9: Liveness Score FHE Encryption
     // =========================================================================
     // Encrypt the liveness/anti-spoof score for privacy-preserving threshold checks
     // Score is 0.0-1.0, encrypted as u16 (0-10000) for FHE operations
@@ -564,9 +463,9 @@ export async function POST(
       Boolean(documentResult?.extractedData?.documentNumber);
     const livenessPassed = verificationResult?.is_live || false;
     const faceMatched = verificationResult?.faces_match || false;
-    const ageProofGenerated = Boolean(zkResult?.proof);
+    const ageProofGenerated = false;
     const dobEncrypted = Boolean(fheResult?.ciphertext);
-    const docValidityProofGenerated = Boolean(docValidityResult?.proof);
+    const docValidityProofGenerated = false;
     const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
     const livenessScoreEncrypted = Boolean(livenessScoreFheResult?.ciphertext);
     const verified =
@@ -591,30 +490,16 @@ export async function POST(
           isDocumentVerified: isDocumentValid,
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
-          ageProofVerified: zkResult?.isOver18 ?? false,
+          ageProofVerified: false,
           verificationMethod: "ocr_local",
           verifiedAt: verified ? new Date().toISOString() : undefined,
           confidenceScore: documentResult.confidence,
           // FHE encrypted DOB
           dobCiphertext: fheResult?.ciphertext,
           fheClientKeyId: fheResult?.clientKeyId,
-          // ZK Proof
-          ageProof: zkResult ? JSON.stringify(zkResult.proof) : undefined,
-          // Sprint 1: Document validity proof
-          docValidityProof: docValidityResult
-            ? JSON.stringify(docValidityResult.proof)
-            : undefined,
-          // Sprint 1: Nationality commitment (ISO 3166-1 alpha-3)
           nationalityCommitment: nationalityCommitment || undefined,
-          // Sprint 1: Multiple age proofs (18, 21, 25)
-          ageProofsJson: ageProofsJson
-            ? JSON.stringify(ageProofsJson)
-            : undefined,
-          // Sprint 2: Gender FHE encryption
           genderCiphertext: genderFheResult?.ciphertext,
-          // Sprint 2: Full DOB FHE encryption
           dobFullCiphertext: dobFullFheResult?.ciphertext,
-          // Sprint 3: Liveness score FHE encryption
           livenessScoreCiphertext: livenessScoreFheResult?.ciphertext,
           // User display data: Encrypted first name
           firstNameEncrypted: firstNameEncrypted || undefined,
@@ -629,36 +514,20 @@ export async function POST(
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
           verifiedAt: verified ? new Date().toISOString() : undefined,
-          // Update FHE/ZK data if available
+          // Update FHE data if available
           ...(fheResult && {
             dobCiphertext: fheResult.ciphertext,
             fheClientKeyId: fheResult.clientKeyId,
           }),
-          ...(zkResult && {
-            ageProof: JSON.stringify(zkResult.proof),
-            ageProofVerified: zkResult.isOver18,
-          }),
-          // Sprint 1: Document validity proof
-          ...(docValidityResult && {
-            docValidityProof: JSON.stringify(docValidityResult.proof),
-          }),
-          // Sprint 1: Nationality commitment
           ...(nationalityCommitment && {
             nationalityCommitment,
           }),
-          // Sprint 1: Multiple age proofs
-          ...(ageProofsJson && {
-            ageProofsJson: JSON.stringify(ageProofsJson),
-          }),
-          // Sprint 2: Gender FHE encryption
           ...(genderFheResult && {
             genderCiphertext: genderFheResult.ciphertext,
           }),
-          // Sprint 2: Full DOB FHE encryption
           ...(dobFullFheResult && {
             dobFullCiphertext: dobFullFheResult.ciphertext,
           }),
-          // Sprint 3: Liveness score FHE encryption
           ...(livenessScoreFheResult && {
             livenessScoreCiphertext: livenessScoreFheResult.ciphertext,
           }),
