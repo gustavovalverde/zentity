@@ -19,16 +19,22 @@
  * 3. Minimizing Zentity's liability (no PII storage)
  */
 
-import { headers } from "next/headers";
+import { UltraHonkBackend } from "@aztec/bb.js";
+import { Noir } from "@noir-lang/noir_js";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { auth } from "@/lib/auth";
-import { getIdentityProofByUserId, getVerificationStatus } from "@/lib/db";
-
-// Service URLs
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
-const LIVENESS_SERVICE_URL =
-  process.env.LIVENESS_SERVICE_URL || "http://localhost:5003";
+import { requireSession } from "@/lib/api-auth";
+import { bytesToBase64 } from "@/lib/base64";
+import {
+  getIdentityProofByUserId,
+  getUserAgeProofPayload,
+  getVerificationStatus,
+} from "@/lib/db";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
+import { detectFromBase64, getHumanServer } from "@/lib/human-server";
+import { processDocumentOcr } from "@/lib/ocr-client";
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
+import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
 
 interface DisclosureRequest {
   // RP identification
@@ -163,12 +169,8 @@ export async function POST(
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
   try {
-    // Authenticate user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
+    const authResult = await requireSession();
+    if (!authResult.ok) {
       return NextResponse.json(
         {
           success: false,
@@ -184,7 +186,7 @@ export async function POST(
       );
     }
 
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
 
     // Check if user is verified
     const verificationStatus = getVerificationStatus(userId);
@@ -260,21 +262,15 @@ export async function POST(
     } | null = null;
 
     try {
-      const ocrResponse = await fetch(`${OCR_SERVICE_URL}/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: body.documentImage,
-          userSalt: identityProof?.userSalt,
-        }),
+      documentResult = await processDocumentOcr({
+        image: body.documentImage,
+        userSalt: identityProof?.userSalt,
       });
-
-      if (!ocrResponse.ok) {
-        throw new Error(`OCR service returned ${ocrResponse.status}`);
-      }
-
-      documentResult = await ocrResponse.json();
-    } catch (_error) {
+    } catch (error) {
+      const { status } = toServiceErrorPayload(
+        error,
+        "Failed to process document",
+      );
       return NextResponse.json(
         {
           success: false,
@@ -286,12 +282,12 @@ export async function POST(
           expiresAt,
           error: "Failed to process document",
         },
-        { status: 500 },
+        { status },
       );
     }
 
     // =========================================================================
-    // STEP 2: Generate Face Match ZK Proof
+    // STEP 2: Generate Face Match ZK Proof using Human.js + ZK Service
     // =========================================================================
     let faceMatchProof: {
       proof: unknown;
@@ -301,27 +297,92 @@ export async function POST(
     } | null = null;
 
     try {
-      const faceMatchResponse = await fetch(
-        `${LIVENESS_SERVICE_URL}/face-match-proof`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            idImage: body.documentImage,
-            selfieImage: body.selfieImage,
-            proofThreshold: body.faceMatchThreshold || 0.6,
-          }),
-        },
-      );
+      const human = await getHumanServer();
+      const proofThreshold = body.faceMatchThreshold || 0.6;
 
-      if (faceMatchResponse.ok) {
-        const result = await faceMatchResponse.json();
-        if (result.proof) {
+      // Detect faces in both images using Human.js
+      const [selfieResult, docResult] = await Promise.all([
+        detectFromBase64(body.selfieImage),
+        detectFromBase64(body.documentImage),
+      ]);
+
+      // Helper to get largest face
+      const selectLargestFace = (
+        res: ReturnType<typeof detectFromBase64> extends Promise<infer T>
+          ? T
+          : never,
+      ) => {
+        const faces = Array.isArray(res?.face) ? res.face : [];
+        if (faces.length === 0) return null;
+        return faces.reduce((best: (typeof faces)[0], f: (typeof faces)[0]) => {
+          const getArea = (face: (typeof faces)[0]) => {
+            const box = face?.box;
+            if (!box) return 0;
+            if (Array.isArray(box)) return (box[2] ?? 0) * (box[3] ?? 0);
+            return (
+              ((box as { width?: number }).width ?? 0) *
+              ((box as { height?: number }).height ?? 0)
+            );
+          };
+          return getArea(f) > getArea(best) ? f : best;
+        }, faces[0]);
+      };
+
+      // Helper to get embedding
+      const getEmbedding = (
+        face: ReturnType<typeof selectLargestFace>,
+      ): number[] | null => {
+        if (!face) return null;
+        const emb =
+          (face as { embedding?: number[] | Float32Array }).embedding ??
+          (face as { descriptor?: number[] | Float32Array }).descriptor;
+        if (!emb) return null;
+        if (Array.isArray(emb)) return emb.map((n) => Number(n));
+        if (emb instanceof Float32Array) return Array.from(emb);
+        return null;
+      };
+
+      const selfieFace = selectLargestFace(await selfieResult);
+      const docFace = selectLargestFace(await docResult);
+
+      if (selfieFace && docFace) {
+        const selfieEmb = getEmbedding(selfieFace);
+        const docEmb = getEmbedding(docFace);
+
+        if (selfieEmb && docEmb) {
+          // Calculate similarity using Human.js
+          const similarityScore = human.match.similarity(docEmb, selfieEmb);
+
+          // Scale to circuit format (0-10000 for 0.00%-100.00%)
+          const scaledScore = Math.round(similarityScore * 10000);
+          const scaledThreshold = Math.round(proofThreshold * 10000);
+
+          // Generate ZK proof using face_match circuit
+          const noir = new Noir(faceMatchCircuit as never);
+          const backend = new UltraHonkBackend(
+            (faceMatchCircuit as { bytecode: string }).bytecode,
+          );
+
+          // Generate a disclosure-specific nonce (not validated, just for uniqueness)
+          const disclosureNonce = `0x${crypto.randomUUID().replace(/-/g, "")}`;
+
+          const { witness } = await noir.execute({
+            similarity_score: scaledScore.toString(),
+            threshold: scaledThreshold.toString(),
+            nonce: disclosureNonce,
+          });
+
+          const proofResult = await backend.generateProof(witness);
+          const isMatch =
+            parsePublicInputToNumber(
+              proofResult.publicInputs[CIRCUIT_SPECS.face_match.resultIndex],
+            ) === 1;
+
           faceMatchProof = {
-            proof: result.proof,
-            publicSignals: result.publicSignals,
-            isMatch: result.proofIsMatch,
-            threshold: result.proofThreshold,
+            proof: bytesToBase64(proofResult.proof),
+            publicSignals: proofResult.publicInputs,
+            isMatch,
+            threshold: proofThreshold,
           };
         }
       }
@@ -332,23 +393,7 @@ export async function POST(
     // =========================================================================
     // STEP 3: Get existing age proof (if available)
     // =========================================================================
-    let ageProof: {
-      proof: unknown;
-      publicSignals: string[];
-      isOver18: boolean;
-    } | null = null;
-
-    if (identityProof?.ageProof) {
-      try {
-        ageProof = {
-          proof: JSON.parse(identityProof.ageProof),
-          publicSignals: [], // Would need to store these
-          isOver18: identityProof.ageProofVerified,
-        };
-      } catch {
-        // Invalid stored proof
-      }
-    }
+    const ageProof = getUserAgeProofPayload(userId);
 
     // =========================================================================
     // STEP 4: Build and encrypt PII package

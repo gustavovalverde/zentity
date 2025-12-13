@@ -1,1 +1,0 @@
-# Liveness Detection Service

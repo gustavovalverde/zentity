@@ -51,6 +51,14 @@ CREATE INDEX IF NOT EXISTS "account_userId_idx" on "account" ("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier_idx" on "verification" ("identifier");
 
 -- Application tables
+CREATE TABLE IF NOT EXISTS zk_challenges (
+  nonce TEXT PRIMARY KEY,
+  circuit_type TEXT NOT NULL,
+  user_id TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS age_proofs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -62,6 +70,10 @@ CREATE TABLE IF NOT EXISTS age_proofs (
   dob_ciphertext TEXT,
   fhe_client_key_id TEXT,
   fhe_encryption_time_ms INTEGER,
+  circuit_type TEXT,
+  noir_version TEXT,
+  circuit_hash TEXT,
+  bb_version TEXT,
   FOREIGN KEY (user_id) REFERENCES user(id)
 );
 
@@ -69,7 +81,7 @@ CREATE TABLE IF NOT EXISTS kyc_documents (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   document_type TEXT NOT NULL,
-  file_data BLOB NOT NULL,
+  -- PRIVACY: do not store image bytes; only metadata is persisted.
   file_name TEXT NOT NULL,
   file_mime_type TEXT NOT NULL,
   file_size INTEGER NOT NULL,
@@ -102,8 +114,6 @@ CREATE TABLE IF NOT EXISTS identity_proofs (
   user_salt TEXT NOT NULL,
   dob_ciphertext TEXT,
   fhe_client_key_id TEXT,
-  age_proof TEXT,
-  age_proof_verified INTEGER DEFAULT 0,
   document_type TEXT,
   country_verified TEXT,
   is_document_verified INTEGER DEFAULT 0,
@@ -114,21 +124,36 @@ CREATE TABLE IF NOT EXISTS identity_proofs (
   confidence_score REAL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
-  -- Sprint 1 additions: New privacy-preserving fields
   doc_validity_proof TEXT,            -- ZK proof that document is not expired
   nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt), ISO 3166-1 alpha-3
-  age_proofs_json TEXT,               -- JSON: {"18": proof, "21": proof, "25": proof}
-  -- Sprint 2 additions: FHE expansion
   gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218: 0=Unknown, 1=Male, 2=Female, 9=N/A)
   dob_full_ciphertext TEXT,           -- FHE encrypted full DOB as YYYYMMDD (u32)
-  -- Sprint 3 additions: Advanced ZK + Liveness FHE
   nationality_membership_proof TEXT,  -- ZK proof of nationality group membership (EU, SCHENGEN, etc.)
-  liveness_score_ciphertext TEXT      -- FHE encrypted liveness score (0.0-1.0 as u16 0-10000)
+  liveness_score_ciphertext TEXT,     -- FHE encrypted liveness score (0.0-1.0 as u16 0-10000)
+  first_name_encrypted TEXT           -- JWE encrypted first name for dashboard display
+);
+
+-- Temporary onboarding sessions (encrypted wizard state)
+CREATE TABLE IF NOT EXISTS onboarding_sessions (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  step INTEGER DEFAULT 1,
+  -- PRIVACY: encrypted wizard state only (JWE / AES-256-GCM), short-lived via expires_at TTL.
+  encrypted_pii TEXT,
+  document_hash TEXT,                 -- SHA256 of uploaded document (for dedup)
+  document_processed INTEGER DEFAULT 0,
+  liveness_passed INTEGER DEFAULT 0,
+  face_match_passed INTEGER DEFAULT 0,
+  created_at INTEGER DEFAULT (unixepoch()),
+  updated_at INTEGER DEFAULT (unixepoch()),
+  expires_at INTEGER                  -- Unix timestamp for auto-expiration (enforced by app)
 );
 
 -- Indexes for application tables
+CREATE INDEX IF NOT EXISTS idx_zk_challenges_expires_at ON zk_challenges(expires_at);
 CREATE INDEX IF NOT EXISTS idx_age_proofs_user_id ON age_proofs(user_id);
 CREATE INDEX IF NOT EXISTS idx_kyc_documents_user_id ON kyc_documents(user_id);
 CREATE INDEX IF NOT EXISTS idx_kyc_status_user_id ON kyc_status(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_proofs_user_id ON identity_proofs (user_id);
 CREATE INDEX IF NOT EXISTS idx_identity_proofs_document_hash ON identity_proofs (document_hash);
+CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at ON onboarding_sessions(expires_at);

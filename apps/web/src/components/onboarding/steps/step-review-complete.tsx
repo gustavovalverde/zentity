@@ -31,11 +31,11 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
-import { trackFaceMatch } from "@/lib/analytics";
 import { signUp } from "@/lib/auth-client";
 import {
   encryptDOB,
   generateAgeProof,
+  getProofChallenge,
   storeAgeProof,
   verifyAgeProof,
 } from "@/lib/crypto-client";
@@ -196,13 +196,10 @@ export function StepReviewComplete() {
 
         if (result.error) {
           setFaceMatchStatus("error");
-          trackFaceMatch("error", { error: result.error });
         } else if (result.matched) {
           setFaceMatchStatus("matched");
-          trackFaceMatch("matched", { confidence: result.confidence });
         } else {
           setFaceMatchStatus("no_match");
-          trackFaceMatch("no_match", { confidence: result.confidence });
         }
       } catch (err) {
         setFaceMatchStatus("error");
@@ -213,9 +210,6 @@ export function StepReviewComplete() {
           threshold: 0.6,
           processingTimeMs: 0,
           idFaceExtracted: false,
-          error: err instanceof Error ? err.message : "Unknown error",
-        });
-        trackFaceMatch("error", {
           error: err instanceof Error ? err.message : "Unknown error",
         });
       }
@@ -268,7 +262,7 @@ export function StepReviewComplete() {
         encryptionTimeMs: number;
       } | null = null;
       let proofResult: {
-        proof: object;
+        proof: string; // Base64 encoded UltraHonk ZK proof
         publicSignals: string[];
         generationTimeMs: number;
       } | null = null;
@@ -329,6 +323,33 @@ export function StepReviewComplete() {
         return;
       }
 
+      // For persisted proofs, require a server-issued nonce (replay resistance).
+      // The pre-signup proof uses a client nonce (no auth yet), so we generate
+      // a second proof after signup using a server challenge nonce.
+      let proofResultToStore = proofResult;
+      if (birthYear) {
+        try {
+          const currentYear = new Date().getFullYear();
+          const challenge = await getProofChallenge("age_verification");
+          proofResultToStore = await generateAgeProof(
+            birthYear,
+            currentYear,
+            18,
+            {
+              nonce: challenge.nonce,
+            },
+          );
+        } catch (_err) {
+          // If we can't generate a persisted proof, don't proceed to store anything.
+          setError(
+            "Failed to generate a replay-resistant age proof. Please try again.",
+          );
+          setProofStatus("error");
+          setSubmitting(false);
+          return;
+        }
+      }
+
       // Full identity verification (document + liveness + face matching)
       // Use the same selfie that was used for local face matching (bestSelfieFrame or fallback to selfieImage)
       const selfieToVerify = data.bestSelfieFrame || data.selfieImage;
@@ -363,13 +384,13 @@ export function StepReviewComplete() {
       }
 
       // Store the proof AND FHE ciphertext
-      if (proofResult) {
+      // NOTE: isOver18 is derived server-side from the verified proof
+      if (proofResultToStore) {
         setProofStatus("storing");
         await storeAgeProof(
-          proofResult.proof,
-          proofResult.publicSignals,
-          true,
-          proofResult.generationTimeMs,
+          proofResultToStore.proof,
+          proofResultToStore.publicSignals,
+          proofResultToStore.generationTimeMs,
           fheResult
             ? {
                 dobCiphertext: fheResult.ciphertext,
@@ -596,7 +617,7 @@ export function StepReviewComplete() {
                       data.idDocumentBase64 ||
                       ""
                     }
-                    alt="ID Photo"
+                    alt="Face extracted from ID document"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
                       faceMatchStatus === "matching" && "opacity-70",

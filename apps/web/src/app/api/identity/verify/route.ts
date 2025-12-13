@@ -15,10 +15,10 @@
  * - GDPR compliance: delete user_salt to "forget" the user
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
+import { sha256CommitmentHex } from "@/lib/commitments";
 import {
   createIdentityProof,
   documentHashExists,
@@ -27,14 +27,33 @@ import {
   updateIdentityProofFlags,
   updateUserName,
 } from "@/lib/db";
+import {
+  encryptBirthYearFhe,
+  encryptDobFhe,
+  encryptGenderFhe,
+  encryptLivenessScoreFhe,
+} from "@/lib/fhe-client";
+import { HttpError } from "@/lib/http";
+import {
+  getEmbeddingVector,
+  getLargestFace,
+  getLiveScore,
+  getRealScore,
+} from "@/lib/human-metrics";
+import { detectFromBase64, getHumanServer } from "@/lib/human-server";
+import { cropFaceRegion } from "@/lib/image-processing";
 import { buildDisplayName } from "@/lib/name-utils";
+import { type OcrProcessResult, processDocumentOcr } from "@/lib/ocr-client";
+import {
+  getSessionFromCookie,
+  validateStepAccess,
+} from "@/lib/onboarding-session";
 
-// Service URLs
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
-const LIVENESS_SERVICE_URL =
-  process.env.LIVENESS_SERVICE_URL || "http://localhost:5003";
-const FHE_SERVICE_URL = process.env.FHE_SERVICE_URL || "http://localhost:5001";
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+// ZK proofs are generated client-side; this endpoint does not generate proofs.
+
+// Face matching threshold for ID photo ↔ selfie comparisons.
+// ID photos can be old and lower quality, so a lower threshold is used.
+const FACE_MATCH_MIN_CONFIDENCE = 0.35;
 
 interface VerifyIdentityRequest {
   // Document image (base64)
@@ -82,95 +101,77 @@ interface VerifyIdentityResponse {
   error?: string;
 }
 
+const emptyVerifyResults: VerifyIdentityResponse["results"] = {
+  documentProcessed: false,
+  isDocumentValid: false,
+  livenessPassed: false,
+  faceMatched: false,
+  isDuplicateDocument: false,
+  ageProofGenerated: false,
+  dobEncrypted: false,
+  docValidityProofGenerated: false,
+  nationalityCommitmentGenerated: false,
+  livenessScoreEncrypted: false,
+};
+
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<VerifyIdentityResponse>> {
   const startTime = Date.now();
   const issues: string[] = [];
 
-  try {
-    // Authenticate user
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
+  const fail = (
+    status: number,
+    failIssues: string[],
+    error: string,
+  ): NextResponse<VerifyIdentityResponse> => {
+    return NextResponse.json(
+      {
+        success: false,
+        verified: false,
+        results: emptyVerifyResults,
+        processingTimeMs: Date.now() - startTime,
+        issues: failIssues,
+        error,
+      },
+      { status },
+    );
+  };
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["unauthorized"],
-          error: "Authentication required",
-        },
-        { status: 401 },
+  try {
+    const authResult = await requireSession();
+    if (!authResult.ok) {
+      return fail(401, ["unauthorized"], "Authentication required");
+    }
+
+    // Validate onboarding session - must have completed document verification
+    const onboardingSession = await getSessionFromCookie();
+    const stepValidation = validateStepAccess(
+      onboardingSession,
+      "identity-verify",
+    );
+    if (!stepValidation.valid) {
+      return fail(
+        403,
+        ["step_validation_failed"],
+        stepValidation.error || "Complete previous steps first",
       );
     }
 
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
     const body = (await request.json()) as VerifyIdentityRequest;
 
     // Validate input
     if (!body.documentImage) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["missing_document_image"],
-          error: "Document image is required",
-        },
-        { status: 400 },
+      return fail(
+        400,
+        ["missing_document_image"],
+        "Document image is required",
       );
     }
 
     if (!body.selfieImage) {
-      return NextResponse.json(
-        {
-          success: false,
-          verified: false,
-          results: {
-            documentProcessed: false,
-            isDocumentValid: false,
-            livenessPassed: false,
-            faceMatched: false,
-            isDuplicateDocument: false,
-            ageProofGenerated: false,
-            dobEncrypted: false,
-            docValidityProofGenerated: false,
-            nationalityCommitmentGenerated: false,
-            livenessScoreEncrypted: false,
-          },
-          processingTimeMs: Date.now() - startTime,
-          issues: ["missing_selfie_image"],
-          error: "Selfie image is required",
-        },
-        { status: 400 },
-      );
+      return fail(400, ["missing_selfie_image"], "Selfie image is required");
     }
 
     // Check if user already has identity proof
@@ -180,43 +181,13 @@ export async function POST(
     // =========================================================================
     // STEP 1: Privacy-Preserving Document Processing
     // =========================================================================
-    let documentResult: {
-      commitments?: {
-        documentHash: string;
-        nameCommitment: string;
-        userSalt: string;
-      };
-      documentType: string;
-      documentOrigin?: string; // ISO 3166-1 alpha-3 country code
-      confidence: number;
-      extractedData?: {
-        fullName?: string;
-        firstName?: string;
-        lastName?: string;
-        documentNumber?: string;
-        dateOfBirth?: string;
-        expirationDate?: string; // ISO 8601: YYYY-MM-DD
-        nationalityCode?: string; // ISO 3166-1 alpha-3
-        gender?: string; // M or F from OCR
-      };
-      validationIssues: string[];
-    } | null = null;
+    let documentResult: OcrProcessResult | null = null;
 
     try {
-      const ocrResponse = await fetch(`${OCR_SERVICE_URL}/process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: body.documentImage,
-          userSalt: userSalt,
-        }),
+      documentResult = await processDocumentOcr({
+        image: body.documentImage,
+        userSalt: userSalt,
       });
-
-      if (!ocrResponse.ok) {
-        throw new Error(`OCR service returned ${ocrResponse.status}`);
-      }
-
-      documentResult = await ocrResponse.json();
       issues.push(...(documentResult?.validationIssues || []));
     } catch (_error) {
       issues.push("document_processing_failed");
@@ -247,72 +218,108 @@ export async function POST(
     } | null = null;
 
     try {
-      const verifyResponse = await fetch(`${LIVENESS_SERVICE_URL}/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          idImage: body.documentImage,
-          selfieImage: body.selfieImage,
-        }),
-      });
+      const human = await getHumanServer();
 
-      if (!verifyResponse.ok) {
-        throw new Error(
-          `Verification service returned ${verifyResponse.status}`,
-        );
+      const selfieResult = await detectFromBase64(body.selfieImage);
+
+      // First pass: detect faces in document to get bounding box
+      const docResultInitial = await detectFromBase64(body.documentImage);
+      const docFaceInitial = getLargestFace(docResultInitial);
+
+      let docResult = docResultInitial;
+
+      // If face found, crop and re-detect for better embedding quality
+      if (docFaceInitial?.box) {
+        try {
+          // Human.js box can be array [x,y,w,h] or object {x,y,width,height}
+          const box = Array.isArray(docFaceInitial.box)
+            ? {
+                x: docFaceInitial.box[0],
+                y: docFaceInitial.box[1],
+                width: docFaceInitial.box[2],
+                height: docFaceInitial.box[3],
+              }
+            : docFaceInitial.box;
+
+          const croppedFaceDataUrl = await cropFaceRegion(
+            body.documentImage,
+            box,
+          );
+          docResult = await detectFromBase64(croppedFaceDataUrl);
+        } catch (_err) {}
       }
 
-      verificationResult = await verifyResponse.json();
+      const selfieFace = getLargestFace(selfieResult);
+      const docFace = getLargestFace(docResult);
+      const localIssues: string[] = [];
 
-      issues.push(...(verificationResult?.issues || []));
+      let antispoofScore = 0;
+      let liveScore = 0;
+      let livenessPassed = false;
+      if (selfieFace) {
+        antispoofScore = getRealScore(selfieFace);
+        liveScore = getLiveScore(selfieFace);
+        livenessPassed = antispoofScore >= 0.5 && liveScore >= 0.5;
+      } else {
+        localIssues.push("no_selfie_face");
+      }
+
+      let facesMatch = false;
+      let faceMatchConfidence = 0;
+      if (selfieFace && docFace) {
+        const selfieEmb = getEmbeddingVector(selfieFace);
+        const docEmb = getEmbeddingVector(docFace);
+        if (selfieEmb && docEmb) {
+          faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
+          facesMatch = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
+        } else {
+          localIssues.push("embedding_failed");
+        }
+      } else {
+        localIssues.push("no_document_face");
+      }
+
+      verificationResult = {
+        verified: livenessPassed && facesMatch,
+        is_live: livenessPassed,
+        antispoof_score: antispoofScore,
+        faces_match: facesMatch,
+        face_match_confidence: faceMatchConfidence,
+        issues: localIssues,
+      };
+
+      issues.push(...localIssues);
     } catch (_error) {
       issues.push("verification_service_failed");
     }
 
     // =========================================================================
-    // STEP 3: Cryptographic Processing (FHE + ZK)
+    // STEP 3: Cryptographic Processing (FHE + commitments)
     // =========================================================================
-    // If we have a DOB, encrypt it with FHE and generate ZK proof
+    // If we have a DOB, encrypt it with FHE
     let fheResult: {
       ciphertext: string;
       clientKeyId: string;
-    } | null = null;
-    let zkResult: {
-      proof: unknown;
-      publicSignals: string[];
-      generationTimeMs: number;
-      isOver18: boolean;
-    } | null = null;
-
-    // Document validity ZK proof result
-    let docValidityResult: {
-      proof: unknown;
-      publicSignals: string[];
-      isValid: boolean;
-      generationTimeMs: number;
     } | null = null;
 
     // Nationality commitment (SHA256 hash)
     let nationalityCommitment: string | null = null;
 
-    // Multiple age proofs (18, 21, 25)
-    let ageProofsJson: Record<string, unknown> | null = null;
-
-    // Sprint 2: Gender FHE encryption result
+    // Gender FHE encryption result
     let genderFheResult: {
       ciphertext: string;
       clientKeyId: string;
       genderCode: number;
     } | null = null;
 
-    // Sprint 2: Full DOB FHE encryption result
+    // Full DOB FHE encryption result
     let dobFullFheResult: {
       ciphertext: string;
       clientKeyId: string;
       dobInt: number;
     } | null = null;
 
-    // Sprint 3: Liveness score FHE encryption result
+    // Liveness score FHE encryption result
     let livenessScoreFheResult: {
       ciphertext: string;
       clientKeyId: string;
@@ -338,248 +345,100 @@ export async function POST(
         birthYear > 1900 &&
         birthYear <= new Date().getFullYear()
       ) {
-        const currentYear = new Date().getFullYear();
-
-        // FHE Encryption (encrypt birth year)
+        // FHE Encryption (encrypt birth year for homomorphic computations)
         try {
-          const fheResponse = await fetch(`${FHE_SERVICE_URL}/encrypt`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              birthYear,
-              clientKeyId: "default",
-            }),
+          fheResult = await encryptBirthYearFhe({
+            birthYear,
+            clientKeyId: "default",
           });
-
-          if (fheResponse.ok) {
-            const fheData = await fheResponse.json();
-            fheResult = {
-              ciphertext: fheData.ciphertext,
-              clientKeyId: fheData.clientKeyId,
-            };
-          } else {
+        } catch (error) {
+          if (error instanceof HttpError) {
             issues.push("fhe_encryption_failed");
-          }
-        } catch (_error) {
-          issues.push("fhe_service_unavailable");
-        }
-
-        // ZK Proof Generation (prove age >= 18, 21, 25 in parallel)
-        const ageThresholds = [18, 21, 25];
-        try {
-          // Generate all age proofs in parallel
-          const zkPromises = ageThresholds.map((minAge) =>
-            fetch(`${ZK_SERVICE_URL}/generate-proof`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                birthYear,
-                currentYear,
-                minAge,
-              }),
-            }).then(async (res) => {
-              if (res.ok) {
-                const data = await res.json();
-                return { minAge, data, success: true };
-              }
-              return { minAge, success: false, error: await res.text() };
-            }),
-          );
-
-          const zkResults = await Promise.all(zkPromises);
-          const ageProofs: Record<string, unknown> = {};
-          let primaryZkData = null;
-
-          for (const result of zkResults) {
-            if (result.success && result.data) {
-              ageProofs[result.minAge.toString()] = {
-                proof: result.data.proof,
-                publicSignals: result.data.publicSignals,
-                generationTimeMs: result.data.generationTimeMs,
-              };
-              // Use age 18 proof as the primary result
-              if (result.minAge === 18) {
-                primaryZkData = result.data;
-              }
-            } else {
-            }
-          }
-
-          if (Object.keys(ageProofs).length > 0) {
-            ageProofsJson = ageProofs;
-          }
-
-          if (primaryZkData) {
-            const isOver18 = primaryZkData.publicSignals?.[0] === "1";
-            zkResult = {
-              proof: primaryZkData.proof,
-              publicSignals: primaryZkData.publicSignals,
-              generationTimeMs: primaryZkData.generationTimeMs,
-              isOver18,
-            };
           } else {
-            issues.push("zk_proof_failed");
+            issues.push("fhe_service_unavailable");
           }
-        } catch (_error) {
-          issues.push("zk_service_unavailable");
         }
       }
     }
 
     // =========================================================================
-    // STEP 3.5: Document Validity ZK Proof
-    // =========================================================================
-    // Generate ZK proof that document is not expired (without revealing expiry date)
-    const expirationDate = documentResult?.extractedData?.expirationDate;
-    if (expirationDate) {
-      try {
-        const docValidityResponse = await fetch(
-          `${ZK_SERVICE_URL}/docvalidity/generate`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              expiryDate: expirationDate, // Already in YYYY-MM-DD format from OCR
-            }),
-          },
-        );
-
-        if (docValidityResponse.ok) {
-          const docValidityData = await docValidityResponse.json();
-          docValidityResult = {
-            proof: docValidityData.proof,
-            publicSignals: docValidityData.publicSignals,
-            isValid: docValidityData.isValid,
-            generationTimeMs: docValidityData.generationTimeMs,
-          };
-        } else {
-          issues.push("doc_validity_proof_failed");
-        }
-      } catch (_error) {
-        issues.push("doc_validity_service_unavailable");
-      }
-    }
-
-    // =========================================================================
-    // STEP 3.6: Nationality Commitment
+    // STEP 3.5: Nationality Commitment
     // =========================================================================
     // Generate SHA256 commitment for nationality (ISO 3166-1 alpha-3 code)
     const nationalityCode = documentResult?.extractedData?.nationalityCode;
     if (nationalityCode && documentResult?.commitments?.userSalt) {
       try {
-        // Generate commitment: SHA256(nationalityCode + userSalt)
-        const encoder = new TextEncoder();
-        const data = encoder.encode(
-          nationalityCode + documentResult.commitments.userSalt,
-        );
-        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        nationalityCommitment = hashArray
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
+        nationalityCommitment = await sha256CommitmentHex({
+          value: nationalityCode,
+          salt: documentResult.commitments.userSalt,
+        });
       } catch (_error) {
         issues.push("nationality_commitment_failed");
       }
     }
 
     // =========================================================================
-    // STEP 3.7: Gender FHE Encryption (Sprint 2)
+    // STEP 3.7: Gender FHE Encryption
     // =========================================================================
     const gender = documentResult?.extractedData?.gender;
     if (gender) {
       try {
         // Convert M/F to ISO 5218 code
         const genderCode = gender === "M" ? 1 : gender === "F" ? 2 : 0;
-
-        const genderResponse = await fetch(
-          `${FHE_SERVICE_URL}/encrypt-gender`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              genderCode,
-              clientKeyId: "default",
-            }),
-          },
-        );
-
-        if (genderResponse.ok) {
-          const genderData = await genderResponse.json();
-          genderFheResult = {
-            ciphertext: genderData.ciphertext,
-            clientKeyId: genderData.clientKeyId,
-            genderCode,
-          };
-        } else {
+        const genderData = await encryptGenderFhe({
+          genderCode,
+          clientKeyId: "default",
+        });
+        genderFheResult = {
+          ...genderData,
+          genderCode,
+        };
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("gender_fhe_encryption_failed");
+        } else {
+          issues.push("gender_fhe_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("gender_fhe_service_unavailable");
       }
     }
 
     // =========================================================================
-    // STEP 3.8: Full DOB FHE Encryption (Sprint 2)
+    // STEP 3.8: Full DOB FHE Encryption
     // =========================================================================
     // Encrypt full DOB as YYYYMMDD for precise age calculations
     if (dateOfBirth) {
       try {
-        const dobFullResponse = await fetch(`${FHE_SERVICE_URL}/encrypt-dob`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            dob: dateOfBirth,
-            clientKeyId: "default",
-          }),
+        dobFullFheResult = await encryptDobFhe({
+          dob: dateOfBirth,
+          clientKeyId: "default",
         });
-
-        if (dobFullResponse.ok) {
-          const dobFullData = await dobFullResponse.json();
-          dobFullFheResult = {
-            ciphertext: dobFullData.ciphertext,
-            clientKeyId: dobFullData.clientKeyId,
-            dobInt: dobFullData.dobInt,
-          };
-        } else {
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("dob_full_fhe_encryption_failed");
+        } else {
+          issues.push("dob_full_fhe_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("dob_full_fhe_service_unavailable");
       }
     }
 
     // =========================================================================
-    // STEP 3.9: Liveness Score FHE Encryption (Sprint 3)
+    // STEP 3.9: Liveness Score FHE Encryption
     // =========================================================================
     // Encrypt the liveness/anti-spoof score for privacy-preserving threshold checks
     // Score is 0.0-1.0, encrypted as u16 (0-10000) for FHE operations
     const livenessScore = verificationResult?.antispoof_score;
     if (livenessScore !== undefined && livenessScore !== null) {
       try {
-        const livenessScoreResponse = await fetch(
-          `${FHE_SERVICE_URL}/encrypt-liveness`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              score: livenessScore,
-              clientKeyId: "default",
-            }),
-          },
-        );
-
-        if (livenessScoreResponse.ok) {
-          const livenessScoreData = await livenessScoreResponse.json();
-          livenessScoreFheResult = {
-            ciphertext: livenessScoreData.ciphertext,
-            clientKeyId: livenessScoreData.clientKeyId,
-            score: livenessScoreData.score,
-          };
-        } else {
+        livenessScoreFheResult = await encryptLivenessScoreFhe({
+          score: livenessScore,
+          clientKeyId: "default",
+        });
+      } catch (error) {
+        if (error instanceof HttpError) {
           issues.push("liveness_score_fhe_encryption_failed");
+        } else {
+          issues.push("liveness_score_fhe_service_unavailable");
         }
-      } catch (_error) {
-        issues.push("liveness_score_fhe_service_unavailable");
       }
     }
 
@@ -608,9 +467,9 @@ export async function POST(
       Boolean(documentResult?.extractedData?.documentNumber);
     const livenessPassed = verificationResult?.is_live || false;
     const faceMatched = verificationResult?.faces_match || false;
-    const ageProofGenerated = Boolean(zkResult?.proof);
+    const ageProofGenerated = false;
     const dobEncrypted = Boolean(fheResult?.ciphertext);
-    const docValidityProofGenerated = Boolean(docValidityResult?.proof);
+    const docValidityProofGenerated = false;
     const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
     const livenessScoreEncrypted = Boolean(livenessScoreFheResult?.ciphertext);
     const verified =
@@ -635,30 +494,15 @@ export async function POST(
           isDocumentVerified: isDocumentValid,
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
-          ageProofVerified: zkResult?.isOver18 ?? false,
           verificationMethod: "ocr_local",
           verifiedAt: verified ? new Date().toISOString() : undefined,
           confidenceScore: documentResult.confidence,
           // FHE encrypted DOB
           dobCiphertext: fheResult?.ciphertext,
           fheClientKeyId: fheResult?.clientKeyId,
-          // ZK Proof
-          ageProof: zkResult ? JSON.stringify(zkResult.proof) : undefined,
-          // Sprint 1: Document validity proof
-          docValidityProof: docValidityResult
-            ? JSON.stringify(docValidityResult.proof)
-            : undefined,
-          // Sprint 1: Nationality commitment (ISO 3166-1 alpha-3)
           nationalityCommitment: nationalityCommitment || undefined,
-          // Sprint 1: Multiple age proofs (18, 21, 25)
-          ageProofsJson: ageProofsJson
-            ? JSON.stringify(ageProofsJson)
-            : undefined,
-          // Sprint 2: Gender FHE encryption
           genderCiphertext: genderFheResult?.ciphertext,
-          // Sprint 2: Full DOB FHE encryption
           dobFullCiphertext: dobFullFheResult?.ciphertext,
-          // Sprint 3: Liveness score FHE encryption
           livenessScoreCiphertext: livenessScoreFheResult?.ciphertext,
           // User display data: Encrypted first name
           firstNameEncrypted: firstNameEncrypted || undefined,
@@ -673,36 +517,20 @@ export async function POST(
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
           verifiedAt: verified ? new Date().toISOString() : undefined,
-          // Update FHE/ZK data if available
+          // Update FHE data if available
           ...(fheResult && {
             dobCiphertext: fheResult.ciphertext,
             fheClientKeyId: fheResult.clientKeyId,
           }),
-          ...(zkResult && {
-            ageProof: JSON.stringify(zkResult.proof),
-            ageProofVerified: zkResult.isOver18,
-          }),
-          // Sprint 1: Document validity proof
-          ...(docValidityResult && {
-            docValidityProof: JSON.stringify(docValidityResult.proof),
-          }),
-          // Sprint 1: Nationality commitment
           ...(nationalityCommitment && {
             nationalityCommitment,
           }),
-          // Sprint 1: Multiple age proofs
-          ...(ageProofsJson && {
-            ageProofsJson: JSON.stringify(ageProofsJson),
-          }),
-          // Sprint 2: Gender FHE encryption
           ...(genderFheResult && {
             genderCiphertext: genderFheResult.ciphertext,
           }),
-          // Sprint 2: Full DOB FHE encryption
           ...(dobFullFheResult && {
             dobFullCiphertext: dobFullFheResult.ciphertext,
           }),
-          // Sprint 3: Liveness score FHE encryption
           ...(livenessScoreFheResult && {
             livenessScoreCiphertext: livenessScoreFheResult.ciphertext,
           }),

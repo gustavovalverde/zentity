@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
-
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "http://localhost:5004";
+import { HttpError } from "@/lib/http";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
+import { ocrDocumentOcr } from "@/lib/ocr-client";
 
 interface OCRRequest {
   image: string;
@@ -18,23 +19,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
-    const response = await fetch(`${OCR_SERVICE_URL}/ocr`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
+    const data = await ocrDocumentOcr({ image: body.image });
+    return NextResponse.json(data);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      const { status, payload } = toServiceErrorPayload(
+        error,
+        "OCR service error",
+      );
       return NextResponse.json(
-        { error: `OCR service error: ${error}` },
-        { status: response.status },
+        { error: `OCR service error: ${payload.error}` },
+        { status },
       );
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (_error) {
     return NextResponse.json(
       {
         error: "Failed to process document",

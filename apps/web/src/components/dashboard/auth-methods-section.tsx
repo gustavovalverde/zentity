@@ -20,7 +20,7 @@ import { authClient } from "@/lib/auth-client";
 // Google icon component
 function GoogleIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24">
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="currentColor"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -58,15 +58,16 @@ export function AuthMethodsSection({
   linkedAccounts,
 }: AuthMethodsSectionProps) {
   const router = useRouter();
-  const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(null);
+  const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(
+    null,
+  );
 
   const isGoogleLinked = linkedAccounts.some((a) => a.provider === "google");
   const isGitHubLinked = linkedAccounts.some((a) => a.provider === "github");
 
   const handleUnlink = async (provider: string) => {
     // Safety check: don't allow unlinking if it's the only auth method
-    const methodCount =
-      (hasPassword ? 1 : 0) + linkedAccounts.length;
+    const methodCount = (hasPassword ? 1 : 0) + linkedAccounts.length;
     if (methodCount <= 1) {
       toast.error("Cannot unlink", {
         description: "You must have at least one authentication method.",
@@ -91,7 +92,8 @@ export function AuthMethodsSection({
       }
     } catch (error) {
       toast.error("An error occurred", {
-        description: error instanceof Error ? error.message : "Please try again",
+        description:
+          error instanceof Error ? error.message : "Please try again",
       });
     } finally {
       setUnlinkingProvider(null);

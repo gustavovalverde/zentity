@@ -4,8 +4,13 @@
 ### Fixtures ###
 fixtures/
 
-### Documentation (internal) ###
-docs/
+### Documentation ###
+# Keep the public docs lean for open-source. Treat the rest as internal notes.
+docs/*
+!docs/architecture.md
+!docs/zk-architecture.md
+!docs/zk-nationality-proofs.md
+docs/archive/
 
 ### Linux ###
 *~
@@ -280,6 +285,9 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
+
+# Noir circuit build output (tracked artifacts live in `apps/web/noir-circuits/*/artifacts/`)
+apps/web/noir-circuits/*/target/
 
 # Jupyter Notebook
 .ipynb_checkpoints

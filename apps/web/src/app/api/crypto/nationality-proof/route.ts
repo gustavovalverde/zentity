@@ -1,32 +1,34 @@
 /**
  * Nationality Membership Proof API
  *
- * POST /api/crypto/nationality-proof - Generate ZK proof that nationality is in a country group
+ * POST /api/crypto/nationality-proof - Get Merkle proof inputs for client-side proving
  * GET /api/crypto/nationality-proof - List country groups or check membership
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import { requireSession } from "@/lib/api-auth";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
+import {
+  generateNationalityProofInputs,
+  getCountriesInGroup,
+  getMerkleRoot,
+  isNationalityInGroup,
+  listGroups,
+} from "@/lib/nationality-merkle";
 
 /**
- * POST - Generate nationality membership ZK proof
+ * POST - Get Merkle proof inputs for nationality membership
  *
  * Body: { nationalityCode: "DEU", groupName: "EU" }
- * Returns proof that nationality is in the group without revealing which country
+ * Returns: Merkle proof inputs for client-side Noir proving
+ *
+ * The client will use these inputs with the nationality_membership circuit
+ * to generate a ZK proof that their nationality is in the group.
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = await request.json();
     const { nationalityCode, groupName } = body;
@@ -51,43 +53,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call ZK service to generate proof
-    const response = await fetch(`${ZK_SERVICE_URL}/nationality/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nationalityCode: nationalityCode.toUpperCase(),
-        groupName: groupName.toUpperCase(),
-      }),
-    });
+    const startTime = Date.now();
 
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "ZK service error" }));
-      return NextResponse.json(error, { status: response.status });
-    }
-
-    const result = await response.json();
+    // Generate Merkle proof inputs for the Noir circuit
+    const proofInputs = await generateNationalityProofInputs(
+      nationalityCode,
+      groupName,
+    );
 
     return NextResponse.json({
       success: true,
-      proof: result.proof,
-      publicSignals: result.publicSignals,
-      isMember: result.isMember,
-      groupName: result.groupName,
-      merkleRoot: result.merkleRoot,
-      generationTimeMs: result.generationTimeMs,
-      solidityCalldata: result.solidityCalldata,
+      // Inputs for client-side Noir proving
+      nationalityCode: proofInputs.nationalityCodeNumeric,
+      merkleRoot: proofInputs.merkleRoot,
+      pathElements: proofInputs.pathElements,
+      pathIndices: proofInputs.pathIndices,
+      groupName: groupName.toUpperCase(),
+      generationTimeMs: Date.now() - startTime,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to generate proof",
-      },
-      { status: 500 },
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to generate proof inputs",
     );
+    return NextResponse.json(payload, { status });
   }
 }
 
@@ -101,14 +90,8 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
@@ -116,54 +99,53 @@ export async function GET(request: NextRequest) {
 
     // Check membership if both code and group provided
     if (code && group) {
-      const response = await fetch(
-        `${ZK_SERVICE_URL}/nationality/check?code=${encodeURIComponent(code)}&group=${encodeURIComponent(group)}`,
-      );
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: "ZK service error" }));
-        return NextResponse.json(error, { status: response.status });
-      }
-
-      return NextResponse.json(await response.json());
+      const isMember = isNationalityInGroup(code, group);
+      const merkleRoot = isMember ? await getMerkleRoot(group) : null;
+      return NextResponse.json({
+        code: code.toUpperCase(),
+        group: group.toUpperCase(),
+        isMember,
+        merkleRoot: merkleRoot ? `0x${merkleRoot.toString(16)}` : null,
+      });
     }
 
     // Get specific group if group provided
     if (group) {
-      const response = await fetch(
-        `${ZK_SERVICE_URL}/nationality/groups/${encodeURIComponent(group)}`,
-      );
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: "ZK service error" }));
-        return NextResponse.json(error, { status: response.status });
+      const countries = getCountriesInGroup(group);
+      if (!countries) {
+        return NextResponse.json(
+          { error: `Unknown group: ${group}` },
+          { status: 404 },
+        );
       }
-
-      return NextResponse.json(await response.json());
+      const merkleRoot = await getMerkleRoot(group);
+      return NextResponse.json({
+        group: group.toUpperCase(),
+        countries,
+        count: countries.length,
+        merkleRoot: `0x${merkleRoot.toString(16)}`,
+      });
     }
 
     // List all groups
-    const response = await fetch(`${ZK_SERVICE_URL}/nationality/groups`);
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "ZK service error" }));
-      return NextResponse.json(error, { status: response.status });
-    }
-
-    return NextResponse.json(await response.json());
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to fetch groups",
-      },
-      { status: 500 },
+    const groups = listGroups();
+    const groupsWithRoots = await Promise.all(
+      groups.map(async (g) => {
+        const root = await getMerkleRoot(g);
+        const countries = getCountriesInGroup(g);
+        return {
+          name: g,
+          count: countries?.length ?? 0,
+          merkleRoot: `0x${root.toString(16)}`,
+        };
+      }),
     );
+    return NextResponse.json({ groups: groupsWithRoots });
+  } catch (error) {
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to fetch groups",
+    );
+    return NextResponse.json(payload, { status });
   }
 }

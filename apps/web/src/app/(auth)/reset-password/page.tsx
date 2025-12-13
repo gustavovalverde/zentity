@@ -33,7 +33,8 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
         <CardContent>
           <Alert variant="destructive" className="mb-4">
             <AlertDescription>
-              Password reset links are valid for 1 hour. Please request a new one.
+              Password reset links are valid for 1 hour. Please request a new
+              one.
             </AlertDescription>
           </Alert>
           <div className="flex flex-col gap-2">

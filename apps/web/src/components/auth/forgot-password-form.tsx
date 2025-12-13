@@ -43,7 +43,9 @@ export function ForgotPasswordForm() {
         toast.success("Check your email", {
           description: "If an account exists, we sent a password reset link.",
         });
-        router.push(`/forgot-password/sent?email=${encodeURIComponent(value.email)}`);
+        router.push(
+          `/forgot-password/sent?email=${encodeURIComponent(value.email)}`,
+        );
       } catch {
         setError("An unexpected error occurred. Please try again.");
         toast.error("Request failed");
@@ -61,7 +63,8 @@ export function ForgotPasswordForm() {
 
   const validateEmail = (value: string) => {
     if (!value) return "Email is required";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "Invalid email address";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+      return "Invalid email address";
     return undefined;
   };
 

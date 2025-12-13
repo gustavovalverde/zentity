@@ -18,9 +18,12 @@ import { useWizard } from "../wizard-provider";
  *
  * Minimal friction start - just collect email.
  * Password will be collected at the end after verification.
+ *
+ * SECURITY: Always starts a fresh session to prevent session bleeding
+ * where User B might see User A's previous progress.
  */
 export function StepEmail() {
-  const { state, updateData, nextStep } = useWizard();
+  const { state, updateData, nextStep, startFresh } = useWizard();
   const validateEmail = makeFieldValidator(
     emailSchema,
     "email",
@@ -32,6 +35,9 @@ export function StepEmail() {
       email: state.data.email || "",
     },
     onSubmit: async ({ value }) => {
+      // SECURITY: Always start fresh session when submitting email
+      // This clears any existing session to prevent session bleeding
+      await startFresh(value.email);
       updateData(value);
       nextStep();
     },

@@ -23,12 +23,9 @@ export default function NotFound() {
             moved.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+        <CardContent>
           <Button asChild className="w-full">
             <Link href="/">Return Home</Link>
-          </Button>
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/dashboard">Go to Dashboard</Link>
           </Button>
         </CardContent>
       </Card>

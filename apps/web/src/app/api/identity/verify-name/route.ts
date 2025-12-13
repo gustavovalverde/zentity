@@ -14,9 +14,8 @@
  */
 
 import crypto from "node:crypto";
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { getIdentityProofByUserId } from "@/lib/db";
 
 interface VerifyNameRequest {
@@ -59,13 +58,8 @@ export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<VerifyNameResponse | { error: string }>> {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = (await request.json()) as VerifyNameRequest;
 
@@ -77,7 +71,7 @@ export async function POST(
     }
 
     // Get user's identity proof
-    const proof = getIdentityProofByUserId(session.user.id);
+    const proof = getIdentityProofByUserId(authResult.session.user.id);
 
     if (!proof) {
       return NextResponse.json(

@@ -35,7 +35,9 @@ export default async function MagicLinkSentPage({
           <div className="flex items-start gap-3">
             <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
             <div>
-              <p className="text-sm font-medium">Click the link in your email</p>
+              <p className="text-sm font-medium">
+                Click the link in your email
+              </p>
               <p className="text-xs text-muted-foreground">
                 The link will sign you in automatically
               </p>

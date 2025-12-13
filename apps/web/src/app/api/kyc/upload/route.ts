@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import Database from "better-sqlite3";
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
 import { calculateKycLevel, ensureKycStatus } from "../route";
 
 const dbPath = process.env.DATABASE_PATH || "./dev.db";
@@ -33,13 +32,8 @@ export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<UploadResponse | { error: string }>> {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
@@ -76,7 +70,7 @@ export async function POST(
     // PRIVACY: We do NOT store file bytes - only metadata for tracking
     // The actual image is processed transiently during verification and discarded
     const documentId = crypto.randomUUID();
-    const userId = session.user.id;
+    const userId = authResult.session.user.id;
 
     // Insert document METADATA only (no file_data) into database
     const insertStmt = db.prepare(`
@@ -153,13 +147,8 @@ export async function GET(
   request: NextRequest,
 ): Promise<NextResponse<{ documents: object[] } | { error: string }>> {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const { searchParams } = new URL(request.url);
     const documentType = searchParams.get("type");
@@ -170,7 +159,7 @@ export async function GET(
       FROM kyc_documents
       WHERE user_id = ?
     `;
-    const params: string[] = [session.user.id];
+    const params: string[] = [authResult.session.user.id];
 
     if (documentType) {
       query += " AND document_type = ?";

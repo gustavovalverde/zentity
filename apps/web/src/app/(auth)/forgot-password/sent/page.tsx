@@ -13,7 +13,9 @@ interface PageProps {
   searchParams: Promise<{ email?: string }>;
 }
 
-export default async function ForgotPasswordSentPage({ searchParams }: PageProps) {
+export default async function ForgotPasswordSentPage({
+  searchParams,
+}: PageProps) {
   const { email } = await searchParams;
 
   return (
