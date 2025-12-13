@@ -15,7 +15,7 @@ import {
   UserCheck,
   XCircle,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -111,6 +111,7 @@ type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
  */
 export function StepReviewComplete() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state, updateData, setSubmitting, reset } = useWizard();
   const { data } = state;
   const [error, setError] = useState<string | null>(null);
@@ -427,6 +428,14 @@ export function StepReviewComplete() {
 
       setProofStatus("complete");
       reset();
+      const rpFlow = searchParams.get("rp_flow");
+      if (rpFlow) {
+        window.location.assign(
+          `/api/rp/complete?flow=${encodeURIComponent(rpFlow)}`,
+        );
+        return;
+      }
+
       router.push("/dashboard");
       router.refresh();
     } catch (err) {

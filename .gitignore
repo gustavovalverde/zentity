@@ -10,6 +10,7 @@ docs/*
 !docs/architecture.md
 !docs/zk-architecture.md
 !docs/zk-nationality-proofs.md
+!docs/rp-redirect-flow.md
 docs/archive/
 
 ### Linux ###
