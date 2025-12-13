@@ -1,24 +1,9 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
-import { magicLink } from "better-auth/plugins";
-import Database from "better-sqlite3";
+import { haveIBeenPwned, magicLink } from "better-auth/plugins";
+import { getDefaultDatabasePath, getSqliteDb } from "@/lib/sqlite";
 
-// Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
-const dbPath = process.env.DATABASE_PATH || "./dev.db";
-
-// Ensure the database directory exists
-const dbDir = path.dirname(dbPath);
-if (dbDir !== "." && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-const db = new Database(dbPath);
-
-// Enable WAL mode for better concurrent read performance
-db.pragma("journal_mode = WAL");
-db.pragma("synchronous = normal");
+const db = getSqliteDb(getDefaultDatabasePath());
 
 export const auth = betterAuth({
   database: db,
@@ -27,6 +12,8 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false, // Disable for dev, enable in production
+    minPasswordLength: 10,
+    maxPasswordLength: 128,
     sendResetPassword: async ({ user: _user, url: _url }) => {
       // TODO: Implement email sending when SMTP is configured
       // For now, silently succeed - the user won't receive an email but can retry
@@ -65,6 +52,7 @@ export const auth = betterAuth({
   },
   plugins: [
     nextCookies(),
+    haveIBeenPwned(),
     magicLink({
       sendMagicLink: async ({ email: _email, url: _url }) => {
         // TODO: Implement email sending when SMTP is configured

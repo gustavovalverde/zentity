@@ -8,10 +8,12 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import Database from "better-sqlite3";
 import type { CircuitType } from "./noir-verifier";
+import {
+  getDefaultDatabasePath,
+  getSqliteDb,
+  isSqliteBuildTime,
+} from "./sqlite";
 
 export interface Challenge {
   nonce: string; // 128-bit hex string
@@ -24,20 +26,7 @@ export interface Challenge {
 // 15 minute TTL for challenges (covers slower client-side proving on low-end devices)
 const CHALLENGE_TTL_MS = 15 * 60 * 1000;
 
-// Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
-const dbPath = process.env.DATABASE_PATH || "./dev.db";
-
-// Ensure the database directory exists
-const dbDir = path.dirname(dbPath);
-if (dbDir !== "." && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-const db = new Database(dbPath);
-
-// Enable WAL mode for better concurrent read/write performance
-db.pragma("journal_mode = WAL");
-db.pragma("synchronous = normal");
+const db = getSqliteDb(getDefaultDatabasePath());
 
 function initializeChallengeTable(): void {
   db.exec(`
@@ -54,7 +43,10 @@ function initializeChallengeTable(): void {
   `);
 }
 
-initializeChallengeTable();
+// Skip during `next build` to avoid SQLite lock contention across build workers.
+if (!isSqliteBuildTime()) {
+  initializeChallengeTable();
+}
 
 /**
  * Remove expired challenges

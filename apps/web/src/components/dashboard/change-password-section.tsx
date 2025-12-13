@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form";
 import { Key, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,10 +22,23 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { authClient } from "@/lib/auth-client";
+import {
+  getBetterAuthErrorMessage,
+  getPasswordPolicyErrorMessage,
+} from "@/lib/better-auth-errors";
+import {
+  getPasswordLengthError,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/password-policy";
 
 export function ChangePasswordSection() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [breachCheckKey, setBreachCheckKey] = useState(0);
+  const [breachStatus, setBreachStatus] = useState<
+    "idle" | "checking" | "safe" | "compromised" | "error"
+  >("idle");
 
   const form = useForm({
     defaultValues: {
@@ -49,9 +63,14 @@ export function ChangePasswordSection() {
         });
 
         if (result.error) {
-          setError(result.error.message || "Failed to change password");
+          const rawMessage = getBetterAuthErrorMessage(
+            result.error,
+            "Failed to change password",
+          );
+          const policyMessage = getPasswordPolicyErrorMessage(result.error);
+          setError(policyMessage || rawMessage);
           toast.error("Password change failed", {
-            description: result.error.message,
+            description: policyMessage || rawMessage,
           });
           return;
         }
@@ -73,6 +92,15 @@ export function ChangePasswordSection() {
     form.handleSubmit();
   };
 
+  const triggerBreachCheckIfConfirmed = () => {
+    const password = form.getFieldValue("newPassword");
+    const confirmPassword = form.getFieldValue("confirmPassword");
+    if (!password || password !== confirmPassword) return;
+    if (getPasswordLengthError(password)) return;
+    setBreachStatus("checking");
+    setBreachCheckKey((k) => k + 1);
+  };
+
   const validateCurrentPassword = (value: string) => {
     if (!value) return "Current password is required";
     return undefined;
@@ -80,11 +108,10 @@ export function ChangePasswordSection() {
 
   const validateNewPassword = (value: string) => {
     if (!value) return "New password is required";
-    if (value.length < 8) return "Password must be at least 8 characters";
-    if (!/[A-Z]/.test(value))
-      return "Password must contain an uppercase letter";
-    if (!/[a-z]/.test(value)) return "Password must contain a lowercase letter";
-    if (!/[0-9]/.test(value)) return "Password must contain a number";
+    if (value.length < PASSWORD_MIN_LENGTH)
+      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+    if (value.length > PASSWORD_MAX_LENGTH)
+      return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
     return undefined;
   };
 
@@ -108,6 +135,15 @@ export function ChangePasswordSection() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Helps password managers associate the new-password fields to a username. */}
+          <input
+            type="text"
+            name="username"
+            autoComplete="username"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -172,6 +208,11 @@ export function ChangePasswordSection() {
                   />
                 </FieldControl>
                 <FieldMessage />
+                <PasswordRequirements
+                  password={field.state.value}
+                  breachCheckKey={breachCheckKey}
+                  onBreachStatusChange={(status) => setBreachStatus(status)}
+                />
               </Field>
             )}
           </form.Field>
@@ -199,7 +240,10 @@ export function ChangePasswordSection() {
                     disabled={isLoading}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    onBlur={field.handleBlur}
+                    onBlur={() => {
+                      field.handleBlur();
+                      triggerBreachCheckIfConfirmed();
+                    }}
                   />
                 </FieldControl>
                 <FieldMessage />
@@ -207,12 +251,14 @@ export function ChangePasswordSection() {
             )}
           </form.Field>
 
-          <p className="text-xs text-muted-foreground">
-            Password must be at least 8 characters with uppercase, lowercase,
-            and a number.
-          </p>
-
-          <Button type="submit" disabled={isLoading}>
+          <Button
+            type="submit"
+            disabled={
+              isLoading ||
+              breachStatus === "checking" ||
+              breachStatus === "compromised"
+            }
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
