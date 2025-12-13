@@ -16,8 +16,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { trackDocResult, trackError } from "@/lib/analytics";
-import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ai";
+import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ocr";
 import { resizeImageFile } from "@/lib/image";
 import { cn } from "@/lib/utils";
 import { WizardNavigation } from "../wizard-navigation";
@@ -54,7 +53,7 @@ const ERROR_RECOVERY_TIPS: Record<string, string> = {
 };
 
 export function StepIdUpload() {
-  const { state, updateData, nextStep } = useWizard();
+  const { state, updateData, nextStep, updateServerProgress } = useWizard();
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(
     state.data.idDocument?.name || null,
@@ -91,26 +90,28 @@ export function StepIdUpload() {
         description:
           "The document took too long to process. Please try uploading again.",
       });
-      trackError("document_timeout", "Processing exceeded 30 seconds");
     }, PROCESSING_TIMEOUT);
 
     return () => clearTimeout(timeout);
   }, [processingState]);
 
-  const processDocument = async (base64: string): Promise<DocumentResult> => {
-    const response = await fetch("/api/kyc/process-document", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: base64 }),
-    });
+  const processDocument = useCallback(
+    async (base64: string): Promise<DocumentResult> => {
+      const response = await fetch("/api/kyc/process-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: base64 }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to process document");
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to process document");
+      }
 
-    return response.json();
-  };
+      return response.json();
+    },
+    [],
+  );
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -119,7 +120,7 @@ export function StepIdUpload() {
       const validTypes = ["image/jpeg", "image/png", "image/webp"];
       if (!validTypes.includes(file.type)) {
         const errorMsg =
-          "Please upload an image file (JPEG, PNG, or WebP). PDFs are not supported for AI processing.";
+          "Please upload an image file (JPEG, PNG, or WebP). PDFs are not supported for document processing.";
         setUploadError(errorMsg);
         toast.error("Invalid file type", {
           description: "Please upload a JPEG, PNG, or WebP image.",
@@ -136,7 +137,7 @@ export function StepIdUpload() {
       }
 
       try {
-        // Resize + compress before upload to speed up AI processing
+        // Resize + compress before upload to speed up OCR processing
         const { file: resizedFile, dataUrl } = await resizeImageFile(file, {
           maxWidth: 1800,
           maxHeight: 1800,
@@ -165,10 +166,8 @@ export function StepIdUpload() {
           toast.success("Document verified!", {
             description: `${DOCUMENT_TYPE_LABELS[result.documentType]} detected successfully.`,
           });
-          trackDocResult("verified", {
-            type: result.documentType,
-            confidence: result.confidence,
-          });
+          // Mark document as processed on server (required for step validation)
+          await updateServerProgress({ documentProcessed: true, step: 2 });
           // Store extracted data in wizard state for later use
           if (result.extractedData) {
             updateData({
@@ -188,10 +187,6 @@ export function StepIdUpload() {
                 ? "Unable to identify document type. Please try a different document."
                 : "Could not extract required information. Please ensure the document is clear and visible.",
           });
-          trackDocResult("rejected", {
-            type: result.documentType,
-            issues: result.validationIssues,
-          });
         }
       } catch (error) {
         const errorMsg =
@@ -201,10 +196,9 @@ export function StepIdUpload() {
           description: errorMsg,
         });
         setProcessingState("idle");
-        trackError("document_upload", String(errorMsg));
       }
     },
-    [updateData, processDocument],
+    [updateData, processDocument, updateServerProgress],
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -292,7 +286,7 @@ export function StepIdUpload() {
               </p>
               <p className="text-sm text-blue-600 dark:text-blue-400">
                 {processingState === "processing" &&
-                  "AI is verifying your document"}
+                  "Verifying your document locally"}
               </p>
             </div>
           </div>
@@ -445,8 +439,8 @@ export function StepIdUpload() {
               <div>
                 <h4 className="mb-2 text-sm font-medium">Issues Found:</h4>
                 <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                  {documentResult.validationIssues.map((issue, i) => (
-                    <li key={i}>{issue}</li>
+                  {documentResult.validationIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
                   ))}
                 </ul>
               </div>
@@ -457,7 +451,7 @@ export function StepIdUpload() {
                   How to fix:
                 </h4>
                 <ul className="space-y-2 text-sm text-muted-foreground">
-                  {documentResult.validationIssues.map((issue, i) => {
+                  {documentResult.validationIssues.map((issue) => {
                     // Convert issue to key format (e.g., "Document is blurry" -> "document_blurry")
                     const issueKey = issue
                       .toLowerCase()
@@ -468,7 +462,10 @@ export function StepIdUpload() {
                       ERROR_RECOVERY_TIPS[issueKey.split("_")[0]] ||
                       "Ensure your document is clear, well-lit, and fully visible.";
                     return (
-                      <li key={i} className="flex items-start gap-2">
+                      <li
+                        key={`tip-${issue}`}
+                        className="flex items-start gap-2"
+                      >
                         <span className="text-primary mt-0.5">•</span>
                         <span>{tip}</span>
                       </li>
@@ -549,9 +546,10 @@ export function StepIdUpload() {
 
       <Alert>
         <AlertDescription>
-          Your ID will be analyzed using AI to extract information. The document
-          will be encrypted before storage. We use zero-knowledge proofs to
-          verify your identity without exposing the actual document.
+          Your ID is analyzed locally using OCR to extract information. The
+          document is never sent to external services. We use zero-knowledge
+          proofs and encryption to verify your identity without exposing the
+          actual document.
         </AlertDescription>
       </Alert>
 

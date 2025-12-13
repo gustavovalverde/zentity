@@ -19,27 +19,9 @@
       }
     },
     {
-      "includes": [
-        "src/app/**/page.tsx",
-        "src/app/**/layout.tsx",
-        "src/app/**/loading.tsx",
-        "src/app/**/not-found.tsx"
-      ],
-      "linter": {
-        "rules": {
-          "style": {
-            "noDefaultExport": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["src/app/**/error.tsx"],
       "linter": {
         "rules": {
-          "style": {
-            "noDefaultExport": "off"
-          },
           "suspicious": {
             "noShadowRestrictedNames": "off"
           }

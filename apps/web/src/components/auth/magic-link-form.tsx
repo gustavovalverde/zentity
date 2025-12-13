@@ -4,7 +4,6 @@ import { useForm } from "@tanstack/react-form";
 import { Loader2, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +53,9 @@ export function MagicLinkForm() {
         }
 
         // Redirect to confirmation page
-        router.push(`/magic-link-sent?email=${encodeURIComponent(value.email)}`);
+        router.push(
+          `/magic-link-sent?email=${encodeURIComponent(value.email)}`,
+        );
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "An unexpected error occurred",

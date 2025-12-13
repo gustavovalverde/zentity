@@ -5,7 +5,6 @@ import {
   Calendar,
   CheckCircle,
   Code,
-  ExternalLink,
   FileCheck,
   Globe,
   Shield,
@@ -33,9 +32,7 @@ import {
   VerificationProgress,
 } from "./verification-progress";
 
-// Fallback country names for backwards compatibility
-// The backend now uses iso3166 library for proper country lookups
-// This map is only used when countryName is not provided in identityData
+// Fallback country names used when the backend doesn't provide a display name.
 const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
   DOM: "Dominican Republic",
   USA: "United States",
@@ -55,9 +52,9 @@ const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
 };
 
 function getCountryDisplayName(code: string, name?: string): string {
-  // Prefer backend-provided name (from iso3166 library)
+  // Prefer backend-provided name.
   if (name) return name;
-  // Fallback to hardcoded map for backwards compatibility
+  // Fallback to hardcoded map.
   return COUNTRY_NAMES_FALLBACK[code] || code;
 }
 
@@ -69,9 +66,6 @@ interface DashboardTabsProps {
     nameCommitment?: string;
     dobCiphertext?: string;
     fheClientKeyId?: string;
-    ageProof?: string;
-    ageProofVerified?: boolean;
-    ageProofsJson?: string; // Full proofs with publicSignals for ZK verification
     // Document metadata (non-PII)
     documentType?: string;
     countryVerified?: string; // ISO 3166-1 alpha-3 code (e.g., "DOM")
@@ -112,7 +106,11 @@ export function DashboardTabs({
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <svg className="h-16 w-16 -rotate-90" viewBox="0 0 36 36">
+                      <svg
+                        className="h-16 w-16 -rotate-90"
+                        viewBox="0 0 36 36"
+                        aria-hidden="true"
+                      >
                         <path
                           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                           fill="none"
@@ -138,7 +136,7 @@ export function DashboardTabs({
                         Maximum Privacy
                       </Badge>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Zero PII stored on our servers
+                        No raw PII stored on our servers
                       </p>
                     </div>
                   </div>
@@ -165,7 +163,7 @@ export function DashboardTabs({
                     proofs.
                   </p>
                   <Button asChild size="sm">
-                    <Link href="/onboarding">
+                    <Link href="/sign-up">
                       Start Verification
                       <ArrowRight className="ml-2 h-3 w-3" />
                     </Link>
@@ -221,7 +219,7 @@ export function DashboardTabs({
                     </div>
                   )}
 
-                  {identityData?.ageProofVerified && (
+                  {checks.ageProof && (
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
                         <CheckCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -262,8 +260,7 @@ export function DashboardTabs({
             documentHash={identityData?.documentHash}
             nameCommitment={identityData?.nameCommitment}
             dobCiphertext={identityData?.dobCiphertext}
-            ageProof={identityData?.ageProof}
-            ageProofVerified={identityData?.ageProofVerified}
+            hasAgeProof={checks.ageProof}
           />
         )}
 
@@ -282,11 +279,7 @@ export function DashboardTabs({
 
         <div className="grid gap-6 md:grid-cols-2">
           <NameVerificationDemo />
-          <AgeProofDemo
-            ageProof={identityData?.ageProof}
-            ageProofVerified={identityData?.ageProofVerified}
-            ageProofsJson={identityData?.ageProofsJson}
-          />
+          <AgeProofDemo />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -361,22 +354,12 @@ const result = await fetch('/api/identity/verify-name', {
 const { matches } = await result.json();
 // Returns: { matches: true } - NO NAME REVEALED`}</pre>
             </div>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4">
               <Button variant="outline" size="sm" asChild>
                 <Link href="/dashboard/dev">
                   <Code className="mr-2 h-4 w-4" />
                   Developer Tools
                 </Link>
-              </Button>
-              <Button variant="ghost" size="sm" asChild>
-                <a
-                  href="https://github.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  API Docs
-                </a>
               </Button>
             </div>
           </CardContent>

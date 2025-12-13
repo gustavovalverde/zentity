@@ -1,0 +1,6 @@
+[package]
+name = "age_verification"
+type = "bin"
+authors = ["Zentity"]
+
+[dependencies]

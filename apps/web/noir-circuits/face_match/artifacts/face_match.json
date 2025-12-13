@@ -1,0 +1,42 @@
+{
+  "noir_version": "1.0.0-beta.16+2d46fca7203545cbbfb31a0d0328de6c10a8db95",
+  "hash": "14522883776941127513",
+  "abi": {
+    "parameters": [
+      {
+        "name": "similarity_score",
+        "type": { "kind": "field" },
+        "visibility": "private"
+      },
+      {
+        "name": "threshold",
+        "type": { "kind": "field" },
+        "visibility": "public"
+      },
+      { "name": "nonce", "type": { "kind": "field" }, "visibility": "public" }
+    ],
+    "return_type": {
+      "abi_type": { "kind": "boolean" },
+      "visibility": "public"
+    },
+    "error_types": {
+      "1550773041081453685": {
+        "error_kind": "string",
+        "string": "Threshold must be 0-10000 (0.00%-100.00%)"
+      },
+      "12826101270731410484": {
+        "error_kind": "string",
+        "string": "Similarity score must be 0-10000 (0.00%-100.00%)"
+      }
+    }
+  },
+  "bytecode": "H4sIAAAAAAAA/7VXvW4TQRCevbOxcxc7jnNXgIR0CImfDgRvgJCoUEoaFCFyQlfggLkEUaagowFegFegQfAOvAKR0kGXhtqxnZ1kbr32zuxdphl7Z2fmmx9/d1ZwJi2tX78oRulU3zTOA1gUpXUGLFGCu1bJ3FfmOShWxN9Ga6j1zHBknLUtSUJ+8nMAePfe7tPx8f1vd39uP/5xePjs+Z0Hf598+PXm86Pj/19OpndbvLtfT5Zg40hg4HflkWC6AlVMq+7TPs/8jnQuBReLtNBIT9wcLCidOgk7lga7fDvAX6auAI9vDV2w/5JX+XZBtoxSpmhrXIHAb2MymUj6tQb8Gujyol+TzKhA1k9TMveVBWaMtI7RigXODCYzxlCfGWmRLmaMgD/IGPyaJ2VGCaZ18GPGmV/TzBgJsaD06iTsgZwZe8Bfpr4Aj28NfZAzYx8ulxljjUvKjJJ+bQC/Brq86CdhxoZee6Zhbw9shgw4vlWsGGgTrVjgJrhZUFKQiwUHgrg2bPZiq42SDmQA7OVQTS4Ck+UbXYSh1ltoxUXYgvqLEAN/EYaCuDZs9mLrLcIQmlkECZOBfjfMmBj5S2OXDHi+tK5E6xStuDQJXDzT8Sy1JGnxk89T+DbEtXSJIG4Kfo2WDj8UYEr4cSvAAnIWEFsI1UFf1frh7xt7t95PvtN417Xe//Rv+8+7j6kZ+5rWu8U4f1kWB/lOMSrzV/l45+3+Xlnko7Krb6COCCraBYcE6B/7+c//q5sSkc+xmVDrlsVPLfkeGHrV3VVvxOsWG8ZELqd4sQ7kQTqNg3xcrulz7GFK8gl6qNA/8fO3ziAlnzEu5qF9zEAm+BhrW2zmbEMjL2olz6+W4bDNG2eZkDPsxynEBWug0RQAAA==",
+  "debug_symbols": "nZJNjoQgEIXvwtqFgLTQV5lMDCp2SAgaWiaZGO8+ZZX2z2KSji7eJxTvRYtaWO/afGt8HMY7u34trE0+BH9rwtjZ2Y8Rdpe1YMeymZNzsMVe6uCabHJxZteYQyjYjw0ZD90nG5GzTVAtC+ZiD4TAwQe3va3F013+b9Xa7GbDxcOu+Kd+I/XhV9UJPy+N3AM4PGcSeF0/Eow5kyCe3yD5e8I3rGzn09u9sRJOFoyjClSJWqEq1AtqjapRDbl2M7gFQBAkoSIowoVQEzTBIERJoBQBKfALQhIqgiJASgWoCZpgEBJSFIATBAFS1Lq1K3nbBrdP6pBj9zK48+90VI7RntLYuT4ntzULa9C+Pw==",
+  "file_map": {
+    "51": {
+      "source": "// Face Match Verification Circuit\n// Proves that a face similarity score meets or exceeds a threshold without revealing the exact score\n//\n// Public inputs:\n//   - threshold: The minimum similarity threshold (scaled integer 0-10000 for 0.00%-100.00%)\n//   - nonce: Challenge nonce for replay resistance\n//\n// Private inputs:\n//   - similarity_score: The actual face similarity score (scaled integer 0-10000)\n//\n// Output:\n//   - Returns true if similarity_score >= threshold\n\nfn main(\n    similarity_score: Field,    // Private: actual similarity score (scaled 0-10000)\n    threshold: pub Field,       // Public: minimum threshold (scaled 0-10000)\n    nonce: pub Field            // Public: challenge nonce (replay resistance)\n) -> pub bool {\n    // Nonce is included as public input for replay resistance\n    let _ = nonce;\n\n    // Convert to u32 for safe comparison\n    let score_u32 = similarity_score as u32;\n    let threshold_u32 = threshold as u32;\n\n    // SECURITY: Validate score is within valid range (0-10000)\n    // This prevents malicious inputs that could wrap around\n    assert(score_u32 <= 10000, \"Similarity score must be 0-10000 (0.00%-100.00%)\");\n    assert(threshold_u32 <= 10000, \"Threshold must be 0-10000 (0.00%-100.00%)\");\n\n    // Verify similarity meets threshold\n    score_u32 >= threshold_u32\n}\n\n#[test]\nfn test_face_match_above_threshold() {\n    // Score 80.00%, threshold 60.00%\n    let result = main(8000, 6000, 12345);\n    assert(result == true);\n}\n\n#[test]\nfn test_face_match_exactly_at_threshold() {\n    // Score equals threshold exactly\n    let result = main(6000, 6000, 99999);\n    assert(result == true);\n}\n\n#[test]\nfn test_face_match_below_threshold() {\n    // Score 55.00%, threshold 60.00%\n    let result = main(5500, 6000, 11111);\n    assert(result == false);\n}\n\n#[test]\nfn test_face_match_perfect_score() {\n    // 100% match\n    let result = main(10000, 6000, 22222);\n    assert(result == true);\n}\n\n#[test]\nfn test_face_match_zero_score() {\n    // 0% match, any positive threshold\n    let result = main(0, 1, 33333);\n    assert(result == false);\n}\n\n#[test]\nfn test_face_match_zero_threshold() {\n    // Any score passes with 0 threshold\n    let result = main(0, 0, 44444);\n    assert(result == true);\n}\n\n#[test]\nfn test_face_match_high_precision() {\n    // Test precision: 73.45% vs 73.44%\n    let result = main(7345, 7344, 55555);\n    assert(result == true);\n\n    let result2 = main(7343, 7344, 66666);\n    assert(result2 == false);\n}\n\n#[test(should_fail_with = \"Similarity score must be 0-10000\")]\nfn test_invalid_score_fails() {\n    // Score out of range\n    let _ = main(10001, 6000, 77777);\n}\n\n#[test(should_fail_with = \"Threshold must be 0-10000\")]\nfn test_invalid_threshold_fails() {\n    // Threshold out of range\n    let _ = main(8000, 10001, 88888);\n}\n",
+      "path": "/Users/gustavovalverde/dev/personal/zentity/apps/web/noir-circuits/face_match/src/main.nr"
+    }
+  },
+  "expression_width": { "Bounded": { "width": 4 } }
+}

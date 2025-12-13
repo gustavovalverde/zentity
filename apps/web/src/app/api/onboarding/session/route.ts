@@ -13,13 +13,17 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import {
+  cleanupExpiredOnboardingSessions,
+  deleteOnboardingSession,
+} from "@/lib/db";
+import {
+  clearWizardCookie,
+  completeOnboarding,
+  type EncryptedPiiData,
   loadWizardState,
   saveWizardState,
   updateWizardProgress,
-  completeOnboarding,
-  type EncryptedPiiData,
 } from "@/lib/onboarding-session";
-import { cleanupExpiredOnboardingSessions } from "@/lib/db";
 
 /**
  * GET /api/onboarding/session
@@ -54,8 +58,7 @@ export async function GET() {
       hasExtractedName: !!state.pii?.extractedName,
       hasExtractedDOB: !!state.pii?.extractedDOB,
     });
-  } catch (error) {
-    console.error("Failed to load wizard state:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to load session" },
       { status: 500 },
@@ -68,15 +71,19 @@ export async function GET() {
  *
  * Save or update wizard state.
  * Accepts navigation state and optional PII (which gets encrypted).
+ *
+ * SECURITY: Use forceNew=true when starting a new verification flow.
+ * This clears any existing session to prevent session bleeding between users.
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { email, step, pii, ...updates } = body as {
+    const { email, step, pii, forceNew, ...updates } = body as {
       email: string;
       step: number;
       pii?: EncryptedPiiData;
+      forceNew?: boolean;
       documentProcessed?: boolean;
       livenessPassed?: boolean;
       faceMatchPassed?: boolean;
@@ -84,17 +91,29 @@ export async function POST(request: NextRequest) {
     };
 
     if (!email) {
-      return NextResponse.json(
-        { error: "Email is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    }
+
+    // SECURITY FIX: When starting a new verification flow, always clear existing session first
+    // This prevents "session bleeding" where User B sees User A's progress
+    if (forceNew) {
+      // Clear any existing session from cookie (regardless of email)
+      const existingState = await loadWizardState();
+      if (existingState) {
+        // Delete the previous user's session from database
+        deleteOnboardingSession(existingState.email);
+      }
+      // Clear the cookie
+      await clearWizardCookie();
     }
 
     // If only updating progress flags (not creating new session)
-    if (updates.documentProcessed !== undefined ||
-        updates.livenessPassed !== undefined ||
-        updates.faceMatchPassed !== undefined ||
-        updates.documentHash !== undefined) {
+    if (
+      updates.documentProcessed !== undefined ||
+      updates.livenessPassed !== undefined ||
+      updates.faceMatchPassed !== undefined ||
+      updates.documentHash !== undefined
+    ) {
       await updateWizardProgress(email, {
         step,
         ...updates,
@@ -105,8 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Failed to save wizard state:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to save session" },
       { status: 500 },
@@ -139,8 +157,7 @@ export async function DELETE(request: NextRequest) {
 
     await completeOnboarding(email);
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Failed to delete wizard session:", error);
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to delete session" },
       { status: 500 },

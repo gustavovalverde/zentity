@@ -17,8 +17,8 @@ import { cookies } from "next/headers";
 import {
   deleteOnboardingSession,
   getOnboardingSessionByEmail,
-  upsertOnboardingSession,
   type OnboardingSession,
+  upsertOnboardingSession,
 } from "./db";
 
 /**
@@ -253,8 +253,168 @@ export async function completeOnboarding(email: string): Promise<void> {
 /**
  * Get onboarding session for API use
  */
-export function getOnboardingSession(
-  email: string,
-): OnboardingSession | null {
+export function getOnboardingSession(email: string): OnboardingSession | null {
   return getOnboardingSessionByEmail(email);
+}
+
+// ============================================================================
+// STEP VALIDATION SYSTEM
+// ============================================================================
+
+/**
+ * Valid onboarding step numbers
+ */
+export type OnboardingStep = 1 | 2 | 3 | 4;
+
+/**
+ * Requirements for accessing a specific API endpoint
+ */
+export interface StepRequirements {
+  minStep: OnboardingStep;
+  requiredFields?: Array<
+    "documentProcessed" | "livenessPassed" | "faceMatchPassed"
+  >;
+}
+
+/**
+ * Step requirements for each protected API endpoint
+ *
+ * Step flow:
+ * 1. Email entry (creates session)
+ * 2. Document upload (requires step 1)
+ * 3. Liveness check (requires step 2, can be skipped)
+ * 4. Complete (requires steps 1-2, step 3 complete OR skipped)
+ */
+export const STEP_REQUIREMENTS: Record<string, StepRequirements> = {
+  "process-document": { minStep: 1 },
+  "liveness-session": { minStep: 2, requiredFields: ["documentProcessed"] },
+  "liveness-verify": { minStep: 2, requiredFields: ["documentProcessed"] },
+  "skip-liveness": { minStep: 2, requiredFields: ["documentProcessed"] },
+  "face-match": { minStep: 2, requiredFields: ["documentProcessed"] },
+  // Complete requires document, liveness can be verified OR skipped
+  complete: { minStep: 3, requiredFields: ["documentProcessed"] },
+  "identity-verify": { minStep: 3, requiredFields: ["documentProcessed"] },
+};
+
+/**
+ * Validation result for step access
+ */
+export interface StepValidationResult {
+  valid: boolean;
+  error?: string;
+  session?: OnboardingSession;
+}
+
+/**
+ * Validate that the current session has permission to access an endpoint
+ *
+ * @param session - Current onboarding session (or null if none)
+ * @param endpoint - The endpoint identifier (e.g., 'process-document')
+ * @returns Validation result with error message if invalid
+ */
+export function validateStepAccess(
+  session: OnboardingSession | null,
+  endpoint: string,
+): StepValidationResult {
+  // Check session exists
+  if (!session) {
+    return {
+      valid: false,
+      error: "No active onboarding session. Please start from the beginning.",
+    };
+  }
+
+  // Get requirements for this endpoint
+  const requirements = STEP_REQUIREMENTS[endpoint];
+  if (!requirements) {
+    // No requirements defined, allow access
+    return { valid: true, session };
+  }
+
+  // Check minimum step
+  if (session.step < requirements.minStep) {
+    return {
+      valid: false,
+      error: `Please complete step ${requirements.minStep - 1} first.`,
+    };
+  }
+
+  // Check required fields
+  if (requirements.requiredFields) {
+    for (const field of requirements.requiredFields) {
+      if (!session[field]) {
+        const fieldName = field.replace(/([A-Z])/g, " $1").toLowerCase();
+        return {
+          valid: false,
+          error: `Required verification not completed: ${fieldName}.`,
+        };
+      }
+    }
+  }
+
+  return { valid: true, session };
+}
+
+/**
+ * Get session from wizard cookie for API route validation
+ * Returns the full session data if valid cookie exists
+ */
+export async function getSessionFromCookie(): Promise<OnboardingSession | null> {
+  const navState = await getWizardCookie();
+  if (!navState) return null;
+
+  const session = getOnboardingSessionByEmail(navState.email);
+  if (!session) {
+    // Cookie exists but session expired/missing in DB
+    await clearWizardCookie();
+    return null;
+  }
+
+  return session;
+}
+
+/**
+ * Reset session progress to a specific step
+ * Clears all verification flags from the target step forward
+ *
+ * @param email - Session email
+ * @param targetStep - Step to reset to (1-4)
+ */
+export async function resetToStep(
+  email: string,
+  targetStep: OnboardingStep,
+): Promise<void> {
+  const updates: {
+    step: number;
+    documentProcessed?: boolean;
+    livenessPassed?: boolean;
+    faceMatchPassed?: boolean;
+  } = { step: targetStep };
+
+  // Reset verification flags based on target step
+  if (targetStep <= 1) {
+    // Going back to step 1 resets everything
+    updates.documentProcessed = false;
+    updates.livenessPassed = false;
+    updates.faceMatchPassed = false;
+  } else if (targetStep <= 2) {
+    // Going back to step 2 resets liveness and face match
+    updates.livenessPassed = false;
+    updates.faceMatchPassed = false;
+  }
+  // Step 3 or 4 doesn't reset anything (liveness is the last verification)
+
+  await updateWizardProgress(email, updates);
+}
+
+/**
+ * Mark liveness as skipped (alternative to completing liveness verification)
+ *
+ * @param email - Session email
+ */
+export async function skipLiveness(email: string): Promise<void> {
+  await updateWizardProgress(email, {
+    step: 3,
+    livenessPassed: false, // Not passed, but step advances
+  });
 }

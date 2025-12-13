@@ -1,0 +1,13 @@
+__pycache__/
+.pytest_cache/
+.benchmarks/
+.coverage
+coverage/
+.ruff_cache/
+.mypy_cache/
+.python-version
+
+venv/
+.venv/
+
+.DS_Store

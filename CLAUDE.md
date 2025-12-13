@@ -8,17 +8,18 @@ Zentity is a privacy-preserving KYC platform using zero-knowledge proofs (ZK), f
 
 ## Architecture
 
-Monorepo with 5 services communicating via REST APIs:
+Monorepo with 3 active services communicating via REST APIs:
 
 | Service | Location | Stack | Port |
 |---------|----------|-------|------|
-| Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript | 3000 |
+| Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs | 5001 |
-| ZK Service | `apps/zk` | TypeScript, Express, snarkjs | 5002 |
-| Liveness | `apps/liveness` | Python, FastAPI, DeepFace | 5003 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
 
-The frontend proxies API calls to backend services via Next.js API routes (`/api/crypto/*`, `/api/liveness/*`, `/api/kyc/*`, `/api/identity/*`).
+The frontend handles:
+- Face detection and liveness verification using Human.js (server-side via tfjs-node)
+- **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
+- API routes proxy to backend services (`/api/crypto/*`, `/api/liveness/*`, `/api/kyc/*`, `/api/identity/*`)
 
 ## Build & Development Commands
 
@@ -32,12 +33,11 @@ pnpm test         # Run vitest
 pnpm test:e2e     # Run Playwright tests
 ```
 
-### ZK Service (apps/zk)
+### Noir Circuits (apps/web/noir-circuits)
 ```bash
-pnpm dev          # Start with tsx watch
-pnpm build        # Compile TypeScript
-pnpm test         # Run vitest
-pnpm circuit:build:nationality  # Compile ZK circuits
+# From apps/web directory:
+pnpm circuits:compile  # Compile all circuits
+pnpm circuits:test     # Run circuit tests
 ```
 
 ### FHE Service (apps/fhe)
@@ -47,13 +47,12 @@ cargo run --release      # Run (compiles TFHE keys on first start)
 cargo test               # Run tests
 ```
 
-### Python Services (apps/liveness, apps/ocr)
+### OCR Service (apps/ocr)
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --port 5003 --reload  # liveness
-uvicorn app.main:app --port 5004 --reload  # ocr
-pytest                                      # tests
+uvicorn app.main:app --port 5004 --reload
+pytest
 ```
 
 ### Docker (all services)
@@ -67,31 +66,35 @@ docker-compose up -d     # Detached mode
 The main verification endpoint is `POST /api/identity/verify` which orchestrates:
 1. OCR Service → Extract document data, generate SHA256 commitments
 2. FHE Service → Encrypt DOB, gender, liveness score with TFHE-rs
-3. ZK Service → Generate Groth16 proofs (age, document validity, nationality)
-4. Liveness Service → Multi-gesture challenges (smile, blink, head turns), face matching
+3. **Client-side Noir** → Generate UltraHonk proofs (age, document validity, nationality, face match) in browser
+4. Human.js (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
 
-**Privacy principle**: Raw PII is never stored. Only cryptographic commitments, FHE ciphertexts, and ZK proofs are persisted. Images are processed transiently.
+**Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE, so sensitive data (birth year, nationality) never leaves the user's device. Only cryptographic commitments, FHE ciphertexts, and ZK proofs are persisted. Images are processed transiently.
 
 ## Code Conventions
 
 - **Linting**: Biome (not ESLint). Run `pnpm lint:fix` before commits.
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
-- **Database**: better-sqlite3 with auto-migration in `src/lib/db.ts`
+- **Database**: better-sqlite3 with automatic schema updates in `src/lib/db.ts`
 - **Auth**: better-auth
 
 ## ZK Circuit Development
 
-ZK circuits are in `apps/zk/circuits/` using Circom. Build process:
-1. Requires `circom` compiler (install via `cargo install --git https://github.com/iden3/circom.git`)
-2. Requires Powers of Tau file in `apps/zk/ptau/pot14.ptau`
-3. Run `pnpm circuit:build:nationality` to compile circuit → generate zkey → export verification key
+ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
+1. Install Noir toolchain: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup`
+2. Compile circuits: `cd apps/web && pnpm circuits:compile`
+3. Test circuits: `cd apps/web && pnpm circuits:test`
+
+Circuits available:
+- `age_verification` — Prove age >= threshold without revealing birth year
+- `doc_validity` — Prove document not expired without revealing expiry date
+- `nationality_membership` — Prove nationality in country group via Merkle proof
+- `face_match` — Prove face similarity above threshold
 
 ## Service URLs (Environment Variables)
 
 ```
 FHE_SERVICE_URL=http://localhost:5001
-ZK_SERVICE_URL=http://localhost:5002
-LIVENESS_SERVICE_URL=http://localhost:5003
 OCR_SERVICE_URL=http://localhost:5004
 ```

@@ -13,6 +13,11 @@
  */
 
 import { useState } from "react";
+import {
+  generateAgeProof,
+  generateDocValidityProof,
+  generateFaceMatchProof,
+} from "@/lib/crypto-client";
 
 // Types for the demo
 interface ExchangeKeypair {
@@ -27,9 +32,9 @@ interface DisclosurePackage {
     encryptedAesKey: string;
   };
   proofs: {
-    ageProof?: { proof: object; publicSignals: string[] };
-    faceMatchProof?: { proof: object; publicSignals: string[] };
-    docValidityProof?: { proof: object; publicSignals: string[] };
+    ageProof?: { proof: string; publicSignals: string[] };
+    faceMatchProof?: { proof: string; publicSignals: string[] };
+    docValidityProof?: { proof: string; publicSignals: string[] };
   };
   livenessAttestation: {
     verified: boolean;
@@ -75,16 +80,22 @@ export default function ExchangeSimulatorPage() {
   const [verificationResults, setVerificationResults] =
     useState<VerificationResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
 
   // Step 1: Exchange generates keypair
   const handleGenerateKeypair = async () => {
     setIsLoading(true);
+    setFlowError(null);
     try {
       const res = await fetch("/api/demo/exchange/keypair", { method: "POST" });
       const data = await res.json();
       setExchangeKeypair(data);
       setStep("exchange-request");
-    } catch (_error) {}
+    } catch (error) {
+      setFlowError(
+        `Failed to generate exchange keypair: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     setIsLoading(false);
   };
 
@@ -92,25 +103,75 @@ export default function ExchangeSimulatorPage() {
   const handleUserConsent = async () => {
     if (!exchangeKeypair) return;
     setIsLoading(true);
+    setFlowError(null);
     try {
-      // Simulate disclosure package creation
-      // In real flow, this calls /api/identity/disclosure
+      const results = await Promise.allSettled([
+        generateAgeProof(1990, new Date().getFullYear(), 18),
+        generateFaceMatchProof(8000, 6000),
+        generateDocValidityProof(20271231),
+      ]);
+
+      const [ageProof, faceMatchProof, docValidityProof] = results;
+      if (
+        ageProof.status !== "fulfilled" ||
+        faceMatchProof.status !== "fulfilled" ||
+        docValidityProof.status !== "fulfilled"
+      ) {
+        const details = [
+          ageProof.status === "rejected"
+            ? `age: ${ageProof.reason instanceof Error ? ageProof.reason.message : String(ageProof.reason)}`
+            : null,
+          faceMatchProof.status === "rejected"
+            ? `face_match: ${faceMatchProof.reason instanceof Error ? faceMatchProof.reason.message : String(faceMatchProof.reason)}`
+            : null,
+          docValidityProof.status === "rejected"
+            ? `doc_validity: ${docValidityProof.reason instanceof Error ? docValidityProof.reason.message : String(docValidityProof.reason)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        setFlowError(`Failed to generate one or more proofs: ${details}`);
+        return;
+      }
+
       const res = await fetch("/api/demo/exchange/mock-disclosure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rpPublicKey: exchangeKeypair.publicKey }),
+        body: JSON.stringify({
+          rpPublicKey: exchangeKeypair.publicKey,
+          proofs: {
+            ageProof: {
+              proof: ageProof.value.proof,
+              publicSignals: ageProof.value.publicSignals,
+            },
+            faceMatchProof: {
+              proof: faceMatchProof.value.proof,
+              publicSignals: faceMatchProof.value.publicSignals,
+            },
+            docValidityProof: {
+              proof: docValidityProof.value.proof,
+              publicSignals: docValidityProof.value.publicSignals,
+            },
+          },
+        }),
       });
       const data = await res.json();
       setDisclosurePackage(data);
       setStep("disclosure");
-    } catch (_error) {}
-    setIsLoading(false);
+    } catch (error) {
+      setFlowError(
+        `Failed to create disclosure package: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Step 3: Exchange decrypts PII
   const handleDecryptPii = async () => {
     if (!disclosurePackage || !exchangeKeypair) return;
     setIsLoading(true);
+    setFlowError(null);
     try {
       const res = await fetch("/api/demo/exchange/decrypt", {
         method: "POST",
@@ -123,7 +184,11 @@ export default function ExchangeSimulatorPage() {
       const data = await res.json();
       setDecryptedPii(data.pii);
       setStep("verification");
-    } catch (_error) {}
+    } catch (error) {
+      setFlowError(
+        `Failed to decrypt PII: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     setIsLoading(false);
   };
 
@@ -131,6 +196,7 @@ export default function ExchangeSimulatorPage() {
   const handleVerifyProofs = async () => {
     if (!disclosurePackage) return;
     setIsLoading(true);
+    setFlowError(null);
     try {
       const res = await fetch("/api/demo/exchange/verify", {
         method: "POST",
@@ -143,7 +209,11 @@ export default function ExchangeSimulatorPage() {
         livenessValid: disclosurePackage.livenessAttestation.verified,
       });
       setStep("summary");
-    } catch (_error) {}
+    } catch (error) {
+      setFlowError(
+        `Failed to verify proofs: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     setIsLoading(false);
   };
 
@@ -153,7 +223,18 @@ export default function ExchangeSimulatorPage() {
     setDisclosurePackage(null);
     setDecryptedPii(null);
     setVerificationResults(null);
+    setFlowError(null);
   };
+
+  const ageStatus = verificationResults?.ageProofValid;
+  const faceMatchStatus = verificationResults?.faceMatchValid;
+  const docValidityStatus = verificationResults?.docValidityValid;
+  const livenessStatus = verificationResults?.livenessValid;
+  const hasAnyFailure =
+    ageStatus === false ||
+    faceMatchStatus === false ||
+    docValidityStatus === false ||
+    livenessStatus === false;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
@@ -199,6 +280,11 @@ export default function ExchangeSimulatorPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left: Current step */}
           <div className="bg-gray-800 rounded-lg p-6">
+            {flowError && (
+              <div className="mb-4 rounded border border-red-700 bg-red-900/30 p-3 text-sm text-red-200">
+                {flowError}
+              </div>
+            )}
             {step === "intro" && (
               <div>
                 <h2 className="text-xl font-semibold mb-4">
@@ -218,6 +304,7 @@ export default function ExchangeSimulatorPage() {
                   </ol>
                 </div>
                 <button
+                  type="button"
                   onClick={handleGenerateKeypair}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -248,6 +335,7 @@ export default function ExchangeSimulatorPage() {
                   encrypted to this key.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setStep("user-consent")}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium"
                 >
@@ -279,12 +367,14 @@ export default function ExchangeSimulatorPage() {
                 </div>
                 <div className="flex gap-4">
                   <button
+                    type="button"
                     onClick={resetDemo}
                     className="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded font-medium"
                   >
                     Deny
                   </button>
                   <button
+                    type="button"
                     onClick={handleUserConsent}
                     disabled={isLoading}
                     className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -342,6 +432,7 @@ export default function ExchangeSimulatorPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleDecryptPii}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -383,6 +474,7 @@ export default function ExchangeSimulatorPage() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleVerifyProofs}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
@@ -397,52 +489,91 @@ export default function ExchangeSimulatorPage() {
                 <h2 className="text-xl font-semibold mb-4">
                   Verification Complete
                 </h2>
-                <div className="bg-green-900/30 border border-green-700 rounded p-4 mb-4">
-                  <p className="text-green-400 font-medium">
-                    All verifications passed
-                  </p>
-                </div>
+                {hasAnyFailure ? (
+                  <div className="bg-red-900/30 border border-red-700 rounded p-4 mb-4">
+                    <p className="text-red-400 font-medium">
+                      One or more verifications failed
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-green-900/30 border border-green-700 rounded p-4 mb-4">
+                    <p className="text-green-400 font-medium">
+                      All verifications passed
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-4 h-4 rounded-full ${verificationResults?.ageProofValid ? "bg-green-500" : "bg-red-500"}`}
+                      className={`w-4 h-4 rounded-full ${
+                        ageStatus === undefined
+                          ? "bg-gray-500"
+                          : ageStatus
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                      }`}
                     />
                     <span>
                       Age Proof:{" "}
-                      {verificationResults?.ageProofValid ? "Valid" : "N/A"}
+                      {ageStatus === undefined
+                        ? "N/A"
+                        : ageStatus
+                          ? "Valid"
+                          : "Invalid"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-4 h-4 rounded-full ${verificationResults?.faceMatchValid ? "bg-green-500" : "bg-red-500"}`}
+                      className={`w-4 h-4 rounded-full ${
+                        faceMatchStatus === undefined
+                          ? "bg-gray-500"
+                          : faceMatchStatus
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                      }`}
                     />
                     <span>
                       Face Match Proof:{" "}
-                      {verificationResults?.faceMatchValid ? "Valid" : "N/A"}
+                      {faceMatchStatus === undefined
+                        ? "N/A"
+                        : faceMatchStatus
+                          ? "Valid"
+                          : "Invalid"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-4 h-4 rounded-full ${verificationResults?.docValidityValid ? "bg-green-500" : "bg-red-500"}`}
+                      className={`w-4 h-4 rounded-full ${
+                        docValidityStatus === undefined
+                          ? "bg-gray-500"
+                          : docValidityStatus
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                      }`}
                     />
                     <span>
                       Document Validity Proof:{" "}
-                      {verificationResults?.docValidityValid ? "Valid" : "N/A"}
+                      {docValidityStatus === undefined
+                        ? "N/A"
+                        : docValidityStatus
+                          ? "Valid"
+                          : "Invalid"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-4 h-4 rounded-full ${verificationResults?.livenessValid ? "bg-green-500" : "bg-red-500"}`}
+                      className={`w-4 h-4 rounded-full ${
+                        livenessStatus ? "bg-green-500" : "bg-red-500"
+                      }`}
                     />
                     <span>
                       Liveness Attestation:{" "}
-                      {verificationResults?.livenessValid
-                        ? "Verified"
-                        : "Failed"}
+                      {livenessStatus ? "Verified" : "Failed"}
                     </span>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={resetDemo}
                   className="w-full bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded font-medium"
                 >

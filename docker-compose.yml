@@ -1,5 +1,6 @@
 services:
   frontend:
+    platform: linux/amd64
     build:
       context: ./apps/web
       dockerfile: Dockerfile
@@ -10,8 +11,6 @@ services:
     environment:
       - NODE_ENV=production
       - FHE_SERVICE_URL=http://fhe-service:5001
-      - ZK_SERVICE_URL=http://zk-service:5002
-      - LIVENESS_SERVICE_URL=http://liveness-service:5003
       - OCR_SERVICE_URL=http://ocr-service:5004
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
       - BETTER_AUTH_URL=http://localhost:3000
@@ -19,10 +18,6 @@ services:
       - DATABASE_PATH=/app/data/dev.db
     depends_on:
       fhe-service:
-        condition: service_healthy
-      zk-service:
-        condition: service_healthy
-      liveness-service:
         condition: service_healthy
       ocr-service:
         condition: service_healthy
@@ -60,48 +55,6 @@ services:
     networks:
       - zentity-network
 
-  zk-service:
-    build:
-      context: ./apps/zk
-      dockerfile: Dockerfile
-    ports:
-      - "5002:5002"
-    environment:
-      - PORT=5002
-      - NODE_ENV=production
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - zentity-network
-
-  liveness-service:
-    build:
-      context: ./apps/liveness
-      dockerfile: Dockerfile
-    ports:
-      - "5003:5003"
-    environment:
-      - PORT=5003
-      - ANTISPOOF_THRESHOLD=0.5
-    volumes:
-      # Persist ML model weights to avoid re-downloading on restart
-      - deepface-weights:/root/.deepface/weights
-      - uniface-models:/root/.uniface/models
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-    networks:
-      - zentity-network
-
   ocr-service:
     build:
       context: ./apps/ocr
@@ -126,10 +79,6 @@ networks:
 
 volumes:
   fhe-keys:
-    driver: local
-  deepface-weights:
-    driver: local
-  uniface-models:
     driver: local
   frontend-data:
     driver: local

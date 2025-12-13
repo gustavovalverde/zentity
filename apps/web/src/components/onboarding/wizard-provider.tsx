@@ -10,11 +10,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import {
   defaultWizardData,
   type WizardData,
 } from "@/features/auth/schemas/sign-up.schema";
-import { trackStep } from "@/lib/analytics";
 
 const TOTAL_STEPS = 4;
 
@@ -131,9 +131,15 @@ type WizardContextType = {
   nextStep: () => void;
   prevStep: () => void;
   goToStep: (step: number) => void;
+  /** Navigate to step with server-side validation and confirmation for backward navigation */
+  goToStepWithValidation: (step: number) => Promise<boolean>;
   updateData: (data: Partial<WizardData>) => void;
   setSubmitting: (isSubmitting: boolean) => void;
   reset: () => void;
+  /** Start fresh session (clears any existing session) */
+  startFresh: (email: string) => Promise<void>;
+  /** Skip liveness verification and advance to next step */
+  skipLiveness: () => Promise<boolean>;
   /** Save PII to server (encrypted) */
   savePiiToServer: (pii: {
     extractedName?: string;
@@ -250,9 +256,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             pii,
           }),
         });
-      } catch {
-        console.error("Failed to save PII to server");
-      }
+      } catch {}
     },
     [state.data.email, state.currentStep],
   );
@@ -286,9 +290,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             faceMatchPassed: updates.faceMatchPassed,
           },
         });
-      } catch {
-        console.error("Failed to update server progress");
-      }
+      } catch {}
     },
     [state.data.email],
   );
@@ -312,15 +314,151 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Start fresh session (clears any existing session to prevent session bleeding)
+  const startFresh = useCallback(async (email: string) => {
+    // Reset local state first
+    dispatch({ type: "RESET" });
+
+    // Create new session with forceNew flag (clears any existing session)
+    try {
+      const response = await fetch("/api/onboarding/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          step: 1,
+          forceNew: true, // SECURITY: Clear any existing session
+        }),
+      });
+
+      if (response.ok) {
+        dispatch({
+          type: "LOAD_STATE",
+          state: {
+            currentStep: 1,
+            data: { email },
+            serverState: {
+              documentProcessed: false,
+              livenessPassed: false,
+              faceMatchPassed: false,
+            },
+          },
+        });
+        lastSavedStepRef.current = 1;
+      }
+    } catch {}
+  }, []);
+
+  // Skip liveness verification
+  const skipLiveness = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await fetch("/api/onboarding/skip-liveness", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        toast.error(data.error || "Cannot skip liveness at this time");
+        return false;
+      }
+
+      const data = await response.json();
+
+      // Update local state
+      dispatch({ type: "GO_TO_STEP", step: data.newStep });
+      lastSavedStepRef.current = data.newStep;
+
+      return true;
+    } catch {
+      toast.error("Failed to skip liveness");
+      return false;
+    }
+  }, []);
+
+  // Navigate to step with server-side validation
+  const goToStepWithValidation = useCallback(
+    async (targetStep: number): Promise<boolean> => {
+      // Validate on server
+      try {
+        const response = await fetch("/api/onboarding/validate-step", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetStep }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.valid) {
+          toast.error(data.error || "Cannot navigate to this step");
+          return false;
+        }
+
+        // If going backward, show warning and confirm
+        if (data.requiresConfirmation && data.warning) {
+          const confirmed = window.confirm(
+            `${data.warning}\n\nAre you sure you want to go back?`,
+          );
+
+          if (!confirmed) {
+            return false;
+          }
+
+          // Reset progress on server
+          const resetResponse = await fetch("/api/onboarding/reset-to-step", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ step: targetStep }),
+          });
+
+          if (!resetResponse.ok) {
+            const resetData = await resetResponse.json();
+            toast.error(resetData.error || "Failed to reset progress");
+            return false;
+          }
+
+          // Reset local server state for steps after target
+          const resetServerState: Partial<WizardState["serverState"]> = {};
+          if (targetStep <= 1) {
+            resetServerState.documentProcessed = false;
+            resetServerState.livenessPassed = false;
+            resetServerState.faceMatchPassed = false;
+          } else if (targetStep <= 2) {
+            resetServerState.livenessPassed = false;
+            resetServerState.faceMatchPassed = false;
+          }
+
+          dispatch({
+            type: "UPDATE_SERVER_STATE",
+            serverState: resetServerState,
+          });
+        }
+
+        // Navigate to the step
+        dispatch({ type: "GO_TO_STEP", step: targetStep });
+        lastSavedStepRef.current = targetStep;
+
+        return true;
+      } catch {
+        toast.error("Failed to validate step");
+        return false;
+      }
+    },
+    [],
+  );
+
   const value: WizardContextType = {
     state,
     totalSteps: TOTAL_STEPS,
     nextStep,
     prevStep,
     goToStep,
+    goToStepWithValidation,
     updateData,
     setSubmitting,
     reset,
+    startFresh,
+    skipLiveness,
     savePiiToServer,
     updateServerProgress,
     canGoBack: state.currentStep > 1,
@@ -330,21 +468,13 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     progress: (state.currentStep / TOTAL_STEPS) * 100,
   };
 
-  // Track step changes after hydration to avoid server/client mismatch
-  useEffect(() => {
-    if (!isHydrated) return;
-    trackStep(state.currentStep);
-  }, [isHydrated, state.currentStep]);
-
   // Warn before navigation with unsaved data to prevent accidental data loss
   useEffect(() => {
     if (!isHydrated) return;
 
     // Check if user has entered meaningful data (in-memory only)
     const hasUnsavedData = Boolean(
-      state.data.idDocument ||
-        state.data.selfieImage ||
-        state.data.password,
+      state.data.idDocument || state.data.selfieImage || state.data.password,
     );
 
     // Only warn if user is mid-process (not on first or last step with completion)

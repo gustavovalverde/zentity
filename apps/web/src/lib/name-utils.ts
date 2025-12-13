@@ -49,18 +49,6 @@ export function buildDisplayName(
 }
 
 /**
- * Gets the greeting name (first part of the first name) for welcome messages.
- *
- * @example
- * getGreetingName("Juan Carlos Perez") // "Juan"
- * getGreetingName("Ana Maria") // "Ana"
- * getGreetingName("Juan") // "Juan"
- */
-export function getGreetingName(fullName: string | undefined | null): string {
-  return getFirstPart(fullName);
-}
-
-/**
  * Builds a display name from a full name string by extracting what appears
  * to be the first name and last name portions.
  *

@@ -26,7 +26,7 @@ interface VerificationResult {
 }
 
 interface ProofData {
-  proof: object;
+  proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
   dobCiphertext: string | null;
 }
@@ -50,7 +50,7 @@ export function VerificationActions() {
         throw new Error("No proof data found");
       }
       const loaded = {
-        proof: data.proof || {},
+        proof: data.proof || "",
         publicSignals: data.publicSignals || [],
         dobCiphertext: data.dobCiphertext || null,
       };

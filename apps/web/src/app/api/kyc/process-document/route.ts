@@ -1,20 +1,26 @@
 /**
  * Document Processing API Route
  *
- * Privacy-first document analysis using RapidOCR service.
- * Falls back to cloud AI if local service is unavailable.
+ * Privacy-first document analysis using local RapidOCR service.
+ * All processing is done locally - no data is sent to external services.
  *
  * Features:
  * - Document type detection (passport, national ID, driver's license)
  * - International document support
  * - Field extraction (name, document number, DOB, etc.)
  *
- * Note: This endpoint allows unauthenticated requests for the onboarding flow.
- * Rate limiting is applied to prevent abuse. No data is stored - only processed and returned.
+ * Security:
+ * - Requires valid onboarding session (step 1 must be complete)
+ * - Rate limiting is applied to prevent abuse
+ * - No data is stored - only processed and returned
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { type DocumentResult, processDocument } from "@/lib/document-ai";
+import { type DocumentResult, processDocument } from "@/lib/document-ocr";
+import {
+  getSessionFromCookie,
+  validateStepAccess,
+} from "@/lib/onboarding-session";
 
 interface ProcessDocumentRequest {
   image: string;
@@ -25,8 +31,24 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
 
+let lastRateLimitCleanupTimeMs = 0;
+
+function cleanupRateLimitMap(now: number): void {
+  // Avoid doing O(n) work on every request.
+  if (now - lastRateLimitCleanupTimeMs < RATE_LIMIT_WINDOW_MS) return;
+  lastRateLimitCleanupTimeMs = now;
+
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}
+
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
+  cleanupRateLimitMap(now);
+
   const record = rateLimitMap.get(ip);
 
   if (!record || now > record.resetTime) {
@@ -42,20 +64,20 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
-// Clean up old entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, record] of rateLimitMap.entries()) {
-    if (now > record.resetTime) {
-      rateLimitMap.delete(ip);
-    }
-  }
-}, RATE_LIMIT_WINDOW_MS);
-
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<DocumentResult | { error: string }>> {
   try {
+    // Validate onboarding session - must have completed step 1 (email)
+    const session = await getSessionFromCookie();
+    const validation = validateStepAccess(session, "process-document");
+    if (!validation.valid) {
+      return NextResponse.json(
+        { error: validation.error || "Session required" },
+        { status: 403 },
+      );
+    }
+
     // Get client IP for rate limiting
     const forwarded = request.headers.get("x-forwarded-for");
     const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";
@@ -74,7 +96,7 @@ export async function POST(
       return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
-    // Process the document using AI vision (local-first)
+    // Process the document using local OCR
     const result = await processDocument(body.image);
 
     return NextResponse.json(result);
@@ -91,21 +113,6 @@ export async function POST(
               "Document processing service unavailable. Please try again later.",
           },
           { status: 503 },
-        );
-      }
-
-      // Cloud AI errors
-      if (error.message.includes("API key")) {
-        return NextResponse.json(
-          { error: "AI service configuration error" },
-          { status: 500 },
-        );
-      }
-
-      if (error.message.includes("rate limit")) {
-        return NextResponse.json(
-          { error: "Service temporarily unavailable, please try again" },
-          { status: 429 },
         );
       }
     }

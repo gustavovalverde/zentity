@@ -327,37 +327,6 @@ def validate_document_number(
         )
 
 
-# =============================================================================
-# Backward-Compatible API
-# =============================================================================
-
-def validate_national_id(number: str, country_code: Optional[str]) -> List[str]:
-    """
-    Validate national ID number using dynamic discovery.
-
-    This function maintains backward compatibility with the existing API
-    while using the new dynamic validation system internally.
-
-    Args:
-        number: The document number to validate
-        country_code: ISO 3166-1 alpha-3 country code (e.g., "DOM", "ESP")
-
-    Returns:
-        List of issue codes (empty if valid)
-    """
-    result = validate_document_number(number, country_code)
-
-    if result.is_valid:
-        # If there's a warning (like validation_unavailable_for_country),
-        # include it in the issues list
-        if result.error_code:
-            return [result.error_code]
-        return []
-
-    # Return error code for backward compatibility
-    return [result.error_code] if result.error_code else ["invalid_national_id"]
-
-
 def validate_national_id_detailed(
     number: str,
     country_code: Optional[str]
@@ -381,7 +350,7 @@ def validate_national_id_detailed(
 
 
 # =============================================================================
-# Other Validators (unchanged)
+# Other Validators
 # =============================================================================
 
 def validate_passport_number(number: str) -> List[str]:
@@ -449,7 +418,6 @@ def calculate_confidence(
     text_length: int,
     fields_extracted: int,
     ocr_avg_confidence: float,
-    document_recognized: bool = True,
 ) -> float:
     """
     Calculate overall document confidence score.
@@ -458,7 +426,6 @@ def calculate_confidence(
     - Amount of text extracted
     - Number of fields successfully parsed
     - OCR confidence scores
-    - Document origin recognized
     """
     score = 0.0
 

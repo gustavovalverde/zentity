@@ -4,74 +4,98 @@
  * POST /api/crypto/nationality-proof/verify - Verify a nationality membership ZK proof
  */
 
-import { headers } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-
-const ZK_SERVICE_URL = process.env.ZK_SERVICE_URL || "http://localhost:5002";
+import { requireSession } from "@/lib/api-auth";
+import { toServiceErrorPayload } from "@/lib/http-error-payload";
+import { verifyNoirProof } from "@/lib/noir-verifier";
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
 
 /**
  * POST - Verify nationality membership ZK proof
  *
- * Body: { proof: {...}, publicSignals: [...] }
+ * Body: { proof: "base64...", publicInputs: ["0x...", "0x...", "0x1"] }
  * Returns whether the proof is valid
+ *
+ * Public inputs for nationality_membership circuit (with nonce):
+ * - [0] merkle_root: The Merkle root of the country group
+ * - [1] nonce: Replay resistance nonce
+ * - [2] is_member: Boolean result (1 = member, 0 = not member)
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireSession();
+    if (!authResult.ok) return authResult.response;
 
     const body = await request.json();
-    const { proof, publicSignals } = body;
+    const { proof, publicInputs } = body;
 
     // Validate inputs
     if (!proof) {
-      return NextResponse.json({ error: "proof is required" }, { status: 400 });
-    }
-
-    if (!publicSignals || !Array.isArray(publicSignals)) {
       return NextResponse.json(
-        { error: "publicSignals is required and must be an array" },
+        { error: "proof is required (base64 encoded)" },
         { status: 400 },
       );
     }
 
-    // Call ZK service to verify proof
-    const response = await fetch(`${ZK_SERVICE_URL}/nationality/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ proof, publicSignals }),
-    });
-
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: "ZK service error" }));
-      return NextResponse.json(error, { status: response.status });
+    if (!publicInputs || !Array.isArray(publicInputs)) {
+      return NextResponse.json(
+        { error: "publicInputs is required and must be an array" },
+        { status: 400 },
+      );
     }
 
-    const result = await response.json();
+    if (publicInputs.length < 3) {
+      return NextResponse.json(
+        {
+          error:
+            "publicInputs must have at least 3 elements [merkle_root, nonce, is_member]",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Verify the proof cryptographically
+    const result = await verifyNoirProof({
+      proof,
+      publicInputs,
+      circuitType: "nationality_membership",
+    });
+
+    // If cryptographic verification failed, return immediately
+    if (!result.isValid) {
+      return NextResponse.json({
+        success: false,
+        isValid: false,
+        verificationTimeMs: result.verificationTimeMs,
+      });
+    }
+
+    // Enforce circuit output: is_member must be 1
+    // Index 2 is is_member (after merkle_root and nonce)
+    const isMember = parsePublicInputToNumber(
+      publicInputs[CIRCUIT_SPECS.nationality_membership.resultIndex],
+    );
+    if (isMember !== 1) {
+      return NextResponse.json({
+        success: true,
+        isValid: false,
+        reason: "Nationality not in group",
+        merkleRoot: publicInputs[0],
+        verificationTimeMs: result.verificationTimeMs,
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      isValid: result.isValid,
-      proofIsMember: result.proofIsMember,
-      merkleRoot: result.merkleRoot,
+      isValid: true,
+      merkleRoot: publicInputs[0],
       verificationTimeMs: result.verificationTimeMs,
     });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to verify proof",
-      },
-      { status: 500 },
+    const { status, payload } = toServiceErrorPayload(
+      error,
+      "Failed to verify proof",
     );
+    return NextResponse.json(payload, { status });
   }
 }

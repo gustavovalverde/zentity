@@ -75,7 +75,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const validatePassword = (value: string) => {
     if (!value) return "Password is required";
     if (value.length < 8) return "Password must be at least 8 characters";
-    if (!/[A-Z]/.test(value)) return "Password must contain an uppercase letter";
+    if (!/[A-Z]/.test(value))
+      return "Password must contain an uppercase letter";
     if (!/[a-z]/.test(value)) return "Password must contain a lowercase letter";
     if (!/[0-9]/.test(value)) return "Password must contain a number";
     return undefined;
@@ -83,7 +84,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
 
   const validateConfirmPassword = (value: string) => {
     if (!value) return "Please confirm your password";
-    if (value !== form.getFieldValue("password")) return "Passwords do not match";
+    if (value !== form.getFieldValue("password"))
+      return "Passwords do not match";
     return undefined;
   };
 
@@ -160,7 +162,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Password must be at least 8 characters with uppercase, lowercase, and a number.
+        Password must be at least 8 characters with uppercase, lowercase, and a
+        number.
       </p>
 
       <Button type="submit" className="w-full" disabled={isLoading}>

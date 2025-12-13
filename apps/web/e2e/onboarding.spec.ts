@@ -1,12 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { createAuthenticatedUser } from "./fixtures/auth.fixture";
 
 test.describe("Onboarding Flow", () => {
-  test.beforeEach(async ({ page, request }) => {
-    // Create and authenticate user via API
-    await createAuthenticatedUser(page, request);
-  });
-
   test("should show onboarding page with verification steps", async ({
     page,
   }) => {

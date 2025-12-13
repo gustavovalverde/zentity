@@ -36,7 +36,7 @@ interface FullProofData {
   isOver18: boolean;
   createdAt: string;
   generationTimeMs: number;
-  proof?: object;
+  proof?: string; // Base64 encoded UltraHonk ZK proof
   publicSignals?: string[];
   dobCiphertext?: string;
   fheClientKeyId?: string;
@@ -194,7 +194,7 @@ export default function DevViewPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-blue-500" />
-            ZK Proof (Groth16)
+            ZK Proof (UltraHonk)
           </CardTitle>
           <CardDescription>
             Zero-knowledge proof of age verification
@@ -202,9 +202,9 @@ export default function DevViewPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Groth16</Badge>
+            <Badge variant="secondary">UltraHonk</Badge>
             <Badge variant="secondary">BN254 Curve</Badge>
-            <Badge variant="secondary">snarkjs</Badge>
+            <Badge variant="secondary">Noir.js</Badge>
             <Badge variant="outline" className="text-green-600">
               Verified
             </Badge>

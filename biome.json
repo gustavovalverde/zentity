@@ -91,9 +91,6 @@
       ],
       "linter": {
         "rules": {
-          "style": {
-            "noDefaultExport": "off"
-          },
           "nursery": {
             "noFloatingPromises": "off"
           }

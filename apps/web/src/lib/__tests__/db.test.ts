@@ -65,7 +65,6 @@ describe("IdentityProof Interface", () => {
       documentHash: "abc123",
       nameCommitment: "def456",
       userSalt: "salt789",
-      ageProofVerified: false,
       isDocumentVerified: false,
       isLivenessPassed: false,
       isFaceMatched: false,
