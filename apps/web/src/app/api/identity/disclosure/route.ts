@@ -19,14 +19,18 @@
  * 3. Minimizing Zentity's liability (no PII storage)
  */
 
+import { UltraHonkBackend } from "@aztec/bb.js";
+import { Noir } from "@noir-lang/noir_js";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { requireSession } from "@/lib/api-auth";
+import { bytesToBase64 } from "@/lib/base64";
 import { getIdentityProofByUserId, getVerificationStatus } from "@/lib/db";
 import { toServiceErrorPayload } from "@/lib/http-error-payload";
 import { detectFromBase64, getHumanServer } from "@/lib/human-server";
 import { processDocumentOcr } from "@/lib/ocr-client";
-import { generateFaceMatchProofZk } from "@/lib/zk-client";
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
+import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
 
 interface DisclosureRequest {
   // RP identification
@@ -345,16 +349,36 @@ export async function POST(
           // Calculate similarity using Human.js
           const similarityScore = human.match.similarity(docEmb, selfieEmb);
 
-          const zkResult = await generateFaceMatchProofZk({
-            similarityScore,
-            threshold: proofThreshold,
+          // Scale to circuit format (0-10000 for 0.00%-100.00%)
+          const scaledScore = Math.round(similarityScore * 10000);
+          const scaledThreshold = Math.round(proofThreshold * 10000);
+
+          // Generate ZK proof using face_match circuit
+          const noir = new Noir(faceMatchCircuit as never);
+          const backend = new UltraHonkBackend(
+            (faceMatchCircuit as { bytecode: string }).bytecode,
+          );
+
+          // Generate a disclosure-specific nonce (not validated, just for uniqueness)
+          const disclosureNonce = `0x${crypto.randomUUID().replace(/-/g, "")}`;
+
+          const { witness } = await noir.execute({
+            similarity_score: scaledScore.toString(),
+            threshold: scaledThreshold.toString(),
+            nonce: disclosureNonce,
           });
 
+          const proofResult = await backend.generateProof(witness);
+          const isMatch =
+            parsePublicInputToNumber(
+              proofResult.publicInputs[CIRCUIT_SPECS.face_match.resultIndex],
+            ) === 1;
+
           faceMatchProof = {
-            proof: zkResult.proof,
-            publicSignals: zkResult.publicSignals,
-            isMatch: zkResult.isMatch,
-            threshold: zkResult.threshold,
+            proof: bytesToBase64(proofResult.proof),
+            publicSignals: proofResult.publicInputs,
+            isMatch,
+            threshold: proofThreshold,
           };
         }
       }

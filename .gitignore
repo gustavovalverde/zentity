@@ -5,7 +5,9 @@
 fixtures/
 
 ### Documentation (internal) ###
-docs/
+docs/*
+!docs/implementation-roadmap.md
+!docs/zk-nationality-proofs.md
 
 ### Linux ###
 *~
@@ -280,6 +282,9 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
+
+# Noir circuit build output (tracked artifacts live in `apps/web/noir-circuits/*/artifacts/`)
+apps/web/noir-circuits/*/target/
 
 # Jupyter Notebook
 .ipynb_checkpoints

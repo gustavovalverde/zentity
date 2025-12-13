@@ -11,7 +11,6 @@ services:
     environment:
       - NODE_ENV=production
       - FHE_SERVICE_URL=http://fhe-service:5001
-      - ZK_SERVICE_URL=http://zk-service:5002
       - OCR_SERVICE_URL=http://ocr-service:5004
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
       - BETTER_AUTH_URL=http://localhost:3000
@@ -19,8 +18,6 @@ services:
       - DATABASE_PATH=/app/data/dev.db
     depends_on:
       fhe-service:
-        condition: service_healthy
-      zk-service:
         condition: service_healthy
       ocr-service:
         condition: service_healthy
@@ -54,25 +51,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    restart: unless-stopped
-    networks:
-      - zentity-network
-
-  zk-service:
-    build:
-      context: ./apps/zk
-      dockerfile: Dockerfile
-    ports:
-      - "5002:5002"
-    environment:
-      - PORT=5002
-      - NODE_ENV=production
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     restart: unless-stopped
     networks:
       - zentity-network

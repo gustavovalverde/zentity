@@ -39,8 +39,6 @@ export function AgeProofDemo({
   const [error, setError] = useState<string | null>(null);
 
   const handleVerifyProof = async () => {
-    if (!ageProof && !ageProofsJson) return;
-
     setVerifying(true);
     setError(null);
     setResult(null);
@@ -48,33 +46,51 @@ export function AgeProofDemo({
     try {
       const startTime = Date.now();
 
-      // Try to get the full proof with publicSignals from ageProofsJson first
-      let proof: unknown;
-      let publicSignals: string[];
+      let proof: string;
+      let publicInputs: string[];
 
-      if (ageProofsJson) {
-        // ageProofsJson contains full proofs: { "18": { proof: {...}, publicSignals: [...] }, ... }
-        const proofs = JSON.parse(ageProofsJson);
-        const age18Proof = proofs["18"];
-        if (age18Proof?.proof && age18Proof?.publicSignals) {
-          proof = age18Proof.proof;
-          publicSignals = age18Proof.publicSignals;
-        } else {
-          throw new Error("No valid age 18 proof found in ageProofsJson");
+      // Prefer the stored proof from /api/user/proof (current format).
+      const storedRes = await fetch("/api/user/proof?full=true");
+      if (storedRes.ok) {
+        const stored = (await storedRes.json()) as {
+          proof?: unknown;
+          publicSignals?: unknown;
+        };
+        if (typeof stored.proof !== "string") {
+          throw new Error("Stored proof is missing or invalid");
         }
+        if (!Array.isArray(stored.publicSignals)) {
+          throw new Error("Stored public signals are missing or invalid");
+        }
+        proof = stored.proof;
+        publicInputs = stored.publicSignals.map(String);
+      } else if (ageProofsJson) {
+        const proofs = JSON.parse(ageProofsJson) as Record<string, unknown>;
+        const age18 = proofs["18"] as
+          | { proof?: unknown; publicSignals?: unknown }
+          | undefined;
+        if (typeof age18?.proof !== "string") {
+          throw new Error("No stored age 18 proof found");
+        }
+        if (!Array.isArray(age18.publicSignals)) {
+          throw new Error("No stored age 18 public signals found");
+        }
+        proof = age18.proof;
+        publicInputs = age18.publicSignals.map(String);
       } else if (ageProof) {
-        // Fallback to legacy ageProof (only contains proof, no publicSignals)
-        proof = JSON.parse(ageProof);
-        // Best effort: assume publicSignals based on ageProofVerified flag
-        publicSignals = ageProofVerified ? ["1", "18"] : ["0", "18"];
+        throw new Error("Stored proof is missing public signals");
       } else {
-        throw new Error("No proof data available");
+        throw new Error("No proof available");
       }
 
       const response = await fetch("/api/crypto/verify-proof", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proof, publicSignals }),
+        body: JSON.stringify({
+          proof,
+          publicInputs,
+          circuitType: "age_verification",
+        }),
       });
 
       const verificationTimeMs = Date.now() - startTime;
@@ -83,9 +99,9 @@ export function AgeProofDemo({
         throw new Error("Verification failed");
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as { isValid?: boolean };
       setResult({
-        isValid: data.isValid ?? true,
+        isValid: Boolean(data.isValid),
         verificationTimeMs,
       });
     } catch (err) {

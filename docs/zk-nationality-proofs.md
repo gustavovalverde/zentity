@@ -50,7 +50,7 @@ We use a **Merkle tree** structure where:
 ```
 
 1. Each country code is converted to its ISO numeric code (DEU → 276)
-2. Each code is hashed using **Poseidon** (a ZK-friendly hash function)
+2. Each code is hashed using **Poseidon2** (a ZK-friendly hash function)
 3. Hashes are paired and hashed together, building up to a single root
 
 ### The Merkle Root
@@ -83,7 +83,7 @@ If it matches → your country IS in the set (but verifier doesn't know which on
 
 ### The Problem with SHA256 in ZK Circuits
 
-ZK circuits work over a mathematical structure called a "finite field" (specifically BN128).
+ZK circuits work over a mathematical structure called a "finite field."
 
 SHA256 uses:
 - Bitwise operations (XOR, AND, OR)
@@ -105,71 +105,49 @@ Poseidon hash was specifically designed for ZK circuits:
 
 **Result:** 100x more efficient, faster proof generation, smaller proofs.
 
-### Consistency Requirement
-
-**Critical:** The hash function used in TypeScript MUST match the circuit exactly.
-
-```
-TypeScript (circomlibjs)     Circuit (circomlib)
-        |                           |
-        v                           v
-   poseidonHash([276])  ===  Poseidon(1)([276])
-```
-
-If they don't match, the proof will always fail because the computed root won't match.
-
 ---
 
-## The Circuit Explained
+## The Noir Circuit
 
-### File: `apps/zk/circuits/nationality_membership.circom`
+### File: `apps/web/noir-circuits/nationality_membership/src/main.nr`
 
-```circom
-pragma circom 2.0.0;
+```noir
+use nodash::poseidon2;
 
-include "poseidon.circom";    // Poseidon hash function
-include "comparators.circom"; // Equality checker
-include "mux1.circom";        // 2-to-1 multiplexer for path selection
-```
+global TREE_DEPTH: u32 = 8;
 
-### Main Template
+fn main(
+    nationality_code: Field,                    // Private: actual nationality code
+    merkle_root: pub Field,                     // Public: identifies the country group
+    path_elements: [Field; TREE_DEPTH],         // Private: Merkle path siblings
+    path_indices: [u1; TREE_DEPTH],             // Private: path directions
+    nonce: pub Field                            // Public: challenge nonce (replay resistance)
+) -> pub bool {
+    // Nonce is included as public input for replay resistance
+    let _ = nonce;
 
-```circom
-template NationalityMembership(levels) {
-    // PUBLIC INPUTS (visible to verifier)
-    signal input merkleRoot;    // Identifies which country group (EU, SCHENGEN, etc.)
+    // Hash the nationality code to get the leaf
+    let leaf = poseidon2([nationality_code]);
 
-    // PRIVATE INPUTS (hidden from verifier)
-    signal input nationalityCode;     // e.g., 276 for Germany
-    signal input pathElements[levels]; // Sibling hashes along the path
-    signal input pathIndices[levels];  // 0 = go left, 1 = go right
+    // Compute the root by traversing up the tree
+    let mut current = leaf;
 
-    // OUTPUT
-    signal output isMember;  // 1 if nationality is in the group, 0 otherwise
-}
-```
+    for i in 0..TREE_DEPTH {
+        let sibling = path_elements[i];
 
-### The Merkle Tree Checker
+        // Order the pair based on path index (0=current is left, 1=current is right)
+        let (left, right) = if path_indices[i] == 0 {
+            (current, sibling)
+        } else {
+            (sibling, current)
+        };
 
-```circom
-template MerkleTreeChecker(levels) {
-    // For each level of the tree:
-    for (var i = 0; i < levels; i++) {
-        // 1. Select left/right based on path index
-        //    If pathIndices[i] = 0: current hash goes LEFT
-        //    If pathIndices[i] = 1: current hash goes RIGHT
-
-        // 2. Hash the pair using Poseidon
-        hashers[i] = Poseidon(2);
-        hashers[i].inputs[0] <== left;
-        hashers[i].inputs[1] <== right;
-
-        // 3. Result becomes input to next level
-        hashes[i + 1] <== hashers[i].out;
+        // Hash the pair to get parent
+        current = poseidon2([left, right]);
     }
 
-    // 4. Check if computed root matches expected root
-    isValid <== (computedRoot == expectedRoot);
+    // Check if computed root matches expected root
+    current == merkle_root
 }
 ```
 
@@ -179,7 +157,7 @@ template MerkleTreeChecker(levels) {
 Levels | Max Countries | Use Case
 -------|---------------|----------
 4      | 16            | Small groups (FIVE_EYES)
-8      | 256           | All country groups ✓
+8      | 256           | All country groups
 12     | 4,096         | Overkill
 ```
 
@@ -187,106 +165,74 @@ Levels | Max Countries | Use Case
 
 ---
 
-## The Trusted Setup (Powers of Tau)
-
-### What is it?
-
-ZK-SNARKs (our proof system) require a one-time "trusted setup" ceremony. This produces:
-- **Proving key** (`.zkey`): Used to generate proofs
-- **Verification key** (`.json`): Used to verify proofs
-
-### Why "Trusted"?
-
-During the ceremony, random "toxic waste" is generated. If anyone kept this randomness, they could create fake proofs.
-
-**Solution:** Multi-party ceremonies where many independent participants contribute randomness. As long as ONE participant destroys their randomness, the system is secure.
-
-### Powers of Tau
-
-The Hermez/Polygon team ran a large public ceremony with 54+ participants. The resulting `pot14.ptau` file is:
-- **pot** = "Powers of Tau" (the ceremony name)
-- **14** = supports circuits up to 2^14 = 16,384 constraints
-- **ptau** = the file format
-
-Our nationality circuit has ~2,178 constraints, so pot14 is sufficient.
-
-### Our Trusted Setup Steps
-
-```bash
-# 1. Download the public ceremony result (18MB)
-curl -o ptau/pot14.ptau "https://storage.googleapis.com/..."
-
-# 2. Generate circuit-specific keys (phase 1)
-snarkjs groth16 setup circuit.r1cs pot14.ptau nationality_0000.zkey
-
-# 3. Add our contribution (phase 2)
-snarkjs zkey contribute nationality_0000.zkey nationality_final.zkey
-
-# 4. Export verification key
-snarkjs zkey export verificationkey nationality_final.zkey verification_key.json
-```
-
----
-
 ## TypeScript Integration
 
-### File: `apps/zk/src/lib/nationality.ts`
+### Client-Side Proof Generation
 
-### Building the Merkle Tree
+Proofs are generated entirely in the browser using Web Workers:
 
 ```typescript
-import { buildPoseidon } from "circomlibjs";
+// apps/web/src/lib/noir-prover.ts
 
-// 1. Initialize Poseidon (must match circuit's Poseidon)
-const poseidon = await buildPoseidon();
+import {
+  generateNationalityProofClientWorker,
+} from "./noir-worker-manager";
 
-// 2. Hash each country code
-const leaf = poseidon.F.toObject(poseidon([poseidon.F.e(BigInt(276))])); // Germany
+export async function generateNationalityProofNoir(
+  input: NationalityProofInput,
+): Promise<NoirProofResult> {
+  if (typeof window === "undefined") {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
 
-// 3. Build tree from leaves up to root
-// ... pair and hash until single root remains
+  const startTime = performance.now();
+
+  const result = await generateNationalityProofClientWorker({
+    nationalityCode: input.nationalityCode,
+    groupName: input.groupName,
+    nonce: input.nonce,
+  });
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
+}
 ```
 
-### Generating a Proof
+### Server-Side Verification
 
 ```typescript
-import * as snarkjs from "snarkjs";
+// apps/web/src/lib/noir-verifier.ts
 
-// 1. Get Merkle proof (path from leaf to root)
-const merkleProof = await getMerkleProof("DEU", euTree);
+import { UltraHonkBackend } from "@aztec/bb.js";
+import nationalityCircuit from "@/noir-circuits/nationality_membership/target/nationality_membership.json";
 
-// 2. Build circuit inputs
-const circuitInput = {
-    merkleRoot: euMerkleRoot,
-    nationalityCode: "276",
-    pathElements: merkleProof.pathElements,
-    pathIndices: merkleProof.pathIndices,
-};
+export async function verifyNoirProof(
+  input: NoirVerifyInput,
+): Promise<NoirVerifyResult> {
+  const backend = new UltraHonkBackend(
+    circuit.bytecode,
+    { crsPath: getBbCrsPath() },
+  );
 
-// 3. Generate the ZK proof
-const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-    circuitInput,
-    "nationality_membership.wasm",  // Compiled circuit
-    "nationality_final.zkey"         // Proving key
-);
-```
+  const proofBytes = Buffer.from(input.proof, "base64");
 
-### Verifying a Proof
+  const isValid = await backend.verifyProof({
+    proof: new Uint8Array(proofBytes),
+    publicInputs: input.publicInputs,
+  });
 
-```typescript
-// The verifier only sees:
-// - publicSignals[0]: "1" (isMember = true)
-// - publicSignals[1]: merkleRoot (identifies EU group)
-
-// They do NOT see:
-// - Which country code (276 for Germany)
-// - The path through the tree
-
-const isValid = await snarkjs.groth16.verify(
-    verificationKey,
-    publicSignals,
-    proof
-);
+  return {
+    isValid,
+    verificationTimeMs: Date.now() - startTime,
+    circuitType: input.circuitType,
+    noirVersion: meta.noirVersion,
+    circuitHash: meta.circuitHash,
+    bbVersion,
+  };
+}
 ```
 
 ---
@@ -298,19 +244,25 @@ const isValid = await snarkjs.groth16.verify(
 | Group | Countries | Example Members |
 |-------|-----------|-----------------|
 | `EU` | 27 | DEU, FRA, ITA, ESP, POL... |
-| `SCHENGEN` | 26 | EU minus IRL + CHE, NOR, ISL |
+| `SCHENGEN` | 26 | EU minus IRL/CYP/BGR/ROU + CHE, NOR, ISL, LIE |
 | `EEA` | 30 | EU + ISL, NOR, LIE |
-| `LATAM` | 7 | DOM, MEX, BRA, ARG, CHL, COL, PER |
+| `LATAM` | 19 | DOM, MEX, BRA, ARG, CHL, COL, PER... |
 | `FIVE_EYES` | 5 | USA, GBR, CAN, AUS, NZL |
 
 ### Each Group Has a Unique Root
 
 ```typescript
-const EU_ROOT = "17892341...";        // Identifies EU membership tree
-const SCHENGEN_ROOT = "98234123...";  // Different tree, different root
+// apps/web/src/lib/nationality-data.ts
+
+export const COUNTRY_GROUPS: Record<string, string[]> = {
+  EU: ["AUT", "BEL", "BGR", "HRV", "CYP", ...],
+  SCHENGEN: ["AUT", "BEL", "CZE", "DNK", ...],
+  LATAM: ["ARG", "BOL", "BRA", "CHL", ...],
+  FIVE_EYES: ["AUS", "CAN", "NZL", "GBR", "USA"],
+};
 ```
 
-A verifier can check which group a proof is for by comparing the `merkleRoot` in the public signals.
+The Merkle root is computed from each group's country codes and uniquely identifies the set.
 
 ---
 
@@ -318,18 +270,12 @@ A verifier can check which group a proof is for by comparing the `merkleRoot` in
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| Build Merkle Tree | ~50ms | One-time per group |
-| Generate Proof | 200-700ms | Depends on group size |
-| Verify Proof | <50ms | Fast for on-chain |
-| Proof Size | ~800 bytes | Compact |
+| Build Merkle Tree | ~50ms | One-time per group (cached) |
+| Generate Proof | 100-300ms | Client-side, Web Worker |
+| Verify Proof | <50ms | Server-side, bb.js |
+| Proof Size | ~2KB | UltraHonk proof |
 
-### Why Variable Generation Time?
-
-First proof for a group takes longer because:
-1. Tree must be built (cached afterward)
-2. Poseidon hasher must initialize (cached afterward)
-
-Subsequent proofs for the same group are faster (~200ms).
+Proofs are generated in Web Workers to keep the UI responsive.
 
 ---
 
@@ -340,12 +286,13 @@ Subsequent proofs for the same group are faster (~200ms).
 1. **Soundness:** Cannot prove membership for a country NOT in the group
 2. **Zero-Knowledge:** Verifier learns ONLY that the country is in the group
 3. **Non-Interactive:** Proof can be verified without interaction with prover
+4. **Replay Resistance:** Nonce binding prevents proof reuse
 
 ### What the Proof Does NOT Guarantee
 
 1. **Liveness:** Doesn't prove you're actually from that country (need passport verification)
 2. **Uniqueness:** Same person could generate multiple proofs
-3. **Timeliness:** Proof doesn't expire (could add timestamp)
+3. **Timeliness:** Nonce provides session binding, not timestamp
 
 ### Integration with KYC
 
@@ -353,68 +300,27 @@ In Zentity's flow:
 1. OCR extracts nationality from passport (e.g., "DEU")
 2. Passport authenticity verified via MRZ checksums
 3. Face match verifies it's your passport
-4. THEN we generate the ZK nationality proof
-5. Only the proof is stored, not "DEU"
-
----
-
-## API Usage
-
-### Generate Proof
-
-```bash
-curl -X POST http://localhost:5002/nationality/generate \
-  -H "Content-Type: application/json" \
-  -d '{"nationalityCode": "DEU", "groupName": "EU"}'
-```
-
-Response:
-```json
-{
-  "proof": { /* Groth16 proof */ },
-  "publicSignals": ["1", "17892341..."],
-  "isMember": true,
-  "groupName": "EU",
-  "merkleRoot": "17892341...",
-  "generationTimeMs": 234
-}
-```
-
-### Verify Proof
-
-```bash
-curl -X POST http://localhost:5002/nationality/verify \
-  -H "Content-Type: application/json" \
-  -d '{"proof": {...}, "publicSignals": ["1", "17892341..."]}'
-```
-
-### Check Group Membership (No Proof)
-
-```bash
-curl "http://localhost:5002/nationality/check?code=DEU&group=EU"
-```
-
-Response: `{"isMember": true}`
+4. ZK nationality proof is generated **client-side** in the browser
+5. Only the proof is sent to server and stored, never "DEU"
 
 ---
 
 ## Files Reference
 
 ```
-apps/zk/
-├── circuits/
-│   └── nationality_membership.circom  # The ZK circuit
-├── artifacts/
-│   └── nationality/
-│       ├── nationality_membership_js/
-│       │   └── nationality_membership.wasm  # Compiled circuit
-│       ├── nationality_final.zkey           # Proving key
-│       └── verification_key.json            # Verification key
-├── ptau/
-│   └── pot14.ptau                           # Powers of Tau
-└── src/
-    └── lib/
-        └── nationality.ts                   # TypeScript implementation
+apps/web/
+├── noir-circuits/
+│   └── nationality_membership/
+│       ├── Nargo.toml
+│       ├── src/main.nr           # Noir circuit source
+│       └── target/
+│           └── nationality_membership.json  # Compiled ACIR
+├── src/lib/
+│   ├── nationality-data.ts       # Country codes and group definitions
+│   ├── nationality-merkle.ts     # Merkle tree construction (Poseidon2)
+│   ├── noir-prover.ts            # Client-side proof generation API
+│   ├── noir-prover.worker.ts     # Web Worker for proof generation
+│   └── noir-verifier.ts          # Server-side verification
 ```
 
 ---
@@ -422,6 +328,5 @@ apps/zk/
 ## Further Reading
 
 - [Poseidon Hash Paper](https://eprint.iacr.org/2019/458.pdf)
-- [Groth16 Paper](https://eprint.iacr.org/2016/260.pdf)
-- [circom Documentation](https://docs.circom.io/)
-- [snarkjs Documentation](https://github.com/iden3/snarkjs)
+- [Noir Documentation](https://noir-lang.org/docs)
+- [Barretenberg (bb.js)](https://github.com/AztecProtocol/aztec-packages/tree/master/barretenberg)

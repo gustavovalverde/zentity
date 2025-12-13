@@ -1,0 +1,6 @@
+[package]
+name = "doc_validity"
+type = "bin"
+authors = ["Zentity"]
+
+[dependencies]

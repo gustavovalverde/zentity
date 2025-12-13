@@ -128,7 +128,7 @@ export default async function VerificationPage() {
                   </div>
                   <div>
                     <p className="text-muted-foreground">Proof Type</p>
-                    <p className="font-medium">Groth16 (zk-SNARK)</p>
+                    <p className="font-medium">UltraHonk (zk-SNARK)</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Circuit Constraints</p>
@@ -161,15 +161,15 @@ export default async function VerificationPage() {
                 <span className="text-muted-foreground">
                   Cryptographic Scheme
                 </span>
-                <span>Groth16 zk-SNARK</span>
+                <span>UltraHonk zk-SNARK</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Elliptic Curve</span>
-                <span>BN254</span>
+                <span>BN254 (Grumpkin)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Proof System</span>
-                <span>snarkjs + Circom</span>
+                <span>Noir.js + Barretenberg</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">FHE Encryption</span>
