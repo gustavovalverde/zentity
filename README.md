@@ -1,6 +1,84 @@
 # Zentity
 
-**Privacy-preserving KYC platform** using zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
+**Privacy-preserving KYC PoC** using zero-knowledge proofs (Noir/UltraHonk), fully homomorphic encryption, and cryptographic commitments.
+
+Status: This is a **PoC**. Breaking changes are expected and backward compatibility is not a goal.
+
+## Contents
+
+- [TL;DR (run + test)](#tldr-run--test)
+- [Architecture (start here)](#architecture-start-here)
+- [What's implemented (PoC)](#whats-implemented-poc)
+- [Data handling (at a glance)](#data-handling-at-a-glance)
+- [Background and use cases](#background-and-use-cases) *(collapsed)*
+- [Cryptographic architecture](#cryptographic-architecture) *(collapsed)*
+- [Technical reference](#technical-reference) *(collapsed)*
+- [Documentation](#documentation)
+
+## TL;DR (run + test)
+
+```bash
+docker compose up --build
+```
+
+- Web UI: `http://localhost:3000`
+- FHE service: `http://localhost:5001`
+- OCR service: `http://localhost:5004`
+
+Quick manual test (happy path):
+- Go to `/sign-up` → complete the 4-step wizard (email → upload → liveness → complete)
+- After completion, open `/dashboard` and check verification + proof status
+
+## Architecture (start here)
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI[Web UI]
+    W[ZK Prover<br/>Web Worker]
+  end
+  subgraph Server["Next.js :3000"]
+    API[API Routes]
+    DB[(SQLite)]
+  end
+  OCR[OCR :5004]
+  FHE[FHE :5001]
+
+  UI -->|doc + selfie| API
+  API --> OCR
+  API --> FHE
+  W -->|proofs| API
+  API --> DB
+```
+
+Deep-dive docs:
+- [`docs/architecture.md`](docs/architecture.md) — system components, data flow, storage model
+- [`docs/zk-architecture.md`](docs/zk-architecture.md) — ZK circuits, proving/verifying
+- [`docs/zk-nationality-proofs.md`](docs/zk-nationality-proofs.md) — nationality Merkle proofs
+
+## What’s Implemented (PoC)
+
+- 4-step onboarding wizard (email → upload ID → liveness → complete)
+- Client-side ZK proving (Web Worker) + server-side verification:
+  - age proof (`age ≥ 18`, persisted)
+  - doc validity, nationality membership, face-match threshold proofs (available as circuits/demos)
+- Salted SHA256 commitments for dedup + later integrity checks (name, document number, nationality)
+- FHE service integration (encrypt + compare on ciphertexts) for PoC policy checks
+- Disclosure demo flow (RP-style verification of received proof payloads)
+
+## Data Handling (at a glance)
+
+The PoC stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
+
+- Plaintext at rest: account email (authentication)
+- Encrypted at rest: short-lived onboarding PII (wizard continuity), display-only first name
+- Non-reversible at rest: salted commitments (SHA256)
+- Proof/ciphertext at rest: ZK proof payloads + TFHE ciphertexts
+
+Details: `docs/architecture.md`
+
+<details>
+<summary>Background and use cases</summary>
 
 ## Why Zentity Exists
 
@@ -37,7 +115,7 @@ Zentity proves these cryptographic techniques **can work together** in a real ap
 | Cryptographic Commitments | Roll-your-own risk | Standardized SHA256 + salt with GDPR erasure support |
 | Merkle Trees | Custom implementation | Ready-to-use country group trees (EU, EEA, SCHENGEN) |
 
-The result: **Complete identity verification with zero PII storage.**
+The result: **complete identity verification with minimized plaintext storage** (no raw ID images/selfies stored; cryptographic artifacts persisted; authentication data stored as required).
 
 > **Note:** Zentity is a demonstration project showing that privacy-preserving KYC is technically feasible today. It serves as a reference architecture for teams building production systems.
 
@@ -97,8 +175,8 @@ Proving citizenship often requires revealing exact nationality, which can lead t
 
 ```
 User → Zentity: "Prove I'm EU citizen"
-Zentity → ZK Service: Generate Merkle proof (nationality in EU tree)
-ZK Service → Verifier: proof + merkleRoot (EU identifier)
+Zentity (browser) → Web Worker: Generate Merkle membership proof
+Zentity → Verifier: proof + merkleRoot (EU identifier)
 Verifier: Knows user is EU citizen, but NOT which of 27 countries
 ```
 
@@ -110,7 +188,7 @@ Verifier: Knows user is EU citizen, but NOT which of 27 countries
 
 ### Multi-Threshold Age Verification
 
-Different jurisdictions require different age thresholds. Zentity generates multiple age proofs efficiently:
+Different jurisdictions require different age thresholds. The `age_verification` circuit supports a public `min_age` input (e.g. 18/21/25).
 
 | Threshold | Use Case |
 |-----------|----------|
@@ -118,7 +196,14 @@ Different jurisdictions require different age thresholds. Zentity generates mult
 | 21+ | US alcohol/cannabis, car rental |
 | 25+ | Premium car rental, certain financial products |
 
-All proofs use the same FHE-encrypted DOB, generating new proofs without re-verification.
+Current PoC status:
+- The onboarding flow persists an `age ≥ 18` proof payload in `age_proofs`.
+- Other thresholds can be generated/verified, but aren’t fully wired into the default UI/storage flows yet.
+
+</details>
+
+<details>
+<summary>Cryptographic architecture</summary>
 
 ## Cryptographic Architecture
 
@@ -219,9 +304,10 @@ ZK proofs let you prove a statement is true without revealing why it's true.
                             ▼                    ▼
                      ┌──────────────┐     ┌──────────────┐
                      │     FHE      │     │   Database   │
-                     │   Encrypt    │────▶│  (No PII)    │
-                     │  DOB/Gender  │     └──────────────┘
-                     └──────────────┘            ▲
+                     │   Encrypt    │────▶│ (No raw      │
+                     │  DOB/Gender  │     │ images/PII)  │
+                     └──────────────┘     └──────────────┘
+                                            ▲
                             │                    │
                             ▼                    │
                      ┌──────────────┐            │
@@ -235,7 +321,7 @@ ZK proofs let you prove a statement is true without revealing why it's true.
 └──────────────┘     └──────────────┘     └──────────────┘
 ```
 
-**Result:** Complete identity verification with zero PII storage.
+**Result:** Complete identity verification with minimized plaintext storage (no raw ID images/selfies stored; cryptographic artifacts persisted; authentication data stored as required).
 
 ### Privacy-First Design
 
@@ -270,11 +356,11 @@ ZK proofs let you prove a statement is true without revealing why it's true.
 
 ```
 User → Zentity: "Verify me"
-Zentity → User: age_proof (ZK), liveness_attestation
+Zentity → User: age proof payload + liveness result
 User → Retailer: "Here's my age proof"
 Retailer → Verify: verify(proof) → true/false
 
-NO PII EVER SHARED - Retailer only knows: user is over 21, is a real person
+No raw ID images or plaintext identity attributes are shared. The relying party only learns the verified result (e.g. “over a threshold” + liveness passed) and any explicitly disclosed values.
 ```
 
 ### Tier 2: Regulated Entities (Banks, Exchanges)
@@ -292,6 +378,11 @@ Exchange stores: PII (regulatory requirement)
 Zentity stores: Cryptographic artifacts (commitments, proofs, ciphertexts) but no raw PII
 Biometrics: NEVER stored by either party
 ```
+
+</details>
+
+<details>
+<summary>Technical reference</summary>
 
 ## Technical Reference
 
@@ -442,11 +533,9 @@ cd apps/ocr && source venv/bin/activate && uvicorn app.main:app --reload --port 
 
 | Document | Description |
 |----------|-------------|
-| [Executive Summary](docs/executive-summary.md) | Business overview and value proposition |
-| [KYC Data Architecture](docs/kyc-data-architecture.md) | FHE vs ZK vs Hash decision framework |
-| [Liveness Architecture](docs/liveness-architecture.md) | Anti-spoofing and face matching design |
+| [System Architecture](docs/architecture.md) | End-to-end components + data flow + storage model |
+| [ZK Proof Architecture](docs/zk-architecture.md) | Circuits + proving/verifying model |
 | [ZK Nationality Proofs](docs/zk-nationality-proofs.md) | Merkle tree nationality verification |
-| [Frontend UX](docs/frontend-ui-ux.md) | Onboarding flow UX best practices |
 | [API Collection](tooling/bruno-collection/README.md) | Bruno API testing collection |
 
 ## License
