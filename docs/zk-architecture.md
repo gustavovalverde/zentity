@@ -1,5 +1,7 @@
 # ZK Proof Architecture
 
+> **Related docs:** [System Architecture](architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [README](../README.md)
+
 This document describes Zentity's zero-knowledge proof system using Noir and UltraHonk.
 
 ## Overview

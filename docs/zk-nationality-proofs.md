@@ -1,5 +1,7 @@
 # ZK Nationality Membership Proofs
 
+> **Related docs:** [System Architecture](architecture.md) | [ZK Architecture](zk-architecture.md) | [README](../README.md)
+
 ## The Problem
 
 In traditional KYC systems, when a service needs to verify that a user is from an EU country, they must:

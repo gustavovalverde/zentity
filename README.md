@@ -72,10 +72,11 @@ flowchart LR
   API --> DB
 ```
 
-Deep-dive docs:
-- [`docs/architecture.md`](docs/architecture.md) — system components, data flow, storage model
-- [`docs/zk-architecture.md`](docs/zk-architecture.md) — ZK circuits, proving/verifying
-- [`docs/zk-nationality-proofs.md`](docs/zk-nationality-proofs.md) — nationality Merkle proofs
+> [!TIP]
+> **Deep-dive documentation:**
+> - [System Architecture](docs/architecture.md) — data flow, storage model, privacy guarantees
+> - [ZK Circuits](docs/zk-architecture.md) — circuit specs, client/server proving
+> - [Nationality Proofs](docs/zk-nationality-proofs.md) — Merkle trees, country groups
 
 ## What’s Implemented (PoC)
 
@@ -229,178 +230,21 @@ Different jurisdictions require different age thresholds. The `age_verification`
 
 ## Cryptographic Architecture
 
-Zentity uses three complementary cryptographic techniques to enable privacy-preserving identity verification:
+Zentity uses three complementary techniques:
 
-### The Privacy Stack
+| Technique | Purpose | Example |
+|-----------|---------|---------|
+| **Zero-Knowledge Proofs** | Prove claims without revealing data | "I'm over 18" without showing birthday |
+| **FHE (TFHE-rs)** | Compute on encrypted data | Age comparison on ciphertext |
+| **Commitments (SHA256)** | Bind data without storing it | Name hash for dedup |
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ZERO-KNOWLEDGE PROOFS                        │
-│         Prove claims without revealing underlying data          │
-│    "I am over 18" • "I am EU citizen" • "Document not expired"  │
-├─────────────────────────────────────────────────────────────────┤
-│              FULLY HOMOMORPHIC ENCRYPTION (FHE)                 │
-│           Perform computations on encrypted data                │
-│         Age comparisons • Gender matching • Liveness scores     │
-├─────────────────────────────────────────────────────────────────┤
-│               CRYPTOGRAPHIC COMMITMENTS                         │
-│           One-way hashes for identity verification              │
-│              Names • Document numbers • Nationality             │
-└─────────────────────────────────────────────────────────────────┘
-```
+**Why three techniques?** Each solves a specific problem:
+- **ZK**: Prove boolean claims (age threshold, nationality group)
+- **FHE**: Server-side arithmetic on encrypted values
+- **Commitments**: Data binding + GDPR erasure (delete salt → unlinkable)
 
-### Why Three Techniques?
-
-Each cryptographic primitive solves a specific problem:
-
-| Problem | Solution | How It Works |
-|---------|----------|--------------|
-| "Verify my name without storing it" | **Commitment** | SHA256(name + salt) stored; verify by recomputing |
-| "Check if I'm over 18 without seeing my DOB" | **FHE** | Encrypted DOB compared homomorphically |
-| "Prove I'm EU citizen without revealing country" | **ZK Proof** | Merkle tree membership proof |
-| "Delete my data for GDPR" | **Commitment** | Delete salt → commitment becomes unlinkable |
-
-### Cryptographic Commitments
-
-A commitment is a one-way hash that binds you to a value without revealing it.
-
-> [!IMPORTANT]
-> In Zentity, commitments are **per-attribute** (name, document number, nationality), not a single "commitment to the entire credential".
-
-**How it works:**
-1. During verification: `commitment = SHA256("John Doe" + random_salt)`
-2. Commitment stored in database (hash, not name)
-3. Later verification: Recompute hash with claimed name + stored salt
-4. Match = verified. No name ever stored.
-
-**GDPR compliance:** Deleting the salt makes the commitment cryptographically unlinkable to any identity.
-
-#### What commitments are (in this repo)
-
-- **Storage minimization:** Persist only hashes instead of raw values.
-- **Deduplication / integrity checks:** Detect repeated document numbers (via hashed doc number), validate “this disclosed value matches what was verified” (by recomputing the hash with the same salt).
-- **Erasure primitive:** If you delete the `user_salt`, the commitments are no longer linkable to the original attributes.
-
-#### What commitments are not (in this repo)
-
-- They are **not** currently a single “identity commitment” that all ZK proofs are derived from.
-- They are **not** a cryptographic proof that “these attributes came from a signed passport”; provenance comes from the document-processing pipeline and verification logic, not from a passport-signature ZK circuit.
-
-### Fully Homomorphic Encryption (FHE)
-
-FHE allows computations on encrypted data without decryption.
-
-**How it works:**
-1. Your date of birth is encrypted: `encrypted_dob = FHE.encrypt(1990-05-15)`
-2. Server performs comparison: `is_adult = encrypted_dob <= (current_year - 18)`
-3. Only the boolean result is decrypted: `true`
-4. Server never sees your actual birthday
-
-**Library:** [TFHE-rs](https://github.com/zama-ai/tfhe-rs) (Rust) - industry-leading FHE implementation from Zama
-
-### Zero-Knowledge Proofs
-
-ZK proofs let you prove a statement is true without revealing why it's true.
-
-**In this repo, ZK proofs are statements about private inputs** (e.g., birth year, expiry date, nationality code, face similarity score) and include a nonce for replay resistance. They are verified cryptographically, and the verifier additionally enforces policy checks against the proof’s public outputs.
-
-**How it works:**
-1. You want to prove: "I am an EU citizen"
-2. Circuit checks: Is your nationality in the EU Merkle tree?
-3. Proof generated: Mathematical proof that passes verification
-4. Verifier learns: "Yes, EU citizen" but NOT which of 27 countries
-
-**Components:**
-- **UltraHonk** - Proof system (compact proofs, fast verification, no trusted setup)
-- **Noir** - Circuit language defining provable statements
-- **Barretenberg** - WASM proving backend from Aztec
-- **Client-side** - Proofs generated in browser via Web Workers
-
-### The Complete Flow
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Document   │────▶│     OCR      │────▶│  Commitments │
-│    Image     │     │   Extract    │     │   (SHA256)   │
-└──────────────┘     └──────────────┘     └──────────────┘
-                            │                    │
-                            ▼                    ▼
-                     ┌──────────────┐     ┌──────────────┐
-                     │     FHE      │     │   Database   │
-                     │   Encrypt    │────▶│ (No raw      │
-                     │  DOB/Gender  │     │ images/PII)  │
-                     └──────────────┘     └──────────────┘
-                                            ▲
-                            │                    │
-                            ▼                    │
-                     ┌──────────────┐            │
-                     │  ZK Proofs   │────────────┘
-                     │  Age/Nation  │
-                     └──────────────┘
-
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│    Selfie    │────▶│   Liveness   │────▶│  FHE Score   │
-│    Image     │     │    Check     │     │  + Boolean   │
-└──────────────┘     └──────────────┘     └──────────────┘
-```
-
-**Result:** Complete identity verification with minimized plaintext storage (no raw ID images/selfies stored; cryptographic artifacts persisted; authentication data stored as required).
-
-### Privacy-First Design
-
-#### What We Store
-
-| Data | Storage Type | Purpose |
-|------|--------------|---------|
-| Birth Year | FHE ciphertext | Age verification at any threshold |
-| Full DOB | FHE ciphertext (u32) | Precise age calculation (YYYYMMDD) |
-| Liveness Score | FHE ciphertext (u16) | Privacy-preserving anti-spoof threshold |
-| Gender | FHE ciphertext (u8) | ISO 5218 encoded, FHE comparisons |
-| Name | SHA256 commitment (salted) | Minimization + later integrity checks |
-| Document # | SHA256 commitment (salted) | Duplicate detection + later integrity checks |
-| Nationality | SHA256 commitment (salted) | Minimization + later integrity checks |
-| Age Proof | ZK proof payload | Persisted proof + public signals for `age ≥ 18` |
-| Doc Validity Proof | ZK proof | Proves document not expired |
-| Nationality Group Proof | ZK Merkle proof | Proves EU/EEA/SCHENGEN membership |
-
-#### What We NEVER Store
-
-| Data | Reason |
-|------|--------|
-| Document Image | Processed transiently, discarded |
-| Selfie Image | Processed transiently, discarded |
-| Face Embeddings | Discarded after comparison |
-| Liveness Signals | Discarded after analysis |
-| Actual Name/DOB | No plaintext stored (only commitments/ciphertexts) |
-
-## Two-Tier Architecture
-
-### Tier 1: Non-Regulated (Age-Gated Services)
-
-```
-User → Zentity: "Verify me"
-Zentity → User: age proof payload + liveness result
-User → Retailer: "Here's my age proof"
-Retailer → Verify: verify(proof) → true/false
-
-No raw ID images or plaintext identity attributes are shared. The relying party only learns the verified result (e.g. “over a threshold” + liveness passed) and any explicitly disclosed values.
-```
-
-### Tier 2: Regulated Entities (Banks, Exchanges)
-
-```
-User → Zentity: Complete verification
-User → Exchange: "I want to onboard"
-Exchange → User (via Zentity): Request PII disclosure
-Zentity → Exchange: Encrypted package (RSA-OAEP + AES-GCM)
-  - Name, DOB, Nationality (E2E encrypted)
-  - Face match result (verified, no biometrics shared)
-  - Liveness attestation
-
-Exchange stores: PII (regulatory requirement)
-Zentity stores: Cryptographic artifacts (commitments, proofs, ciphertexts) but no raw PII
-Biometrics: NEVER stored by either party
-```
+> [!NOTE]
+> For detailed explanations, data flow diagrams, and storage model, see [docs/architecture.md](docs/architecture.md).
 
 </details>
 
@@ -409,146 +253,16 @@ Biometrics: NEVER stored by either party
 
 ## Technical Reference
 
-### Project Structure
+| Service | Stack | Port |
+|---------|-------|------|
+| Web Frontend | Next.js 16, React 19, Noir.js, Human.js | 3000 |
+| FHE Service | Rust, Axum, TFHE-rs | 5001 |
+| OCR Service | Python, FastAPI, RapidOCR | 5004 |
 
-```
-zentity/
-├── apps/
-│   ├── web/                  # Next.js 16 frontend (ZK proofs + liveness via Human.js)
-│   ├── fhe/                  # Rust/Axum - Homomorphic Encryption
-│   └── ocr/                  # Python/FastAPI - Document OCR (local RapidOCR)
-├── tooling/
-│   └── bruno-collection/     # API testing
-└── docs/                     # Documentation
-```
+**ZK Circuits:** `age_verification`, `doc_validity`, `nationality_membership`, `face_match`
 
-### System Architecture
-
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                           FRONTEND (Next.js 16)                           │
-│                           http://localhost:3000                           │
-│                                                                           │
-│   ┌─────────────────────────────────────────────────────────────────┐     │
-│   │  ZK PROOFS (Noir.js + Barretenberg)                             │     │
-│   │  • Age verification (UltraHonk proofs)                          │     │
-│   │  • Document validity proofs                                     │     │
-│   │  • Nationality group membership (Merkle proofs)                 │     │
-│   │  • Generated client-side via Web Workers                        │     │
-│   └─────────────────────────────────────────────────────────────────┘     │
-│   ┌─────────────────────────────────────────────────────────────────┐     │
-│   │  LIVENESS (Human.js)                                            │     │
-│   │  • Multi-gesture challenges (smile, blink, head turns)          │     │
-│   │  • Face detection and matching                                  │     │
-│   │  • Runs locally via tfjs-node (no external API calls)           │     │
-│   └─────────────────────────────────────────────────────────────────┘     │
-│                                                                           │
-│   ┌─────────────────────────────────────────────────────────────────┐     │
-│   │ /api/crypto/*    /api/liveness/*    /api/kyc/*    /api/identity/*│     │
-│   └──────────┬──────────────────────────────────┬───────────────────┘     │
-└──────────────┼──────────────────────────────────┼─────────────────────────┘
-               │                                  │
-    ┌──────────▼──────────┐              ┌────────▼───────────────┐
-    │   FHE SERVICE       │              │   OCR SERVICE          │
-    │   Rust/Axum         │              │   Python/FastAPI       │
-    │   Port 5001         │              │   Port 5004            │
-    │                     │              │                        │
-    │ • /encrypt          │              │ • /process             │
-    │ • /verify-age       │              │ • /extract             │
-    │ • /keys/generate    │              │ • /ocr                 │
-    │ • /encrypt-liveness │              │                        │
-    │ • /verify-liveness  │              │ Local RapidOCR         │
-    │ TFHE-rs v1.4.2      │              │ (no external calls)    │
-    └─────────────────────┘              └────────────────────────┘
-```
-
-### Technology Stack
-
-| Service | Language | Framework | Crypto Library | Port |
-|---------|----------|-----------|----------------|------|
-| Frontend + ZK + Liveness | TypeScript | Next.js 16, Noir.js, Human.js | Barretenberg (UltraHonk) | 3000 |
-| FHE Service | Rust | Axum | TFHE-rs v1.4.2 | 5001 |
-| OCR | Python 3.10+ | FastAPI, RapidOCR | SHA256 | 5004 |
-
-### ZK Proof Circuits (Noir)
-
-All circuits are compiled with Noir and proven client-side using UltraHonk via Barretenberg WASM.
-
-| Circuit | Purpose | Public Signals |
-|---------|---------|----------------|
-| Age Verification | Prove age >= threshold | `currentYear`, `minAge`, `nonce`, `isValid` |
-| Document Validity | Prove not expired | `currentDate`, `nonce`, `isValid` |
-| Nationality Membership | Prove nationality in group | `merkleRoot`, `nonce`, `isMember` |
-
-#### Supported Country Groups
-
-The Nationality Membership circuit uses Merkle tree proofs to verify membership in predefined country groups without revealing the specific country:
-
-| Group | Countries | Use Case |
-|-------|-----------|----------|
-| EU | 27 countries | EU citizen verification |
-| EEA | 30 countries | European work authorization |
-| SCHENGEN | 25 countries | Travel zone verification |
-| LATAM | 7 countries | Regional compliance |
-| FIVE_EYES | 5 countries | Intelligence alliance nations |
-
-## Quick Start
-
-### Using Docker (Recommended)
-
-```bash
-docker-compose up
-```
-
-Open http://localhost:3000
-
-### Manual Setup
-
-<details>
-<summary>Click to expand manual setup instructions</summary>
-
-#### Prerequisites
-
-- Node.js 20+ (recommended: use `.nvmrc` or `mise`)
-- Rust 1.91+ (recommended: `mise`)
-- Python 3.12+ (recommended: `mise`)
-- pnpm
-
-#### Setup Toolchain
-
-```bash
-# Install mise (https://mise.jdx.dev)
-curl https://mise.run | sh
-
-# Install project toolchain versions
-mise install
-```
-
-#### Install Dependencies
-
-```bash
-# Frontend (includes ZK proof generation via Noir.js)
-cd apps/web && pnpm install
-
-# OCR service (Python)
-cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
-
-# FHE Service (Rust - compiles on first run)
-cd apps/fhe && cargo build --release
-```
-
-#### Start Services
-
-```bash
-# Terminal 1: Frontend
-cd apps/web && pnpm dev
-
-# Terminal 2: FHE Service
-cd apps/fhe && cargo run --release
-
-# Terminal 3: OCR Service
-cd apps/ocr && source venv/bin/activate && uvicorn app.main:app --reload --port 5004
-```
+> [!NOTE]
+> For development commands and detailed architecture, see [CLAUDE.md](CLAUDE.md) and [docs/architecture.md](docs/architecture.md).
 
 </details>
 
