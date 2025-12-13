@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ModeToggle } from "@/components/mode-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +19,7 @@ export default function Home() {
             <Link href="/sign-up">
               <Button>Get Started</Button>
             </Link>
+            <ModeToggle />
           </div>
         </nav>
       </header>

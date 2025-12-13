@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ModeToggle } from "@/components/mode-toggle";
 import { auth } from "@/lib/auth";
 
 export default async function DashboardLayout({
@@ -35,6 +36,7 @@ export default async function DashboardLayout({
               Settings
             </Link>
             <SignOutButton />
+            <ModeToggle />
           </div>
         </nav>
       </header>
