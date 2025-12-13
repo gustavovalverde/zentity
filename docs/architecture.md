@@ -1,38 +1,31 @@
 # System Architecture & Data Flow (PoC)
 
-This document describes **how Zentity’s services connect**, **how data flows through the system**, and **what is (and isn’t) persisted**.
+> **Related docs:** [ZK Architecture](zk-architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [README](../README.md)
 
-It is written for reviewers who want to quickly understand:
-- What the current PoC implements
-- Which components handle plaintext vs encrypted vs hashed vs proof data
-- Which artifacts are persisted in SQLite and why
-
-Related deep-dives:
-- `docs/zk-architecture.md`
-- `docs/zk-nationality-proofs.md`
+This document describes **how Zentity's services connect**, **how data flows through the system**, and **what is (and isn't) persisted**.
 
 ## Scope & Non‑Goals
 
 This is a **PoC**. Breaking changes are expected.
 
 Non-goals (current state):
-- Cryptographically binding all claims to a signed passport/ID credential inside a single “identity commitment” circuit.
+- Cryptographically binding all claims to a signed passport/ID credential inside a single "identity commitment" circuit.
 - Production-grade liveness attestation (device attestation / anti-replay guarantees).
 - Production hardening (HSM/KMS, secret rotation, WAF/rate limiting, audit logging strategy).
 
-## Components
+---
 
-- `apps/web` (Next.js 16 + React 19)
-  - UI + onboarding wizard
-  - Browser-side ZK proving in a Web Worker (Noir.js + bb.js UltraHonk backend)
-  - Server-side verification and persistence (Next.js API routes + SQLite)
-- `apps/ocr` (Python/FastAPI)
-  - OCR + document parsing
-  - Returns extracted fields and commitment inputs; does not persist images
-- `apps/fhe` (Rust/Axum)
-  - TFHE operations (encrypt + comparisons) used for PoC demos/policies
+## Architecture
 
-## High-Level Architecture (components)
+### Components
+
+| Service | Stack | Role |
+|---------|-------|------|
+| `apps/web` | Next.js 16, React 19 | UI, ZK proving (Web Worker), API routes, SQLite |
+| `apps/ocr` | Python, FastAPI | OCR + document parsing (no image persistence) |
+| `apps/fhe` | Rust, Axum, TFHE-rs | Homomorphic encryption operations |
+
+### System Diagram
 
 ```mermaid
 flowchart LR
@@ -67,61 +60,135 @@ flowchart LR
   FHE -->|ciphertext| API
 ```
 
-## Data Classification (what is stored)
+---
 
-Zentity persists a mix of plaintext auth data, encrypted blobs, commitments, ciphertexts, and proof payloads.
+## Cryptographic Techniques
 
-| Data | Where it exists | Persistence | Form | Why |
-|------|------------------|-------------|------|-----|
-| Account email + display name | Server | Yes | Plaintext (auth DB) | Authentication / user account |
-| Document image, selfie frames | Browser + server request bodies | No (intended) | Plaintext bytes in memory | OCR + liveness processing only |
-| Extracted doc fields (name/DOB/doc#) | Browser + server during onboarding | Short-lived | JWE encrypted in `onboarding_sessions.encrypted_pii` | Wizard continuity only (TTL) |
-| Commitments (doc hash, name, nationality) | Server | Yes | Salted SHA256 | Dedup + later integrity checks |
-| Per-user salt for commitments | Server | Yes | Encrypted (JWE) | Enables erasure (delete salt → unlinkable) |
-| ZK age proof payload | Server | Yes | Proof + public signals (JSON) | Disclosure + later verification |
-| ZK challenge nonces | Server | Yes | Random 128-bit nonce + TTL | Replay resistance for persisted proofs |
-| FHE ciphertexts (DOB, gender, liveness score) | Server | Yes | TFHE ciphertext | Policy checks without decrypting |
-| First name for dashboard display | Server | Yes | JWE encrypted (`first_name_encrypted`) | UX convenience (reversible for user display) |
+Zentity uses three complementary techniques:
 
-## Data Handling Guarantees (PoC intent)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ZERO-KNOWLEDGE PROOFS                        │
+│         Prove claims without revealing underlying data          │
+│    "I am over 18" • "I am EU citizen" • "Document not expired"  │
+├─────────────────────────────────────────────────────────────────┤
+│              FULLY HOMOMORPHIC ENCRYPTION (FHE)                 │
+│           Perform computations on encrypted data                │
+│         Age comparisons • Gender matching • Liveness scores     │
+├─────────────────────────────────────────────────────────────────┤
+│               CRYPTOGRAPHIC COMMITMENTS                         │
+│           One-way hashes for identity verification              │
+│              Names • Document numbers • Nationality             │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-The PoC is designed so that **raw images and extracted identity attributes are not written to disk** by the application.
+### Why Three Techniques?
 
-- Document images and selfie frames are processed in-memory (request bodies) and discarded after verification.
-- The KYC metadata tables store **metadata only** (file name, size, type, status), not the image bytes.
-- Short-lived onboarding PII is stored only as JWE-encrypted blobs with a TTL and is deleted on completion.
+| Problem | Solution | How It Works |
+|---------|----------|--------------|
+| "Verify my name without storing it" | **Commitment** | SHA256(name + salt); verify by recomputing |
+| "Check if I'm over 18 without seeing my DOB" | **FHE** | Encrypted DOB compared homomorphically |
+| "Prove I'm EU citizen without revealing country" | **ZK Proof** | Merkle tree membership proof |
+| "Delete my data for GDPR" | **Commitment** | Delete salt → commitment becomes unlinkable |
 
-Caveats:
-- Third-party libraries may allocate temporary memory internally; this document focuses on **application-level persistence**.
-- Operational logging, reverse proxies, and tracing can accidentally capture payloads if misconfigured (treat this as a deployment responsibility for production).
+### Commitments
 
-## What We NEVER Store
+A commitment is a one-way hash that binds you to a value without revealing it.
 
-| Data | Handling | Rationale |
-|------|----------|-----------|
-| Document images | Request body only | OCR processes in-memory, discards after extraction |
-| Selfie images | Request body only | Liveness/face matching processes, then discards |
-| Face embeddings | Memory only | Computed, compared, never written to disk |
-| Plaintext birth date | Never | Only FHE ciphertext (`dob_ciphertext`, `dob_full_ciphertext`) |
-| Plaintext name | Never | Only SHA256 commitment (`name_commitment`) |
-| Plaintext nationality | Never | Only SHA256 commitment |
-| Document number | Never | Only SHA256 commitment (`document_hash`) |
-| Liveness video/frames | Never | Only boolean result persisted |
+1. During verification: `commitment = SHA256("John Doe" + random_salt)`
+2. Commitment stored in database (hash, not name)
+3. Later verification: Recompute hash with claimed name + stored salt
+4. Match = verified. No name ever stored.
 
-**Key guarantee**: Application-level persistence never includes raw PII or biometric data.
+**GDPR compliance:** Deleting the salt makes the commitment cryptographically unlinkable.
 
-## Privacy Guarantees (PoC Design)
+### FHE
 
-1. **Transient image processing** — Document and selfie images exist only in request bodies; discarded after verification
+FHE allows computations on encrypted data without decryption.
+
+1. Encrypt: `encrypted_dob = FHE.encrypt(1990-05-15)`
+2. Compute: `is_adult = encrypted_dob <= (current_year - 18)`
+3. Decrypt result only: `true`
+4. Server never sees actual birthday
+
+**Library:** [TFHE-rs](https://github.com/zama-ai/tfhe-rs) (Rust)
+
+---
+
+## Data Model
+
+### What We Store
+
+| Data | Form | Purpose |
+|------|------|---------|
+| Account email | Plaintext | Authentication |
+| Commitments (name, doc#, nationality) | Salted SHA256 | Dedup + integrity checks |
+| Per-user salt | JWE encrypted | Enables GDPR erasure |
+| ZK proof payloads | Proof + public signals | Disclosure + verification |
+| Challenge nonces | Random 128-bit + TTL | Replay resistance |
+| FHE ciphertexts (DOB, gender, liveness) | TFHE ciphertext | Policy checks without decrypting |
+| First name (display only) | JWE encrypted | UX convenience |
+| Onboarding PII | JWE encrypted + TTL | Wizard continuity (short-lived) |
+
+### What We NEVER Store
+
+| Data | Handling |
+|------|----------|
+| Document images | Request body only → discarded |
+| Selfie images | Request body only → discarded |
+| Face embeddings | Memory only → discarded |
+| Plaintext birth date | Only as FHE ciphertext |
+| Plaintext name | Only as SHA256 commitment |
+| Plaintext nationality | Only as SHA256 commitment |
+| Document number | Only as SHA256 commitment |
+
+**Key guarantee:** Application-level persistence never includes raw PII or biometric data.
+
+### Privacy Guarantees
+
+1. **Transient image processing** — Images exist only in request bodies; discarded after verification
 2. **One-way commitments** — SHA256 + user salt; cannot derive original values
-3. **FHE for sensitive numerics** — DOB, gender, liveness scores encrypted; server computes on ciphertext without decryption
-4. **Client-side ZK proving** — Birth year, nationality code, face similarity never sent to server; only proofs transmitted
-5. **GDPR erasure path** — Delete `user_salt` → all commitments become cryptographically unlinkable to original identity
-6. **No biometric storage** — Face embeddings computed transiently for comparison, never persisted
+3. **FHE for sensitive numerics** — Server computes on ciphertext without decryption
+4. **Client-side ZK proving** — Birth year, nationality never sent to server; only proofs
+5. **GDPR erasure** — Delete `user_salt` → commitments become unlinkable
+6. **No biometric storage** — Face embeddings computed transiently, never persisted
 
-## Data Flow: Onboarding (sequence)
+---
 
-This shows the “happy path” for the onboarding wizard.
+## Two-Tier Architecture
+
+### Tier 1: Non-Regulated (Age-Gated Services)
+
+```
+User → Zentity: "Verify me"
+Zentity → User: age proof + liveness result
+User → Retailer: "Here's my proof"
+Retailer: verify(proof) → true/false
+
+No PII shared. Relying party only learns "over 18" + liveness passed.
+```
+
+### Tier 2: Regulated Entities (Banks, Exchanges)
+
+```
+User → Zentity: Complete verification
+User → Exchange: "I want to onboard"
+Exchange → Zentity: Request PII disclosure
+Zentity → Exchange: Encrypted package (RSA-OAEP + AES-GCM)
+  - Name, DOB, Nationality (E2E encrypted)
+  - Face match result (no biometrics)
+  - Liveness attestation
+
+Exchange stores: PII (regulatory requirement)
+Zentity stores: Cryptographic artifacts only
+Biometrics: NEVER stored by either party
+```
+
+---
+
+## Data Flows
+
+### Onboarding (happy path)
 
 ```mermaid
 sequenceDiagram
@@ -140,7 +207,7 @@ sequenceDiagram
   OCR-->>API: extracted fields + commitment inputs
   API-->>UI: verification flags + commitments
 
-  Note over UI: Birth year is used locally for ZK proving.\nIt should not be persisted in plaintext.
+  Note over UI: Birth year used locally for ZK proving
   UI->>API: POST /api/crypto/challenge (age_verification)
   API->>DB: INSERT zk_challenges (nonce, ttl, user_id)
   API-->>UI: nonce + expiresAt
@@ -148,19 +215,17 @@ sequenceDiagram
   UI->>W: generate age proof (birthYear, currentYear, minAge, nonce)
   W-->>UI: proof + publicSignals
 
-  UI->>API: POST /api/user/proof (proof, publicSignals, optional FHE ciphertexts)
-  API->>API: Verify proof (UltraHonk) + derive result from publicSignals
-  API->>DB: Consume zk_challenges nonce (one-time)
-  API->>DB: INSERT age_proofs (proof, public_signals, metadata)
+  UI->>API: POST /api/user/proof (proof, publicSignals)
+  API->>API: Verify proof (UltraHonk)
+  API->>DB: Consume nonce (one-time)
+  API->>DB: INSERT age_proofs
   API-->>UI: success + proofId + isOver18
 
-  UI->>FHE: (optional) encrypt DOB / compute policies
-  FHE-->>UI: ciphertext / boolean results
+  UI->>FHE: (optional) encrypt DOB
+  FHE-->>UI: ciphertext
 ```
 
-## Data Flow: Disclosure (Relying Party demo)
-
-The relying party (RP) demo verifies proofs and can request encrypted disclosure packages.
+### Disclosure (Relying Party)
 
 ```mermaid
 sequenceDiagram
@@ -168,29 +233,31 @@ sequenceDiagram
   participant UI as User (Browser)
   participant API as Zentity API
   participant DB as SQLite
-  participant RP as Relying Party (demo)
+  participant RP as Relying Party
 
   UI->>API: Request disclosure package
-  API->>DB: Read commitments / ciphertexts / latest age_proofs payload
-  API-->>RP: Disclosure payload (selected fields)\n+ proof payloads as requested
-  RP->>RP: Verify ZK proof(s) using circuit metadata
+  API->>DB: Read commitments / ciphertexts / proofs
+  API-->>RP: Disclosure payload + proof payloads
+  RP->>RP: Verify ZK proof(s)
   RP-->>UI: Accept / reject
 ```
 
-## Storage Model (SQLite tables)
+---
 
-The PoC uses SQLite (`dev.db`, configurable via `DATABASE_PATH`).
+## Storage Model (SQLite)
 
-Key tables (names as created by the app):
-- `user`, `session`, `account`, `verification` (better-auth)
-- `identity_proofs` (salted commitments + encrypted display data + verification flags)
-- `age_proofs` (proof payload + public signals + verification metadata + optional ciphertexts)
-- `zk_challenges` (server-issued one-time nonces for replay resistance)
-- `onboarding_sessions` (short-lived wizard state; encrypted PII only)
-- `kyc_documents`, `kyc_status` (KYC metadata; no image bytes)
+Tables (via `better-auth` + custom):
+- `user`, `session`, `account`, `verification` — Authentication
+- `identity_proofs` — Salted commitments + encrypted display data + verification flags
+- `age_proofs` — Proof payload + public signals + metadata
+- `zk_challenges` — Server-issued one-time nonces
+- `onboarding_sessions` — Short-lived wizard state (encrypted PII only)
+- `kyc_documents`, `kyc_status` — KYC metadata (no image bytes)
+
+---
 
 ## Notes for Cryptography Reviewers
 
-- Commitments in this repo are **per-attribute** (salted SHA256). They are useful for deduplication and “value matches what was verified” checks.
-- ZK proofs are currently generated over values available in the browser during onboarding (e.g. birth year), and are not yet bound to a signed passport/ID credential via a single identity commitment proof.
-- Challenge nonces are server-issued and one-time-use for persisted proofs; they mitigate replay of captured proof payloads.
+- Commitments are **per-attribute** (salted SHA256), not a single identity commitment.
+- ZK proofs are generated over browser-available values (e.g., birth year), not yet bound to signed passport credentials.
+- Challenge nonces are server-issued and one-time-use; they mitigate replay attacks.

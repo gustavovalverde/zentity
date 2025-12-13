@@ -61,6 +61,47 @@ docker-compose up        # Start all services
 docker-compose up -d     # Detached mode
 ```
 
+### Manual Setup (without Docker)
+
+**Prerequisites:**
+- Node.js 20+ (recommended: use `.nvmrc` or `mise`)
+- Rust 1.91+ (recommended: `mise`)
+- Python 3.12+ (recommended: `mise`)
+- pnpm
+
+**Setup Toolchain:**
+```bash
+# Install mise (https://mise.jdx.dev)
+curl https://mise.run | sh
+
+# Install project toolchain versions
+mise install
+```
+
+**Install Dependencies:**
+```bash
+# Frontend
+cd apps/web && pnpm install
+
+# OCR service
+cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+
+# FHE Service (compiles on first run)
+cd apps/fhe && cargo build --release
+```
+
+**Start Services (3 terminals):**
+```bash
+# Terminal 1: Frontend
+cd apps/web && pnpm dev
+
+# Terminal 2: FHE Service
+cd apps/fhe && cargo run --release
+
+# Terminal 3: OCR Service
+cd apps/ocr && source venv/bin/activate && uvicorn app.main:app --reload --port 5004
+```
+
 ## Key Data Flow
 
 The main verification endpoint is `POST /api/identity/verify` which orchestrates:
