@@ -25,7 +25,11 @@ import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { requireSession } from "@/lib/api-auth";
 import { bytesToBase64 } from "@/lib/base64";
-import { getIdentityProofByUserId, getVerificationStatus } from "@/lib/db";
+import {
+  getIdentityProofByUserId,
+  getUserAgeProofPayload,
+  getVerificationStatus,
+} from "@/lib/db";
 import { toServiceErrorPayload } from "@/lib/http-error-payload";
 import { detectFromBase64, getHumanServer } from "@/lib/human-server";
 import { processDocumentOcr } from "@/lib/ocr-client";
@@ -389,23 +393,7 @@ export async function POST(
     // =========================================================================
     // STEP 3: Get existing age proof (if available)
     // =========================================================================
-    let ageProof: {
-      proof: unknown;
-      publicSignals: string[];
-      isOver18: boolean;
-    } | null = null;
-
-    if (identityProof?.ageProof) {
-      try {
-        ageProof = {
-          proof: JSON.parse(identityProof.ageProof),
-          publicSignals: [], // Would need to store these
-          isOver18: identityProof.ageProofVerified,
-        };
-      } catch {
-        // Invalid stored proof
-      }
-    }
+    const ageProof = getUserAgeProofPayload(userId);
 
     // =========================================================================
     // STEP 4: Build and encrypt PII package

@@ -115,7 +115,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({ children }: FieldControlProps) {
-  const { id, errors, isTouched } = useFieldContext();
+  const { id, name, errors, isTouched } = useFieldContext();
   const hasError = errors.length > 0 && isTouched;
 
   const childProps = children.props as Record<string, unknown>;
@@ -123,6 +123,7 @@ function FieldControl({ children }: FieldControlProps) {
   return React.cloneElement(children, {
     ...childProps,
     id: `${id}-input`,
+    name: (childProps.name as string | undefined) ?? name,
     "aria-describedby": hasError ? `${id}-message` : `${id}-description`,
     "aria-invalid": hasError,
   });

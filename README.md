@@ -250,7 +250,7 @@ ZK proofs let you prove a statement is true without revealing why it's true.
 | Name | SHA256 commitment (salted) | Minimization + later integrity checks |
 | Document # | SHA256 commitment (salted) | Duplicate detection + later integrity checks |
 | Nationality | SHA256 commitment (salted) | Minimization + later integrity checks |
-| Age Proof | ZK proof (JSON) | Multiple thresholds: 18, 21, 25 |
+| Age Proof | ZK proof payload | Persisted proof + public signals for `age ≥ 18` |
 | Doc Validity Proof | ZK proof | Proves document not expired |
 | Nationality Group Proof | ZK Merkle proof | Proves EU/EEA/SCHENGEN membership |
 
@@ -262,7 +262,7 @@ ZK proofs let you prove a statement is true without revealing why it's true.
 | Selfie Image | Processed transiently, discarded |
 | Face Embeddings | Discarded after comparison |
 | Liveness Signals | Discarded after analysis |
-| Actual Name/DOB | Only commitments stored |
+| Actual Name/DOB | No plaintext stored (only commitments/ciphertexts) |
 
 ## Two-Tier Architecture
 
@@ -289,7 +289,7 @@ Zentity → Exchange: Encrypted package (RSA-OAEP + AES-GCM)
   - Liveness attestation
 
 Exchange stores: PII (regulatory requirement)
-Zentity stores: Only commitments (minimal liability)
+Zentity stores: Cryptographic artifacts (commitments, proofs, ciphertexts) but no raw PII
 Biometrics: NEVER stored by either party
 ```
 

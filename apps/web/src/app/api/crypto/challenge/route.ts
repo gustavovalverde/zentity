@@ -96,7 +96,7 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({
       activeChallenges: getActiveChallengeCount(),
       supportedCircuitTypes: VALID_CIRCUIT_TYPES,
-      ttlMinutes: 5,
+      ttlMinutes: 15,
     });
   } catch (error) {
     return NextResponse.json(

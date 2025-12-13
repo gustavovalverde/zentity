@@ -32,9 +32,7 @@ import {
   VerificationProgress,
 } from "./verification-progress";
 
-// Fallback country names for backwards compatibility
-// The backend now uses iso3166 library for proper country lookups
-// This map is only used when countryName is not provided in identityData
+// Fallback country names used when the backend doesn't provide a display name.
 const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
   DOM: "Dominican Republic",
   USA: "United States",
@@ -54,9 +52,9 @@ const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
 };
 
 function getCountryDisplayName(code: string, name?: string): string {
-  // Prefer backend-provided name (from iso3166 library)
+  // Prefer backend-provided name.
   if (name) return name;
-  // Fallback to hardcoded map for backwards compatibility
+  // Fallback to hardcoded map.
   return COUNTRY_NAMES_FALLBACK[code] || code;
 }
 
@@ -68,9 +66,6 @@ interface DashboardTabsProps {
     nameCommitment?: string;
     dobCiphertext?: string;
     fheClientKeyId?: string;
-    ageProof?: string;
-    ageProofVerified?: boolean;
-    ageProofsJson?: string; // Full proofs with publicSignals for ZK verification
     // Document metadata (non-PII)
     documentType?: string;
     countryVerified?: string; // ISO 3166-1 alpha-3 code (e.g., "DOM")
@@ -141,7 +136,7 @@ export function DashboardTabs({
                         Maximum Privacy
                       </Badge>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Zero PII stored on our servers
+                        No raw PII stored on our servers
                       </p>
                     </div>
                   </div>
@@ -224,7 +219,7 @@ export function DashboardTabs({
                     </div>
                   )}
 
-                  {identityData?.ageProofVerified && (
+                  {checks.ageProof && (
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
                         <CheckCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -265,8 +260,7 @@ export function DashboardTabs({
             documentHash={identityData?.documentHash}
             nameCommitment={identityData?.nameCommitment}
             dobCiphertext={identityData?.dobCiphertext}
-            ageProof={identityData?.ageProof}
-            ageProofVerified={identityData?.ageProofVerified}
+            hasAgeProof={checks.ageProof}
           />
         )}
 
@@ -285,11 +279,7 @@ export function DashboardTabs({
 
         <div className="grid gap-6 md:grid-cols-2">
           <NameVerificationDemo />
-          <AgeProofDemo
-            ageProof={identityData?.ageProof}
-            ageProofVerified={identityData?.ageProofVerified}
-            ageProofsJson={identityData?.ageProofsJson}
-          />
+          <AgeProofDemo />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">

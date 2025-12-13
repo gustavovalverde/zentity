@@ -51,6 +51,10 @@ import {
 
 // ZK proofs are generated client-side; this endpoint does not generate proofs.
 
+// Face matching threshold for ID photo ↔ selfie comparisons.
+// ID photos can be old and lower quality, so a lower threshold is used.
+const FACE_MATCH_MIN_CONFIDENCE = 0.35;
+
 interface VerifyIdentityRequest {
   // Document image (base64)
   documentImage: string;
@@ -267,7 +271,7 @@ export async function POST(
         const docEmb = getEmbeddingVector(docFace);
         if (selfieEmb && docEmb) {
           faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
-          facesMatch = faceMatchConfidence >= 0.6;
+          facesMatch = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
         } else {
           localIssues.push("embedding_failed");
         }
@@ -490,7 +494,6 @@ export async function POST(
           isDocumentVerified: isDocumentValid,
           isLivenessPassed: livenessPassed,
           isFaceMatched: faceMatched,
-          ageProofVerified: false,
           verificationMethod: "ocr_local",
           verifiedAt: verified ? new Date().toISOString() : undefined,
           confidenceScore: documentResult.confidence,

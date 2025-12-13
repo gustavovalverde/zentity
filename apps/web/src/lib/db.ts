@@ -24,7 +24,6 @@ const db = new Database(dbPath);
 const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
   { name: "doc_validity_proof", type: "TEXT" },
   { name: "nationality_commitment", type: "TEXT" },
-  { name: "age_proofs_json", type: "TEXT" },
   { name: "gender_ciphertext", type: "TEXT" },
   { name: "dob_full_ciphertext", type: "TEXT" },
   { name: "nationality_membership_proof", type: "TEXT" },
@@ -60,10 +59,6 @@ export function initializeIdentityProofsTable(): void {
       dob_ciphertext TEXT,                -- FHE encrypted birth year
       fhe_client_key_id TEXT,             -- Reference to user's FHE key
 
-      -- ZK Proofs (cryptographic proofs of claims)
-      age_proof TEXT,                     -- JSON: ZK proof that age >= 18
-      age_proof_verified INTEGER DEFAULT 0,
-
       -- Document information (non-PII)
       document_type TEXT,                 -- 'cedula', 'passport', 'drivers_license'
       country_verified TEXT,              -- Country code: 'DOM', 'USA', etc.
@@ -85,7 +80,6 @@ export function initializeIdentityProofsTable(): void {
       -- Document validity and nationality
       doc_validity_proof TEXT,            -- ZK proof that document is not expired
       nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt)
-      age_proofs_json TEXT,               -- JSON: {"18": proof, "21": proof, "25": proof}
 
       -- FHE expansion
       gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218)
@@ -135,10 +129,6 @@ export interface IdentityProof {
   dobCiphertext?: string;
   fheClientKeyId?: string;
 
-  // ZK Proofs
-  ageProof?: string;
-  ageProofVerified: boolean;
-
   // Document info
   documentType?: string;
   countryVerified?: string;
@@ -158,7 +148,6 @@ export interface IdentityProof {
   // Document validity and nationality
   docValidityProof?: string; // ZK proof that document is not expired
   nationalityCommitment?: string; // SHA256(nationality_code + user_salt)
-  ageProofsJson?: string; // JSON: {"18": proof, "21": proof, "25": proof}
 
   // FHE expansion
   genderCiphertext?: string; // FHE encrypted gender (ISO 5218)
@@ -181,21 +170,21 @@ export function createIdentityProof(
   const stmt = db.prepare(`
     INSERT INTO identity_proofs (
       id, user_id, document_hash, name_commitment, user_salt,
-      dob_ciphertext, fhe_client_key_id, age_proof, age_proof_verified,
+      dob_ciphertext, fhe_client_key_id,
       document_type, country_verified, is_document_verified,
       is_liveness_passed, is_face_matched, verification_method,
       verified_at, confidence_score,
-      doc_validity_proof, nationality_commitment, age_proofs_json,
+      doc_validity_proof, nationality_commitment,
       gender_ciphertext, dob_full_ciphertext,
       nationality_membership_proof, liveness_score_ciphertext,
       first_name_encrypted
     ) VALUES (
       ?, ?, ?, ?, ?,
-      ?, ?, ?, ?,
+      ?, ?,
       ?, ?, ?,
       ?, ?, ?,
       ?, ?,
-      ?, ?, ?,
+      ?, ?,
       ?, ?,
       ?, ?,
       ?
@@ -210,8 +199,6 @@ export function createIdentityProof(
     proof.userSalt,
     proof.dobCiphertext || null,
     proof.fheClientKeyId || null,
-    proof.ageProof || null,
-    proof.ageProofVerified ? 1 : 0,
     proof.documentType || null,
     proof.countryVerified || null,
     proof.isDocumentVerified ? 1 : 0,
@@ -222,7 +209,6 @@ export function createIdentityProof(
     proof.confidenceScore || null,
     proof.docValidityProof || null,
     proof.nationalityCommitment || null,
-    proof.ageProofsJson || null,
     proof.genderCiphertext || null,
     proof.dobFullCiphertext || null,
     proof.nationalityMembershipProof || null,
@@ -240,7 +226,6 @@ export function getIdentityProofByUserId(userId: string): IdentityProof | null {
       id, user_id as userId, document_hash as documentHash,
       name_commitment as nameCommitment, user_salt as userSalt,
       dob_ciphertext as dobCiphertext, fhe_client_key_id as fheClientKeyId,
-      age_proof as ageProof, age_proof_verified as ageProofVerified,
       document_type as documentType, country_verified as countryVerified,
       is_document_verified as isDocumentVerified,
       is_liveness_passed as isLivenessPassed, is_face_matched as isFaceMatched,
@@ -249,7 +234,6 @@ export function getIdentityProofByUserId(userId: string): IdentityProof | null {
       updated_at as updatedAt,
       doc_validity_proof as docValidityProof,
       nationality_commitment as nationalityCommitment,
-      age_proofs_json as ageProofsJson,
       gender_ciphertext as genderCiphertext,
       dob_full_ciphertext as dobFullCiphertext,
       nationality_membership_proof as nationalityMembershipProof,
@@ -264,7 +248,6 @@ export function getIdentityProofByUserId(userId: string): IdentityProof | null {
 
   return {
     ...row,
-    ageProofVerified: Boolean(row.ageProofVerified),
     isDocumentVerified: Boolean(row.isDocumentVerified),
     isLivenessPassed: Boolean(row.isLivenessPassed),
     isFaceMatched: Boolean(row.isFaceMatched),
@@ -280,15 +263,12 @@ export function updateIdentityProofFlags(
     isDocumentVerified?: boolean;
     isLivenessPassed?: boolean;
     isFaceMatched?: boolean;
-    ageProofVerified?: boolean;
     verifiedAt?: string;
     dobCiphertext?: string;
     fheClientKeyId?: string;
-    ageProof?: string;
     // Document validity and nationality
     docValidityProof?: string;
     nationalityCommitment?: string;
-    ageProofsJson?: string;
     // FHE expansion
     genderCiphertext?: string;
     dobFullCiphertext?: string;
@@ -314,10 +294,6 @@ export function updateIdentityProofFlags(
     updates.push("is_face_matched = ?");
     values.push(flags.isFaceMatched ? 1 : 0);
   }
-  if (flags.ageProofVerified !== undefined) {
-    updates.push("age_proof_verified = ?");
-    values.push(flags.ageProofVerified ? 1 : 0);
-  }
   if (flags.verifiedAt !== undefined) {
     updates.push("verified_at = ?");
     values.push(flags.verifiedAt);
@@ -330,10 +306,6 @@ export function updateIdentityProofFlags(
     updates.push("fhe_client_key_id = ?");
     values.push(flags.fheClientKeyId);
   }
-  if (flags.ageProof !== undefined) {
-    updates.push("age_proof = ?");
-    values.push(flags.ageProof);
-  }
   // Document validity and nationality
   if (flags.docValidityProof !== undefined) {
     updates.push("doc_validity_proof = ?");
@@ -342,10 +314,6 @@ export function updateIdentityProofFlags(
   if (flags.nationalityCommitment !== undefined) {
     updates.push("nationality_commitment = ?");
     values.push(flags.nationalityCommitment);
-  }
-  if (flags.ageProofsJson !== undefined) {
-    updates.push("age_proofs_json = ?");
-    values.push(flags.ageProofsJson);
   }
   // FHE expansion
   if (flags.genderCiphertext !== undefined) {
@@ -436,25 +404,13 @@ export function getVerificationStatus(userId: string): {
   };
 } {
   const proof = getIdentityProofByUserId(userId);
-
-  if (!proof) {
-    return {
-      verified: false,
-      level: "none",
-      checks: {
-        document: false,
-        liveness: false,
-        faceMatch: false,
-        ageProof: false,
-      },
-    };
-  }
+  const ageProof = getUserAgeProof(userId);
 
   const checks = {
-    document: proof.isDocumentVerified,
-    liveness: proof.isLivenessPassed,
-    faceMatch: proof.isFaceMatched,
-    ageProof: proof.ageProofVerified,
+    document: proof?.isDocumentVerified ?? false,
+    liveness: proof?.isLivenessPassed ?? false,
+    faceMatch: proof?.isFaceMatched ?? false,
+    ageProof: Boolean(ageProof?.isOver18),
   };
 
   const passedChecks = Object.values(checks).filter(Boolean).length;
@@ -513,6 +469,12 @@ export interface AgeProof {
   dobCiphertext: string | null;
 }
 
+export interface AgeProofPayload {
+  proof: string;
+  publicSignals: string[];
+  isOver18: boolean;
+}
+
 /**
  * Get user's age proof (ZK proof from onboarding)
  */
@@ -547,6 +509,42 @@ export function getUserAgeProof(userId: string): AgeProof | null {
       hasFheEncryption: !!proof.dob_ciphertext,
       fheEncryptionTimeMs: proof.fhe_encryption_time_ms,
       dobCiphertext: proof.dob_ciphertext,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the latest persisted age proof payload (proof + public signals).
+ *
+ * Used for disclosure flows where a relying party needs the proof material.
+ */
+export function getUserAgeProofPayload(userId: string): AgeProofPayload | null {
+  try {
+    const stmt = db.prepare(`
+      SELECT proof, public_signals, is_over_18
+      FROM age_proofs
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(userId) as
+      | { proof: string; public_signals: string; is_over_18: number }
+      | undefined;
+
+    if (!row) return null;
+
+    const proofValue = JSON.parse(row.proof) as unknown;
+    const publicSignalsValue = JSON.parse(row.public_signals) as unknown;
+    if (typeof proofValue !== "string") return null;
+    if (!Array.isArray(publicSignalsValue)) return null;
+
+    return {
+      proof: proofValue,
+      publicSignals: publicSignalsValue.map(String),
+      isOver18: Boolean(row.is_over_18),
     };
   } catch {
     return null;

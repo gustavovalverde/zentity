@@ -15,16 +15,14 @@ interface TransparencySectionProps {
   documentHash?: string;
   nameCommitment?: string;
   dobCiphertext?: string;
-  ageProof?: string;
-  ageProofVerified?: boolean;
+  hasAgeProof: boolean;
 }
 
 export function TransparencySection({
   documentHash,
   nameCommitment,
   dobCiphertext,
-  ageProof,
-  ageProofVerified,
+  hasAgeProof,
 }: TransparencySectionProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -123,14 +121,14 @@ export function TransparencySection({
                     <Badge variant="outline" className="text-xs">
                       ZK-SNARK
                     </Badge>
-                    {ageProofVerified && (
+                    {hasAgeProof && (
                       <Badge className="text-xs bg-green-600">
                         Verified 18+
                       </Badge>
                     )}
                   </div>
                   <code className="text-xs text-muted-foreground block font-mono">
-                    {ageProof ? truncateHash(ageProof) : "No proof generated"}
+                    {hasAgeProof ? "Stored" : "No proof stored"}
                   </code>
                   <p className="text-xs text-muted-foreground">
                     Cryptographic proof that age {"\u2265"} 18 without revealing

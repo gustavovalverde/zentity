@@ -130,10 +130,6 @@ export default async function VerificationPage() {
                     <p className="text-muted-foreground">Proof Type</p>
                     <p className="font-medium">UltraHonk (zk-SNARK)</p>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground">Circuit Constraints</p>
-                    <p className="font-medium">6 constraints</p>
-                  </div>
                 </div>
               </div>
             </CardContent>
@@ -165,7 +161,7 @@ export default async function VerificationPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Elliptic Curve</span>
-                <span>BN254 (Grumpkin)</span>
+                <span>BN254</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Proof System</span>
