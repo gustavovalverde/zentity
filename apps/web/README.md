@@ -121,7 +121,7 @@ The web application implements privacy-preserving patterns:
 3. **ZK Proofs** — Age, document validity, face match, and nationality proofs via Noir/UltraHonk (client-side)
 4. **Transient Processing** — Images processed and discarded immediately
 
-No raw PII is stored in the database.
+No raw ID document images or extracted document fields are stored in plaintext. (Authentication still stores account email/name as required for login.)
 
 ## Commitment & Proof Model
 

@@ -4,10 +4,13 @@
 ### Fixtures ###
 fixtures/
 
-### Documentation (internal) ###
+### Documentation ###
+# Keep the public docs lean for open-source. Treat the rest as internal notes.
 docs/*
-!docs/implementation-roadmap.md
+!docs/architecture.md
+!docs/zk-architecture.md
 !docs/zk-nationality-proofs.md
+docs/archive/
 
 ### Linux ###
 *~

@@ -37,10 +37,10 @@ const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
  * This table stores privacy-preserving identity verification data:
  * - Cryptographic commitments (hashes) - not reversible
  * - FHE-encrypted data - can only be computed on, not read
- * - ZK proofs - cryptographic proofs of claims
  * - Boolean verification flags - results of verification steps
+ * - Optional reversible encrypted display data (for UX only)
  *
- * NO RAW PII IS STORED.
+ * No raw ID document images or extracted attributes are stored in this table.
  */
 export function initializeIdentityProofsTable(): void {
   db.exec(`
@@ -633,7 +633,7 @@ export async function getUserFirstName(userId: string): Promise<string | null> {
  *
  * This table stores temporary session data during the signup wizard.
  * Sensitive PII is encrypted at rest using AES-256-GCM.
- * Sessions auto-expire after 30 minutes of inactivity.
+ * Sessions auto-expire after a short TTL (currently 5 minutes).
  *
  * Privacy considerations:
  * - PII is encrypted before storage
