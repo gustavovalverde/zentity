@@ -633,7 +633,7 @@ export async function getUserFirstName(userId: string): Promise<string | null> {
  *
  * This table stores temporary session data during the signup wizard.
  * Sensitive PII is encrypted at rest using AES-256-GCM.
- * Sessions auto-expire after a short TTL (currently 5 minutes).
+ * Sessions auto-expire after a short TTL (currently 30 minutes).
  *
  * Privacy considerations:
  * - PII is encrypted before storage
@@ -688,7 +688,7 @@ export interface OnboardingSession {
   expiresAt: number;
 }
 
-const ONBOARDING_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Create or update an onboarding session

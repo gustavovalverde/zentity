@@ -57,30 +57,29 @@ export default function Home() {
               <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
                 1
               </div>
-              <h3 className="text-lg font-semibold">Enter Your Details</h3>
+              <h3 className="text-lg font-semibold">Start with Email</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Provide your date of birth. Your data is encrypted immediately
-                on your device.
+                Begin in seconds. We only ask for what we need, when we need it.
               </p>
             </div>
             <div className="rounded-lg border border-border p-6">
               <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
                 2
               </div>
-              <h3 className="text-lg font-semibold">Generate Proof</h3>
+              <h3 className="text-lg font-semibold">Scan Your ID</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                We create a cryptographic proof that you meet the requirements
-                without revealing your actual data.
+                Upload a clear photo of your ID so we can extract the minimum
+                fields required for verification.
               </p>
             </div>
             <div className="rounded-lg border border-border p-6">
               <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
                 3
               </div>
-              <h3 className="text-lg font-semibold">Verify Instantly</h3>
+              <h3 className="text-lg font-semibold">Verify Privately</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Services can verify your proof without ever seeing your personal
-                information.
+                Prove claims (like being 18+) with cryptography so services can
+                verify without seeing raw personal data.
               </p>
             </div>
           </div>

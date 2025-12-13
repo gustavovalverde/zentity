@@ -373,14 +373,38 @@ export function StepReviewComplete() {
             }),
           });
 
+          const identityResult = await identityResponse
+            .json()
+            .catch(() => null);
+
           if (!identityResponse.ok) {
-            const _errorData = await identityResponse.json();
-          } else {
-            const identityResult = await identityResponse.json();
-            if (!identityResult.verified) {
-            }
+            throw new Error(
+              identityResult?.error ||
+                "Identity verification failed. Please try again.",
+            );
           }
-        } catch (_identityError) {}
+
+          if (!identityResult) {
+            throw new Error(
+              "Identity verification returned an unexpected response. Please try again.",
+            );
+          }
+
+          if (!identityResult.verified) {
+            throw new Error(
+              identityResult.error ||
+                "Identity verification did not pass. Please retake your ID photo and selfie and try again.",
+            );
+          }
+        } catch (identityError) {
+          const message =
+            identityError instanceof Error
+              ? identityError.message
+              : "Identity verification failed. Please try again.";
+          toast.error("Identity verification incomplete", {
+            description: message,
+          });
+        }
       }
 
       // Store the proof AND FHE ciphertext
@@ -610,20 +634,20 @@ export function StepReviewComplete() {
                   !faceMatchResult?.idFaceImage && (
                     <Skeleton className="h-full w-full" />
                   )}
-                {(faceMatchResult?.idFaceImage || data.idDocumentBase64) && (
+                {faceMatchResult?.idFaceImage ? (
                   <img
-                    src={
-                      faceMatchResult?.idFaceImage ||
-                      data.idDocumentBase64 ||
-                      ""
-                    }
-                    alt="Face extracted from ID document"
+                    src={faceMatchResult.idFaceImage}
+                    alt="Face extracted from your ID (preview)"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
                       faceMatchStatus === "matching" && "opacity-70",
                     )}
                   />
-                )}
+                ) : faceMatchStatus !== "matching" ? (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                    ID face
+                  </div>
+                ) : null}
               </div>
               <span className="text-xs text-muted-foreground">ID Photo</span>
             </div>

@@ -11,7 +11,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ export function StepIdUpload() {
   const [processingState, setProcessingState] = useState<ProcessingState>(
     state.data.documentResult ? "verified" : "idle",
   );
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Generate preview URL when file is selected
   useEffect(() => {
@@ -248,11 +249,18 @@ export function StepIdUpload() {
     });
   };
 
+  const documentResult = state.data.documentResult;
+  const isVerified = processingState === "verified" && Boolean(documentResult);
+
   const handleSubmit = () => {
+    if (!isVerified) {
+      const errorMsg = "Please upload a clear photo of your ID to continue.";
+      setUploadError(errorMsg);
+      toast.error("ID required", { description: errorMsg });
+      return;
+    }
     nextStep();
   };
-
-  const documentResult = state.data.documentResult;
 
   return (
     <div className="space-y-6">
@@ -286,7 +294,7 @@ export function StepIdUpload() {
               </p>
               <p className="text-sm text-blue-600 dark:text-blue-400">
                 {processingState === "processing" &&
-                  "Verifying your document locally"}
+                  "Verifying your document securely"}
               </p>
             </div>
           </div>
@@ -516,9 +524,9 @@ export function StepIdUpload() {
 
       {/* Upload area - only show if no file selected or rejected */}
       {!fileName && processingState === "idle" && (
-        <div
+        <button
           className={cn(
-            "relative flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
+            "relative flex min-h-[200px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
             dragActive
               ? "border-primary bg-primary/5"
               : "border-muted-foreground/25",
@@ -527,7 +535,9 @@ export function StepIdUpload() {
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
           onDrop={handleDrop}
-          onClick={() => document.getElementById("file-upload")?.click()}
+          onClick={() => fileInputRef.current?.click()}
+          type="button"
+          aria-describedby="id-upload-help"
         >
           <input
             id="file-upload"
@@ -535,31 +545,26 @@ export function StepIdUpload() {
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
             onChange={handleChange}
+            ref={fileInputRef}
           />
           <Upload className="mb-4 h-10 w-10 text-muted-foreground" />
           <p className="font-medium">Drop your ID here or click to browse</p>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p id="id-upload-help" className="mt-1 text-sm text-muted-foreground">
             JPEG, PNG, or WebP (max 10MB)
           </p>
-        </div>
+        </button>
       )}
 
       <Alert>
         <AlertDescription>
-          Your ID is analyzed locally using OCR to extract information. The
-          document is never sent to external services. We use zero-knowledge
-          proofs and encryption to verify your identity without exposing the
-          actual document.
+          Your ID is processed by our private OCR service to extract the fields
+          needed for verification. It is not sent to third-party processors. We
+          use cryptographic proofs and encryption to reduce the amount of raw
+          data we store.
         </AlertDescription>
       </Alert>
 
-      <WizardNavigation
-        onNext={handleSubmit}
-        showSkip
-        disableNext={
-          processingState === "converting" || processingState === "processing"
-        }
-      />
+      <WizardNavigation onNext={handleSubmit} disableNext={!isVerified} />
     </div>
   );
 }

@@ -2,7 +2,7 @@
  * Skip Liveness API
  *
  * Allows users to skip the liveness verification step.
- * Advances the wizard to step 3 without completing liveness.
+ * Advances the wizard to step 4 without completing the liveness challenges.
  *
  * Requires: Document verification must be completed (step 2).
  */
@@ -40,12 +40,12 @@ export async function POST(
 
     const validSession = validation.session;
 
-    // Skip liveness and advance to step 3
+    // Skip liveness and advance to step 4
     await skipLiveness(validSession.email);
 
     return NextResponse.json({
       success: true,
-      newStep: 3,
+      newStep: 4,
     });
   } catch (_error) {
     return NextResponse.json(
