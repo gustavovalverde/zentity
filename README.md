@@ -77,6 +77,7 @@ flowchart LR
 > - [System Architecture](docs/architecture.md) — data flow, storage model, privacy guarantees
 > - [ZK Circuits](docs/zk-architecture.md) — circuit specs, client/server proving
 > - [Nationality Proofs](docs/zk-nationality-proofs.md) — Merkle trees, country groups
+> - [Password Security](docs/password-security.md) — breached-password blocking + privacy-preserving UX pre-check
 > - [RP Redirect Flow](docs/rp-redirect-flow.md) — OAuth-style RP handoff (clean URL + one-time code exchange)
 
 ## What’s Implemented (PoC)

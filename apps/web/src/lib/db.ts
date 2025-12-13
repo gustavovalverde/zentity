@@ -5,21 +5,14 @@
  * Uses the same better-sqlite3 instance as Better Auth.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import Database from "better-sqlite3";
 import { EncryptJWT, jwtDecrypt } from "jose";
+import {
+  getDefaultDatabasePath,
+  getSqliteDb,
+  isSqliteBuildTime,
+} from "./sqlite";
 
-// Use DATABASE_PATH env var for Docker volume persistence, default to ./dev.db for local dev
-const dbPath = process.env.DATABASE_PATH || "./dev.db";
-
-// Ensure the database directory exists
-const dbDir = path.dirname(dbPath);
-if (dbDir !== "." && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-const db = new Database(dbPath);
+const db = getSqliteDb(getDefaultDatabasePath());
 
 const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
   { name: "doc_validity_proof", type: "TEXT" },
@@ -551,8 +544,11 @@ export function getUserAgeProofPayload(userId: string): AgeProofPayload | null {
   }
 }
 
-// Initialize table on module load
-initializeIdentityProofsTable();
+// Initialize tables on module load, but skip during `next build` to avoid
+// SQLite lock contention across build workers.
+if (!isSqliteBuildTime()) {
+  initializeIdentityProofsTable();
+}
 
 // ============================================================================
 // First Name Encryption Utilities

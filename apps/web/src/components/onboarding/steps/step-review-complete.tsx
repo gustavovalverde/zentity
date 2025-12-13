@@ -16,8 +16,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,10 @@ import {
 import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
 import { signUp } from "@/lib/auth-client";
 import {
+  getBetterAuthErrorMessage,
+  getPasswordPolicyErrorMessage,
+} from "@/lib/better-auth-errors";
+import {
   encryptDOB,
   generateAgeProof,
   getProofChallenge,
@@ -40,6 +45,10 @@ import {
   verifyAgeProof,
 } from "@/lib/crypto-client";
 import { type FaceMatchResult, matchFaces } from "@/lib/face-detection";
+import {
+  getPasswordLengthError,
+  getPasswordSimilarityError,
+} from "@/lib/password-policy";
 import { cn } from "@/lib/utils";
 import { makeFieldValidator } from "@/lib/validation";
 import { WizardNavigation } from "../wizard-navigation";
@@ -118,6 +127,14 @@ export function StepReviewComplete() {
   const [proofStatus, setProofStatus] = useState<ProofStatus>("idle");
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.extractedName || "");
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
+  const [breachCheckKey, setBreachCheckKey] = useState(0);
+  const [breachStatus, setBreachStatus] = useState<
+    "idle" | "checking" | "safe" | "compromised" | "error"
+  >("idle");
+  const [breachCheckedPassword, setBreachCheckedPassword] = useState<
+    string | null
+  >(null);
 
   // Face matching state
   const [faceMatchStatus, setFaceMatchStatus] =
@@ -136,8 +153,7 @@ export function StepReviewComplete() {
     },
   });
 
-  // Validate password field
-  const validatePassword = makeFieldValidator(
+  const validatePasswordSchema = makeFieldValidator(
     passwordSchema,
     "password",
     (value: string) => ({
@@ -145,6 +161,15 @@ export function StepReviewComplete() {
       confirmPassword: form.getFieldValue("confirmPassword"),
     }),
   );
+
+  const validatePassword = (value: string) => {
+    const schemaError = validatePasswordSchema(value);
+    if (schemaError) return schemaError;
+    return getPasswordSimilarityError(value, {
+      email: data.email,
+      documentNumber: data.extractedDocNumber,
+    });
+  };
 
   // Validate confirm password field (includes cross-field validation)
   const validateConfirmPassword = makeFieldValidator(
@@ -155,6 +180,16 @@ export function StepReviewComplete() {
       confirmPassword: value,
     }),
   );
+
+  const triggerBreachCheckIfConfirmed = () => {
+    const password = form.getFieldValue("password");
+    const confirmPassword = form.getFieldValue("confirmPassword");
+    if (!password || password !== confirmPassword) return;
+    if (getPasswordLengthError(password)) return;
+    setBreachStatus("checking");
+    setBreachCheckedPassword(password);
+    setBreachCheckKey((k) => k + 1);
+  };
 
   const calculateAge = (dob: string | null): number | null => {
     if (!dob) return null;
@@ -239,6 +274,18 @@ export function StepReviewComplete() {
       return;
     }
 
+    // If the confirmed password is known-compromised, stop before doing expensive crypto work.
+    if (
+      breachStatus === "compromised" &&
+      breachCheckedPassword === formData.password
+    ) {
+      setError(
+        "This password has appeared in data breaches. Please choose a different password.",
+      );
+      passwordInputRef.current?.focus();
+      return;
+    }
+
     // Save password to wizard state
     updateData({
       password: formData.password,
@@ -318,7 +365,13 @@ export function StepReviewComplete() {
       });
 
       if (result.error) {
-        setError(result.error.message || "Failed to create account");
+        const rawMessage = getBetterAuthErrorMessage(
+          result.error,
+          "Failed to create account",
+        );
+        const policyMessage = getPasswordPolicyErrorMessage(result.error);
+        setError(policyMessage || rawMessage);
+        if (policyMessage) passwordInputRef.current?.focus();
         setProofStatus("error");
         setSubmitting(false);
         return;
@@ -771,6 +824,17 @@ export function StepReviewComplete() {
           }}
           className="space-y-4"
         >
+          {/* Helps password managers associate the new-password fields to the email used earlier. */}
+          <input
+            type="email"
+            name="username"
+            autoComplete="username"
+            value={data.email}
+            readOnly
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
           <div className="rounded-lg border p-4 space-y-4">
             <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
               Create Password
@@ -794,14 +858,25 @@ export function StepReviewComplete() {
                   <FieldControl>
                     <Input
                       type="password"
-                      placeholder="Create a strong password"
+                      placeholder="Create a password"
                       autoComplete="new-password"
+                      ref={passwordInputRef}
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                       onBlur={field.handleBlur}
                     />
                   </FieldControl>
                   <FieldMessage />
+                  <PasswordRequirements
+                    password={field.state.value}
+                    email={data.email}
+                    documentNumber={data.extractedDocNumber}
+                    breachCheckKey={breachCheckKey}
+                    onBreachStatusChange={(status, checkedPassword) => {
+                      setBreachStatus(status);
+                      setBreachCheckedPassword(checkedPassword);
+                    }}
+                  />
                 </Field>
               )}
             </form.Field>
@@ -828,23 +903,24 @@ export function StepReviewComplete() {
                       autoComplete="new-password"
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      onBlur={field.handleBlur}
+                      onBlur={() => {
+                        field.handleBlur();
+                        triggerBreachCheckIfConfirmed();
+                      }}
                     />
                   </FieldControl>
                   <FieldMessage />
                 </Field>
               )}
             </form.Field>
-
-            <p className="text-xs text-muted-foreground">
-              Password must be at least 8 characters with uppercase, lowercase,
-              and a number.
-            </p>
           </div>
 
           <WizardNavigation
             onNext={() => form.handleSubmit()}
             nextLabel="Complete Registration"
+            disableNext={
+              breachStatus === "checking" || breachStatus === "compromised"
+            }
           />
         </form>
       )}

@@ -120,8 +120,11 @@ The web application implements privacy-preserving patterns:
 2. **FHE Encryption** — DOB, gender, and liveness scores encrypted with TFHE-rs
 3. **ZK Proofs** — Age, document validity, face match, and nationality proofs via Noir/UltraHonk (client-side)
 4. **Transient Processing** — Images processed and discarded immediately
+5. **Password Security** — Server-side blocked breached passwords (Better Auth) + privacy-preserving UX pre-check
 
 No raw ID document images or extracted document fields are stored in plaintext. (Authentication still stores account email/name as required for login.)
+
+Details: `../../docs/password-security.md`
 
 ## Commitment & Proof Model
 

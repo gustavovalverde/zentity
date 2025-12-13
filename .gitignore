@@ -11,6 +11,7 @@ docs/*
 !docs/zk-architecture.md
 !docs/zk-nationality-proofs.md
 !docs/rp-redirect-flow.md
+!docs/password-security.md
 docs/archive/
 
 ### Linux ###

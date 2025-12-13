@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,15 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { authClient } from "@/lib/auth-client";
+import {
+  getBetterAuthErrorMessage,
+  getPasswordPolicyErrorMessage,
+} from "@/lib/better-auth-errors";
+import {
+  getPasswordLengthError,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/password-policy";
 
 interface ResetPasswordFormProps {
   token: string;
@@ -24,6 +34,10 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [breachCheckKey, setBreachCheckKey] = useState(0);
+  const [breachStatus, setBreachStatus] = useState<
+    "idle" | "checking" | "safe" | "compromised" | "error"
+  >("idle");
 
   const form = useForm({
     defaultValues: {
@@ -46,9 +60,14 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         });
 
         if (result.error) {
-          setError(result.error.message || "Failed to reset password");
+          const rawMessage = getBetterAuthErrorMessage(
+            result.error,
+            "Failed to reset password",
+          );
+          const policyMessage = getPasswordPolicyErrorMessage(result.error);
+          setError(policyMessage || rawMessage);
           toast.error("Reset failed", {
-            description: result.error.message,
+            description: policyMessage || rawMessage,
           });
           return;
         }
@@ -72,13 +91,21 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     form.handleSubmit();
   };
 
+  const triggerBreachCheckIfConfirmed = () => {
+    const password = form.getFieldValue("password");
+    const confirmPassword = form.getFieldValue("confirmPassword");
+    if (!password || password !== confirmPassword) return;
+    if (getPasswordLengthError(password)) return;
+    setBreachStatus("checking");
+    setBreachCheckKey((k) => k + 1);
+  };
+
   const validatePassword = (value: string) => {
     if (!value) return "Password is required";
-    if (value.length < 8) return "Password must be at least 8 characters";
-    if (!/[A-Z]/.test(value))
-      return "Password must contain an uppercase letter";
-    if (!/[a-z]/.test(value)) return "Password must contain a lowercase letter";
-    if (!/[0-9]/.test(value)) return "Password must contain a number";
+    if (value.length < PASSWORD_MIN_LENGTH)
+      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+    if (value.length > PASSWORD_MAX_LENGTH)
+      return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
     return undefined;
   };
 
@@ -91,6 +118,15 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Helps password managers associate the new-password fields to a username. */}
+      <input
+        type="text"
+        name="username"
+        autoComplete="username"
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -125,6 +161,11 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                 />
               </FieldControl>
               <FieldMessage />
+              <PasswordRequirements
+                password={field.state.value}
+                breachCheckKey={breachCheckKey}
+                onBreachStatusChange={(status) => setBreachStatus(status)}
+              />
             </Field>
           )}
         </form.Field>
@@ -152,7 +193,10 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
                   disabled={isLoading}
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  onBlur={field.handleBlur}
+                  onBlur={() => {
+                    field.handleBlur();
+                    triggerBreachCheckIfConfirmed();
+                  }}
                 />
               </FieldControl>
               <FieldMessage />
@@ -162,11 +206,19 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Password must be at least 8 characters with uppercase, lowercase, and a
-        number.
+        Password must be at least {PASSWORD_MIN_LENGTH} characters. We block
+        passwords found in known data breaches.
       </p>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={
+          isLoading ||
+          breachStatus === "checking" ||
+          breachStatus === "compromised"
+        }
+      >
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
