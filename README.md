@@ -98,7 +98,7 @@ The PoC stores a mix of auth data and cryptographic artifacts; it does **not** s
 
 Details: `docs/architecture.md`
 
-<details>
+<details id="background-and-use-cases">
 <summary>Background and use cases</summary>
 
 ## Why Zentity Exists
@@ -224,7 +224,7 @@ Different jurisdictions require different age thresholds. The `age_verification`
 
 </details>
 
-<details>
+<details id="cryptographic-architecture">
 <summary>Cryptographic architecture</summary>
 
 ## Cryptographic Architecture
@@ -404,7 +404,7 @@ Biometrics: NEVER stored by either party
 
 </details>
 
-<details>
+<details id="technical-reference">
 <summary>Technical reference</summary>
 
 ## Technical Reference
