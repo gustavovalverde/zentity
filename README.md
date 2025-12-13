@@ -77,6 +77,7 @@ flowchart LR
 > - [System Architecture](docs/architecture.md) — data flow, storage model, privacy guarantees
 > - [ZK Circuits](docs/zk-architecture.md) — circuit specs, client/server proving
 > - [Nationality Proofs](docs/zk-nationality-proofs.md) — Merkle trees, country groups
+> - [RP Redirect Flow](docs/rp-redirect-flow.md) — OAuth-style RP handoff (clean URL + one-time code exchange)
 
 ## What’s Implemented (PoC)
 
@@ -87,6 +88,7 @@ flowchart LR
 - Salted SHA256 commitments for dedup + later integrity checks (name, document number, nationality)
 - FHE service integration (encrypt + compare on ciphertexts) for PoC policy checks
 - Disclosure demo flow (RP-style verification of received proof payloads)
+- OAuth-style RP redirect flow (clean URL + one-time authorization code exchange)
 
 ## Data Handling (at a glance)
 

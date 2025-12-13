@@ -690,6 +690,131 @@ export interface OnboardingSession {
 
 const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+// ============================================================================
+// RP Authorization Codes (OAuth-style redirect flow)
+// ============================================================================
+
+/**
+ * RP authorization codes
+ *
+ * Stores short-lived, single-use codes used by the RP redirect flow.
+ *
+ * Why a code at all?
+ * - Redirect URLs are a leaky channel (history, screenshots, referer headers).
+ * - We only return `code` (+ optional `state`) via redirect.
+ * - The RP then exchanges that code server-to-server for *minimal* verification flags.
+ *
+ * This is OAuth-like, but intentionally minimal (closed-beta):
+ * - No PKCE/client secrets/scopes/consent yet
+ * - Expiry + one-time use provide baseline replay resistance
+ */
+export function initializeRpAuthorizationCodesTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rp_authorization_codes (
+      code TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      state TEXT,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+
+      created_at INTEGER DEFAULT (unixepoch()),
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rp_authorization_codes_expires_at
+      ON rp_authorization_codes (expires_at);
+  `);
+}
+
+export type RpAuthorizationCode = {
+  code: string;
+  clientId: string;
+  redirectUri: string;
+  state: string | null;
+  userId: string;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+};
+
+const RP_AUTH_CODE_TTL_SECONDS = 5 * 60; // 5 minutes
+
+export function createRpAuthorizationCode(input: {
+  clientId: string;
+  redirectUri: string;
+  state?: string;
+  userId: string;
+}): { code: string; expiresAt: number } {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + RP_AUTH_CODE_TTL_SECONDS;
+  const code = crypto.randomUUID();
+
+  const stmt = db.prepare(`
+    INSERT INTO rp_authorization_codes (
+      code, client_id, redirect_uri, state, user_id, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    code,
+    input.clientId,
+    input.redirectUri,
+    input.state ?? null,
+    input.userId,
+    now,
+    expiresAt,
+  );
+
+  return { code, expiresAt };
+}
+
+export function consumeRpAuthorizationCode(
+  code: string,
+): RpAuthorizationCode | null {
+  const now = Math.floor(Date.now() / 1000);
+
+  const tx = db.transaction(() => {
+    const select = db.prepare(`
+      SELECT
+        code as code,
+        client_id as clientId,
+        redirect_uri as redirectUri,
+        state as state,
+        user_id as userId,
+        created_at as createdAt,
+        expires_at as expiresAt,
+        used_at as usedAt
+      FROM rp_authorization_codes
+      WHERE code = ? AND expires_at > ? AND used_at IS NULL
+    `);
+
+    const row = select.get(code, now) as RpAuthorizationCode | undefined;
+    if (!row) return null;
+
+    const update = db.prepare(`
+      UPDATE rp_authorization_codes
+      SET used_at = ?
+      WHERE code = ?
+    `);
+    update.run(now, code);
+
+    return { ...row, usedAt: now };
+  });
+
+  return tx();
+}
+
+export function cleanupExpiredRpAuthorizationCodes(): number {
+  const now = Math.floor(Date.now() / 1000);
+  const stmt = db.prepare(`
+    DELETE FROM rp_authorization_codes
+    WHERE expires_at < ?
+  `);
+  const result = stmt.run(now);
+  return result.changes;
+}
+
 /**
  * Create or update an onboarding session
  */
@@ -831,5 +956,8 @@ export function cleanupExpiredOnboardingSessions(): number {
 
 // Initialize onboarding sessions table
 initializeOnboardingSessionsTable();
+
+// Initialize RP authorization codes table
+initializeRpAuthorizationCodesTable();
 
 export default db;
