@@ -25,7 +25,7 @@ export default function Home() {
         </nav>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-4">
+      <main className="flex flex-1 flex-col items-center px-4 py-16 sm:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
             Privacy-First
@@ -51,7 +51,10 @@ export default function Home() {
           </div>
         </div>
 
-        <section id="how-it-works" className="mx-auto mt-32 max-w-5xl px-4">
+        <section
+          id="how-it-works"
+          className="mx-auto mt-20 w-full max-w-5xl scroll-mt-24"
+        >
           <h2 className="text-center text-3xl font-bold">How It Works</h2>
           <div className="mt-12 grid gap-8 md:grid-cols-3">
             <div className="rounded-lg border border-border p-6">

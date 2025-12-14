@@ -146,17 +146,17 @@ export const onboardingRouter = router({
         const { state } = await loadWizardState();
         if (state?.email) {
           await completeOnboarding(state.email);
-          return { success: true };
+          return { success: true, cleared: true };
         }
 
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No session to delete",
-        });
+        // Idempotent no-op: the client may call this defensively during "start over"
+        // flows even when no session cookie exists. Avoid emitting errors (and noisy
+        // console logs via tRPC loggerLink) for this expected case.
+        return { success: true, cleared: false };
       }
 
       await completeOnboarding(email);
-      return { success: true };
+      return { success: true, cleared: true };
     }),
 
   /**
