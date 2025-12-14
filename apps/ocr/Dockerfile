@@ -18,15 +18,19 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download RapidOCR models for faster startup
-RUN python -c "from rapidocr import RapidOCR; RapidOCR()" || true
+# Set cache location BEFORE pre-downloading models (so they're baked into correct location)
+ENV XDG_CACHE_HOME=/var/cache/zentity/ocr
+RUN mkdir -p /var/cache/zentity/ocr
+
+# Pre-download RapidOCR models to the runtime cache location
+RUN python -c "from rapidocr import RapidOCR; RapidOCR()"
 
 # Create non-root user
 RUN groupadd --system --gid 1001 ocr && \
     useradd --system --uid 1001 --gid ocr --create-home --home-dir /home/ocr ocr
 
-# Create standard runtime state/cache directories (not persisted by default)
-RUN mkdir -p /var/cache/zentity/ocr /var/lib/zentity/ocr && \
+# Create runtime directories and fix ownership of pre-downloaded models
+RUN mkdir -p /var/lib/zentity/ocr && \
     chown -R ocr:ocr /var/cache/zentity /var/lib/zentity
 
 # Copy application code
@@ -36,9 +40,8 @@ COPY --chown=ocr:ocr app/ ./app/
 COPY --chown=ocr:ocr start.sh .
 RUN chmod +x start.sh
 
-# Expose port
+# Runtime environment
 ENV PYTHONUNBUFFERED=1
-ENV XDG_CACHE_HOME=/var/cache/zentity/ocr
 
 ARG PORT=5004
 ENV PORT=${PORT}

@@ -142,6 +142,29 @@ const CHALLENGE_PASSED_DELAY = 1000;
 /** Delay for user to prepare before next challenge timer starts. */
 const CHALLENGE_PREP_DELAY = 2000;
 
+/** Server-side verification timeout (prevents UI from getting stuck in "validating"). */
+const VERIFY_TIMEOUT = 20_000;
+
+/** Frame streaming interval for server hints (avoid piling up requests). */
+const FRAME_STREAM_INTERVAL = 300;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Hook for managing the multi-gesture liveness detection flow.
  *
@@ -194,6 +217,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const consecutiveDetectionsRef = useRef(0);
   const consecutiveChallengeDetectionsRef = useRef(0);
   const isCheckingRef = useRef(false);
+  const isStreamingFrameRef = useRef(false);
   const headTurnCenteredRef = useRef(false);
   const headTurnStartYawRef = useRef(0);
   const lastHappyRef = useRef(0);
@@ -449,17 +473,31 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       }
 
       setChallengeState("validating");
+      // Immediately stop background server frame streaming + SSE to avoid
+      // concurrent server-side detection while verify runs (can cause hangs).
+      if (frameStreamingRef.current) {
+        clearInterval(frameStreamingRef.current);
+        frameStreamingRef.current = null;
+      }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       try {
-        const data = (await trpc.liveness.verify.mutate({
-          sessionId: session.sessionId,
-          baselineImage,
-          challenges: newCompleted.map((c) => ({
-            challengeType: c.type,
-            image: c.image,
-            turnStartYaw: c.turnStartYaw,
-          })),
-          debug: livenessDebugEnabled,
-        })) as {
+        const data = (await withTimeout(
+          trpc.liveness.verify.mutate({
+            sessionId: session.sessionId,
+            baselineImage,
+            challenges: newCompleted.map((c) => ({
+              challengeType: c.type,
+              image: c.image,
+              turnStartYaw: c.turnStartYaw,
+            })),
+            debug: livenessDebugEnabled,
+          }),
+          VERIFY_TIMEOUT,
+          "Verification is taking too long. Please try again.",
+        )) as {
           verified?: boolean;
           error?: string;
         } | null;
@@ -554,11 +592,14 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           consecutiveChallengeDetectionsRef.current++;
           if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
             consecutiveChallengeDetectionsRef.current = 0;
+            setChallengeState("capturing");
             // IMPORTANT: Capture a FRESH frame right now, not the stale one from start of check
             // This ensures the submitted image matches the detected smile
             const freshFrame = captureFrame();
             if (freshFrame) {
               await handleCapturedChallenge("smile", freshFrame);
+            } else {
+              setChallengeState("waiting_challenge");
             }
           }
         } else {
@@ -598,6 +639,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
             consecutiveChallengeDetectionsRef.current = 0;
             setStatusMessage("");
+            setChallengeState("capturing");
             // IMPORTANT: Capture a FRESH frame right now, not the stale one from start of check
             // This ensures the submitted image matches the detected turn
             const freshFrame = captureFrame();
@@ -608,6 +650,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
                 freshFrame,
                 headTurnStartYawRef.current,
               );
+            } else {
+              setChallengeState("waiting_challenge");
             }
           }
         } else {
@@ -791,7 +835,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     };
   }, [session?.sessionId]);
 
-  // Frame streaming during challenges (5 FPS)
+  // Frame streaming during challenges (for server-side hints)
   useEffect(() => {
     if (challengeState !== "waiting_challenge" || !session?.sessionId) {
       // Clean up streaming when not in challenge state
@@ -799,15 +843,18 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         clearInterval(frameStreamingRef.current);
         frameStreamingRef.current = null;
       }
+      isStreamingFrameRef.current = false;
       return;
     }
 
     const streamFrame = async () => {
+      if (isStreamingFrameRef.current) return;
       // Use optimized stream frame capture if available, otherwise fall back to regular
       const captureForStream = captureStreamFrame ?? captureFrame;
       const frame = captureForStream();
       if (!frame || !currentChallenge) return;
 
+      isStreamingFrameRef.current = true;
       try {
         await fetch("/api/liveness/frame", {
           method: "POST",
@@ -822,17 +869,23 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         });
       } catch {
         // Ignore frame streaming errors
+      } finally {
+        isStreamingFrameRef.current = false;
       }
     };
 
-    // Stream frames at 5 FPS (every 200ms)
-    frameStreamingRef.current = setInterval(streamFrame, 200);
+    // Stream frames at a limited rate and avoid overlapping requests.
+    frameStreamingRef.current = setInterval(
+      () => void streamFrame(),
+      FRAME_STREAM_INTERVAL,
+    );
 
     return () => {
       if (frameStreamingRef.current) {
         clearInterval(frameStreamingRef.current);
         frameStreamingRef.current = null;
       }
+      isStreamingFrameRef.current = false;
     };
   }, [
     challengeState,
@@ -871,6 +924,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     consecutiveChallengeDetectionsRef.current = 0;
     headTurnCenteredRef.current = false;
     headTurnStartYawRef.current = 0;
+    isStreamingFrameRef.current = false;
     onReset();
     void beginCamera();
   }, [beginCamera, onReset]);

@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette import status
 
-from .ocr import extract_text_from_base64, warmup_engine
+from .ocr import extract_text_from_base64, extract_document_text_from_base64, warmup_engine
 from .parser import (
     ExtractedData,
     extract_national_id_fields,
@@ -216,8 +216,8 @@ async def ocr_document_endpoint(request: ImageRequest):
     validation_issues: List[str] = []
     validation_details: List[ValidationDetail] = []
 
-    # Step 1: Extract text
-    ocr_result = extract_text_from_base64(request.image)
+    # Step 1: Extract text (MRZ-fast-path for passports)
+    ocr_result = extract_document_text_from_base64(request.image)
 
     if ocr_result.get("error"):
         return DocumentResponse(
@@ -425,8 +425,8 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
     validation_issues: List[str] = []
     validation_details: List[ValidationDetail] = []
 
-    # Step 1: Extract text (transient)
-    ocr_result = extract_text_from_base64(request.image)
+    # Step 1: Extract text (transient, MRZ-fast-path for passports)
+    ocr_result = extract_document_text_from_base64(request.image)
 
     if ocr_result.get("error"):
         return ProcessDocumentResponse(

@@ -68,6 +68,11 @@ def detect_document_type(text: str) -> Tuple[DocumentType, float]:
     """
     text_upper = text.upper()
 
+    # Fast path: a TD3 MRZ line starting with "P<" is a strong passport signal.
+    # This avoids tie-break issues when only the MRZ region is OCR'd.
+    if re.search(r"P<[A-Z]{3}", text_upper, re.IGNORECASE):
+        return DocumentType.PASSPORT, 1.0
+
     scores = {
         DocumentType.NATIONAL_ID: 0,
         DocumentType.PASSPORT: 0,
