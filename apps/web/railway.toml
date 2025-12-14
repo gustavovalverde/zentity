@@ -1,0 +1,13 @@
+[build]
+builder = "DOCKERFILE"
+# Pass build-time args for Next.js public env vars
+# These are baked into the client bundle at build time
+
+[build.args]
+NEXT_PUBLIC_APP_URL = "https://app.zentity.xyz"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "ALWAYS"
+numReplicas = 1

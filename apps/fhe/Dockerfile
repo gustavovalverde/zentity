@@ -1,5 +1,6 @@
 # FHE Service Dockerfile
 # Multi-stage build for smaller final image
+# Cache bust: 2024-12-14-v2
 
 # Build stage
 FROM rust:1.91-trixie AS builder
@@ -35,10 +36,11 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (curl needed for Docker healthcheck)
+# Install runtime dependencies (curl for healthcheck, gosu for privilege drop)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
@@ -51,12 +53,24 @@ RUN groupadd --system --gid 1001 zentity && \
     touch /var/lib/zentity/fhe/.keep && \
     chown -R zentity:zentity /app /var/lib/zentity
 
+# Copy startup script (handles permission fixing + privilege drop)
+COPY start.sh .
+RUN chmod +x start.sh
+
 # Set environment variables
 ENV RUST_LOG=info
-ENV PORT=5001
 
-EXPOSE 5001
+ARG PORT=5001
+ARG HOST="::"
+ENV PORT=${PORT}
+ENV HOST=${HOST}
 
-USER zentity
+EXPOSE ${PORT}
 
-CMD ["/app/fhe-service"]
+# Note: Container starts as root to fix volume permissions, then drops to zentity via gosu in start.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+CMD ["./start.sh"]

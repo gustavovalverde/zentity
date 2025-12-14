@@ -32,21 +32,26 @@ RUN mkdir -p /var/cache/zentity/ocr /var/lib/zentity/ocr && \
 # Copy application code
 COPY --chown=ocr:ocr app/ ./app/
 
-# Copy and set up entrypoint script
-COPY --chown=ocr:ocr entrypoint.sh .
-RUN chmod +x entrypoint.sh
+# Copy startup script (uses exec for proper signal handling)
+COPY --chown=ocr:ocr start.sh .
+RUN chmod +x start.sh
 
 # Expose port
 ENV PYTHONUNBUFFERED=1
 ENV XDG_CACHE_HOME=/var/cache/zentity/ocr
-ENV PORT=5004
-EXPOSE 5004
+
+ARG PORT=5004
+ARG HOST="::"
+ENV PORT=${PORT}
+ENV HOST=${HOST}
+
+EXPOSE ${PORT}
 
 USER ocr
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:5004/health || exit 1
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Run the application via entrypoint (warms up models first)
-CMD ["./entrypoint.sh"]
+# Run uvicorn via startup script (exec form for proper signal handling)
+CMD ["./start.sh"]

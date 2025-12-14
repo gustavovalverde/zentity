@@ -18,6 +18,7 @@ Endpoints:
 
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Request
@@ -26,7 +27,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette import status
 
-from .ocr import extract_text_from_base64
+from .ocr import extract_text_from_base64, warmup_engine
 from .parser import (
     ExtractedData,
     extract_national_id_fields,
@@ -58,12 +59,23 @@ INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
 _start_time = time.time()
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle for the OCR service."""
+    # Startup: warm up the OCR engine
+    print("[OCR] Warming up RapidOCR engine...")
+    warmup_engine()
+    print("[OCR] RapidOCR engine ready")
+    yield
+    # Shutdown: nothing to clean up
+
+
 # Initialize FastAPI
-# Note: Model warmup is handled by entrypoint.sh before uvicorn starts
 app = FastAPI(
     title="OCR Service",
     description="Document OCR and field extraction for identity documents",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Privacy: Avoid echoing request bodies (e.g., base64 images) back in 422 responses.
@@ -157,11 +169,7 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """
-    Service health check endpoint.
-
-    Models are warmed up via entrypoint.sh before uvicorn starts.
-    """
+    """Service health check endpoint."""
     return HealthResponse(
         status="healthy",
         service="ocr-service",

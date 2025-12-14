@@ -18,7 +18,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -102,7 +102,12 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(5001);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let host: IpAddr = std::env::var("HOST")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+
+    let addr = SocketAddr::new(host, port);
     tracing::info!("FHE Service listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
