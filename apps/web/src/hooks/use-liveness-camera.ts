@@ -18,6 +18,8 @@ type UseLivenessCameraResult = {
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   captureFrame: () => string | null;
+  /** Capture frame optimized for streaming (smaller size, lower quality) */
+  captureStreamFrame: () => string | null;
 };
 
 /**
@@ -148,6 +150,33 @@ export function useLivenessCamera(
     return canvas.toDataURL("image/jpeg", 0.85);
   }, [brightnessTarget]);
 
+  /**
+   * Capture a frame optimized for streaming (smaller size, lower quality).
+   * Used for real-time server feedback during liveness challenges.
+   */
+  const captureStreamFrame = useCallback((): string | null => {
+    const video = videoRef.current;
+    if (!video) return null;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
+    if (video.readyState < 2) return null;
+
+    // Target 640x480 max for streaming
+    const MAX_WIDTH = 640;
+    const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Lower quality (70%) for faster transmission
+    return canvas.toDataURL("image/jpeg", 0.7);
+  }, []);
+
   // Stop camera when component using the hook unmounts.
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -158,5 +187,6 @@ export function useLivenessCamera(
     startCamera,
     stopCamera,
     captureFrame,
+    captureStreamFrame,
   };
 }

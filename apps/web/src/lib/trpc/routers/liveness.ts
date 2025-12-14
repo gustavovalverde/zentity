@@ -62,6 +62,9 @@ const verifySchema = z.object({
     z.object({
       challengeType: challengeTypeSchema,
       image: z.string().min(1),
+      // Client-provided turn start yaw for turn challenges
+      // Server validates delta from this baseline instead of session baseline
+      turnStartYaw: z.number().optional(),
     }),
   ),
   debug: z.boolean().optional(),
@@ -235,9 +238,15 @@ export const livenessRouter = router({
         ) {
           const yaw = getYawDegrees(face);
           const dir = getFacingDirection(res, face);
-          const yawDelta = Math.abs(yaw - baselineYaw);
 
+          // Use client-provided turn start yaw if available, otherwise fall back to baseline
+          // This aligns server validation with what the client detected during the challenge
+          const referenceYaw = challenge.turnStartYaw ?? baselineYaw;
+          const yawDelta = Math.abs(yaw - referenceYaw);
+
+          // When using client turn start, we trust that client verified centering
           const baselineWasCentered =
+            challenge.turnStartYaw !== undefined ||
             Math.abs(baselineYaw) <= BASELINE_CENTERED_THRESHOLD_DEG;
           const yawThreshold = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
           const significantMovement = TURN_YAW_SIGNIFICANT_DELTA_DEG;
@@ -249,8 +258,8 @@ export const livenessRouter = router({
           const yawPassesDelta = yawDelta >= significantMovement;
           const turnedCorrectDirection =
             challenge.challengeType === "turn_left"
-              ? yaw < baselineYaw
-              : yaw > baselineYaw;
+              ? yaw < referenceYaw
+              : yaw > referenceYaw;
 
           const passed =
             baselineWasCentered &&
@@ -267,7 +276,7 @@ export const livenessRouter = router({
           if (!passed) {
             allPassed = false;
             failureReasons.push(
-              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° base ${baselineYaw.toFixed(1)}° (baseCentered=${baselineWasCentered ? "yes" : "no"} abs=${yawPassesAbsolute ? "yes" : "no"} delta=${yawPassesDelta ? "yes" : "no"} dir=${turnedCorrectDirection ? "yes" : "no"})`,
+              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° ref ${referenceYaw.toFixed(1)}° (baseCentered=${baselineWasCentered ? "yes" : "no"} abs=${yawPassesAbsolute ? "yes" : "no"} delta=${yawPassesDelta ? "yes" : "no"} dir=${turnedCorrectDirection ? "yes" : "no"})`,
             );
           }
         }

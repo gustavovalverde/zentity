@@ -46,6 +46,7 @@ export function StepSelfie() {
     startCamera,
     stopCamera,
     captureFrame,
+    captureStreamFrame,
   } = useLivenessCamera({
     facingMode: "user",
     idealWidth: 640,
@@ -68,6 +69,8 @@ export function StepSelfie() {
     challengeProgress,
     countdown,
     statusMessage,
+    serverProgress,
+    serverHint,
     debugCanvasRef,
     debugFrame,
     lastVerifyError,
@@ -80,6 +83,7 @@ export function StepSelfie() {
     startCamera,
     stopCamera,
     captureFrame,
+    captureStreamFrame,
     human,
     humanReady,
     livenessDebugEnabled,
@@ -412,12 +416,40 @@ export function StepSelfie() {
                   <p className="text-xl font-bold">
                     {currentChallenge.instruction}
                   </p>
-                  <Progress
-                    value={challengeProgress}
-                    className="mt-1 h-2 w-40 bg-yellow-200"
-                    aria-label={`Challenge progress: ${challengeProgress.toFixed(0)}%`}
-                  />
-                  {statusMessage &&
+                  {/* Dual progress bars */}
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-14">You:</span>
+                      <Progress
+                        value={challengeProgress}
+                        className="h-2 w-32 bg-yellow-200"
+                        aria-label={`Your progress: ${challengeProgress.toFixed(0)}%`}
+                      />
+                      <span className="text-xs w-8">
+                        {challengeProgress.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-14">Server:</span>
+                      <Progress
+                        value={serverProgress?.progress ?? 0}
+                        className="h-2 w-32 bg-yellow-200"
+                        aria-label={`Server progress: ${serverProgress?.progress ?? 0}%`}
+                      />
+                      <span className="text-xs w-8">
+                        {serverProgress?.progress ?? 0}%
+                      </span>
+                    </div>
+                  </div>
+                  {/* Server hint */}
+                  {serverHint && (
+                    <p className="mt-2 text-xs text-yellow-900 font-medium">
+                      {serverHint}
+                    </p>
+                  )}
+                  {/* Fallback to status message for turn challenges */}
+                  {!serverHint &&
+                    statusMessage &&
                     (currentChallenge.challengeType === "turn_left" ||
                       currentChallenge.challengeType === "turn_right") && (
                       <p className="mt-1 text-xs text-yellow-900">

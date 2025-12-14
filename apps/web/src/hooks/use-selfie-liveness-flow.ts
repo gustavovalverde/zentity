@@ -82,12 +82,24 @@ type LivenessSession = {
   challenges: ChallengeType[];
 };
 
+export type ServerProgress = {
+  faceDetected: boolean;
+  progress: number;
+  passed: boolean;
+  hint?: string;
+  happy?: number;
+  yaw?: number;
+  direction?: string;
+};
+
 type UseSelfieLivenessFlowArgs = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isStreaming: boolean;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   captureFrame: () => string | null;
+  /** Optional optimized frame capture for streaming (smaller, lower quality) */
+  captureStreamFrame?: () => string | null;
   human: Human | null;
   humanReady: boolean;
   livenessDebugEnabled: boolean;
@@ -143,6 +155,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     startCamera,
     stopCamera,
     captureFrame,
+    captureStreamFrame,
     human,
     humanReady,
     livenessDebugEnabled,
@@ -161,7 +174,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const [currentChallenge, setCurrentChallenge] =
     useState<ChallengeInfo | null>(null);
   const [completedChallenges, setCompletedChallenges] = useState<
-    Array<{ type: ChallengeType; image: string }>
+    Array<{ type: ChallengeType; image: string; turnStartYaw?: number }>
   >([]);
   const [baselineHappyScore, setBaselineHappyScore] = useState(0);
 
@@ -170,6 +183,10 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const [countdown, setCountdown] = useState(3);
   const [timeoutMessage, setTimeoutMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [serverProgress, setServerProgress] = useState<ServerProgress | null>(
+    null,
+  );
+  const [serverHint, setServerHint] = useState<string>("");
 
   const consecutiveDetectionsRef = useRef(0);
   const consecutiveChallengeDetectionsRef = useRef(0);
@@ -177,6 +194,10 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const headTurnCenteredRef = useRef(false);
   const headTurnStartYawRef = useRef(0);
   const lastHappyRef = useRef(0);
+
+  // SSE and frame streaming refs
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const frameStreamingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const debugCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const debugLastUpdateRef = useRef(0);
@@ -340,8 +361,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     if (isCheckingRef.current) return;
     isCheckingRef.current = true;
     try {
-      const raw = await human.detect(videoRef.current);
-      const result = human.next(raw);
+      // Use raw detection only (no temporal smoothing) to match server behavior
+      const result = await human.detect(videoRef.current);
       const face = getPrimaryFace(result);
       drawDebugOverlay(result);
       updateDebug(result, face ?? null);
@@ -377,12 +398,16 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   }, [human, humanReady, videoRef, drawDebugOverlay, updateDebug]);
 
   const handleCapturedChallenge = useCallback(
-    async (challengeType: ChallengeType, image: string) => {
+    async (
+      challengeType: ChallengeType,
+      image: string,
+      turnStartYaw?: number,
+    ) => {
       if (!session || !baselineImage) return;
 
       const newCompleted = [
         ...completedChallenges,
-        { type: challengeType, image },
+        { type: challengeType, image, turnStartYaw },
       ];
       setCompletedChallenges(newCompleted);
       setChallengeImage(image);
@@ -415,6 +440,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           challenges: newCompleted.map((c) => ({
             challengeType: c.type,
             image: c.image,
+            turnStartYaw: c.turnStartYaw,
           })),
           debug: livenessDebugEnabled,
         })) as {
@@ -481,8 +507,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         img.src = frameDataUrl;
       });
 
-      const raw = await human.detect(img);
-      const result = human.next(raw);
+      // Use raw detection only (no temporal smoothing) to match server behavior
+      const result = await human.detect(img);
       const face = getPrimaryFace(result);
       drawDebugOverlay(result);
       updateDebug(result, face ?? null);
@@ -512,7 +538,12 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           consecutiveChallengeDetectionsRef.current++;
           if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
             consecutiveChallengeDetectionsRef.current = 0;
-            await handleCapturedChallenge("smile", frameDataUrl);
+            // IMPORTANT: Capture a FRESH frame right now, not the stale one from start of check
+            // This ensures the submitted image matches the detected smile
+            const freshFrame = captureFrame();
+            if (freshFrame) {
+              await handleCapturedChallenge("smile", freshFrame);
+            }
           }
         } else {
           consecutiveChallengeDetectionsRef.current = 0;
@@ -551,7 +582,17 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           if (consecutiveChallengeDetectionsRef.current >= STABILITY_FRAMES) {
             consecutiveChallengeDetectionsRef.current = 0;
             setStatusMessage("");
-            await handleCapturedChallenge(type, frameDataUrl);
+            // IMPORTANT: Capture a FRESH frame right now, not the stale one from start of check
+            // This ensures the submitted image matches the detected turn
+            const freshFrame = captureFrame();
+            if (freshFrame) {
+              // Pass the turn start yaw so server can validate delta from same baseline
+              await handleCapturedChallenge(
+                type,
+                freshFrame,
+                headTurnStartYawRef.current,
+              );
+            }
           }
         } else {
           consecutiveChallengeDetectionsRef.current = 0;
@@ -692,7 +733,111 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     }
   }, [challengeState, timeoutMessage]);
 
+  // SSE connection for real-time server feedback
+  useEffect(() => {
+    if (!session?.sessionId) return;
+
+    // Connect to SSE stream
+    const eventSource = new EventSource(
+      `/api/liveness/stream?sessionId=${session.sessionId}`,
+    );
+    eventSourceRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "progress") {
+          setServerProgress({
+            faceDetected: data.faceDetected,
+            progress: data.progress,
+            passed: data.passed,
+            hint: data.hint,
+            happy: data.happy,
+            yaw: data.yaw,
+            direction: data.direction,
+          });
+          if (data.hint) {
+            setServerHint(data.hint);
+          }
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    };
+
+    eventSource.onerror = () => {
+      // SSE connection lost, will auto-reconnect
+    };
+
+    return () => {
+      eventSource.close();
+      eventSourceRef.current = null;
+    };
+  }, [session?.sessionId]);
+
+  // Frame streaming during challenges (5 FPS)
+  useEffect(() => {
+    if (challengeState !== "waiting_challenge" || !session?.sessionId) {
+      // Clean up streaming when not in challenge state
+      if (frameStreamingRef.current) {
+        clearInterval(frameStreamingRef.current);
+        frameStreamingRef.current = null;
+      }
+      return;
+    }
+
+    const streamFrame = async () => {
+      // Use optimized stream frame capture if available, otherwise fall back to regular
+      const captureForStream = captureStreamFrame ?? captureFrame;
+      const frame = captureForStream();
+      if (!frame || !currentChallenge) return;
+
+      try {
+        await fetch("/api/liveness/frame", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            challengeType: currentChallenge.challengeType,
+            frameData: frame,
+            baselineHappy: baselineHappyScore,
+            turnStartYaw: headTurnStartYawRef.current || undefined,
+          }),
+        });
+      } catch {
+        // Ignore frame streaming errors
+      }
+    };
+
+    // Stream frames at 5 FPS (every 200ms)
+    frameStreamingRef.current = setInterval(streamFrame, 200);
+
+    return () => {
+      if (frameStreamingRef.current) {
+        clearInterval(frameStreamingRef.current);
+        frameStreamingRef.current = null;
+      }
+    };
+  }, [
+    challengeState,
+    session?.sessionId,
+    currentChallenge,
+    captureFrame,
+    captureStreamFrame,
+    baselineHappyScore,
+  ]);
+
   const retryChallenge = useCallback(() => {
+    // Clean up SSE connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (frameStreamingRef.current) {
+      clearInterval(frameStreamingRef.current);
+      frameStreamingRef.current = null;
+    }
+
     setBaselineImage(null);
     setChallengeImage(null);
     setChallengeState("idle");
@@ -700,6 +845,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     setChallengeProgress(0);
     setTimeoutMessage("");
     setStatusMessage("");
+    setServerProgress(null);
+    setServerHint("");
     setBaselineHappyScore(0);
     setSession(null);
     setCurrentChallenge(null);
@@ -724,6 +871,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     countdown,
     timeoutMessage,
     statusMessage,
+    serverProgress,
+    serverHint,
     debugCanvasRef,
     debugFrame,
     lastVerifyError,
