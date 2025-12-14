@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ export default function Home() {
       <header className="border-b border-border">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-bold">Zentity</span>
+            <Logo />
             <Badge variant="secondary">Beta</Badge>
           </div>
           <div className="flex items-center gap-4">

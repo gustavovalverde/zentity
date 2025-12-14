@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { Logo } from "@/components/logo";
 import { ModeToggle } from "@/components/mode-toggle";
 import { auth } from "@/lib/auth";
 
@@ -22,8 +23,8 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <Link href="/dashboard" className="text-xl font-bold">
-            Zentity
+          <Link href="/dashboard">
+            <Logo />
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
