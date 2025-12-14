@@ -18,6 +18,7 @@
  */
 "use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   createContext,
   type ReactNode,
@@ -197,9 +198,19 @@ type WizardContextType = {
 
 const WizardContext = createContext<WizardContextType | null>(null);
 
-export function WizardProvider({ children }: { children: ReactNode }) {
+export function WizardProvider({
+  children,
+  forceReset,
+}: {
+  children: ReactNode;
+  /** When true, clears any existing onboarding session and starts at step 1. */
+  forceReset?: boolean;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const [isHydrated, setIsHydrated] = useState(false);
+  const hydrationStartedRef = useRef(false);
   const isInitializedRef = useRef(false);
   const lastSavedStepRef = useRef<WizardStep>(1);
   const [pendingNavigation, setPendingNavigation] = useState<{
@@ -210,9 +221,35 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   // Load session state from server on mount
   useEffect(() => {
     if (isHydrated) return;
+    if (hydrationStartedRef.current) return;
+    hydrationStartedRef.current = true;
 
     const loadServerSession = async () => {
       try {
+        if (forceReset) {
+          // Explicit start-over (e.g., from "Start Verification" CTA).
+          // Clear any existing cookie+DB session, then start at step 1.
+          try {
+            await trpc.onboarding.clearSession.mutate();
+          } catch {
+            // Ignore if no session exists
+          }
+
+          dispatch({ type: "RESET" });
+          lastSavedStepRef.current = 1;
+
+          // Remove one-shot param so refresh can resume normally.
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("fresh");
+          const nextSearch = params.toString();
+          window.history.replaceState(
+            null,
+            "",
+            nextSearch ? `${pathname}?${nextSearch}` : pathname,
+          );
+          return;
+        }
+
         const serverState = (await trpc.onboarding.getSession.query()) as
           | ServerSessionState
           | undefined;
@@ -240,14 +277,14 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         // Server session not available, start fresh
+      } finally {
+        isInitializedRef.current = true;
+        setIsHydrated(true);
       }
-
-      isInitializedRef.current = true;
-      setIsHydrated(true);
     };
 
     loadServerSession();
-  }, [isHydrated]);
+  }, [forceReset, isHydrated, pathname, searchParams]);
 
   // Save step changes to server (debounced)
   useEffect(() => {

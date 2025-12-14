@@ -33,7 +33,7 @@ export default function SignInPage() {
         <div className="mt-6 text-center text-sm text-muted-foreground">
           Need an account?{" "}
           <Link
-            href="/sign-up"
+            href="/sign-up?fresh=1"
             className="font-medium text-primary hover:underline"
           >
             Sign Up

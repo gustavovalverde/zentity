@@ -163,7 +163,7 @@ export function DashboardTabs({
                     proofs.
                   </p>
                   <Button asChild size="sm">
-                    <Link href="/sign-up">
+                    <Link href="/sign-up?fresh=1">
                       Start Verification
                       <ArrowRight className="ml-2 h-3 w-3" />
                     </Link>

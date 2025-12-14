@@ -16,7 +16,7 @@ export default function Home() {
             <Link href="/sign-in">
               <Button variant="ghost">Sign In</Button>
             </Link>
-            <Link href="/sign-up">
+            <Link href="/sign-up?fresh=1">
               <Button>Get Started</Button>
             </Link>
             <ModeToggle />
@@ -37,7 +37,7 @@ export default function Home() {
             identity while keeping your information private.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link href="/sign-up">
+            <Link href="/sign-up?fresh=1">
               <Button size="lg" className="w-full sm:w-auto">
                 Start Verification
               </Button>

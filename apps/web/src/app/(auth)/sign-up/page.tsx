@@ -9,11 +9,11 @@ import {
 } from "@/components/ui/card";
 
 interface SignUpPageProps {
-  searchParams: Promise<{ rp_flow?: string }>;
+  searchParams: Promise<{ rp_flow?: string; fresh?: string }>;
 }
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
-  const { rp_flow } = await searchParams;
+  const { rp_flow, fresh } = await searchParams;
 
   return (
     <Card className="w-full max-w-lg">
@@ -24,7 +24,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <WizardProvider>
+        <WizardProvider forceReset={fresh === "1"}>
           <Wizard />
         </WizardProvider>
         {rp_flow && (

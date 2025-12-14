@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "https://zentity.xyz"
+    process.env.NEXT_PUBLIC_APP_URL || "https://zentity.xyz",
   ),
   title: "Zentity - Privacy-First Identity Verification",
   description:
