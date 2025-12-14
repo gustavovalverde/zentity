@@ -15,9 +15,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || "https://zentity.xyz"
+  ),
   title: "Zentity - Privacy-First Identity Verification",
   description:
     "Verify your identity without exposing personal data using zero-knowledge proofs and homomorphic encryption.",
+  openGraph: {
+    type: "website",
+    siteName: "Zentity",
+    title: "Zentity - Prove everything. Reveal nothing.",
+    description:
+      "Privacy-first KYC using zero-knowledge proofs. Verify identity without storing personal data.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Zentity - Prove everything. Reveal nothing.",
+    description:
+      "Privacy-first KYC using zero-knowledge proofs. Verify identity without storing personal data.",
+  },
 };
 
 export default function RootLayout({
