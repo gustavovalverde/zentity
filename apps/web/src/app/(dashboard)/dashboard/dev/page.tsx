@@ -29,22 +29,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import type { AgeProofFull } from "@/lib/age-proofs";
 import { getUserProof } from "@/lib/crypto-client";
 
-interface FullProofData {
-  proofId: string;
-  isOver18: boolean;
-  createdAt: string;
-  generationTimeMs: number;
-  proof?: string; // Base64 encoded UltraHonk ZK proof
-  publicSignals?: string[];
-  dobCiphertext?: string;
-  fheClientKeyId?: string;
-  fheEncryptionTimeMs?: number;
-}
-
 export default function DevViewPage() {
-  const [proofData, setProofData] = useState<FullProofData | null>(null);
+  const [proofData, setProofData] = useState<AgeProofFull | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -160,7 +149,9 @@ export default function DevViewPage() {
                 ZK Proof Generation
               </p>
               <p className="text-2xl font-mono font-bold">
-                {proofData.generationTimeMs}ms
+                {proofData.generationTimeMs !== null
+                  ? `${proofData.generationTimeMs}ms`
+                  : "N/A"}
               </p>
             </div>
             <div className="rounded-lg border p-4">

@@ -78,11 +78,13 @@ src/
 ├── app/                    # Next.js App Router
 │   ├── (auth)/             # Auth routes (sign-in, sign-up)
 │   ├── api/                # API routes
-│   │   ├── auth/           # Authentication endpoints
-│   │   ├── crypto/         # FHE & ZK proxy endpoints
-│   │   ├── identity/       # Identity verification
-│   │   ├── kyc/            # KYC document processing
-│   │   └── liveness/       # Liveness detection proxy
+│   │   ├── auth/           # Authentication endpoints (better-auth)
+│   │   ├── trpc/           # Internal app API (tRPC)
+│   │   ├── rp/             # External RP integration endpoints (Hono)
+│   │   ├── crypto/         # Public ZK artifacts + nationality helpers
+│   │   ├── identity/       # Disclosure endpoints
+│   │   ├── kyc/            # KYC metadata/upload endpoints (optional)
+│   │   └── password/       # Password pwned checks
 │   ├── dashboard/          # User dashboard
 │   └── onboarding/         # Verification wizard
 ├── components/
@@ -100,17 +102,16 @@ src/
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/auth/*` | Various | Authentication (better-auth) |
-| `/api/identity/verify` | POST | Full identity verification |
-| `/api/identity/status` | GET | Get verification status |
-| `/api/identity/verify-name` | POST | Verify name claim |
-| `/api/kyc/upload` | POST | Upload document |
-| `/api/kyc/process-document` | POST | OCR processing |
-| `/api/crypto/encrypt-dob` | POST | FHE encrypt DOB |
-| `/api/crypto/challenge` | POST | Issue a proof nonce (replay resistance) |
+| `/api/trpc/*` | Various | Internal app APIs (crypto, onboarding, identity, liveness, kyc) |
+| `/api/rp/*` | Various | External relying party (RP) integrations |
+| `/api/identity/disclosure` | POST | Disclosure bundle (demo/integrations) |
+| `/api/kyc` | GET | KYC status (metadata only) |
+| `/api/kyc/upload` | POST | Upload document metadata (no bytes stored) |
 | `/api/crypto/circuits` | GET | Circuit manifest (IDs, vkey hashes, public input spec) |
 | `/api/crypto/circuits/[circuitType]/vkey` | GET | Circuit verification key (base64) + hash |
-| `/api/crypto/verify-proof` | POST | Verify ZK proof (Noir/UltraHonk) |
-| `/api/liveness/verify` | POST | Full liveness check |
+| `/api/crypto/nationality-proof` | GET/POST | Nationality membership helpers (Merkle inputs) |
+| `/api/crypto/nationality-proof/verify` | POST | Verify nationality membership ZK proof |
+| `/api/password/pwned` | POST | Password breach pre-check |
 
 ## Privacy Features
 
@@ -210,7 +211,7 @@ The database stores only cryptographic artifacts and non-PII metadata:
 
 ### Schema Updates
 
-On startup, the app ensures required tables and columns exist (see `src/lib/db.ts`, `src/lib/challenge-store.ts`, and `src/app/api/user/proof/route.ts`).
+On startup, the app ensures required tables and columns exist (see `src/lib/db.ts`, `src/lib/challenge-store.ts`, and `src/lib/age-proofs.ts`).
 
 ## Docker
 

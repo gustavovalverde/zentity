@@ -5,6 +5,9 @@
  * Proofs are generated in the browser - sensitive data never leaves the device.
  */
 
+"use client";
+
+import type { inferRouterOutputs } from "@trpc/server";
 import { bytesToBase64 } from "./base64";
 import {
   generateAgeProofNoir,
@@ -12,6 +15,19 @@ import {
   generateFaceMatchProofNoir,
   generateNationalityProofNoir,
 } from "./noir-prover";
+import { trpc } from "./trpc/client";
+import type { AppRouter } from "./trpc/routers/app";
+
+type CryptoOutputs = inferRouterOutputs<AppRouter>["crypto"];
+type GetUserProofOutput = CryptoOutputs["getUserProof"];
+type GetUserProofFullOutput = Extract<
+  NonNullable<GetUserProofOutput>,
+  { proof: unknown }
+>;
+type GetUserProofSummaryOutput = Exclude<
+  NonNullable<GetUserProofOutput>,
+  { proof: unknown }
+>;
 
 // Types for ZK proof operations
 export interface ProofResult {
@@ -41,10 +57,7 @@ export interface VerifyResult {
   bbVersion?: string | null;
 }
 
-export interface ServiceHealth {
-  fhe: { status: string; service: string } | null;
-  allHealthy: boolean;
-}
+export type ServiceHealth = CryptoOutputs["health"];
 
 export interface ChallengeResponse {
   nonce: string;
@@ -131,6 +144,10 @@ export async function generateNationalityProof(
   };
 }
 
+/**
+ * Converts current date to YYYYMMDD integer format.
+ * Used for date comparisons in ZK circuits.
+ */
 function getTodayAsIntClient(): number {
   const today = new Date();
   return (
@@ -138,6 +155,12 @@ function getTodayAsIntClient(): number {
   );
 }
 
+/**
+ * Generate a ZK proof that a document is not expired (CLIENT-SIDE)
+ *
+ * @param expiryDate - Document expiry date as YYYYMMDD integer
+ * @param currentDate - Current date as YYYYMMDD integer (defaults to today)
+ */
 export async function generateDocValidityProof(
   expiryDate: number,
   currentDate: number = getTodayAsIntClient(),
@@ -158,6 +181,15 @@ export async function generateDocValidityProof(
   };
 }
 
+/**
+ * Generate a ZK proof that face similarity exceeds threshold (CLIENT-SIDE)
+ *
+ * PRIVACY: The actual similarity score is not revealed - only that it
+ * meets or exceeds the threshold.
+ *
+ * @param similarityScore - Face match similarity (0-10000 fixed-point, e.g., 7500 = 75%)
+ * @param threshold - Minimum similarity required (0-10000 fixed-point)
+ */
 export async function generateFaceMatchProof(
   similarityScore: number,
   threshold: number,
@@ -187,39 +219,24 @@ export async function verifyAgeProof(
   proof: string,
   publicInputs: string[],
 ): Promise<VerifyResult> {
-  const response = await fetch("/api/crypto/verify-proof", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  try {
+    return await trpc.crypto.verifyProof.mutate({
       proof,
       publicInputs,
       circuitType: "age_verification",
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
+    });
+  } catch (error) {
     throw new Error(
-      error.error || `Failed to verify proof: ${response.status}`,
+      error instanceof Error ? error.message : "Failed to verify proof",
     );
   }
-
-  return response.json();
 }
 
 /**
  * Check health of crypto services
  */
 export async function checkCryptoHealth(): Promise<ServiceHealth> {
-  const response = await fetch("/api/crypto/health");
-
-  if (!response.ok) {
-    throw new Error("Failed to check crypto service health");
-  }
-
-  return response.json();
+  return trpc.crypto.health.query();
 }
 
 /**
@@ -239,22 +256,13 @@ export async function getProofChallenge(
     | "nationality_membership"
     | "face_match",
 ): Promise<ChallengeResponse> {
-  const response = await fetch("/api/crypto/challenge", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ circuitType }),
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
+  try {
+    return await trpc.crypto.createChallenge.mutate({ circuitType });
+  } catch (error) {
     throw new Error(
-      error.error || `Failed to get challenge: ${response.status}`,
+      error instanceof Error ? error.message : "Failed to get challenge",
     );
   }
-
-  return response.json();
 }
 
 /**
@@ -287,10 +295,8 @@ export async function storeAgeProof(
   isOver18: boolean;
   verificationTimeMs: number;
 }> {
-  const response = await fetch("/api/user/proof", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  try {
+    return await trpc.crypto.storeAgeProof.mutate({
       proof,
       publicSignals,
       generationTimeMs,
@@ -299,50 +305,34 @@ export async function storeAgeProof(
         fheClientKeyId: fheData.fheClientKeyId,
         fheEncryptionTimeMs: fheData.fheEncryptionTimeMs,
       }),
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Failed to store proof: ${response.status}`);
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "Failed to store proof",
+    );
   }
-
-  return response.json();
 }
 
 /**
  * Get user's stored age proof
  * @param full - If true, returns full proof details including ciphertext
  */
-export async function getUserProof(full: boolean = false): Promise<{
-  proofId: string;
-  isOver18: boolean;
-  createdAt: string;
-  generationTimeMs: number;
-  // Full details (only when full=true)
-  proof?: string; // Base64 encoded UltraHonk ZK proof
-  publicSignals?: string[];
-  dobCiphertext?: string;
-  fheClientKeyId?: string;
-  fheEncryptionTimeMs?: number;
-} | null> {
-  const url = full ? "/api/user/proof?full=true" : "/api/user/proof";
-  const response = await fetch(url);
-
-  if (response.status === 404) {
-    return null;
+export async function getUserProof(
+  full: true,
+): Promise<GetUserProofFullOutput | null>;
+export async function getUserProof(
+  full?: false,
+): Promise<GetUserProofSummaryOutput | null>;
+export async function getUserProof(
+  full: boolean = false,
+): Promise<GetUserProofOutput> {
+  try {
+    return await trpc.crypto.getUserProof.query({ full });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "Failed to get proof",
+    );
   }
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Failed to get proof: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // ============================================================================
@@ -355,20 +345,13 @@ export async function getUserProof(full: boolean = false): Promise<{
  * @param birthYear - The user's birth year to encrypt
  */
 export async function encryptDOB(birthYear: number): Promise<EncryptDOBResult> {
-  const response = await fetch("/api/crypto/encrypt-dob", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ birthYear }),
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Failed to encrypt DOB: ${response.status}`);
+  try {
+    return await trpc.crypto.encryptDob.mutate({ birthYear });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "Failed to encrypt DOB",
+    );
   }
-
-  return response.json();
 }
 
 /**
@@ -383,20 +366,15 @@ export async function verifyAgeViaFHE(
   currentYear: number = new Date().getFullYear(),
   minAge: number = 18,
 ): Promise<VerifyAgeFHEResult> {
-  const response = await fetch("/api/crypto/verify-age-fhe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ciphertext, currentYear, minAge }),
-  });
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
+  try {
+    return await trpc.crypto.verifyAgeFhe.mutate({
+      ciphertext,
+      currentYear,
+      minAge,
+    });
+  } catch (error) {
     throw new Error(
-      error.error || `Failed to verify age via FHE: ${response.status}`,
+      error instanceof Error ? error.message : "Failed to verify age via FHE",
     );
   }
-
-  return response.json();
 }

@@ -2,6 +2,8 @@
 
 This document explains the **RP redirect flow** implemented in `apps/web`.
 
+Implementation note: `/api/rp/*` is implemented as a Hono router mounted inside Next.js (App Router route handler).
+
 It is intentionally **OAuth-like** (authorization code + server-to-server exchange), but it is **not** a full OAuth/OIDC provider implementation. The goal is to provide:
 
 - A safe way to **return the user to the relying party** after verification
@@ -20,7 +22,7 @@ This RP flow solves a separate problem: **how a third party requests verificatio
    - `GET /api/rp/authorize?client_id=...&redirect_uri=...&state=...`
 2. Zentity validates and replaces those params with a short-lived `flow`:
    - Redirects user to `/rp/verify?flow=...`
-   - Stores flow data in an **httpOnly cookie** (short TTL)
+   - Stores flow data in an **httpOnly signed cookie** (short TTL, tamper-resistant)
 3. User completes onboarding/verification in Zentity
 4. Zentity returns user back to RP:
    - `GET /api/rp/complete?flow=...` (requires user session)
@@ -34,29 +36,30 @@ This RP flow solves a separate problem: **how a third party requests verificatio
 
 ### `GET /api/rp/authorize`
 
-File: `apps/web/src/app/api/rp/authorize/route.ts`
+File: `apps/web/src/app/api/rp/[...path]/route.ts`
 
 Responsibilities:
 - Validate request parameters (`client_id`, `redirect_uri`, optional `state`)
 - Enforce redirect allowlist for **external** redirect URIs (`RP_ALLOWED_REDIRECT_URIS`)
-- Create a short-lived `flow` ID and store flow state in an **httpOnly cookie**
+- Create a short-lived `flow` ID and store flow state in an **httpOnly signed cookie**
 - Redirect to a clean URL: `/rp/verify?flow=...`
 
 Security value:
 - Prevents sensitive params from persisting in the browser address bar, history, analytics, or referer headers.
+- Signed cookies prevent tampering with `client_id` / `redirect_uri` / `state` stored in the flow.
 
 ### `GET /rp/verify`
 
 File: `apps/web/src/app/rp/verify/page.tsx`
 
 Responsibilities:
-- Read flow state from the cookie using `flow`
+- Read and verify flow state from the signed cookie using `flow`
 - Display a minimal “handoff” confirmation screen
 - Route user into onboarding at `/sign-up?rp_flow=...`
 
 ### `GET /api/rp/complete`
 
-File: `apps/web/src/app/api/rp/complete/route.ts`
+File: `apps/web/src/app/api/rp/[...path]/route.ts`
 
 Responsibilities:
 - Require an authenticated user session
@@ -69,7 +72,7 @@ Security value:
 
 ### `POST /api/rp/exchange`
 
-File: `apps/web/src/app/api/rp/exchange/route.ts`
+File: `apps/web/src/app/api/rp/[...path]/route.ts`
 
 Responsibilities:
 - Consume the one-time code (single-use + expiry enforced in DB)
@@ -101,4 +104,3 @@ If we want to productionize this for third-party partners at scale, we should ad
 - A client registry (stored + managed), per-client keys/secrets, and metadata (name/logo)
 - PKCE and redirect_uri binding checks on exchange
 - Rate limiting, audit logging, and signed verification assertions
-

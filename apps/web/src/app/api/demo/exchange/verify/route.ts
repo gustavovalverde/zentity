@@ -2,7 +2,7 @@
  * Verify ZK Proofs Route (Demo)
  *
  * Simulates the exchange verifying Noir/UltraHonk ZK proofs.
- * Uses the same verifier as the main /api/crypto/verify-proof endpoint.
+ * Uses the same verifier as the internal tRPC `crypto.verifyProof` procedure.
  */
 
 import { type NextRequest, NextResponse } from "next/server";

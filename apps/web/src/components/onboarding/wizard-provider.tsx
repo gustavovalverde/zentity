@@ -1,3 +1,21 @@
+/**
+ * Onboarding Wizard Provider
+ *
+ * Manages the multi-step KYC wizard state using React Context + Reducer.
+ * Syncs state with server-side onboarding session for persistence.
+ *
+ * Steps:
+ * 1. Account creation (email/password collected in step 4)
+ * 2. Document upload + OCR verification
+ * 3. Liveness detection (optional, can be skipped)
+ * 4. Review & complete (password, account creation, ZK proof generation)
+ *
+ * Features:
+ * - Server-side state persistence via encrypted cookies
+ * - Navigation validation (forward requires prerequisites, backward warns)
+ * - PII stored encrypted in session, never in plain text
+ * - beforeunload warning for unsaved progress
+ */
 "use client";
 
 import {
@@ -15,8 +33,15 @@ import {
   defaultWizardData,
   type WizardData,
 } from "@/features/auth/schemas/sign-up.schema";
+import { trpc } from "@/lib/trpc/client";
 
 const TOTAL_STEPS = 4;
+type WizardStep = 1 | 2 | 3 | 4;
+
+/** Clamps step number to valid range [1, TOTAL_STEPS]. */
+function toWizardStep(step: number): WizardStep {
+  return Math.max(1, Math.min(step, TOTAL_STEPS)) as WizardStep;
+}
 
 /**
  * Server session state (returned from API)
@@ -24,7 +49,7 @@ const TOTAL_STEPS = 4;
 interface ServerSessionState {
   hasSession: boolean;
   email?: string;
-  step?: number;
+  step?: WizardStep;
   documentProcessed?: boolean;
   livenessPassed?: boolean;
   faceMatchPassed?: boolean;
@@ -34,7 +59,7 @@ interface ServerSessionState {
 }
 
 type WizardState = {
-  currentStep: number;
+  currentStep: WizardStep;
   data: WizardData;
   isSubmitting: boolean;
   // Server-side verification flags
@@ -55,7 +80,7 @@ type WizardAction =
   | {
       type: "LOAD_STATE";
       state: {
-        currentStep?: number;
+        currentStep?: WizardStep;
         data?: Partial<WizardData>;
         serverState?: Partial<WizardState["serverState"]>;
       };
@@ -76,22 +101,23 @@ const initialState: WizardState = {
   },
 };
 
+/** Pure reducer for wizard state transitions. */
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case "NEXT_STEP":
       return {
         ...state,
-        currentStep: Math.min(state.currentStep + 1, TOTAL_STEPS),
+        currentStep: toWizardStep(state.currentStep + 1),
       };
     case "PREV_STEP":
       return {
         ...state,
-        currentStep: Math.max(state.currentStep - 1, 1),
+        currentStep: toWizardStep(state.currentStep - 1),
       };
     case "GO_TO_STEP":
       return {
         ...state,
-        currentStep: Math.max(1, Math.min(action.step, TOTAL_STEPS)),
+        currentStep: toWizardStep(action.step),
       };
     case "UPDATE_DATA":
       return {
@@ -134,7 +160,7 @@ type WizardContextType = {
   /** Navigate to step with server-side validation and confirmation for backward navigation */
   goToStepWithValidation: (step: number) => Promise<boolean>;
   /** Pending back-navigation confirmation request (set when going to a previous completed step). */
-  pendingNavigation: { targetStep: number; warning: string } | null;
+  pendingNavigation: { targetStep: WizardStep; warning: string } | null;
   /** Confirm and execute a pending back-navigation (resets server progress). */
   confirmPendingNavigation: () => Promise<boolean>;
   /** Cancel a pending back-navigation confirmation. */
@@ -155,7 +181,7 @@ type WizardContextType = {
   }) => Promise<void>;
   /** Update verification progress on server */
   updateServerProgress: (updates: {
-    step?: number;
+    step?: WizardStep;
     documentProcessed?: boolean;
     livenessPassed?: boolean;
     faceMatchPassed?: boolean;
@@ -173,9 +199,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
   const [isHydrated, setIsHydrated] = useState(false);
   const isInitializedRef = useRef(false);
-  const lastSavedStepRef = useRef<number>(1);
+  const lastSavedStepRef = useRef<WizardStep>(1);
   const [pendingNavigation, setPendingNavigation] = useState<{
-    targetStep: number;
+    targetStep: WizardStep;
     warning: string;
   } | null>(null);
 
@@ -185,28 +211,27 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
     const loadServerSession = async () => {
       try {
-        const response = await fetch("/api/onboarding/session");
-        if (response.ok) {
-          const serverState: ServerSessionState = await response.json();
+        const serverState = (await trpc.onboarding.getSession.query()) as
+          | ServerSessionState
+          | undefined;
 
-          if (serverState.hasSession && serverState.email) {
-            // Restore state from server
-            dispatch({
-              type: "LOAD_STATE",
-              state: {
-                currentStep: serverState.step ?? 1,
-                data: {
-                  email: serverState.email,
-                },
-                serverState: {
-                  documentProcessed: serverState.documentProcessed ?? false,
-                  livenessPassed: serverState.livenessPassed ?? false,
-                  faceMatchPassed: serverState.faceMatchPassed ?? false,
-                },
+        if (serverState?.hasSession && serverState.email) {
+          // Restore state from server
+          dispatch({
+            type: "LOAD_STATE",
+            state: {
+              currentStep: serverState.step ?? 1,
+              data: {
+                email: serverState.email,
               },
-            });
-            lastSavedStepRef.current = serverState.step ?? 1;
-          }
+              serverState: {
+                documentProcessed: serverState.documentProcessed ?? false,
+                livenessPassed: serverState.livenessPassed ?? false,
+                faceMatchPassed: serverState.faceMatchPassed ?? false,
+              },
+            },
+          });
+          lastSavedStepRef.current = serverState.step ?? 1;
         }
       } catch {
         // Server session not available, start fresh
@@ -227,13 +252,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
     const saveStep = async () => {
       try {
-        await fetch("/api/onboarding/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: state.data.email,
-            step: state.currentStep,
-          }),
+        await trpc.onboarding.saveSession.mutate({
+          email: state.data.email,
+          step: state.currentStep,
         });
         lastSavedStepRef.current = state.currentStep;
       } catch {
@@ -257,14 +278,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       if (!state.data.email) return;
 
       try {
-        await fetch("/api/onboarding/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: state.data.email,
-            step: state.currentStep,
-            pii,
-          }),
+        await trpc.onboarding.saveSession.mutate({
+          email: state.data.email,
+          step: state.currentStep,
+          pii,
         });
       } catch {}
     },
@@ -274,7 +291,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   // Update verification progress on server
   const updateServerProgress = useCallback(
     async (updates: {
-      step?: number;
+      step?: WizardStep;
       documentProcessed?: boolean;
       livenessPassed?: boolean;
       faceMatchPassed?: boolean;
@@ -282,13 +299,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       if (!state.data.email) return;
 
       try {
-        await fetch("/api/onboarding/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: state.data.email,
-            ...updates,
-          }),
+        await trpc.onboarding.saveSession.mutate({
+          email: state.data.email,
+          ...updates,
         });
 
         // Update local server state
@@ -318,7 +331,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
     // Clear server session
     try {
-      await fetch("/api/onboarding/session", { method: "DELETE" });
+      await trpc.onboarding.clearSession.mutate();
     } catch {
       // Ignore errors
     }
@@ -331,53 +344,37 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
     // Create new session with forceNew flag (clears any existing session)
     try {
-      const response = await fetch("/api/onboarding/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          step: 1,
-          forceNew: true, // SECURITY: Clear any existing session
-        }),
+      await trpc.onboarding.saveSession.mutate({
+        email,
+        step: 1,
+        forceNew: true,
       });
 
-      if (response.ok) {
-        dispatch({
-          type: "LOAD_STATE",
-          state: {
-            currentStep: 1,
-            data: { email },
-            serverState: {
-              documentProcessed: false,
-              livenessPassed: false,
-              faceMatchPassed: false,
-            },
+      dispatch({
+        type: "LOAD_STATE",
+        state: {
+          currentStep: 1,
+          data: { email },
+          serverState: {
+            documentProcessed: false,
+            livenessPassed: false,
+            faceMatchPassed: false,
           },
-        });
-        lastSavedStepRef.current = 1;
-      }
+        },
+      });
+      lastSavedStepRef.current = 1;
     } catch {}
   }, []);
 
   // Skip liveness verification
   const skipLiveness = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch("/api/onboarding/skip-liveness", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        toast.error(data.error || "Cannot skip liveness at this time");
-        return false;
-      }
-
-      const data = await response.json();
+      const data = await trpc.onboarding.skipLiveness.mutate();
+      const newStep = toWizardStep(data.newStep);
 
       // Update local state
-      dispatch({ type: "GO_TO_STEP", step: data.newStep });
-      lastSavedStepRef.current = data.newStep;
+      dispatch({ type: "GO_TO_STEP", step: newStep });
+      lastSavedStepRef.current = newStep;
 
       return true;
     } catch {
@@ -391,28 +388,28 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     async (targetStep: number): Promise<boolean> => {
       // Validate on server
       try {
-        const response = await fetch("/api/onboarding/validate-step", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetStep }),
+        const normalizedTargetStep = toWizardStep(targetStep);
+        const data = await trpc.onboarding.validateStep.mutate({
+          targetStep: normalizedTargetStep,
         });
 
-        const data = await response.json();
-
-        if (!response.ok || !data.valid) {
+        if (!data.valid) {
           toast.error(data.error || "Cannot navigate to this step");
           return false;
         }
 
         // If going backward, request confirmation via UI (Dialog).
         if (data.requiresConfirmation && data.warning) {
-          setPendingNavigation({ targetStep, warning: data.warning });
+          setPendingNavigation({
+            targetStep: normalizedTargetStep,
+            warning: data.warning,
+          });
           return false;
         }
 
         // Navigate to the step
-        dispatch({ type: "GO_TO_STEP", step: targetStep });
-        lastSavedStepRef.current = targetStep;
+        dispatch({ type: "GO_TO_STEP", step: normalizedTargetStep });
+        lastSavedStepRef.current = normalizedTargetStep;
 
         return true;
       } catch {
@@ -432,17 +429,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
     const targetStep = pendingNavigation.targetStep;
     try {
-      const resetResponse = await fetch("/api/onboarding/reset-to-step", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step: targetStep }),
-      });
-
-      if (!resetResponse.ok) {
-        const resetData = await resetResponse.json().catch(() => null);
-        toast.error(resetData?.error || "Failed to reset progress");
-        return false;
-      }
+      await trpc.onboarding.resetToStep.mutate({ step: targetStep });
 
       // Reset local server state for steps after target
       const resetServerState: Partial<WizardState["serverState"]> = {};
@@ -534,6 +521,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** Hook to access wizard state and actions. Must be used within WizardProvider. */
 export function useWizard() {
   const context = useContext(WizardContext);
   if (!context) {
