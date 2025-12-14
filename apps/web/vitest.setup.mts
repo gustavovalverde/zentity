@@ -17,8 +17,13 @@ vi.mock("better-sqlite3", () => {
     close: vi.fn(),
   };
 
+  const DatabaseMock = vi.fn(function DatabaseMock() {
+    return mockDb;
+  });
+
   return {
-    default: vi.fn(() => mockDb),
+    __esModule: true,
+    default: DatabaseMock,
   };
 });
 

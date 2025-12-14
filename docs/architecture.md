@@ -196,33 +196,35 @@ sequenceDiagram
   participant U as User (Browser)
   participant UI as Web UI
   participant W as Web Worker (Noir Prover)
-  participant API as Next.js API
+  participant API as Web API (tRPC)
   participant OCR as OCR Service
   participant DB as SQLite
   participant FHE as FHE Service
 
   U->>UI: Upload ID + capture selfie/liveness
-  UI->>API: POST /api/identity/verify (doc + selfie)
+  UI->>API: tRPC identity.verify (doc + selfie)
   API->>OCR: OCR + parse doc (transient)
   OCR-->>API: extracted fields + commitment inputs
   API-->>UI: verification flags + commitments
 
   Note over UI: Birth year used locally for ZK proving
-  UI->>API: POST /api/crypto/challenge (age_verification)
+  UI->>API: tRPC crypto.createChallenge (age_verification)
   API->>DB: INSERT zk_challenges (nonce, ttl, user_id)
   API-->>UI: nonce + expiresAt
 
   UI->>W: generate age proof (birthYear, currentYear, minAge, nonce)
   W-->>UI: proof + publicSignals
 
-  UI->>API: POST /api/user/proof (proof, publicSignals)
+  UI->>API: tRPC crypto.storeAgeProof (proof, publicSignals)
   API->>API: Verify proof (UltraHonk)
   API->>DB: Consume nonce (one-time)
   API->>DB: INSERT age_proofs
   API-->>UI: success + proofId + isOver18
 
-  UI->>FHE: (optional) encrypt DOB
-  FHE-->>UI: ciphertext
+  UI->>API: (optional) tRPC crypto.encryptDob
+  API->>FHE: encrypt DOB
+  FHE-->>API: ciphertext
+  API-->>UI: ciphertext
 ```
 
 ### Disclosure (Relying Party)

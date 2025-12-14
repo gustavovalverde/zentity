@@ -320,7 +320,7 @@ UltraHonk uses a universal trusted setup (SRS/CRS) that:
 ### Replay Resistance
 
 All circuits require a `nonce` public input:
-- Server issues challenge nonces via `/api/crypto/challenge`
+- Server issues challenge nonces via tRPC (`crypto.createChallenge` on `/api/trpc/*`)
 - Nonce is bound to session/user
 - Same proof cannot be replayed with different nonce
 
@@ -350,7 +350,8 @@ apps/web/
 │   ├── zk-circuit-spec.ts   # Circuit type definitions
 │   ├── nationality-data.ts  # Country codes
 │   └── nationality-merkle.ts # Merkle tree utils
-└── src/app/api/crypto/
-    ├── challenge/route.ts   # Nonce generation
-    └── verify-proof/route.ts # Proof verification endpoint
+├── src/lib/trpc/
+│   ├── routers/crypto.ts      # Nonce generation + proof verification procedures
+│   └── server.ts              # Context + auth middleware
+└── src/app/api/trpc/[trpc]/route.ts # tRPC HTTP handler
 ```

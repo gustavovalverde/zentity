@@ -5,6 +5,10 @@
  * Human.js-based liveness service.
  */
 
+"use client";
+
+import { trpc } from "@/lib/trpc/client";
+
 /**
  * Face matching result comparing two images.
  */
@@ -35,35 +39,21 @@ export async function matchFaces(
   minConfidence: number = 0.35,
 ): Promise<FaceMatchResult> {
   try {
-    const response = await fetch("/api/liveness/face-match", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idImage, selfieImage, minConfidence }),
+    const result = await trpc.liveness.faceMatch.mutate({
+      idImage,
+      selfieImage,
+      minConfidence,
     });
 
-    if (!response.ok) {
-      return {
-        matched: false,
-        confidence: 0,
-        distance: 1,
-        threshold: minConfidence,
-        processingTimeMs: 0,
-        idFaceExtracted: false,
-        error: `Service error: ${response.status}`,
-      };
-    }
-
-    const result = await response.json();
-
     return {
-      matched: result.matched ?? false,
-      confidence: result.confidence ?? 0,
-      distance: result.distance ?? 1,
-      threshold: result.threshold ?? minConfidence,
-      processingTimeMs: result.processing_time_ms ?? 0,
-      idFaceExtracted: result.id_face_extracted ?? false,
-      idFaceImage: result.id_face_image,
-      error: result.error,
+      matched: result.matched,
+      confidence: result.confidence,
+      distance: result.distance,
+      threshold: result.threshold,
+      processingTimeMs: result.processingTimeMs,
+      idFaceExtracted: result.idFaceExtracted,
+      idFaceImage: result.idFaceImage,
+      error: result.error ?? undefined,
     };
   } catch (error) {
     return {

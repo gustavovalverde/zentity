@@ -19,7 +19,8 @@ Monorepo with 3 active services communicating via REST APIs:
 The frontend handles:
 - Face detection and liveness verification using Human.js (server-side via tfjs-node)
 - **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
-- API routes proxy to backend services (`/api/crypto/*`, `/api/liveness/*`, `/api/kyc/*`, `/api/identity/*`)
+- **tRPC API layer** with type-safe routers for all backend operations
+- RP (Relying Party) redirect flow for OAuth-style integrations
 
 ## Build & Development Commands
 
@@ -104,21 +105,59 @@ cd apps/ocr && source venv/bin/activate && uvicorn app.main:app --reload --port 
 
 ## Key Data Flow
 
-The main verification endpoint is `POST /api/identity/verify` which orchestrates:
-1. OCR Service → Extract document data, generate SHA256 commitments
-2. FHE Service → Encrypt DOB, gender, liveness score with TFHE-rs
+The main verification flow is orchestrated via `trpc.identity.verify`:
+
+1. **OCR Service** → Extract document data, generate SHA256 commitments
+2. **FHE Service** → Encrypt DOB, gender, liveness score with TFHE-rs
 3. **Client-side Noir** → Generate UltraHonk proofs (age, document validity, nationality, face match) in browser
-4. Human.js (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
+4. **Human.js** (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
+
+All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, etc.).
 
 **Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE, so sensitive data (birth year, nationality) never leaves the user's device. Only cryptographic commitments, FHE ciphertexts, and ZK proofs are persisted. Images are processed transiently.
 
 ## Code Conventions
 
 - **Linting**: Biome (not ESLint). Run `pnpm lint:fix` before commits.
+- **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
 - **Database**: better-sqlite3 with automatic schema updates in `src/lib/db.ts`
 - **Auth**: better-auth
+
+## tRPC API Structure
+
+All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trpc/routers/`:
+
+| Router | Purpose |
+|--------|---------|
+| `crypto` | FHE encryption, ZK proof verification, challenge nonces |
+| `identity` | Full identity verification (document + selfie + liveness) |
+| `kyc` | Document OCR processing |
+| `liveness` | Multi-gesture liveness detection sessions |
+| `onboarding` | Wizard state management and step validation |
+
+**Client usage:**
+```typescript
+import { trpc } from "@/lib/trpc/client";
+
+// Query
+const health = await trpc.crypto.health.query();
+
+// Mutation
+const result = await trpc.liveness.verify.mutate({ sessionId, ... });
+```
+
+## RP (Relying Party) Flow
+
+OAuth-style redirect flow for third-party integrations in `src/lib/rp-flow.ts`:
+
+1. `/api/rp/authorize` — Validates `client_id` + `redirect_uri`, creates signed flow cookie
+2. User redirected to `/rp/verify?flow=...` (clean URL, no sensitive params)
+3. After verification, `/api/rp/complete` issues one-time code and redirects back
+4. RP exchanges code at `/api/rp/exchange` for verification flags (no PII)
+
+Configure allowed redirect URIs via `RP_ALLOWED_REDIRECT_URIS` env var.
 
 ## ZK Circuit Development
 
@@ -133,9 +172,16 @@ Circuits available:
 - `nationality_membership` — Prove nationality in country group via Merkle proof
 - `face_match` — Prove face similarity above threshold
 
-## Service URLs (Environment Variables)
+## Environment Variables
 
-```
+```bash
+# Backend service URLs
 FHE_SERVICE_URL=http://localhost:5001
 OCR_SERVICE_URL=http://localhost:5004
+
+# Auth (required)
+BETTER_AUTH_SECRET=<random-32-char-string>
+
+# RP Flow (optional, for third-party integrations)
+RP_ALLOWED_REDIRECT_URIS=https://example.com/callback,https://other.com/auth
 ```

@@ -187,7 +187,7 @@ FHE → Verifier: true/false (score never revealed)
 **Current POC implementation (Human.js):**
 - Real-time challenges (smile + head turns) run in the browser for instant feedback.
 - The client captures a baseline frame and one frame per challenge.
-- Those frames are sent to `POST /api/liveness/verify`, where Next.js re-runs Human.js on Node to make the authoritative decision and return a face embedding.
+- Those frames are sent to the server via tRPC (`liveness.verify` on `/api/trpc/*`), where Next.js re-runs Human.js on Node to make the authoritative decision and return a face embedding.
 
 > [!WARNING]
 > **Limitations (non-production):**

@@ -1,3 +1,19 @@
+/**
+ * Step 2: ID Document Upload
+ *
+ * Handles document image upload and OCR processing:
+ * - Accepts JPEG, PNG, WebP images (max 10MB)
+ * - Resizes/compresses before upload to speed up OCR
+ * - Sends to OCR service via tRPC for MRZ/visual zone extraction
+ * - Displays extracted data for user verification
+ * - Provides error recovery suggestions for common issues
+ *
+ * Processing flow:
+ * 1. User uploads/drops image
+ * 2. Image resized to max 1800px
+ * 3. OCR extracts document data
+ * 4. Display verification status with extracted fields
+ */
 "use client";
 
 /* eslint @next/next/no-img-element: off */
@@ -18,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ocr";
 import { resizeImageFile } from "@/lib/image";
+import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
@@ -29,10 +46,10 @@ type ProcessingState =
   | "verified"
   | "rejected";
 
-// Processing timeout in milliseconds (30 seconds)
+/** Timeout for OCR processing before showing error. */
 const PROCESSING_TIMEOUT = 30000;
 
-// Error recovery suggestions based on validation issues
+/** User-friendly recovery suggestions keyed by validation issue. */
 const ERROR_RECOVERY_TIPS: Record<string, string> = {
   document_blurry:
     "Hold your camera steady and ensure the document is in focus before capturing.",
@@ -98,18 +115,7 @@ export function StepIdUpload() {
 
   const processDocument = useCallback(
     async (base64: string): Promise<DocumentResult> => {
-      const response = await fetch("/api/kyc/process-document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64 }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to process document");
-      }
-
-      return response.json();
+      return trpc.kyc.processDocument.mutate({ image: base64 });
     },
     [],
   );

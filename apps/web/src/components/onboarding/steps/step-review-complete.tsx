@@ -49,6 +49,7 @@ import {
   getPasswordLengthError,
   getPasswordSimilarityError,
 } from "@/lib/password-policy";
+import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 import { makeFieldValidator } from "@/lib/validation";
 import { WizardNavigation } from "../wizard-navigation";
@@ -410,43 +411,18 @@ export function StepReviewComplete() {
       if (data.idDocumentBase64 && selfieToVerify) {
         setProofStatus("verifying-identity");
         try {
-          const identityResponse = await fetch("/api/identity/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              documentImage: data.idDocumentBase64,
-              selfieImage: selfieToVerify,
-              // Pass local face match result for comparison/logging
-              localFaceMatch: faceMatchResult
-                ? {
-                    matched: faceMatchResult.matched,
-                    confidence: faceMatchResult.confidence,
-                  }
-                : undefined,
-            }),
+          const identityResult = await trpc.identity.verify.mutate({
+            documentImage: data.idDocumentBase64,
+            selfieImage: selfieToVerify,
           });
 
-          const identityResult = await identityResponse
-            .json()
-            .catch(() => null);
-
-          if (!identityResponse.ok) {
-            throw new Error(
-              identityResult?.error ||
-                "Identity verification failed. Please try again.",
-            );
-          }
-
-          if (!identityResult) {
-            throw new Error(
-              "Identity verification returned an unexpected response. Please try again.",
-            );
-          }
-
           if (!identityResult.verified) {
+            const issue =
+              identityResult.issues?.length && identityResult.issues[0]
+                ? identityResult.issues[0]
+                : null;
             throw new Error(
-              identityResult.error ||
+              issue ||
                 "Identity verification did not pass. Please retake your ID photo and selfie and try again.",
             );
           }

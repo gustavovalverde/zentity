@@ -1,3 +1,23 @@
+/**
+ * Selfie Liveness Flow Hook
+ *
+ * Manages the multi-gesture liveness detection flow on the client side.
+ * Works with Human.js for real-time face detection and gesture recognition.
+ *
+ * Flow:
+ * 1. Start camera and wait for stable face detection (centered, forward-facing)
+ * 2. Capture baseline frame after countdown
+ * 3. Present random challenges (smile, turn_left, turn_right)
+ * 4. Detect each gesture using face metrics (happy score, yaw angle)
+ * 5. Submit all frames to server for anti-spoofing verification
+ *
+ * The hook handles:
+ * - Session creation with server-issued challenge sequence
+ * - Real-time face detection and progress tracking
+ * - Gesture detection with stability requirements
+ * - Timeout handling for face detection and challenges
+ * - Debug overlay rendering for development
+ */
 "use client";
 
 import type { Human } from "@vladmandic/human";
@@ -22,6 +42,7 @@ import {
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/liveness-policy";
+import { trpc } from "@/lib/trpc/client";
 
 export type ChallengeState =
   | "idle"
@@ -79,16 +100,42 @@ type UseSelfieLivenessFlowArgs = {
   onReset: () => void;
 };
 
-// Configuration constants
-const DETECTION_INTERVAL = 300; // ms between detection checks
-export const STABILITY_FRAMES = 3; // consecutive positive detections needed
-const CHALLENGE_TIMEOUT = 10000; // 10 seconds per challenge
-const FACE_TIMEOUT = 30000; // 30 seconds to show face
-const HEAD_CENTER_THRESHOLD = 5; // degrees deadzone to ensure forward start
-const NUM_CHALLENGES = 2; // number of random challenges
-const CHALLENGE_PASSED_DELAY = 1000; // ms to show "passed" before next challenge
-const CHALLENGE_PREP_DELAY = 2000; // ms to prepare before next challenge starts
+// ============================================================================
+// Configuration Constants
+// ============================================================================
 
+/** Interval between face detection checks during the flow. */
+const DETECTION_INTERVAL = 300;
+
+/** Number of consecutive detections required to confirm stable face presence. */
+export const STABILITY_FRAMES = 3;
+
+/** Maximum time to complete each challenge gesture. */
+const CHALLENGE_TIMEOUT = 10000;
+
+/** Maximum time to detect initial face before timeout. */
+const FACE_TIMEOUT = 30000;
+
+/** Yaw angle deadzone (degrees) - face must be within this to be "centered". */
+const HEAD_CENTER_THRESHOLD = 5;
+
+/** Number of random challenges to present (from: smile, turn_left, turn_right). */
+const NUM_CHALLENGES = 2;
+
+/** Delay to show "passed" feedback before moving to next challenge. */
+const CHALLENGE_PASSED_DELAY = 1000;
+
+/** Delay for user to prepare before next challenge timer starts. */
+const CHALLENGE_PREP_DELAY = 2000;
+
+/**
+ * Hook for managing the multi-gesture liveness detection flow.
+ *
+ * @param args.videoRef - Reference to the video element for camera feed
+ * @param args.human - Human.js instance for face detection
+ * @param args.onVerified - Callback when liveness is verified successfully
+ * @param args.onReset - Callback when flow is reset/retried
+ */
 export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const {
     videoRef,
@@ -255,13 +302,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const beginCamera = useCallback(async () => {
     setChallengeState("loading_session");
     try {
-      const res = await fetch("/api/liveness/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numChallenges: NUM_CHALLENGES }),
-      });
-      if (!res.ok) throw new Error(`Session error: ${res.status}`);
-      const newSession = (await res.json()) as {
+      const newSession = (await trpc.liveness.createSession.mutate({
+        numChallenges: NUM_CHALLENGES,
+      })) as {
         sessionId: string;
         challenges: ChallengeType[];
         currentChallenge: ChallengeInfo | null;
@@ -366,20 +409,15 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
       setChallengeState("validating");
       try {
-        const res = await fetch("/api/liveness/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: session.sessionId,
-            baselineImage,
-            challenges: newCompleted.map((c) => ({
-              challengeType: c.type,
-              image: c.image,
-            })),
-            debug: livenessDebugEnabled,
-          }),
-        });
-        const data = (await res.json().catch(() => null)) as {
+        const data = (await trpc.liveness.verify.mutate({
+          sessionId: session.sessionId,
+          baselineImage,
+          challenges: newCompleted.map((c) => ({
+            challengeType: c.type,
+            image: c.image,
+          })),
+          debug: livenessDebugEnabled,
+        })) as {
           verified?: boolean;
           error?: string;
         } | null;
@@ -389,7 +427,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         }
 
         setLastVerifyResponse(data);
-        if (!res.ok || !data.verified) {
+        if (!data.verified) {
           const message = data.error || "Liveness verification failed";
           setLastVerifyError(message);
           throw new Error(message);

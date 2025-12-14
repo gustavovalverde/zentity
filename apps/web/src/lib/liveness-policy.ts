@@ -3,7 +3,7 @@
  *
  * Keep these constants in sync across:
  * - Client liveness UX (StepSelfie)
- * - Server liveness verification (/api/liveness/verify)
+ * - Server liveness verification (tRPC `liveness.verify`)
  */
 
 export const SMILE_SCORE_THRESHOLD = 0.6;

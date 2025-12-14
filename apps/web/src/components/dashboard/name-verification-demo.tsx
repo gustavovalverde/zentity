@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { trpc } from "@/lib/trpc/client";
 
 interface VerifyResult {
   matches: boolean;
@@ -35,20 +36,10 @@ export function NameVerificationDemo() {
     const startTime = Date.now();
 
     try {
-      const response = await fetch("/api/identity/verify-name", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claimedName: claimedName.trim() }),
+      const data = await trpc.identity.verifyName.mutate({
+        claimedName: claimedName.trim(),
       });
-
       const timeMs = Date.now() - startTime;
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Verification failed");
-      }
-
-      const data = await response.json();
       setResult({ matches: data.matches, timeMs });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error occurred");

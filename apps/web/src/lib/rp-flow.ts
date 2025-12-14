@@ -1,6 +1,7 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { parseSigned } from "hono/utils/cookie";
+import { headers } from "next/headers";
 
 /**
  * RP Redirect Flow (OAuth-style)
@@ -25,53 +26,30 @@ export type RpFlowData = {
 };
 
 const RP_FLOW_COOKIE_PREFIX = "zentity-rp-flow-";
-const RP_FLOW_TTL_SECONDS = 120;
+/** Flow expires after 2 minutes - user must complete verification quickly. */
+export const RP_FLOW_TTL_SECONDS = 120;
 
-function parseAllowedRedirectUris(): string[] {
-  const raw = process.env.RP_ALLOWED_REDIRECT_URIS;
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+/** Returns the secret used to sign RP flow cookies. */
+export function getRpFlowCookieSecret(): string {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    throw new Error("BETTER_AUTH_SECRET environment variable is required");
+  }
+  return secret;
 }
 
-export function isAllowedRedirectUri(redirectUri: string): boolean {
-  // Allow internal redirects (for first-party testing).
-  if (redirectUri.startsWith("/")) return true;
-
-  // Require explicit allowlist for any external redirect.
-  const allowlist = parseAllowedRedirectUris();
-  return allowlist.includes(redirectUri);
+/** Serializes flow data to a cookie-safe base64 JSON string. */
+export function serializeRpFlowCookieValue(data: RpFlowData): string {
+  return btoa(JSON.stringify(data));
 }
 
-export function createRpFlowCookieName(flowId: string): string {
-  return `${RP_FLOW_COOKIE_PREFIX}${flowId}`;
-}
-
-export async function setRpFlow(
-  flowId: string,
-  data: RpFlowData,
-): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(createRpFlowCookieName(flowId), btoa(JSON.stringify(data)), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: RP_FLOW_TTL_SECONDS,
-    path: "/",
-  });
-}
-
-export async function getRpFlow(flowId: string): Promise<RpFlowData | null> {
-  if (!flowId || !/^[0-9a-f-]{36}$/i.test(flowId)) return null;
-
-  const cookieStore = await cookies();
-  const cookie = cookieStore.get(createRpFlowCookieName(flowId));
-  if (!cookie?.value) return null;
-
+/**
+ * Parses and validates a flow cookie value.
+ * Returns null if invalid, malformed, or expired.
+ */
+function parseRpFlowCookieValue(value: string): RpFlowData | null {
   try {
-    const data = JSON.parse(atob(cookie.value)) as RpFlowData;
+    const data = JSON.parse(atob(value)) as RpFlowData;
     if (!data?.createdAtMs || !data.clientId || !data.redirectUri) return null;
 
     // Extra safety beyond cookie TTL.
@@ -83,7 +61,49 @@ export async function getRpFlow(flowId: string): Promise<RpFlowData | null> {
   }
 }
 
-export async function clearRpFlow(flowId: string): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(createRpFlowCookieName(flowId));
+/** Parses comma-separated allowlist from RP_ALLOWED_REDIRECT_URIS env var. */
+function parseAllowedRedirectUris(): string[] {
+  const raw = process.env.RP_ALLOWED_REDIRECT_URIS;
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Validates redirect URI against allowlist to prevent open redirects.
+ * Internal paths (starting with "/") are always allowed.
+ */
+export function isAllowedRedirectUri(redirectUri: string): boolean {
+  if (redirectUri.startsWith("/")) return true;
+  const allowlist = parseAllowedRedirectUris();
+  return allowlist.includes(redirectUri);
+}
+
+/** Creates the cookie name for a specific flow ID. */
+export function createRpFlowCookieName(flowId: string): string {
+  return `${RP_FLOW_COOKIE_PREFIX}${flowId}`;
+}
+
+/**
+ * Retrieves and validates RP flow data from signed cookie.
+ * Returns null if flow doesn't exist, is invalid, or has expired.
+ */
+export async function getRpFlow(flowId: string): Promise<RpFlowData | null> {
+  if (!flowId || !/^[0-9a-f-]{36}$/i.test(flowId)) return null;
+
+  const cookieHeader = (await headers()).get("cookie");
+  if (!cookieHeader) return null;
+
+  const cookieName = createRpFlowCookieName(flowId);
+  const parsed = await parseSigned(
+    cookieHeader,
+    getRpFlowCookieSecret(),
+    cookieName,
+  );
+  const signedValue = parsed[cookieName];
+  if (typeof signedValue !== "string" || !signedValue) return null;
+
+  return parseRpFlowCookieValue(signedValue);
 }

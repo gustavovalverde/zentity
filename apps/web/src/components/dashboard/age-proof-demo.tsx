@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getUserProof, verifyAgeProof } from "@/lib/crypto-client";
 
 export function AgeProofDemo() {
   const [storedProofSummary, setStoredProofSummary] = useState<{
@@ -38,30 +39,16 @@ export function AgeProofDemo() {
 
     async function loadStoredProof() {
       try {
-        const res = await fetch("/api/user/proof");
-        if (!res.ok) {
-          if (res.status === 404) {
-            if (!cancelled) setStoredProofSummary(null);
-            return;
-          }
-          return;
-        }
-        const data = (await res.json()) as {
-          proofId?: unknown;
-          isOver18?: unknown;
-        };
-        if (!cancelled) {
-          if (
-            typeof data.proofId === "string" &&
-            typeof data.isOver18 === "boolean"
-          ) {
-            setStoredProofSummary({
-              proofId: data.proofId,
-              isOver18: data.isOver18,
-            });
-          } else {
-            setStoredProofSummary(null);
-          }
+        const data = await getUserProof();
+        if (cancelled) return;
+
+        if (data?.proofId) {
+          setStoredProofSummary({
+            proofId: data.proofId,
+            isOver18: data.isOver18,
+          });
+        } else {
+          setStoredProofSummary(null);
         }
       } catch {
         // Ignore load errors; the verify button will surface errors when explicitly invoked.
@@ -82,50 +69,15 @@ export function AgeProofDemo() {
     setResult(null);
 
     try {
-      const startTime = Date.now();
-
-      let proof: string;
-      let publicInputs: string[];
-
-      // Use the stored proof from /api/user/proof (current format).
-      const storedRes = await fetch("/api/user/proof?full=true");
-      if (storedRes.ok) {
-        const stored = (await storedRes.json()) as {
-          proof?: unknown;
-          publicSignals?: unknown;
-        };
-        if (typeof stored.proof !== "string") {
-          throw new Error("Stored proof is missing or invalid");
-        }
-        if (!Array.isArray(stored.publicSignals)) {
-          throw new Error("Stored public signals are missing or invalid");
-        }
-        proof = stored.proof;
-        publicInputs = stored.publicSignals.map(String);
-      } else {
+      const stored = await getUserProof(true);
+      if (!stored?.proof || !stored.publicSignals) {
         throw new Error("No stored proof available");
       }
 
-      const response = await fetch("/api/crypto/verify-proof", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          proof,
-          publicInputs,
-          circuitType: "age_verification",
-        }),
-      });
-
-      const verificationTimeMs = Date.now() - startTime;
-
-      if (!response.ok) {
-        throw new Error("Verification failed");
-      }
-
-      const data = (await response.json()) as { isValid?: boolean };
+      const data = await verifyAgeProof(stored.proof, stored.publicSignals);
       setResult({
         isValid: Boolean(data.isValid),
-        verificationTimeMs,
+        verificationTimeMs: data.verificationTimeMs,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");

@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { verifyAgeViaFHE } from "@/lib/crypto-client";
 
 interface FheVerificationDemoProps {
   dobCiphertext?: string;
@@ -27,7 +28,7 @@ interface FheVerificationDemoProps {
 
 export function FheVerificationDemo({
   dobCiphertext,
-  fheClientKeyId,
+  fheClientKeyId: _fheClientKeyId,
 }: FheVerificationDemoProps) {
   const [computing, setComputing] = useState(false);
   const [result, setResult] = useState<{
@@ -44,27 +45,9 @@ export function FheVerificationDemo({
     setResult(null);
 
     try {
-      const response = await fetch("/api/crypto/verify-age-fhe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ciphertext: dobCiphertext,
-          currentYear: new Date().getFullYear(),
-          minAge: 18,
-          clientKeyId: fheClientKeyId || "default",
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "FHE computation failed");
-      }
-
-      const data = await response.json();
-      setResult({
-        isOver18: data.isOver18,
-        computationTimeMs: data.computationTimeMs,
-      });
+      setResult(
+        await verifyAgeViaFHE(dobCiphertext, new Date().getFullYear(), 18),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Computation failed");
     } finally {

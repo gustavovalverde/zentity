@@ -290,22 +290,25 @@ export function DashboardTabs({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Verification Status API</CardTitle>
-              <CardDescription>Check user verification level</CardDescription>
+              <CardTitle className="text-lg">RP Exchange API</CardTitle>
+              <CardDescription>
+                Exchange a one-time code for verification flags
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border bg-muted/30 p-3">
                 <code className="text-xs">
-                  <span className="text-green-600">GET</span>{" "}
-                  <span className="text-blue-600">/api/identity/status</span>
+                  <span className="text-green-600">POST</span>{" "}
+                  <span className="text-blue-600">/api/rp/exchange</span>
                 </code>
               </div>
 
               <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
                 <pre className="whitespace-pre-wrap">
                   {`{
+  "success": true,
   "verified": ${hasProof},
-  "level": "${hasProof ? "full" : "none"}",
+  "level": "${hasProof ? "basic" : "none"}",
   "checks": {
     "document": ${checks.document},
     "liveness": ${checks.liveness},
@@ -336,23 +339,21 @@ export function DashboardTabs({
           </CardHeader>
           <CardContent>
             <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs overflow-x-auto">
-              <pre>{`// Check if user is verified
-const status = await fetch('/api/identity/status', {
-  headers: { 'Authorization': 'Bearer <user_token>' }
-});
-const { verified, level, checks } = await status.json();
+              <pre>{`// 1) Redirect the user into Zentity's verification flow
+const authorizeUrl = new URL('https://zentity.example.com/api/rp/authorize');
+authorizeUrl.searchParams.set('client_id', '<client_uuid>');
+authorizeUrl.searchParams.set('redirect_uri', 'https://rp.example.com/callback');
+authorizeUrl.searchParams.set('state', '<opaque_state>');
+window.location.assign(authorizeUrl.toString());
 
-// Verify a specific name claim (without seeing the actual name)
-const result = await fetch('/api/identity/verify-name', {
+// 2) On your server, exchange the one-time code for verification flags
+const exchange = await fetch('https://zentity.example.com/api/rp/exchange', {
   method: 'POST',
-  headers: {
-    'Authorization': 'Bearer <user_token>',
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({ claimedName: 'Juan Perez' })
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ code: '<uuid>', client_id: '<client_uuid>' })
 });
-const { matches } = await result.json();
-// Returns: { matches: true } - NO NAME REVEALED`}</pre>
+const { verified, level, checks } = await exchange.json();
+// Returns: { verified, level, checks } - NO PII REVEALED`}</pre>
             </div>
             <div className="mt-4">
               <Button variant="outline" size="sm" asChild>
