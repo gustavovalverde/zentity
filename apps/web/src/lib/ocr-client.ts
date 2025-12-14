@@ -1,5 +1,13 @@
+import "server-only";
+
 import { fetchJson } from "@/lib/http";
 import { getOcrServiceUrl } from "@/lib/service-urls";
+
+function getInternalServiceAuthHeaders(): Record<string, string> {
+  const token = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!token) return {};
+  return { "X-Zentity-Internal-Token": token };
+}
 
 export interface OcrCommitments {
   documentHash: string;
@@ -34,7 +42,10 @@ export async function processDocumentOcr(args: {
   const url = `${getOcrServiceUrl()}/process`;
   return fetchJson<OcrProcessResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       image: args.image,
       userSalt: args.userSalt,
@@ -48,7 +59,10 @@ export async function ocrDocumentOcr(args: {
   const url = `${getOcrServiceUrl()}/ocr`;
   return fetchJson<unknown>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       image: args.image,
     }),
@@ -57,5 +71,9 @@ export async function ocrDocumentOcr(args: {
 
 export async function getOcrHealth(): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/health`;
-  return fetchJson<unknown>(url);
+  return fetchJson<unknown>(url, {
+    headers: {
+      ...getInternalServiceAuthHeaders(),
+    },
+  });
 }

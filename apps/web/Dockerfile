@@ -124,13 +124,13 @@ COPY --from=builder /app/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
 # Create data directory for persistent database storage
-RUN mkdir -p ./data
+RUN mkdir -p /var/lib/zentity/web
 
 # Create empty database file (will be initialized by entrypoint)
-RUN touch ./dev.db ./data/dev.db
+RUN touch /var/lib/zentity/web/dev.db
 
 # Set correct permissions
-RUN chown -R nextjs:nodejs /app
+RUN chown -R nextjs:nodejs /app /var/lib/zentity
 
 USER nextjs
 

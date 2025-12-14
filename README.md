@@ -39,6 +39,12 @@ Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographi
 ## TL;DR (run + test)
 
 ```bash
+# Set required secrets (do this once)
+cp .env.example .env
+# Generate a strong auth secret (required for production-mode containers)
+openssl rand -base64 32
+# Paste it into .env as BETTER_AUTH_SECRET
+
 docker compose up --build
 ```
 

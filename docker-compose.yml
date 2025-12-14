@@ -15,7 +15,8 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
       - BETTER_AUTH_URL=http://localhost:3000
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      - DATABASE_PATH=/app/data/dev.db
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - DATABASE_PATH=/var/lib/zentity/web/dev.db
     depends_on:
       fhe-service:
         condition: service_healthy
@@ -23,7 +24,7 @@ services:
         condition: service_healthy
     volumes:
       # Persist SQLite database across container restarts
-      - frontend-data:/app/data
+      - frontend-data:/var/lib/zentity/web
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
       interval: 30s
@@ -43,8 +44,10 @@ services:
     environment:
       - RUST_LOG=info
       - PORT=5001
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - FHE_KEYS_DIR=/var/lib/zentity/fhe
     volumes:
-      - fhe-keys:/app/keys
+      - fhe-keys:/var/lib/zentity/fhe
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
@@ -63,6 +66,7 @@ services:
       - "5004:5004"
     environment:
       - PORT=5004
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
       interval: 30s

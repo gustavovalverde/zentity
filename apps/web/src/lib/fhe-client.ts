@@ -1,5 +1,13 @@
+import "server-only";
+
 import { fetchJson } from "@/lib/http";
 import { getFheServiceUrl } from "@/lib/service-urls";
+
+function getInternalServiceAuthHeaders(): Record<string, string> {
+  const token = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!token) return {};
+  return { "X-Zentity-Internal-Token": token };
+}
 
 export interface FheCiphertextResult {
   ciphertext: string;
@@ -31,7 +39,10 @@ export async function encryptBirthYearFhe(args: {
   const url = `${getFheServiceUrl()}/encrypt`;
   return fetchJson<FheCiphertextResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       birthYear: args.birthYear,
       clientKeyId: args.clientKeyId,
@@ -46,7 +57,10 @@ export async function encryptGenderFhe(args: {
   const url = `${getFheServiceUrl()}/encrypt-gender`;
   return fetchJson<FheCiphertextResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       genderCode: args.genderCode,
       clientKeyId: args.clientKeyId,
@@ -61,7 +75,10 @@ export async function encryptDobFhe(args: {
   const url = `${getFheServiceUrl()}/encrypt-dob`;
   return fetchJson<FheEncryptDobResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       dob: args.dob,
       clientKeyId: args.clientKeyId,
@@ -76,7 +93,10 @@ export async function encryptLivenessScoreFhe(args: {
   const url = `${getFheServiceUrl()}/encrypt-liveness`;
   return fetchJson<FheEncryptLivenessResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       score: args.score,
       clientKeyId: args.clientKeyId,
@@ -92,7 +112,10 @@ export async function verifyAgeFhe(args: {
   const url = `${getFheServiceUrl()}/verify-age`;
   return fetchJson<FheVerifyAgeResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       ciphertext: args.ciphertext,
       currentYear: args.currentYear,
@@ -109,7 +132,10 @@ export async function verifyLivenessThresholdFhe(args: {
   const url = `${getFheServiceUrl()}/verify-liveness-threshold`;
   return fetchJson<FheVerifyLivenessThresholdResult>(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getInternalServiceAuthHeaders(),
+    },
     body: JSON.stringify({
       ciphertext: args.ciphertext,
       threshold: args.threshold,

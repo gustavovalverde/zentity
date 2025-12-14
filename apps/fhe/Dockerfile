@@ -44,13 +44,19 @@ RUN apt-get update && apt-get install -y \
 # Copy binary from builder
 COPY --from=builder /app/target/release/fhe-service /app/fhe-service
 
-# Create keys directory
-RUN mkdir -p /app/keys
+# Create non-root user + state directory (persist via volume mount)
+RUN groupadd --system --gid 1001 zentity && \
+    useradd --system --uid 1001 --gid zentity zentity && \
+    mkdir -p /var/lib/zentity/fhe && \
+    touch /var/lib/zentity/fhe/.keep && \
+    chown -R zentity:zentity /app /var/lib/zentity
 
 # Set environment variables
 ENV RUST_LOG=info
 ENV PORT=5001
 
 EXPOSE 5001
+
+USER zentity
 
 CMD ["/app/fhe-service"]

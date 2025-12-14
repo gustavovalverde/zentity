@@ -2,6 +2,7 @@ import "server-only";
 
 import { parseSigned } from "hono/utils/cookie";
 import { headers } from "next/headers";
+import { getBetterAuthSecret } from "@/lib/env";
 
 /**
  * RP Redirect Flow (OAuth-style)
@@ -31,11 +32,7 @@ export const RP_FLOW_TTL_SECONDS = 120;
 
 /** Returns the secret used to sign RP flow cookies. */
 export function getRpFlowCookieSecret(): string {
-  const secret = process.env.BETTER_AUTH_SECRET;
-  if (!secret) {
-    throw new Error("BETTER_AUTH_SECRET environment variable is required");
-  }
-  return secret;
+  return getBetterAuthSecret();
 }
 
 /** Serializes flow data to a cookie-safe base64 JSON string. */

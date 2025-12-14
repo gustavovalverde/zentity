@@ -1,13 +1,14 @@
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { haveIBeenPwned, magicLink } from "better-auth/plugins";
+import { getBetterAuthSecret } from "@/lib/env";
 import { getDefaultDatabasePath, getSqliteDb } from "@/lib/sqlite";
 
 const db = getSqliteDb(getDefaultDatabasePath());
 
 export const auth = betterAuth({
   database: db,
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: getBetterAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   emailAndPassword: {
     enabled: true,

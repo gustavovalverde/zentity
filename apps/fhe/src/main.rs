@@ -8,13 +8,42 @@ mod error;
 mod routes;
 
 use axum::{
+    extract::State,
+    extract::DefaultBodyLimit,
+    body::Body,
+    http::{Request, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
+use serde_json::json;
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+async fn internal_auth(
+    State(token): State<Option<String>>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    if req.uri().path() == "/health" {
+        return next.run(req).await;
+    }
+
+    if let Some(expected) = token.as_ref().filter(|value| !value.is_empty()) {
+        let provided = req
+            .headers()
+            .get("x-zentity-internal-token")
+            .and_then(|value| value.to_str().ok());
+        if provided != Some(expected.as_str()) {
+            return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))
+                .into_response();
+        }
+    }
+
+    next.run(req).await
+}
 
 #[tokio::main]
 async fn main() {
@@ -34,10 +63,22 @@ async fn main() {
     crypto::init_keys();
     tracing::info!("FHE keys initialized successfully");
 
+    let internal_token = std::env::var("INTERNAL_SERVICE_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty());
+
+    let enable_keygen_endpoint = std::env::var("ENABLE_KEYGEN_ENDPOINT")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
     // Build router
-    let app = Router::new()
-        .route("/health", get(routes::health))
-        .route("/keys/generate", post(routes::generate_keys))
+    let mut app = Router::new().route("/health", get(routes::health));
+
+    if enable_keygen_endpoint {
+        app = app.route("/keys/generate", post(routes::generate_keys));
+    }
+
+    let app = app
         // Birth year encryption (u16)
         .route("/encrypt", post(routes::encrypt))
         .route("/verify-age", post(routes::verify_age))
@@ -50,13 +91,10 @@ async fn main() {
         // Liveness score encryption (0.0-1.0 as u16)
         .route("/encrypt-liveness", post(routes::encrypt_liveness))
         .route("/verify-liveness-threshold", post(routes::verify_liveness_threshold))
+        .layer(middleware::from_fn_with_state(internal_token, internal_auth))
+        .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        );
+        ;
 
     // Get port from environment or default to 5001
     let port: u16 = std::env::var("PORT")

@@ -14,6 +14,7 @@
 
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
+import { getBetterAuthSecret } from "@/lib/env";
 import {
   deleteOnboardingSession,
   getOnboardingSessionByEmail,
@@ -28,10 +29,7 @@ import {
  * We derive a fixed-length key from the secret using SHA-256.
  */
 const getSecret = async (): Promise<Uint8Array> => {
-  const secret = process.env.BETTER_AUTH_SECRET;
-  if (!secret) {
-    throw new Error("BETTER_AUTH_SECRET environment variable is required");
-  }
+  const secret = getBetterAuthSecret();
 
   // Derive a 256-bit key from the secret using SHA-256
   const encoder = new TextEncoder();

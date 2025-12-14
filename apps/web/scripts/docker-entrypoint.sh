@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-# Use DATABASE_PATH env var or default to /app/dev.db
-DB_PATH="${DATABASE_PATH:-/app/dev.db}"
+# Use DATABASE_PATH env var or default to a standard state directory
+DB_PATH="${DATABASE_PATH:-/var/lib/zentity/web/dev.db}"
 
 # Ensure the database directory exists
 DB_DIR=$(dirname "$DB_PATH")

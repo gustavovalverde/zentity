@@ -20,9 +20,8 @@ import os
 import time
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette import status
@@ -53,6 +52,7 @@ from .commitments import (
 
 # Configuration
 PORT = int(os.getenv("PORT", "5004"))
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
 
 # Track service start time
 _start_time = time.time()
@@ -77,18 +77,22 @@ async def request_validation_exception_handler(
         content={"error": "Invalid request"},
     )
 
-# CORS middleware - restrict to known frontend origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+# Optional internal auth (defense-in-depth).
+# If INTERNAL_SERVICE_TOKEN is set, require it for all non-health endpoints.
+@app.middleware("http")
+async def internal_auth_middleware(request: Request, call_next):
+    if INTERNAL_SERVICE_TOKEN:
+        # Allow provider health checks + docs without auth.
+        if request.url.path not in ("/health", "/openapi.json") and not request.url.path.startswith(
+            "/docs"
+        ):
+            provided = request.headers.get("x-zentity-internal-token")
+            if provided != INTERNAL_SERVICE_TOKEN:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"error": "Unauthorized"},
+                )
+    return await call_next(request)
 
 # Request/Response models
 class ImageRequest(BaseModel):
