@@ -1,7 +1,19 @@
+# yaml-language-server: $schema=https://railway.com/railway.schema.json
+# Web Service - Next.js on port 8080
+# Public domain: app.zentity.xyz
+#
+# Required env vars (set via Railway dashboard/CLI):
+#   NODE_ENV=production
+#   BETTER_AUTH_SECRET=<secret>
+#   BETTER_AUTH_URL=https://app.zentity.xyz
+#   NEXT_PUBLIC_APP_URL=https://app.zentity.xyz
+#   INTERNAL_SERVICE_TOKEN=<secret>
+#   DATABASE_PATH=/var/lib/zentity/web/dev.db
+#   FHE_SERVICE_URL=http://fhe.railway.internal:5001
+#   OCR_SERVICE_URL=http://ocr.railway.internal:5004
+
 [build]
 builder = "DOCKERFILE"
-# Pass build-time args for Next.js public env vars
-# These are baked into the client bundle at build time
 
 [build.args]
 NEXT_PUBLIC_APP_URL = "https://app.zentity.xyz"

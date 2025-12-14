@@ -1,3 +1,14 @@
+# yaml-language-server: $schema=https://railway.com/railway.schema.json
+# FHE Service - Rust/Axum on port 5001
+# Private networking only (no public domain)
+#
+# Required env vars (set via Railway dashboard/CLI):
+#   RUST_LOG=info
+#   PORT=5001
+#   HOST=0.0.0.0  (IPv4 required for Railway healthchecks)
+#   INTERNAL_SERVICE_TOKEN=<secret>
+#   FHE_KEYS_DIR=/var/lib/zentity/fhe
+
 [build]
 builder = "DOCKERFILE"
 
@@ -6,4 +17,3 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"
 numReplicas = 1
-

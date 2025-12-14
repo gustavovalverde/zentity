@@ -1,3 +1,12 @@
+# yaml-language-server: $schema=https://railway.com/railway.schema.json
+# OCR Service - Python/FastAPI on port 5004
+# Private networking only (no public domain)
+#
+# Required env vars (set via Railway dashboard/CLI):
+#   PORT=5004
+#   HOST=0.0.0.0  (IPv4 required for Railway healthchecks)
+#   INTERNAL_SERVICE_TOKEN=<secret>
+
 [build]
 builder = "DOCKERFILE"
 
@@ -6,9 +15,3 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"
 numReplicas = 1
-
-# Explicitly set the port Railway should use for healthchecks
-[[deploy.port]]
-protocol = "http"
-port = 5004
-
