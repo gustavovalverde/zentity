@@ -385,6 +385,18 @@ export function deleteIdentityProof(userId: string): void {
 }
 
 /**
+ * Delete user's age proofs (GDPR right to erasure)
+ *
+ * Removes all ZK proofs and FHE ciphertexts associated with the user.
+ */
+export function deleteAgeProofs(userId: string): void {
+  const stmt = db.prepare(`
+    DELETE FROM age_proofs WHERE user_id = ?
+  `);
+  stmt.run(userId);
+}
+
+/**
  * Get verification status for a user (public API response)
  */
 export function getVerificationStatus(userId: string): {

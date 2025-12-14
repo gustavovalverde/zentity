@@ -5,6 +5,7 @@
  * This is the main entry point for all tRPC API calls.
  *
  * Routers:
+ * - account: Account management and GDPR deletion
  * - crypto: FHE encryption, ZK proof verification, challenge management
  * - identity: Full identity verification (document + selfie + liveness)
  * - kyc: Document OCR processing
@@ -14,6 +15,7 @@
 import "server-only";
 
 import { router } from "../server";
+import { accountRouter } from "./account";
 import { cryptoRouter } from "./crypto";
 import { identityRouter } from "./identity";
 import { kycRouter } from "./kyc";
@@ -21,6 +23,7 @@ import { livenessRouter } from "./liveness";
 import { onboardingRouter } from "./onboarding";
 
 export const appRouter = router({
+  account: accountRouter,
   crypto: cryptoRouter,
   identity: identityRouter,
   kyc: kycRouter,

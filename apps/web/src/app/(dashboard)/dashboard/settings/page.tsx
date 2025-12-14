@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthMethodsSection } from "@/components/dashboard/auth-methods-section";
 import { ChangePasswordSection } from "@/components/dashboard/change-password-section";
+import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
+import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
 
@@ -41,6 +43,8 @@ export default async function SettingsPage() {
         </Button>
       </div>
 
+      <UserDataSection />
+
       <AuthMethodsSection
         email={session.user.email}
         hasPassword={true} // Users created via signup have password
@@ -48,6 +52,8 @@ export default async function SettingsPage() {
       />
 
       <ChangePasswordSection />
+
+      <DeleteAccountSection email={session.user.email} />
     </div>
   );
 }
