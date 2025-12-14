@@ -33,9 +33,15 @@ export function WizardStepper() {
   const prefersReducedMotion = usePrefersReducedMotion();
   const m = prefersReducedMotion ? reducedMotion : motion;
   const headerRef = useRef<HTMLDivElement>(null);
+  const hasMountedRef = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus the step header on step transitions for keyboard/screen reader users.
   useEffect(() => {
+    // Avoid stealing focus on initial mount (e.g., when a step input uses `autoFocus`).
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     headerRef.current?.focus();
   }, [state.currentStep]);
 
