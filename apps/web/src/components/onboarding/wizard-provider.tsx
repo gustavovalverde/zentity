@@ -48,6 +48,8 @@ function toWizardStep(step: number): WizardStep {
  */
 interface ServerSessionState {
   hasSession: boolean;
+  /** True if a stale session cookie was just cleared (session expired or DB mismatch) */
+  wasCleared?: boolean;
   email?: string;
   step?: WizardStep;
   documentProcessed?: boolean;
@@ -232,6 +234,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
             },
           });
           lastSavedStepRef.current = serverState.step ?? 1;
+        } else if (serverState?.wasCleared) {
+          // Session was cleared due to expiration or mismatch - notify user
+          toast.info("Session expired. Please start again.");
         }
       } catch {
         // Server session not available, start fresh

@@ -110,6 +110,8 @@ type UseSelfieLivenessFlowArgs = {
     blinkCount: number | null;
   }) => void;
   onReset: () => void;
+  /** Called when session error occurs (expired session), allowing component to reset wizard */
+  onSessionError?: () => void;
 };
 
 // ============================================================================
@@ -162,6 +164,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     initialSelfieImage,
     onVerified,
     onReset,
+    onSessionError,
   } = args;
 
   const [challengeState, setChallengeState] = useState<ChallengeState>("idle");
@@ -336,8 +339,21 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       });
       setCurrentChallenge(newSession.currentChallenge);
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Please try again";
+
+      // Check if this is a session error (FORBIDDEN = session expired)
+      if (
+        errorMsg.includes("onboarding session") ||
+        errorMsg.includes("start from the beginning")
+      ) {
+        toast.info("Session expired. Starting fresh...");
+        setChallengeState("idle");
+        onSessionError?.();
+        return;
+      }
+
       toast.error("Failed to create challenge session", {
-        description: err instanceof Error ? err.message : "Please try again",
+        description: errorMsg,
       });
       setChallengeState("idle");
       return;
@@ -354,7 +370,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       });
       setChallengeState("idle");
     }
-  }, [startCamera]);
+  }, [startCamera, onSessionError]);
 
   const checkForFace = useCallback(async () => {
     if (!human || !humanReady || !videoRef.current) return;

@@ -38,7 +38,7 @@ const HEAD_TURN_YAW_THRESHOLD = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
 const HEAD_TURN_DELTA_THRESHOLD = TURN_YAW_SIGNIFICANT_DELTA_DEG;
 
 export function StepSelfie() {
-  const { state, updateData, nextStep, skipLiveness } = useWizard();
+  const { state, updateData, nextStep, skipLiveness, reset } = useWizard();
   const {
     videoRef,
     isStreaming,
@@ -98,6 +98,7 @@ export function StepSelfie() {
         blinkCount: null,
       });
     },
+    onSessionError: reset,
   });
   const handleSubmit = () => {
     stopCamera();

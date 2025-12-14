@@ -53,17 +53,21 @@ export const onboardingRouter = router({
   /**
    * Retrieves current onboarding session state.
    * Runs cleanup of expired sessions before returning.
+   *
+   * Returns `wasCleared: true` if a stale cookie was just cleared,
+   * allowing the client to show a notification to the user.
    */
   getSession: publicProcedure.query(async () => {
     cleanupExpiredOnboardingSessions();
 
-    const state = await loadWizardState();
+    const { state, wasCleared } = await loadWizardState();
     if (!state) {
-      return { hasSession: false, step: 1 };
+      return { hasSession: false, step: 1, wasCleared };
     }
 
     return {
       hasSession: true,
+      wasCleared: false,
       email: state.email,
       step: state.step,
       documentProcessed: state.documentProcessed,
@@ -95,7 +99,7 @@ export const onboardingRouter = router({
     )
     .mutation(async ({ input }) => {
       if (input.forceNew) {
-        const existingState = await loadWizardState();
+        const { state: existingState } = await loadWizardState();
         if (existingState) {
           deleteOnboardingSession(existingState.email);
         }
@@ -139,7 +143,7 @@ export const onboardingRouter = router({
       const email = input?.email;
 
       if (!email) {
-        const state = await loadWizardState();
+        const { state } = await loadWizardState();
         if (state?.email) {
           await completeOnboarding(state.email);
           return { success: true };

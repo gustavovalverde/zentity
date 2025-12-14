@@ -72,6 +72,15 @@ export interface FullWizardState {
 }
 
 /**
+ * Result of loading wizard state, includes whether a stale session was cleared
+ */
+export interface WizardStateResult {
+  state: FullWizardState | null;
+  /** True if a stale cookie was cleared (cookie existed but DB session was missing/expired) */
+  wasCleared: boolean;
+}
+
+/**
  * Encrypt PII data using jose JWE (AES-256-GCM)
  */
 export async function encryptPii(pii: EncryptedPiiData): Promise<string> {
@@ -182,18 +191,23 @@ export async function saveWizardState(
 
 /**
  * Load full wizard state (from cookie + database)
+ *
+ * Returns both the state and whether a stale cookie was cleared,
+ * allowing callers to show appropriate feedback to users.
  */
-export async function loadWizardState(): Promise<FullWizardState | null> {
+export async function loadWizardState(): Promise<WizardStateResult> {
   // Get navigation state from cookie
   const navState = await getWizardCookie();
-  if (!navState) return null;
+  if (!navState) {
+    return { state: null, wasCleared: false };
+  }
 
   // Get full session from database
   const session = getOnboardingSessionByEmail(navState.email);
   if (!session) {
-    // Cookie exists but session expired, clear cookie
+    // Cookie exists but session expired/missing in DB - clear stale cookie
     await clearWizardCookie();
-    return null;
+    return { state: null, wasCleared: true };
   }
 
   // Decrypt PII if present
@@ -206,12 +220,15 @@ export async function loadWizardState(): Promise<FullWizardState | null> {
   }
 
   return {
-    email: session.email,
-    step: session.step,
-    pii,
-    documentProcessed: session.documentProcessed,
-    livenessPassed: session.livenessPassed,
-    faceMatchPassed: session.faceMatchPassed,
+    state: {
+      email: session.email,
+      step: session.step,
+      pii,
+      documentProcessed: session.documentProcessed,
+      livenessPassed: session.livenessPassed,
+      faceMatchPassed: session.faceMatchPassed,
+    },
+    wasCleared: false,
   };
 }
 

@@ -70,7 +70,8 @@ const ERROR_RECOVERY_TIPS: Record<string, string> = {
 };
 
 export function StepIdUpload() {
-  const { state, updateData, nextStep, updateServerProgress } = useWizard();
+  const { state, updateData, nextStep, updateServerProgress, reset } =
+    useWizard();
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(
     state.data.idDocument?.name || null,
@@ -198,6 +199,18 @@ export function StepIdUpload() {
       } catch (error) {
         const errorMsg =
           error instanceof Error ? error.message : "Failed to process document";
+
+        // Check if this is a session error (FORBIDDEN = session expired)
+        if (
+          errorMsg.includes("onboarding session") ||
+          errorMsg.includes("start from the beginning")
+        ) {
+          toast.info("Session expired. Starting fresh...");
+          setProcessingState("idle");
+          reset();
+          return;
+        }
+
         setUploadError(errorMsg);
         toast.error("Processing failed", {
           description: errorMsg,
@@ -205,7 +218,7 @@ export function StepIdUpload() {
         setProcessingState("idle");
       }
     },
-    [updateData, processDocument, updateServerProgress],
+    [updateData, processDocument, updateServerProgress, reset],
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
