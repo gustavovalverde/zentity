@@ -61,9 +61,7 @@ RUN chmod +x start.sh
 ENV RUST_LOG=info
 
 ARG PORT=5001
-ARG HOST="::"
 ENV PORT=${PORT}
-ENV HOST=${HOST}
 
 EXPOSE ${PORT}
 

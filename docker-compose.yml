@@ -80,6 +80,7 @@ services:
 networks:
   zentity-network:
     driver: bridge
+    enable_ipv6: true
 
 volumes:
   fhe-keys:
