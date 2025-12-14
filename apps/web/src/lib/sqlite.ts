@@ -1,7 +1,6 @@
+import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import Database from "better-sqlite3";
 
 /**
  * SQLite connection utilities (Better Auth + app DB).
@@ -42,14 +41,14 @@ function ensureDatabaseDirExists(dbPath: string) {
   }
 }
 
-function applyPragmas(db: Database.Database) {
+function applyPragmas(db: Database) {
   try {
-    db.pragma("journal_mode = WAL");
+    db.exec("PRAGMA journal_mode = WAL");
   } catch {
     // Best-effort: ignore SQLITE_BUSY / readonly FS during builds.
   }
   try {
-    db.pragma("synchronous = normal");
+    db.exec("PRAGMA synchronous = NORMAL");
   } catch {
     // Best-effort
   }
@@ -57,7 +56,7 @@ function applyPragmas(db: Database.Database) {
 
 const globalKey = Symbol.for("zentity.sqlite.connections");
 
-type Store = Map<string, Database.Database>;
+type Store = Map<string, Database>;
 
 function getStore(): Store {
   const g = globalThis as unknown as Record<string | symbol, unknown>;
@@ -66,7 +65,7 @@ function getStore(): Store {
 }
 
 /**
- * Returns a singleton `better-sqlite3` connection for a given dbPath.
+ * Returns a singleton `bun:sqlite` connection for a given dbPath.
  *
  * Prefer this over `new Database(...)` in modules to reduce lock contention and
  * ensure consistent PRAGMA configuration.

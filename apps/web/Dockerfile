@@ -1,40 +1,52 @@
 # Frontend Dockerfile
-# Multi-stage build for Next.js with native dependencies (better-sqlite3, tfjs-node)
+# Multi-stage build for Next.js with native dependencies (tfjs-node) and Bun runtime (bun:sqlite)
 
-# Build stage - using Debian slim for glibc compatibility with tfjs-node
-FROM node:20-slim AS builder
+ARG TARGETARCH
+
+FROM node:24-slim AS base
 
 # Provided by BuildKit; used to avoid cross-arch cache poisoning for tfjs-node binaries.
 ARG TARGETARCH
 
-# Install build dependencies for native modules
+# Install build dependencies for native modules and Bun install
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    curl \
+    bash \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install Bun (used to run Next.js with bun:sqlite)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV BUN_INSTALL=/root/.bun
+ENV PATH=/root/.bun/bin:$PATH
+
+FROM base AS deps
+ARG TARGETARCH
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json bun.lock ./
 
 # Install all dependencies
-RUN pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
-# Build TensorFlow.js native bindings (pnpm 10+ blocks postinstall scripts by default)
-# This downloads pre-built binaries or compiles from source
+# Build TensorFlow.js native bindings (ensures correct binary for TARGETARCH)
 RUN echo "Installing tfjs-node native bindings for TARGETARCH=${TARGETARCH}" && \
     NPM_ARCH="$([ "${TARGETARCH}" = "amd64" ] && echo x64 || echo "${TARGETARCH}")" && \
     export npm_config_platform=linux && \
     export npm_config_arch="${NPM_ARCH}" && \
-    TFJS_DIR=$(find /app/node_modules/.pnpm -path "*/@tensorflow/tfjs-node" -type d | head -1) && \
+    TFJS_DIR=/app/node_modules/@tensorflow/tfjs-node && \
     cd "$TFJS_DIR" && \
-    export PATH="$TFJS_DIR/node_modules/.bin:$PATH" && \
+    export PATH="/app/node_modules/.bin:$PATH" && \
     node scripts/install.js
+
+FROM base AS builder
+
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy source code
 COPY . .
@@ -52,13 +64,27 @@ ENV DATABASE_PATH=/tmp/dev.db
 ENV BETTER_AUTH_SECRET=build-time-secret-do-not-use-32-chars-minimum!!
 
 # Build the application
-RUN touch /tmp/dev.db && pnpm build
+RUN touch /tmp/dev.db && bun run build
 
-# Prune devDependencies for the runtime image.
-RUN pnpm prune --prod
+FROM base AS prod-deps
+ARG TARGETARCH
+
+COPY package.json bun.lock ./
+
+RUN bun install --frozen-lockfile --production
+
+# Build TensorFlow.js native bindings for production deps (runtime)
+RUN echo "Installing tfjs-node native bindings (prod) for TARGETARCH=${TARGETARCH}" && \
+    NPM_ARCH="$([ "${TARGETARCH}" = "amd64" ] && echo x64 || echo "${TARGETARCH}")" && \
+    export npm_config_platform=linux && \
+    export npm_config_arch="${NPM_ARCH}" && \
+    TFJS_DIR=/app/node_modules/@tensorflow/tfjs-node && \
+    cd "$TFJS_DIR" && \
+    export PATH="/app/node_modules/.bin:$PATH" && \
+    node scripts/install.js
 
 # Production stage - using Debian slim for glibc compatibility with tfjs-node
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 
 # Install runtime dependencies (sqlite3 CLI for database management)
 RUN apt-get update && apt-get install -y \
@@ -66,6 +92,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Copy Bun runtime (needed for bun:sqlite at runtime)
+COPY --from=base /root/.bun /opt/bun
+ENV BUN_INSTALL=/opt/bun
+ENV PATH=/opt/bun/bin:$PATH
+RUN chmod -R a+rX /opt/bun
 
 # Set production environment
 ENV NODE_ENV=production
@@ -80,13 +112,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Replace standalone-traced `node_modules` with the pruned pnpm install from the builder.
-# This preserves pnpm's symlinked dependency graph, which tfjs-node relies on at runtime.
+# Replace standalone-traced `node_modules` with production dependencies (ensures tfjs-node works at runtime).
 RUN rm -rf ./node_modules
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Copy Human.js models into runtime (used by /human-models route and server-side Human)
-COPY --from=builder /app/node_modules/@vladmandic/human-models/models ./human-models
+COPY --from=prod-deps /app/node_modules/@vladmandic/human-models/models ./human-models
 
 # Copy scripts for database initialization
 COPY --from=builder /app/scripts ./scripts

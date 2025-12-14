@@ -18,7 +18,7 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
-import { z } from "zod";
+import z from "zod";
 import { getLatestAgeProof, insertAgeProof } from "@/lib/age-proofs";
 import {
   consumeChallenge,

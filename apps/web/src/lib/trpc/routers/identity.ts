@@ -17,7 +17,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { v4 as uuidv4 } from "uuid";
-import { z } from "zod";
+import z from "zod";
 import { sha256CommitmentHex } from "@/lib/commitments";
 import {
   createIdentityProof,

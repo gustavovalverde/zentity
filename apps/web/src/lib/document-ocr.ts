@@ -10,7 +10,7 @@
  * - Field extraction (name, document number, DOB, etc.)
  */
 
-import { z } from "zod";
+import z from "zod";
 
 // Schema for extracted document data
 const DocumentSchema = z.object({

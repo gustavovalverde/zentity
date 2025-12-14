@@ -1,1 +1,0 @@
-{ "onlyBuiltDependencies": ["@tensorflow/tfjs-node", "better-sqlite3"] }

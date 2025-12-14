@@ -1,6 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import Database from "better-sqlite3";
 import { CheckCircle, Clock, Code, Hash, Shield } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -16,52 +13,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
-
-const dbPath = process.env.DATABASE_PATH || "./dev.db";
-const dbDir = path.dirname(dbPath);
-if (dbDir !== "." && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-const db = new Database(dbPath);
-
-async function getUserProof(userId: string) {
-  try {
-    const stmt = db.prepare(`
-      SELECT id, is_over_18, generation_time_ms, created_at
-      FROM age_proofs
-      WHERE user_id = ?
-      ORDER BY created_at DESC
-      LIMIT 1
-    `);
-
-    const proof = stmt.get(userId) as
-      | {
-          id: string;
-          is_over_18: number;
-          generation_time_ms: number;
-          created_at: string;
-        }
-      | undefined;
-
-    if (!proof) return null;
-
-    return {
-      proofId: proof.id,
-      isOver18: Boolean(proof.is_over_18),
-      generationTimeMs: proof.generation_time_ms,
-      createdAt: proof.created_at,
-    };
-  } catch {
-    return null;
-  }
-}
+import { getUserAgeProof } from "@/lib/db";
 
 export default async function VerificationPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
 
-  const proof = session?.user?.id ? await getUserProof(session.user.id) : null;
+  const proof = session?.user?.id ? getUserAgeProof(session.user.id) : null;
 
   return (
     <div className="space-y-6">

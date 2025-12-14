@@ -10,7 +10,7 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
-import { z } from "zod";
+import z from "zod";
 import { processDocument } from "@/lib/document-ocr";
 import {
   getSessionFromCookie,

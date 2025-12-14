@@ -2,7 +2,7 @@
  * Database utilities for Zentity
  *
  * This module provides database access for identity proofs and verification data.
- * Uses the same better-sqlite3 instance as Better Auth.
+ * Uses the same `bun:sqlite` instance as Better Auth.
  */
 
 import { EncryptJWT, jwtDecrypt } from "jose";
@@ -351,7 +351,7 @@ export function documentHashExists(documentHash: string): boolean {
   const stmt = db.prepare(`
     SELECT 1 FROM identity_proofs WHERE document_hash = ?
   `);
-  return stmt.get(documentHash) !== undefined;
+  return stmt.get(documentHash) != null;
 }
 
 /**

@@ -1,41 +1,12 @@
 /**
  * Tests for the database module.
- *
- * Note: These tests mock better-sqlite3 to avoid actual database operations.
- * The setup file provides the mock implementation.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { documentHashExists, getVerificationStatus } from "../db";
 
-// Mock better-sqlite3 so db.ts can be imported without a real database
-vi.mock("better-sqlite3", () => {
-  const mockStmt = {
-    get: vi.fn(() => undefined),
-    run: vi.fn(),
-    all: vi.fn(() => []),
-  };
-
-  const mockDb = {
-    prepare: vi.fn(() => mockStmt),
-    exec: vi.fn(),
-  };
-
-  const DatabaseMock = vi.fn(function DatabaseMock() {
-    return mockDb;
-  });
-
-  return {
-    __esModule: true,
-    default: DatabaseMock,
-  };
-});
-
-// We need to import after mocking in setup file
 describe("Database Module", () => {
   describe("getVerificationStatus", () => {
-    it("returns level none for unverified user", async () => {
-      // Dynamic import to get mocked version
-      const { getVerificationStatus } = await import("../db");
-
+    it("returns level none for unverified user", () => {
       const status = getVerificationStatus("non-existent-user");
 
       expect(status.level).toBe("none");
@@ -48,9 +19,7 @@ describe("Database Module", () => {
   });
 
   describe("documentHashExists", () => {
-    it("returns false for non-existing hash", async () => {
-      const { documentHashExists } = await import("../db");
-
+    it("returns false for non-existing hash", () => {
       expect(documentHashExists("non-existent-hash")).toBe(false);
     });
   });

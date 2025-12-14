@@ -22,6 +22,13 @@ const authedSession = {
   session: { id: "test-session" },
 } as any as Session;
 
+function setFetchMock(fetchMock: unknown) {
+  const fn = fetchMock as { preconnect?: unknown };
+  fn.preconnect = vi.fn();
+  global.fetch = fetchMock as typeof fetch;
+  return fetchMock as ReturnType<typeof vi.fn>;
+}
+
 describe("Liveness FHE (tRPC)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,17 +68,19 @@ describe("Liveness FHE (tRPC)", () => {
     });
 
     it("should encrypt valid liveness score", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: () =>
-          Promise.resolve({
-            ciphertext: "encrypted-ciphertext-base64",
-            clientKeyId: "default",
-            score: 0.85,
-          }),
-      });
+      setFetchMock(
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: () =>
+            Promise.resolve({
+              ciphertext: "encrypted-ciphertext-base64",
+              clientKeyId: "default",
+              score: 0.85,
+            }),
+        }),
+      );
 
       const caller = createCaller(authedSession);
       const data = await caller.encryptLiveness({ score: 0.85 });
@@ -81,13 +90,15 @@ describe("Liveness FHE (tRPC)", () => {
     });
 
     it("should handle FHE service errors", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: "Internal Server Error",
-        text: () => Promise.resolve("FHE service unavailable"),
-        json: () => Promise.resolve({ error: "FHE service unavailable" }),
-      });
+      setFetchMock(
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status: 500,
+          statusText: "Internal Server Error",
+          text: () => Promise.resolve("FHE service unavailable"),
+          json: () => Promise.resolve({ error: "FHE service unavailable" }),
+        }),
+      );
 
       const caller = createCaller(authedSession);
       await expect(
@@ -96,17 +107,19 @@ describe("Liveness FHE (tRPC)", () => {
     });
 
     it("should accept boundary values (0.0 and 1.0)", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: () =>
-          Promise.resolve({
-            ciphertext: "encrypted",
-            clientKeyId: "default",
-            score: 0.0,
-          }),
-      });
+      const fetchMock = setFetchMock(
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: () =>
+            Promise.resolve({
+              ciphertext: "encrypted",
+              clientKeyId: "default",
+              score: 0.0,
+            }),
+        }),
+      );
 
       // Test score = 0.0
       const caller = createCaller(authedSession);
@@ -114,7 +127,7 @@ describe("Liveness FHE (tRPC)", () => {
       expect(response0.score).toBe(0.0);
 
       // Test score = 1.0
-      vi.mocked(global.fetch).mockResolvedValue({
+      fetchMock.mockResolvedValue({
         ok: true,
         status: 200,
         statusText: "OK",
@@ -124,7 +137,7 @@ describe("Liveness FHE (tRPC)", () => {
             clientKeyId: "default",
             score: 1.0,
           }),
-      } as any);
+      });
 
       const response1 = await caller.encryptLiveness({ score: 1.0 });
       expect(response1.score).toBe(1.0);
@@ -155,20 +168,22 @@ describe("Liveness FHE (tRPC)", () => {
 
     it("should use default threshold (0.3) when not provided", async () => {
       let capturedBody: any;
-      global.fetch = vi.fn().mockImplementation((_url, options) => {
-        capturedBody = JSON.parse(options?.body as string);
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () =>
-            Promise.resolve({
-              passesThreshold: true,
-              threshold: 0.3,
-              computationTimeMs: 100,
-            }),
-        });
-      });
+      setFetchMock(
+        vi.fn().mockImplementation((_url, options) => {
+          capturedBody = JSON.parse(options?.body as string);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            json: () =>
+              Promise.resolve({
+                passesThreshold: true,
+                threshold: 0.3,
+                computationTimeMs: 100,
+              }),
+          });
+        }),
+      );
 
       const caller = createCaller(authedSession);
       await caller.verifyLivenessThreshold({ ciphertext: "encrypted-data" });
@@ -176,17 +191,19 @@ describe("Liveness FHE (tRPC)", () => {
     });
 
     it("should verify threshold successfully", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: () =>
-          Promise.resolve({
-            passesThreshold: true,
-            threshold: 0.5,
-            computationTimeMs: 150,
-          }),
-      });
+      setFetchMock(
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: () =>
+            Promise.resolve({
+              passesThreshold: true,
+              threshold: 0.5,
+              computationTimeMs: 150,
+            }),
+        }),
+      );
 
       const caller = createCaller(authedSession);
       const data = await caller.verifyLivenessThreshold({
@@ -200,17 +217,19 @@ describe("Liveness FHE (tRPC)", () => {
     });
 
     it("should return false when threshold not met", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: () =>
-          Promise.resolve({
-            passesThreshold: false,
-            threshold: 0.9,
-            computationTimeMs: 150,
-          }),
-      });
+      setFetchMock(
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: () =>
+            Promise.resolve({
+              passesThreshold: false,
+              threshold: 0.9,
+              computationTimeMs: 150,
+            }),
+        }),
+      );
 
       const caller = createCaller(authedSession);
       const data = await caller.verifyLivenessThreshold({

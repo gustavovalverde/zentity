@@ -26,19 +26,19 @@ The frontend handles:
 
 ### Web Frontend (apps/web)
 ```bash
-pnpm dev          # Start dev server
-pnpm build        # Production build
-pnpm lint         # Biome linting
-pnpm lint:fix     # Fix lint issues
-pnpm test         # Run vitest
-pnpm test:e2e     # Run Playwright tests
+bun run dev          # Start dev server
+bun run build        # Production build
+bun run lint         # Biome linting
+bun run lint:fix     # Fix lint issues
+bun run test         # Run unit tests (Vitest via Bun)
+bun run test:e2e     # Run Playwright tests
 ```
 
 ### Noir Circuits (apps/web/noir-circuits)
 ```bash
 # From apps/web directory:
-pnpm circuits:compile  # Compile all circuits
-pnpm circuits:test     # Run circuit tests
+bun run circuits:compile  # Compile all circuits
+bun run circuits:test     # Run circuit tests
 ```
 
 ### FHE Service (apps/fhe)
@@ -65,10 +65,10 @@ docker-compose up -d     # Detached mode
 ### Manual Setup (without Docker)
 
 **Prerequisites:**
-- Node.js 20+ (recommended: use `.nvmrc` or `mise`)
+- Node.js 24+ (recommended: use `.nvmrc` or `mise`)
+- Bun 1.3+ (runtime + package manager for `apps/web`)
 - Rust 1.91+ (recommended: `mise`)
 - Python 3.12+ (recommended: `mise`)
-- pnpm
 
 **Setup Toolchain:**
 ```bash
@@ -82,7 +82,7 @@ mise install
 **Install Dependencies:**
 ```bash
 # Frontend
-cd apps/web && pnpm install
+cd apps/web && bun install
 
 # OCR service
 cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
@@ -94,7 +94,7 @@ cd apps/fhe && cargo build --release
 **Start Services (3 terminals):**
 ```bash
 # Terminal 1: Frontend
-cd apps/web && pnpm dev
+cd apps/web && bun run dev
 
 # Terminal 2: FHE Service
 cd apps/fhe && cargo run --release
@@ -118,11 +118,11 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, etc.
 
 ## Code Conventions
 
-- **Linting**: Biome (not ESLint). Run `pnpm lint:fix` before commits.
+- **Linting**: Biome (not ESLint). Run `bun run lint:fix` before commits.
 - **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
-- **Database**: better-sqlite3 with automatic schema updates in `src/lib/db.ts`
+- **Database**: SQLite via `bun:sqlite` with automatic schema updates in `src/lib/db.ts`
 - **Auth**: better-auth
 
 ## tRPC API Structure
@@ -163,8 +163,8 @@ Configure allowed redirect URIs via `RP_ALLOWED_REDIRECT_URIS` env var.
 
 ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
 1. Install Noir toolchain: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup`
-2. Compile circuits: `cd apps/web && pnpm circuits:compile`
-3. Test circuits: `cd apps/web && pnpm circuits:test`
+2. Compile circuits: `cd apps/web && bun run circuits:compile`
+3. Test circuits: `cd apps/web && bun run circuits:test`
 
 Circuits available:
 - `age_verification` — Prove age >= threshold without revealing birth year

@@ -3,29 +3,9 @@
  */
 import { vi } from "vitest";
 
-// Mock better-sqlite3 for database tests
-vi.mock("better-sqlite3", () => {
-  const mockStmt = {
-    run: vi.fn(() => ({ changes: 1 })),
-    get: vi.fn(() => undefined),
-    all: vi.fn(() => []),
-  };
-
-  const mockDb = {
-    prepare: vi.fn(() => mockStmt),
-    exec: vi.fn(),
-    close: vi.fn(),
-  };
-
-  const DatabaseMock = vi.fn(function DatabaseMock() {
-    return mockDb;
-  });
-
-  return {
-    __esModule: true,
-    default: DatabaseMock,
-  };
-});
+process.env.DATABASE_PATH ||= ":memory:";
+process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
+process.env.BETTER_AUTH_URL ||= "http://localhost:3000";
 
 // Mock Better Auth
 vi.mock("@/lib/auth", () => ({

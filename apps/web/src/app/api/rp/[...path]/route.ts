@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, setSignedCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
-import { z } from "zod";
+import z from "zod";
 import { auth } from "@/lib/auth";
 import {
   consumeRpAuthorizationCode,

@@ -16,26 +16,25 @@ This is the main web application for Zentity, providing:
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| Next.js | 16.0.7 | React framework with App Router |
-| React | 19.0.0 | UI library |
+| Next.js | 16.x | React framework with App Router |
+| React | 19.x | UI library |
 | TypeScript | 5.x | Type safety |
 | Tailwind CSS | 4.x | Styling |
 | Radix UI | Latest | Accessible components |
-| React Hook Form | 7.x | Form handling |
-| Zod | 3.x | Schema validation |
+| TanStack React Form | 1.x | Form handling |
+| Zod | 4.x | Schema validation |
 | better-auth | Latest | Authentication |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm
+- Bun 1.3+
 
 ### Install Dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
 ### Environment Variables
@@ -54,7 +53,7 @@ OCR_SERVICE_URL=http://localhost:5004
 ### Development
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -62,13 +61,13 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Build
 
 ```bash
-pnpm build
+bun run build
 ```
 
 ### Production
 
 ```bash
-pnpm start
+bun run start
 ```
 
 ## Project Structure

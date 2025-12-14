@@ -109,19 +109,26 @@ if (typeof globalThis.fetch === "function") {
   }
 
   if (origin) {
-    const originalFetch = globalThis.fetch.bind(globalThis);
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const originalFetch = globalThis.fetch;
+    const originalFetchBound = originalFetch.bind(globalThis);
+    const wrappedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       if (typeof input === "string" && input.startsWith("/")) {
-        return originalFetch(`${origin}${input}`, init);
+        return originalFetchBound(`${origin}${input}`, init);
       }
       if (input instanceof URL && input.pathname.startsWith("/")) {
-        return originalFetch(
+        return originalFetchBound(
           new URL(`${origin}${input.pathname}${input.search}`),
           init,
         );
       }
-      return originalFetch(input, init);
-    };
+      return originalFetchBound(input, init);
+    }) as typeof fetch;
+
+    if ("preconnect" in originalFetch) {
+      wrappedFetch.preconnect = originalFetch.preconnect;
+    }
+
+    globalThis.fetch = wrappedFetch;
   }
 }
 

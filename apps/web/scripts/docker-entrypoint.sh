@@ -19,4 +19,4 @@ if [ -f /app/scripts/init-db.sql ]; then
 fi
 
 # Start the application
-exec node server.js
+exec bun server.js

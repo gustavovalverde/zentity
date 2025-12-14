@@ -1,0 +1,10 @@
+feat(web)!: migrate apps/web to Bun runtime + package manager
+
+- Replace `better-sqlite3` with `bun:sqlite` (and adjust `.get()` null semantics)
+- Use Bun to run Next.js + Vitest (and fix `fetch.preconnect` typing in tests)
+- Run bb.js server verification in a Node worker (Bun bb.js WASM instability)
+- Upgrade Node toolchain + Docker images to Node 24
+- Replace pnpm lockfile with `bun.lock` and use `bun install` in Docker
+- Update docs/tooling references to Bun commands
+
+BREAKING CHANGE: `apps/web` now requires Bun (runtime + install) instead of pnpm/Node-only workflows.

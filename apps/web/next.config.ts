@@ -7,7 +7,6 @@ const nextConfig: NextConfig = {
   // Mark packages as external for server-side usage
   // These are loaded at runtime from node_modules, not bundled
   serverExternalPackages: [
-    "better-sqlite3",
     "@vladmandic/human",
     "@tensorflow/tfjs-node",
     // bb.js works on both browser and Node.js

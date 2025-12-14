@@ -1,15 +1,8 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-import Database from "better-sqlite3";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
+import { getDefaultDatabasePath, getSqliteDb } from "@/lib/sqlite";
 
-const dbPath = process.env.DATABASE_PATH || "./dev.db";
-const dbDir = path.dirname(dbPath);
-if (dbDir !== "." && !fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-const db = new Database(dbPath);
+const db = getSqliteDb(getDefaultDatabasePath());
 
 // Initialize the kyc_documents table if it doesn't exist
 // PRIVACY: We do NOT store file_data (image bytes) - only metadata for tracking

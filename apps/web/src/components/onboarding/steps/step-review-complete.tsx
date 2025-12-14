@@ -790,166 +790,170 @@ export function StepReviewComplete() {
         </div>
       )}
 
-      {/* Password Form */}
-      {proofStatus === "idle" && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            form.handleSubmit();
-          }}
-          className="space-y-4"
-        >
-          {/* Helps password managers associate the new-password fields to the email used earlier. */}
-          <input
-            type="email"
-            name="username"
-            autoComplete="username"
-            value={data.email}
-            readOnly
-            className="hidden"
-            tabIndex={-1}
-            aria-hidden="true"
-          />
-          <div className="rounded-lg border p-4 space-y-4">
-            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-              Create Password
-            </h4>
+      {/* Password Form - kept mounted during submission to prevent TanStack Form disconnect */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          form.handleSubmit();
+        }}
+        className="space-y-4"
+      >
+        {/* Helps password managers associate the new-password fields to the email used earlier. */}
+        <input
+          type="email"
+          name="username"
+          autoComplete="username"
+          value={data.email}
+          readOnly
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
 
-            <form.Field
-              name="password"
-              validators={{
-                onBlur: ({ value }) => validatePassword(value),
-                onSubmit: ({ value }) => validatePassword(value),
-              }}
-            >
-              {(field) => (
-                <Field
-                  name={field.name}
-                  errors={field.state.meta.errors as string[]}
-                  isTouched={field.state.meta.isTouched}
-                  isValidating={field.state.meta.isValidating}
-                >
-                  <FieldLabel>Password</FieldLabel>
-                  <FieldControl>
-                    <Input
-                      type="password"
-                      placeholder="Create a password"
-                      autoComplete="new-password"
-                      ref={passwordInputRef}
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      onBlur={field.handleBlur}
-                    />
-                  </FieldControl>
-                  <FieldMessage />
-                  <PasswordRequirements
-                    password={field.state.value}
-                    email={data.email}
-                    documentNumber={data.extractedDocNumber}
-                    breachCheckKey={breachCheckKey}
-                    onBreachStatusChange={(status, checkedPassword) => {
-                      setBreachStatus(status);
-                      setBreachCheckedPassword(checkedPassword);
-                    }}
-                  />
-                </Field>
-              )}
-            </form.Field>
+        {/* Form fields - only visible when idle */}
+        {proofStatus === "idle" && (
+          <>
+            <div className="rounded-lg border p-4 space-y-4">
+              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                Create Password
+              </h4>
 
-            <form.Field
-              name="confirmPassword"
-              validators={{
-                onBlur: ({ value }) => validateConfirmPassword(value),
-                onSubmit: ({ value }) => validateConfirmPassword(value),
-              }}
-            >
-              {(field) => (
-                <Field
-                  name={field.name}
-                  errors={field.state.meta.errors as string[]}
-                  isTouched={field.state.meta.isTouched}
-                  isValidating={field.state.meta.isValidating}
-                >
-                  <FieldLabel>Confirm Password</FieldLabel>
-                  <FieldControl>
-                    <Input
-                      type="password"
-                      placeholder="Confirm your password"
-                      autoComplete="new-password"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      onBlur={() => {
-                        field.handleBlur();
-                        triggerBreachCheckIfConfirmed();
+              <form.Field
+                name="password"
+                validators={{
+                  onBlur: ({ value }) => validatePassword(value),
+                  onSubmit: ({ value }) => validatePassword(value),
+                }}
+              >
+                {(field) => (
+                  <Field
+                    name={field.name}
+                    errors={field.state.meta.errors as string[]}
+                    isTouched={field.state.meta.isTouched}
+                    isValidating={field.state.meta.isValidating}
+                  >
+                    <FieldLabel>Password</FieldLabel>
+                    <FieldControl>
+                      <Input
+                        type="password"
+                        placeholder="Create a password"
+                        autoComplete="new-password"
+                        ref={passwordInputRef}
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        onBlur={field.handleBlur}
+                      />
+                    </FieldControl>
+                    <FieldMessage />
+                    <PasswordRequirements
+                      password={field.state.value}
+                      email={data.email}
+                      documentNumber={data.extractedDocNumber}
+                      breachCheckKey={breachCheckKey}
+                      onBreachStatusChange={(status, checkedPassword) => {
+                        setBreachStatus(status);
+                        setBreachCheckedPassword(checkedPassword);
                       }}
                     />
-                  </FieldControl>
-                  <FieldMessage />
-                </Field>
-              )}
-            </form.Field>
+                  </Field>
+                )}
+              </form.Field>
+
+              <form.Field
+                name="confirmPassword"
+                validators={{
+                  onBlur: ({ value }) => validateConfirmPassword(value),
+                  onSubmit: ({ value }) => validateConfirmPassword(value),
+                }}
+              >
+                {(field) => (
+                  <Field
+                    name={field.name}
+                    errors={field.state.meta.errors as string[]}
+                    isTouched={field.state.meta.isTouched}
+                    isValidating={field.state.meta.isValidating}
+                  >
+                    <FieldLabel>Confirm Password</FieldLabel>
+                    <FieldControl>
+                      <Input
+                        type="password"
+                        placeholder="Confirm your password"
+                        autoComplete="new-password"
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        onBlur={() => {
+                          field.handleBlur();
+                          triggerBreachCheckIfConfirmed();
+                        }}
+                      />
+                    </FieldControl>
+                    <FieldMessage />
+                  </Field>
+                )}
+              </form.Field>
+            </div>
+
+            <WizardNavigation
+              onNext={() => form.handleSubmit()}
+              nextLabel="Complete Registration"
+              disableNext={
+                breachStatus === "checking" || breachStatus === "compromised"
+              }
+            />
+          </>
+        )}
+
+        {/* Processing Status - shown during submission */}
+        {proofStatus !== "idle" && proofStatus !== "error" && (
+          <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-800 dark:bg-blue-950 animate-in fade-in duration-300">
+            <div className="flex items-center gap-2 mb-4">
+              <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="font-medium text-blue-700 dark:text-blue-300">
+                Securing your account
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <StepIndicator
+                label="Creating account"
+                status={getStepStatus("account")}
+                icon={<Lock className="h-4 w-4" />}
+              />
+              <StepIndicator
+                label="Encrypting data (FHE)"
+                status={getStepStatus("encrypt")}
+                icon={<Key className="h-4 w-4" />}
+              />
+              <StepIndicator
+                label="Generating privacy proof (ZK)"
+                status={getStepStatus("proof")}
+                icon={<Shield className="h-4 w-4" />}
+              />
+              <StepIndicator
+                label="Verifying proof"
+                status={getStepStatus("verify")}
+                icon={<Check className="h-4 w-4" />}
+              />
+              <StepIndicator
+                label="Verifying identity (document + face)"
+                status={getStepStatus("identity")}
+                icon={<UserCheck className="h-4 w-4" />}
+              />
+              <StepIndicator
+                label="Storing verification"
+                status={getStepStatus("store")}
+                icon={<Database className="h-4 w-4" />}
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-blue-200 dark:border-blue-800">
+              Your personal data is processed transiently. Only cryptographic
+              proofs are stored.
+            </p>
           </div>
-
-          <WizardNavigation
-            onNext={() => form.handleSubmit()}
-            nextLabel="Complete Registration"
-            disableNext={
-              breachStatus === "checking" || breachStatus === "compromised"
-            }
-          />
-        </form>
-      )}
-
-      {/* Processing Status */}
-      {proofStatus !== "idle" && proofStatus !== "error" && (
-        <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-800 dark:bg-blue-950 animate-in fade-in duration-300">
-          <div className="flex items-center gap-2 mb-4">
-            <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            <span className="font-medium text-blue-700 dark:text-blue-300">
-              Securing your account
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            <StepIndicator
-              label="Creating account"
-              status={getStepStatus("account")}
-              icon={<Lock className="h-4 w-4" />}
-            />
-            <StepIndicator
-              label="Encrypting data (FHE)"
-              status={getStepStatus("encrypt")}
-              icon={<Key className="h-4 w-4" />}
-            />
-            <StepIndicator
-              label="Generating privacy proof (ZK)"
-              status={getStepStatus("proof")}
-              icon={<Shield className="h-4 w-4" />}
-            />
-            <StepIndicator
-              label="Verifying proof"
-              status={getStepStatus("verify")}
-              icon={<Check className="h-4 w-4" />}
-            />
-            <StepIndicator
-              label="Verifying identity (document + face)"
-              status={getStepStatus("identity")}
-              icon={<UserCheck className="h-4 w-4" />}
-            />
-            <StepIndicator
-              label="Storing verification"
-              status={getStepStatus("store")}
-              icon={<Database className="h-4 w-4" />}
-            />
-          </div>
-
-          <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-blue-200 dark:border-blue-800">
-            Your personal data is processed transiently. Only cryptographic
-            proofs are stored.
-          </p>
-        </div>
-      )}
+        )}
+      </form>
 
       {/* Privacy Info */}
       {proofStatus === "idle" && (

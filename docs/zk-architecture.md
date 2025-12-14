@@ -265,7 +265,7 @@ fn test_circuit() {
 
 ```bash
 cd apps/web
-pnpm circuits:compile
+bun run circuits:compile
 ```
 
 ### 5. Add to TypeScript
@@ -283,10 +283,10 @@ Update these files:
 ```bash
 # Compile all circuits
 cd apps/web
-pnpm circuits:compile
+bun run circuits:compile
 
 # Run circuit tests
-pnpm circuits:test
+bun run circuits:test
 
 # Test specific circuit
 cd noir-circuits/age_verification
