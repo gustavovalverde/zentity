@@ -11,7 +11,7 @@ export default function Home() {
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <Logo />
-            <Badge variant="secondary">Beta</Badge>
+            <Badge variant="secondary">Alpha</Badge>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/sign-in">
