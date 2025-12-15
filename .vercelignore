@@ -1,0 +1,9 @@
+# Ignore all apps except landing
+apps/web
+apps/fhe
+apps/ocr
+
+# Ignore other large directories
+node_modules
+.git
+*.log
