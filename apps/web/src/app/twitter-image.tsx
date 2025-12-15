@@ -10,6 +10,14 @@ export const size = {
 export const contentType = "image/png";
 
 export default async function Image() {
+  // Fetch the actual brand logo (transparent version)
+  const logoData = await fetch(
+    new URL(
+      "../../public/images/logo/logo-full-dark-transparent.png",
+      import.meta.url
+    )
+  ).then((res) => res.arrayBuffer());
+
   return new ImageResponse(
     <div
       style={{
@@ -35,6 +43,21 @@ export default async function Image() {
         }}
       />
 
+      {/* Subtle noise texture overlay */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          opacity: 0.03,
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")",
+          display: "flex",
+        }}
+      />
+
       {/* Main content */}
       <div
         style={{
@@ -44,45 +67,18 @@ export default async function Image() {
           justifyContent: "center",
           flex: 1,
           padding: "60px",
-          gap: "32px",
+          gap: "24px",
         }}
       >
-        {/* Logo mark - Z in circle */}
-        <div
+        {/* Actual brand logo */}
+        <img
+          src={logoData as unknown as string}
+          width={460}
+          height={250}
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "100px",
-            height: "100px",
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%)",
+            objectFit: "contain",
           }}
-        >
-          <span
-            style={{
-              fontSize: "56px",
-              fontWeight: 700,
-              color: "#ffffff",
-              fontFamily: "system-ui, sans-serif",
-            }}
-          >
-            Z
-          </span>
-        </div>
-
-        {/* Brand name */}
-        <span
-          style={{
-            fontSize: "32px",
-            fontWeight: 500,
-            color: "#a1a1aa",
-            letterSpacing: "0.3em",
-            textTransform: "uppercase",
-          }}
-        >
-          Zentity
-        </span>
+        />
 
         {/* Tagline */}
         <div
@@ -90,12 +86,13 @@ export default async function Image() {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: "8px",
+            gap: "4px",
+            marginTop: "24px",
           }}
         >
           <span
             style={{
-              fontSize: "64px",
+              fontSize: "56px",
               fontWeight: 700,
               color: "#ffffff",
               lineHeight: 1.1,
@@ -105,7 +102,7 @@ export default async function Image() {
           </span>
           <span
             style={{
-              fontSize: "64px",
+              fontSize: "56px",
               fontWeight: 700,
               color: "#ffffff",
               lineHeight: 1.1,
@@ -118,9 +115,9 @@ export default async function Image() {
         {/* Subtext */}
         <span
           style={{
-            fontSize: "24px",
-            color: "#71717a",
-            marginTop: "16px",
+            fontSize: "22px",
+            color: "#a1a1aa",
+            marginTop: "8px",
           }}
         >
           Privacy-First Identity Verification
@@ -150,8 +147,8 @@ export default async function Image() {
       >
         <span
           style={{
-            fontSize: "18px",
-            color: "#52525b",
+            fontSize: "20px",
+            color: "#9ca3af",
           }}
         >
           zentity.xyz
@@ -160,6 +157,6 @@ export default async function Image() {
     </div>,
     {
       ...size,
-    },
+    }
   );
 }
