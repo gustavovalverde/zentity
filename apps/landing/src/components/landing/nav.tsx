@@ -1,0 +1,212 @@
+import {
+  IconBrandGithub,
+  IconDeviceDesktop,
+  IconMenu2,
+  IconMoon,
+  IconSun,
+} from "@tabler/icons-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Logo } from "@/components/logo";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useTheme } from "@/lib/theme";
+import { cn } from "@/lib/utils";
+
+const navLinks = [
+  { href: "#how-it-works", label: "How It Works" },
+  { href: "#features", label: "Features" },
+  { href: "#use-cases", label: "Use Cases" },
+  { href: "/docs", label: "Docs" },
+];
+
+function ThemeToggle() {
+  const { theme, resolvedTheme, setTheme } = useTheme();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="icon" aria-label="Toggle theme" />
+        }
+      >
+        {resolvedTheme === "dark" ? (
+          <IconSun className="size-5" />
+        ) : (
+          <IconMoon className="size-5" />
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setTheme("light")}>
+          <IconSun className="size-4" />
+          Light
+          {theme === "light" && <span className="ml-auto text-xs">✓</span>}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("dark")}>
+          <IconMoon className="size-4" />
+          Dark
+          {theme === "dark" && <span className="ml-auto text-xs">✓</span>}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("system")}>
+          <IconDeviceDesktop className="size-4" />
+          System
+          {theme === "system" && <span className="ml-auto text-xs">✓</span>}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function Nav() {
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  return (
+    <header
+      className={cn(
+        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        isScrolled
+          ? "bg-background/80 backdrop-blur-md border-b border-border shadow-sm"
+          : "bg-transparent",
+      )}
+    >
+      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <a href="/" className="flex items-center">
+            <Logo variant="full" size="sm" />
+          </a>
+          <Badge variant="secondary" className="hidden sm:inline-flex">
+            Alpha
+          </Badge>
+        </div>
+
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center gap-6">
+          {navLinks.map((link) =>
+            link.href.startsWith("/") ? (
+              <Link
+                key={link.href}
+                to={link.href}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {link.label}
+              </Link>
+            ) : (
+              <a
+                key={link.href}
+                href={link.href}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {link.label}
+              </a>
+            ),
+          )}
+        </div>
+
+        <div className="hidden md:flex items-center gap-3">
+          <ThemeToggle />
+          <a
+            href="https://github.com/gustavovalverde/zentity"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="outline" size="sm">
+              <IconBrandGithub className="size-4 mr-2" />
+              GitHub
+            </Button>
+          </a>
+          <a
+            href="https://app.zentity.xyz/sign-up?fresh=1"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button size="sm">Try Demo</Button>
+          </a>
+        </div>
+
+        {/* Mobile Menu */}
+        <div className="flex md:hidden items-center gap-2">
+          <ThemeToggle />
+          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+            <SheetTrigger
+              render={
+                <Button variant="ghost" size="sm" aria-label="Toggle menu" />
+              }
+            >
+              <IconMenu2 className="size-5" />
+            </SheetTrigger>
+            <SheetContent side="right" className="w-72">
+              <SheetHeader>
+                <SheetTitle>Menu</SheetTitle>
+              </SheetHeader>
+              <nav className="flex flex-col gap-1 mt-4">
+                {navLinks.map((link) =>
+                  link.href.startsWith("/") ? (
+                    <Link
+                      key={link.href}
+                      to={link.href}
+                      onClick={() => setIsSheetOpen(false)}
+                      className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-2 rounded-md hover:bg-muted"
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setIsSheetOpen(false)}
+                      className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-2 rounded-md hover:bg-muted"
+                    >
+                      {link.label}
+                    </a>
+                  ),
+                )}
+              </nav>
+              <div className="flex flex-col gap-2 mt-6 pt-4 border-t border-border">
+                <a
+                  href="https://github.com/gustavovalverde/zentity"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="outline" className="w-full">
+                    <IconBrandGithub className="size-4 mr-2" />
+                    View on GitHub
+                  </Button>
+                </a>
+                <a
+                  href="https://app.zentity.xyz/sign-up?fresh=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button className="w-full">Try Demo</Button>
+                </a>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </nav>
+    </header>
+  );
+}
