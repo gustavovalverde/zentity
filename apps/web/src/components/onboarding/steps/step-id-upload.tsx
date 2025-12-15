@@ -46,8 +46,8 @@ type ProcessingState =
   | "verified"
   | "rejected";
 
-/** Timeout for OCR processing before showing error. */
-const PROCESSING_TIMEOUT = 30000;
+/** Timeout for OCR processing before showing error (45 seconds). */
+const PROCESSING_TIMEOUT = 45000;
 
 /** User-friendly recovery suggestions keyed by validation issue. */
 const ERROR_RECOVERY_TIPS: Record<string, string> = {

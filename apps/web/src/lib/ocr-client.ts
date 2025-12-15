@@ -35,6 +35,9 @@ export interface OcrProcessResult {
   validationIssues: string[];
 }
 
+/** OCR processing timeout (40 seconds) - slightly less than client timeout. */
+const OCR_TIMEOUT_MS = 40000;
+
 export async function processDocumentOcr(args: {
   image: string;
   userSalt?: string;
@@ -50,6 +53,7 @@ export async function processDocumentOcr(args: {
       image: args.image,
       userSalt: args.userSalt,
     }),
+    timeoutMs: OCR_TIMEOUT_MS,
   });
 }
 
@@ -66,6 +70,7 @@ export async function ocrDocumentOcr(args: {
     body: JSON.stringify({
       image: args.image,
     }),
+    timeoutMs: OCR_TIMEOUT_MS,
   });
 }
 
