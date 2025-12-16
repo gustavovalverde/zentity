@@ -30,7 +30,7 @@ export function CTASection() {
         {/* Open Source Badge + Headline */}
         <div className="text-center">
           <Badge variant="outline" className="mb-4">
-            MIT License
+            O'Saasy License
           </Badge>
           <h2 className="text-3xl font-bold sm:text-4xl">
             100% open source.

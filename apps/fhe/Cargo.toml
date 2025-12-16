@@ -2,6 +2,8 @@
 name = "fhe-service"
 version = "0.1.0"
 edition = "2021"
+license = "LicenseRef-OSaasy"
+license-file = "../../LICENSE"
 
 [dependencies]
 # FHE library

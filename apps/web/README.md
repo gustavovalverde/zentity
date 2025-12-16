@@ -221,4 +221,6 @@ docker run -p 3000:3000 zentity-web
 
 ## License
 
-MIT
+This project is licensed under the [O'Saasy License](../../LICENSE) ([osaasy.dev](https://osaasy.dev/)) - a permissive open source license based on MIT with a SaaS competition restriction.
+
+See the [LICENSE](../../LICENSE) file for full terms.

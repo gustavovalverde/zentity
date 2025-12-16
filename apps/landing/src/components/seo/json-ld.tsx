@@ -43,7 +43,7 @@ export function SoftwareApplicationSchema() {
       "Nationality proofs with Merkle trees",
       "GDPR-compliant data erasure",
     ],
-    license: "https://opensource.org/licenses/MIT",
+    license: "https://osaasy.dev/",
   };
 
   return (
@@ -74,7 +74,7 @@ export function FAQSchema() {
     {
       question: "Is Zentity open source?",
       answer:
-        "Yes, Zentity is 100% open source under the MIT license. You can audit every cryptographic operation, self-host on your own infrastructure, or fork and customize for your needs.",
+        "Yes, Zentity is 100% open source under the O'Saasy license. You can audit every cryptographic operation, self-host on your own infrastructure, or fork and customize for your needs.",
     },
     {
       question: "How does GDPR compliance work?",

@@ -121,8 +121,16 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t border-border">
           <p className="text-center text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} Zentity. Open source under MIT
-            License.
+            &copy; {new Date().getFullYear()} Zentity. Open source under{" "}
+            <a
+              href="https://osaasy.dev/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors underline"
+            >
+              O'Saasy License
+            </a>
+            .
           </p>
         </div>
       </div>

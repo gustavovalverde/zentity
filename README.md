@@ -286,7 +286,13 @@ Zentity uses three complementary techniques:
 
 ## License
 
-MIT
+This project is licensed under the [O'Saasy License](LICENSE) ([osaasy.dev](https://osaasy.dev/)) - a permissive source-available license based on MIT.
+
+**You may:** use, copy, modify, distribute, sublicense, and sell the software.
+
+**Restriction:** You may not offer this software (or derivatives) as a competing hosted SaaS/cloud service where the primary value is the functionality of the software itself.
+
+See the [LICENSE](LICENSE) file for full terms.
 
 ## Contributing
 
