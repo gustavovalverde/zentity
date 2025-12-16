@@ -4,6 +4,9 @@
 ### Fixtures ###
 fixtures/
 
+### Temporary files ###
+commit-message.txt
+
 ### Documentation ###
 # Keep the public docs lean for open-source. Treat the rest as internal notes.
 docs/*
