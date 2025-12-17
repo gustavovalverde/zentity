@@ -1,6 +1,8 @@
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { ModeToggle } from "@/components/mode-toggle";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -37,7 +39,20 @@ export default function Home() {
             zero-knowledge proofs and homomorphic encryption to verify your
             identity while keeping your information private.
           </p>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+
+          <Alert className="mt-8 border-amber-500/30 bg-amber-500/5 text-left">
+            <AlertTriangle className="text-amber-500" />
+            <AlertTitle className="text-amber-600 dark:text-amber-400">
+              Proof of Concept
+            </AlertTitle>
+            <AlertDescription>
+              Zentity is under active development. Our cryptographic approach is
+              being validated. Use for evaluation only - do not submit
+              production-sensitive personal data.
+            </AlertDescription>
+          </Alert>
+
+          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link href="/sign-up?fresh=1">
               <Button size="lg" className="w-full sm:w-auto">
                 Start Verification

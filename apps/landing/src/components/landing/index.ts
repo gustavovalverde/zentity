@@ -4,6 +4,7 @@ export { Footer } from "./footer";
 export { Hero } from "./hero";
 export { MidPageCTA } from "./mid-page-cta";
 export { Nav } from "./nav";
+export { PocDisclaimer } from "./poc-disclaimer";
 export { ProblemSolution } from "./problem-solution";
 export { TechnicalDeepDive } from "./technical-deep-dive";
 export { ThreePillars } from "./three-pillars";

@@ -23,7 +23,16 @@ Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographi
 </div>
 
 > [!CAUTION]
-> This is a **PoC**. Breaking changes are expected and backward compatibility is not a goal.
+> **Proof of Concept - Active Development**
+>
+> Zentity is a PoC demonstrating privacy-preserving KYC. While we apply best-effort security practices:
+>
+> - **Breaking changes expected** - Backward compatibility is not a goal
+> - **Cryptographic validation in progress** - Our ZK/FHE approach is still being validated
+> - **Not production-ready** - Do not use with sensitive personal data
+> - **No security guarantees** - Credentials and information may not be in a fully secure state
+>
+> Use this project for **evaluation and learning**, not production deployments with real user data.
 
 ## Contents
 

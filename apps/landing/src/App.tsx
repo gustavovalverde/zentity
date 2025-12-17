@@ -7,6 +7,7 @@ import {
   Hero,
   MidPageCTA,
   Nav,
+  PocDisclaimer,
   ProblemSolution,
   TechnicalDeepDive,
   ThreePillars,
@@ -39,6 +40,7 @@ function LandingPage() {
           <FeaturesGrid />
           <TechnicalDeepDive />
           <CTASection />
+          <PocDisclaimer />
         </main>
         <Footer />
       </div>
