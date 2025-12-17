@@ -17,6 +17,10 @@ on:
         description: 'Path to the Docker build context (e.g., apps/fhe)'
         required: true
         type: string
+    secrets:
+      BETTER_AUTH_SECRET:
+        description: 'Auth secret for web service build (only required for web)'
+        required: false
     outputs:
       digest:
         description: 'Image digest'
@@ -106,7 +110,8 @@ jobs:
             SOURCE_DATE_EPOCH=${{ github.event.repository.pushed_at }}
           # Web service requires BETTER_AUTH_SECRET for build
           # FHE and OCR services don't need secrets
-          secrets: ${{ inputs.service_name == 'web' && format('better_auth_secret={0}', secrets.BETTER_AUTH_SECRET) || '' }}
+          # Note: secrets.BETTER_AUTH_SECRET must be configured in repository settings
+          secrets: ${{ (inputs.service_name == 'web' && secrets.BETTER_AUTH_SECRET != '') && format('better_auth_secret={0}', secrets.BETTER_AUTH_SECRET) || '' }}
           provenance: true
           sbom: true
 

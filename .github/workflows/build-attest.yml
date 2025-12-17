@@ -102,7 +102,8 @@ jobs:
     with:
       service_name: web
       context_path: apps/web
-    secrets: inherit # Required for BETTER_AUTH_SECRET
+    secrets:
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:
       contents: read # Required to checkout code
       packages: write # Required to push to GHCR
