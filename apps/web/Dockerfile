@@ -1,73 +1,104 @@
-# Frontend Dockerfile - Optimized for Railway (<4GB limit)
-# Uses official Bun images and Next.js standalone output
+# syntax=docker/dockerfile:1
 
-# =============================================================================
-# Stage 1: Build dependencies with native module support
-# =============================================================================
-FROM oven/bun:1-debian AS deps
+# Global build arguments
+ARG SOURCE_DATE_EPOCH=0
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
+# User configuration (APP_ prefix avoids system variable collision)
+ARG APP_UID=10001
+ARG APP_GID=${APP_UID}
+ARG APP_USER=nextjs
+ARG APP_HOME=/app
+
+# --- Stage 1: Dependencies ---
+FROM oven/bun:1-debian@sha256:9d9504d425a8b85c5cf162c1c354f9403e15583e0f3e1de3750ce3723d3e89ac AS deps
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG SOURCE_DATE_EPOCH
+ARG APP_HOME
+
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 
 # Build tools for tfjs-node native compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/*
 
-WORKDIR /app
+WORKDIR ${APP_HOME}
 
-COPY package.json bun.lock ./
+# Copy package files first for dependency caching
+COPY --link package.json bun.lock ./
 
-# bun install runs postinstall scripts which downloads tfjs-node binaries
-RUN bun install --frozen-lockfile
+# Install dependencies with BuildKit cache mount for Bun
+# Cache persists across builds, significantly speeds up installs
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
-# =============================================================================
-# Stage 2: Build Next.js application
-# =============================================================================
+# --- Stage 2: Builder ---
 FROM deps AS builder
+COPY --link . .
 
-COPY . .
-
+ARG GIT_SHA
+ARG BUILD_TIME
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV DATABASE_PATH=/tmp/dev.db
-ENV BETTER_AUTH_SECRET=build-time-secret-do-not-use-32-chars-minimum!!
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIME=${BUILD_TIME}
 
-RUN touch /tmp/dev.db && bun run build
+# Build with secret mount - REQUIRED (build fails without it)
+# This prevents running with insecure defaults
+# Pass via: docker build --secret id=better_auth_secret,src=<file> ...
+RUN --mount=type=secret,id=better_auth_secret,required=true \
+    touch /tmp/dev.db && \
+    BETTER_AUTH_SECRET=$(cat /run/secrets/better_auth_secret) bun run build
 
-# =============================================================================
-# Stage 3: Production runtime
-# =============================================================================
-FROM oven/bun:1-slim AS runner
+# --- Stage 3: Runtime ---
+FROM oven/bun:1-slim@sha256:10c077f99e1d7dd7fa2947d8ed0a8c2094fa85577856062e43c8967dc97e9fc6 AS runner
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG GIT_SHA
+ARG BUILD_TIME
+ARG APP_UID
+ARG APP_GID
+ARG APP_USER
+ARG APP_HOME
 
 RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 gosu curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/*
 
-WORKDIR /app
+WORKDIR ${APP_HOME}
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIME=${BUILD_TIME}
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
-RUN groupadd --system --gid 1001 nodejs && \
-    useradd --system --uid 1001 --gid nodejs nextjs
+# Create non-root user (high UID/GID avoids host user namespace conflicts)
+RUN groupadd --gid ${APP_GID} nodejs && \
+    useradd --uid ${APP_UID} --gid nodejs --shell /sbin/nologin ${APP_USER}
 
 # Copy Next.js standalone output
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/public ./public
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/standalone ./
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/static ./.next/static
 
 # Copy native modules (tfjs-node + human.js - can't be traced by standalone)
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@tensorflow ./node_modules/@tensorflow
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@vladmandic ./node_modules/@vladmandic
-
-# Copy Human.js models for face detection
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules/@vladmandic/human-models/models ./human-models
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@tensorflow ./node_modules/@tensorflow
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
 
 # Copy scripts
-COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
-RUN mkdir -p /var/lib/zentity/web && chown -R nextjs:nodejs /var/lib/zentity
+RUN mkdir -p /var/lib/zentity/web && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity
 
-# Note: Container starts as root to fix volume permissions, then drops to nextjs via gosu in entrypoint
+# Note: Container starts as root to fix volume permissions, then drops to ${APP_USER} via gosu
 
 ARG PORT=3000
 ARG HOSTNAME="::"

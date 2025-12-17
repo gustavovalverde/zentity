@@ -6,6 +6,8 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      secrets:
+        - better_auth_secret
     ports:
       - "3000:3000"
     environment:
@@ -87,3 +89,9 @@ volumes:
     driver: local
   frontend-data:
     driver: local
+
+# Build-time secrets (sourced from environment variables)
+# Ensure BETTER_AUTH_SECRET is set in .env or shell environment
+secrets:
+  better_auth_secret:
+    environment: BETTER_AUTH_SECRET

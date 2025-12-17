@@ -1,0 +1,46 @@
+# GitHub Actions Security Analysis with zizmor
+# Scans workflow files for security vulnerabilities and misconfigurations
+#
+# zizmor detects issues like:
+# - Injection vulnerabilities (command/script injection)
+# - Overly permissive permissions
+# - Use of untrusted inputs
+# - Dangerous pull_request_target usage
+# - Unpinned action references
+
+name: GitHub Actions Security Analysis
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/**"
+
+# Minimal permissions at workflow level
+permissions: {}
+
+# Prevent duplicate runs on force-push, cancel in-progress runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # Required for uploading SARIF results
+      contents: read # Required to checkout code
+      actions: read # Required to read workflow files
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@e639db99335bc9038abc0e066dfcd72e23d26fb4 # v0.3.0

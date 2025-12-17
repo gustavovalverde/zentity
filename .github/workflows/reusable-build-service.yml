@@ -1,0 +1,142 @@
+# Reusable Build, Attest, and Sign Workflow
+# Provides SLSA Level 3 provenance and Cosign signatures
+#
+# Required repository secrets (for web service):
+# - BETTER_AUTH_SECRET: 32+ character auth secret (generate: openssl rand -base64 32)
+
+name: Build Service
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        description: 'Name of the service (e.g., fhe-service, ocr-service, web)'
+        required: true
+        type: string
+      context_path:
+        description: 'Path to the Docker build context (e.g., apps/fhe)'
+        required: true
+        type: string
+    outputs:
+      digest:
+        description: 'Image digest'
+        value: ${{ jobs.build.outputs.digest }}
+      image:
+        description: 'Image tags'
+        value: ${{ jobs.build.outputs.image }}
+
+# Minimal permissions at workflow level - jobs declare what they need
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/${{ inputs.service_name }}
+
+jobs:
+  build:
+    name: Build, Push & Sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Required to checkout code
+      packages: write # Required to push to GHCR
+      id-token: write # Required for OIDC token (Sigstore/Cosign)
+      attestations: write # Required for build provenance
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      image: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Semantic versioning from git tags
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # Branch and PR references
+            type=ref,event=branch
+            type=ref,event=pr
+            # Git SHA for exact reproduction
+            type=sha,prefix=
+            # Edge tag for latest main
+            type=edge,enable={{is_default_branch}}
+            # Latest tag only on main branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Get build timestamp
+        id: timestamp
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: ${{ inputs.context_path }}
+          # Push only on non-PR events
+          push: ${{ github.event_name != 'pull_request' }}
+          # Load locally on PRs for testing
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Scoped caching: try branch-specific, fallback to main
+          cache-from: |
+            type=gha,scope=${{ inputs.service_name }}-${{ github.ref_name }}
+            type=gha,scope=${{ inputs.service_name }}-main
+          cache-to: type=gha,scope=${{ inputs.service_name }}-${{ github.ref_name }},mode=max
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.timestamp.outputs.value }}
+            SOURCE_DATE_EPOCH=${{ github.event.repository.pushed_at }}
+          # Web service requires BETTER_AUTH_SECRET for build
+          # FHE and OCR services don't need secrets
+          secrets: ${{ inputs.service_name == 'web' && format('better_auth_secret={0}', secrets.BETTER_AUTH_SECRET) || '' }}
+          provenance: true
+          sbom: true
+
+      # Attestation and signing only on official repository (not forks)
+      - name: Generate artifact attestation
+        if: github.event_name != 'pull_request' && github.repository_owner == 'gustavovalverde'
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Install Cosign
+        if: github.event_name != 'pull_request' && github.repository_owner == 'gustavovalverde'
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      - name: Sign image with Cosign
+        if: github.event_name != 'pull_request' && github.repository_owner == 'gustavovalverde'
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE_REF}"
+
+      # Docker Scout vulnerability scanning on release PRs
+      - name: Docker Scout
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.title, 'Release')
+        uses: docker/scout-action@f8c776824083494ab0d56b8105ba2ca85c86e4de # v1.18.2
+        with:
+          command: cves,recommendations
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          only-severities: critical,high
+          only-fixed: true
+          sarif-file: sarif-${{ inputs.service_name }}.sarif

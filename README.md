@@ -57,6 +57,29 @@ openssl rand -base64 32
 docker compose up --build
 ```
 
+<details>
+<summary>Building individual services with Docker</summary>
+
+The web service requires a secret for building (BuildKit secret mount):
+
+```bash
+# Generate a secret file (one-time setup)
+openssl rand -base64 32 > ~/.zentity-auth-secret
+
+# Build web service
+docker build \
+  --secret id=better_auth_secret,src=$HOME/.zentity-auth-secret \
+  -t zentity-web apps/web
+
+# FHE and OCR services don't require secrets
+docker build -t zentity-fhe apps/fhe
+docker build -t zentity-ocr apps/ocr
+```
+
+**Why?** Secrets are never baked into image layers. The build fails without the secret to prevent running with insecure defaults.
+
+</details>
+
 - Web UI: `http://localhost:3000`
 - FHE service: `http://localhost:5001`
 - OCR service: `http://localhost:5004`

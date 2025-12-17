@@ -1,0 +1,15 @@
+# zizmor configuration
+# https://docs.zizmor.sh/configuration/
+
+rules:
+  template-injection:
+    ignore:
+      # inputs.context_path is safe - only called from build-attest.yml with
+      # hardcoded paths: apps/fhe, apps/ocr, apps/web. Not user-controllable.
+      - reusable-build-service.yml:91
+
+  concurrency-limits:
+    ignore:
+      # Reusable workflows (workflow_call) inherit concurrency from caller.
+      # build-attest.yml already defines concurrency settings.
+      - reusable-build-service.yml

@@ -27,7 +27,9 @@ async fn internal_auth(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    if req.uri().path() == "/health" {
+    // Allow public endpoints without auth
+    let public_paths = ["/health", "/build-info"];
+    if public_paths.contains(&req.uri().path()) {
         return next.run(req).await;
     }
 
@@ -72,7 +74,9 @@ async fn main() {
         .unwrap_or(false);
 
     // Build router
-    let mut app = Router::new().route("/health", get(routes::health));
+    let mut app = Router::new()
+        .route("/health", get(routes::health))
+        .route("/build-info", get(routes::build_info));
 
     if enable_keygen_endpoint {
         app = app.route("/keys/generate", post(routes::generate_keys));

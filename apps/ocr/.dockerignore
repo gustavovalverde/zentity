@@ -1,0 +1,20 @@
+# https://docs.docker.com/engine/reference/builder/#dockerignore-file
+#
+# Exclude everything first, then whitelist only what's needed for the build.
+# This keeps the Docker context small and builds fast.
+
+# Exclude everything
+*
+
+# Include Python requirements
+!requirements.txt
+
+# Include application code
+!app/
+
+# Include startup script
+!start.sh
+
+# Include Dockerfile (for reference, not used in build context)
+!Dockerfile
+!railway.toml

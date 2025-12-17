@@ -1,0 +1,159 @@
+# Build, Attest, and Sign Workflow
+# Provides SLSA Level 3 provenance and Cosign signatures for all services
+#
+# Verification commands:
+#   gh attestation verify oci://ghcr.io/gustavovalverde/zentity/fhe-service:latest --owner gustavovalverde
+#   cosign verify ghcr.io/gustavovalverde/zentity/fhe-service:latest \
+#     --certificate-identity-regexp="https://github.com/gustavovalverde/zentity/.github/workflows/reusable-build-service.yml@.*" \
+#     --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+
+name: Build, Attest & Sign
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/fhe/**"
+      - "apps/ocr/**"
+      - "apps/web/**"
+      - ".github/workflows/build-attest.yml"
+      - ".github/workflows/reusable-build-service.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Minimal permissions at workflow level
+permissions: {}
+
+# Prevent duplicate runs on force-push, cancel in-progress runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect which services changed
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read # Required for paths-filter on PRs
+      contents: read # Required to checkout code
+    outputs:
+      fhe: ${{ steps.filter.outputs.fhe }}
+      ocr: ${{ steps.filter.outputs.ocr }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            fhe:
+              - 'apps/fhe/**'
+              - '.github/workflows/build-attest.yml'
+              - '.github/workflows/reusable-build-service.yml'
+            ocr:
+              - 'apps/ocr/**'
+              - '.github/workflows/build-attest.yml'
+              - '.github/workflows/reusable-build-service.yml'
+            web:
+              - 'apps/web/**'
+              - '.github/workflows/build-attest.yml'
+              - '.github/workflows/reusable-build-service.yml'
+
+  # Build and attest FHE service
+  build-fhe:
+    name: Build FHE Service
+    needs: changes
+    if: needs.changes.outputs.fhe == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/reusable-build-service.yml
+    with:
+      service_name: fhe-service
+      context_path: apps/fhe
+    permissions:
+      contents: read # Required to checkout code
+      packages: write # Required to push to GHCR
+      id-token: write # Required for OIDC token (Sigstore/Cosign)
+      attestations: write # Required for build provenance
+
+  # Build and attest OCR service
+  build-ocr:
+    name: Build OCR Service
+    needs: changes
+    if: needs.changes.outputs.ocr == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/reusable-build-service.yml
+    with:
+      service_name: ocr-service
+      context_path: apps/ocr
+    permissions:
+      contents: read # Required to checkout code
+      packages: write # Required to push to GHCR
+      id-token: write # Required for OIDC token (Sigstore/Cosign)
+      attestations: write # Required for build provenance
+
+  # Build and attest Web app
+  build-web:
+    name: Build Web App
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/reusable-build-service.yml
+    with:
+      service_name: web
+      context_path: apps/web
+    permissions:
+      contents: read # Required to checkout code
+      packages: write # Required to push to GHCR
+      id-token: write # Required for OIDC token (Sigstore/Cosign)
+      attestations: write # Required for build provenance
+
+  # Summary job
+  summary:
+    name: Build Summary
+    needs: [build-fhe, build-ocr, build-web]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {} # No permissions needed - only writes to GITHUB_STEP_SUMMARY
+    steps:
+      - name: Summary
+        env:
+          FHE_RESULT: ${{ needs.build-fhe.result }}
+          FHE_IMAGE: ${{ needs.build-fhe.outputs.image || 'skipped' }}
+          OCR_RESULT: ${{ needs.build-ocr.result }}
+          OCR_IMAGE: ${{ needs.build-ocr.outputs.image || 'skipped' }}
+          WEB_RESULT: ${{ needs.build-web.result }}
+          WEB_IMAGE: ${{ needs.build-web.outputs.image || 'skipped' }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          {
+            echo "## Build Summary"
+            echo ""
+            echo "| Service | Status | Image |"
+            echo "|---------|--------|-------|"
+            echo "| FHE | ${FHE_RESULT} | \`${FHE_IMAGE}\` |"
+            echo "| OCR | ${OCR_RESULT} | \`${OCR_IMAGE}\` |"
+            echo "| Web | ${WEB_RESULT} | \`${WEB_IMAGE}\` |"
+            echo ""
+            echo "### Verification Commands"
+            echo ""
+            echo "**GitHub CLI (attestations):**"
+            echo "\`\`\`bash"
+            echo "gh attestation verify oci://ghcr.io/${REPO}/fhe-service:latest --owner ${OWNER}"
+            echo "gh attestation verify oci://ghcr.io/${REPO}/ocr-service:latest --owner ${OWNER}"
+            echo "gh attestation verify oci://ghcr.io/${REPO}/web:latest --owner ${OWNER}"
+            echo "\`\`\`"
+            echo ""
+            echo "**Cosign (signatures):**"
+            echo "\`\`\`bash"
+            echo "cosign verify ghcr.io/${REPO}/fhe-service:latest \\"
+            echo "  --certificate-identity-regexp='https://github.com/${REPO}/.github/workflows/reusable-build-service.yml@.*' \\"
+            echo "  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'"
+            echo "\`\`\`"
+            echo ""
+            echo "**Build Info Endpoints:**"
+            echo "- FHE: \`GET /build-info\`"
+            echo "- OCR: \`GET /build-info\`"
+            echo "- Web: \`GET /api/build-info\`"
+          } >> "$GITHUB_STEP_SUMMARY"

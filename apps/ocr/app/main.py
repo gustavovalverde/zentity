@@ -55,6 +55,11 @@ from .commitments import (
 PORT = int(os.getenv("PORT", "5004"))
 INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
 
+# Build info (set at Docker build time)
+GIT_SHA = os.getenv("GIT_SHA", "unknown")
+BUILD_TIME = os.getenv("BUILD_TIME", "unknown")
+VERSION = "1.0.0"
+
 # Track service start time
 _start_time = time.time()
 
@@ -94,8 +99,9 @@ async def request_validation_exception_handler(
 @app.middleware("http")
 async def internal_auth_middleware(request: Request, call_next):
     if INTERNAL_SERVICE_TOKEN:
-        # Allow provider health checks + docs without auth.
-        if request.url.path not in ("/health", "/openapi.json") and not request.url.path.startswith(
+        # Allow provider health checks, build info, and docs without auth.
+        public_paths = ("/health", "/build-info", "/openapi.json")
+        if request.url.path not in public_paths and not request.url.path.startswith(
             "/docs"
         ):
             provided = request.headers.get("x-zentity-internal-token")
@@ -167,14 +173,39 @@ class HealthResponse(BaseModel):
     uptimeSeconds: float
 
 
+class BuildInfoResponse(BaseModel):
+    """Build information for deployment verification."""
+
+    service: str
+    version: str
+    gitSha: str
+    buildTime: str
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Service health check endpoint."""
     return HealthResponse(
         status="healthy",
         service="ocr-service",
-        version="1.0.0",
+        version=VERSION,
         uptimeSeconds=round(time.time() - _start_time, 2),
+    )
+
+
+@app.get("/build-info", response_model=BuildInfoResponse)
+async def build_info():
+    """
+    Build info endpoint for deployment verification.
+
+    Allows users to verify the deployed code matches the source.
+    Compare gitSha with GitHub releases and Sigstore attestations.
+    """
+    return BuildInfoResponse(
+        service="ocr-service",
+        version=VERSION,
+        gitSha=GIT_SHA,
+        buildTime=BUILD_TIME,
     )
 
 

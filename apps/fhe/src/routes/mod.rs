@@ -19,6 +19,27 @@ pub async fn health() -> Json<HealthResponse> {
     })
 }
 
+// Build info response for verification
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildInfoResponse {
+    service: String,
+    version: String,
+    git_sha: String,
+    build_time: String,
+}
+
+/// Build info endpoint for deployment verification.
+/// Allows users to verify the deployed code matches the source.
+pub async fn build_info() -> Json<BuildInfoResponse> {
+    Json(BuildInfoResponse {
+        service: "fhe-service".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        git_sha: option_env!("GIT_SHA").unwrap_or("unknown").to_string(),
+        build_time: option_env!("BUILD_TIME").unwrap_or("unknown").to_string(),
+    })
+}
+
 // Key generation
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
