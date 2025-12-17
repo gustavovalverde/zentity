@@ -87,7 +87,7 @@ export const onboardingRouter = router({
   saveSession: publicProcedure
     .input(
       z.object({
-        email: z.string().trim().min(1, "Email is required"),
+        email: z.string().trim().toLowerCase().min(1, "Email is required"),
         step: stepSchema.default(1),
         pii: piiSchema.optional(),
         forceNew: z.boolean().optional(),

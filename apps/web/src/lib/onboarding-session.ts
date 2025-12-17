@@ -116,17 +116,28 @@ export async function decryptPii(
  */
 export async function setWizardCookie(state: WizardNavState): Promise<void> {
   const secret = await getSecret();
+  // Normalize email for case-insensitive matching
+  const normalizedEmail = state.email.toLowerCase().trim();
 
-  const token = await new EncryptJWT({ email: state.email, step: state.step })
+  const token = await new EncryptJWT({
+    email: normalizedEmail,
+    step: state.step,
+  })
     .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .encrypt(secret);
 
   const cookieStore = await cookies();
+  // Only set Secure flag when using HTTPS. This allows running production builds
+  // on localhost over HTTP for testing (e.g., docker-compose with NODE_ENV=production).
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const isHttps = appUrl.startsWith("https://");
+  const useSecureCookie = process.env.NODE_ENV === "production" && isHttps;
+
   cookieStore.set(WIZARD_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: useSecureCookie,
     sameSite: "lax",
     maxAge: SESSION_TTL_SECONDS,
     path: "/",

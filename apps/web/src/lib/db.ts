@@ -822,76 +822,60 @@ export function cleanupExpiredRpAuthorizationCodes(): number {
 }
 
 /**
- * Create or update an onboarding session
+ * Create or update an onboarding session.
+ *
+ * Uses atomic INSERT ... ON CONFLICT to prevent race conditions when
+ * concurrent requests try to create sessions for the same email.
  */
 export function upsertOnboardingSession(
   data: Partial<OnboardingSession> & { email: string },
 ): OnboardingSession {
+  // Normalize email for case-insensitive matching (SQLite is case-sensitive by default)
+  const normalizedEmail = data.email.toLowerCase().trim();
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + Math.floor(ONBOARDING_SESSION_TTL_MS / 1000);
+  const id = crypto.randomUUID();
 
-  // Check if session exists
-  const existing = getOnboardingSessionByEmail(data.email);
+  // Build dynamic UPDATE clause - only update fields that were explicitly provided
+  // Always refresh updated_at and expires_at to extend session lifetime
+  const updateClauses: string[] = [
+    "updated_at = excluded.updated_at",
+    "expires_at = excluded.expires_at",
+  ];
 
-  if (existing) {
-    // Update existing session
-    const updates: string[] = ["updated_at = ?", "expires_at = ?"];
-    const values: (string | number | null)[] = [now, expiresAt];
-
-    if (data.step !== undefined) {
-      updates.push("step = ?");
-      values.push(data.step);
-    }
-    if (data.encryptedPii !== undefined) {
-      updates.push("encrypted_pii = ?");
-      values.push(data.encryptedPii);
-    }
-    if (data.documentHash !== undefined) {
-      updates.push("document_hash = ?");
-      values.push(data.documentHash);
-    }
-    if (data.documentProcessed !== undefined) {
-      updates.push("document_processed = ?");
-      values.push(data.documentProcessed ? 1 : 0);
-    }
-    if (data.livenessPassed !== undefined) {
-      updates.push("liveness_passed = ?");
-      values.push(data.livenessPassed ? 1 : 0);
-    }
-    if (data.faceMatchPassed !== undefined) {
-      updates.push("face_match_passed = ?");
-      values.push(data.faceMatchPassed ? 1 : 0);
-    }
-
-    values.push(data.email);
-
-    const stmt = db.prepare(`
-      UPDATE onboarding_sessions
-      SET ${updates.join(", ")}
-      WHERE email = ?
-    `);
-    stmt.run(...values);
-
-    const updatedSession = getOnboardingSessionByEmail(data.email);
-    if (!updatedSession) {
-      throw new Error("Failed to retrieve updated onboarding session");
-    }
-    return updatedSession;
+  if (data.step !== undefined) {
+    updateClauses.push("step = excluded.step");
+  }
+  if (data.encryptedPii !== undefined) {
+    updateClauses.push("encrypted_pii = excluded.encrypted_pii");
+  }
+  if (data.documentHash !== undefined) {
+    updateClauses.push("document_hash = excluded.document_hash");
+  }
+  if (data.documentProcessed !== undefined) {
+    updateClauses.push("document_processed = excluded.document_processed");
+  }
+  if (data.livenessPassed !== undefined) {
+    updateClauses.push("liveness_passed = excluded.liveness_passed");
+  }
+  if (data.faceMatchPassed !== undefined) {
+    updateClauses.push("face_match_passed = excluded.face_match_passed");
   }
 
-  // Create new session
-  const id = crypto.randomUUID();
+  // Atomic upsert: INSERT if new, UPDATE if email already exists
   const stmt = db.prepare(`
     INSERT INTO onboarding_sessions (
       id, email, step, encrypted_pii, document_hash,
       document_processed, liveness_passed, face_match_passed,
       created_at, updated_at, expires_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(email) DO UPDATE SET
+      ${updateClauses.join(", ")}
   `);
 
   stmt.run(
     id,
-    data.email,
+    normalizedEmail,
     data.step ?? 1,
     data.encryptedPii ?? null,
     data.documentHash ?? null,
@@ -903,11 +887,11 @@ export function upsertOnboardingSession(
     expiresAt,
   );
 
-  const newSession = getOnboardingSessionByEmail(data.email);
-  if (!newSession) {
-    throw new Error("Failed to create onboarding session");
+  const session = getOnboardingSessionByEmail(normalizedEmail);
+  if (!session) {
+    throw new Error("Failed to upsert onboarding session");
   }
-  return newSession;
+  return session;
 }
 
 /**
@@ -916,6 +900,8 @@ export function upsertOnboardingSession(
 export function getOnboardingSessionByEmail(
   email: string,
 ): OnboardingSession | null {
+  // Normalize email for case-insensitive matching (SQLite is case-sensitive by default)
+  const normalizedEmail = email.toLowerCase().trim();
   const now = Math.floor(Date.now() / 1000);
 
   const stmt = db.prepare(`
@@ -928,7 +914,9 @@ export function getOnboardingSessionByEmail(
     WHERE email = ? AND expires_at > ?
   `);
 
-  const row = stmt.get(email, now) as Record<string, unknown> | undefined;
+  const row = stmt.get(normalizedEmail, now) as
+    | Record<string, unknown>
+    | undefined;
   if (!row) return null;
 
   return {
@@ -943,8 +931,10 @@ export function getOnboardingSessionByEmail(
  * Delete onboarding session (called after successful signup)
  */
 export function deleteOnboardingSession(email: string): void {
+  // Normalize email for case-insensitive matching (SQLite is case-sensitive by default)
+  const normalizedEmail = email.toLowerCase().trim();
   const stmt = db.prepare(`DELETE FROM onboarding_sessions WHERE email = ?`);
-  stmt.run(email);
+  stmt.run(normalizedEmail);
 }
 
 /**
