@@ -1,0 +1,182 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================
+  # Pre-commit (runs all hooks with caching)
+  # ============================================
+  pre-commit:
+    name: Pre-commit Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install bun dependencies (web)
+        run: bun install --frozen-lockfile
+        working-directory: apps/web
+      - name: Install bun dependencies (landing)
+        run: bun install --frozen-lockfile
+        working-directory: apps/landing
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+      - uses: pre-commit/action@v3.0.1
+
+  # ============================================
+  # TypeScript / JavaScript (apps/web)
+  # ============================================
+  typescript-web:
+    name: TypeScript - Web (Biome + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: apps/web
+      - run: bun run lint:check
+        working-directory: apps/web
+      - run: bun run type-check
+        working-directory: apps/web
+
+  # ============================================
+  # TypeScript / JavaScript (apps/landing)
+  # ============================================
+  typescript-landing:
+    name: TypeScript - Landing (Biome + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: apps/landing
+      - run: bun run lint:check
+        working-directory: apps/landing
+      - run: bun run type-check
+        working-directory: apps/landing
+
+  js-security:
+    name: JavaScript (Security Audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: apps/web
+      - name: Run security audit
+        run: bun audit --level moderate || true
+        working-directory: apps/web
+        # Note: bun audit may not be fully implemented yet
+        # Fallback to npm audit if needed
+      - name: Fallback npm audit
+        run: npm audit --audit-level=moderate || echo "Some vulnerabilities found - review required"
+        working-directory: apps/web
+
+  markdown:
+    name: Markdown (markdownlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: apps/web
+      - name: Run markdownlint (repo-wide)
+        run: bunx markdownlint-cli "**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "docs/archive/**"
+
+  # ============================================
+  # Python
+  # ============================================
+  python:
+    name: Python (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check apps/ocr
+      - run: ruff format --check apps/ocr
+
+  python-security:
+    name: Python (Security Audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies and security tools
+        run: |
+          pip install pip-audit bandit
+          pip install -e apps/ocr
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: pip-audit
+        continue-on-error: true
+      - name: Run bandit (code security)
+        run: bandit -r apps/ocr/app -ll -ii
+        continue-on-error: true
+
+  # ============================================
+  # Rust
+  # ============================================
+  rust:
+    name: Rust (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path apps/fhe/Cargo.toml -- --check
+      - run: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
+
+  rust-security:
+    name: Rust (Security Audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # cargo-deny for banned crates and source restrictions
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: apps/fhe/Cargo.toml
+          command: check bans sources
+      # cargo-audit for CVE scanning
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Run cargo-audit
+        run: cargo audit --file apps/fhe/Cargo.lock
+        continue-on-error: true
+
+  # ============================================
+  # Commit & PR Quality
+  # ============================================
+  commitlint:
+    name: Commit Messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6

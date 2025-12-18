@@ -62,8 +62,8 @@ pub fn encrypt_liveness_score(score: f64, client_key_id: &str) -> Result<String,
 
     let encrypted = FheUint16::encrypt(scaled_score, &client_key);
 
-    // Serialize to bytes
-    let bytes = bincode::serialize(&encrypted)?;
+    // Serialize to bytes using bincode 2.x serde API
+    let bytes = bincode::serde::encode_to_vec(&encrypted, bincode::config::standard())?;
 
     // Encode as base64
     Ok(BASE64.encode(&bytes))
@@ -102,8 +102,9 @@ pub fn verify_liveness_threshold(
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
 
-    // Deserialize to FheUint16
-    let encrypted_score: FheUint16 = bincode::deserialize(&bytes)?;
+    // Deserialize to FheUint16 using bincode 2.x serde API
+    let (encrypted_score, _): (FheUint16, _) =
+        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
 
     // Check if score >= threshold (homomorphic comparison)
     let encrypted_passes = encrypted_score.ge(threshold_scaled);
@@ -136,8 +137,9 @@ pub fn decrypt_liveness_score(
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
 
-    // Deserialize to FheUint16
-    let encrypted_score: FheUint16 = bincode::deserialize(&bytes)?;
+    // Deserialize to FheUint16 using bincode 2.x serde API
+    let (encrypted_score, _): (FheUint16, _) =
+        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
 
     // Decrypt
     let scaled_score: u16 = encrypted_score.decrypt(&client_key);

@@ -191,8 +191,8 @@ pub fn encrypt_dob(dob: u32, client_key_id: &str) -> Result<String, FheError> {
 
     let encrypted = FheUint32::encrypt(dob, &client_key);
 
-    // Serialize to bytes
-    let bytes = bincode::serialize(&encrypted)?;
+    // Serialize to bytes using bincode 2.x serde API
+    let bytes = bincode::serde::encode_to_vec(&encrypted, bincode::config::standard())?;
 
     // Encode as base64
     Ok(BASE64.encode(&bytes))
@@ -222,8 +222,9 @@ pub fn verify_age_precise(
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
 
-    // Deserialize to FheUint32
-    let encrypted_dob: FheUint32 = bincode::deserialize(&bytes)?;
+    // Deserialize to FheUint32 using bincode 2.x serde API
+    let (encrypted_dob, _): (FheUint32, _) =
+        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
 
     // Calculate the minimum DOB for someone who is min_age years old
     // If current_date is 20251207 and min_age is 18, then:

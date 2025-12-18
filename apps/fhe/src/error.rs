@@ -17,8 +17,11 @@ pub enum FheError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] bincode::Error),
+    #[error("Encode error: {0}")]
+    Encode(#[from] bincode::error::EncodeError),
+
+    #[error("Decode error: {0}")]
+    Decode(#[from] bincode::error::DecodeError),
 
     #[error("Base64 decode error: {0}")]
     Base64Decode(#[from] base64::DecodeError),
@@ -32,7 +35,8 @@ impl IntoResponse for FheError {
         let (status, message) = match &self {
             FheError::KeyNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             FheError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            FheError::Serialization(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            FheError::Encode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            FheError::Decode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Base64Decode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };

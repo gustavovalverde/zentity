@@ -14,5 +14,6 @@
     "allowed_elements": ["br", "details", "summary", "p", "img", "div", "a", "sup"]
   },
   "MD036": false,
-  "MD041": false
+  "MD041": false,
+  "MD060": false
 }

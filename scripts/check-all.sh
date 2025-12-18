@@ -52,13 +52,17 @@ else
     FAILED=1
 fi
 
-echo "Running markdownlint..."
-if bun run lint:md:check; then
+cd "$ROOT_DIR"
+
+echo "Running markdownlint (repo-wide)..."
+if bunx markdownlint-cli "**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "docs/archive/**"; then
     success "Markdownlint: passed"
 else
     error "Markdownlint: failed"
     FAILED=1
 fi
+
+cd "$ROOT_DIR/apps/web"
 
 # ============================================
 # TypeScript/JavaScript (apps/landing)

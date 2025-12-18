@@ -56,7 +56,8 @@ impl KeyStore {
     fn try_load_from_disk(keys_dir: &Path) -> Option<PersistedKeyStore> {
         let path = Self::keystore_path(keys_dir);
         let bytes = std::fs::read(&path).ok()?;
-        let parsed: PersistedKeyStore = bincode::deserialize(&bytes).ok()?;
+        let (parsed, _): (PersistedKeyStore, _) =
+            bincode::serde::decode_from_slice(&bytes, bincode::config::standard()).ok()?;
         Some(parsed)
     }
 
@@ -70,7 +71,7 @@ impl KeyStore {
             server_key: self.server_key.clone(),
         };
 
-        let bytes = match bincode::serialize(&payload) {
+        let bytes = match bincode::serde::encode_to_vec(&payload, bincode::config::standard()) {
             Ok(value) => value,
             Err(error) => {
                 warn!("Failed to serialize keystore for persistence: {error}");

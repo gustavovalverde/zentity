@@ -1,25 +1,26 @@
 # OCR Engine
-rapidocr>=3.0.0
-onnxruntime>=1.16.0
+rapidocr~=3.4.5
+onnxruntime~=1.23.2
 
 # MRZ parsing (ICAO 9303 standard)
-mrz>=0.6.0
+mrz~=0.6.2
 
 # Document number validation (200+ formats)
-python-stdnum>=1.20
+python-stdnum~=2.1.0
 
 # ISO 3166 country codes (lightweight)
-iso3166>=2.1.1
+iso3166~=2.1.1
 
 # Image processing
-opencv-python-headless>=4.8.0
-pillow>=10.0.0
-numpy>=1.24.0
+opencv-python-headless~=4.12.0.88
+pillow~=12.0.0
+ # Constrained by opencv-python-headless (<2.3.0)
+numpy~=2.2.6
 
 # Web framework
-fastapi>=0.109.0
-uvicorn>=0.27.0
-python-multipart>=0.0.6
+fastapi~=0.125.0
+uvicorn~=0.38.0
+python-multipart~=0.0.21
 
 # Typing
-pydantic>=2.0.0
+pydantic~=2.12.5

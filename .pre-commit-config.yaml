@@ -15,7 +15,7 @@ repos:
   # Security
   # ===========================================
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.21.2
+    rev: v8.30.0
     hooks:
       - id: gitleaks
 
@@ -44,15 +44,15 @@ repos:
   # TypeScript/JavaScript/JSON/CSS (apps/web + apps/landing)
   # ===========================================
   - repo: https://github.com/biomejs/pre-commit
-    rev: v2.3.8
+    rev: v2.3.10
     hooks:
       - id: biome-check
         name: biome-check (web)
-        additional_dependencies: ["@biomejs/biome@2.3.8"]
+        additional_dependencies: ["@biomejs/biome@2.3.10"]
         files: ^apps/web/
       - id: biome-check
         name: biome-check (landing)
-        additional_dependencies: ["@biomejs/biome@2.3.8"]
+        additional_dependencies: ["@biomejs/biome@2.3.10"]
         files: ^apps/landing/
 
   # TypeScript type-checking (apps/web)
@@ -75,7 +75,7 @@ repos:
   # Markdown (repo-wide)
   # ===========================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.44.0
+    rev: v0.47.0
     hooks:
       - id: markdownlint
         args: [--fix]
@@ -118,6 +118,6 @@ repos:
     hooks:
       - id: commitlint
         name: commitlint
-        entry: bash -c 'cd apps/web && bunx commitlint --edit "$1"'
+        entry: bash -c 'cd apps/web && bunx commitlint --edit "$0"'
         language: system
         stages: [commit-msg]
