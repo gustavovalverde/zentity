@@ -27,12 +27,6 @@ services:
     volumes:
       # Persist SQLite database across container restarts
       - frontend-data:/var/lib/zentity/web
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     restart: unless-stopped
     networks:
       - zentity-network
@@ -50,12 +44,6 @@ services:
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
     volumes:
       - fhe-keys:/var/lib/zentity/fhe
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
     restart: unless-stopped
     networks:
       - zentity-network
@@ -69,12 +57,6 @@ services:
     environment:
       - PORT=5004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     restart: unless-stopped
     networks:
       - zentity-network
