@@ -1,0 +1,43 @@
+# Cargo configuration for FHE service
+# Compiler flags for code safety and quality
+
+[target.'cfg(all())']
+rustflags = [
+    # High-risk code - DENY (critical for crypto code)
+    "-Dunsafe_code",
+    "-Dnon_ascii_idents",
+
+    # Compatibility warnings
+    "-Wrust_2021_compatibility",
+    "-Wnonstandard_style",
+    "-Wfuture_incompatible",
+
+    # Async code safety
+    "-Wclippy::await_holding_lock",
+    "-Wclippy::await_holding_refcell_ref",
+
+    # Integer safety (important for crypto)
+    "-Wclippy::checked_conversions",
+    "-Wclippy::implicit_saturating_sub",
+    "-Wclippy::invalid_upcast_comparisons",
+
+    # Incomplete code markers
+    "-Wclippy::dbg_macro",
+    "-Wclippy::todo",
+
+    # Manual debug output
+    "-Wclippy::print_stdout",
+    "-Wclippy::print_stderr",
+
+    # Panic safety
+    "-Wclippy::fallible_impl_from",
+    "-Wclippy::unwrap_in_result",
+]
+
+[build]
+rustdocflags = [
+    "-Arustdoc::private_intra_doc_links",
+]
+
+[env]
+RUST_BACKTRACE = "1"

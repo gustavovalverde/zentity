@@ -1,0 +1,116 @@
+{
+  //
+  // VS Code Settings - Aligned with CI/CD Pipeline
+  //
+  // These settings ensure consistency between local development
+  // and the CI/CD pipeline (GitHub Actions + Husky + lint-staged + pre-commit).
+  //
+  // Key alignments:
+  // - Biome handles formatting and linting for JS/TS/JSON/CSS
+  // - Ruff handles Python linting
+  // - rust-analyzer handles Rust formatting and linting
+  //
+  "editor.defaultFormatter": "biomejs.biome",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.biome": "explicit"
+  },
+
+  // Code width
+  "editor.rulers": [80],
+
+  // File handling
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  // Disable built-in formatters (use Biome instead)
+  "typescript.preferences.organizeImports": false,
+  "typescript.format.enable": false,
+  "javascript.format.enable": false,
+
+  // CSS - handled by Biome (disable built-in validation)
+  "css.validate": false,
+  "less.validate": false,
+  "scss.validate": false,
+
+  // Markdown
+  "[markdown]": {
+    "editor.wordWrap": "wordWrapColumn",
+    "editor.wordWrapColumn": 200,
+    "editor.defaultFormatter": "davidanson.vscode-markdownlint",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.markdownlint": "explicit"
+    }
+  },
+
+  // JSON
+  "[json]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.rulers": [200]
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome",
+    "editor.rulers": [200]
+  },
+
+  // TypeScript/JavaScript
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+
+  // CSS - Biome handles this
+  "[css]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+
+  // Python - Ruff
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit",
+      "source.fixAll": "explicit"
+    }
+  },
+
+  // Rust - rust-analyzer
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "rust-analyzer.check.command": "clippy",
+
+  // TOML
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml"
+  },
+
+  // Tailwind CSS integration
+  "tailwindCSS.includeLanguages": {
+    "css": "css",
+    "javascript": "javascript",
+    "typescript": "typescript"
+  },
+  "tailwindCSS.experimental.classRegex": [
+    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
+    ["cx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
+  ],
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "editor.quickSuggestions": {
+    "strings": "on"
+  },
+  "tailwindCSS.validate": true,
+  "tailwindCSS.emmetCompletions": true,
+  "editor.inlineSuggest.enabled": true,
+  "tailwindCSS.suggestions": true
+}

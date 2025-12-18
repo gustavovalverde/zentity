@@ -1,0 +1,75 @@
+version: 2
+updates:
+  # JavaScript/TypeScript - Web (Bun/npm)
+  - package-ecosystem: npm
+    directory: "/apps/web"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "web"
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      prod-dependencies:
+        dependency-type: production
+
+  # JavaScript/TypeScript - Landing (Bun/npm)
+  - package-ecosystem: npm
+    directory: "/apps/landing"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "landing"
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      prod-dependencies:
+        dependency-type: production
+
+  # Python (pip)
+  - package-ecosystem: pip
+    directory: "/apps/ocr"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Rust (Cargo)
+  - package-ecosystem: cargo
+    directory: "/apps/fhe"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: America/New_York
+    # Only update lockfile, not Cargo.toml versions
+    versioning-strategy: lockfile-only
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: wednesday
+      timezone: America/New_York
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"

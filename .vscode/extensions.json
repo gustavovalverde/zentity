@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "bradlc.vscode-tailwindcss",
+    "charliermarsh.ruff",
+    "davidanson.vscode-markdownlint",
+    "ms-vscode.vscode-json",
+    "redhat.vscode-yaml",
+    "rust-lang.rust-analyzer",
+    "streetsidesoftware.code-spell-checker",
+    "tamasfe.even-better-toml"
+  ]
+}

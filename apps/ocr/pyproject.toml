@@ -15,6 +15,18 @@ test = [
     "pytest-cov>=4.1.0",
     "httpx>=0.26.0",
 ]
+dev = [
+    "ruff>=0.8.4",
+    "pre-commit>=4.0.1",
+    # Security auditing
+    "pip-audit>=2.7.3",
+    "bandit>=1.8.3",
+    # Include test deps in dev
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.26.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -33,3 +45,27 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["venv", ".venv", "__pycache__", ".git"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "S",   # flake8-bandit (security)
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = ["B101"]  # Allow assert in non-test code if needed
+
+[tool.ruff.format]
+quote-style = "double"

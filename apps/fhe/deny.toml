@@ -1,0 +1,26 @@
+# cargo-deny configuration for FHE service
+# Run with: cargo deny check bans sources
+
+[bans]
+# Warn on multiple versions of the same crate (don't block CI)
+multiple-versions = "warn"
+# Allow wildcard dependencies for local development
+wildcards = "allow"
+
+# Explicitly denied crates for security reasons
+deny = [
+    # Memory safety vulnerabilities - prefer rustls
+    { name = "openssl" },
+    { name = "openssl-sys" },
+]
+
+[sources]
+# Strict source control
+unknown-registry = "deny"
+unknown-git = "deny"
+
+# Only allow crates from crates.io
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# Allow git dependencies from trusted sources (if needed)
+allow-git = []

@@ -1,0 +1,3 @@
+# Clippy configuration for FHE service
+# Higher threshold due to complex crypto types in TFHE-rs
+type-complexity-threshold = 500
