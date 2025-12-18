@@ -20,6 +20,8 @@ type UseLivenessCameraResult = {
   captureFrame: () => string | null;
   /** Capture frame optimized for streaming (smaller size, lower quality) */
   captureStreamFrame: () => string | null;
+  /** Get a square-padded canvas for improved face detection (centered video in square) */
+  getSquareDetectionCanvas: () => HTMLCanvasElement | null;
 };
 
 /**
@@ -177,6 +179,39 @@ export function useLivenessCamera(
     return canvas.toDataURL("image/jpeg", 0.7);
   }, []);
 
+  /**
+   * Get a square-padded canvas with the video frame centered.
+   * Square images significantly improve face detection accuracy (research finding).
+   * The canvas is padded with black bars to maintain aspect ratio.
+   */
+  const getSquareDetectionCanvas = useCallback((): HTMLCanvasElement | null => {
+    const video = videoRef.current;
+    if (!video) return null;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
+    if (video.readyState < 2) return null;
+
+    const { videoWidth, videoHeight } = video;
+    const size = Math.max(videoWidth, videoHeight);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    // Fill with black (padding color)
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, size, size);
+
+    // Center the video frame in the square canvas
+    const offsetX = (size - videoWidth) / 2;
+    const offsetY = (size - videoHeight) / 2;
+    ctx.drawImage(video, offsetX, offsetY);
+
+    return canvas;
+  }, []);
+
   // Stop camera when component using the hook unmounts.
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -188,5 +223,6 @@ export function useLivenessCamera(
     stopCamera,
     captureFrame,
     captureStreamFrame,
+    getSquareDetectionCanvas,
   };
 }

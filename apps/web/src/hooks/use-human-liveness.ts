@@ -10,17 +10,32 @@ const clientConfig: Partial<Config> = {
   modelBasePath: MODEL_BASE,
   async: true,
   debug: false,
+  cacheSensitivity: 0.7, // Skip re-processing if frame changed <30% (reduces redundant inference)
   face: {
     enabled: true,
-    detector: { enabled: true, rotation: true },
+    detector: {
+      enabled: true,
+      rotation: false, // Disable rotated face detection (rarely needed, improves performance)
+      return: false, // CRITICAL: Prevents tensor memory leaks across detection calls
+      maxDetected: 1, // Only need one face for liveness
+    },
     mesh: { enabled: true },
-    description: { enabled: true },
+    iris: { enabled: true }, // For eye tracking in liveness
+    description: { enabled: true }, // Needed for face embeddings
     emotion: { enabled: true },
+    attention: { enabled: false }, // Not needed for gesture-based liveness
     antispoof: { enabled: true },
     liveness: { enabled: true },
   },
-  gesture: { enabled: true },
-  filter: { enabled: true },
+  body: { enabled: false }, // Not needed for face liveness
+  hand: { enabled: false }, // Not needed for face liveness
+  gesture: { enabled: false }, // Manual gesture detection via face metrics is more reliable
+  object: { enabled: false }, // Not needed for face liveness
+  segmentation: { enabled: false }, // Not needed for face liveness
+  filter: {
+    enabled: true,
+    equalization: true, // Normalize lighting for consistent detection
+  },
 };
 
 export function useHumanLiveness(enabled: boolean) {

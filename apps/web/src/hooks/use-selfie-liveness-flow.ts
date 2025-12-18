@@ -75,6 +75,11 @@ export type LivenessDebugFrame = {
   videoWidth: number;
   videoHeight: number;
   gesture: string[];
+  /** Performance metrics from Human.js */
+  performance?: {
+    detect?: number; // Detection time in ms
+    total?: number; // Total processing time in ms
+  };
 };
 
 type LivenessSession = {
@@ -100,6 +105,8 @@ type UseSelfieLivenessFlowArgs = {
   captureFrame: () => string | null;
   /** Optional optimized frame capture for streaming (smaller, lower quality) */
   captureStreamFrame?: () => string | null;
+  /** Optional square-padded canvas for improved face detection accuracy */
+  getSquareDetectionCanvas?: () => HTMLCanvasElement | null;
   human: Human | null;
   humanReady: boolean;
   livenessDebugEnabled: boolean;
@@ -181,6 +188,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     stopCamera,
     captureFrame,
     captureStreamFrame,
+    getSquareDetectionCanvas,
     human,
     humanReady,
     livenessDebugEnabled,
@@ -232,6 +240,10 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const [lastVerifyError, setLastVerifyError] = useState<string>("");
   const [lastVerifyResponse, setLastVerifyResponse] = useState<unknown>(null);
 
+  // Store last detection result for the separate rendering loop
+  const lastDetectionResultRef = useRef<unknown>(null);
+  const lastDetectionFaceRef = useRef<ReturnType<typeof getPrimaryFace>>(null);
+
   const buildChallengeInfo = useCallback(
     (
       challengeType: ChallengeType,
@@ -274,10 +286,41 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
       try {
         const res = result as { face?: unknown[] } | null;
+        const faces = res?.face ?? [];
+
+        // Mirror coordinates to match the CSS-mirrored video display
+        // The video has transform: -scale-x-100, so we need to flip x coords
+        // biome-ignore lint/suspicious/noExplicitAny: Human.js FaceResult type requires type assertion
+        const mirroredFaces = faces.map((face: any) => {
+          if (!face?.box) return face;
+          const [x, y, w, h] = face.box;
+          // Mirror x coordinate: newX = canvasWidth - x - width
+          const mirroredBox = [canvas.width - x - w, y, w, h];
+
+          // Also mirror mesh points if present
+          let mirroredMesh = face.mesh;
+          if (face.mesh && Array.isArray(face.mesh)) {
+            mirroredMesh = face.mesh.map(
+              (point: [number, number, number] | number[]) => {
+                if (Array.isArray(point) && point.length >= 2) {
+                  return [canvas.width - point[0], point[1], point[2] ?? 0];
+                }
+                return point;
+              },
+            );
+          }
+
+          return {
+            ...face,
+            box: mirroredBox,
+            mesh: mirroredMesh,
+          };
+        });
+
         human.draw?.face?.(
           canvas,
           // biome-ignore lint/suspicious/noExplicitAny: Human.js draw API requires their specific FaceResult type
-          (res?.face ?? []) as any,
+          mirroredFaces as any,
           {
             drawBoxes: true,
             drawLabels: true,
@@ -305,6 +348,11 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       const video = videoRef.current;
       const gestureNames = getGestureNames(result);
       const happy = getHappyScore(face);
+
+      // Extract performance metrics from Human.js result
+      const perfData = (result as { performance?: Record<string, number> })
+        ?.performance;
+
       setDebugFrame({
         ts: Date.now(),
         state: challengeState,
@@ -323,6 +371,12 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         videoWidth: video?.videoWidth ?? 0,
         videoHeight: video?.videoHeight ?? 0,
         gesture: gestureNames,
+        performance: perfData
+          ? {
+              detect: perfData.detect,
+              total: perfData.total,
+            }
+          : undefined,
       });
     },
     [livenessDebugEnabled, videoRef, challengeState, baselineHappyScore],
@@ -401,11 +455,16 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     if (isCheckingRef.current) return;
     isCheckingRef.current = true;
     try {
-      // Use raw detection only (no temporal smoothing) to match server behavior
-      const result = await human.detect(videoRef.current);
+      // Use square-padded canvas if available (improves face detection accuracy)
+      // Falls back to video element if not available
+      const detectionInput = getSquareDetectionCanvas?.() ?? videoRef.current;
+      // Use raw detection for decision making (no temporal smoothing)
+      const result = await human.detect(detectionInput);
       const face = getPrimaryFace(result);
-      drawDebugOverlay(result);
-      updateDebug(result, face ?? null);
+
+      // Store result for the separate rendering loop
+      lastDetectionResultRef.current = result;
+      lastDetectionFaceRef.current = face ?? null;
 
       if (face) {
         const dir = getFacingDirection(result, face, HEAD_CENTER_THRESHOLD);
@@ -435,7 +494,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     } finally {
       isCheckingRef.current = false;
     }
-  }, [human, humanReady, videoRef, drawDebugOverlay, updateDebug]);
+  }, [human, humanReady, videoRef, getSquareDetectionCanvas]);
 
   const handleCapturedChallenge = useCallback(
     async (
@@ -561,11 +620,14 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         img.src = frameDataUrl;
       });
 
-      // Use raw detection only (no temporal smoothing) to match server behavior
+      // Use raw detection for decision making (no temporal smoothing)
       const result = await human.detect(img);
       const face = getPrimaryFace(result);
-      drawDebugOverlay(result);
-      updateDebug(result, face ?? null);
+
+      // Store result for the separate rendering loop
+      lastDetectionResultRef.current = result;
+      lastDetectionFaceRef.current = face ?? null;
+
       if (!face) {
         setChallengeState("detecting");
         setStatusMessage("Face lost - position your face in the frame");
@@ -668,8 +730,6 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     humanReady,
     videoRef,
     currentChallenge,
-    drawDebugOverlay,
-    updateDebug,
     baselineHappyScore,
     captureFrame,
     handleCapturedChallenge,
@@ -737,6 +797,44 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     animationId = requestAnimationFrame(detectLoop);
     return () => cancelAnimationFrame(animationId);
   }, [isStreaming, challengeState, checkForFace, checkCurrentChallenge]);
+
+  // Separate rendering loop for smooth debug overlay (60fps)
+  // Uses human.next() for temporal smoothing between detections
+  useEffect(() => {
+    if (!livenessDebugEnabled || !isStreaming || !human) return;
+    if (
+      challengeState !== "detecting" &&
+      challengeState !== "waiting_challenge"
+    ) {
+      return;
+    }
+
+    let animationId: number;
+
+    const renderLoop = () => {
+      // Use human.next() for temporally smoothed/interpolated results
+      // This provides smoother visual feedback without affecting detection accuracy
+      const smoothedResult = human.next?.() ?? lastDetectionResultRef.current;
+      const result = smoothedResult || lastDetectionResultRef.current;
+
+      if (result) {
+        drawDebugOverlay(result);
+        updateDebug(result, lastDetectionFaceRef.current);
+      }
+
+      animationId = requestAnimationFrame(renderLoop);
+    };
+
+    animationId = requestAnimationFrame(renderLoop);
+    return () => cancelAnimationFrame(animationId);
+  }, [
+    livenessDebugEnabled,
+    isStreaming,
+    human,
+    challengeState,
+    drawDebugOverlay,
+    updateDebug,
+  ]);
 
   // Face detection timeout
   useEffect(() => {

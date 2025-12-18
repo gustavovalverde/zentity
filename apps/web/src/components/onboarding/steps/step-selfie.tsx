@@ -47,6 +47,7 @@ export function StepSelfie() {
     stopCamera,
     captureFrame,
     captureStreamFrame,
+    getSquareDetectionCanvas,
   } = useLivenessCamera({
     facingMode: "user",
     idealWidth: 640,
@@ -84,6 +85,7 @@ export function StepSelfie() {
     stopCamera,
     captureFrame,
     captureStreamFrame,
+    getSquareDetectionCanvas,
     human,
     humanReady,
     livenessDebugEnabled,
@@ -197,7 +199,7 @@ export function StepSelfie() {
             {livenessDebugEnabled && (
               <canvas
                 ref={debugCanvasRef}
-                className={`pointer-events-none absolute inset-0 h-full w-full object-cover transform -scale-x-100 ${
+                className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
                   isStreaming ? "" : "hidden"
                 }`}
               />
@@ -234,6 +236,12 @@ export function StepSelfie() {
                   {debugFrame.gesture.length > 0 && (
                     <div className="opacity-80">
                       gesture: {debugFrame.gesture.join(", ")}
+                    </div>
+                  )}
+                  {debugFrame.performance && (
+                    <div className="opacity-80">
+                      perf: detect {debugFrame.performance.detect?.toFixed(0)}ms
+                      | total {debugFrame.performance.total?.toFixed(0)}ms
                     </div>
                   )}
                   {lastVerifyError && (

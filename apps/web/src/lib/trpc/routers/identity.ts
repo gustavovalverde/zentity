@@ -43,6 +43,10 @@ import {
 } from "@/lib/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/human-server";
 import { cropFaceRegion } from "@/lib/image-processing";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+} from "@/lib/liveness-policy";
 import { buildDisplayName } from "@/lib/name-utils";
 import { type OcrProcessResult, processDocumentOcr } from "@/lib/ocr-client";
 import {
@@ -227,7 +231,9 @@ export const identityRouter = router({
         if (selfieFace) {
           antispoofScore = getRealScore(selfieFace);
           liveScore = getLiveScore(selfieFace);
-          livenessPassed = antispoofScore >= 0.5 && liveScore >= 0.5;
+          livenessPassed =
+            antispoofScore >= ANTISPOOF_REAL_THRESHOLD &&
+            liveScore >= ANTISPOOF_LIVE_THRESHOLD;
         } else {
           localIssues.push("no_selfie_face");
         }

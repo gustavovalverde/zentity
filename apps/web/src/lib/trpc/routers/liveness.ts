@@ -30,6 +30,8 @@ import { detectFromBase64, getHumanServer } from "@/lib/human-server";
 import { cropFaceRegion } from "@/lib/image-processing";
 import type { ChallengeType } from "@/lib/liveness-challenges";
 import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
   BASELINE_CENTERED_THRESHOLD_DEG,
   SMILE_DELTA_THRESHOLD,
   SMILE_HIGH_THRESHOLD,
@@ -182,6 +184,18 @@ export const livenessRouter = router({
       const baselineLive = getLiveScore(baselineFace);
       const baselineYaw = getYawDegrees(baselineFace);
 
+      // Debug: log raw emotion data to diagnose happy score extraction
+      if (debugEnabled) {
+        // biome-ignore lint/suspicious/noConsole: debug logging
+        console.log("[liveness.verify] baseline detection:", {
+          emotion: baselineFace.emotion,
+          happy: baselineHappy,
+          real: baselineReal,
+          live: baselineLive,
+          yaw: baselineYaw,
+        });
+      }
+
       const results: Array<{
         challengeType: ChallengeType;
         passed: boolean;
@@ -206,6 +220,21 @@ export const livenessRouter = router({
           allPassed = false;
           failureReasons.push(`${challenge.challengeType}: no face detected`);
           continue;
+        }
+
+        // Debug: log each challenge detection
+        if (debugEnabled) {
+          const challengeHappy = getHappyScore(face);
+          const challengeYaw = getYawDegrees(face);
+          // biome-ignore lint/suspicious/noConsole: debug logging
+          console.log(
+            `[liveness.verify] ${challenge.challengeType} detection:`,
+            {
+              emotion: face.emotion,
+              happy: challengeHappy,
+              yaw: challengeYaw,
+            },
+          );
         }
 
         if (challenge.challengeType === "smile") {
@@ -282,11 +311,13 @@ export const livenessRouter = router({
         }
       }
 
-      const livenessPassed = baselineReal >= 0.5 && baselineLive >= 0.5;
+      const livenessPassed =
+        baselineReal >= ANTISPOOF_REAL_THRESHOLD &&
+        baselineLive >= ANTISPOOF_LIVE_THRESHOLD;
       if (!livenessPassed) {
         allPassed = false;
         failureReasons.push(
-          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}% (req ≥50%/50%)`,
+          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}% (req ≥${Math.round(ANTISPOOF_REAL_THRESHOLD * 100)}%/${Math.round(ANTISPOOF_LIVE_THRESHOLD * 100)}%)`,
         );
       }
 

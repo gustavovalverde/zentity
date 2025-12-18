@@ -48,12 +48,16 @@ export function getHappyScore(face: HumanFaceResult | null): number {
   const emo = face?.emotion;
   if (!emo) return 0;
   if (Array.isArray(emo)) {
-    const happy = emo.find(
-      (e) =>
-        typeof e === "object" && e !== null && ("emotion" in e || "score" in e),
-    ) as { emotion?: string; score?: number } | undefined;
-    const emotionName = happy?.emotion;
-    if (emotionName !== "happy" && emotionName !== "Happy") return 0;
+    // Find the specific "happy" emotion entry, not just any emotion
+    const happy = emo.find((e) => {
+      if (typeof e !== "object" || e === null) return false;
+      const emotionName = (e as { emotion?: string }).emotion;
+      return (
+        emotionName === "happy" ||
+        emotionName === "Happy" ||
+        emotionName === "happiness"
+      );
+    }) as { emotion?: string; score?: number } | undefined;
     return typeof happy?.score === "number" ? happy.score : 0;
   }
   if (typeof emo === "object") {

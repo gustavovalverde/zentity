@@ -18,21 +18,40 @@ const serverConfig: Partial<Config> = {
   backend: "tensorflow",
   async: true,
   debug: false,
+  cacheSensitivity: 0.7, // Skip re-processing if frame changed <30% (reduces redundant inference)
   face: {
     enabled: true,
-    detector: { enabled: true, rotation: true },
+    detector: {
+      enabled: true,
+      rotation: false, // Disable rotated face detection (rarely needed, improves performance)
+      return: false, // CRITICAL: Prevents tensor memory leaks across detection calls
+      maxDetected: 1, // Only need one face for liveness
+    },
     mesh: { enabled: true },
-    description: { enabled: true },
+    iris: { enabled: true }, // For eye tracking in liveness
+    description: { enabled: true }, // Needed for face embeddings
     emotion: { enabled: true },
+    attention: { enabled: false }, // Not needed for gesture-based liveness
     antispoof: { enabled: true },
     liveness: { enabled: true },
   },
-  gesture: { enabled: true },
-  filter: { enabled: true },
+  body: { enabled: false }, // Not needed for face liveness
+  hand: { enabled: false }, // Not needed for face liveness
+  gesture: { enabled: false }, // Manual gesture detection via face metrics is more reliable
+  object: { enabled: false }, // Not needed for face liveness
+  segmentation: { enabled: false }, // Not needed for face liveness
+  filter: {
+    enabled: true,
+    equalization: true, // Normalize lighting for consistent detection
+  },
 };
 
 let humanInstance: Human | null = null;
 let initPromise: Promise<Human> | null = null;
+
+// Mutex for detection calls - TensorFlow.js doesn't handle concurrent inference well
+// and can deadlock when multiple detect() calls run simultaneously on the same model.
+let detectionLock: Promise<void> = Promise.resolve();
 
 export async function getHumanServer(): Promise<Human> {
   if (humanInstance) return humanInstance;
@@ -75,9 +94,28 @@ export async function decodeBase64Image(dataUrl: string): Promise<TfTensor> {
 }
 
 /**
+ * Create a deferred promise with external resolve control.
+ */
+function createDeferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => {};
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+/**
  * Run Human.js detection on a base64 image (server-side).
+ * Uses a mutex to prevent concurrent detection calls which can deadlock TensorFlow.js.
  */
 export async function detectFromBase64(dataUrl: string) {
+  // Acquire lock - wait for any pending detection to complete
+  const previousLock = detectionLock;
+  const { promise: currentLock, resolve: releaseLock } = createDeferred();
+  detectionLock = currentLock;
+
+  await previousLock;
+
   const human = await getHumanServer();
   const tensor = await decodeBase64Image(dataUrl);
   try {
@@ -86,5 +124,7 @@ export async function detectFromBase64(dataUrl: string) {
   } finally {
     // Dispose tensor to prevent memory leaks
     tensor.dispose();
+    // Release lock for next detection
+    releaseLock();
   }
 }
