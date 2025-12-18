@@ -3,8 +3,8 @@
 //! Embeds git SHA and build time at compile time for deployment verification.
 //! Priority: CI env var → git command → "unknown"
 
+use chrono::Utc;
 use std::process::Command;
-use std::time::SystemTime;
 
 fn main() {
     // Tell Cargo to rerun if git HEAD changes (path relative to repo root)
@@ -25,13 +25,8 @@ fn main() {
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    // Priority: CI env var → Unix timestamp
-    let build_time = std::env::var("BUILD_TIME").unwrap_or_else(|_| {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| format!("{}", d.as_secs()))
-            .unwrap_or_else(|_| "unknown".to_string())
-    });
+    // Priority: CI env var → ISO 8601 timestamp (consistent with Web/OCR services)
+    let build_time = std::env::var("BUILD_TIME").unwrap_or_else(|_| Utc::now().to_rfc3339());
 
     println!("cargo:rustc-env=GIT_SHA={}", git_sha);
     println!("cargo:rustc-env=BUILD_TIME={}", build_time);
