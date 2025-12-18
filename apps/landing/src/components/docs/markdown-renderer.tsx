@@ -1,9 +1,11 @@
-import { lazy, Suspense } from "react";
 import type { Components } from "react-markdown";
+
+import { lazy, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router-dom";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+
 import { getAllDocSlugs } from "@/content/docs";
 
 // Lazy load Mermaid to avoid 1.5MB bundle hit on initial load

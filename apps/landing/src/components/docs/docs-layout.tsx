@@ -1,6 +1,8 @@
-import { IconArrowLeft } from "@tabler/icons-react";
 import type { ReactNode } from "react";
+
+import { IconArrowLeft } from "@tabler/icons-react";
 import { Link, useParams } from "react-router-dom";
+
 import { Logo } from "@/components/logo";
 import {
   Breadcrumb,

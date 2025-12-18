@@ -1,4 +1,5 @@
 import { Navigate, useParams } from "react-router-dom";
+
 import { MarkdownRenderer } from "@/components/docs/markdown-renderer";
 import { getAllDocSlugs, getDocBySlug } from "@/content/docs";
 import { useDocumentHead } from "@/lib/use-document-head";

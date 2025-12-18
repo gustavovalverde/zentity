@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+
 import { DocsLayout } from "@/components/docs/docs-layout";
 import {
   CTASection,

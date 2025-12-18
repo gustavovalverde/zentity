@@ -8,6 +8,7 @@ import {
   IconUserCheck,
   IconWorld,
 } from "@tabler/icons-react";
+
 import { cn } from "@/lib/utils";
 
 const colorStyles = {
