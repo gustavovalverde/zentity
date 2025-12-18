@@ -5,9 +5,8 @@ Identifies identity document types (passport, national ID, driver's license)
 based on text markers and patterns. Supports international documents.
 """
 
-from enum import Enum
-from typing import Tuple
 import re
+from enum import Enum
 
 
 class DocumentType(str, Enum):
@@ -56,7 +55,7 @@ DOCUMENT_MARKERS = {
 }
 
 
-def detect_document_type(text: str) -> Tuple[DocumentType, float]:
+def detect_document_type(text: str) -> tuple[DocumentType, float]:
     """
     Detect document type from OCR text.
 

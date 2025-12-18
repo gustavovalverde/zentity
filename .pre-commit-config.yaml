@@ -31,7 +31,7 @@ repos:
         args: [--allow-multiple-documents]
       - id: check-toml
       - id: check-json
-        exclude: ^\.vscode/  # VSCode uses JSONC (JSON with comments)
+        exclude: (^\.vscode/|tsconfig.*\.json$)  # JSONC files (VSCode, TypeScript)
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=1000]

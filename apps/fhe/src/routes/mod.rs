@@ -253,7 +253,9 @@ pub struct VerifyAgePreciseResponse {
 pub async fn verify_age_precise(
     Json(payload): Json<VerifyAgePreciseRequest>,
 ) -> Result<Json<VerifyAgePreciseResponse>, FheError> {
-    let current_date = payload.current_date.unwrap_or_else(crypto::get_current_date_int);
+    let current_date = payload
+        .current_date
+        .unwrap_or_else(crypto::get_current_date_int);
 
     let (is_over_age, computation_time_ms) = crypto::verify_age_precise(
         &payload.ciphertext,

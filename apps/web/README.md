@@ -72,7 +72,7 @@ bun run start
 
 ## Project Structure
 
-```
+```text
 src/
 ├── app/                    # Next.js App Router
 │   ├── (auth)/             # Auth routes (sign-in, sign-up)

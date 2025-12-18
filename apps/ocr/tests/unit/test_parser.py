@@ -2,27 +2,23 @@
 Tests for MRZ parsing using ICAO 9303 standard library.
 """
 
-import pytest
-
-from app.parser import (
-    parse_mrz,
-    extract_passport_fields,
-    _mrz_date_to_iso,
-    correct_country_code,
-)
 from mrz.base.countries_ops import get_country
 
+from app.parser import (
+    _mrz_date_to_iso,
+    correct_country_code,
+    extract_passport_fields,
+    parse_mrz,
+)
 
 # Standard ICAO test MRZ (from ICAO 9303 spec)
 VALID_MRZ_ICAO = (
-    "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\n"
-    "L898902C36UTO7408122F1204159ZE184226B<<<<<10"
+    "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<10"
 )
 
 # Dominican Republic passport MRZ example
 VALID_MRZ_DOM = (
-    "P<DOMVALVERDE<DE<SOTO<<GUSTAVO<ADOLFO<JR<<<<\n"
-    "RD69703794DOM9205241M3006226<<<<<<<<<<<<<<02"
+    "P<DOMVALVERDE<DE<SOTO<<GUSTAVO<ADOLFO<JR<<<<\nRD69703794DOM9205241M3006226<<<<<<<<<<<<<<02"
 )
 
 
@@ -40,7 +36,8 @@ class TestParseMrz:
         assert data.date_of_birth == "1974-08-12"
         assert data.expiration_date == "2012-04-15"
         assert data.gender == "F"
-        # nationality is the full country name (from ISO 3166), nationality_code is the 3-letter code
+        # nationality is the full country name (from ISO 3166),
+        # nationality_code is the 3-letter code
         assert data.nationality_code == "UTO"
         assert data.nationality == "Utopia"  # Full country name from mrz library
 
@@ -52,7 +49,8 @@ class TestParseMrz:
         assert data.last_name is not None
         assert data.first_name is not None
         assert data.document_number is not None
-        # nationality is the full country name (from ISO 3166), nationality_code is the 3-letter code
+        # nationality is the full country name (from ISO 3166),
+        # nationality_code is the 3-letter code
         assert data.nationality_code == "DOM"
         assert data.nationality == "Dominican Republic"
 

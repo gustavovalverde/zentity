@@ -39,12 +39,14 @@ This RP flow solves a separate problem: **how a third party requests verificatio
 File: `apps/web/src/app/api/rp/[...path]/route.ts`
 
 Responsibilities:
+
 - Validate request parameters (`client_id`, `redirect_uri`, optional `state`)
 - Enforce redirect allowlist for **external** redirect URIs (`RP_ALLOWED_REDIRECT_URIS`)
 - Create a short-lived `flow` ID and store flow state in an **httpOnly signed cookie**
 - Redirect to a clean URL: `/rp/verify?flow=...`
 
 Security value:
+
 - Prevents sensitive params from persisting in the browser address bar, history, analytics, or referer headers.
 - Signed cookies prevent tampering with `client_id` / `redirect_uri` / `state` stored in the flow.
 
@@ -53,6 +55,7 @@ Security value:
 File: `apps/web/src/app/rp/verify/page.tsx`
 
 Responsibilities:
+
 - Read and verify flow state from the signed cookie using `flow`
 - Display a minimal “handoff” confirmation screen
 - Route user into onboarding at `/sign-up?rp_flow=...`
@@ -62,12 +65,14 @@ Responsibilities:
 File: `apps/web/src/app/api/rp/[...path]/route.ts`
 
 Responsibilities:
+
 - Require an authenticated user session
 - Load and validate the `flow`
 - Issue a one-time authorization `code` bound to `(client_id, redirect_uri, user_id)`
 - Redirect back to the relying party with `code` (+ `state`)
 
 Security value:
+
 - A one-time code is safer than redirecting with verification results directly.
 
 ### `POST /api/rp/exchange`
@@ -75,10 +80,12 @@ Security value:
 File: `apps/web/src/app/api/rp/[...path]/route.ts`
 
 Responsibilities:
+
 - Consume the one-time code (single-use + expiry enforced in DB)
 - Return minimal **verification status and checks** for the user associated with the code
 
 Privacy value:
+
 - Returns only coarse flags (e.g., `verified`, `checks`)—not DOB, document images, selfies, embeddings, or raw ZK proof payloads.
 
 ## Configuration
@@ -101,6 +108,7 @@ This is an MVP-style flow suitable for **closed beta** integrations, not a publi
 - No signed verification token/JWT yet
 
 If we want to productionize this for third-party partners at scale, we should add:
+
 - A client registry (stored + managed), per-client keys/secrets, and metadata (name/logo)
 - PKCE and redirect_uri binding checks on exchange
 - Rate limiting, audit logging, and signed verification assertions

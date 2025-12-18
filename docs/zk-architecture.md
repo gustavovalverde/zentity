@@ -12,7 +12,7 @@ Zentity uses client-side ZK proof generation to ensure sensitive data never leav
 2. **Client-Side Prover** - Browser-based proof generation using Noir.js + bb.js
 3. **Server-Side Verifier** - Proof verification using bb.js
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                           User's Browser                            │
 │  ┌─────────────┐    ┌─────────────────┐    ┌──────────────────────┐ │
@@ -48,7 +48,7 @@ All circuits include a `nonce` public input for replay resistance.
 
 ### Directory Structure
 
-```
+```text
 apps/web/noir-circuits/
 ├── age_verification/
 │   ├── Nargo.toml
@@ -168,7 +168,7 @@ const natResult = await generateNationalityProofNoir({
 
 Proof generation runs in a Web Worker to keep the UI responsive:
 
-```
+```text
 Main Thread                    Web Worker
      │                              │
      │─── postMessage(inputs) ─────▶│
@@ -181,6 +181,7 @@ Main Thread                    Web Worker
 ```
 
 Key files:
+
 - `noir-prover.ts` - Public API for proof generation
 - `noir-worker-manager.ts` - Worker pool management
 - `noir-prover.worker.ts` - Worker implementation
@@ -213,6 +214,7 @@ const result = await verifyNoirProof({
 ### Proof Metadata
 
 Each verification returns circuit metadata for audit trails:
+
 - `noirVersion` - Noir compiler version
 - `circuitHash` - Hash of compiled circuit
 - `bbVersion` - Barretenberg verifier version
@@ -271,6 +273,7 @@ bun run circuits:compile
 ### 5. Add to TypeScript
 
 Update these files:
+
 - `src/lib/zk-circuit-spec.ts` - Add circuit type
 - `src/lib/noir-verifier.ts` - Import compiled JSON
 - `src/lib/noir-prover.worker.ts` - Add worker handler
@@ -313,6 +316,7 @@ Proof generation times depend on circuit complexity and device performance.
 ### Universal Setup
 
 UltraHonk uses a universal trusted setup (SRS/CRS) that:
+
 - Is circuit-agnostic (no per-circuit ceremony)
 - Is downloaded and cached automatically by bb.js
 - Can be verified against public ceremonies
@@ -320,6 +324,7 @@ UltraHonk uses a universal trusted setup (SRS/CRS) that:
 ### Replay Resistance
 
 All circuits require a `nonce` public input:
+
 - Server issues challenge nonces via tRPC (`crypto.createChallenge` on `/api/trpc/*`)
 - Nonce is bound to session/user
 - Same proof cannot be replayed with different nonce
@@ -327,6 +332,7 @@ All circuits require a `nonce` public input:
 ### Input Validation
 
 Circuits include range checks:
+
 - Age: birth year cannot be in the future
 - Face match: scores must be 0-10000
 - Dates: validated as YYYYMMDD integers
@@ -335,7 +341,7 @@ Circuits include range checks:
 
 ## Files Reference
 
-```
+```text
 apps/web/
 ├── noir-circuits/           # Noir circuit sources
 │   ├── age_verification/

@@ -22,30 +22,30 @@ pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
             )));
         }
 
-        let year: u32 = parts[0].parse().map_err(|_| {
-            FheError::InvalidInput(format!("Invalid year in date: {}", date_str))
-        })?;
-        let month: u32 = parts[1].parse().map_err(|_| {
-            FheError::InvalidInput(format!("Invalid month in date: {}", date_str))
-        })?;
-        let day: u32 = parts[2].parse().map_err(|_| {
-            FheError::InvalidInput(format!("Invalid day in date: {}", date_str))
-        })?;
+        let year: u32 = parts[0]
+            .parse()
+            .map_err(|_| FheError::InvalidInput(format!("Invalid year in date: {}", date_str)))?;
+        let month: u32 = parts[1]
+            .parse()
+            .map_err(|_| FheError::InvalidInput(format!("Invalid month in date: {}", date_str)))?;
+        let day: u32 = parts[2]
+            .parse()
+            .map_err(|_| FheError::InvalidInput(format!("Invalid day in date: {}", date_str)))?;
 
         // Validate ranges
-        if year < 1900 || year > 2100 {
+        if !(1900..=2100).contains(&year) {
             return Err(FheError::InvalidInput(format!(
                 "Year out of range (1900-2100): {}",
                 year
             )));
         }
-        if month < 1 || month > 12 {
+        if !(1..=12).contains(&month) {
             return Err(FheError::InvalidInput(format!(
                 "Month out of range (1-12): {}",
                 month
             )));
         }
-        if day < 1 || day > 31 {
+        if !(1..=31).contains(&day) {
             return Err(FheError::InvalidInput(format!(
                 "Day out of range (1-31): {}",
                 day
@@ -65,30 +65,30 @@ pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
             )));
         }
 
-        let day: u32 = parts[0].parse().map_err(|_| {
-            FheError::InvalidInput(format!("Invalid day in date: {}", date_str))
-        })?;
-        let month: u32 = parts[1].parse().map_err(|_| {
-            FheError::InvalidInput(format!("Invalid month in date: {}", date_str))
-        })?;
-        let year: u32 = parts[2].parse().map_err(|_| {
-            FheError::InvalidInput(format!("Invalid year in date: {}", date_str))
-        })?;
+        let day: u32 = parts[0]
+            .parse()
+            .map_err(|_| FheError::InvalidInput(format!("Invalid day in date: {}", date_str)))?;
+        let month: u32 = parts[1]
+            .parse()
+            .map_err(|_| FheError::InvalidInput(format!("Invalid month in date: {}", date_str)))?;
+        let year: u32 = parts[2]
+            .parse()
+            .map_err(|_| FheError::InvalidInput(format!("Invalid year in date: {}", date_str)))?;
 
         // Validate ranges
-        if year < 1900 || year > 2100 {
+        if !(1900..=2100).contains(&year) {
             return Err(FheError::InvalidInput(format!(
                 "Year out of range (1900-2100): {}",
                 year
             )));
         }
-        if month < 1 || month > 12 {
+        if !(1..=12).contains(&month) {
             return Err(FheError::InvalidInput(format!(
                 "Month out of range (1-12): {}",
                 month
             )));
         }
-        if day < 1 || day > 31 {
+        if !(1..=31).contains(&day) {
             return Err(FheError::InvalidInput(format!(
                 "Day out of range (1-31): {}",
                 day
@@ -111,7 +111,7 @@ pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
     let month = (date_int % 10000) / 100;
     let day = date_int % 100;
 
-    if year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1900..=2100).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return Err(FheError::InvalidInput(format!(
             "Invalid YYYYMMDD date: {}",
             date_int
@@ -166,7 +166,7 @@ pub fn get_current_date_int() -> u32 {
 }
 
 fn is_leap_year(year: u32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 /// Encrypt a full date of birth (YYYYMMDD) using the specified client key
@@ -176,7 +176,7 @@ pub fn encrypt_dob(dob: u32, client_key_id: &str) -> Result<String, FheError> {
     let month = (dob % 10000) / 100;
     let day = dob % 100;
 
-    if year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1900..=2100).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return Err(FheError::InvalidInput(format!(
             "Invalid YYYYMMDD date: {}",
             dob

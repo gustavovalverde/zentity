@@ -17,6 +17,7 @@ Monorepo with 3 active services communicating via REST APIs:
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
 
 The frontend handles:
+
 - Face detection and liveness verification using Human.js (server-side via tfjs-node)
 - **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
 - **tRPC API layer** with type-safe routers for all backend operations
@@ -25,6 +26,7 @@ The frontend handles:
 ## Build & Development Commands
 
 ### Web Frontend (apps/web)
+
 ```bash
 bun run dev          # Start dev server
 bun run build        # Production build
@@ -35,6 +37,7 @@ bun run test:e2e     # Run Playwright tests
 ```
 
 ### Noir Circuits (apps/web/noir-circuits)
+
 ```bash
 # From apps/web directory:
 bun run circuits:compile  # Compile all circuits
@@ -42,6 +45,7 @@ bun run circuits:test     # Run circuit tests
 ```
 
 ### FHE Service (apps/fhe)
+
 ```bash
 cargo build --release    # Build
 cargo run --release      # Run (compiles TFHE keys on first start)
@@ -49,6 +53,7 @@ cargo test               # Run tests
 ```
 
 ### OCR Service (apps/ocr)
+
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -57,6 +62,7 @@ pytest
 ```
 
 ### Docker (all services)
+
 ```bash
 docker-compose up        # Start all services
 docker-compose up -d     # Detached mode
@@ -65,12 +71,14 @@ docker-compose up -d     # Detached mode
 ### Manual Setup (without Docker)
 
 **Prerequisites:**
+
 - Node.js 24+ (recommended: use `.nvmrc` or `mise`)
 - Bun 1.3+ (runtime + package manager for `apps/web`)
 - Rust 1.91+ (recommended: `mise`)
 - Python 3.12+ (recommended: `mise`)
 
 **Setup Toolchain:**
+
 ```bash
 # Install mise (https://mise.jdx.dev)
 curl https://mise.run | sh
@@ -80,6 +88,7 @@ mise install
 ```
 
 **Install Dependencies:**
+
 ```bash
 # Frontend
 cd apps/web && bun install
@@ -92,6 +101,7 @@ cd apps/fhe && cargo build --release
 ```
 
 **Start Services (3 terminals):**
+
 ```bash
 # Terminal 1: Frontend
 cd apps/web && bun run dev
@@ -138,6 +148,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `onboarding` | Wizard state management and step validation |
 
 **Client usage:**
+
 ```typescript
 import { trpc } from "@/lib/trpc/client";
 
@@ -162,11 +173,13 @@ Configure allowed redirect URIs via `RP_ALLOWED_REDIRECT_URIS` env var.
 ## ZK Circuit Development
 
 ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
+
 1. Install Noir toolchain: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup`
 2. Compile circuits: `cd apps/web && bun run circuits:compile`
 3. Test circuits: `cd apps/web && bun run circuits:test`
 
 Circuits available:
+
 - `age_verification` — Prove age >= threshold without revealing birth year
 - `doc_validity` — Prove document not expired without revealing expiry date
 - `nationality_membership` — Prove nationality in country group via Merkle proof

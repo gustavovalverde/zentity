@@ -20,8 +20,7 @@ import os
 import subprocess
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Optional, List
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -29,28 +28,32 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette import status
 
-from .ocr import extract_text_from_base64, extract_document_text_from_base64, warmup_engine
-from .parser import (
-    ExtractedData,
-    extract_national_id_fields,
-    extract_passport_fields,
-    extract_drivers_license_fields,
+from .commitments import (
+    generate_identity_commitments,
+    generate_user_salt,
+    verify_name_claim,
 )
 from .document_detector import (
     DocumentType,
     detect_document_type,
 )
+from .ocr import (
+    extract_document_text_from_base64,
+    extract_text_from_base64,
+    warmup_engine,
+)
+from .parser import (
+    ExtractedData,
+    extract_drivers_license_fields,
+    extract_national_id_fields,
+    extract_passport_fields,
+)
 from .validators import (
+    calculate_confidence,
+    validate_dob,
+    validate_expiration_date,
     validate_national_id_detailed,
     validate_passport_number,
-    validate_expiration_date,
-    validate_dob,
-    calculate_confidence,
-)
-from .commitments import (
-    generate_user_salt,
-    generate_identity_commitments,
-    verify_name_claim,
 )
 
 # Configuration
@@ -81,7 +84,7 @@ def _get_build_time() -> str:
     """Get build time from environment or current time."""
     if build_time := os.getenv("BUILD_TIME"):
         return build_time
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # Build info (resolved at module import)
@@ -111,16 +114,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 # Privacy: Avoid echoing request bodies (e.g., base64 images) back in 422 responses.
 # FastAPI's default RequestValidationError response may include the invalid input.
 @app.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(
-    _request, _exc: RequestValidationError
-):
+async def request_validation_exception_handler(_request, _exc: RequestValidationError):
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"error": "Invalid request"},
     )
+
 
 # Optional internal auth (defense-in-depth).
 # If INTERNAL_SERVICE_TOKEN is set, require it for all non-health endpoints.
@@ -129,9 +132,7 @@ async def internal_auth_middleware(request: Request, call_next):
     if INTERNAL_SERVICE_TOKEN:
         # Allow provider health checks, build info, and docs without auth.
         public_paths = ("/health", "/build-info", "/openapi.json")
-        if request.url.path not in public_paths and not request.url.path.startswith(
-            "/docs"
-        ):
+        if request.url.path not in public_paths and not request.url.path.startswith("/docs"):
             provided = request.headers.get("x-zentity-internal-token")
             if provided != INTERNAL_SERVICE_TOKEN:
                 return JSONResponse(
@@ -140,58 +141,59 @@ async def internal_auth_middleware(request: Request, call_next):
                 )
     return await call_next(request)
 
+
 # Request/Response models
 class ImageRequest(BaseModel):
     image: str = Field(..., description="Base64 encoded image")
 
 
 class ExtractedDataResponse(BaseModel):
-    fullName: Optional[str] = None
-    firstName: Optional[str] = None   # Nombres
-    lastName: Optional[str] = None    # Apellidos
-    documentNumber: Optional[str] = None
-    dateOfBirth: Optional[str] = None
-    expirationDate: Optional[str] = None
-    nationality: Optional[str] = None       # Full country name
-    nationalityCode: Optional[str] = None   # ISO 3166-1 alpha-3 code
-    issuingCountry: Optional[str] = None    # Full country name of issuing state
-    issuingCountryCode: Optional[str] = None  # ISO 3166-1 alpha-3 issuing state code
-    gender: Optional[str] = None
+    fullName: str | None = None
+    firstName: str | None = None  # Nombres
+    lastName: str | None = None  # Apellidos
+    documentNumber: str | None = None
+    dateOfBirth: str | None = None
+    expirationDate: str | None = None
+    nationality: str | None = None  # Full country name
+    nationalityCode: str | None = None  # ISO 3166-1 alpha-3 code
+    issuingCountry: str | None = None  # Full country name of issuing state
+    issuingCountryCode: str | None = None  # ISO 3166-1 alpha-3 issuing state code
+    gender: str | None = None
 
 
 class ValidationDetail(BaseModel):
     """Rich validation error details for frontend display."""
+
     errorCode: str = Field(..., description="Machine-readable error code")
     errorMessage: str = Field(..., description="User-friendly error message")
-    validatorUsed: Optional[str] = Field(
+    validatorUsed: str | None = Field(
         None, description="Validator module used (e.g., 'stdnum.do.cedula')"
     )
-    formatName: Optional[str] = Field(
-        None, description="Document format name (e.g., 'cedula (Dominican Republic national ID)')"
+    formatName: str | None = Field(
+        None,
+        description="Document format name (e.g., 'cedula (DR national ID)')",
     )
 
 
 class DocumentResponse(BaseModel):
-    documentType: str = Field(
-        ..., description="passport, national_id, drivers_license, unknown"
-    )
-    documentOrigin: Optional[str] = Field(
+    documentType: str = Field(..., description="passport, national_id, drivers_license, unknown")
+    documentOrigin: str | None = Field(
         None, description="Detected country of origin (e.g., 'DOM', 'USA')"
     )
     confidence: float = Field(..., ge=0, le=1)
-    extractedData: Optional[ExtractedDataResponse] = None
-    validationIssues: List[str]
-    validationDetails: Optional[List[ValidationDetail]] = Field(
+    extractedData: ExtractedDataResponse | None = None
+    validationIssues: list[str]
+    validationDetails: list[ValidationDetail] | None = Field(
         None, description="Rich validation error details for frontend display"
     )
     processingTimeMs: int
 
 
 class ExtractResponse(BaseModel):
-    textBlocks: List[dict]
+    textBlocks: list[dict]
     fullText: str
     processingTimeMs: int
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -272,8 +274,8 @@ async def ocr_document_endpoint(request: ImageRequest):
         raise HTTPException(status_code=400, detail="Image is required")
 
     start_time = time.time()
-    validation_issues: List[str] = []
-    validation_details: List[ValidationDetail] = []
+    validation_issues: list[str] = []
+    validation_details: list[ValidationDetail] = []
 
     # Step 1: Extract text (MRZ-fast-path for passports)
     ocr_result = extract_document_text_from_base64(request.image)
@@ -307,7 +309,7 @@ async def ocr_document_endpoint(request: ImageRequest):
     doc_type, type_confidence = detect_document_type(full_text)
 
     # Step 3: Extract fields based on document type
-    extracted: Optional[ExtractedData] = None
+    extracted: ExtractedData | None = None
 
     if doc_type == DocumentType.NATIONAL_ID:
         extracted = extract_national_id_fields(full_text)
@@ -320,12 +322,14 @@ async def ocr_document_endpoint(request: ImageRequest):
             if result.error_code:
                 validation_issues.append(result.error_code)
                 if result.error_message:
-                    validation_details.append(ValidationDetail(
-                        errorCode=result.error_code,
-                        errorMessage=result.error_message,
-                        validatorUsed=result.validator_used,
-                        formatName=result.format_name,
-                    ))
+                    validation_details.append(
+                        ValidationDetail(
+                            errorCode=result.error_code,
+                            errorMessage=result.error_message,
+                            validatorUsed=result.validator_used,
+                            formatName=result.format_name,
+                        )
+                    )
     elif doc_type == DocumentType.PASSPORT:
         extracted, mrz_valid = extract_passport_fields(full_text)
         if not mrz_valid:
@@ -355,9 +359,7 @@ async def ocr_document_endpoint(request: ImageRequest):
     )
 
     avg_ocr_confidence = (
-        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks)
-        if text_blocks
-        else 0.0
+        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks) if text_blocks else 0.0
     )
 
     confidence = calculate_confidence(
@@ -383,7 +385,7 @@ async def ocr_document_endpoint(request: ImageRequest):
             issuingCountryCode=extracted.issuing_country_code,
             gender=extracted.gender,
         )
-        # Use issuing country as document origin if available, otherwise fall back to nationality
+        # Use issuing country as origin if available, fallback to nationality
         document_origin = extracted.issuing_country_code or extracted.nationality_code
 
     processing_time_ms = int((time.time() - start_time) * 1000)
@@ -408,9 +410,9 @@ class ProcessDocumentRequest(BaseModel):
     """Request for full privacy-preserving document processing."""
 
     image: str = Field(..., description="Base64 encoded document image")
-    userSalt: Optional[str] = Field(
+    userSalt: str | None = Field(
         None,
-        description="Existing user salt. If not provided, a new salt will be generated.",
+        description="Existing user salt. If not provided, a new one is generated.",
     )
 
 
@@ -419,7 +421,7 @@ class IdentityCommitmentsResponse(BaseModel):
 
     documentHash: str = Field(..., description="SHA256(doc_number + salt)")
     nameCommitment: str = Field(..., description="SHA256(name + salt)")
-    issuingCountryCommitment: Optional[str] = Field(
+    issuingCountryCommitment: str | None = Field(
         None, description="SHA256(issuing_country_code + salt) - for fraud detection"
     )
     userSalt: str = Field(..., description="User's unique salt (store securely)")
@@ -441,19 +443,19 @@ class ProcessDocumentResponse(BaseModel):
     """
 
     # Cryptographic commitments (STORE THESE)
-    commitments: Optional[IdentityCommitmentsResponse] = None
+    commitments: IdentityCommitmentsResponse | None = None
 
     # Verification results (STORE THESE)
     documentType: str
-    documentOrigin: Optional[str] = None
+    documentOrigin: str | None = None
     confidence: float
 
     # Transient data (DISPLAY THEN DISCARD)
-    extractedData: Optional[ExtractedDataResponse] = None
+    extractedData: ExtractedDataResponse | None = None
 
     # Metadata
-    validationIssues: List[str]
-    validationDetails: Optional[List[ValidationDetail]] = Field(
+    validationIssues: list[str]
+    validationDetails: list[ValidationDetail] | None = Field(
         None, description="Rich validation error details for frontend display"
     )
     processingTimeMs: int
@@ -481,8 +483,8 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
         raise HTTPException(status_code=400, detail="Image is required")
 
     start_time = time.time()
-    validation_issues: List[str] = []
-    validation_details: List[ValidationDetail] = []
+    validation_issues: list[str] = []
+    validation_details: list[ValidationDetail] = []
 
     # Step 1: Extract text (transient, MRZ-fast-path for passports)
     ocr_result = extract_document_text_from_base64(request.image)
@@ -518,7 +520,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
     doc_type, type_confidence = detect_document_type(full_text)
 
     # Step 3: Extract fields based on document type (transient)
-    extracted: Optional[ExtractedData] = None
+    extracted: ExtractedData | None = None
 
     if doc_type == DocumentType.NATIONAL_ID:
         extracted = extract_national_id_fields(full_text)
@@ -531,12 +533,14 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             if result.error_code:
                 validation_issues.append(result.error_code)
                 if result.error_message:
-                    validation_details.append(ValidationDetail(
-                        errorCode=result.error_code,
-                        errorMessage=result.error_message,
-                        validatorUsed=result.validator_used,
-                        formatName=result.format_name,
-                    ))
+                    validation_details.append(
+                        ValidationDetail(
+                            errorCode=result.error_code,
+                            errorMessage=result.error_message,
+                            validatorUsed=result.validator_used,
+                            formatName=result.format_name,
+                        )
+                    )
     elif doc_type == DocumentType.PASSPORT:
         extracted, mrz_valid = extract_passport_fields(full_text)
         if not mrz_valid:
@@ -592,9 +596,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
     )
 
     avg_ocr_confidence = (
-        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks)
-        if text_blocks
-        else 0.0
+        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks) if text_blocks else 0.0
     )
 
     confidence = calculate_confidence(
@@ -620,7 +622,7 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             issuingCountryCode=extracted.issuing_country_code,
             gender=extracted.gender,
         )
-        # Use issuing country as document origin if available, otherwise fall back to nationality
+        # Use issuing country as origin if available, fallback to nationality
         document_origin = extracted.issuing_country_code or extracted.nationality_code
 
     processing_time_ms = int((time.time() - start_time) * 1000)

@@ -19,7 +19,7 @@ This service extracts identity information from documents (national IDs, passpor
 
 ### Processing Pipeline
 
-```
+```text
 ┌─────────────────┐
 │  Document Image │
 │   (Base64)      │
@@ -94,6 +94,7 @@ The service automatically detects the document's country of origin by scanning t
 ### Country Code Conversion
 
 The service uses ISO 3166 country codes throughout:
+
 - **Alpha-3** (e.g., `DOM`, `ESP`): Used in API responses
 - **Alpha-2** (e.g., `do`, `es`): Used internally for stdnum validator lookup
 
@@ -123,10 +124,12 @@ validator.validate('00113918205')  # Validates with Luhn checksum
 
 1. **Convert Country Code**: `DOM` → `do` (alpha-3 to alpha-2)
 2. **Try Module Names**: Iterate through common personal ID module names:
-   ```
+
+   ```text
    personalid, cedula, dni, cpf, curp, rut, nie, nif, pesel,
    bsn, personnummer, hetu, nino, ssn, sin, aadhaar, ...
    ```
+
 3. **Return First Match**: First module with a `validate()` function is used
 4. **Graceful Fallback**: If no validator found, validation is skipped (not failed)
 
@@ -153,6 +156,7 @@ The service identifies document types based on keywords and patterns in the OCR 
 ### Confidence Scoring
 
 Each detection includes a confidence score based on:
+
 - Number of matching patterns found
 - OCR confidence levels
 - Number of fields successfully extracted
@@ -177,7 +181,7 @@ Fields are extracted using multilingual regex patterns:
 
 Passports are parsed using the **MRZ (Machine Readable Zone)** following [ICAO 9303](https://www.icao.int/publications/pages/publication.aspx?docnum=9303) standard.
 
-```
+```text
 P<DOMPEREZ<<JUAN<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 AB12345670DOM9005156M2512310<<<<<<<<<<<<<<00
   ^^^       ^^^
@@ -186,6 +190,7 @@ AB12345670DOM9005156M2512310<<<<<<<<<<<<<<00
 ```
 
 The `mrz` library extracts:
+
 - Surname and given names
 - Document number with checksum validation
 - **Issuing country** (separate from nationality - useful for fraud detection)
@@ -199,6 +204,7 @@ The `mrz` library extracts:
 #### MRZ OCR Error Correction
 
 Common OCR mistakes in country codes are automatically corrected:
+
 - `0` ↔ `O` (zero vs letter O)
 - `1` ↔ `I` (one vs letter I)
 - `5` ↔ `S` (five vs letter S)
@@ -264,6 +270,7 @@ The service can validate document numbers for these countries using `python-stdn
 ### Countries with Detection Only
 
 For countries without a stdnum validator, the service will:
+
 1. ✅ Detect the country from document text
 2. ✅ Extract fields (name, DOB, etc.)
 3. ⚠️ Return `validation_unavailable_for_country` warning
@@ -296,7 +303,7 @@ For countries without a stdnum validator, the service will:
 
 For the `/process` endpoint, the service generates privacy-preserving commitments:
 
-```
+```text
 Document Hash:            SHA256(normalize(doc_number) + ":" + user_salt)
 Name Commitment:          SHA256(normalize(full_name) + ":" + user_salt)
 Nationality Commitment:   SHA256(normalize(nationality_code) + ":" + user_salt)
@@ -304,6 +311,7 @@ Issuing Country Commitment: SHA256(normalize(issuing_country_code) + ":" + user_
 ```
 
 **What gets stored (safe):**
+
 - Document hash (cannot reverse to get actual number)
 - Name commitment (cannot reverse to get actual name)
 - Nationality commitment (for later ZK proof verification)
@@ -311,13 +319,14 @@ Issuing Country Commitment: SHA256(normalize(issuing_country_code) + ":" + user_
 - User salt (enables verification)
 
 **What gets discarded (PII):**
+
 - Original document image
 - Extracted name, DOB, document number
 - All OCR text
 
 ### GDPR Right to Erasure
 
-```
+```text
 DELETE user_salt → All commitments become unlinkable
 ```
 
@@ -332,6 +341,7 @@ When a user requests deletion, removing their salt orphans all their commitments
 Health check endpoint.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -348,6 +358,7 @@ Health check endpoint.
 Raw OCR text extraction without parsing.
 
 **Request:**
+
 ```json
 {
   "image": "base64-encoded-image"
@@ -355,6 +366,7 @@ Raw OCR text extraction without parsing.
 ```
 
 **Response:**
+
 ```json
 {
   "textBlocks": [
@@ -372,6 +384,7 @@ Raw OCR text extraction without parsing.
 Full document OCR with field extraction and validation.
 
 **Request:**
+
 ```json
 {
   "image": "base64-encoded-image"
@@ -379,6 +392,7 @@ Full document OCR with field extraction and validation.
 ```
 
 **Response:**
+
 ```json
 {
   "documentType": "national_id",
@@ -402,6 +416,7 @@ Full document OCR with field extraction and validation.
 ```
 
 **With Validation Errors:**
+
 ```json
 {
   "documentType": "national_id",
@@ -426,6 +441,7 @@ Full document OCR with field extraction and validation.
 Privacy-preserving document processing (recommended for production).
 
 **Request:**
+
 ```json
 {
   "image": "base64-encoded-image",
@@ -434,6 +450,7 @@ Privacy-preserving document processing (recommended for production).
 ```
 
 **Response:**
+
 ```json
 {
   "commitments": {
@@ -465,6 +482,7 @@ Privacy-preserving document processing (recommended for production).
 Verify a name claim against a stored commitment.
 
 **Request:**
+
 ```json
 {
   "claimedName": "Juan Perez",
@@ -474,6 +492,7 @@ Verify a name claim against a stored commitment.
 ```
 
 **Response:**
+
 ```json
 {
   "matches": true
@@ -554,7 +573,7 @@ docker run -p 5004:5004 zentity-ocr-service
 
 ## Architecture
 
-```
+```text
 apps/ocr/
 ├── app/
 │   ├── main.py              # FastAPI application & endpoints

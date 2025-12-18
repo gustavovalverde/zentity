@@ -5,20 +5,18 @@ Provides fast, CPU-optimized text extraction using ONNX runtime.
 Supports Latin character recognition for Spanish text.
 """
 
-import time
 import base64
 import io
 import re
-from typing import Optional
+import time
 
 import numpy as np
 from PIL import Image
-
 from rapidocr import RapidOCR
 
 # Global engine instance (singleton for performance)
-_engine: Optional[RapidOCR] = None
-_fast_engine: Optional[RapidOCR] = None
+_engine: RapidOCR | None = None
+_fast_engine: RapidOCR | None = None
 
 PASSPORT_MRZ_HINT_PATTERN = re.compile(r"P<[A-Z0-9]{3}", re.IGNORECASE)
 
@@ -61,11 +59,11 @@ def warmup_engine() -> None:
     for y in range(100, height - 100, 40):
         dummy[y : y + 8, 100 : width - 100] = 50  # Dark gray lines
 
+    import contextlib
+
     for ocr_engine in (engine, fast_engine):
-        try:
+        with contextlib.suppress(Exception):
             ocr_engine(dummy)
-        except Exception:
-            pass  # Ignore warmup errors
 
 
 def crop_mrz_region(image: np.ndarray, *, start_ratio: float = 0.65) -> np.ndarray:
@@ -128,9 +126,15 @@ def _extract_text(image: np.ndarray, engine: RapidOCR) -> dict:
         scores = getattr(result, "scores", None)
 
         # Convert to lists, handling None and numpy arrays
-        boxes_list = boxes.tolist() if hasattr(boxes, "tolist") else (boxes if boxes is not None else [])
+        if hasattr(boxes, "tolist"):
+            boxes_list = boxes.tolist()
+        else:
+            boxes_list = boxes if boxes is not None else []
         txts_list = list(txts) if txts is not None else []
-        scores_list = scores.tolist() if hasattr(scores, "tolist") else (list(scores) if scores is not None else [])
+        if hasattr(scores, "tolist"):
+            scores_list = scores.tolist()
+        else:
+            scores_list = list(scores) if scores is not None else []
 
         if not txts_list:
             return {

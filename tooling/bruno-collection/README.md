@@ -30,6 +30,7 @@ docker compose ps
 ## Services Overview
 
 ### FHE Service (Port 5001)
+
 Fully Homomorphic Encryption - compute on encrypted data
 
 | Endpoint | Method | Description |
@@ -39,6 +40,7 @@ Fully Homomorphic Encryption - compute on encrypted data
 | `/verify-age` | POST | Verify age on encrypted data |
 
 ### OCR Service (Port 5004)
+
 Document OCR and data extraction
 
 | Endpoint | Method | Description |
@@ -52,6 +54,7 @@ Document OCR and data extraction
 ZK proofs (age verification, document validity, nationality membership) are generated client-side in the browser using Noir.js and Barretenberg (UltraHonk).
 
 The frontend at `http://localhost:3000` handles:
+
 - Age verification proofs
 - Document validity proofs
 - Nationality group membership proofs (Merkle tree)
@@ -59,11 +62,13 @@ The frontend at `http://localhost:3000` handles:
 ## Typical Workflows
 
 ### FHE Age Verification
+
 1. Run "FHE Service > Health Check" to confirm service is up
 2. Run "FHE Service > Encrypt Birth Year" (with birthYear: 1990)
 3. Run "FHE Service > Verify Age" - uses stored ciphertext automatically
 
 ### Document OCR
+
 1. Run "OCR Service > Health Check" to confirm service is up
 2. Run "OCR Service > Extract" with a document image
 
@@ -79,8 +84,8 @@ The collection uses post-response scripts to store data between requests:
 
 Both environments (Local and Docker) use the same URLs since Docker maps ports to localhost:
 
-- `fhe_base_url`: http://localhost:5001
-- `ocr_base_url`: http://localhost:5004
+- `fhe_base_url`: <http://localhost:5001>
+- `ocr_base_url`: <http://localhost:5004>
 
 ## Performance Expectations
 
@@ -94,13 +99,16 @@ Both environments (Local and Docker) use the same URLs since Docker maps ports t
 ## Troubleshooting
 
 ### FHE Service shows "unhealthy"
+
 - Wait 60 seconds after starting - key generation takes time
 - Check logs: `docker compose logs fhe-service`
 
 ### "Connection refused" errors
+
 - Ensure services are running: `docker compose ps`
 - Check if ports are available: `lsof -i :5001 -i :5004`
 
 ### Verify Age returns error
+
 - Ensure you ran "Encrypt Birth Year" first
 - The ciphertext variable may have expired - re-run encryption

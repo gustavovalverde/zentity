@@ -24,7 +24,7 @@ This service enables privacy-preserving verification by encrypting sensitive dat
 
 ## How It Works
 
-```
+```text
 1. Client encrypts birth_year → ciphertext
 2. Server computes: (current_year - ciphertext) >= min_age
 3. Computation happens ON ENCRYPTED DATA
@@ -35,9 +35,11 @@ This service enables privacy-preserving verification by encrypting sensitive dat
 ## Endpoints
 
 ### `GET /health`
+
 Service health check.
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -46,9 +48,11 @@ Service health check.
 ```
 
 ### `POST /keys/generate`
+
 Generate new FHE key pair for a client.
 
 **Response:**
+
 ```json
 {
   "keyId": "uuid",
@@ -58,9 +62,11 @@ Generate new FHE key pair for a client.
 ```
 
 ### `POST /encrypt`
+
 Encrypt a birth year using FHE.
 
 **Request:**
+
 ```json
 {
   "birthYear": 1990,
@@ -69,6 +75,7 @@ Encrypt a birth year using FHE.
 ```
 
 **Response:**
+
 ```json
 {
   "ciphertext": "base64-encoded-ciphertext",
@@ -77,9 +84,11 @@ Encrypt a birth year using FHE.
 ```
 
 ### `POST /verify-age`
+
 Verify age threshold on encrypted birth year.
 
 **Request:**
+
 ```json
 {
   "ciphertext": "base64-encoded-ciphertext",
@@ -89,6 +98,7 @@ Verify age threshold on encrypted birth year.
 ```
 
 **Response:**
+
 ```json
 {
   "isOverAge": true,
@@ -97,9 +107,11 @@ Verify age threshold on encrypted birth year.
 ```
 
 ### `POST /encrypt-dob`
+
 Encrypt full date of birth (YYYYMMDD format).
 
 **Request:**
+
 ```json
 {
   "dateOfBirth": "1990-05-15"
@@ -107,6 +119,7 @@ Encrypt full date of birth (YYYYMMDD format).
 ```
 
 **Response:**
+
 ```json
 {
   "ciphertext": "base64-encoded-ciphertext",
@@ -115,9 +128,11 @@ Encrypt full date of birth (YYYYMMDD format).
 ```
 
 ### `POST /encrypt-gender`
+
 Encrypt gender using ISO 5218 encoding.
 
 **Request:**
+
 ```json
 {
   "gender": "M"
@@ -125,6 +140,7 @@ Encrypt gender using ISO 5218 encoding.
 ```
 
 **Response:**
+
 ```json
 {
   "ciphertext": "base64-encoded-ciphertext",
@@ -136,9 +152,11 @@ Encrypt gender using ISO 5218 encoding.
 Gender codes: `M`/`male` → 1, `F`/`female` → 2, other → 0
 
 ### `POST /encrypt-liveness`
+
 Encrypt anti-spoofing liveness score.
 
 **Request:**
+
 ```json
 {
   "score": 0.85
@@ -146,6 +164,7 @@ Encrypt anti-spoofing liveness score.
 ```
 
 **Response:**
+
 ```json
 {
   "ciphertext": "base64-encoded-ciphertext",
@@ -168,20 +187,24 @@ Score is scaled to integer (0-100) for FHE operations.
 ## Development
 
 ### Prerequisites
+
 - Rust 1.70+
 - Cargo
 
 ### Build
+
 ```bash
 cargo build --release
 ```
 
 ### Run
+
 ```bash
 cargo run --release
 ```
 
 ### Environment Variables
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 5001 | Service port |

@@ -74,4 +74,3 @@ Users can always inspect what *their own browser* sends in the Network tab. The 
 - **Rate limiting**: Add per-IP / per-session limits to the pre-check endpoint to prevent abuse.
 - **Passwordless**: Prefer passkeys or magic links for stronger phishing resistance and less password exposure overall.
 - **PAKE/OPAQUE** (advanced): If we ever want a design where the server never sees the raw password during sign-up, we would need a different authentication protocol (not the current Better Auth email+password flow).
-

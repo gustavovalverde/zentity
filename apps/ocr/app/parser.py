@@ -13,42 +13,42 @@ Uses:
 """
 
 import re
-from typing import Optional, Tuple
 from dataclasses import dataclass
 
-from mrz.checker.td3 import TD3CodeChecker
-from mrz.base.countries_ops import is_code, get_country as mrz_get_country
 import iso3166
+from mrz.base.countries_ops import get_country as mrz_get_country
+from mrz.base.countries_ops import is_code
+from mrz.checker.td3 import TD3CodeChecker
 from stdnum.do import cedula as do_cedula
 from stdnum.exceptions import ValidationError
 
 
 @dataclass
 class ExtractedData:
-    full_name: Optional[str] = None
-    first_name: Optional[str] = None  # Nombres
-    last_name: Optional[str] = None   # Apellidos
-    document_number: Optional[str] = None
-    date_of_birth: Optional[str] = None  # YYYY-MM-DD
-    expiration_date: Optional[str] = None  # YYYY-MM-DD
-    nationality: Optional[str] = None       # Full country name
-    nationality_code: Optional[str] = None  # ISO 3166-1 alpha-3 code
-    issuing_country: Optional[str] = None   # Full issuing country name
-    issuing_country_code: Optional[str] = None  # ISO 3166-1 alpha-3 issuing country code
-    gender: Optional[str] = None
+    full_name: str | None = None
+    first_name: str | None = None  # Nombres
+    last_name: str | None = None  # Apellidos
+    document_number: str | None = None
+    date_of_birth: str | None = None  # YYYY-MM-DD
+    expiration_date: str | None = None  # YYYY-MM-DD
+    nationality: str | None = None  # Full country name
+    nationality_code: str | None = None  # ISO 3166-1 alpha-3 code
+    issuing_country: str | None = None  # Full issuing country name
+    issuing_country_code: str | None = None  # ISO 3166-1 alpha-3 issuing country code
+    gender: str | None = None
 
 
 # Common OCR character confusions in MRZ
 OCR_SUBSTITUTIONS = [
-    ('0', 'O'),  # Zero ↔ Letter O (most common)
-    ('1', 'I'),  # One ↔ Letter I
-    ('5', 'S'),  # Five ↔ Letter S
-    ('8', 'B'),  # Eight ↔ Letter B
-    ('2', 'Z'),  # Two ↔ Letter Z
+    ("0", "O"),  # Zero ↔ Letter O (most common)
+    ("1", "I"),  # One ↔ Letter I
+    ("5", "S"),  # Five ↔ Letter S
+    ("8", "B"),  # Eight ↔ Letter B
+    ("2", "Z"),  # Two ↔ Letter Z
 ]
 
 
-def correct_country_code(code: str) -> Tuple[str, bool]:
+def correct_country_code(code: str) -> tuple[str, bool]:
     """
     Attempt to correct OCR errors in country code using mrz library validation.
 
@@ -87,7 +87,8 @@ NATIONAL_ID_PATTERNS = {
         r"(?:NOMBRE[S]?\s*[:.]?\s*)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",  # Spanish
         r"(?:GIVEN\s*NAME[S]?\s*[:.]?\s*)([A-Z][A-Z\s]+)",  # English
         r"(?:FIRST\s*NAME\s*[:.]?\s*)([A-Z][A-Z\s]+)",  # English alt
-        r"(?:PRÉNOM[S]?\s*[:.]?\s*)([A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ][A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ\s]+)",  # French
+        # French (with accented characters)
+        r"(?:PRÉNOM[S]?\s*[:.]?\s*)([A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ][A-ZÀÂÇÉÈÊËÎÏÔÛÙÜŸÑ\s]+)",
     ],
     "last_name": [
         r"(?:APELLIDO[S]?\s*[:.]?\s*)([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]+)",  # Spanish
@@ -143,7 +144,7 @@ def normalize_cedula_number(raw: str) -> str:
         return raw
 
 
-def get_country_name(code: str) -> Optional[str]:
+def get_country_name(code: str) -> str | None:
     """
     Get country name from ISO 3166-1 alpha-3 code.
 
@@ -161,17 +162,17 @@ def get_country_name(code: str) -> Optional[str]:
         pass
 
     # Fallback to mrz library (already in use for MRZ parsing)
-    try:
+    import contextlib
+
+    with contextlib.suppress(Exception):
         name = mrz_get_country(code)
         if name:
             return name
-    except Exception:
-        pass
 
     return None
 
 
-def parse_date_to_iso(date_str: str) -> Optional[str]:
+def parse_date_to_iso(date_str: str) -> str | None:
     """Convert date string to YYYY-MM-DD format."""
     if not date_str:
         return None
@@ -193,7 +194,7 @@ def parse_date_to_iso(date_str: str) -> Optional[str]:
     return None
 
 
-def detect_country_from_text(text: str) -> Optional[str]:
+def detect_country_from_text(text: str) -> str | None:
     """Detect country code from document text."""
     text_upper = text.upper()
     for country_code, patterns in COUNTRY_MARKERS.items():
@@ -232,7 +233,8 @@ def extract_national_id_fields(text: str) -> ExtractedData:
         if first_match:
             first_raw = first_match.group(1).strip()
             # Clean up: stop at common label words
-            first_clean = re.split(r'\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)', first_raw)[0].strip()
+            stop_words = r"\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
+            first_clean = re.split(stop_words, first_raw)[0].strip()
             data.first_name = first_clean.title()
             break
 
@@ -241,7 +243,8 @@ def extract_national_id_fields(text: str) -> ExtractedData:
         last_match = re.search(pattern, text_upper)
         if last_match:
             last_raw = last_match.group(1).strip()
-            last_clean = re.split(r'\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)', last_raw)[0].strip()
+            stop_words = r"\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
+            last_clean = re.split(stop_words, last_raw)[0].strip()
             data.last_name = last_clean.title()
             break
 
@@ -255,14 +258,28 @@ def extract_national_id_fields(text: str) -> ExtractedData:
 
     # Fallback: try to find name without labels
     if not data.full_name:
-        name_match = re.search(
-            r"\b([A-ZÁÉÍÓÚÑÀÂÇÈÊËÎÏÔÛÙÜŸ]{3,}(?:\s+[A-ZÁÉÍÓÚÑÀÂÇÈÊËÎÏÔÛÙÜŸ]{2,}){1,5})\b", text_upper
+        name_pattern = (
+            r"\b([A-ZÁÉÍÓÚÑÀÂÇÈÊËÎÏÔÛÙÜŸ]{3,}"
+            r"(?:\s+[A-ZÁÉÍÓÚÑÀÂÇÈÊËÎÏÔÛÙÜŸ]{2,}){1,5})\b"
         )
+        name_match = re.search(name_pattern, text_upper)
         if name_match:
             potential_name = name_match.group(1)
             # Exclude common non-name phrases
-            exclude = ["REPUBLICA", "REPUBLIC", "JUNTA", "CENTRAL", "ELECTORAL", "CEDULA",
-                       "IDENTITY", "NATIONAL", "CARD", "DOCUMENTO", "ESPAÑA", "FRANCE"]
+            exclude = [
+                "REPUBLICA",
+                "REPUBLIC",
+                "JUNTA",
+                "CENTRAL",
+                "ELECTORAL",
+                "CEDULA",
+                "IDENTITY",
+                "NATIONAL",
+                "CARD",
+                "DOCUMENTO",
+                "ESPAÑA",
+                "FRANCE",
+            ]
             if not any(ex in potential_name for ex in exclude):
                 data.full_name = potential_name.title()
 
@@ -296,7 +313,7 @@ def extract_national_id_fields(text: str) -> ExtractedData:
     return data
 
 
-def _mrz_date_to_iso(date_str: str) -> Optional[str]:
+def _mrz_date_to_iso(date_str: str) -> str | None:
     """Convert MRZ date (YYMMDD) to ISO format (YYYY-MM-DD)."""
     if not date_str or len(date_str) != 6:
         return None
@@ -308,7 +325,7 @@ def _mrz_date_to_iso(date_str: str) -> Optional[str]:
         return None
 
 
-def parse_mrz(mrz_text: str) -> Tuple[ExtractedData, bool]:
+def parse_mrz(mrz_text: str) -> tuple[ExtractedData, bool]:
     """
     Parse passport MRZ using ICAO 9303 standard library.
 
@@ -375,7 +392,7 @@ def parse_mrz(mrz_text: str) -> Tuple[ExtractedData, bool]:
     return data, is_valid
 
 
-def extract_passport_fields(text: str) -> Tuple[ExtractedData, bool]:
+def extract_passport_fields(text: str) -> tuple[ExtractedData, bool]:
     """
     Extract fields from passport OCR text.
 

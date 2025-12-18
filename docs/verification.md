@@ -33,6 +33,7 @@ Each service exposes build metadata for verification:
 | OCR | `GET /build-info` | `https://ocr.zentity.app/build-info` |
 
 Response format:
+
 ```json
 {
   "service": "web",
@@ -45,6 +46,7 @@ Response format:
 ## Manual Verification Steps
 
 1. **Get deployed build info:**
+
    ```bash
    curl -s https://zentity.app/api/build-info | jq
    ```
@@ -54,6 +56,7 @@ Response format:
    - Verify the commit exists and matches expected code
 
 3. **Verify attestation for that commit:**
+
    ```bash
    gh attestation verify oci://ghcr.io/gustavovalverde/zentity/web:<gitSha> --owner gustavovalverde
    ```
@@ -86,12 +89,12 @@ For maximum verifiability of the FHE service, we are evaluating Trusted Executio
 
 All signatures are recorded in public transparency logs:
 
-- **Rekor** (Sigstore): https://search.sigstore.dev/
+- **Rekor** (Sigstore): <https://search.sigstore.dev/>
 - **GitHub Attestations**: Viewable via `gh attestation verify`
 
 ## Security Contact
 
-If you discover a discrepancy between attested builds and deployed services, please report it to security@zentity.app.
+If you discover a discrepancy between attested builds and deployed services, please report it to <security@zentity.app>.
 
 ## References
 

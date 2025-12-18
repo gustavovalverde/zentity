@@ -14,9 +14,8 @@ Properties:
 """
 
 import hashlib
-import secrets
 import re
-from typing import Optional
+import secrets
 
 
 def generate_user_salt() -> str:
@@ -49,7 +48,7 @@ def normalize_document_number(doc_number: str) -> str:
     if not doc_number:
         return ""
     # Remove all non-alphanumeric characters
-    normalized = re.sub(r'[^A-Za-z0-9]', '', doc_number)
+    normalized = re.sub(r"[^A-Za-z0-9]", "", doc_number)
     return normalized.upper()
 
 
@@ -76,14 +75,15 @@ def normalize_name(full_name: str) -> str:
     import unicodedata
 
     # Normalize unicode and remove accents
-    normalized = unicodedata.normalize('NFD', full_name)
-    normalized = ''.join(
-        char for char in normalized
-        if unicodedata.category(char) != 'Mn'  # Mn = Mark, Nonspacing (accents)
+    normalized = unicodedata.normalize("NFD", full_name)
+    normalized = "".join(
+        char
+        for char in normalized
+        if unicodedata.category(char) != "Mn"  # Mn = Mark, Nonspacing (accents)
     )
 
     # Uppercase and collapse whitespace
-    normalized = ' '.join(normalized.upper().split())
+    normalized = " ".join(normalized.upper().split())
 
     return normalized
 
@@ -109,7 +109,7 @@ def hash_document_number(doc_number: str, user_salt: str) -> str:
 
     # Format: "NORMALIZED_DOC:salt"
     data = f"{normalized}:{user_salt}"
-    return hashlib.sha256(data.encode('utf-8')).hexdigest()
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 def generate_name_commitment(full_name: str, user_salt: str) -> str:
@@ -135,14 +135,10 @@ def generate_name_commitment(full_name: str, user_salt: str) -> str:
 
     # Format: "NORMALIZED_NAME:salt"
     data = f"{normalized}:{user_salt}"
-    return hashlib.sha256(data.encode('utf-8')).hexdigest()
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
-def verify_name_claim(
-    claimed_name: str,
-    stored_commitment: str,
-    user_salt: str
-) -> bool:
+def verify_name_claim(claimed_name: str, stored_commitment: str, user_salt: str) -> bool:
     """
     Verify if a claimed name matches the stored commitment.
 
@@ -161,11 +157,7 @@ def verify_name_claim(
     return secrets.compare_digest(claimed_commitment, stored_commitment)
 
 
-def verify_document_claim(
-    claimed_doc_number: str,
-    stored_hash: str,
-    user_salt: str
-) -> bool:
+def verify_document_claim(claimed_doc_number: str, stored_hash: str, user_salt: str) -> bool:
     """
     Verify if a claimed document number matches the stored hash.
 
@@ -193,8 +185,8 @@ class IdentityCommitments:
         document_hash: str,
         name_commitment: str,
         user_salt: str,
-        document_type: Optional[str] = None,
-        issuing_country_commitment: Optional[str] = None,
+        document_type: str | None = None,
+        issuing_country_commitment: str | None = None,
     ):
         self.document_hash = document_hash
         self.name_commitment = name_commitment
@@ -237,15 +229,15 @@ def generate_issuing_country_commitment(issuing_country_code: str, user_salt: st
 
     # Format: "ISSUING_CODE:salt"
     data = f"{normalized}:{user_salt}"
-    return hashlib.sha256(data.encode('utf-8')).hexdigest()
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 def generate_identity_commitments(
     document_number: str,
     full_name: str,
-    user_salt: Optional[str] = None,
-    document_type: Optional[str] = None,
-    issuing_country_code: Optional[str] = None,
+    user_salt: str | None = None,
+    document_type: str | None = None,
+    issuing_country_code: str | None = None,
 ) -> IdentityCommitments:
     """
     Generate all identity commitments from document data.
@@ -268,9 +260,7 @@ def generate_identity_commitments(
 
     issuing_commitment = None
     if issuing_country_code:
-        issuing_commitment = generate_issuing_country_commitment(
-            issuing_country_code, user_salt
-        )
+        issuing_commitment = generate_issuing_country_commitment(issuing_country_code, user_salt)
 
     return IdentityCommitments(
         document_hash=hash_document_number(document_number, user_salt),

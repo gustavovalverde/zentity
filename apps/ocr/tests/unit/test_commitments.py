@@ -6,19 +6,20 @@ Tests the privacy-preserving cryptographic commitment generation:
 - Name normalization and commitment generation
 - Verification of claims against stored commitments
 """
+
 import pytest
 
 from app.commitments import (
+    IdentityCommitments,
+    generate_identity_commitments,
+    generate_issuing_country_commitment,
+    generate_name_commitment,
+    generate_user_salt,
+    hash_document_number,
     normalize_document_number,
     normalize_name,
-    hash_document_number,
-    generate_name_commitment,
-    generate_issuing_country_commitment,
-    verify_name_claim,
     verify_document_claim,
-    generate_user_salt,
-    generate_identity_commitments,
-    IdentityCommitments,
+    verify_name_claim,
 )
 
 

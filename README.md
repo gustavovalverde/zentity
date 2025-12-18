@@ -85,6 +85,7 @@ docker build -t zentity-ocr apps/ocr
 - OCR service: `http://localhost:5004`
 
 Quick manual test (happy path):
+
 - Go to `/sign-up` → complete the 4-step wizard (email → upload → liveness → complete)
 - After completion, open `/dashboard` and check verification + proof status
 
@@ -112,6 +113,7 @@ flowchart LR
 
 > [!TIP]
 > **Deep-dive documentation:**
+>
 > - [System Architecture](docs/architecture.md) — data flow, storage model, privacy guarantees
 > - [ZK Circuits](docs/zk-architecture.md) — circuit specs, client/server proving
 > - [Nationality Proofs](docs/zk-nationality-proofs.md) — Merkle trees, country groups
@@ -152,6 +154,7 @@ Advanced cryptographic techniques—zero-knowledge proofs, fully homomorphic enc
 Yet these techniques are **rarely used in mainstream applications**.
 
 Why? The barrier isn't mathematical—it's practical:
+
 - Complex setup (trusted ceremonies, circuit compilation, key generation)
 - Specialized expertise required
 - No reference implementations for common use cases
@@ -162,6 +165,7 @@ Meanwhile, identity verification systems store millions of passport photos, birt
 ### The Opportunity
 
 KYC and identity verification is the perfect domain for privacy-preserving cryptography:
+
 - **High-value PII**: Names, birthdates, document numbers, face images
 - **Binary decisions**: "Is this person over 18?" doesn't require knowing their exact birthday
 - **Regulatory pressure**: GDPR, data minimization laws demand "privacy by design"
@@ -209,7 +213,7 @@ Zentity is a privacy-preserving KYC platform that enables identity verification 
 
 Traditional liveness detection exposes exact anti-spoof confidence scores. Zentity encrypts liveness scores using FHE, enabling threshold comparisons without revealing the actual score:
 
-```
+```text
 User → Liveness Service: Submit face capture
 Liveness Service → FHE: encrypt(score=0.85)
 FHE → Storage: ciphertext (score hidden)
@@ -218,17 +222,20 @@ FHE → Verifier: true/false (score never revealed)
 ```
 
 **Benefits:**
+
 - Prevents gaming the system by knowing exact thresholds
 - Protects biometric scoring algorithms from reverse engineering
 - Enables different threshold policies per use case
 
 **Current POC implementation (Human.js):**
+
 - Real-time challenges (smile + head turns) run in the browser for instant feedback.
 - The client captures a baseline frame and one frame per challenge.
 - Those frames are sent to the server via tRPC (`liveness.verify` on `/api/trpc/*`), where Next.js re-runs Human.js on Node to make the authoritative decision and return a face embedding.
 
 > [!WARNING]
 > **Limitations (non-production):**
+>
 > - Server-side re-scoring blocks simple UI tampering, but can't prove frames came from a live camera; replayed or edited frames can still be submitted.
 > - Human's antispoof/liveness models are lightweight "quick checks" and not KYC‑grade on their own.
 > - Model weights are bundled locally via `@vladmandic/human-models` and served from `/human-models/*`; first run may still be slow while models initialize, but no external download is needed.
@@ -238,7 +245,7 @@ FHE → Verifier: true/false (score never revealed)
 
 Proving citizenship often requires revealing exact nationality, which can lead to discrimination. Zentity's ZK Merkle proofs enable group membership verification:
 
-```
+```text
 User → Zentity: "Prove I'm EU citizen"
 Zentity (browser) → Web Worker: Generate Merkle membership proof
 Zentity → Verifier: proof + merkleRoot (EU identifier)
@@ -246,6 +253,7 @@ Verifier: Knows user is EU citizen, but NOT which of 27 countries
 ```
 
 **Use Cases:**
+
 - **EU Right to Work**: Verify employment authorization without revealing specific nationality
 - **Schengen Travel**: Prove travel zone eligibility without passport country disclosure
 - **Regional Compliance**: Meet LATAM or EEA requirements without over-sharing
@@ -280,6 +288,7 @@ Zentity uses three complementary techniques:
 | **Commitments (SHA256)** | Bind data without storing it | Name hash for dedup |
 
 **Why three techniques?** Each solves a specific problem:
+
 - **ZK**: Prove boolean claims (age threshold, nationality group)
 - **FHE**: Server-side arithmetic on encrypted values
 - **Commitments**: Data binding + GDPR erasure (delete salt → unlinkable)

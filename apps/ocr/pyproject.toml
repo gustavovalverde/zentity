@@ -47,7 +47,7 @@ exclude_lines = [
 ]
 
 [tool.ruff]
-line-length = 88
+line-length = 100  # Allow longer lines for regex patterns
 target-version = "py312"
 exclude = ["venv", ".venv", "__pycache__", ".git"]
 
@@ -62,6 +62,14 @@ select = [
     "SIM", # flake8-simplify
     "S",   # flake8-bandit (security)
 ]
+ignore = [
+    "S104",  # Possible binding to all interfaces (intentional for Docker)
+    "S607",  # Partial executable path (git is in PATH)
+    "S110",  # try-except-pass is intentional for graceful error handling
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # Allow assert in tests
 
 [tool.bandit]
 exclude_dirs = ["tests", "venv", ".venv"]

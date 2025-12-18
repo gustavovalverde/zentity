@@ -5,11 +5,13 @@
 ## The Problem
 
 In traditional KYC systems, when a service needs to verify that a user is from an EU country, they must:
+
 1. See the user's actual passport
 2. Extract the nationality field (e.g., "Germany")
 3. Check if "Germany" is in the EU list
 
 **The privacy problem:** The service now knows the user is German. This information can be:
+
 - Leaked in data breaches
 - Sold to third parties
 - Used for profiling or discrimination
@@ -24,12 +26,13 @@ A Zero-Knowledge (ZK) proof allows someone to prove a statement is true without 
 
 ### Our Approach
 
-```
+```text
 Traditional:        "I'm German" → Service knows: German
 ZK Proof:           "I'm in the EU" → Service knows: EU member (but not which country)
 ```
 
 We use a **Merkle tree** structure where:
+
 - Each EU country is a "leaf" in the tree
 - The tree has a unique "root hash" that identifies the EU group
 - A user can prove their country is a leaf in the tree without revealing which leaf
@@ -40,7 +43,7 @@ We use a **Merkle tree** structure where:
 
 ### Building the Tree
 
-```
+```text
                     Root Hash (public)
                    /              \
             Hash(A+B)          Hash(C+D)
@@ -58,6 +61,7 @@ We use a **Merkle tree** structure where:
 ### The Merkle Root
 
 The root hash uniquely identifies the set of countries:
+
 - EU has one root
 - SCHENGEN has a different root
 - LATAM has another different root
@@ -67,12 +71,14 @@ The root hash uniquely identifies the set of countries:
 ### Proving Membership
 
 To prove Germany (DEU) is in the EU tree, you provide:
+
 1. Your country code (private): 276
 2. The "sibling" hashes along the path to the root (private)
 3. The path directions - left or right at each level (private)
 4. The expected root (public)
 
 The circuit:
+
 1. Hashes your country code
 2. Combines it with each sibling hash following the path
 3. Checks if the result equals the expected root
@@ -88,11 +94,13 @@ If it matches → your country IS in the set (but verifier doesn't know which on
 ZK circuits work over a mathematical structure called a "finite field."
 
 SHA256 uses:
+
 - Bitwise operations (XOR, AND, OR)
 - Bit rotations
 - 32-bit integer arithmetic
 
 These operations are **extremely expensive** in ZK circuits because:
+
 - Each bit operation becomes many "constraints"
 - A single SHA256 hash = ~25,000 constraints
 - Our 8-level Merkle tree would need ~200,000 constraints just for hashing
@@ -100,6 +108,7 @@ These operations are **extremely expensive** in ZK circuits because:
 ### Poseidon: Designed for ZK
 
 Poseidon hash was specifically designed for ZK circuits:
+
 - Uses field arithmetic (addition, multiplication mod prime)
 - These operations are "native" to ZK circuits
 - A single Poseidon hash = ~200-300 constraints
@@ -155,7 +164,7 @@ fn main(
 
 ### Why 8 Levels?
 
-```
+```text
 Levels | Max Countries | Use Case
 -------|---------------|----------
 4      | 16            | Small groups (FIVE_EYES)
@@ -299,6 +308,7 @@ Proofs are generated in Web Workers to keep the UI responsive.
 ### Integration with KYC
 
 In Zentity's flow:
+
 1. OCR extracts nationality from passport (e.g., "DEU")
 2. Passport authenticity verified via MRZ checksums
 3. Face match verifies it's your passport
@@ -309,7 +319,7 @@ In Zentity's flow:
 
 ## Files Reference
 
-```
+```text
 apps/web/
 ├── noir-circuits/
 │   └── nationality_membership/

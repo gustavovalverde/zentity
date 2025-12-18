@@ -166,5 +166,6 @@ pub fn init_keys() {
 
 /// Get the global key store
 pub fn get_key_store() -> &'static KeyStore {
-    KEYS.get().expect("Keys not initialized. Call init_keys() first.")
+    KEYS.get()
+        .expect("Keys not initialized. Call init_keys() first.")
 }

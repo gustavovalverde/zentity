@@ -8,9 +8,9 @@ mod error;
 mod routes;
 
 use axum::{
-    extract::State,
-    extract::DefaultBodyLimit,
     body::Body,
+    extract::DefaultBodyLimit,
+    extract::State,
     http::{Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -39,7 +39,10 @@ async fn internal_auth(
             .get("x-zentity-internal-token")
             .and_then(|value| value.to_str().ok());
         if provided != Some(expected.as_str()) {
-            return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "error": "Unauthorized" })),
+            )
                 .into_response();
         }
     }
@@ -94,11 +97,16 @@ async fn main() {
         .route("/verify-age-precise", post(routes::verify_age_precise))
         // Liveness score encryption (0.0-1.0 as u16)
         .route("/encrypt-liveness", post(routes::encrypt_liveness))
-        .route("/verify-liveness-threshold", post(routes::verify_liveness_threshold))
-        .layer(middleware::from_fn_with_state(internal_token, internal_auth))
+        .route(
+            "/verify-liveness-threshold",
+            post(routes::verify_liveness_threshold),
+        )
+        .layer(middleware::from_fn_with_state(
+            internal_token,
+            internal_auth,
+        ))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
-        .layer(TraceLayer::new_for_http())
-        ;
+        .layer(TraceLayer::new_for_http());
 
     // Get port from environment or default to 5001
     let port: u16 = std::env::var("PORT")

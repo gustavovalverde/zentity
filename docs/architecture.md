@@ -9,6 +9,7 @@ This document describes **how Zentity's services connect**, **how data flows thr
 This is a **PoC**. Breaking changes are expected.
 
 Non-goals (current state):
+
 - Cryptographically binding all claims to a signed passport/ID credential inside a single "identity commitment" circuit.
 - Production-grade liveness attestation (device attestation / anti-replay guarantees).
 - Production hardening (HSM/KMS, secret rotation, WAF/rate limiting, audit logging strategy).
@@ -66,7 +67,7 @@ flowchart LR
 
 Zentity uses three complementary techniques:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ZERO-KNOWLEDGE PROOFS                        │
 │         Prove claims without revealing underlying data          │
@@ -159,7 +160,7 @@ FHE allows computations on encrypted data without decryption.
 
 ### Tier 1: Non-Regulated (Age-Gated Services)
 
-```
+```text
 User → Zentity: "Verify me"
 Zentity → User: age proof + liveness result
 User → Retailer: "Here's my proof"
@@ -170,7 +171,7 @@ No PII shared. Relying party only learns "over 18" + liveness passed.
 
 ### Tier 2: Regulated Entities (Banks, Exchanges)
 
-```
+```text
 User → Zentity: Complete verification
 User → Exchange: "I want to onboard"
 Exchange → Zentity: Request PII disclosure
@@ -249,6 +250,7 @@ sequenceDiagram
 ## Storage Model (SQLite)
 
 Tables (via `better-auth` + custom):
+
 - `user`, `session`, `account`, `verification` — Authentication
 - `identity_proofs` — Salted commitments + encrypted display data + verification flags
 - `age_proofs` — Proof payload + public signals + metadata
