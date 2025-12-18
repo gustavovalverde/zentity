@@ -32,7 +32,7 @@ COPY --link package.json bun.lock ./
 
 # Install dependencies with BuildKit cache mount for Bun
 # Cache persists across builds, significantly speeds up installs
-RUN --mount=type=cache,target=/root/.bun/install/cache \
+RUN --mount=type=cache,id=bun-cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
 # --- Stage 2: Builder ---
