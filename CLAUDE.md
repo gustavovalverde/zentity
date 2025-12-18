@@ -195,45 +195,6 @@ OCR_SERVICE_URL=http://localhost:5004
 # Auth (required)
 BETTER_AUTH_SECRET=<random-32-char-string>
 
-# Trusted origins for Better Auth (optional, for Docker/custom deployments)
-# Comma-separated list of additional origins to trust beyond BETTER_AUTH_URL
-TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
-
 # RP Flow (optional, for third-party integrations)
 RP_ALLOWED_REDIRECT_URIS=https://example.com/callback,https://other.com/auth
 ```
-
-## Deployment
-
-### Vercel (Landing Page)
-
-The landing page (`apps/landing`) deploys to Vercel. Configuration is in `vercel.json` at the repo root.
-
-```bash
-# Deploy from repo root
-vercel --prod
-```
-
-### Railway (Backend Services)
-
-Backend services (`apps/web`, `apps/fhe`, `apps/ocr`) deploy to Railway via **GitHub integration only**.
-
-**Why GitHub integration?** This is a monorepo. Each Railway service has a "Root Directory" setting in the dashboard (e.g., `apps/ocr` for OCR). This setting is **only respected by GitHub-triggered deploys**, not CLI deploys.
-
-**DO NOT use `railway up` from repo root** — it uploads the entire repo and fails because:
-
-- Railway uses Railpack (auto-detection) instead of the service's Dockerfile
-- The `railway.toml` in the service subdirectory is ignored
-- Build fails with "Script start.sh not found" or cache mount errors
-
-**To deploy:** Push to `main` branch. Railway's GitHub integration automatically deploys each service from its configured root directory.
-
-**Service configuration** (in Railway dashboard):
-
-| Service | Root Directory | Internal URL |
-|---------|---------------|--------------|
-| web | `apps/web` | Public domain |
-| fhe | `apps/fhe` | `http://fhe.railway.internal:5001` |
-| ocr | `apps/ocr` | `http://ocr.railway.internal:5004` |
-
-Each service has a `railway.toml` in its directory with build/deploy settings.
