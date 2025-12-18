@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
-import { getDefaultDatabasePath, getSqliteDb } from "@/lib/sqlite";
+
+import { requireSession } from "@/lib/auth/api-auth";
+import { getDefaultDatabasePath, getSqliteDb } from "@/lib/db";
 
 const db = getSqliteDb(getDefaultDatabasePath());
 

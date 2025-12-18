@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getRpFlow } from "@/lib/rp-flow";
+import { getRpFlow } from "@/lib/auth/rp-flow";
 
 interface PageProps {
   searchParams: Promise<{ flow?: string }>;

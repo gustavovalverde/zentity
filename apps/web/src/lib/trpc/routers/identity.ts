@@ -14,45 +14,47 @@
  */
 import "server-only";
 
+import type { OcrProcessResult } from "@/lib/document";
+
 import crypto from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import { v4 as uuidv4 } from "uuid";
 import z from "zod";
-import { sha256CommitmentHex } from "@/lib/commitments";
-import {
-  createIdentityProof,
-  documentHashExists,
-  encryptFirstName,
-  getIdentityProofByUserId,
-  getVerificationStatus,
-  updateIdentityProofFlags,
-  updateUserName,
-} from "@/lib/db";
+
+import { sha256CommitmentHex } from "@/lib/crypto";
 import {
   encryptBirthYearFhe,
   encryptDobFhe,
   encryptGenderFhe,
   encryptLivenessScoreFhe,
-} from "@/lib/fhe-client";
-import { HttpError } from "@/lib/http";
+} from "@/lib/crypto/fhe-client";
+import {
+  createIdentityProof,
+  documentHashExists,
+  encryptFirstName,
+  getIdentityProofByUserId,
+  getSessionFromCookie,
+  getVerificationStatus,
+  updateIdentityProofFlags,
+  updateUserName,
+  validateStepAccess,
+} from "@/lib/db";
+import { cropFaceRegion } from "@/lib/document/image-processing";
+import { processDocumentOcr } from "@/lib/document/ocr-client";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+} from "@/lib/liveness";
 import {
   getEmbeddingVector,
   getLargestFace,
   getLiveScore,
   getRealScore,
-} from "@/lib/human-metrics";
-import { detectFromBase64, getHumanServer } from "@/lib/human-server";
-import { cropFaceRegion } from "@/lib/image-processing";
-import {
-  ANTISPOOF_LIVE_THRESHOLD,
-  ANTISPOOF_REAL_THRESHOLD,
-} from "@/lib/liveness-policy";
-import { buildDisplayName } from "@/lib/name-utils";
-import { type OcrProcessResult, processDocumentOcr } from "@/lib/ocr-client";
-import {
-  getSessionFromCookie,
-  validateStepAccess,
-} from "@/lib/onboarding-session";
+} from "@/lib/liveness/human-metrics";
+import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
+import { buildDisplayName, HttpError } from "@/lib/utils";
+
 import { protectedProcedure, router } from "../server";
 
 // Lower threshold for ID photos which may be older/lower quality than selfies.

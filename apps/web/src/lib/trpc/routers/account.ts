@@ -8,15 +8,18 @@ import "server-only";
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+
 import {
   deleteAgeProofs,
   deleteIdentityProof,
   deleteOnboardingSession,
+  getDefaultDatabasePath,
   getIdentityProofByUserId,
+  getSqliteDb,
   getUserFirstName,
   getVerificationStatus,
 } from "@/lib/db";
-import { getDefaultDatabasePath, getSqliteDb } from "@/lib/sqlite";
+
 import { protectedProcedure, router } from "../server";
 
 const db = getSqliteDb(getDefaultDatabasePath());

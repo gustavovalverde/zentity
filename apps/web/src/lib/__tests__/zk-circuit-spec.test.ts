@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { normalizeChallengeNonce } from "../zk-circuit-spec";
+
+import { normalizeChallengeNonce } from "../zk/zk-circuit-spec";
 
 describe("normalizeChallengeNonce", () => {
   it("normalizes a 32-byte hex field element to a 16-byte nonce", () => {

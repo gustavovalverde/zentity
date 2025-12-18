@@ -11,11 +11,10 @@ import "server-only";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
-import { processDocument } from "@/lib/document-ocr";
-import {
-  getSessionFromCookie,
-  validateStepAccess,
-} from "@/lib/onboarding-session";
+
+import { getSessionFromCookie, validateStepAccess } from "@/lib/db";
+import { processDocument } from "@/lib/document";
+
 import { publicProcedure, router } from "../server";
 
 // In-memory rate limiter. Resets on server restart.

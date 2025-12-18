@@ -5,23 +5,26 @@
  * results to the client via SSE stream.
  */
 
+import type { ChallengeType } from "@/lib/liveness";
+
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  getFacingDirection,
-  getHappyScore,
-  getPrimaryFace,
-  getYawDegrees,
-} from "@/lib/human-metrics";
-import { detectFromBase64 } from "@/lib/human-server";
-import type { ChallengeType } from "@/lib/liveness-challenges";
+
 import {
   SMILE_DELTA_THRESHOLD,
   SMILE_HIGH_THRESHOLD,
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness-policy";
+} from "@/lib/liveness";
+import {
+  getFacingDirection,
+  getHappyScore,
+  getPrimaryFace,
+  getYawDegrees,
+} from "@/lib/liveness/human-metrics";
+import { detectFromBase64 } from "@/lib/liveness/human-server";
+
 import { sendSSEEvent } from "../stream/route";
 
 const frameSchema = z.object({

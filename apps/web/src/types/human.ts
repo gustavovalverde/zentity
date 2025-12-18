@@ -6,21 +6,21 @@
 /**
  * Face bounding box - can be array format [x, y, width, height] or object format.
  */
-export type FaceBoxArray = [number, number, number, number];
+type FaceBoxArray = [number, number, number, number];
 
-export interface FaceBoxObject {
+interface FaceBoxObject {
   x: number;
   y: number;
   width: number;
   height: number;
 }
 
-export type FaceBox = FaceBoxArray | FaceBoxObject;
+type FaceBox = FaceBoxArray | FaceBoxObject;
 
 /**
  * Emotion scores object format (some Human.js versions).
  */
-export interface EmotionScoresObject {
+interface EmotionScoresObject {
   angry?: number;
   disgust?: number;
   fear?: number;
@@ -33,7 +33,7 @@ export interface EmotionScoresObject {
 /**
  * Emotion item in array format (Human.js default).
  */
-export interface EmotionItem {
+interface EmotionItem {
   score: number;
   emotion: string;
 }
@@ -41,20 +41,12 @@ export interface EmotionItem {
 /**
  * Emotion scores - can be array format or object format depending on Human.js version.
  */
-export type EmotionScores = EmotionItem[] | EmotionScoresObject;
-
-/**
- * Gender detection scores.
- */
-export interface GenderScores {
-  male: number;
-  female: number;
-}
+type EmotionScores = EmotionItem[] | EmotionScoresObject;
 
 /**
  * Anti-spoofing detection result.
  */
-export interface AntispoofResult {
+interface AntispoofResult {
   real?: number;
   score?: number;
 }
@@ -72,7 +64,7 @@ export type EmbeddingData =
 /**
  * Liveness detection result.
  */
-export interface LivenessResult {
+interface LivenessResult {
   live?: number;
   score?: number;
 }
@@ -137,14 +129,9 @@ export interface HumanDetectionResult {
 }
 
 /**
- * Helper type for functions that process face results.
- */
-export type FaceProcessor<T> = (face: HumanFaceResult) => T;
-
-/**
  * Helper to normalize box format to object.
  */
-export function normalizeBox(box: FaceBox | undefined): FaceBoxObject | null {
+function _normalizeBox(box: FaceBox | undefined): FaceBoxObject | null {
   if (!box) return null;
   if (Array.isArray(box)) {
     return {

@@ -1,5 +1,7 @@
 "use client";
 
+import type { AgeProofFull } from "@/lib/zk/age-proofs";
+
 import {
   AlertTriangle,
   Check,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,8 +32,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import type { AgeProofFull } from "@/lib/age-proofs";
-import { getUserProof } from "@/lib/crypto-client";
+import { getUserProof } from "@/lib/crypto";
 
 export default function DevViewPage() {
   const [proofData, setProofData] = useState<AgeProofFull | null>(null);

@@ -1,8 +1,6 @@
 import z from "zod";
-import {
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-} from "@/lib/password-policy";
+
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth";
 
 // Step 1: Email only (minimal friction)
 export const emailSchema = z.object({
@@ -27,16 +25,8 @@ export const passwordSchema = z
     path: ["confirmPassword"],
   });
 
-export const idUploadSchema = z.object({
-  idDocument: z.instanceof(File).nullable().optional(),
-});
-
-export const selfieSchema = z.object({
-  selfieImage: z.string().nullable().optional(),
-});
-
 // Document AI processing result
-export const documentResultSchema = z
+const documentResultSchema = z
   .object({
     documentType: z.enum([
       "passport",
@@ -62,12 +52,7 @@ export const documentResultSchema = z
   .nullable()
   .optional();
 
-export type DocumentResultData = z.infer<typeof documentResultSchema>;
-
-export type EmailData = z.infer<typeof emailSchema>;
-export type PasswordData = z.infer<typeof passwordSchema>;
-export type IdUploadData = z.infer<typeof idUploadSchema>;
-export type SelfieData = z.infer<typeof selfieSchema>;
+type DocumentResultData = z.infer<typeof documentResultSchema>;
 
 /**
  * Wizard Data - Redesigned flow

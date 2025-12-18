@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,8 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
-import { motion, reducedMotion } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+import { cn, motion, reducedMotion } from "@/lib/utils";
+
 import { useWizard } from "./wizard-provider";
 
 const STEP_TITLES = ["Email", "Upload ID", "Liveness", "Complete"];

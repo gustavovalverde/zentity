@@ -2,14 +2,8 @@ import { Hono } from "hono";
 import { deleteCookie, setSignedCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
 import z from "zod";
-import { auth } from "@/lib/auth";
-import {
-  consumeRpAuthorizationCode,
-  createRpAuthorizationCode,
-  getIdentityProofByUserId,
-  getUserAgeProof,
-  getVerificationStatus,
-} from "@/lib/db";
+
+import { auth } from "@/lib/auth/auth";
 import {
   createRpFlowCookieName,
   getRpFlow,
@@ -17,7 +11,14 @@ import {
   isAllowedRedirectUri,
   RP_FLOW_TTL_SECONDS,
   serializeRpFlowCookieValue,
-} from "@/lib/rp-flow";
+} from "@/lib/auth/rp-flow";
+import {
+  consumeRpAuthorizationCode,
+  createRpAuthorizationCode,
+  getIdentityProofByUserId,
+  getUserAgeProof,
+  getVerificationStatus,
+} from "@/lib/db";
 
 export const runtime = "nodejs";
 

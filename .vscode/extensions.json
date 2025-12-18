@@ -4,6 +4,7 @@
     "bradlc.vscode-tailwindcss",
     "charliermarsh.ruff",
     "davidanson.vscode-markdownlint",
+    "million.million-lint",
     "ms-vscode.vscode-json",
     "redhat.vscode-yaml",
     "rust-lang.rust-analyzer",

@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getUserProof, verifyAgeProof } from "@/lib/crypto-client";
+import { getUserProof, verifyAgeProof } from "@/lib/crypto";
 
 export function AgeProofDemo() {
   const [storedProofSummary, setStoredProofSummary] = useState<{

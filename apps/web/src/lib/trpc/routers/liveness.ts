@@ -14,21 +14,13 @@
  */
 import "server-only";
 
+import type { ChallengeType } from "@/lib/liveness";
+
 import { TRPCError } from "@trpc/server";
 import z from "zod";
-import {
-  getEmbeddingVector,
-  getFacingDirection,
-  getHappyScore,
-  getLargestFace,
-  getLiveScore,
-  getPrimaryFace,
-  getRealScore,
-  getYawDegrees,
-} from "@/lib/human-metrics";
-import { detectFromBase64, getHumanServer } from "@/lib/human-server";
-import { cropFaceRegion } from "@/lib/image-processing";
-import type { ChallengeType } from "@/lib/liveness-challenges";
+
+import { getSessionFromCookie, validateStepAccess } from "@/lib/db";
+import { cropFaceRegion } from "@/lib/document/image-processing";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
@@ -38,16 +30,24 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness-policy";
+} from "@/lib/liveness";
+import {
+  getEmbeddingVector,
+  getFacingDirection,
+  getHappyScore,
+  getLargestFace,
+  getLiveScore,
+  getPrimaryFace,
+  getRealScore,
+  getYawDegrees,
+} from "@/lib/liveness/human-metrics";
+import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
 import {
   createLivenessSession,
   getChallengeInfo,
   getLivenessSession,
-} from "@/lib/liveness-session-store";
-import {
-  getSessionFromCookie,
-  validateStepAccess,
-} from "@/lib/onboarding-session";
+} from "@/lib/liveness/liveness-session-store";
+
 import { publicProcedure, router } from "../server";
 
 const challengeTypeSchema = z.enum(["smile", "turn_left", "turn_right"]);

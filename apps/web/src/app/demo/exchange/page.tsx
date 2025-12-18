@@ -13,11 +13,12 @@
  */
 
 import { useState } from "react";
+
 import {
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
-} from "@/lib/crypto-client";
+} from "@/lib/crypto";
 
 // Types for the demo
 interface ExchangeKeypair {

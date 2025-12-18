@@ -6,15 +6,18 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
-import { toServiceErrorPayload } from "@/lib/http-error-payload";
+
+import { requireSession } from "@/lib/auth/api-auth";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import {
-  generateNationalityProofInputs,
   getCountriesInGroup,
-  getMerkleRoot,
   isNationalityInGroup,
   listGroups,
-} from "@/lib/nationality-merkle";
+} from "@/lib/zk";
+import {
+  generateNationalityProofInputs,
+  getMerkleRoot,
+} from "@/lib/zk/nationality-merkle";
 
 /**
  * POST - Get Merkle proof inputs for nationality membership

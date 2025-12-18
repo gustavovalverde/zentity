@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { verifyAgeViaFHE } from "@/lib/crypto-client";
+import { verifyAgeViaFHE } from "@/lib/crypto";
 
 interface FheVerificationDemoProps {
   dobCiphertext?: string;

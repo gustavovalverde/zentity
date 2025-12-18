@@ -3,8 +3,9 @@
 import { Github, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth";
 
 // Google icon component
 function GoogleIcon({ className }: { className?: string }) {

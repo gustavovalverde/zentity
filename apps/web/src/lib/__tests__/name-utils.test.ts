@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildDisplayName, getFirstPart } from "../name-utils";
+
+import { buildDisplayName, getFirstPart } from "../utils/name-utils";
 
 describe("name-utils", () => {
   describe("getFirstPart", () => {

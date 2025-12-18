@@ -1,6 +1,7 @@
 import { CheckCircle, Clock, Code, Hash, Shield } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
+
 import { VerificationActions } from "@/components/dashboard/verification-actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { auth } from "@/lib/auth";
+import { auth } from "@/lib/auth/auth";
 import { getUserAgeProof } from "@/lib/db";
 
 export default async function VerificationPage() {

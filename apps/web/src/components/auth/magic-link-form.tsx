@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form";
 import { Loader2, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +15,8 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
-import { authClient } from "@/lib/auth-client";
-import { makeFieldValidator } from "@/lib/validation";
+import { authClient } from "@/lib/auth";
+import { makeFieldValidator } from "@/lib/utils";
 
 export function MagicLinkForm() {
   const router = useRouter();

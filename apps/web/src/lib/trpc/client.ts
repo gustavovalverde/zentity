@@ -12,8 +12,9 @@
  */
 "use client";
 
-import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
 import type { AppRouter } from "@/lib/trpc/routers/app";
+
+import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
 
 function getTrpcUrl(): string {
   // Same-origin requests to avoid CORS; routed via Next.js API handler.

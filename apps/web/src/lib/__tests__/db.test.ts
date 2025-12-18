@@ -2,6 +2,7 @@
  * Tests for the database module.
  */
 import { describe, expect, it } from "vitest";
+
 import { documentHashExists, getVerificationStatus } from "../db";
 
 describe("Database Module", () => {

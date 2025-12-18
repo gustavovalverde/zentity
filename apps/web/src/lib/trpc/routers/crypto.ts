@@ -19,30 +19,32 @@ import "server-only";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
-import { getLatestAgeProof, insertAgeProof } from "@/lib/age-proofs";
+
 import {
   consumeChallenge,
   createChallenge,
   getActiveChallengeCount,
-} from "@/lib/challenge-store";
+} from "@/lib/crypto/challenge-store";
 import {
   encryptDobFhe,
   encryptLivenessScoreFhe,
   verifyAgeFhe,
   verifyLivenessThresholdFhe,
-} from "@/lib/fhe-client";
+} from "@/lib/crypto/fhe-client";
+import { getFheServiceUrl } from "@/lib/utils/service-urls";
+import {
+  CIRCUIT_SPECS,
+  getTodayAsInt,
+  normalizeChallengeNonce,
+  parsePublicInputToNumber,
+} from "@/lib/zk";
+import { getLatestAgeProof, insertAgeProof } from "@/lib/zk/age-proofs";
 import {
   getBbJsVersion,
   getCircuitMetadata,
-  getTodayAsInt,
   verifyNoirProof,
-} from "@/lib/noir-verifier";
-import { getFheServiceUrl } from "@/lib/service-urls";
-import {
-  CIRCUIT_SPECS,
-  normalizeChallengeNonce,
-  parsePublicInputToNumber,
-} from "@/lib/zk-circuit-spec";
+} from "@/lib/zk/noir-verifier";
+
 import { protectedProcedure, publicProcedure, router } from "../server";
 
 const FHE_SERVICE_URL = getFheServiceUrl();

@@ -1,5 +1,10 @@
 {
   "extends": ["../../biome.json"],
+  "linter": {
+    "domains": {
+      "next": "recommended"
+    }
+  },
   "files": {
     "includes": ["**", "!src/app/globals.css"]
   },

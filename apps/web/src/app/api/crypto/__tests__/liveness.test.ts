@@ -2,9 +2,11 @@
  * Tests for liveness FHE operations via tRPC.
  */
 
+import type { Session } from "@/lib/auth/auth";
+
 /* eslint @typescript-eslint/no-explicit-any: off */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Session } from "@/lib/auth";
+
 import { cryptoRouter } from "@/lib/trpc/routers/crypto";
 
 // Store original fetch

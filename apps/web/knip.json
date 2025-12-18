@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": ["src/components/ui/**", "scripts/**"],
+  "ignoreDependencies": ["@radix-ui/react-tooltip", "@vladmandic/human-models"],
+  "ignoreBinaries": ["nargo"]
+}

@@ -29,13 +29,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document-ocr";
-import { resizeImageFile } from "@/lib/image";
+import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document";
 import { trpc } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils";
+import { cn, resizeImageFile } from "@/lib/utils";
+
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
 

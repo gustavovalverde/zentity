@@ -18,6 +18,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+
 import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -32,26 +33,27 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
-import { signUp } from "@/lib/auth-client";
 import {
   getBetterAuthErrorMessage,
+  getPasswordLengthError,
   getPasswordPolicyErrorMessage,
-} from "@/lib/better-auth-errors";
+  getPasswordSimilarityError,
+  signUp,
+} from "@/lib/auth";
 import {
   encryptDOB,
   generateAgeProof,
   getProofChallenge,
   storeAgeProof,
   verifyAgeProof,
-} from "@/lib/crypto-client";
-import { type FaceMatchResult, matchFaces } from "@/lib/face-detection";
+} from "@/lib/crypto";
 import {
-  getPasswordLengthError,
-  getPasswordSimilarityError,
-} from "@/lib/password-policy";
+  type FaceMatchResult,
+  matchFaces,
+} from "@/lib/liveness/face-detection";
 import { trpc } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils";
-import { makeFieldValidator } from "@/lib/validation";
+import { cn, makeFieldValidator } from "@/lib/utils";
+
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
 
@@ -142,6 +144,8 @@ export function StepReviewComplete() {
     useState<FaceMatchStatus>("idle");
   const [faceMatchResult, setFaceMatchResult] =
     useState<FaceMatchResult | null>(null);
+  // Prevent duplicate face matching attempts
+  const faceMatchAttemptedRef = useRef(false);
 
   // Password form with TanStack Form
   const form = useForm({
@@ -220,7 +224,15 @@ export function StepReviewComplete() {
 
   // Auto-trigger face matching when both ID and selfie are available
   useEffect(() => {
+    // Prevent duplicate face matching attempts (expensive ML operation)
+    if (faceMatchAttemptedRef.current) return;
+    if (!data.idDocumentBase64 || !selfieForMatching) return;
+    if (faceMatchStatus !== "idle") return;
+
+    faceMatchAttemptedRef.current = true;
+
     const performFaceMatch = async () => {
+      // Early return if data is missing (shouldn't happen due to outer check)
       if (!data.idDocumentBase64 || !selfieForMatching) return;
 
       setFaceMatchStatus("matching");
@@ -252,13 +264,7 @@ export function StepReviewComplete() {
       }
     };
 
-    if (
-      data.idDocumentBase64 &&
-      selfieForMatching &&
-      faceMatchStatus === "idle"
-    ) {
-      performFaceMatch();
-    }
+    performFaceMatch();
   }, [data.idDocumentBase64, selfieForMatching, faceMatchStatus]);
 
   const handleSubmit = async (formData: {

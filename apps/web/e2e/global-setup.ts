@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+
 import { type APIResponse, type FullConfig, request } from "@playwright/test";
 
 const AUTH_STATE_PATH = path.join(__dirname, ".auth", "user.json");

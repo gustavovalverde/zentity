@@ -14,13 +14,12 @@ import "server-only";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
+
 import {
   cleanupExpiredOnboardingSessions,
-  deleteOnboardingSession,
-} from "@/lib/db";
-import {
   clearWizardCookie,
   completeOnboarding,
+  deleteOnboardingSession,
   type EncryptedPiiData,
   getSessionFromCookie,
   loadWizardState,
@@ -30,7 +29,8 @@ import {
   skipLiveness,
   updateWizardProgress,
   validateStepAccess,
-} from "@/lib/onboarding-session";
+} from "@/lib/db";
+
 import { publicProcedure, router } from "../server";
 
 const stepSchema = z.union([

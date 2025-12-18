@@ -2,12 +2,13 @@
 
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import { Progress } from "@/components/ui/progress";
 import {
+  checkPasswordPwned,
   getPasswordRequirementStatus,
   PASSWORD_MIN_LENGTH,
-} from "@/lib/password-policy";
-import { checkPasswordPwned } from "@/lib/password-pwned";
+} from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 /**

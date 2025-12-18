@@ -1,14 +1,15 @@
 import { headers } from "next/headers";
+
 import { DashboardTabs } from "@/components/dashboard/dashboard-tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { auth } from "@/lib/auth";
+import { auth } from "@/lib/auth/auth";
 import {
   getIdentityProofByUserId,
   getUserAgeProof,
   getUserFirstName,
   getVerificationStatus,
 } from "@/lib/db";
-import { getFirstPart } from "@/lib/name-utils";
+import { getFirstPart } from "@/lib/utils";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({

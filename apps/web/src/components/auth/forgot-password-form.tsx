@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ import {
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth";
 
 export function ForgotPasswordForm() {
   const router = useRouter();

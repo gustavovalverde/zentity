@@ -6,6 +6,7 @@
  * but explicitly runs on Node.js runtime for Human.js/tfjs-node support.
  */
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+
 import { appRouter } from "@/lib/trpc/routers/app";
 import { createTrpcContext } from "@/lib/trpc/server";
 

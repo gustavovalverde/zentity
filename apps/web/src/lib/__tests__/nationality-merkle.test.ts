@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+
 import {
   generateNationalityProofInputs,
   getCountriesInGroup,
@@ -10,7 +11,7 @@ import {
   getNationalityCode,
   isNationalityInGroup,
   listGroups,
-} from "../nationality-merkle";
+} from "../zk/nationality-merkle";
 
 describe("nationality-merkle", () => {
   describe("listGroups", () => {

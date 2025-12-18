@@ -1,4 +1,5 @@
 import * as path from "node:path";
+
 import { defineConfig, devices } from "@playwright/test";
 
 const authFile = path.join(__dirname, "e2e", ".auth", "user.json");

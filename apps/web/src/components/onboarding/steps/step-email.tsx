@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+
 import { Input } from "@/components/ui/input";
 import {
   Field,
@@ -9,7 +10,8 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
-import { makeFieldValidator } from "@/lib/validation";
+import { makeFieldValidator } from "@/lib/utils";
+
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
 

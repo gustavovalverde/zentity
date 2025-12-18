@@ -23,17 +23,18 @@ import { UltraHonkBackend } from "@aztec/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { requireSession } from "@/lib/api-auth";
-import { bytesToBase64 } from "@/lib/base64";
+
+import { requireSession } from "@/lib/auth/api-auth";
 import {
   getIdentityProofByUserId,
   getUserAgeProofPayload,
   getVerificationStatus,
 } from "@/lib/db";
-import { toServiceErrorPayload } from "@/lib/http-error-payload";
-import { detectFromBase64, getHumanServer } from "@/lib/human-server";
-import { processDocumentOcr } from "@/lib/ocr-client";
-import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
+import { processDocumentOcr } from "@/lib/document/ocr-client";
+import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
+import { bytesToBase64 } from "@/lib/utils";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
 
 interface DisclosureRequest {

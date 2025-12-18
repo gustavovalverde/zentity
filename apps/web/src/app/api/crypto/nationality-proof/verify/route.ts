@@ -5,10 +5,11 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
-import { toServiceErrorPayload } from "@/lib/http-error-payload";
-import { verifyNoirProof } from "@/lib/noir-verifier";
-import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
+
+import { requireSession } from "@/lib/auth/api-auth";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
+import { verifyNoirProof } from "@/lib/zk/noir-verifier";
 
 /**
  * POST - Verify nationality membership ZK proof

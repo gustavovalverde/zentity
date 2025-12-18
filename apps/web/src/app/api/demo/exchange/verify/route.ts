@@ -6,8 +6,9 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { verifyNoirProof } from "@/lib/noir-verifier";
-import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk-circuit-spec";
+
+import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
+import { verifyNoirProof } from "@/lib/zk/noir-verifier";
 
 interface Proof {
   proof: string; // Base64 encoded UltraHonk ZK proof

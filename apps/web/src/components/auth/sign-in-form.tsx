@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +17,8 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
-import { signIn } from "@/lib/auth-client";
-import { makeFieldValidator } from "@/lib/validation";
+import { signIn } from "@/lib/auth";
+import { makeFieldValidator } from "@/lib/utils";
 
 export function SignInForm() {
   const router = useRouter();

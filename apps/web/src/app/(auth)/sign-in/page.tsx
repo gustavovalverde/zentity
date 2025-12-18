@@ -1,4 +1,5 @@
 import Link from "next/link";
+
 import { MagicLinkForm } from "@/components/auth/magic-link-form";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import {

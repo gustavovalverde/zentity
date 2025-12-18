@@ -1,12 +1,13 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
 import { AuthMethodsSection } from "@/components/dashboard/auth-methods-section";
 import { ChangePasswordSection } from "@/components/dashboard/change-password-section";
 import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { Button } from "@/components/ui/button";
-import { auth } from "@/lib/auth";
+import { auth } from "@/lib/auth/auth";
 
 export default async function SettingsPage() {
   const session = await auth.api.getSession({

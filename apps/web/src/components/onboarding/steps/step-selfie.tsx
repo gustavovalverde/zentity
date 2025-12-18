@@ -13,6 +13,7 @@ import {
   Smile,
 } from "lucide-react";
 import { toast } from "sonner";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -22,14 +23,14 @@ import {
   STABILITY_FRAMES,
   useSelfieLivenessFlow,
 } from "@/hooks/use-selfie-liveness-flow";
-import { getLivenessDebugEnabled } from "@/lib/liveness-debug";
 import {
+  getLivenessDebugEnabled,
   SMILE_DELTA_THRESHOLD,
   SMILE_HIGH_THRESHOLD,
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness-policy";
+} from "@/lib/liveness";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";

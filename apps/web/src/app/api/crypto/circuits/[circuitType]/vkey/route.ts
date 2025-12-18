@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getCircuitVerificationKey } from "@/lib/noir-verifier";
-import { isCircuitType } from "@/lib/zk-circuit-spec";
+
+import { isCircuitType } from "@/lib/zk";
+import { getCircuitVerificationKey } from "@/lib/zk/noir-verifier";
 
 export async function GET(
   _request: NextRequest,

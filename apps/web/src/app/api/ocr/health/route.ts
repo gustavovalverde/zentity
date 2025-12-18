@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { HttpError } from "@/lib/http";
-import { getOcrHealth } from "@/lib/ocr-client";
+
+import { getOcrHealth } from "@/lib/document/ocr-client";
+import { HttpError } from "@/lib/utils";
 
 /**
  * GET /api/ocr/health

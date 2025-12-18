@@ -1,4 +1,5 @@
 import Link from "next/link";
+
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 import {
   Card,

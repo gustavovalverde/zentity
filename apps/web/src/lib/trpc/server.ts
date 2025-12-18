@@ -8,16 +8,17 @@
 import "server-only";
 
 import { initTRPC, TRPCError } from "@trpc/server";
-import { auth, type Session } from "@/lib/auth";
+
+import { auth, type Session } from "@/lib/auth/auth";
 
 /** Base context available to all procedures (public and protected). */
-export type TrpcContext = {
+type TrpcContext = {
   req: Request;
   session: Session | null;
 };
 
 /** Extended context for authenticated procedures with guaranteed user ID. */
-export type TrpcAuthedContext = TrpcContext & {
+type TrpcAuthedContext = TrpcContext & {
   session: Session;
   userId: string;
 };

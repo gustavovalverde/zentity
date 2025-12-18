@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/api-auth";
-import { getDefaultDatabasePath, getSqliteDb } from "@/lib/sqlite";
+
+import { requireSession } from "@/lib/auth/api-auth";
+import { getDefaultDatabasePath, getSqliteDb } from "@/lib/db";
+
 import { calculateKycLevel, ensureKycStatus } from "../route";
 
 const db = getSqliteDb(getDefaultDatabasePath());

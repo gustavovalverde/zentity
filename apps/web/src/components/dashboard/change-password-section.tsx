@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form";
 import { Key, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,16 +22,14 @@ import {
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
-import { authClient } from "@/lib/auth-client";
 import {
+  authClient,
   getBetterAuthErrorMessage,
-  getPasswordPolicyErrorMessage,
-} from "@/lib/better-auth-errors";
-import {
   getPasswordLengthError,
+  getPasswordPolicyErrorMessage,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
-} from "@/lib/password-policy";
+} from "@/lib/auth";
 
 export function ChangePasswordSection() {
   const [error, setError] = useState<string | null>(null);

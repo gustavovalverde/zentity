@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+
 import { type NextRequest, NextResponse } from "next/server";
-import { HUMAN_MODELS_DIR } from "@/lib/human-models-path";
+
+import { HUMAN_MODELS_DIR } from "@/lib/liveness/human-models-path";
 
 export const runtime = "nodejs";
 

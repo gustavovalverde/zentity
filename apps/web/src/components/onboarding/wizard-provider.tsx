@@ -25,11 +25,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
+
 import {
   defaultWizardData,
   type WizardData,
@@ -360,13 +362,21 @@ export function WizardProvider({
     [state.data.email],
   );
 
-  const nextStep = () => dispatch({ type: "NEXT_STEP" });
-  const prevStep = () => dispatch({ type: "PREV_STEP" });
-  const goToStep = (step: number) => dispatch({ type: "GO_TO_STEP", step });
-  const updateData = (data: Partial<WizardData>) =>
-    dispatch({ type: "UPDATE_DATA", data });
-  const setSubmitting = (isSubmitting: boolean) =>
-    dispatch({ type: "SET_SUBMITTING", isSubmitting });
+  const nextStep = useCallback(() => dispatch({ type: "NEXT_STEP" }), []);
+  const prevStep = useCallback(() => dispatch({ type: "PREV_STEP" }), []);
+  const goToStep = useCallback(
+    (step: number) => dispatch({ type: "GO_TO_STEP", step }),
+    [],
+  );
+  const updateData = useCallback(
+    (data: Partial<WizardData>) => dispatch({ type: "UPDATE_DATA", data }),
+    [],
+  );
+  const setSubmitting = useCallback(
+    (isSubmitting: boolean) =>
+      dispatch({ type: "SET_SUBMITTING", isSubmitting }),
+    [],
+  );
 
   const reset = useCallback(async () => {
     dispatch({ type: "RESET" });
@@ -499,29 +509,49 @@ export function WizardProvider({
     }
   }, [pendingNavigation]);
 
-  const value: WizardContextType = {
-    state,
-    totalSteps: TOTAL_STEPS,
-    nextStep,
-    prevStep,
-    goToStep,
-    goToStepWithValidation,
-    pendingNavigation,
-    confirmPendingNavigation,
-    cancelPendingNavigation,
-    updateData,
-    setSubmitting,
-    reset,
-    startFresh,
-    skipLiveness,
-    savePiiToServer,
-    updateServerProgress,
-    canGoBack: state.currentStep > 1,
-    canGoNext: state.currentStep < TOTAL_STEPS,
-    isFirstStep: state.currentStep === 1,
-    isLastStep: state.currentStep === TOTAL_STEPS,
-    progress: (state.currentStep / TOTAL_STEPS) * 100,
-  };
+  const value = useMemo<WizardContextType>(
+    () => ({
+      state,
+      totalSteps: TOTAL_STEPS,
+      nextStep,
+      prevStep,
+      goToStep,
+      goToStepWithValidation,
+      pendingNavigation,
+      confirmPendingNavigation,
+      cancelPendingNavigation,
+      updateData,
+      setSubmitting,
+      reset,
+      startFresh,
+      skipLiveness,
+      savePiiToServer,
+      updateServerProgress,
+      canGoBack: state.currentStep > 1,
+      canGoNext: state.currentStep < TOTAL_STEPS,
+      isFirstStep: state.currentStep === 1,
+      isLastStep: state.currentStep === TOTAL_STEPS,
+      progress: (state.currentStep / TOTAL_STEPS) * 100,
+    }),
+    [
+      state,
+      pendingNavigation,
+      // All callbacks are stable (useCallback with [] deps or stable deps)
+      nextStep,
+      prevStep,
+      goToStep,
+      goToStepWithValidation,
+      confirmPendingNavigation,
+      cancelPendingNavigation,
+      updateData,
+      setSubmitting,
+      reset,
+      startFresh,
+      skipLiveness,
+      savePiiToServer,
+      updateServerProgress,
+    ],
+  );
 
   // Warn before navigation with unsaved data to prevent accidental data loss
   useEffect(() => {

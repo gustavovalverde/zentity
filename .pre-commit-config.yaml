@@ -72,6 +72,18 @@ repos:
         pass_filenames: false
 
   # ===========================================
+  # Dead code detection (apps/web)
+  # ===========================================
+  - repo: local
+    hooks:
+      - id: knip-check-web
+        name: Knip dead code check (web)
+        entry: bash -c 'cd apps/web && bun run knip'
+        language: system
+        files: ^apps/web/.*\.(ts|tsx)$
+        pass_filenames: false
+
+  # ===========================================
   # Markdown (repo-wide)
   # ===========================================
   - repo: https://github.com/igorshubovych/markdownlint-cli

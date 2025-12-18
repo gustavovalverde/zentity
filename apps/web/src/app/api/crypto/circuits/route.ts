@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getBbJsVersion, getCircuitIdentity } from "@/lib/noir-verifier";
-import { CIRCUIT_SPECS } from "@/lib/zk-circuit-spec";
+
+import { CIRCUIT_SPECS } from "@/lib/zk";
+import { getBbJsVersion, getCircuitIdentity } from "@/lib/zk/noir-verifier";
 
 export async function GET() {
   const bbVersion = getBbJsVersion();

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Config, Human } from "@vladmandic/human";
+
 import { useEffect, useRef, useState } from "react";
 
 // Models are served locally from the Next.js route `/human-models/*`

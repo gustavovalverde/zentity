@@ -4,6 +4,7 @@ import { Github, Key, Loader2, Mail, Unlink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { authClient } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth";
 
 // Google icon component
 function GoogleIcon({ className }: { className?: string }) {

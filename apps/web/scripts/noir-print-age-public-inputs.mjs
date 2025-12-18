@@ -1,4 +1,5 @@
 import fs from "node:fs";
+
 import { UltraHonkBackend } from "@aztec/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 

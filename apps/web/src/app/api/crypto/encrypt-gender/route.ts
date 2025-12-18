@@ -9,8 +9,9 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
-import { encryptGenderFhe } from "@/lib/fhe-client";
-import { toServiceErrorPayload } from "@/lib/http-error-payload";
+
+import { encryptGenderFhe } from "@/lib/crypto/fhe-client";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 export async function POST(request: NextRequest) {
   try {

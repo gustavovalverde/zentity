@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { HttpError } from "@/lib/http";
-import { toServiceErrorPayload } from "@/lib/http-error-payload";
-import { ocrDocumentOcr } from "@/lib/ocr-client";
+
+import { ocrDocumentOcr } from "@/lib/document/ocr-client";
+import { HttpError } from "@/lib/utils";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 interface OCRRequest {
   image: string;
