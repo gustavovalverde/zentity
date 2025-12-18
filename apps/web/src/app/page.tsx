@@ -107,8 +107,18 @@ export default function Home() {
 
       <footer className="mt-auto border-t border-border py-8">
         <div className="mx-auto max-w-6xl px-4 text-center text-sm text-muted-foreground">
-          Your data is encrypted end-to-end. We never see or store your personal
-          information in plain text.
+          <p>
+            Your data is encrypted end-to-end. We never see or store your
+            personal information in plain text.
+          </p>
+          <p className="mt-2">
+            <Link
+              href="/api/build-info"
+              className="text-muted-foreground/70 hover:text-muted-foreground"
+            >
+              Verify build attestation
+            </Link>
+          </p>
         </div>
       </footer>
     </div>

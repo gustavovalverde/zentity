@@ -4,6 +4,21 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployments
   output: "standalone",
 
+  // Deterministic build ID for reproducible builds
+  // Uses GIT_SHA from CI or falls back to git command
+  generateBuildId: async () => {
+    if (process.env.GIT_SHA) {
+      return process.env.GIT_SHA;
+    }
+    // Fallback for local builds
+    const { execSync } = await import("node:child_process");
+    try {
+      return execSync("git rev-parse HEAD").toString().trim();
+    } catch {
+      return `local-${Date.now()}`;
+    }
+  },
+
   // Mark packages as external for server-side usage
   // These are loaded at runtime from node_modules, not bundled
   serverExternalPackages: [

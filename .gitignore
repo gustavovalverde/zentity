@@ -11,13 +11,8 @@ commit-message.txt
 
 ### Documentation ###
 # Keep the public docs lean for open-source. Treat the rest as internal notes.
-docs/*
-!docs/architecture.md
-!docs/zk-architecture.md
-!docs/zk-nationality-proofs.md
-!docs/rp-redirect-flow.md
-!docs/password-security.md
 docs/archive/
+docs/internal/
 
 ### Linux ###
 *~

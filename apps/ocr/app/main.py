@@ -17,8 +17,10 @@ Endpoints:
 """
 
 import os
+import subprocess
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Request
@@ -54,11 +56,37 @@ from .commitments import (
 # Configuration
 PORT = int(os.getenv("PORT", "5004"))
 INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
-
-# Build info (set at Docker build time)
-GIT_SHA = os.getenv("GIT_SHA", "unknown")
-BUILD_TIME = os.getenv("BUILD_TIME", "unknown")
 VERSION = "1.0.0"
+
+
+def _get_git_sha() -> str:
+    """Get git SHA from environment or git command."""
+    if sha := os.getenv("GIT_SHA"):
+        return sha
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        pass
+    return "unknown"
+
+
+def _get_build_time() -> str:
+    """Get build time from environment or current time."""
+    if build_time := os.getenv("BUILD_TIME"):
+        return build_time
+    return datetime.now(timezone.utc).isoformat()
+
+
+# Build info (resolved at module import)
+GIT_SHA = _get_git_sha()
+BUILD_TIME = _get_build_time()
 
 # Track service start time
 _start_time = time.time()

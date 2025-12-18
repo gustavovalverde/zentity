@@ -31,12 +31,13 @@ pub struct BuildInfoResponse {
 
 /// Build info endpoint for deployment verification.
 /// Allows users to verify the deployed code matches the source.
+/// Values are embedded at compile time via build.rs.
 pub async fn build_info() -> Json<BuildInfoResponse> {
     Json(BuildInfoResponse {
         service: "fhe-service".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        git_sha: option_env!("GIT_SHA").unwrap_or("unknown").to_string(),
-        build_time: option_env!("BUILD_TIME").unwrap_or("unknown").to_string(),
+        git_sha: env!("GIT_SHA").to_string(),
+        build_time: env!("BUILD_TIME").to_string(),
     })
 }
 

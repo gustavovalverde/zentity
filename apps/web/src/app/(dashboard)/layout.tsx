@@ -44,6 +44,16 @@ export default async function DashboardLayout({
       <main className="flex-1 py-8">
         <div className="mx-auto max-w-6xl px-4">{children}</div>
       </main>
+      <footer className="border-t border-border py-4">
+        <div className="mx-auto max-w-6xl px-4 text-center text-xs text-muted-foreground">
+          <Link
+            href="/api/build-info"
+            className="text-muted-foreground/70 hover:text-muted-foreground"
+          >
+            Verify build attestation
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }
