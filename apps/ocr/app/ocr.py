@@ -7,12 +7,15 @@ Supports Latin character recognition for Spanish text.
 
 import base64
 import io
+import logging
 import re
 import time
 
 import numpy as np
 from PIL import Image
 from rapidocr import RapidOCR
+
+logger = logging.getLogger(__name__)
 
 # Global engine instance (singleton for performance)
 _engine: RapidOCR | None = None
@@ -59,11 +62,11 @@ def warmup_engine() -> None:
     for y in range(100, height - 100, 40):
         dummy[y : y + 8, 100 : width - 100] = 50  # Dark gray lines
 
-    import contextlib
-
     for ocr_engine in (engine, fast_engine):
-        with contextlib.suppress(Exception):
+        try:
             ocr_engine(dummy)
+        except Exception as e:
+            logger.warning("OCR warmup failed: %s: %s", type(e).__name__, e)
 
 
 def crop_mrz_region(image: np.ndarray, *, start_ratio: float = 0.65) -> np.ndarray:
@@ -164,6 +167,7 @@ def _extract_text(image: np.ndarray, engine: RapidOCR) -> dict:
         }
 
     except Exception as e:
+        logger.error("OCR extraction failed: %s: %s", type(e).__name__, e)
         processing_time_ms = int((time.time() - start_time) * 1000)
         return {
             "text_blocks": [],

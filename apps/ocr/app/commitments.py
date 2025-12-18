@@ -16,6 +16,7 @@ Properties:
 import hashlib
 import re
 import secrets
+import unicodedata
 
 
 def generate_user_salt() -> str:
@@ -71,8 +72,6 @@ def normalize_name(full_name: str) -> str:
     """
     if not full_name:
         return ""
-
-    import unicodedata
 
     # Normalize unicode and remove accents
     normalized = unicodedata.normalize("NFD", full_name)

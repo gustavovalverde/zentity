@@ -27,11 +27,14 @@ from stdnum.exceptions import (
 )
 
 # =============================================================================
-# Personal ID Module Names (tried in priority order)
+# Validator Module Discovery Priority
 # =============================================================================
 
-PERSONAL_ID_MODULE_NAMES = [
-    # Primary personal identification documents
+# Priority order for stdnum validator discovery.
+# Personal ID modules are tried first (most specific), then tax IDs (fallback).
+# Order matters: first match wins when multiple validators exist for a country.
+VALIDATOR_MODULE_PRIORITY = [
+    # --- Primary personal identification documents ---
     "personalid",  # Generic (few countries use this exact name)
     "cedula",  # Dominican Republic, Ecuador
     "dni",  # Spain, Argentina
@@ -67,7 +70,7 @@ PERSONAL_ID_MODULE_NAMES = [
     "cc",  # Portugal (Cartao de Cidadao)
     "ric",  # Costa Rica
     "identity_number",  # Israel
-    # Fallback to tax IDs (sometimes used for identification)
+    # --- Fallback: tax/business IDs (sometimes used for identification) ---
     "nit",  # Colombia
     "rfc",  # Mexico (tax ID)
     "cuit",  # Argentina (tax ID)
@@ -183,7 +186,7 @@ def discover_validator(alpha3_code: str) -> ValidatorInfo | None:
         return None
 
     # Step 2: Try each module name in priority order
-    for module_name in PERSONAL_ID_MODULE_NAMES:
+    for module_name in VALIDATOR_MODULE_PRIORITY:
         try:
             module = get_cc_module(alpha2_code, module_name)
             if module is not None and hasattr(module, "validate"):
@@ -413,6 +416,26 @@ def validate_dob(dob: str) -> list[str]:
     return issues
 
 
+# =============================================================================
+# Confidence Scoring Configuration
+# =============================================================================
+
+# Text length thresholds for quality scoring (empirically tuned for ID documents).
+# Higher text extraction typically indicates better OCR quality and more complete scans.
+TEXT_LENGTH_HIGH = 200  # Full page documents (passports, detailed IDs)
+TEXT_LENGTH_MEDIUM = 100  # Partial page or cropped documents
+TEXT_LENGTH_LOW = 50  # Minimal text (may indicate poor scan quality)
+
+# Confidence score weights - must sum to 1.0 for normalized output.
+# Weights reflect relative importance of each factor for identity documents.
+TEXT_QUALITY_MAX_SCORE = 0.3  # 30% - text extraction quality
+FIELD_EXTRACTION_MAX_SCORE = 0.4  # 40% - structured fields extracted (most important)
+OCR_CONFIDENCE_MAX_SCORE = 0.3  # 30% - raw OCR engine confidence
+
+# Points per extracted field (document_number, full_name, dob, expiry)
+POINTS_PER_FIELD = 0.1  # 10% per field, max 4 fields = 40%
+
+
 def calculate_confidence(
     text_length: int,
     fields_extracted: int,
@@ -421,26 +444,34 @@ def calculate_confidence(
     """
     Calculate overall document confidence score.
 
-    Factors:
-    - Amount of text extracted
-    - Number of fields successfully parsed
-    - OCR confidence scores
+    The score combines three factors:
+    - Text extraction quality (30%): Based on total characters extracted
+    - Field extraction (40%): Based on number of identity fields parsed
+    - OCR confidence (30%): Average confidence from OCR engine
+
+    Args:
+        text_length: Total characters extracted from document
+        fields_extracted: Number of identity fields successfully parsed (max 4)
+        ocr_avg_confidence: Average OCR confidence score (0.0-1.0)
+
+    Returns:
+        Confidence score between 0.0 and 1.0
     """
     score = 0.0
 
     # Text extraction quality (0-0.3)
-    if text_length > 200:
-        score += 0.3
-    elif text_length > 100:
-        score += 0.2
-    elif text_length > 50:
-        score += 0.1
+    if text_length > TEXT_LENGTH_HIGH:
+        score += TEXT_QUALITY_MAX_SCORE
+    elif text_length > TEXT_LENGTH_MEDIUM:
+        score += TEXT_QUALITY_MAX_SCORE * 0.67  # ~0.2
+    elif text_length > TEXT_LENGTH_LOW:
+        score += TEXT_QUALITY_MAX_SCORE * 0.33  # ~0.1
 
     # Fields extracted (0-0.4)
-    field_score = min(0.4, fields_extracted * 0.1)
+    field_score = min(FIELD_EXTRACTION_MAX_SCORE, fields_extracted * POINTS_PER_FIELD)
     score += field_score
 
     # OCR confidence (0-0.3)
-    score += ocr_avg_confidence * 0.3
+    score += ocr_avg_confidence * OCR_CONFIDENCE_MAX_SCORE
 
     return min(1.0, score)

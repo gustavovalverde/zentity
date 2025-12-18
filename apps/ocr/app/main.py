@@ -16,10 +16,12 @@ Endpoints:
 - POST /process    - Full privacy-preserving document processing
 """
 
+import logging
 import os
 import subprocess
 import time
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Request
@@ -55,6 +57,8 @@ from .validators import (
     validate_national_id_detailed,
     validate_passport_number,
 )
+
+logger = logging.getLogger(__name__)
 
 # Configuration
 PORT = int(os.getenv("PORT", "5004"))
@@ -98,12 +102,182 @@ _start_time = time.time()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle for the OCR service."""
-    # Startup: warm up the OCR engine
-    print("[OCR] Warming up RapidOCR engine...")
+    logger.info("Warming up RapidOCR engine...")
     warmup_engine()
-    print("[OCR] RapidOCR engine ready")
+    logger.info("RapidOCR engine ready")
     yield
-    # Shutdown: nothing to clean up
+
+
+# =============================================================================
+# Shared Document Extraction Logic
+# =============================================================================
+
+
+@dataclass
+class DocumentExtractionResult:
+    """Result from document extraction and validation."""
+
+    extracted: ExtractedData | None
+    doc_type: DocumentType
+    validation_issues: list[str]
+    validation_details: list["ValidationDetail"]
+    confidence: float
+    document_origin: str | None
+    ocr_error: str | None = None
+
+
+def _validate_national_id(
+    extracted: ExtractedData,
+    validation_issues: list[str],
+    validation_details: list["ValidationDetail"],
+) -> None:
+    """Validate national ID document number using country-aware validation."""
+    if extracted.document_number and extracted.nationality_code:
+        result = validate_national_id_detailed(
+            extracted.document_number, extracted.nationality_code
+        )
+        if result.error_code:
+            validation_issues.append(result.error_code)
+            if result.error_message:
+                validation_details.append(
+                    ValidationDetail(
+                        errorCode=result.error_code,
+                        errorMessage=result.error_message,
+                        validatorUsed=result.validator_used,
+                        formatName=result.format_name,
+                    )
+                )
+
+
+def _validate_passport(
+    extracted: ExtractedData,
+    mrz_valid: bool,
+    validation_issues: list[str],
+) -> None:
+    """Validate passport document."""
+    if not mrz_valid:
+        validation_issues.append("mrz_checksum_invalid")
+    if extracted.document_number:
+        validation_issues.extend(validate_passport_number(extracted.document_number))
+
+
+def _validate_dates(extracted: ExtractedData, validation_issues: list[str]) -> None:
+    """Validate expiration date and date of birth."""
+    if extracted.expiration_date:
+        validation_issues.extend(validate_expiration_date(extracted.expiration_date))
+    if extracted.date_of_birth:
+        validation_issues.extend(validate_dob(extracted.date_of_birth))
+
+
+def _calculate_fields_count(extracted: ExtractedData | None) -> int:
+    """Count how many key fields were extracted."""
+    if not extracted:
+        return 0
+    return sum(
+        1
+        for f in [
+            extracted.full_name,
+            extracted.document_number,
+            extracted.date_of_birth,
+            extracted.expiration_date,
+        ]
+        if f
+    )
+
+
+def _extract_and_validate_document(image_base64: str) -> DocumentExtractionResult:
+    """
+    Extract document data from image and validate fields.
+
+    This is the shared logic between /ocr and /process endpoints.
+    Performs OCR, document type detection, field extraction, and validation.
+    """
+    validation_issues: list[str] = []
+    validation_details: list[ValidationDetail] = []
+
+    # Step 1: Extract text (MRZ-fast-path for passports)
+    ocr_result = extract_document_text_from_base64(image_base64)
+
+    if ocr_result.get("error"):
+        return DocumentExtractionResult(
+            extracted=None,
+            doc_type=DocumentType.UNKNOWN,
+            validation_issues=["ocr_failed", ocr_result["error"]],
+            validation_details=[],
+            confidence=0.0,
+            document_origin=None,
+            ocr_error=ocr_result["error"],
+        )
+
+    full_text = ocr_result.get("full_text", "")
+    text_blocks = ocr_result.get("text_blocks", [])
+
+    if not full_text or len(full_text) < 10:
+        return DocumentExtractionResult(
+            extracted=None,
+            doc_type=DocumentType.UNKNOWN,
+            validation_issues=["no_text_detected"],
+            validation_details=[],
+            confidence=0.0,
+            document_origin=None,
+        )
+
+    # Step 2: Detect document type
+    doc_type, _type_confidence = detect_document_type(full_text)
+
+    # Step 3: Extract fields based on document type
+    extracted: ExtractedData | None = None
+
+    if doc_type == DocumentType.NATIONAL_ID:
+        extracted = extract_national_id_fields(full_text)
+        _validate_national_id(extracted, validation_issues, validation_details)
+    elif doc_type == DocumentType.PASSPORT:
+        extracted, mrz_valid = extract_passport_fields(full_text)
+        _validate_passport(extracted, mrz_valid, validation_issues)
+    elif doc_type == DocumentType.DRIVERS_LICENSE:
+        extracted = extract_drivers_license_fields(full_text)
+
+    # Step 4: Validate dates
+    if extracted:
+        _validate_dates(extracted, validation_issues)
+
+    # Step 5: Calculate confidence
+    fields_count = _calculate_fields_count(extracted)
+    avg_ocr_confidence = (
+        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks) if text_blocks else 0.0
+    )
+    confidence = calculate_confidence(len(full_text), fields_count, avg_ocr_confidence)
+
+    # Determine document origin
+    document_origin = None
+    if extracted:
+        document_origin = extracted.issuing_country_code or extracted.nationality_code
+
+    return DocumentExtractionResult(
+        extracted=extracted,
+        doc_type=doc_type,
+        validation_issues=validation_issues,
+        validation_details=validation_details,
+        confidence=confidence,
+        document_origin=document_origin,
+    )
+
+
+def _build_extracted_data_response(extracted: ExtractedData) -> "ExtractedDataResponse":
+    """Build API response from extracted data."""
+    return ExtractedDataResponse(
+        fullName=extracted.full_name,
+        firstName=extracted.first_name,
+        lastName=extracted.last_name,
+        documentNumber=extracted.document_number,
+        dateOfBirth=extracted.date_of_birth,
+        expirationDate=extracted.expiration_date,
+        nationality=extracted.nationality,
+        nationalityCode=extracted.nationality_code,
+        issuingCountry=extracted.issuing_country,
+        issuingCountryCode=extracted.issuing_country_code,
+        gender=extracted.gender,
+    )
 
 
 # Initialize FastAPI
@@ -274,129 +448,20 @@ async def ocr_document_endpoint(request: ImageRequest):
         raise HTTPException(status_code=400, detail="Image is required")
 
     start_time = time.time()
-    validation_issues: list[str] = []
-    validation_details: list[ValidationDetail] = []
-
-    # Step 1: Extract text (MRZ-fast-path for passports)
-    ocr_result = extract_document_text_from_base64(request.image)
-
-    if ocr_result.get("error"):
-        return DocumentResponse(
-            documentType="unknown",
-            documentOrigin=None,
-            confidence=0.0,
-            extractedData=None,
-            validationIssues=["ocr_failed", ocr_result["error"]],
-            validationDetails=None,
-            processingTimeMs=int((time.time() - start_time) * 1000),
-        )
-
-    full_text = ocr_result.get("full_text", "")
-    text_blocks = ocr_result.get("text_blocks", [])
-
-    if not full_text or len(full_text) < 10:
-        return DocumentResponse(
-            documentType="unknown",
-            documentOrigin=None,
-            confidence=0.0,
-            extractedData=None,
-            validationIssues=["no_text_detected"],
-            validationDetails=None,
-            processingTimeMs=int((time.time() - start_time) * 1000),
-        )
-
-    # Step 2: Detect document type
-    doc_type, type_confidence = detect_document_type(full_text)
-
-    # Step 3: Extract fields based on document type
-    extracted: ExtractedData | None = None
-
-    if doc_type == DocumentType.NATIONAL_ID:
-        extracted = extract_national_id_fields(full_text)
-        # Validate document number format using country-aware validation
-        if extracted.document_number and extracted.nationality_code:
-            # Get detailed validation result for rich error messages
-            result = validate_national_id_detailed(
-                extracted.document_number, extracted.nationality_code
-            )
-            if result.error_code:
-                validation_issues.append(result.error_code)
-                if result.error_message:
-                    validation_details.append(
-                        ValidationDetail(
-                            errorCode=result.error_code,
-                            errorMessage=result.error_message,
-                            validatorUsed=result.validator_used,
-                            formatName=result.format_name,
-                        )
-                    )
-    elif doc_type == DocumentType.PASSPORT:
-        extracted, mrz_valid = extract_passport_fields(full_text)
-        if not mrz_valid:
-            validation_issues.append("mrz_checksum_invalid")
-        if extracted.document_number:
-            validation_issues.extend(validate_passport_number(extracted.document_number))
-    elif doc_type == DocumentType.DRIVERS_LICENSE:
-        extracted = extract_drivers_license_fields(full_text)
-
-    # Step 5: Validate dates
-    if extracted:
-        if extracted.expiration_date:
-            validation_issues.extend(validate_expiration_date(extracted.expiration_date))
-        if extracted.date_of_birth:
-            validation_issues.extend(validate_dob(extracted.date_of_birth))
-
-    # Step 6: Calculate confidence
-    fields_count = sum(
-        1
-        for f in [
-            extracted.full_name if extracted else None,
-            extracted.document_number if extracted else None,
-            extracted.date_of_birth if extracted else None,
-            extracted.expiration_date if extracted else None,
-        ]
-        if f
-    )
-
-    avg_ocr_confidence = (
-        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks) if text_blocks else 0.0
-    )
-
-    confidence = calculate_confidence(
-        len(full_text),
-        fields_count,
-        avg_ocr_confidence,
-    )
-
-    # Build response
-    extracted_response = None
-    document_origin = None
-    if extracted:
-        extracted_response = ExtractedDataResponse(
-            fullName=extracted.full_name,
-            firstName=extracted.first_name,
-            lastName=extracted.last_name,
-            documentNumber=extracted.document_number,
-            dateOfBirth=extracted.date_of_birth,
-            expirationDate=extracted.expiration_date,
-            nationality=extracted.nationality,
-            nationalityCode=extracted.nationality_code,
-            issuingCountry=extracted.issuing_country,
-            issuingCountryCode=extracted.issuing_country_code,
-            gender=extracted.gender,
-        )
-        # Use issuing country as origin if available, fallback to nationality
-        document_origin = extracted.issuing_country_code or extracted.nationality_code
-
+    result = _extract_and_validate_document(request.image)
     processing_time_ms = int((time.time() - start_time) * 1000)
 
+    extracted_response = None
+    if result.extracted:
+        extracted_response = _build_extracted_data_response(result.extracted)
+
     return DocumentResponse(
-        documentType=doc_type.value,
-        documentOrigin=document_origin,
-        confidence=round(confidence, 3),
+        documentType=result.doc_type.value,
+        documentOrigin=result.document_origin,
+        confidence=round(result.confidence, 3),
         extractedData=extracted_response,
-        validationIssues=validation_issues,
-        validationDetails=validation_details if validation_details else None,
+        validationIssues=result.validation_issues,
+        validationDetails=result.validation_details if result.validation_details else None,
         processingTimeMs=processing_time_ms,
     )
 
@@ -483,90 +548,21 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
         raise HTTPException(status_code=400, detail="Image is required")
 
     start_time = time.time()
-    validation_issues: list[str] = []
-    validation_details: list[ValidationDetail] = []
+    result = _extract_and_validate_document(request.image)
 
-    # Step 1: Extract text (transient, MRZ-fast-path for passports)
-    ocr_result = extract_document_text_from_base64(request.image)
+    # Extend validation issues for commitment generation requirements
+    validation_issues = list(result.validation_issues)
 
-    if ocr_result.get("error"):
-        return ProcessDocumentResponse(
-            commitments=None,
-            documentType="unknown",
-            documentOrigin=None,
-            confidence=0.0,
-            extractedData=None,
-            validationIssues=["ocr_failed", ocr_result["error"]],
-            validationDetails=None,
-            processingTimeMs=int((time.time() - start_time) * 1000),
-        )
-
-    full_text = ocr_result.get("full_text", "")
-    text_blocks = ocr_result.get("text_blocks", [])
-
-    if not full_text or len(full_text) < 10:
-        return ProcessDocumentResponse(
-            commitments=None,
-            documentType="unknown",
-            documentOrigin=None,
-            confidence=0.0,
-            extractedData=None,
-            validationIssues=["no_text_detected"],
-            validationDetails=None,
-            processingTimeMs=int((time.time() - start_time) * 1000),
-        )
-
-    # Step 2: Detect document type
-    doc_type, type_confidence = detect_document_type(full_text)
-
-    # Step 3: Extract fields based on document type (transient)
-    extracted: ExtractedData | None = None
-
-    if doc_type == DocumentType.NATIONAL_ID:
-        extracted = extract_national_id_fields(full_text)
-        # Validate document number format using country-aware validation
-        if extracted.document_number and extracted.nationality_code:
-            # Get detailed validation result for rich error messages
-            result = validate_national_id_detailed(
-                extracted.document_number, extracted.nationality_code
-            )
-            if result.error_code:
-                validation_issues.append(result.error_code)
-                if result.error_message:
-                    validation_details.append(
-                        ValidationDetail(
-                            errorCode=result.error_code,
-                            errorMessage=result.error_message,
-                            validatorUsed=result.validator_used,
-                            formatName=result.format_name,
-                        )
-                    )
-    elif doc_type == DocumentType.PASSPORT:
-        extracted, mrz_valid = extract_passport_fields(full_text)
-        if not mrz_valid:
-            validation_issues.append("mrz_checksum_invalid")
-        if extracted.document_number:
-            validation_issues.extend(validate_passport_number(extracted.document_number))
-    elif doc_type == DocumentType.DRIVERS_LICENSE:
-        extracted = extract_drivers_license_fields(full_text)
-
-    # Step 5: Validate dates
-    if extracted:
-        if extracted.expiration_date:
-            validation_issues.extend(validate_expiration_date(extracted.expiration_date))
-        if extracted.date_of_birth:
-            validation_issues.extend(validate_dob(extracted.date_of_birth))
-
-    # Step 6: Generate cryptographic commitments
+    # Generate cryptographic commitments
     commitments_response = None
-    if extracted and extracted.document_number and extracted.full_name:
+    if result.extracted and result.extracted.document_number and result.extracted.full_name:
         user_salt = request.userSalt or generate_user_salt()
         identity_commitments = generate_identity_commitments(
-            document_number=extracted.document_number,
-            full_name=extracted.full_name,
+            document_number=result.extracted.document_number,
+            full_name=result.extracted.full_name,
             user_salt=user_salt,
-            document_type=doc_type.value,
-            issuing_country_code=extracted.issuing_country_code,
+            document_type=result.doc_type.value,
+            issuing_country_code=result.extracted.issuing_country_code,
         )
         commitments_response = IdentityCommitmentsResponse(
             documentHash=identity_commitments.document_hash,
@@ -575,66 +571,28 @@ async def process_document_endpoint(request: ProcessDocumentRequest):
             userSalt=identity_commitments.user_salt,
         )
     else:
-        if not extracted:
+        if not result.extracted:
             validation_issues.append("extraction_failed")
         else:
-            if not extracted.document_number:
+            if not result.extracted.document_number:
                 validation_issues.append("missing_document_number")
-            if not extracted.full_name:
+            if not result.extracted.full_name:
                 validation_issues.append("missing_full_name")
-
-    # Step 7: Calculate confidence
-    fields_count = sum(
-        1
-        for f in [
-            extracted.full_name if extracted else None,
-            extracted.document_number if extracted else None,
-            extracted.date_of_birth if extracted else None,
-            extracted.expiration_date if extracted else None,
-        ]
-        if f
-    )
-
-    avg_ocr_confidence = (
-        sum(b.get("confidence", 0) for b in text_blocks) / len(text_blocks) if text_blocks else 0.0
-    )
-
-    confidence = calculate_confidence(
-        len(full_text),
-        fields_count,
-        avg_ocr_confidence,
-    )
-
-    # Build response with transient extracted data
-    extracted_response = None
-    document_origin = None
-    if extracted:
-        extracted_response = ExtractedDataResponse(
-            fullName=extracted.full_name,
-            firstName=extracted.first_name,
-            lastName=extracted.last_name,
-            documentNumber=extracted.document_number,
-            dateOfBirth=extracted.date_of_birth,
-            expirationDate=extracted.expiration_date,
-            nationality=extracted.nationality,
-            nationalityCode=extracted.nationality_code,
-            issuingCountry=extracted.issuing_country,
-            issuingCountryCode=extracted.issuing_country_code,
-            gender=extracted.gender,
-        )
-        # Use issuing country as origin if available, fallback to nationality
-        document_origin = extracted.issuing_country_code or extracted.nationality_code
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
+    extracted_response = None
+    if result.extracted:
+        extracted_response = _build_extracted_data_response(result.extracted)
+
     return ProcessDocumentResponse(
         commitments=commitments_response,
-        documentType=doc_type.value,
-        documentOrigin=document_origin,
-        confidence=round(confidence, 3),
+        documentType=result.doc_type.value,
+        documentOrigin=result.document_origin,
+        confidence=round(result.confidence, 3),
         extractedData=extracted_response,
         validationIssues=validation_issues,
-        validationDetails=validation_details if validation_details else None,
+        validationDetails=result.validation_details if result.validation_details else None,
         processingTimeMs=processing_time_ms,
     )
 

@@ -73,14 +73,26 @@ def correct_country_code(code: str) -> tuple[str, bool]:
     return code, False  # Could not correct
 
 
-# National ID patterns (supports multiple formats)
+# =============================================================================
+# National ID Extraction Patterns
+# =============================================================================
+
+# Stop words regex - marks the end of name fields in OCR text.
+# Used to split extracted names from subsequent label text that may appear
+# on the same line due to OCR layout detection.
+FIRST_NAME_STOP_WORDS = r"\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
+LAST_NAME_STOP_WORDS = r"\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
+
+# Patterns for extracting fields from national ID documents.
+# Order matters: country-specific patterns are tried first (fewer false positives),
+# then generic fallback patterns. First match wins.
 NATIONAL_ID_PATTERNS = {
-    # Document number patterns for various countries
+    # Document number patterns - ordered by specificity (most specific first)
     "document_number": [
         r"\b(\d{3}[-\s]?\d{7}[-\s]?\d{1})\b",  # Dominican cedula: XXX-XXXXXXX-X
         r"\b(\d{8}[A-Z])\b",  # Spanish DNI: 12345678A
-        r"\b([A-Z]\d{7}[A-Z])\b",  # Mexican INE
-        r"\b(\d{9,12})\b",  # Generic numeric ID
+        r"\b([A-Z]\d{7}[A-Z])\b",  # Mexican INE: A1234567B
+        r"\b(\d{9,12})\b",  # Generic fallback: 9-12 digit ID (higher false positive rate)
     ],
     # Name patterns (multilingual)
     "first_name": [
@@ -162,12 +174,13 @@ def get_country_name(code: str) -> str | None:
         pass
 
     # Fallback to mrz library (already in use for MRZ parsing)
-    import contextlib
-
-    with contextlib.suppress(Exception):
+    try:
         name = mrz_get_country(code)
         if name:
             return name
+    except (KeyError, ValueError, AttributeError):
+        # mrz library doesn't recognize this code
+        pass
 
     return None
 
@@ -195,7 +208,19 @@ def parse_date_to_iso(date_str: str) -> str | None:
 
 
 def detect_country_from_text(text: str) -> str | None:
-    """Detect country code from document text."""
+    """
+    Detect country code from document text.
+
+    Searches for country-specific markers (text patterns) in the OCR output.
+    Detection priority follows COUNTRY_MARKERS dict iteration order.
+    Earlier entries take precedence when multiple patterns match.
+
+    Args:
+        text: Raw OCR text from document
+
+    Returns:
+        ISO 3166-1 alpha-3 country code (e.g., "DOM", "ESP") or None
+    """
     text_upper = text.upper()
     for country_code, patterns in COUNTRY_MARKERS.items():
         for pattern in patterns:
@@ -232,9 +257,7 @@ def extract_national_id_fields(text: str) -> ExtractedData:
         first_match = re.search(pattern, text_upper)
         if first_match:
             first_raw = first_match.group(1).strip()
-            # Clean up: stop at common label words
-            stop_words = r"\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
-            first_clean = re.split(stop_words, first_raw)[0].strip()
+            first_clean = re.split(FIRST_NAME_STOP_WORDS, first_raw)[0].strip()
             data.first_name = first_clean.title()
             break
 
@@ -243,8 +266,7 @@ def extract_national_id_fields(text: str) -> ExtractedData:
         last_match = re.search(pattern, text_upper)
         if last_match:
             last_raw = last_match.group(1).strip()
-            stop_words = r"\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
-            last_clean = re.split(stop_words, last_raw)[0].strip()
+            last_clean = re.split(LAST_NAME_STOP_WORDS, last_raw)[0].strip()
             data.last_name = last_clean.title()
             break
 
@@ -385,8 +407,9 @@ def parse_mrz(mrz_text: str) -> tuple[ExtractedData, bool]:
         elif data.last_name:
             data.full_name = data.last_name
 
-    except Exception:
-        # Library failed - return empty data
+    except (ValueError, AttributeError, IndexError, TypeError):
+        # MRZ library failed to parse - expected when OCR doesn't detect valid MRZ.
+        # Common causes: corrupted MRZ text, partial detection, wrong document type.
         pass
 
     return data, is_valid
