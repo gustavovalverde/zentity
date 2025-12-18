@@ -9,7 +9,6 @@ use serde_json::json;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-#[allow(dead_code)]
 pub enum FheError {
     #[error("Key not found: {0}")]
     KeyNotFound(String),
@@ -27,6 +26,7 @@ pub enum FheError {
     Base64Decode(#[from] base64::DecodeError),
 
     #[error("Internal error: {0}")]
+    #[allow(dead_code)] // Reserved for future internal error handling
     Internal(String),
 }
 

@@ -6,12 +6,11 @@
 //! - 2 = Female
 //! - 9 = Not applicable
 
-use super::get_key_store;
+use super::{get_key_store, setup_for_verification};
 use crate::error::FheError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use std::time::Instant;
 use tfhe::prelude::*;
-use tfhe::{set_server_key, FheUint8};
+use tfhe::FheUint8;
 
 /// ISO/IEC 5218 gender codes
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,20 +69,11 @@ pub fn verify_gender_match(
     ciphertext_b64: &str,
     claimed_gender: u8,
     client_key_id: &str,
-) -> Result<(bool, u64), FheError> {
-    let start = Instant::now();
-
+) -> Result<bool, FheError> {
     // Validate claimed gender
     let _ = Gender::from_code(claimed_gender)?;
 
-    let key_store = get_key_store();
-
-    // Set server key for this thread
-    set_server_key(key_store.get_server_key().clone());
-
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
+    let client_key = setup_for_verification(client_key_id)?;
 
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
@@ -98,7 +88,5 @@ pub fn verify_gender_match(
     // Decrypt only the boolean result
     let matches: bool = encrypted_matches.decrypt(&client_key);
 
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-
-    Ok((matches, elapsed_ms))
+    Ok(matches)
 }

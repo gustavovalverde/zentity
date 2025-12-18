@@ -3,12 +3,11 @@
 //! Provides FHE-based liveness score encryption and threshold verification.
 //! Scores are floats from 0.0 to 1.0, stored as u16 (0-10000) for 4 decimal precision.
 
-use super::get_key_store;
+use super::{get_key_store, setup_for_verification};
 use crate::error::FheError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use std::time::Instant;
 use tfhe::prelude::*;
-use tfhe::{set_server_key, FheUint16};
+use tfhe::FheUint16;
 
 /// Scale factor for converting float to u16 (4 decimal precision)
 const SCORE_SCALE: f64 = 10000.0;
@@ -73,31 +72,13 @@ pub fn encrypt_liveness_score(score: f64, client_key_id: &str) -> Result<String,
 ///
 /// Performs homomorphic comparison: encrypted_score >= threshold
 /// Only reveals whether the threshold was met, not the actual score.
-///
-/// Args:
-///   ciphertext_b64: Base64-encoded encrypted liveness score
-///   threshold: Minimum required score (0.0 to 1.0)
-///   client_key_id: ID of the client key to use
-///
-/// Returns:
-///   (passes_threshold: bool, elapsed_ms: u64)
 pub fn verify_liveness_threshold(
     ciphertext_b64: &str,
     threshold: f64,
     client_key_id: &str,
-) -> Result<(bool, u64), FheError> {
-    let start = Instant::now();
-
+) -> Result<bool, FheError> {
     let threshold_scaled = threshold_to_u16(threshold)?;
-
-    let key_store = get_key_store();
-
-    // Set server key for this thread
-    set_server_key(key_store.get_server_key().clone());
-
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
+    let client_key = setup_for_verification(client_key_id)?;
 
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
@@ -112,42 +93,7 @@ pub fn verify_liveness_threshold(
     // Decrypt only the boolean result
     let passes: bool = encrypted_passes.decrypt(&client_key);
 
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-
-    Ok((passes, elapsed_ms))
-}
-
-/// Decrypt a liveness score ciphertext
-///
-/// NOTE: This should only be used for debugging or when the full score is needed.
-/// For threshold checks, prefer verify_liveness_threshold which reveals less info.
-#[allow(dead_code)]
-pub fn decrypt_liveness_score(
-    ciphertext_b64: &str,
-    client_key_id: &str,
-) -> Result<(f64, u64), FheError> {
-    let start = Instant::now();
-
-    let key_store = get_key_store();
-
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
-
-    // Decode base64
-    let bytes = BASE64.decode(ciphertext_b64)?;
-
-    // Deserialize to FheUint16 using bincode 2.x serde API
-    let (encrypted_score, _): (FheUint16, _) =
-        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
-
-    // Decrypt
-    let scaled_score: u16 = encrypted_score.decrypt(&client_key);
-
-    let score = u16_to_score(scaled_score);
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-
-    Ok((score, elapsed_ms))
+    Ok(passes)
 }
 
 #[cfg(test)]

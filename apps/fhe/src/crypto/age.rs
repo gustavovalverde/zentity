@@ -2,12 +2,11 @@
 //!
 //! Provides FHE-based age verification operations.
 
-use super::get_key_store;
+use super::{get_key_store, setup_for_verification};
 use crate::error::FheError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use std::time::Instant;
 use tfhe::prelude::*;
-use tfhe::{set_server_key, FheUint16};
+use tfhe::FheUint16;
 
 /// Encrypt a birth year using the specified client key
 pub fn encrypt_birth_year(birth_year: u16, client_key_id: &str) -> Result<String, FheError> {
@@ -32,17 +31,8 @@ pub fn verify_age(
     current_year: u16,
     min_age: u16,
     client_key_id: &str,
-) -> Result<(bool, u64), FheError> {
-    let start = Instant::now();
-
-    let key_store = get_key_store();
-
-    // Set server key for this thread (TFHE-rs requires this per-thread)
-    set_server_key(key_store.get_server_key().clone());
-
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
+) -> Result<bool, FheError> {
+    let client_key = setup_for_verification(client_key_id)?;
 
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
@@ -60,7 +50,5 @@ pub fn verify_age(
     // Decrypt only the boolean result
     let is_over_18: bool = encrypted_is_adult.decrypt(&client_key);
 
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-
-    Ok((is_over_18, elapsed_ms))
+    Ok(is_over_18)
 }

@@ -3,16 +3,64 @@
 //! Provides FHE-based operations for full DOB (YYYYMMDD format as u32).
 //! This enables precise age calculations (age in days, not just years).
 
-use super::get_key_store;
+use super::{get_key_store, setup_for_verification};
 use crate::error::FheError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use std::time::Instant;
 use tfhe::prelude::*;
-use tfhe::{set_server_key, FheUint32};
+use tfhe::FheUint32;
 
-/// Parse ISO 8601 date string (YYYY-MM-DD) to YYYYMMDD integer
+/// YYYYMMDD integer format encoding multipliers.
+///
+/// Dates are encoded as: `year * YEAR_MULTIPLIER + month * MONTH_MULTIPLIER + day`
+///
+/// Example: 2025-12-07 = 2025 * 10000 + 12 * 100 + 7 = 20251207
+const YEAR_MULTIPLIER: u32 = 10000;
+const MONTH_MULTIPLIER: u32 = 100;
+
+/// Validates date components are within acceptable ranges.
+fn validate_date_components(year: u32, month: u32, day: u32) -> Result<(), FheError> {
+    if !(1900..=2100).contains(&year) {
+        return Err(FheError::InvalidInput(format!(
+            "Year out of range (1900-2100): {}",
+            year
+        )));
+    }
+    if !(1..=12).contains(&month) {
+        return Err(FheError::InvalidInput(format!(
+            "Month out of range (1-12): {}",
+            month
+        )));
+    }
+    if !(1..=31).contains(&day) {
+        return Err(FheError::InvalidInput(format!(
+            "Day out of range (1-31): {}",
+            day
+        )));
+    }
+    Ok(())
+}
+
+/// Encodes date components into YYYYMMDD integer format.
+fn encode_date(year: u32, month: u32, day: u32) -> u32 {
+    year * YEAR_MULTIPLIER + month * MONTH_MULTIPLIER + day
+}
+
+/// Decodes YYYYMMDD integer into (year, month, day) components.
+fn decode_date(date_int: u32) -> (u32, u32, u32) {
+    let year = date_int / YEAR_MULTIPLIER;
+    let month = (date_int % YEAR_MULTIPLIER) / MONTH_MULTIPLIER;
+    let day = date_int % MONTH_MULTIPLIER;
+    (year, month, day)
+}
+
+/// Parses date string into YYYYMMDD integer.
+///
+/// Supported formats (tried in order):
+/// 1. ISO 8601: YYYY-MM-DD (e.g., "2025-12-07")
+/// 2. Regional: DD/MM/YYYY (e.g., "07/12/2025")
+/// 3. Integer: YYYYMMDD (e.g., "20251207")
 pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
-    // Try YYYY-MM-DD format
+    // Try YYYY-MM-DD format (ISO 8601)
     if date_str.contains('-') {
         let parts: Vec<&str> = date_str.split('-').collect();
         if parts.len() != 3 {
@@ -32,30 +80,11 @@ pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
             .parse()
             .map_err(|_| FheError::InvalidInput(format!("Invalid day in date: {}", date_str)))?;
 
-        // Validate ranges
-        if !(1900..=2100).contains(&year) {
-            return Err(FheError::InvalidInput(format!(
-                "Year out of range (1900-2100): {}",
-                year
-            )));
-        }
-        if !(1..=12).contains(&month) {
-            return Err(FheError::InvalidInput(format!(
-                "Month out of range (1-12): {}",
-                month
-            )));
-        }
-        if !(1..=31).contains(&day) {
-            return Err(FheError::InvalidInput(format!(
-                "Day out of range (1-31): {}",
-                day
-            )));
-        }
-
-        return Ok(year * 10000 + month * 100 + day);
+        validate_date_components(year, month, day)?;
+        return Ok(encode_date(year, month, day));
     }
 
-    // Try DD/MM/YYYY format
+    // Try DD/MM/YYYY format (regional)
     if date_str.contains('/') {
         let parts: Vec<&str> = date_str.split('/').collect();
         if parts.len() != 3 {
@@ -75,27 +104,8 @@ pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
             .parse()
             .map_err(|_| FheError::InvalidInput(format!("Invalid year in date: {}", date_str)))?;
 
-        // Validate ranges
-        if !(1900..=2100).contains(&year) {
-            return Err(FheError::InvalidInput(format!(
-                "Year out of range (1900-2100): {}",
-                year
-            )));
-        }
-        if !(1..=12).contains(&month) {
-            return Err(FheError::InvalidInput(format!(
-                "Month out of range (1-12): {}",
-                month
-            )));
-        }
-        if !(1..=31).contains(&day) {
-            return Err(FheError::InvalidInput(format!(
-                "Day out of range (1-31): {}",
-                day
-            )));
-        }
-
-        return Ok(year * 10000 + month * 100 + day);
+        validate_date_components(year, month, day)?;
+        return Ok(encode_date(year, month, day));
     }
 
     // Try direct YYYYMMDD integer
@@ -107,16 +117,8 @@ pub fn parse_date_to_int(date_str: &str) -> Result<u32, FheError> {
     })?;
 
     // Validate the integer format
-    let year = date_int / 10000;
-    let month = (date_int % 10000) / 100;
-    let day = date_int % 100;
-
-    if !(1900..=2100).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return Err(FheError::InvalidInput(format!(
-            "Invalid YYYYMMDD date: {}",
-            date_int
-        )));
-    }
+    let (year, month, day) = decode_date(date_int);
+    validate_date_components(year, month, day)?;
 
     Ok(date_int)
 }
@@ -162,7 +164,7 @@ pub fn get_current_date_int() -> u32 {
 
     let day = remaining_days + 1;
 
-    year * 10000 + month * 100 + day
+    encode_date(year, month, day)
 }
 
 fn is_leap_year(year: u32) -> bool {
@@ -172,16 +174,8 @@ fn is_leap_year(year: u32) -> bool {
 /// Encrypt a full date of birth (YYYYMMDD) using the specified client key
 pub fn encrypt_dob(dob: u32, client_key_id: &str) -> Result<String, FheError> {
     // Validate date format
-    let year = dob / 10000;
-    let month = (dob % 10000) / 100;
-    let day = dob % 100;
-
-    if !(1900..=2100).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return Err(FheError::InvalidInput(format!(
-            "Invalid YYYYMMDD date: {}",
-            dob
-        )));
-    }
+    let (year, month, day) = decode_date(dob);
+    validate_date_components(year, month, day)?;
 
     let key_store = get_key_store();
 
@@ -202,22 +196,26 @@ pub fn encrypt_dob(dob: u32, client_key_id: &str) -> Result<String, FheError> {
 ///
 /// This checks if the person is at least `min_age` years old as of `current_date`.
 /// Both dates should be in YYYYMMDD format.
+///
+/// The `current_date` is validated to ensure it's not stale (max 1 day tolerance
+/// for timezone differences). This prevents manipulation of age calculations.
 pub fn verify_age_precise(
     ciphertext_b64: &str,
     current_date: u32,
     min_age: u16,
     client_key_id: &str,
-) -> Result<(bool, u64), FheError> {
-    let start = Instant::now();
+) -> Result<bool, FheError> {
+    // Validate that current_date is recent (within 1 day tolerance for timezone)
+    let actual_date = get_current_date_int();
+    let date_diff = actual_date.saturating_sub(current_date);
+    if date_diff > 1 {
+        return Err(FheError::InvalidInput(format!(
+            "current_date is stale: provided {}, actual {}",
+            current_date, actual_date
+        )));
+    }
 
-    let key_store = get_key_store();
-
-    // Set server key for this thread
-    set_server_key(key_store.get_server_key().clone());
-
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
+    let client_key = setup_for_verification(client_key_id)?;
 
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
@@ -226,12 +224,12 @@ pub fn verify_age_precise(
     let (encrypted_dob, _): (FheUint32, _) =
         bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
 
-    // Calculate the minimum DOB for someone who is min_age years old
-    // If current_date is 20251207 and min_age is 18, then:
-    // min_dob = 20251207 - (18 * 10000) = 20071207
-    // Someone born on or before 20071207 is at least 18
-    let min_years_ago = (min_age as u32) * 10000;
-    let threshold_dob = current_date - min_years_ago;
+    // Calculate the threshold DOB for minimum age requirement.
+    //
+    // For YYYYMMDD format, subtracting `min_age * YEAR_MULTIPLIER` gives correct cutoff:
+    // Example: today=20251207, min_age=18 -> threshold=20071207
+    // Anyone born on/before 2007-12-07 is at least 18.
+    let threshold_dob = current_date - (min_age as u32) * YEAR_MULTIPLIER;
 
     // Check if encrypted_dob <= threshold_dob (person is old enough)
     let encrypted_is_adult = encrypted_dob.le(threshold_dob);
@@ -239,7 +237,5 @@ pub fn verify_age_precise(
     // Decrypt only the boolean result
     let is_over_age: bool = encrypted_is_adult.decrypt(&client_key);
 
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-
-    Ok((is_over_age, elapsed_ms))
+    Ok(is_over_age)
 }

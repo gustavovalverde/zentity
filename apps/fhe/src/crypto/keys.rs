@@ -23,7 +23,13 @@ struct PersistedKeyStore {
     server_key: ServerKey,
 }
 
-/// Stores client keys by ID
+/// Global FHE key storage with thread-safe access.
+///
+/// # Thread Safety
+/// - `client_keys`: Protected by RwLock for concurrent read access during verification
+/// - `server_key`: Immutable after initialization; cloned per-thread as TFHE-rs requires
+///   per-thread server key context (see `setup_for_verification`)
+/// - `keys_dir`: If Some, keys are persisted atomically to disk
 pub struct KeyStore {
     client_keys: RwLock<HashMap<String, ClientKey>>,
     server_key: ServerKey,
@@ -67,7 +73,11 @@ impl KeyStore {
         };
 
         let payload = PersistedKeyStore {
-            client_keys: self.client_keys.read().unwrap().clone(),
+            client_keys: self
+                .client_keys
+                .read()
+                .expect("RwLock poisoned - concurrent panic occurred")
+                .clone(),
             server_key: self.server_key.clone(),
         };
 
@@ -141,7 +151,7 @@ impl KeyStore {
         let key_id = Uuid::new_v4().to_string();
         self.client_keys
             .write()
-            .unwrap()
+            .expect("RwLock poisoned - concurrent panic occurred")
             .insert(key_id.clone(), client_key);
 
         self.try_persist_to_disk();
@@ -151,7 +161,11 @@ impl KeyStore {
 
     /// Get a client key by ID
     pub fn get_client_key(&self, key_id: &str) -> Option<ClientKey> {
-        self.client_keys.read().unwrap().get(key_id).cloned()
+        self.client_keys
+            .read()
+            .expect("RwLock poisoned - concurrent panic occurred")
+            .get(key_id)
+            .cloned()
     }
 
     /// Get the server key
@@ -169,4 +183,18 @@ pub fn init_keys() {
 pub fn get_key_store() -> &'static KeyStore {
     KEYS.get()
         .expect("Keys not initialized. Call init_keys() first.")
+}
+
+/// Sets up server key context and retrieves client key for verification operations.
+///
+/// This helper eliminates repeated boilerplate across verify functions:
+/// 1. Gets the global key store
+/// 2. Sets the server key for this thread (required by TFHE-rs)
+/// 3. Retrieves and returns the specified client key
+pub fn setup_for_verification(client_key_id: &str) -> Result<ClientKey, crate::error::FheError> {
+    let key_store = get_key_store();
+    set_server_key(key_store.get_server_key().clone());
+    key_store
+        .get_client_key(client_key_id)
+        .ok_or_else(|| crate::error::FheError::KeyNotFound(client_key_id.to_string()))
 }

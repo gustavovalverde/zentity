@@ -34,11 +34,13 @@ async fn internal_auth(
     }
 
     if let Some(expected) = token.as_ref().filter(|value| !value.is_empty()) {
+        // Token configured: enforce authentication
         let provided = req
             .headers()
             .get("x-zentity-internal-token")
             .and_then(|value| value.to_str().ok());
         if provided != Some(expected.as_str()) {
+            tracing::warn!("Unauthorized request to {}", req.uri().path());
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({ "error": "Unauthorized" })),
@@ -71,6 +73,12 @@ async fn main() {
     let internal_token = std::env::var("INTERNAL_SERVICE_TOKEN")
         .ok()
         .filter(|value| !value.is_empty());
+
+    if internal_token.is_some() {
+        tracing::info!("Authentication enabled (INTERNAL_SERVICE_TOKEN configured)");
+    } else {
+        tracing::warn!("Running without authentication (INTERNAL_SERVICE_TOKEN not set)");
+    }
 
     let enable_keygen_endpoint = std::env::var("ENABLE_KEYGEN_ENDPOINT")
         .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))

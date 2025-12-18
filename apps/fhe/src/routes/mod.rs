@@ -62,10 +62,13 @@ pub async fn generate_keys() -> Json<GenerateKeysResponse> {
 #[serde(rename_all = "camelCase")]
 pub struct EncryptRequest {
     birth_year: u16,
+    /// Client key ID for encryption. Defaults to "default" if not provided.
+    /// WARNING: Clients sharing the same key ID share encryption keys.
     #[serde(default = "default_key_id")]
     client_key_id: String,
 }
 
+/// Returns the default client key ID used when none is specified.
 fn default_key_id() -> String {
     "default".to_string()
 }
@@ -108,23 +111,19 @@ fn default_min_age() -> u16 {
 #[serde(rename_all = "camelCase")]
 pub struct VerifyAgeResponse {
     is_over_18: bool,
-    computation_time_ms: u64,
 }
 
 pub async fn verify_age(
     Json(payload): Json<VerifyAgeRequest>,
 ) -> Result<Json<VerifyAgeResponse>, FheError> {
-    let (is_over_18, computation_time_ms) = crypto::verify_age(
+    let is_over_18 = crypto::verify_age(
         &payload.ciphertext,
         payload.current_year,
         payload.min_age,
         &payload.client_key_id,
     )?;
 
-    Ok(Json(VerifyAgeResponse {
-        is_over_18,
-        computation_time_ms,
-    }))
+    Ok(Json(VerifyAgeResponse { is_over_18 }))
 }
 
 // ============================================================================
@@ -174,22 +173,18 @@ pub struct VerifyGenderRequest {
 #[serde(rename_all = "camelCase")]
 pub struct VerifyGenderResponse {
     matches: bool,
-    computation_time_ms: u64,
 }
 
 pub async fn verify_gender(
     Json(payload): Json<VerifyGenderRequest>,
 ) -> Result<Json<VerifyGenderResponse>, FheError> {
-    let (matches, computation_time_ms) = crypto::verify_gender_match(
+    let matches = crypto::verify_gender_match(
         &payload.ciphertext,
         payload.claimed_gender,
         &payload.client_key_id,
     )?;
 
-    Ok(Json(VerifyGenderResponse {
-        matches,
-        computation_time_ms,
-    }))
+    Ok(Json(VerifyGenderResponse { matches }))
 }
 
 // ============================================================================
@@ -247,7 +242,6 @@ pub struct VerifyAgePreciseResponse {
     is_over_age: bool,
     min_age: u16,
     current_date: u32,
-    computation_time_ms: u64,
 }
 
 pub async fn verify_age_precise(
@@ -257,7 +251,7 @@ pub async fn verify_age_precise(
         .current_date
         .unwrap_or_else(crypto::get_current_date_int);
 
-    let (is_over_age, computation_time_ms) = crypto::verify_age_precise(
+    let is_over_age = crypto::verify_age_precise(
         &payload.ciphertext,
         current_date,
         payload.min_age,
@@ -268,7 +262,6 @@ pub async fn verify_age_precise(
         is_over_age,
         min_age: payload.min_age,
         current_date,
-        computation_time_ms,
     }))
 }
 
@@ -321,13 +314,12 @@ pub struct VerifyLivenessThresholdRequest {
 pub struct VerifyLivenessThresholdResponse {
     passes_threshold: bool,
     threshold: f64,
-    computation_time_ms: u64,
 }
 
 pub async fn verify_liveness_threshold(
     Json(payload): Json<VerifyLivenessThresholdRequest>,
 ) -> Result<Json<VerifyLivenessThresholdResponse>, FheError> {
-    let (passes_threshold, computation_time_ms) = crypto::verify_liveness_threshold(
+    let passes_threshold = crypto::verify_liveness_threshold(
         &payload.ciphertext,
         payload.threshold,
         &payload.client_key_id,
@@ -336,6 +328,5 @@ pub async fn verify_liveness_threshold(
     Ok(Json(VerifyLivenessThresholdResponse {
         passes_threshold,
         threshold: payload.threshold,
-        computation_time_ms,
     }))
 }
