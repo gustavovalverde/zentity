@@ -8,7 +8,7 @@ import { getBetterAuthSecret } from "@/lib/utils/env";
 const db = getSqliteDb(getDefaultDatabasePath());
 
 // Build trusted origins based on environment
-// In production: only the configured app URL
+// In production: only the configured app URL + any explicit TRUSTED_ORIGINS
 // In development: also trust all localhost variants (IPv4/IPv6)
 const getTrustedOrigins = (): string[] => {
   const origins: string[] = [];
@@ -16,6 +16,18 @@ const getTrustedOrigins = (): string[] => {
   const appUrl = process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
   if (appUrl) {
     origins.push(appUrl);
+  }
+
+  // Allow additional trusted origins via env var (comma-separated)
+  // Useful for local Docker development where NODE_ENV=production but localhost access is needed
+  const additionalOrigins = process.env.TRUSTED_ORIGINS;
+  if (additionalOrigins) {
+    origins.push(
+      ...additionalOrigins
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean),
+    );
   }
 
   // Node.js v17+ prefers IPv6, so browsers may access via [::1] instead of localhost
