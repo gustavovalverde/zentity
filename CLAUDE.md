@@ -68,6 +68,39 @@ docker-compose up        # Start all services
 docker-compose up -d     # Detached mode
 ```
 
+## Deployment
+
+### Vercel (Landing Page)
+
+The landing page (`apps/landing`) deploys to Vercel. Configuration is in `vercel.json` at repo root.
+
+```bash
+vercel --prod            # Deploy to production
+```
+
+### Railway (Backend Services)
+
+Backend services deploy to Railway using Dockerfiles. Each service has a `railway.toml` for configuration.
+
+**Important**: Use `--path-as-root` flag to deploy from service subdirectories in this monorepo.
+
+```bash
+# Deploy individual services
+railway up apps/fhe --path-as-root --service fhe
+railway up apps/ocr --path-as-root --service ocr
+railway up apps/web --path-as-root --service web
+```
+
+**Service URLs (production)**:
+- Web: `https://app.zentity.xyz`
+- FHE: `http://fhe.railway.internal:5001` (internal only)
+- OCR: `http://ocr.railway.internal:5004` (internal only)
+
+**Required env vars** (set via Railway dashboard):
+- `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`
+- `INTERNAL_SERVICE_TOKEN`, `DATABASE_PATH`
+- `FHE_SERVICE_URL`, `OCR_SERVICE_URL`
+
 ### Manual Setup (without Docker)
 
 **Prerequisites:**
