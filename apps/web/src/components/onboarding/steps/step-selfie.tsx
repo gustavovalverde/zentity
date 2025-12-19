@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Smile,
 } from "lucide-react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -62,6 +63,30 @@ export function StepSelfie() {
     error: humanError,
   } = useHumanLiveness(isStreaming);
 
+  // Memoize callbacks to prevent infinite re-render loops in the liveness flow hook
+  const handleVerified = useCallback(
+    ({
+      selfieImage,
+      bestSelfieFrame,
+      blinkCount,
+    }: {
+      selfieImage: string;
+      bestSelfieFrame: string;
+      blinkCount: number | null;
+    }) => {
+      updateData({ selfieImage, bestSelfieFrame, blinkCount });
+    },
+    [updateData],
+  );
+
+  const handleReset = useCallback(() => {
+    updateData({
+      selfieImage: null,
+      bestSelfieFrame: null,
+      blinkCount: null,
+    });
+  }, [updateData]);
+
   const {
     challengeState,
     challengeImage,
@@ -91,16 +116,8 @@ export function StepSelfie() {
     humanReady,
     livenessDebugEnabled,
     initialSelfieImage: state.data.selfieImage || null,
-    onVerified: ({ selfieImage, bestSelfieFrame, blinkCount }) => {
-      updateData({ selfieImage, bestSelfieFrame, blinkCount });
-    },
-    onReset: () => {
-      updateData({
-        selfieImage: null,
-        bestSelfieFrame: null,
-        blinkCount: null,
-      });
-    },
+    onVerified: handleVerified,
+    onReset: handleReset,
     onSessionError: reset,
   });
   const handleSubmit = () => {

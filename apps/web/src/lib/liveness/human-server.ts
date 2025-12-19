@@ -118,14 +118,18 @@ export async function detectFromBase64(dataUrl: string) {
 
   await previousLock;
 
-  const human = await getHumanServer();
-  const tensor = await decodeBase64Image(dataUrl);
+  let tensor: TfTensor | null = null;
   try {
-    const result = await human.detect(tensor);
-    return result;
+    const human = await getHumanServer();
+    tensor = await decodeBase64Image(dataUrl);
+    return await human.detect(tensor);
   } finally {
     // Dispose tensor to prevent memory leaks
-    tensor.dispose();
+    try {
+      tensor?.dispose();
+    } catch {
+      // ignore dispose errors
+    }
     // Release lock for next detection
     releaseLock();
   }

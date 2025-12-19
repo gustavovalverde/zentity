@@ -150,6 +150,8 @@ function calculateProgress(
 }
 
 export async function POST(req: NextRequest) {
+  let sessionId: string | undefined;
+  let challengeType: ChallengeType | undefined;
   try {
     const body = await req.json();
     const parsed = frameSchema.safeParse(body);
@@ -161,8 +163,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { sessionId, challengeType, frameData, baselineHappy, turnStartYaw } =
-      parsed.data;
+    const {
+      sessionId: parsedSessionId,
+      challengeType: parsedChallengeType,
+      frameData,
+      baselineHappy,
+      turnStartYaw,
+    } = parsed.data;
+    sessionId = parsedSessionId;
+    challengeType = parsedChallengeType as ChallengeType;
 
     // Detect face in frame
     const result = await detectFromBase64(frameData);
@@ -181,7 +190,14 @@ export async function POST(req: NextRequest) {
     await sendSSEEvent(sessionId, "progress", progress);
 
     return NextResponse.json({ received: true, ...progress });
-  } catch {
+  } catch (error) {
+    // Avoid logging frame data (PII); only log minimal context.
+    // biome-ignore lint/suspicious/noConsole: server-side diagnostics
+    console.error("[liveness.frame] processing failed", {
+      sessionId,
+      challengeType,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { error: "Frame processing failed" },
       { status: 500 },

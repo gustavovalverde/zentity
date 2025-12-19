@@ -40,6 +40,9 @@ export function useLivenessCamera(
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const squareCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [permissionStatus, setPermissionStatus] =
     useState<PermissionState>("checking");
@@ -47,6 +50,11 @@ export function useLivenessCamera(
   // Check permission once on mount and watch for changes.
   useEffect(() => {
     let cancelled = false;
+    let permission: PermissionStatus | null = null;
+    const handleChange = () => {
+      if (cancelled || !permission) return;
+      setPermissionStatus(permission.state as PermissionState);
+    };
     async function checkPermission() {
       try {
         if (!navigator.permissions) {
@@ -56,11 +64,10 @@ export function useLivenessCamera(
         const result = await navigator.permissions.query({
           name: "camera" as PermissionName,
         });
+        permission = result;
         if (!cancelled) {
           setPermissionStatus(result.state as PermissionState);
-          result.addEventListener("change", () =>
-            setPermissionStatus(result.state as PermissionState),
-          );
+          result.addEventListener("change", handleChange);
         }
       } catch {
         if (!cancelled) setPermissionStatus("prompt");
@@ -69,6 +76,7 @@ export function useLivenessCamera(
     checkPermission();
     return () => {
       cancelled = true;
+      permission?.removeEventListener("change", handleChange);
     };
   }, []);
 
@@ -79,11 +87,22 @@ export function useLivenessCamera(
       }
       streamRef.current = null;
     }
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.pause();
+      } catch {
+        // ignore pause errors
+      }
+      video.srcObject = null;
+    }
     setIsStreaming(false);
   }, []);
 
   const startCamera = useCallback(async () => {
     try {
+      // Ensure any existing stream is fully released before requesting a new one.
+      stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode,
@@ -92,13 +111,17 @@ export function useLivenessCamera(
         },
       });
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        await videoRef.current.play();
-        setIsStreaming(true);
-        setPermissionStatus("granted");
+      const video = videoRef.current;
+      if (!video) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
       }
+
+      video.srcObject = stream;
+      streamRef.current = stream;
+      await video.play();
+      setIsStreaming(true);
+      setPermissionStatus("granted");
     } catch (error) {
       setPermissionStatus("denied");
       stopCamera();
@@ -115,7 +138,8 @@ export function useLivenessCamera(
     if (video.videoWidth === 0 || video.videoHeight === 0) return null;
     if (video.readyState < 2) return null;
 
-    const canvas = document.createElement("canvas");
+    const canvas = captureCanvasRef.current ?? document.createElement("canvas");
+    captureCanvasRef.current = canvas;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -166,7 +190,8 @@ export function useLivenessCamera(
     const MAX_WIDTH = 640;
     const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
 
-    const canvas = document.createElement("canvas");
+    const canvas = streamCanvasRef.current ?? document.createElement("canvas");
+    streamCanvasRef.current = canvas;
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
 
@@ -193,7 +218,8 @@ export function useLivenessCamera(
     const { videoWidth, videoHeight } = video;
     const size = Math.max(videoWidth, videoHeight);
 
-    const canvas = document.createElement("canvas");
+    const canvas = squareCanvasRef.current ?? document.createElement("canvas");
+    squareCanvasRef.current = canvas;
     canvas.width = size;
     canvas.height = size;
 

@@ -147,9 +147,17 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const challengeStateRef = useRef(challengeState);
   const baselineHappyScoreRef = useRef(baselineHappyScore);
 
-  // Keep refs in sync with state
+  // Refs for callback props to break dependency chains and prevent infinite re-renders
+  const onVerifiedRef = useRef(onVerified);
+  const onResetRef = useRef(onReset);
+  const onSessionErrorRef = useRef(onSessionError);
+
+  // Keep refs in sync with state and callback props
   challengeStateRef.current = challengeState;
   baselineHappyScoreRef.current = baselineHappyScore;
+  onVerifiedRef.current = onVerified;
+  onResetRef.current = onReset;
+  onSessionErrorRef.current = onSessionError;
 
   const buildChallengeInfo = useCallback(
     (
@@ -313,9 +321,13 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const beginCamera = useCallback(async () => {
     setChallengeState("loading_session");
     try {
-      const newSession = (await trpc.liveness.createSession.mutate({
-        numChallenges: NUM_CHALLENGES,
-      })) as {
+      const newSession = (await withTimeout(
+        trpc.liveness.createSession.mutate({
+          numChallenges: NUM_CHALLENGES,
+        }),
+        10_000,
+        "Liveness session creation timed out. Please try again.",
+      )) as {
         sessionId: string;
         challenges: ChallengeType[];
         currentChallenge: ChallengeInfo | null;
@@ -335,7 +347,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       ) {
         toast.info("Session expired. Starting fresh...");
         setChallengeState("idle");
-        onSessionError?.();
+        onSessionErrorRef.current?.();
         return;
       }
 
@@ -357,7 +369,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       });
       setChallengeState("idle");
     }
-  }, [startCamera, onSessionError]);
+  }, [startCamera]);
 
   const checkForFace = useCallback(async () => {
     if (!human || !humanReady || !videoRef.current) return;
@@ -484,7 +496,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         setLastVerifyError("");
         setChallengeState("all_passed");
         stopCamera();
-        onVerified({
+        onVerifiedRef.current({
           selfieImage: baselineImage,
           bestSelfieFrame: baselineImage,
           blinkCount: null,
@@ -509,7 +521,6 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       livenessDebugEnabled,
       buildChallengeInfo,
       stopCamera,
-      onVerified,
       lastVerifyResponse,
     ],
   );
@@ -519,18 +530,13 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     if (isCheckingRef.current) return;
     isCheckingRef.current = true;
     try {
-      const frameDataUrl = captureFrame();
-      if (!frameDataUrl) return;
+      const detectionInput =
+        getSquareDetectionCanvas?.() ?? videoRef.current ?? null;
+      if (!detectionInput) return;
 
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = reject;
-        img.src = frameDataUrl;
-      });
-
-      // Use raw detection for decision making (no temporal smoothing)
-      const result = await human.detect(img);
+      // Use raw detection for decision making (no temporal smoothing).
+      // Avoid dataURL → Image roundtrips to reduce allocations and UI jank.
+      const result = await human.detect(detectionInput);
       const face = getPrimaryFace(result);
 
       // Store result for the separate rendering loop
@@ -641,6 +647,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     currentChallenge,
     baselineHappyScore,
     captureFrame,
+    getSquareDetectionCanvas,
     handleCapturedChallenge,
   ]);
 
@@ -862,6 +869,8 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       if (!frame || !currentChallenge) return;
 
       isStreamingFrameRef.current = true;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5_000);
       try {
         await fetch("/api/liveness/frame", {
           method: "POST",
@@ -873,10 +882,12 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
             baselineHappy: baselineHappyScore,
             turnStartYaw: headTurnStartYawRef.current || undefined,
           }),
+          signal: controller.signal,
         });
       } catch {
         // Ignore frame streaming errors
       } finally {
+        clearTimeout(timeoutId);
         isStreamingFrameRef.current = false;
       }
     };
@@ -932,9 +943,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     headTurnCenteredRef.current = false;
     headTurnStartYawRef.current = 0;
     isStreamingFrameRef.current = false;
-    onReset();
+    onResetRef.current();
     void beginCamera();
-  }, [beginCamera, onReset]);
+  }, [beginCamera]);
 
   return {
     challengeState,
