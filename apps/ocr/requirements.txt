@@ -19,7 +19,7 @@ numpy~=2.2.6
 
 # Web framework
 fastapi~=0.125.0
-uvicorn~=0.38.0
+uvicorn~=0.40.0
 python-multipart~=0.0.21
 
 # Typing
