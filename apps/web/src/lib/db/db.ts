@@ -25,6 +25,7 @@ const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
   { name: "nationality_membership_proof", type: "TEXT" },
   { name: "liveness_score_ciphertext", type: "TEXT" },
   { name: "first_name_encrypted", type: "TEXT" },
+  { name: "birth_year_offset", type: "INTEGER" },
 ];
 
 /**
@@ -155,6 +156,9 @@ interface IdentityProof {
 
   // User display data (JWE encrypted, reversible)
   firstNameEncrypted?: string; // JWE encrypted first name for dashboard display
+
+  // Age data for attestation (non-PII - just birth year in compact form)
+  birthYearOffset?: number; // Years since 1900 (0-255)
 }
 
 /**
@@ -173,7 +177,7 @@ export function createIdentityProof(
       doc_validity_proof, nationality_commitment,
       gender_ciphertext, dob_full_ciphertext,
       nationality_membership_proof, liveness_score_ciphertext,
-      first_name_encrypted
+      first_name_encrypted, birth_year_offset
     ) VALUES (
       ?, ?, ?, ?, ?,
       ?, ?,
@@ -183,7 +187,7 @@ export function createIdentityProof(
       ?, ?,
       ?, ?,
       ?, ?,
-      ?
+      ?, ?
     )
   `);
 
@@ -210,6 +214,7 @@ export function createIdentityProof(
     proof.nationalityMembershipProof || null,
     proof.livenessScoreCiphertext || null,
     proof.firstNameEncrypted || null,
+    proof.birthYearOffset ?? null,
   );
 }
 
@@ -234,7 +239,8 @@ export function getIdentityProofByUserId(userId: string): IdentityProof | null {
       dob_full_ciphertext as dobFullCiphertext,
       nationality_membership_proof as nationalityMembershipProof,
       liveness_score_ciphertext as livenessScoreCiphertext,
-      first_name_encrypted as firstNameEncrypted
+      first_name_encrypted as firstNameEncrypted,
+      birth_year_offset as birthYearOffset
     FROM identity_proofs
     WHERE user_id = ?
   `);
@@ -273,6 +279,8 @@ export function updateIdentityProofFlags(
     livenessScoreCiphertext?: string;
     // User display data
     firstNameEncrypted?: string;
+    // Age data for attestation
+    birthYearOffset?: number;
   },
 ): void {
   const updates: string[] = [];
@@ -333,6 +341,11 @@ export function updateIdentityProofFlags(
   if (flags.firstNameEncrypted !== undefined) {
     updates.push("first_name_encrypted = ?");
     values.push(flags.firstNameEncrypted);
+  }
+  // Age data for attestation
+  if (flags.birthYearOffset !== undefined) {
+    updates.push("birth_year_offset = ?");
+    values.push(flags.birthYearOffset);
   }
 
   updates.push("updated_at = datetime('now')");
@@ -957,3 +970,263 @@ initializeOnboardingSessionsTable();
 
 // Initialize RP authorization codes table
 initializeRpAuthorizationCodesTable();
+
+// ============================================================================
+// Blockchain Attestations (Multi-Network)
+// ============================================================================
+
+/**
+ * Attestation status types
+ */
+export type AttestationStatus =
+  | "pending"
+  | "submitted"
+  | "confirmed"
+  | "failed";
+
+/**
+ * Blockchain attestation data structure
+ */
+export interface BlockchainAttestation {
+  id: string;
+  userId: string;
+  walletAddress: string;
+  networkId: string;
+  chainId: number;
+  status: AttestationStatus;
+  txHash: string | null;
+  blockNumber: number | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+  errorMessage: string | null;
+  retryCount: number;
+}
+
+/**
+ * Initialize the blockchain_attestations table.
+ *
+ * Stores on-chain attestation records for each network the user attests on.
+ * Users can attest on multiple networks (one attestation per network).
+ */
+function initializeBlockchainAttestationsTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blockchain_attestations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+      wallet_address TEXT NOT NULL,
+      network_id TEXT NOT NULL,
+      chain_id INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      tx_hash TEXT,
+      block_number INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      confirmed_at TEXT,
+      error_message TEXT,
+      retry_count INTEGER DEFAULT 0,
+      UNIQUE(user_id, network_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_attestations_user_id
+      ON blockchain_attestations (user_id);
+    CREATE INDEX IF NOT EXISTS idx_attestations_network
+      ON blockchain_attestations (network_id);
+    CREATE INDEX IF NOT EXISTS idx_attestations_status
+      ON blockchain_attestations (status);
+  `);
+}
+
+/**
+ * Create a new attestation record
+ */
+export function createBlockchainAttestation(data: {
+  userId: string;
+  walletAddress: string;
+  networkId: string;
+  chainId: number;
+}): BlockchainAttestation {
+  const id = crypto.randomUUID();
+
+  const stmt = db.prepare(`
+    INSERT INTO blockchain_attestations (
+      id, user_id, wallet_address, network_id, chain_id, status
+    ) VALUES (?, ?, ?, ?, ?, 'pending')
+  `);
+
+  stmt.run(id, data.userId, data.walletAddress, data.networkId, data.chainId);
+
+  const attestation = getBlockchainAttestationById(id);
+  if (!attestation) {
+    throw new Error("Failed to create blockchain attestation");
+  }
+  return attestation;
+}
+
+/**
+ * Get attestation by ID (internal helper)
+ */
+function getBlockchainAttestationById(
+  id: string,
+): BlockchainAttestation | null {
+  const stmt = db.prepare(`
+    SELECT
+      id, user_id as userId, wallet_address as walletAddress,
+      network_id as networkId, chain_id as chainId, status,
+      tx_hash as txHash, block_number as blockNumber,
+      created_at as createdAt, updated_at as updatedAt,
+      confirmed_at as confirmedAt, error_message as errorMessage,
+      retry_count as retryCount
+    FROM blockchain_attestations
+    WHERE id = ?
+  `);
+
+  return (stmt.get(id) as BlockchainAttestation | undefined) ?? null;
+}
+
+/**
+ * Get attestation by user ID and network ID
+ */
+export function getBlockchainAttestationByUserAndNetwork(
+  userId: string,
+  networkId: string,
+): BlockchainAttestation | null {
+  const stmt = db.prepare(`
+    SELECT
+      id, user_id as userId, wallet_address as walletAddress,
+      network_id as networkId, chain_id as chainId, status,
+      tx_hash as txHash, block_number as blockNumber,
+      created_at as createdAt, updated_at as updatedAt,
+      confirmed_at as confirmedAt, error_message as errorMessage,
+      retry_count as retryCount
+    FROM blockchain_attestations
+    WHERE user_id = ? AND network_id = ?
+  `);
+
+  return (
+    (stmt.get(userId, networkId) as BlockchainAttestation | undefined) ?? null
+  );
+}
+
+/**
+ * Get all attestations for a user
+ */
+export function getBlockchainAttestationsByUserId(
+  userId: string,
+): BlockchainAttestation[] {
+  const stmt = db.prepare(`
+    SELECT
+      id, user_id as userId, wallet_address as walletAddress,
+      network_id as networkId, chain_id as chainId, status,
+      tx_hash as txHash, block_number as blockNumber,
+      created_at as createdAt, updated_at as updatedAt,
+      confirmed_at as confirmedAt, error_message as errorMessage,
+      retry_count as retryCount
+    FROM blockchain_attestations
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `);
+
+  return stmt.all(userId) as BlockchainAttestation[];
+}
+
+/**
+ * Update attestation status after transaction submission
+ */
+export function updateBlockchainAttestationSubmitted(
+  id: string,
+  txHash: string,
+): void {
+  const stmt = db.prepare(`
+    UPDATE blockchain_attestations
+    SET status = 'submitted',
+        tx_hash = ?,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  stmt.run(txHash, id);
+}
+
+/**
+ * Update attestation status after transaction confirmation
+ */
+export function updateBlockchainAttestationConfirmed(
+  id: string,
+  blockNumber: number,
+): void {
+  const stmt = db.prepare(`
+    UPDATE blockchain_attestations
+    SET status = 'confirmed',
+        block_number = ?,
+        confirmed_at = datetime('now'),
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  stmt.run(blockNumber, id);
+}
+
+/**
+ * Update attestation status on failure
+ */
+export function updateBlockchainAttestationFailed(
+  id: string,
+  errorMessage: string,
+): void {
+  const stmt = db.prepare(`
+    UPDATE blockchain_attestations
+    SET status = 'failed',
+        error_message = ?,
+        retry_count = retry_count + 1,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  stmt.run(errorMessage, id);
+}
+
+/**
+ * Reset attestation for retry (user can retry after failure)
+ */
+export function resetBlockchainAttestationForRetry(id: string): void {
+  const stmt = db.prepare(`
+    UPDATE blockchain_attestations
+    SET status = 'pending',
+        error_message = NULL,
+        updated_at = datetime('now')
+    WHERE id = ? AND status = 'failed'
+  `);
+  stmt.run(id);
+}
+
+/**
+ * Update attestation wallet address and chain for re-attestation.
+ * Called when user re-attests with a different wallet.
+ */
+export function updateBlockchainAttestationWallet(
+  id: string,
+  walletAddress: string,
+  chainId: number,
+): void {
+  const stmt = db.prepare(`
+    UPDATE blockchain_attestations
+    SET wallet_address = ?,
+        chain_id = ?,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  stmt.run(walletAddress, chainId, id);
+}
+
+/**
+ * Delete all attestations for a user (GDPR right to erasure)
+ */
+export function deleteBlockchainAttestationsByUserId(userId: string): void {
+  const stmt = db.prepare(`
+    DELETE FROM blockchain_attestations WHERE user_id = ?
+  `);
+  stmt.run(userId);
+}
+
+// Initialize blockchain attestations table
+if (!isSqliteBuildTime()) {
+  initializeBlockchainAttestationsTable();
+}

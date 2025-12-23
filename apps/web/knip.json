@@ -1,6 +1,29 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": ["src/components/ui/**", "scripts/**"],
-  "ignoreDependencies": ["@radix-ui/react-tooltip", "@vladmandic/human-models"],
-  "ignoreBinaries": ["nargo"]
+  "ignore": [
+    ".synpress-wallet-setup-dist/**",
+    "src/components/ui/**",
+    "scripts/**",
+    "src/hooks/fhevm/use-fhe-encryption.ts",
+    "src/lib/wagmi/empty-module.js",
+    "src/lib/wagmi/empty-module/index.js",
+    "src/lib/wagmi/empty-module/internal/index.js"
+  ],
+  "ignoreDependencies": [
+    "@vladmandic/human-models",
+    "@metamask/sdk",
+    "@safe-global/safe-apps-provider",
+    "@safe-global/safe-apps-sdk",
+    "@walletconnect/ethereum-provider",
+    "null-loader",
+    "webpack"
+  ],
+  "ignoreBinaries": ["nargo"],
+  "entry": [
+    "next.config.ts",
+    "e2e/automation/start-web3-dev.js",
+    "e2e/automation/build-synpress-cache.js",
+    "e2e/wallet-setup/hardhat.setup.ts"
+  ],
+  "ignoreExportsUsedInFile": true
 }

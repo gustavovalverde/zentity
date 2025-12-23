@@ -6,6 +6,16 @@
     "useIgnoreFile": true,
     "defaultBranch": "main"
   },
+  "files": {
+    "experimentalScannerIgnores": [
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/.synpress-wallet-setup-dist/**"
+    ]
+  },
   "formatter": {
     "indentStyle": "space",
     "indentWidth": 2,

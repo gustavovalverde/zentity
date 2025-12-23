@@ -1,0 +1,30 @@
+// @vitest-environment jsdom
+
+import type { FhevmProviderFactory } from "@/lib/fhevm/providers";
+
+import { describe, expect, it, vi } from "vitest";
+
+describe("fhevm provider global registry", () => {
+  it("registers providers from window.__FHEVM_PROVIDER_FACTORIES__", async () => {
+    const factory: FhevmProviderFactory = async () => {
+      throw new Error("test provider should not be invoked");
+    };
+
+    (
+      window as Window & {
+        __FHEVM_PROVIDER_FACTORIES__?: Record<string, FhevmProviderFactory>;
+      }
+    ).__FHEVM_PROVIDER_FACTORIES__ = {
+      injected: factory,
+    };
+
+    vi.resetModules();
+
+    await import("@/lib/fhevm/providers/global");
+    const { resolveFhevmProviderFactory } = await import(
+      "@/lib/fhevm/providers"
+    );
+
+    expect(resolveFhevmProviderFactory("injected")).toBe(factory);
+  });
+});

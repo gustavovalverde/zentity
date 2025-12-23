@@ -215,6 +215,7 @@ export function WizardProvider({
   const hydrationStartedRef = useRef(false);
   const isInitializedRef = useRef(false);
   const lastSavedStepRef = useRef<WizardStep>(1);
+  const hasLocalSessionRef = useRef(false);
   const [pendingNavigation, setPendingNavigation] = useState<{
     targetStep: WizardStep;
     warning: string;
@@ -228,6 +229,9 @@ export function WizardProvider({
 
     const loadServerSession = async () => {
       try {
+        if (hasLocalSessionRef.current) {
+          return;
+        }
         if (forceReset) {
           // Explicit start-over (e.g., from "Start Verification" CTA).
           // Clear any existing cookie+DB session, then start at step 1.
@@ -255,6 +259,10 @@ export function WizardProvider({
         const serverState = (await trpc.onboarding.getSession.query()) as
           | ServerSessionState
           | undefined;
+
+        if (hasLocalSessionRef.current) {
+          return;
+        }
 
         if (serverState?.hasSession && serverState.email) {
           // Restore state from server
@@ -391,31 +399,34 @@ export function WizardProvider({
 
   // Start fresh session (clears any existing session to prevent session bleeding)
   const startFresh = useCallback(async (email: string) => {
+    hasLocalSessionRef.current = true;
+
     // Reset local state first
     dispatch({ type: "RESET" });
 
-    // Create new session with forceNew flag (clears any existing session)
-    try {
-      await trpc.onboarding.saveSession.mutate({
+    dispatch({
+      type: "LOAD_STATE",
+      state: {
+        currentStep: 1,
+        data: { email },
+        serverState: {
+          documentProcessed: false,
+          livenessPassed: false,
+          faceMatchPassed: false,
+        },
+      },
+    });
+    lastSavedStepRef.current = 1;
+
+    // Create new session with forceNew flag (clears any existing session).
+    // Fire-and-forget so UI can advance even if the network is slow.
+    void trpc.onboarding.saveSession
+      .mutate({
         email,
         step: 1,
         forceNew: true,
-      });
-
-      dispatch({
-        type: "LOAD_STATE",
-        state: {
-          currentStep: 1,
-          data: { email },
-          serverState: {
-            documentProcessed: false,
-            livenessPassed: false,
-            faceMatchPassed: false,
-          },
-        },
-      });
-      lastSavedStepRef.current = 1;
-    } catch {}
+      })
+      .catch(() => {});
   }, []);
 
   // Skip liveness verification

@@ -92,11 +92,13 @@ railway up apps/web --path-as-root --service web
 ```
 
 **Service URLs (production)**:
+
 - Web: `https://app.zentity.xyz`
 - FHE: `http://fhe.railway.internal:5001` (internal only)
 - OCR: `http://ocr.railway.internal:5004` (internal only)
 
 **Required env vars** (set via Railway dashboard):
+
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`
 - `INTERNAL_SERVICE_TOKEN`, `DATABASE_PATH`
 - `FHE_SERVICE_URL`, `OCR_SERVICE_URL`

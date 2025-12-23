@@ -90,6 +90,9 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# synpress wallet cache
+.cache-synpress/
+
 # vercel
 .vercel
 

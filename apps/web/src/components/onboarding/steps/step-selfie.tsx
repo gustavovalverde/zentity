@@ -18,12 +18,9 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { STABILITY_FRAMES, useSelfieLivenessFlow } from "@/hooks/liveness";
 import { useHumanLiveness } from "@/hooks/use-human-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
-import {
-  STABILITY_FRAMES,
-  useSelfieLivenessFlow,
-} from "@/hooks/use-selfie-liveness-flow";
 import {
   getLivenessDebugEnabled,
   SMILE_DELTA_THRESHOLD,

@@ -27,12 +27,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgeProofDemo } from "./age-proof-demo";
 import { FheVerificationDemo } from "./fhe-verification-demo";
 import { NameVerificationDemo } from "./name-verification-demo";
+import { OnChainAttestation } from "./on-chain-attestation";
 import { TransparencySection } from "./transparency-section";
 import { VerificationActions } from "./verification-actions";
 import {
   type VerificationChecks,
   VerificationProgress,
 } from "./verification-progress";
+import { ViewIdentityData } from "./view-identity-data";
 
 // Fallback country names used when the backend doesn't provide a display name.
 const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
@@ -267,6 +269,12 @@ export function DashboardTabs({
         )}
 
         {hasProof && <VerificationActions />}
+
+        {/* On-Chain Attestation - available after verification */}
+        <OnChainAttestation isVerified={hasProof} />
+
+        {/* View Encrypted Identity Data - shows when user has confirmed attestation */}
+        <ViewIdentityData />
       </TabsContent>
 
       <TabsContent value="relying-party" className="space-y-6">

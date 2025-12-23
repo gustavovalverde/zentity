@@ -29,6 +29,15 @@ test.describe("Dashboard - Authenticated User", () => {
     await expect(dashboardContent).toBeVisible({ timeout: 10000 });
   });
 
+  test("shows on-chain attestation section", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.locator("text=On-Chain Attestation").first(),
+    ).toBeVisible();
+  });
+
   test("should show verification status or welcome content", async ({
     page,
   }) => {

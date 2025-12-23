@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+import { useEffect, useRef } from "react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -26,11 +27,21 @@ import { useWizard } from "../wizard-provider";
  */
 export function StepEmail() {
   const { state, updateData, nextStep, startFresh } = useWizard();
+  const inputRef = useRef<HTMLInputElement>(null);
   const validateEmail = makeFieldValidator(
     emailSchema,
     "email",
     (value: string) => ({ email: value }),
   );
+
+  // Focus input after mount to avoid autoFocus triggering blur during hydration
+  useEffect(() => {
+    // Small delay to ensure React's hydration/StrictMode cycles are complete
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const form = useForm({
     defaultValues: {
@@ -77,10 +88,10 @@ export function StepEmail() {
             <FieldLabel>Email Address</FieldLabel>
             <FieldControl>
               <Input
+                ref={inputRef}
                 type="email"
                 placeholder="you@example.com"
                 autoComplete="email"
-                autoFocus
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
                 onBlur={field.handleBlur}

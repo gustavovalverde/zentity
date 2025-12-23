@@ -1,0 +1,112 @@
+// @vitest-environment jsdom
+
+import type { FhevmProviderFactory } from "@/lib/fhevm/providers";
+
+import { renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
+
+const resolveMock = vi.fn();
+
+vi.mock("@/lib/fhevm/providers", () => ({
+  resolveFhevmProviderFactory: (...args: unknown[]) => resolveMock(...args),
+}));
+
+describe("useFhevmSdk provider selection", () => {
+  beforeEach(() => {
+    resolveMock.mockReset();
+  });
+
+  it("uses mock provider when providerId=mock", async () => {
+    const factory: FhevmProviderFactory = async (params) => {
+      expect(params.rpcUrl).toBe("http://localhost:8545");
+      return { createEncryptedInput: () => ({}) } as never;
+    };
+    resolveMock.mockReturnValue(factory);
+
+    const provider = {
+      request: vi.fn(async () => "0x7a69"), // 31337
+    };
+
+    const { result } = renderHook(() =>
+      useFhevmSdk({
+        provider,
+        chainId: 31337,
+        providerId: "mock",
+        initialMockChains: { 31337: "http://localhost:8545" },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.instance).toBeTruthy();
+  });
+
+  it("errors when provider is not registered", async () => {
+    resolveMock.mockReturnValue(undefined);
+
+    const provider = {
+      request: vi.fn(async () => "0xaa36a7"), // 11155111
+    };
+
+    const { result } = renderHook(() =>
+      useFhevmSdk({
+        provider,
+        chainId: 11155111,
+        providerId: "zama",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.error?.message).toContain(
+      "FHEVM provider not registered",
+    );
+  });
+
+  it("uses zama provider on non-mock chain", async () => {
+    const factory: FhevmProviderFactory = async (params) => {
+      expect(params.chainId).toBe(11155111);
+      return { createEncryptedInput: () => ({}) } as never;
+    };
+    resolveMock.mockReturnValue(factory);
+
+    const provider = {
+      request: vi.fn(async () => "0xaa36a7"), // 11155111
+    };
+
+    const { result } = renderHook(() =>
+      useFhevmSdk({
+        provider,
+        chainId: 11155111,
+        providerId: "zama",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.instance).toBeTruthy();
+  });
+
+  it("falls back to mock provider on hardhat even when zama requested", async () => {
+    const factory: FhevmProviderFactory = async (params) => {
+      expect(params.rpcUrl).toBe("http://localhost:8545");
+      return { createEncryptedInput: () => ({}) } as never;
+    };
+    resolveMock.mockReturnValue(factory);
+
+    const provider = {
+      request: vi.fn(async () => "0x7a69"), // 31337
+    };
+
+    const { result } = renderHook(() =>
+      useFhevmSdk({
+        provider,
+        chainId: 31337,
+        providerId: "zama",
+        initialMockChains: { 31337: "http://localhost:8545" },
+      }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(resolveMock).toHaveBeenCalledWith("mock");
+  });
+});

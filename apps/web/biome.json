@@ -6,7 +6,23 @@
     }
   },
   "files": {
-    "includes": ["**", "!src/app/globals.css"]
+    "includes": [
+      "src/**",
+      "e2e/**",
+      "scripts/**",
+      "*.ts",
+      "*.mts",
+      "*.js",
+      "*.cjs",
+      "!!**/src/app/globals.css",
+      "!!**/node_modules",
+      "!!**/.next",
+      "!!**/coverage",
+      "!!**/playwright-report",
+      "!!**/test-results",
+      "!!**/dist",
+      "!!**/build"
+    ]
   },
   "overrides": [
     {

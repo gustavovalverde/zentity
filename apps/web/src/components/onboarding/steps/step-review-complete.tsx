@@ -15,7 +15,7 @@ import {
   UserCheck,
   XCircle,
 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -122,7 +122,6 @@ type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
  * - Create account after all verification is complete
  */
 export function StepReviewComplete() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { state, updateData, setSubmitting, reset } = useWizard();
   const { data } = state;
@@ -471,8 +470,7 @@ export function StepReviewComplete() {
         return;
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      window.location.assign("/dashboard");
     } catch (err) {
       setError(
         err instanceof Error

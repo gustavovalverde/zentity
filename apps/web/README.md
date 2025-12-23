@@ -58,6 +58,14 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+> **Note**: The default dev script uses `--webpack` because Turbopack
+> currently fails to resolve `node-tfhe` WASM paths in development. If you
+> want to try Turbopack anyway, run:
+>
+> ```bash
+> bun run dev:turbo
+> ```
+
 ### Build
 
 ```bash
@@ -68,6 +76,67 @@ bun run build
 
 ```bash
 bun run start
+```
+
+## Debugging
+
+Next.js supports server-side debugging with Node's inspector. We include a
+VS Code launch configuration in `.vscode/launch.json` that runs `bun run dev -- --inspect`
+from `apps/web` and opens the browser automatically.
+
+### Server-side debugging (VS Code)
+
+1. Open the Debug panel.
+2. Run **Next.js: debug server-side (apps/web)** or **Next.js: debug full stack (apps/web)**.
+
+### Server-side debugging (CLI)
+
+```bash
+bun run dev -- --inspect
+```
+
+If you ever run the app inside Docker, use:
+
+```bash
+NODE_OPTIONS=--inspect=0.0.0.0 bun run dev
+```
+
+## Testing
+
+### E2E (Playwright + Synpress + MetaMask)
+
+This repo uses Synpress to drive a real MetaMask extension during Playwright
+tests (no mock wallet). The wallet cache lives in `.cache-synpress/` and is
+generated from `e2e/wallet-setup/hardhat.setup.ts`.
+
+First-time setup (or after changing wallet setup):
+
+```bash
+bun run test:e2e:setup
+```
+
+Run the full E2E suite:
+
+```bash
+bun run test:e2e
+```
+
+Defaults (can be overridden via env):
+
+- `SYNPRESS_SEED_PHRASE` defaults to Hardhat's public mnemonic.
+- `SYNPRESS_WALLET_PASSWORD` defaults to `Password123!`.
+- `SYNPRESS_NETWORK_RPC_URL` defaults to `http://127.0.0.1:8545`.
+- `SYNPRESS_NETWORK_CHAIN_ID` defaults to `31337`.
+- `SYNPRESS_NETWORK_NAME` defaults to `Hardhat Local`.
+- `SYNPRESS_NETWORK_SYMBOL` defaults to `ETH`.
+
+The setup step spins up a local Hardhat node temporarily so MetaMask can add
+the network during wallet cache creation.
+
+To rebuild the wallet cache after edits to the setup file or env overrides:
+
+```bash
+bunx synpress ./e2e/wallet-setup --force
 ```
 
 ## Project Structure

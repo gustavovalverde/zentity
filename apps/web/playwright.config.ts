@@ -3,6 +3,12 @@ import * as path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const authFile = path.join(__dirname, "e2e", ".auth", "user.json");
+const e2eDbPath =
+  process.env.E2E_DATABASE_PATH ??
+  path.join(__dirname, "e2e", ".data", "e2e.db");
+const useWebServer =
+  process.env.E2E_EXTERNAL_WEB_SERVER !== "true" &&
+  process.env.E2E_SEPOLIA !== "true";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -24,10 +30,22 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "bun run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  ...(useWebServer
+    ? {
+        webServer: {
+          command: "node e2e/automation/start-web3-dev.js",
+          url: "http://localhost:3000",
+          reuseExistingServer: true,
+          timeout: 240 * 1000,
+          env: {
+            DATABASE_PATH: e2eDbPath,
+            E2E_DATABASE_PATH: e2eDbPath,
+            BETTER_AUTH_SECRET:
+              process.env.BETTER_AUTH_SECRET ??
+              "test-secret-32-chars-minimum........",
+            BETTER_AUTH_URL: "http://localhost:3000",
+          },
+        },
+      }
+    : {}),
 });
