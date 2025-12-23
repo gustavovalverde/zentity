@@ -7,13 +7,14 @@
     "defaultBranch": "main"
   },
   "files": {
-    "experimentalScannerIgnores": [
-      "**/node_modules/**",
-      "**/.next/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/coverage/**",
-      "**/.synpress-wallet-setup-dist/**"
+    "includes": [
+      "**",
+      "!!**/node_modules/**",
+      "!!**/.next/**",
+      "!!**/dist/**",
+      "!!**/build/**",
+      "!!**/coverage/**",
+      "!!**/.synpress-wallet-setup-dist/**"
     ]
   },
   "formatter": {
@@ -140,11 +141,7 @@
       }
     },
     {
-      "includes": [
-        "**/*.config.ts",
-        "**/*.config.mjs",
-        "**/*.config.js"
-      ],
+      "includes": ["**/*.config.ts", "**/*.config.mjs", "**/*.config.js"],
       "linter": {
         "rules": {
           "nursery": {
