@@ -1,8 +1,7 @@
-import type { Page } from "@playwright/test";
-import type { MetaMask } from "@synthetixio/synpress/playwright";
-
 import { expect, test } from "./fixtures/synpress";
+import { connectWalletIfNeeded } from "./helpers/connect-wallet";
 import { confirmSignature, confirmTransaction } from "./helpers/metamask";
+import { readTestUserId } from "./helpers/test-user";
 
 const senderAddress =
   process.env.E2E_SENDER_ADDRESS ??
@@ -21,34 +20,17 @@ const hardhatNetwork = {
   symbol: process.env.SYNPRESS_NETWORK_SYMBOL ?? "ETH",
 };
 
-async function connectWalletIfNeeded(
-  page: Page,
-  metamask: MetaMask,
-  accountName?: string,
-) {
-  const connectPrompt = page.getByText("Connect your wallet", { exact: false });
-  if (!(await connectPrompt.isVisible().catch(() => false))) {
-    return;
-  }
-
-  await page.locator("appkit-button").first().click();
-  const metaMaskOption = page.getByRole("button", { name: /MetaMask/i });
-  await expect(metaMaskOption).toBeVisible({ timeout: 30_000 });
-  await metaMaskOption.click();
-  if (accountName) {
-    await metamask.connectToDapp([accountName]);
-  } else {
-    await metamask.connectToDapp();
-  }
-  await expect(connectPrompt).toBeHidden({ timeout: 30_000 });
-}
-
 test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
+  test.describe.configure({ timeout: 180_000 });
   test("attest, grant compliance, mint, and transfer", async ({
     page,
     metamask,
   }) => {
     test.setTimeout(180_000);
+    const userId = readTestUserId();
+    if (userId) {
+      process.env.E2E_USER_ID = userId;
+    }
     try {
       await metamask.switchNetwork(hardhatNetwork.name);
     } catch {
@@ -63,7 +45,12 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible();
 
-    await connectWalletIfNeeded(page, metamask, senderAccountName);
+    await connectWalletIfNeeded({
+      page,
+      metamask,
+      accountName: senderAccountName,
+      chainId: hardhatNetwork.chainId,
+    });
 
     await expect(
       page.getByText("On-Chain Attestation", { exact: false }),
@@ -116,6 +103,14 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     }
 
     await expect(attestedText).toBeVisible({ timeout: 60_000 });
+
+    const sepoliaConfirmed = page.getByText(/Attested on fhEVM/i, {
+      exact: false,
+    });
+    if (await sepoliaConfirmed.isVisible().catch(() => false)) {
+      await expect(page.getByText(/Local \\(Hardhat\\)/i)).toBeVisible();
+      await page.getByRole("button", { name: /Local \\(Hardhat\\)/i }).click();
+    }
 
     await expect(
       page.getByText("Your On-Chain Identity", { exact: false }),

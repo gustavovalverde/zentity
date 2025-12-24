@@ -24,6 +24,7 @@ import {
   getNetworkById,
   isDemoMode,
 } from "@/lib/blockchain";
+import { CompliantERC20ABI } from "@/lib/contracts";
 import {
   getBlockchainAttestationByUserAndNetwork,
   getVerificationStatus,
@@ -37,56 +38,8 @@ const VIEM_CHAINS = {
   31337: hardhat,
 } as const;
 
-// CompliantERC20 ABI (minimal for read/write operations)
-const COMPLIANT_ERC20_ABI = [
-  // Read-only
-  {
-    inputs: [],
-    name: "name",
-    outputs: [{ type: "string" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "symbol",
-    outputs: [{ type: "string" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "DECIMALS",
-    outputs: [{ type: "uint8" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "totalSupply",
-    outputs: [{ type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "owner",
-    outputs: [{ type: "address" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  // Write (owner only)
-  {
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "mint",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
+// CompliantERC20 ABI (kept in sync with contracts package)
+const COMPLIANT_ERC20_ABI = CompliantERC20ABI;
 
 // Rate limiting for mint requests
 const MINT_RATE_LIMIT_MAX = 3;
@@ -442,9 +395,11 @@ export const tokenRouter = router({
         // Public RPCs limit block range to 50,000 blocks
         // Get current block and calculate safe range
         const currentBlock = await client.getBlockNumber();
-        const MAX_BLOCK_RANGE = 50000n;
+        const MAX_BLOCK_RANGE = BigInt(50000);
         const fromBlock =
-          currentBlock > MAX_BLOCK_RANGE ? currentBlock - MAX_BLOCK_RANGE : 0n;
+          currentBlock > MAX_BLOCK_RANGE
+            ? currentBlock - MAX_BLOCK_RANGE
+            : BigInt(0);
 
         const [transfersFrom, transfersTo, mints] = await Promise.all([
           client.getLogs({
@@ -561,9 +516,11 @@ export const tokenRouter = router({
 
         // Public RPCs limit block range to 50,000 blocks
         const currentBlock = await client.getBlockNumber();
-        const MAX_BLOCK_RANGE = 50000n;
+        const MAX_BLOCK_RANGE = BigInt(50000);
         const fromBlock =
-          currentBlock > MAX_BLOCK_RANGE ? currentBlock - MAX_BLOCK_RANGE : 0n;
+          currentBlock > MAX_BLOCK_RANGE
+            ? currentBlock - MAX_BLOCK_RANGE
+            : BigInt(0);
 
         const logs = await client.getLogs({
           address: identityRegistry as `0x${string}`,

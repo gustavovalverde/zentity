@@ -17,6 +17,8 @@ import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
 
+import { IdentityRegistryABI } from "@/lib/contracts";
+
 // Chain configurations for viem
 const VIEM_CHAINS = {
   11155111: sepolia,
@@ -134,15 +136,7 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
       // Call isAttested view function
       const isAttested = await client.readContract({
         address: contractAddress,
-        abi: [
-          {
-            inputs: [{ name: "user", type: "address" }],
-            name: "isAttested",
-            outputs: [{ type: "bool" }],
-            stateMutability: "view",
-            type: "function",
-          },
-        ],
+        abi: IdentityRegistryABI,
         functionName: "isAttested",
         args: [userAddress as `0x${string}`],
       });

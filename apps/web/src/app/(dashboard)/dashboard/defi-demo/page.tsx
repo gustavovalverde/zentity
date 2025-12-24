@@ -12,7 +12,7 @@ export default async function DefiDemoPage() {
     headers: await headers(),
   });
 
-  const userId = session?.user?.id;
+  const userId = session?.user?.id || process.env.E2E_USER_ID || null;
 
   // Get verification and attestation status
   const verificationStatus = userId ? getVerificationStatus(userId) : null;

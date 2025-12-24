@@ -9,7 +9,6 @@ import "server-only";
 import type { IAttestationProvider } from "./types";
 
 import { getNetworkById, isNetworkAvailable } from "../config/networks";
-import { EvmProvider } from "./evm-provider";
 import { FhevmMockProvider } from "./fhevm-mock-provider";
 import { FhevmZamaProvider } from "./fhevm-zama-provider";
 
@@ -60,11 +59,10 @@ export function createProvider(networkId: string): IAttestationProvider {
       }
       break;
     }
-    case "evm":
-      provider = new EvmProvider(network);
-      break;
     default:
-      throw new Error(`Unknown provider type: ${network.type}`);
+      throw new Error(
+        `Unsupported provider type: ${network.type}. Only "fhevm" is supported.`,
+      );
   }
 
   // Cache and return

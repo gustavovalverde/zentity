@@ -18,27 +18,12 @@ import { useCallback, useMemo } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 import { useFhevmContext } from "@/components/providers/fhevm-provider";
+import { CompliantERC20ABI } from "@/lib/contracts";
 import { toHex, useFHEEncryption } from "@/lib/fhevm";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
 
-// CompliantERC20 transfer function ABI
-const TRANSFER_ABI = [
-  {
-    inputs: [
-      { name: "to", type: "address" },
-      {
-        name: "encryptedAmount",
-        internalType: "externalEuint64",
-        type: "bytes32",
-      },
-      { name: "inputProof", type: "bytes" },
-    ],
-    name: "transfer",
-    outputs: [{ name: "success", type: "bool" }],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
+// CompliantERC20 ABI (kept in sync with contracts package)
+const TRANSFER_ABI = CompliantERC20ABI;
 
 interface UseFheTransferParams {
   /** CompliantERC20 contract address */

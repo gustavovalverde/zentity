@@ -1,29 +1,9 @@
 import type { AttestationErrorCode } from "./types";
 
-// IdentityRegistry ABI - attestIdentity + isAttested
-export const IDENTITY_REGISTRY_ABI = [
-  {
-    inputs: [
-      { name: "user", type: "address" },
-      { name: "encBirthYearOffset", type: "bytes32" },
-      { name: "encCountryCode", type: "bytes32" },
-      { name: "encKycLevel", type: "bytes32" },
-      { name: "encIsBlacklisted", type: "bytes32" },
-      { name: "inputProof", type: "bytes" },
-    ],
-    name: "attestIdentity",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ name: "user", type: "address" }],
-    name: "isAttested",
-    outputs: [{ type: "bool" }],
-    stateMutability: "view",
-    type: "function",
-  },
-] as const;
+import { IdentityRegistryABI } from "@/lib/contracts";
+
+// Full IdentityRegistry ABI (kept in sync with contracts package)
+export const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
 
 /**
  * Categorize error message for better frontend handling.

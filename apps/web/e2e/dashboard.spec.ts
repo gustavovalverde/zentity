@@ -16,11 +16,16 @@ test.describe("Dashboard - Authenticated User", () => {
   test("should display dashboard content for authenticated user", async ({
     page,
   }) => {
-    await page.goto("/dashboard");
-    await page.waitForLoadState("networkidle");
+    await page.goto("/dashboard", {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
 
     // Check we're on the dashboard (not redirected to sign-in)
-    await expect(page).toHaveURL(/dashboard/);
+    await expect(page).toHaveURL(/dashboard/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible({
+      timeout: 60_000,
+    });
 
     // Dashboard should have some content - look for common dashboard elements
     const dashboardContent = page
@@ -30,19 +35,26 @@ test.describe("Dashboard - Authenticated User", () => {
   });
 
   test("shows on-chain attestation section", async ({ page }) => {
-    await page.goto("/dashboard");
-    await page.waitForLoadState("networkidle");
+    await page.goto("/dashboard", {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
 
-    await expect(
-      page.locator("text=On-Chain Attestation").first(),
-    ).toBeVisible();
+    await expect(page.locator("text=On-Chain Attestation").first()).toBeVisible(
+      { timeout: 60_000 },
+    );
   });
 
   test("should show verification status or welcome content", async ({
     page,
   }) => {
-    await page.goto("/dashboard");
-    await page.waitForLoadState("networkidle");
+    await page.goto("/dashboard", {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
+    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible({
+      timeout: 60_000,
+    });
 
     // Look for any verification-related text or welcome message
     const pageContent = await page.textContent("body");

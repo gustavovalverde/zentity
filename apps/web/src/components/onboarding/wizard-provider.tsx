@@ -235,14 +235,13 @@ export function WizardProvider({
         if (forceReset) {
           // Explicit start-over (e.g., from "Start Verification" CTA).
           // Clear any existing cookie+DB session, then start at step 1.
-          try {
-            await trpc.onboarding.clearSession.mutate();
-          } catch {
-            // Ignore if no session exists
-          }
+          // Fire-and-forget so UI isn't blocked on API availability.
+          void trpc.onboarding.clearSession.mutate().catch(() => {});
 
           dispatch({ type: "RESET" });
           lastSavedStepRef.current = 1;
+          isInitializedRef.current = true;
+          setIsHydrated(true);
 
           // Remove one-shot param so refresh can resume normally.
           const params = new URLSearchParams(searchParams.toString());

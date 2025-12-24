@@ -289,14 +289,55 @@ export const attestationRouter = router({
         });
       }
 
-      // Check for existing attestation
+      const provider = createProvider(input.networkId);
+
+      // Check for existing attestation (DB)
       const existing = getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
         input.networkId,
       );
 
-      // Allow re-attestation for confirmed status (contract supports overwriting)
-      // Only block if there's a pending submission
+      // If on-chain already attested, sync DB and return early (no re-attest).
+      const chainStatus = await provider.getAttestationStatus(
+        input.walletAddress,
+      );
+      if (chainStatus.isAttested) {
+        let attestation = existing;
+        if (!attestation) {
+          attestation = createBlockchainAttestation({
+            userId: ctx.userId,
+            walletAddress: input.walletAddress,
+            networkId: input.networkId,
+            chainId: network.chainId,
+          });
+        } else {
+          updateBlockchainAttestationWallet(
+            attestation.id,
+            input.walletAddress,
+            network.chainId,
+          );
+        }
+
+        if (attestation.status !== "confirmed") {
+          updateBlockchainAttestationConfirmed(
+            attestation.id,
+            chainStatus.blockNumber ?? null,
+          );
+        }
+
+        const explorerUrl = chainStatus.txHash
+          ? getExplorerTxUrl(input.networkId, chainStatus.txHash)
+          : undefined;
+
+        return {
+          success: true,
+          status: "confirmed" as const,
+          txHash: chainStatus.txHash,
+          explorerUrl,
+        };
+      }
+
+      // Block if there's a pending submission
       if (existing?.status === "submitted") {
         throw new TRPCError({
           code: "CONFLICT",
@@ -361,7 +402,6 @@ export const attestationRouter = router({
 
       // Submit attestation via provider
       try {
-        const provider = createProvider(input.networkId);
         const result = await provider.submitAttestation({
           userAddress: input.walletAddress,
           identityData: {

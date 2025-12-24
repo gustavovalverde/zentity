@@ -11,7 +11,6 @@ import { useAppKitAccount } from "@reown/appkit/react";
  */
 import { Eye, EyeOff, KeyRound, Loader2, Lock, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toHex as toViemHex } from "viem";
 import { useChainId, useReadContract } from "wagmi";
 
 import { useFhevmContext } from "@/components/providers/fhevm-provider";
@@ -31,48 +30,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { IdentityRegistryABI } from "@/lib/contracts";
 import { useFHEDecrypt, useInMemoryStorage } from "@/lib/fhevm";
 import { trpcReact } from "@/lib/trpc/client";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
 
-// Minimal ABI for reading identity handles
-const IDENTITY_REGISTRY_ABI = [
-  {
-    name: "getBirthYearOffset",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "getCountryCode",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "getKycLevel",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "getBlacklistStatus",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "isAttested",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "user", type: "address" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
+// IdentityRegistry ABI (kept in sync with contracts package)
+const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
 
 // Country code mapping (ISO 3166-1 numeric to name)
 const COUNTRY_CODES: Record<number, string> = {
@@ -86,6 +50,21 @@ const COUNTRY_CODES: Record<number, string> = {
   36: "Australia",
   // Add more as needed
 };
+
+function normalizeHandle(handle: unknown): `0x${string}` | undefined {
+  if (!handle) return undefined;
+  if (typeof handle === "string") {
+    const hex = handle.startsWith("0x") ? handle : `0x${handle}`;
+    return /^0x[0-9a-fA-F]+$/.test(hex) ? (hex as `0x${string}`) : undefined;
+  }
+  if (handle instanceof Uint8Array) {
+    const hex = Array.from(handle)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    return `0x${hex}` as `0x${string}`;
+  }
+  return undefined;
+}
 
 /**
  * Decrypted identity data structure
@@ -124,10 +103,22 @@ export function ViewIdentityData() {
   // Find first network with confirmed attestation
   const confirmedNetwork = useMemo(() => {
     if (!networksData?.networks) return null;
-    return networksData.networks.find(
-      (n) => n.attestation?.status === "confirmed" && n.identityRegistry,
+    if (chainId) {
+      const matching = networksData.networks.find(
+        (n) =>
+          n.attestation?.status === "confirmed" &&
+          n.identityRegistry &&
+          n.chainId === chainId,
+      );
+      if (matching) return matching;
+      return null;
+    }
+    return (
+      networksData.networks.find(
+        (n) => n.attestation?.status === "confirmed" && n.identityRegistry,
+      ) ?? null
     );
-  }, [networksData]);
+  }, [networksData, chainId]);
 
   const contractAddress = confirmedNetwork?.identityRegistry as
     | `0x${string}`
@@ -148,7 +139,7 @@ export function ViewIdentityData() {
   const readEnabled = Boolean(contractAddress && address);
 
   const {
-    data: isAttested,
+    data: rawIsAttested,
     isLoading: isAttestedLoading,
     refetch: refetchIsAttested,
   } = useReadContract({
@@ -161,7 +152,7 @@ export function ViewIdentityData() {
   });
 
   const {
-    data: birthYearHandle,
+    data: rawBirthYearHandle,
     isLoading: isBirthYearLoading,
     refetch: refetchBirthYear,
   } = useReadContract({
@@ -174,7 +165,7 @@ export function ViewIdentityData() {
   });
 
   const {
-    data: countryCodeHandle,
+    data: rawCountryCodeHandle,
     isLoading: isCountryLoading,
     refetch: refetchCountry,
   } = useReadContract({
@@ -187,7 +178,7 @@ export function ViewIdentityData() {
   });
 
   const {
-    data: kycLevelHandle,
+    data: rawKycLevelHandle,
     isLoading: isKycLoading,
     refetch: refetchKyc,
   } = useReadContract({
@@ -200,7 +191,7 @@ export function ViewIdentityData() {
   });
 
   const {
-    data: blacklistHandle,
+    data: rawBlacklistHandle,
     isLoading: isBlacklistLoading,
     refetch: refetchBlacklist,
   } = useReadContract({
@@ -211,6 +202,12 @@ export function ViewIdentityData() {
     account: address,
     query: { enabled: readEnabled },
   });
+
+  const isAttested = rawIsAttested as boolean | undefined;
+  const birthYearHandle = rawBirthYearHandle as `0x${string}` | undefined;
+  const countryCodeHandle = rawCountryCodeHandle as `0x${string}` | undefined;
+  const kycLevelHandle = rawKycLevelHandle as `0x${string}` | undefined;
+  const blacklistHandle = rawBlacklistHandle as `0x${string}` | undefined;
 
   const isLoadingContract =
     isAttestedLoading ||
@@ -246,13 +243,19 @@ export function ViewIdentityData() {
     ) {
       return [];
     }
-
-    return [
-      { handle: toViemHex(birthYearHandle, { size: 32 }), contractAddress },
-      { handle: toViemHex(countryCodeHandle, { size: 32 }), contractAddress },
-      { handle: toViemHex(kycLevelHandle, { size: 32 }), contractAddress },
-      { handle: toViemHex(blacklistHandle, { size: 32 }), contractAddress },
+    const normalizedHandles = [
+      normalizeHandle(birthYearHandle),
+      normalizeHandle(countryCodeHandle),
+      normalizeHandle(kycLevelHandle),
+      normalizeHandle(blacklistHandle),
     ];
+    if (normalizedHandles.some((handle) => !handle || handle.length !== 66)) {
+      return [];
+    }
+    return normalizedHandles.map((handle) => ({
+      handle: handle as `0x${string}`,
+      contractAddress,
+    }));
   }, [
     contractAddress,
     birthYearHandle,

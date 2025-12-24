@@ -475,9 +475,11 @@ function NetworkActions({
           <span className="font-medium">Attested on {network.name}</span>
         </div>
         <div className="text-sm space-y-1">
-          <p className="text-muted-foreground">
-            Block: {attestation.blockNumber}
-          </p>
+          {attestation.blockNumber != null && (
+            <p className="text-muted-foreground">
+              Block: {attestation.blockNumber}
+            </p>
+          )}
           {attestation.confirmedAt && (
             <p className="text-muted-foreground">
               Confirmed:{" "}

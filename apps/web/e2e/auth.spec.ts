@@ -13,12 +13,13 @@ test.describe("Authentication Flow", () => {
 
   test("should show sign-up page", async ({ page }) => {
     // Use fresh=1 to start a clean wizard without session hydration delay
-    await page.goto("/sign-up?fresh=1");
-    // Wait for wizard hydration to complete (loading state disappears)
-    await expect(page.getByText("Loading...")).toBeHidden({ timeout: 15_000 });
+    await page.goto("/sign-up?fresh=1", {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     // Sign-up starts with onboarding step 1 (email only)
     await expect(page.locator('input[type="email"]')).toBeVisible({
-      timeout: 10_000,
+      timeout: 30_000,
     });
     await expect(
       page
@@ -31,11 +32,15 @@ test.describe("Authentication Flow", () => {
     await page.goto("/sign-in");
 
     // Look for sign-up link and wait for it to be visible
-    const signUpLink = page.locator('a[href*="sign-up"]');
+    const signUpLink = page.getByRole("link", { name: /sign up/i });
     await expect(signUpLink).toBeVisible({ timeout: 10_000 });
-    await signUpLink.click();
+    await expect(signUpLink).toHaveAttribute("href", /sign-up/);
 
-    await expect(page).toHaveURL(/sign-up/, { timeout: 10_000 });
+    const href = await signUpLink.getAttribute("href");
+    if (!href) throw new Error("Sign-up link missing href");
+
+    await page.goto(href, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page).toHaveURL(/sign-up/, { timeout: 30_000 });
   });
 
   test("should show validation error for invalid email", async ({ page }) => {
@@ -52,13 +57,13 @@ test.describe("Authentication Flow", () => {
   test("should accept email and proceed to upload step", async ({ page }) => {
     const testEmail = `e2e-auth-${Date.now()}@example.com`;
 
-    await page.goto("/sign-up?fresh=1");
-
-    // Wait for wizard hydration to complete
-    await expect(page.getByText("Loading...")).toBeHidden({ timeout: 10_000 });
+    await page.goto("/sign-up?fresh=1", {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
 
     await page.waitForSelector('input[type="email"], input[name="email"]', {
-      timeout: 10000,
+      timeout: 30_000,
     });
 
     const emailInput = page

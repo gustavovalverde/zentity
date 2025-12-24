@@ -86,17 +86,17 @@ export const projectId = getProjectId();
 function getEnabledNetworks(): [AppKitNetwork, ...AppKitNetwork[]] {
   const networks: AppKitNetwork[] = [];
 
+  const hardhatEnabled =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true";
+
+  if (hardhatEnabled) {
+    networks.push(hardhat);
+  }
+
   // Always include fhEVM network unless explicitly disabled
   if (process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false") {
     networks.push(fhevmSepolia);
-  }
-
-  // Include Hardhat only in development when enabled
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true"
-  ) {
-    networks.push(hardhat);
   }
 
   // Fallback to Sepolia if no networks enabled

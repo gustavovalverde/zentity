@@ -1152,7 +1152,7 @@ export function updateBlockchainAttestationSubmitted(
  */
 export function updateBlockchainAttestationConfirmed(
   id: string,
-  blockNumber: number,
+  blockNumber: number | null,
 ): void {
   const stmt = db.prepare(`
     UPDATE blockchain_attestations

@@ -26,17 +26,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { IdentityRegistryABI } from "@/lib/contracts";
 import { useDevFaucet } from "@/lib/wagmi/use-dev-faucet";
 
-const GRANT_ACCESS_ABI = [
-  {
-    inputs: [{ name: "grantee", type: "address" }],
-    name: "grantAccessTo",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
+const GRANT_ACCESS_ABI = IdentityRegistryABI;
 
 interface ComplianceAccessCardProps {
   identityRegistry: `0x${string}` | null | undefined;

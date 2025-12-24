@@ -62,6 +62,7 @@
     "@vladmandic/human-models": "^3.0.4",
     "@wagmi/core": "3.0.0",
     "@walletconnect/ethereum-provider": "^2.23.1",
+    "@zentity/fhevm-contracts": "^0.1.1",
     "@zama-fhe/relayer-sdk": "0.3.0-8",
     "better-auth": "^1.4.7",
     "class-variance-authority": "^0.7.1",

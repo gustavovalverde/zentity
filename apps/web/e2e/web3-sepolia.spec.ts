@@ -1,11 +1,11 @@
 import type { Page } from "@playwright/test";
-import type { MetaMask } from "@synthetixio/synpress/playwright";
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { expect, test } from "./fixtures/synpress";
+import { connectWalletIfNeeded } from "./helpers/connect-wallet";
 import { confirmSignature, confirmTransaction } from "./helpers/metamask";
 
 const sepoliaRpcUrl =
@@ -49,56 +49,6 @@ const sepoliaNetwork = {
   ...(sepoliaExplorer ? { blockExplorerUrl: sepoliaExplorer } : {}),
 };
 
-type BrowserEthereum = {
-  request?: (args: { method: string }) => Promise<unknown>;
-};
-
-type BrowserAppKitControllers = {
-  OptionsController?: {
-    state?: {
-      enableInjected?: boolean;
-      enableWallets?: boolean;
-      enableEIP6963?: boolean;
-    };
-  };
-  ConnectorController?: {
-    state?: {
-      connectors?: Array<{
-        type?: string;
-        id?: string;
-        info?: unknown;
-        provider?: unknown;
-      }>;
-      allConnectors?: Array<{ type?: string }>;
-    };
-  };
-};
-
-type BrowserAppKit = {
-  open?: () => void;
-  setCaipAddress?: (
-    address: string,
-    namespace?: string,
-    sync?: boolean,
-  ) => void;
-  setStatus?: (status: string, namespace?: string) => void;
-  getActiveChainNamespace?: () => string;
-  connectionControllerClient?: {
-    connectExternal?: (args: {
-      id?: string;
-      type?: string;
-      info?: unknown;
-      provider?: unknown;
-    }) => Promise<void>;
-  };
-};
-
-type BrowserWindow = Window & {
-  ethereum?: BrowserEthereum;
-  __appkit?: BrowserAppKit;
-  __appkitControllers?: BrowserAppKitControllers;
-};
-
 const sepoliaEnabled =
   process.env.E2E_SEPOLIA === "true" &&
   Boolean(sepoliaRpcUrl) &&
@@ -110,242 +60,6 @@ const sepoliaEnabled =
   Boolean(process.env.FHEVM_COMPLIANCE_RULES) &&
   Boolean(process.env.FHEVM_COMPLIANT_ERC20);
 const runFullFlow = process.env.E2E_SEPOLIA_FULL === "true";
-
-async function connectWalletIfNeeded(
-  page: Page,
-  metamask: MetaMask,
-  accountName?: string,
-) {
-  console.log("[e2e] connectWalletIfNeeded: start");
-  await page.bringToFront();
-  try {
-    console.log("[e2e] connectWalletIfNeeded: attempting MetaMask unlock");
-    await Promise.race([metamask.unlock(), page.waitForTimeout(5_000)]);
-  } catch {
-    // Ignore if already unlocked or unlock times out.
-  }
-  console.log("[e2e] connectWalletIfNeeded: unlock step complete");
-  const getAccounts = async () =>
-    page.evaluate(async () => {
-      try {
-        const appWindow = window as BrowserWindow;
-        if (!appWindow.ethereum?.request) return [];
-        const result = await appWindow.ethereum.request({
-          method: "eth_accounts",
-        });
-        return Array.isArray(result) ? result : [];
-      } catch {
-        return [];
-      }
-    });
-  const hasEthereum = await page.evaluate(() =>
-    Boolean((window as BrowserWindow).ethereum?.request),
-  );
-
-  const accounts = await getAccounts();
-  console.log(`[e2e] connectWalletIfNeeded: accounts=${accounts.length}`);
-  if (accounts.length > 0) {
-    console.log("[e2e] connectWalletIfNeeded: already connected");
-    return;
-  }
-
-  const appkitOptions = await page.evaluate(() => {
-    const controllers = (window as BrowserWindow).__appkitControllers;
-    if (!controllers) return null;
-    return {
-      enableInjected: controllers.OptionsController?.state?.enableInjected,
-      enableWallets: controllers.OptionsController?.state?.enableWallets,
-      enableEIP6963: controllers.OptionsController?.state?.enableEIP6963,
-    };
-  });
-  console.log(
-    `[e2e] connectWalletIfNeeded: appkit options ${JSON.stringify(appkitOptions)}`,
-  );
-
-  if (hasEthereum) {
-    console.log(
-      "[e2e] connectWalletIfNeeded: requesting accounts via injected",
-    );
-    await page.evaluate(() => {
-      const appWindow = window as BrowserWindow;
-      appWindow.ethereum
-        ?.request?.({ method: "eth_requestAccounts" })
-        .catch(() => undefined);
-    });
-    try {
-      if (accountName) {
-        await metamask.connectToDapp([accountName]);
-      } else {
-        await metamask.connectToDapp();
-      }
-      console.log("[e2e] connectWalletIfNeeded: MetaMask connect requested");
-    } catch {
-      console.log("[e2e] connectWalletIfNeeded: no MetaMask notification");
-    }
-    const injectedAccounts = await getAccounts();
-    if (injectedAccounts.length > 0) {
-      const appkitSyncResult = await page.evaluate(async () => {
-        const appWindow = window as BrowserWindow;
-        const appkit = appWindow.__appkit;
-        const controllers = appWindow.__appkitControllers;
-        const connectorTypes =
-          controllers?.ConnectorController?.state?.connectors?.map(
-            (connector: { type?: string }) => connector.type,
-          ) ?? [];
-        const allConnectorTypes =
-          controllers?.ConnectorController?.state?.allConnectors?.map(
-            (connector: { type?: string }) => connector.type,
-          ) ?? [];
-        if (!appkit || !controllers) {
-          return {
-            synced: false,
-            reason: "missing-appkit",
-            connectorTypes,
-            allConnectorTypes,
-          };
-        }
-        const connectorState = controllers.ConnectorController?.state;
-        const injected = connectorState?.connectors?.find(
-          (connector: { type?: string }) => connector.type === "INJECTED",
-        );
-        if (!injected) {
-          return {
-            synced: false,
-            reason: "no-injected",
-            connectorTypes,
-            allConnectorTypes,
-          };
-        }
-        const connectExternal =
-          appkit.connectionControllerClient?.connectExternal;
-        if (!connectExternal) {
-          return {
-            synced: false,
-            reason: "no-connector-client",
-            connectorTypes,
-            allConnectorTypes,
-          };
-        }
-        await connectExternal({
-          id: injected.id,
-          type: injected.type,
-          info: injected.info,
-          provider: injected.provider,
-        });
-        return { synced: true, reason: "ok", connectorTypes };
-      });
-      console.log(
-        `[e2e] connectWalletIfNeeded: appkit sync result = ${JSON.stringify(appkitSyncResult)}`,
-      );
-      if (!appkitSyncResult?.synced) {
-        const forced = await page.evaluate(
-          ({ address, chainId }) => {
-            const appkit = (window as BrowserWindow).__appkit;
-            if (!appkit?.setCaipAddress || !appkit?.setStatus) return false;
-            const namespace = appkit.getActiveChainNamespace?.() ?? "eip155";
-            const caipAddress = `eip155:${chainId}:${address}`;
-            appkit.setCaipAddress(caipAddress, namespace, true);
-            appkit.setStatus("connected", namespace);
-            return true;
-          },
-          { address: injectedAccounts[0], chainId: sepoliaChainId },
-        );
-        console.log(
-          `[e2e] connectWalletIfNeeded: forced appkit state = ${forced}`,
-        );
-      }
-      console.log("[e2e] connectWalletIfNeeded: connected via injected");
-      return;
-    }
-  }
-
-  const triggerConnect = async () => {
-    console.log("[e2e] connectWalletIfNeeded: opening AppKit modal");
-    const hasAppkit = await page.evaluate(() =>
-      Boolean((window as BrowserWindow).__appkit),
-    );
-    console.log(`[e2e] connectWalletIfNeeded: appkit=${hasAppkit}`);
-    if (hasAppkit) {
-      await page.evaluate(() => {
-        const appkit = (window as BrowserWindow).__appkit;
-        appkit?.open?.();
-      });
-    } else {
-      await page.locator("appkit-button").first().click();
-    }
-    const injectedOption = page.getByRole("button", {
-      name: /Browser Wallet|Injected/i,
-    });
-    const metaMaskOption = page.getByRole("button", { name: /MetaMask/i });
-    await Promise.race([
-      injectedOption.waitFor({ state: "visible", timeout: 15_000 }),
-      metaMaskOption.waitFor({ state: "visible", timeout: 15_000 }),
-    ]);
-    if (await injectedOption.isVisible().catch(() => false)) {
-      console.log("[e2e] connectWalletIfNeeded: using injected connector");
-      await injectedOption.click();
-      return;
-    }
-
-    console.log("[e2e] connectWalletIfNeeded: using MetaMask wallet option");
-    await metaMaskOption.click();
-  };
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    console.log(`[e2e] connectWalletIfNeeded: attempt ${attempt + 1}`);
-    await triggerConnect();
-
-    try {
-      if (accountName) {
-        await metamask.connectToDapp([accountName]);
-      } else {
-        await metamask.connectToDapp();
-      }
-      console.log("[e2e] connectWalletIfNeeded: MetaMask connect requested");
-    } catch {
-      // AppKit may auto-connect without a MetaMask notification.
-      console.log("[e2e] connectWalletIfNeeded: no MetaMask notification");
-    }
-
-    const modalRetry = page.getByRole("button", { name: /Try again/i });
-    if (await modalRetry.isVisible().catch(() => false)) {
-      await modalRetry.click();
-    }
-
-    await page.evaluate(async () => {
-      try {
-        const appWindow = window as BrowserWindow;
-        await appWindow.ethereum?.request?.({ method: "eth_requestAccounts" });
-      } catch {
-        // Ignore if the provider rejects the request.
-      }
-    });
-
-    try {
-      if (accountName) {
-        await metamask.connectToDapp([accountName]);
-      } else {
-        await metamask.connectToDapp();
-      }
-      console.log(
-        "[e2e] connectWalletIfNeeded: MetaMask connect requested (retry)",
-      );
-    } catch {
-      // Ignore if the notification still does not appear.
-      console.log(
-        "[e2e] connectWalletIfNeeded: MetaMask connect retry skipped",
-      );
-    }
-
-    const length = await getAccounts().then((list) => list.length);
-    if (length > 0) {
-      console.log("[e2e] connectWalletIfNeeded: connected");
-      return;
-    }
-  }
-
-  throw new Error("Wallet connection did not produce accounts");
-}
 
 function readAuthSeed() {
   try {
@@ -377,6 +91,7 @@ async function ensureSignedIn(page: Page) {
 }
 
 test.describe("Web3 workflow (Sepolia)", () => {
+  test.describe.configure({ timeout: 300_000 });
   test.skip(
     !sepoliaEnabled,
     "Set E2E_SEPOLIA=true and configure FHEVM_* contract addresses + RPC URL to run Sepolia E2E.",
@@ -416,7 +131,12 @@ test.describe("Web3 workflow (Sepolia)", () => {
     });
 
     console.log("[e2e] attempting wallet connection");
-    await connectWalletIfNeeded(page, metamask, senderAccountName);
+    await connectWalletIfNeeded({
+      page,
+      metamask,
+      accountName: senderAccountName,
+      chainId: sepoliaChainId,
+    });
 
     const attestationTitle = page
       .locator("[data-slot='card-title']", {

@@ -6,7 +6,7 @@
  *
  * To add a new network:
  * 1. Add entry to NETWORKS with unique id
- * 2. Set type to "fhevm" (encrypted) or "evm" (standard)
+ * 2. Set type to "fhevm" (encrypted)
  * 3. Configure contracts addresses via env vars
  * 4. Enable via NEXT_PUBLIC_ENABLE_{NETWORK}=true
  *
@@ -16,7 +16,9 @@
  */
 import "server-only";
 
-export type NetworkType = "fhevm" | "evm";
+import { resolveContractAddresses } from "@/lib/contracts";
+
+export type NetworkType = "fhevm";
 
 export type NetworkFeature = "encrypted" | "basic";
 
@@ -78,6 +80,67 @@ const FHEVM_PROVIDER_ID =
   process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID ||
   "zama";
 
+function toOverrides(
+  values: Partial<
+    Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
+  >,
+) {
+  const overrides = Object.fromEntries(
+    Object.entries(values).filter(([, value]) => Boolean(value?.trim())),
+  ) as Partial<
+    Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
+  >;
+
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function resolveNetworkContracts(
+  chainId: number,
+  prefer: "hardhat" | "localhost" | "sepolia",
+  overrides?: Partial<
+    Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
+  >,
+) {
+  const contracts = overrides
+    ? resolveContractAddresses(chainId, { prefer, overrides })
+    : resolveContractAddresses(chainId, { prefer });
+
+  return {
+    identityRegistry: contracts.IdentityRegistry,
+    complianceRules: contracts.ComplianceRules,
+    compliantERC20: contracts.CompliantERC20,
+  };
+}
+
+const FHEVM_ENABLED = process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false";
+const HARDHAT_ENABLED =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true";
+
+const FHEVM_CONTRACTS = FHEVM_ENABLED
+  ? resolveNetworkContracts(
+      FHEVM_CHAIN_ID,
+      "sepolia",
+      toOverrides({
+        IdentityRegistry: process.env.FHEVM_IDENTITY_REGISTRY,
+        ComplianceRules: process.env.FHEVM_COMPLIANCE_RULES,
+        CompliantERC20: process.env.FHEVM_COMPLIANT_ERC20,
+      }),
+    )
+  : null;
+
+const LOCAL_CONTRACTS = HARDHAT_ENABLED
+  ? resolveNetworkContracts(
+      31337,
+      "localhost",
+      toOverrides({
+        IdentityRegistry: process.env.LOCAL_IDENTITY_REGISTRY,
+        ComplianceRules: process.env.LOCAL_COMPLIANCE_RULES,
+        CompliantERC20: process.env.LOCAL_COMPLIANT_ERC20,
+      }),
+    )
+  : null;
+
 const NETWORKS: Record<string, NetworkConfig> = {
   [FHEVM_NETWORK_ID]: {
     id: FHEVM_NETWORK_ID,
@@ -95,12 +158,12 @@ const NETWORKS: Record<string, NetworkConfig> = {
     providerId: FHEVM_PROVIDER_ID,
     features: ["encrypted"],
     contracts: {
-      identityRegistry: process.env.FHEVM_IDENTITY_REGISTRY || "",
-      complianceRules: process.env.FHEVM_COMPLIANCE_RULES || "",
-      compliantERC20: process.env.FHEVM_COMPLIANT_ERC20 || "",
+      identityRegistry: FHEVM_CONTRACTS?.identityRegistry || "",
+      complianceRules: FHEVM_CONTRACTS?.complianceRules,
+      compliantERC20: FHEVM_CONTRACTS?.compliantERC20,
     },
     explorer: FHEVM_EXPLORER_URL,
-    enabled: process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false",
+    enabled: FHEVM_ENABLED,
   },
   hardhat: {
     id: "hardhat",
@@ -115,25 +178,23 @@ const NETWORKS: Record<string, NetworkConfig> = {
     providerId: "mock",
     features: ["encrypted"],
     contracts: {
-      identityRegistry: process.env.LOCAL_IDENTITY_REGISTRY || "",
-      complianceRules: process.env.LOCAL_COMPLIANCE_RULES || "",
-      compliantERC20: process.env.LOCAL_COMPLIANT_ERC20 || "",
+      identityRegistry: LOCAL_CONTRACTS?.identityRegistry || "",
+      complianceRules: LOCAL_CONTRACTS?.complianceRules,
+      compliantERC20: LOCAL_CONTRACTS?.compliantERC20,
     },
-    enabled:
-      process.env.NODE_ENV === "development" &&
-      process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true",
+    enabled: HARDHAT_ENABLED,
   },
   // Future networks can be added here:
-  // ethereum_sepolia: {
-  //   id: "ethereum_sepolia",
-  //   name: "Ethereum Sepolia",
-  //   chainId: 11155111,
-  //   rpcUrl: process.env.ETH_SEPOLIA_RPC_URL || "",
-  //   type: "evm",
-  //   features: ["basic"],
-  //   contracts: { identityRegistry: process.env.ETH_SEPOLIA_REGISTRY || "" },
-  //   explorer: "https://sepolia.etherscan.io",
-  //   enabled: process.env.NEXT_PUBLIC_ENABLE_ETH_SEPOLIA === "true",
+  // additional_fhevm: {
+  //   id: "fhevm_custom",
+  //   name: "fhEVM Custom",
+  //   chainId: 12345,
+  //   rpcUrl: process.env.FHEVM_CUSTOM_RPC_URL || "",
+  //   type: "fhevm",
+  //   features: ["encrypted"],
+  //   contracts: { identityRegistry: process.env.FHEVM_CUSTOM_REGISTRY || "" },
+  //   explorer: "https://example.com",
+  //   enabled: process.env.NEXT_PUBLIC_ENABLE_FHEVM_CUSTOM === "true",
   // },
 };
 

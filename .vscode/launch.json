@@ -19,7 +19,8 @@
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/apps/web/node_modules/next/dist/bin/next",
-      "runtimeArgs": ["--inspect", "--webpack"],
+      "runtimeArgs": ["--inspect"],
+      "args": ["dev", "--webpack"],
       "cwd": "${workspaceFolder}/apps/web",
       "skipFiles": ["<node_internals>/**"],
       "serverReadyAction": {
