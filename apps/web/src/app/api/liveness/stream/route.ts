@@ -8,63 +8,12 @@
 
 import type { NextRequest } from "next/server";
 
-// In-memory store for SSE writers by session ID
-// In production, this would need to be replaced with Redis or similar
-const streamWriters = new Map<
-  string,
-  {
-    writer: WritableStreamDefaultWriter<Uint8Array>;
-    encoder: TextEncoder;
-    lastActivity: number;
-  }
->();
-
-// Clean up stale connections periodically (30 second timeout)
-const STREAM_TIMEOUT_MS = 30_000;
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, entry] of streamWriters.entries()) {
-    if (now - entry.lastActivity > STREAM_TIMEOUT_MS) {
-      try {
-        entry.writer.close();
-      } catch {
-        // Already closed
-      }
-      streamWriters.delete(sessionId);
-    }
-  }
-}, 10_000);
-
-/**
- * Get SSE writer for a session (used by frame processing endpoint)
- */
-export function getStreamWriter(sessionId: string) {
-  return streamWriters.get(sessionId);
-}
-
-/**
- * Send an event to a session's SSE stream
- */
-export async function sendSSEEvent(
-  sessionId: string,
-  eventType: string,
-  data: Record<string, unknown>,
-) {
-  const entry = streamWriters.get(sessionId);
-  if (!entry) return false;
-
-  try {
-    const eventData = JSON.stringify({ type: eventType, ...data });
-    await entry.writer.write(entry.encoder.encode(`data: ${eventData}\n\n`));
-    entry.lastActivity = Date.now();
-    return true;
-  } catch {
-    // Stream closed, clean up
-    streamWriters.delete(sessionId);
-    return false;
-  }
-}
+import {
+  closeStreamWriter,
+  deleteStreamWriter,
+  getStreamWriter,
+  setStreamWriter,
+} from "./sse";
 
 export async function GET(req: NextRequest) {
   const sessionId = req.nextUrl.searchParams.get("sessionId");
@@ -74,14 +23,9 @@ export async function GET(req: NextRequest) {
   }
 
   // Clean up existing connection for this session
-  const existing = streamWriters.get(sessionId);
+  const existing = getStreamWriter(sessionId);
   if (existing) {
-    try {
-      await existing.writer.close();
-    } catch {
-      // Already closed
-    }
-    streamWriters.delete(sessionId);
+    await closeStreamWriter(sessionId);
   }
 
   const stream = new TransformStream<Uint8Array, Uint8Array>();
@@ -89,7 +33,7 @@ export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
 
   // Store writer for frame processing endpoint
-  streamWriters.set(sessionId, {
+  setStreamWriter(sessionId, {
     writer,
     encoder,
     lastActivity: Date.now(),
@@ -109,7 +53,7 @@ export async function GET(req: NextRequest) {
     } catch {
       // Already closed
     }
-    streamWriters.delete(sessionId);
+    deleteStreamWriter(sessionId);
   });
 
   return new Response(stream.readable, {

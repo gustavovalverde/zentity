@@ -2,9 +2,20 @@
 
 import dynamic from "next/dynamic";
 
+import { Spinner } from "@/components/ui/spinner";
+
 import { StepEmail } from "./steps/step-email";
 import { useWizard } from "./wizard-provider";
 import { WizardStepper } from "./wizard-stepper";
+
+function WizardStepLoading({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
+      <Spinner size="lg" />
+      <span className="text-sm">{label}</span>
+    </div>
+  );
+}
 
 /**
  * New 4-step wizard flow:
@@ -17,13 +28,7 @@ const StepIdUpload = dynamic(
   () => import("./steps/step-id-upload").then((mod) => mod.StepIdUpload),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-pulse text-muted-foreground">
-          Loading document step...
-        </div>
-      </div>
-    ),
+    loading: () => <WizardStepLoading label="Loading document step..." />,
   },
 );
 
@@ -31,13 +36,7 @@ const StepSelfie = dynamic(
   () => import("./steps/step-selfie").then((mod) => mod.StepSelfie),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-pulse text-muted-foreground">
-          Loading camera step...
-        </div>
-      </div>
-    ),
+    loading: () => <WizardStepLoading label="Loading camera step..." />,
   },
 );
 
@@ -48,13 +47,7 @@ const StepReviewComplete = dynamic(
     ),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-pulse text-muted-foreground">
-          Loading final step...
-        </div>
-      </div>
-    ),
+    loading: () => <WizardStepLoading label="Loading final step..." />,
   },
 );
 

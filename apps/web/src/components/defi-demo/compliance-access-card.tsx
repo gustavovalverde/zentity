@@ -139,9 +139,9 @@ export function ComplianceAccessCard({
 
   if (!identityRegistry || !complianceRules) {
     return (
-      <Card className="border-orange-200 dark:border-orange-800">
+      <Card className="border-warning/30">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-orange-600">
+          <CardTitle className="flex items-center gap-2 text-warning">
             <AlertTriangle className="h-5 w-5" />
             Compliance Access Unavailable
           </CardTitle>
@@ -154,11 +154,7 @@ export function ComplianceAccessCard({
   }
 
   return (
-    <Card
-      className={
-        isGranted ? "border-green-200 dark:border-green-800" : "border-dashed"
-      }
-    >
+    <Card className={isGranted ? "border-success/30" : "border-dashed"}>
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-primary" />
@@ -171,9 +167,9 @@ export function ComplianceAccessCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {isChainMismatch && (
-          <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800">
-            <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-            <AlertDescription className="text-orange-800 dark:text-orange-200">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
               Switch your wallet to{" "}
               <strong>{expectedNetworkName ?? "the correct network"}</strong> to
               grant compliance access.
@@ -181,18 +177,18 @@ export function ComplianceAccessCard({
           </Alert>
         )}
         {insufficientFunds && (
-          <Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-            <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
               Your wallet has no ETH available for gas on this network.
             </AlertDescription>
           </Alert>
         )}
 
         {isGranted ? (
-          <Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800 dark:text-green-200">
+          <Alert variant="success">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>
               Compliance access granted. You can now transfer tokens.
             </AlertDescription>
           </Alert>

@@ -213,10 +213,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
               <Shield className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">On-Chain Attestation</CardTitle>
               {isDemo && (
-                <Badge
-                  variant="outline"
-                  className="ml-2 bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900 dark:text-yellow-200 dark:border-yellow-700"
-                >
+                <Badge variant="warning" className="ml-2">
                   DEMO
                 </Badge>
               )}
@@ -265,9 +262,9 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
               <>
                 {/* Demo Mode Warning */}
                 {isDemo && (
-                  <Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                    <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+                  <Alert variant="warning">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
                       <strong>Demo Mode</strong> - No real blockchain
                       transactions. Configure contract addresses for production
                       use.
@@ -277,12 +274,12 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
                 {/* Wallet Change Warning */}
                 {walletChanged && (
-                  <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800">
-                    <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                    <AlertDescription className="text-orange-800 dark:text-orange-200">
+                  <Alert variant="warning">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
                       <strong>Wallet Changed</strong> - Attestation will be
                       linked to:{" "}
-                      <code className="text-xs bg-orange-100 dark:bg-orange-900 px-1 rounded">
+                      <code className="text-xs bg-warning/15 px-1 rounded">
                         {address?.slice(0, 6)}...{address?.slice(-4)}
                       </code>
                     </AlertDescription>
@@ -348,8 +345,8 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
                 {/* Info about encryption */}
                 {selectedNetworkData?.type === "fhevm" && (
-                  <Alert className="bg-purple-50 border-purple-200 dark:bg-purple-950 dark:border-purple-800">
-                    <Lock className="h-4 w-4 text-purple-600" />
+                  <Alert variant="info">
+                    <Lock className="h-4 w-4" />
                     <AlertDescription className="text-xs">
                       <strong>Encrypted Attestation</strong> - Your identity
                       data will be encrypted using Fully Homomorphic Encryption
@@ -388,10 +385,10 @@ function NetworkCard({
   onSelect: () => void;
 }) {
   const statusColors = {
-    pending: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900",
-    submitted: "text-blue-600 bg-blue-100 dark:bg-blue-900",
-    confirmed: "text-green-600 bg-green-100 dark:bg-green-900",
-    failed: "text-red-600 bg-red-100 dark:bg-red-900",
+    pending: "text-warning bg-warning/15",
+    submitted: "text-info bg-info/15",
+    confirmed: "text-success bg-success/15",
+    failed: "text-destructive bg-destructive/15",
   };
 
   const statusIcons = {
@@ -402,10 +399,11 @@ function NetworkCard({
   };
 
   return (
-    <button
+    <Button
       type="button"
       onClick={onSelect}
-      className={`flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${
+      variant="outline"
+      className={`flex items-center justify-between p-3 rounded-lg border text-left transition-colors w-full ${
         isSelected
           ? "border-primary bg-primary/5"
           : "border-border hover:border-primary/50"
@@ -414,7 +412,7 @@ function NetworkCard({
       <div className="flex items-center gap-2">
         <div
           className={`w-2 h-2 rounded-full ${
-            network.type === "fhevm" ? "bg-purple-500" : "bg-blue-500"
+            network.type === "fhevm" ? "bg-info" : "bg-primary"
           }`}
         />
         <div>
@@ -433,7 +431,7 @@ function NetworkCard({
           <span className="capitalize">{network.attestation.status}</span>
         </div>
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -469,8 +467,8 @@ function NetworkActions({
       walletAddress.toLowerCase() !== attestedWalletAddress.toLowerCase();
 
     return (
-      <div className="space-y-3 p-4 rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800">
-        <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+      <div className="space-y-3 p-4 rounded-lg bg-success/10 border border-success/30">
+        <div className="flex items-center gap-2 text-success">
           <CheckCircle className="h-5 w-5" />
           <span className="font-medium">Attested on {network.name}</span>
         </div>
@@ -493,7 +491,7 @@ function NetworkActions({
           <div className="flex items-center justify-between">
             <p className="text-sm">
               <strong>Wallet:</strong>{" "}
-              <code className="text-xs bg-green-100 dark:bg-green-900 px-2 py-1 rounded">
+              <code className="text-xs bg-success/15 px-2 py-1 rounded">
                 {attestedWalletAddress.slice(0, 6)}...
                 {attestedWalletAddress.slice(-4)}
               </code>
@@ -511,9 +509,9 @@ function NetworkActions({
 
         {/* Wallet mismatch warning */}
         {walletMismatch && (
-          <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800">
-            <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-            <AlertDescription className="text-orange-800 dark:text-orange-200 text-sm">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
               <strong>Different Wallet Connected</strong>
               <div className="mt-1 text-xs">
                 Connected: {walletAddress.slice(0, 6)}...
@@ -564,8 +562,8 @@ function NetworkActions({
   // Submitted - waiting for confirmation
   if (attestation?.status === "submitted") {
     return (
-      <div className="space-y-3 p-4 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
-        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+      <div className="space-y-3 p-4 rounded-lg bg-info/10 border border-info/30">
+        <div className="flex items-center gap-2 text-info">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="font-medium">Transaction Pending</span>
         </div>
@@ -606,8 +604,8 @@ function NetworkActions({
   // Failed - show error and retry option
   if (attestation?.status === "failed") {
     return (
-      <div className="space-y-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
-        <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+      <div className="space-y-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+        <div className="flex items-center gap-2 text-destructive">
           <AlertTriangle className="h-5 w-5" />
           <span className="font-medium">Attestation Failed</span>
         </div>

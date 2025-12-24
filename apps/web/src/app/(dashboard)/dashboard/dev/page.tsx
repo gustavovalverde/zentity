@@ -32,6 +32,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Spinner } from "@/components/ui/spinner";
 import { getUserProof } from "@/lib/crypto";
 
 export default function DevViewPage() {
@@ -75,8 +76,9 @@ export default function DevViewPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-pulse text-muted-foreground">
-          Loading proof data...
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Spinner size="sm" />
+          <span>Loading proof data...</span>
         </div>
       </div>
     );
@@ -137,7 +139,7 @@ export default function DevViewPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-yellow-500" />
+            <Zap className="h-5 w-5 text-warning" />
             Performance Metrics
           </CardTitle>
           <CardDescription>
@@ -186,7 +188,7 @@ export default function DevViewPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-blue-500" />
+            <Shield className="h-5 w-5 text-info" />
             ZK Proof (UltraHonk)
           </CardTitle>
           <CardDescription>
@@ -198,7 +200,7 @@ export default function DevViewPage() {
             <Badge variant="secondary">UltraHonk</Badge>
             <Badge variant="secondary">BN254 Curve</Badge>
             <Badge variant="secondary">Noir.js</Badge>
-            <Badge variant="outline" className="text-green-600">
+            <Badge variant="success" className="text-xs">
               Verified
             </Badge>
           </div>
@@ -222,7 +224,7 @@ export default function DevViewPage() {
                     onClick={() => copyToClipboard(proofJson, "proof")}
                   >
                     {copiedField === "proof" ? (
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-success" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}
@@ -254,7 +256,7 @@ export default function DevViewPage() {
                     onClick={() => copyToClipboard(signalsJson, "signals")}
                   >
                     {copiedField === "signals" ? (
-                      <Check className="h-4 w-4 text-green-500" />
+                      <Check className="h-4 w-4 text-success" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}
@@ -273,7 +275,7 @@ export default function DevViewPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5 text-purple-500" />
+            <Key className="h-5 w-5 text-info" />
             FHE Ciphertext (TFHE)
           </CardTitle>
           <CardDescription>
@@ -317,7 +319,7 @@ export default function DevViewPage() {
                       }
                     >
                       {copiedField === "ciphertext" ? (
-                        <Check className="h-4 w-4 text-green-500" />
+                        <Check className="h-4 w-4 text-success" />
                       ) : (
                         <Copy className="h-4 w-4" />
                       )}
@@ -357,7 +359,7 @@ export default function DevViewPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-gray-500" />
+            <Clock className="h-5 w-5 text-muted-foreground" />
             Metadata
           </CardTitle>
         </CardHeader>

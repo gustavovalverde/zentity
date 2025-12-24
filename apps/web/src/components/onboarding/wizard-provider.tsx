@@ -32,6 +32,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { Spinner } from "@/components/ui/spinner";
 import {
   defaultWizardData,
   type WizardData,
@@ -592,7 +593,10 @@ export function WizardProvider({
     return (
       <WizardContext.Provider value={value}>
         <div className="flex items-center justify-center py-12">
-          <div className="animate-pulse text-muted-foreground">Loading...</div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Spinner size="sm" />
+            <span>Loading...</span>
+          </div>
         </div>
       </WizardContext.Provider>
     );

@@ -361,15 +361,10 @@ export function ViewIdentityData() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-purple-600" />
+            <KeyRound className="h-5 w-5 text-info" />
             <CardTitle className="text-lg">Your On-Chain Identity</CardTitle>
           </div>
-          <Badge
-            variant="outline"
-            className="bg-purple-100 text-purple-800 border-purple-300"
-          >
-            Encrypted
-          </Badge>
+          <Badge variant="info">Encrypted</Badge>
         </div>
         <CardDescription>
           View your encrypted identity data stored on-chain
@@ -379,23 +374,9 @@ export function ViewIdentityData() {
       <CardContent className="space-y-4">
         {/* FHEVM SDK Status */}
         {!fhevmReady && (
-          <Alert
-            className={
-              fhevmStatus === "error"
-                ? "bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800"
-                : "bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800"
-            }
-          >
-            <Lock
-              className={`h-4 w-4 ${fhevmStatus === "error" ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400"}`}
-            />
-            <AlertDescription
-              className={
-                fhevmStatus === "error"
-                  ? "text-red-800 dark:text-red-200"
-                  : "text-yellow-800 dark:text-yellow-200"
-              }
-            >
+          <Alert variant={fhevmStatus === "error" ? "destructive" : "warning"}>
+            <Lock className="h-4 w-4" />
+            <AlertDescription>
               {fhevmStatus === "loading" ? (
                 <span className="flex items-center gap-2">
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -411,7 +392,7 @@ export function ViewIdentityData() {
                     variant="outline"
                     size="sm"
                     onClick={refreshFhevm}
-                    className="border-red-300 hover:bg-red-100 dark:border-red-700 dark:hover:bg-red-900"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
                   >
                     <RefreshCw className="h-3 w-3 mr-1" />
                     Retry
@@ -426,9 +407,9 @@ export function ViewIdentityData() {
 
         {/* Wallet Mismatch Warning */}
         {walletMismatch && attestedWallet && (
-          <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800">
-            <Lock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-            <AlertDescription className="text-orange-800 dark:text-orange-200 text-sm">
+          <Alert variant="warning">
+            <Lock className="h-4 w-4" />
+            <AlertDescription className="text-sm">
               <strong>Different Wallet Connected</strong>
               <div className="mt-1 text-xs">
                 This identity data can only be decrypted by the wallet that
@@ -584,8 +565,8 @@ function IdentityField({
 
   const variantClasses = {
     default: "text-foreground",
-    destructive: "text-red-600 dark:text-red-400",
-    success: "text-green-600 dark:text-green-400",
+    destructive: "text-destructive",
+    success: "text-success",
   };
 
   return (

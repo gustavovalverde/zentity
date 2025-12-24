@@ -128,17 +128,15 @@ export function DashboardTabs({
                           stroke="currentColor"
                           strokeWidth="2"
                           strokeDasharray="100, 100"
-                          className="text-green-500"
+                          className="text-success"
                         />
                       </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-green-600">
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-success">
                         100%
                       </span>
                     </div>
                     <div>
-                      <Badge className="bg-green-600 hover:bg-green-600">
-                        Maximum Privacy
-                      </Badge>
+                      <Badge variant="success">Maximum Privacy</Badge>
                       <p className="text-xs text-muted-foreground mt-1">
                         No raw PII stored on our servers
                       </p>
@@ -152,15 +150,8 @@ export function DashboardTabs({
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl font-bold text-yellow-600">
-                      0%
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="text-yellow-600 border-yellow-600"
-                    >
-                      Not Verified
-                    </Badge>
+                    <span className="text-3xl font-bold text-warning">0%</span>
+                    <Badge variant="warning">Not Verified</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Complete verification to enable privacy-preserving identity
@@ -192,8 +183,8 @@ export function DashboardTabs({
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {identityData?.documentType && (
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
-                        <FileCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
+                        <FileCheck className="h-5 w-5" />
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">
@@ -208,8 +199,8 @@ export function DashboardTabs({
 
                   {identityData?.countryVerified && (
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
-                        <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+                        <Globe className="h-5 w-5" />
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Country</p>
@@ -225,8 +216,8 @@ export function DashboardTabs({
 
                   {checks.ageProof && (
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
-                        <CheckCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+                        <CheckCircle className="h-5 w-5" />
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">
@@ -239,8 +230,8 @@ export function DashboardTabs({
 
                   {identityData?.verifiedAt && (
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900">
-                        <Calendar className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
+                        <Calendar className="h-5 w-5" />
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">
@@ -278,8 +269,8 @@ export function DashboardTabs({
       </TabsContent>
 
       <TabsContent value="relying-party" className="space-y-6">
-        <Alert className="bg-purple-50 border-purple-200 dark:bg-purple-950 dark:border-purple-800">
-          <Code className="h-4 w-4 text-purple-600" />
+        <Alert variant="info">
+          <Code className="h-4 w-4" />
           <AlertDescription>
             <strong>Relying Party Demo</strong> - Test the API endpoints that
             allow third parties to verify identity claims without accessing any
@@ -308,8 +299,8 @@ export function DashboardTabs({
             <CardContent className="space-y-4">
               <div className="rounded-lg border bg-muted/30 p-3">
                 <code className="text-xs">
-                  <span className="text-green-600">POST</span>{" "}
-                  <span className="text-blue-600">/api/rp/exchange</span>
+                  <span className="text-success">POST</span>{" "}
+                  <span className="text-info">/api/rp/exchange</span>
                 </code>
               </div>
 

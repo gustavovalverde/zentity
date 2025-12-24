@@ -39,11 +39,11 @@ export function TxHistory({ networkId, walletAddress }: TxHistoryProps) {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "mint":
-        return <Coins className="h-4 w-4 text-green-600" />;
+        return <Coins className="h-4 w-4 text-success" />;
       case "transfer_in":
-        return <ArrowDownLeft className="h-4 w-4 text-blue-600" />;
+        return <ArrowDownLeft className="h-4 w-4 text-info" />;
       case "transfer_out":
-        return <ArrowUpRight className="h-4 w-4 text-orange-600" />;
+        return <ArrowUpRight className="h-4 w-4 text-warning" />;
       default:
         return <History className="h-4 w-4" />;
     }
@@ -139,7 +139,7 @@ export function TxHistory({ networkId, walletAddress }: TxHistoryProps) {
             ))}
 
             {data.demo && (
-              <p className="text-xs text-center text-yellow-600 pt-2">
+              <p className="text-xs text-center text-warning pt-2">
                 Demo mode - showing mock data
               </p>
             )}

@@ -37,12 +37,14 @@ export default async function VerificationPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
+                  <CheckCircle className="h-5 w-5" />
                 </div>
                 <div>
                   <span className="text-lg">Age Verified</span>
-                  <Badge className="ml-2 bg-green-600">18+</Badge>
+                  <Badge variant="success" className="ml-2">
+                    18+
+                  </Badge>
                 </div>
               </CardTitle>
               <CardDescription>
@@ -76,7 +78,7 @@ export default async function VerificationPage() {
 
               <div className="rounded-lg border p-4">
                 <div className="flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-blue-600" />
+                  <Shield className="h-5 w-5 text-info" />
                   <span className="font-medium">Proof Performance</span>
                 </div>
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
@@ -133,7 +135,7 @@ export default async function VerificationPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Verification</span>
-                <span className="text-green-600 font-medium">Valid</span>
+                <span className="text-success font-medium">Valid</span>
               </div>
             </CardContent>
           </Card>

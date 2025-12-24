@@ -211,9 +211,9 @@ export function DefiDemoClient({
   // Wallet mismatch warning
   if (walletMismatch) {
     return (
-      <Card className="border-orange-200 dark:border-orange-800">
+      <Card className="border-warning/30">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-orange-600">
+          <CardTitle className="flex items-center gap-2 text-warning">
             <AlertTriangle className="h-5 w-5" />
             Wallet Mismatch
           </CardTitle>
@@ -222,9 +222,9 @@ export function DefiDemoClient({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800">
-            <AlertTriangle className="h-4 w-4 text-orange-600" />
-            <AlertDescription className="text-orange-800 dark:text-orange-200">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
               <p>
                 <strong>Connected:</strong>{" "}
                 <code className="text-xs">{address}</code>

@@ -139,17 +139,17 @@ export function TransferForm({
       </CardHeader>
       <CardContent className="space-y-4">
         {!accessGranted ? (
-          <Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-            <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-            <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
               Grant compliance access to enable transfers on this network.
             </AlertDescription>
           </Alert>
         ) : insufficientFunds ? (
           <div className="space-y-3">
-            <Alert className="bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-              <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+            <Alert variant="warning">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
                 Your wallet has no ETH available for gas on this network.
               </AlertDescription>
             </Alert>
@@ -178,9 +178,9 @@ export function TransferForm({
           </Alert>
         ) : txHash ? (
           <div className="space-y-4">
-            <Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800 dark:text-green-200">
+            <Alert variant="success">
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
                 <p className="font-medium">Transfer submitted!</p>
                 <p className="text-xs mt-1">
                   {isConfirmed
@@ -217,12 +217,12 @@ export function TransferForm({
               {isValidAddress && recipientChecked && (
                 <div className="flex items-center gap-1 text-xs">
                   {recipientStatus?.isAttested ? (
-                    <span className="text-green-600 flex items-center gap-1">
+                    <span className="text-success flex items-center gap-1">
                       <CheckCircle className="h-3 w-3" />
                       Recipient is attested
                     </span>
                   ) : (
-                    <span className="text-orange-600 flex items-center gap-1">
+                    <span className="text-warning flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3" />
                       Recipient not attested - transfer will be 0
                     </span>
@@ -248,9 +248,9 @@ export function TransferForm({
             </div>
 
             {recipientNotAttested && (
-              <Alert className="bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800">
-                <AlertTriangle className="h-4 w-4 text-orange-600" />
-                <AlertDescription className="text-orange-800 dark:text-orange-200 text-xs">
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-xs">
                   <strong>Warning:</strong> Recipient is not attested on this
                   network. Due to compliance checks, 0 tokens will be
                   transferred (the contract uses silent failure).

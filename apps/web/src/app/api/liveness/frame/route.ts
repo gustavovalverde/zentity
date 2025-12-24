@@ -25,7 +25,7 @@ import {
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64 } from "@/lib/liveness/human-server";
 
-import { sendSSEEvent } from "../stream/route";
+import { sendSSEEvent } from "../stream/sse";
 
 const frameSchema = z.object({
   sessionId: z.string().min(1),

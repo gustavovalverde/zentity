@@ -23,8 +23,8 @@ export default async function MagicLinkSentPage({
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-          <Mail className="h-8 w-8 text-green-600 dark:text-green-400" />
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/10 text-success">
+          <Mail className="h-8 w-8" />
         </div>
         <CardTitle className="text-2xl">Check your email</CardTitle>
         <CardDescription>
@@ -34,7 +34,7 @@ export default async function MagicLinkSentPage({
       <CardContent className="space-y-6">
         <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
             <div>
               <p className="text-sm font-medium">
                 Click the link in your email
@@ -45,7 +45,7 @@ export default async function MagicLinkSentPage({
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
             <div>
               <p className="text-sm font-medium">Link expires in 5 minutes</p>
               <p className="text-xs text-muted-foreground">

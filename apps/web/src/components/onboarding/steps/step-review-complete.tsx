@@ -84,8 +84,8 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
       <div
         className={cn(
           "flex h-8 w-8 items-center justify-center rounded-full transition-all",
-          status === "complete" && "bg-green-600 text-white",
-          status === "active" && "bg-blue-600 text-white animate-pulse",
+          status === "complete" && "bg-success text-success-foreground",
+          status === "active" && "bg-info text-info-foreground animate-pulse",
           status === "pending" && "bg-muted text-muted-foreground",
         )}
       >
@@ -100,8 +100,8 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
       <span
         className={cn(
           "text-sm transition-colors",
-          status === "complete" && "text-green-600 font-medium",
-          status === "active" && "text-blue-600 font-medium",
+          status === "complete" && "text-success font-medium",
+          status === "active" && "text-info font-medium",
           status === "pending" && "text-muted-foreground",
         )}
       >
@@ -552,13 +552,15 @@ export function StepReviewComplete() {
         <Alert variant="destructive">
           <AlertDescription className="flex items-center justify-between">
             <span>{error}</span>
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0"
               onClick={() => form.handleSubmit()}
-              className="ml-4 text-sm font-medium underline hover:no-underline"
             >
               Try again
-            </button>
+            </Button>
           </AlertDescription>
         </Alert>
       )}
@@ -669,7 +671,7 @@ export function StepReviewComplete() {
                 className={cn(
                   "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
                   faceMatchStatus === "matching" &&
-                    "ring-2 ring-blue-400 ring-offset-2",
+                    "ring-2 ring-info/40 ring-offset-2",
                 )}
               >
                 {faceMatchStatus === "matching" &&
@@ -701,16 +703,16 @@ export function StepReviewComplete() {
               {faceMatchStatus === "matching" && (
                 <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
                   <div className="relative">
-                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                    <div className="absolute inset-0 h-6 w-6 rounded-full bg-blue-400/20 animate-ping" />
+                    <Loader2 className="h-6 w-6 animate-spin text-info" />
+                    <div className="absolute inset-0 h-6 w-6 rounded-full bg-info/20 animate-ping" />
                   </div>
                   <Skeleton className="h-3 w-16 mt-1" />
                 </div>
               )}
               {faceMatchStatus === "matched" && (
                 <div className="animate-in zoom-in duration-300">
-                  <Check className="h-6 w-6 text-green-600" />
-                  <span className="text-xs font-medium text-green-600">
+                  <Check className="h-6 w-6 text-success" />
+                  <span className="text-xs font-medium text-success">
                     {Math.round((faceMatchResult?.confidence || 0) * 100)}%
                     match
                   </span>
@@ -718,16 +720,16 @@ export function StepReviewComplete() {
               )}
               {faceMatchStatus === "no_match" && (
                 <>
-                  <XCircle className="h-6 w-6 text-red-600" />
-                  <span className="text-xs font-medium text-red-600">
+                  <XCircle className="h-6 w-6 text-destructive" />
+                  <span className="text-xs font-medium text-destructive">
                     No match
                   </span>
                 </>
               )}
               {faceMatchStatus === "error" && (
                 <>
-                  <XCircle className="h-6 w-6 text-yellow-600" />
-                  <span className="text-xs font-medium text-yellow-600">
+                  <XCircle className="h-6 w-6 text-warning" />
+                  <span className="text-xs font-medium text-warning">
                     Error
                   </span>
                 </>
@@ -739,7 +741,7 @@ export function StepReviewComplete() {
                 className={cn(
                   "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
                   faceMatchStatus === "matching" &&
-                    "ring-2 ring-blue-400 ring-offset-2",
+                    "ring-2 ring-info/40 ring-offset-2",
                 )}
               >
                 {faceMatchStatus === "matching" && !selfieForMatching && (
@@ -766,9 +768,9 @@ export function StepReviewComplete() {
             </p>
           )}
           {faceMatchStatus === "matched" && (
-            <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-              <Check className="h-4 w-4 text-green-600" />
-              <AlertDescription className="ml-2 text-green-700 dark:text-green-300">
+            <Alert variant="success">
+              <Check className="h-4 w-4" />
+              <AlertDescription className="ml-2">
                 Face verification successful. The selfie matches the ID
                 document.
               </AlertDescription>
@@ -910,12 +912,10 @@ export function StepReviewComplete() {
 
         {/* Processing Status - shown during submission */}
         {proofStatus !== "idle" && proofStatus !== "error" && (
-          <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-800 dark:bg-blue-950 animate-in fade-in duration-300">
+          <div className="space-y-4 rounded-lg border border-info/30 bg-info/10 p-5 text-info animate-in fade-in duration-300">
             <div className="flex items-center gap-2 mb-4">
-              <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <span className="font-medium text-blue-700 dark:text-blue-300">
-                Securing your account
-              </span>
+              <Shield className="h-5 w-5" />
+              <span className="font-medium">Securing your account</span>
             </div>
 
             <div className="space-y-3">
@@ -951,7 +951,7 @@ export function StepReviewComplete() {
               />
             </div>
 
-            <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-blue-200 dark:border-blue-800">
+            <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-info/30">
               Your personal data is processed transiently. Only cryptographic
               proofs are stored.
             </p>

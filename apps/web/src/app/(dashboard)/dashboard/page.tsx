@@ -115,7 +115,7 @@ export default async function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-lg font-semibold text-green-600">
+            <p className="text-lg font-semibold text-success">
               {hasProof ? "No raw PII" : "N/A"}
             </p>
             <p className="text-xs text-muted-foreground">

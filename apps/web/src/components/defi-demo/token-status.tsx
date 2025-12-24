@@ -50,11 +50,7 @@ export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
             <Coins className="h-5 w-5 text-primary" />
             <CardTitle className="text-lg">Token Info</CardTitle>
           </div>
-          {tokenInfo?.demo && (
-            <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
-              DEMO
-            </Badge>
-          )}
+          {tokenInfo?.demo && <Badge variant="warning">DEMO</Badge>}
         </div>
         <CardDescription>CompliantERC20 contract details</CardDescription>
       </CardHeader>
@@ -93,7 +89,7 @@ export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
             <div className="pt-2 border-t">
               <p className="text-xs text-muted-foreground mb-2">Your Status</p>
               {attestationStatus?.isAttested ? (
-                <div className="flex items-center gap-2 text-green-600">
+                <div className="flex items-center gap-2 text-success">
                   <CheckCircle className="h-4 w-4" />
                   <span className="text-sm font-medium">Attested</span>
                 </div>

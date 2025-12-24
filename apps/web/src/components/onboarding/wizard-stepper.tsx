@@ -88,16 +88,17 @@ export function WizardStepper() {
           const canNavigate = stepNumber < state.currentStep && !isNavigating;
 
           return (
-            <button
+            <Button
               type="button"
               key={stepNumber}
+              variant="ghost"
               onClick={() => canNavigate && handleStepClick(stepNumber)}
               disabled={!canNavigate}
               className={cn(
                 // Ensure minimum 44px touch target for accessibility
                 "flex flex-col items-center gap-1 group transition-transform duration-200 min-w-[44px] min-h-[44px] p-1",
-                canNavigate && "cursor-pointer hover:scale-105",
-                isNavigating && "opacity-50 cursor-not-allowed",
+                canNavigate && "hover:scale-105",
+                isNavigating && "opacity-50",
               )}
               aria-label={`${title} - Step ${stepNumber}${isCompleted ? " (completed)" : isCurrent ? " (current)" : ""}`}
               aria-current={isCurrent ? "step" : undefined}
@@ -140,7 +141,7 @@ export function WizardStepper() {
               >
                 {title}
               </span>
-            </button>
+            </Button>
           );
         })}
       </div>

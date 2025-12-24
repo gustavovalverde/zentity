@@ -98,9 +98,9 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
         </div>
 
         {mintMutation.isSuccess && mintMutation.data && (
-          <Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800 dark:text-green-200">
+          <Alert variant="success">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>
               <p className="font-medium">Tokens minted successfully!</p>
               {mintMutation.data.txHash && !mintMutation.data.demo && (
                 <a

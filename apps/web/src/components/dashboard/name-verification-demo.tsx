@@ -77,21 +77,21 @@ export function NameVerificationDemo() {
           <div
             className={`flex items-center gap-3 p-3 rounded-lg border ${
               result.matches
-                ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950"
-                : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
+                ? "border-success/30 bg-success/10 text-success"
+                : "border-destructive/30 bg-destructive/10 text-destructive"
             }`}
           >
             {result.matches ? (
-              <CheckCircle className="h-5 w-5 text-green-600" />
+              <CheckCircle className="h-5 w-5" />
             ) : (
-              <XCircle className="h-5 w-5 text-red-600" />
+              <XCircle className="h-5 w-5" />
             )}
             <div className="flex-1">
               <span className="font-medium">
                 {result.matches ? "Name verified" : "Name does not match"}
               </span>
             </div>
-            <Badge variant={result.matches ? "default" : "destructive"}>
+            <Badge variant={result.matches ? "success" : "destructive"}>
               {result.matches ? "MATCH" : "NO MATCH"}
             </Badge>
             <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -107,8 +107,8 @@ export function NameVerificationDemo() {
           </Alert>
         )}
 
-        <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-          <Shield className="h-4 w-4 text-blue-600" />
+        <Alert variant="info">
+          <Shield className="h-4 w-4" />
           <AlertDescription className="text-xs">
             <strong>Privacy Guarantee:</strong> The stored name is NEVER
             revealed. We compute SHA256(normalize(input) + salt) and compare
