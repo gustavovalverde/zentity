@@ -87,6 +87,12 @@ export function DefiDemoClient({
   const hasComplianceAccess = isDemoMode
     ? true
     : Boolean(complianceAccess?.granted);
+  const complianceTxHash =
+    isDemoMode || !complianceAccess?.granted ? null : complianceAccess?.txHash;
+  const complianceExplorerUrl =
+    isDemoMode || !complianceAccess?.granted
+      ? null
+      : complianceAccess?.explorerUrl;
 
   const handleAccessGranted = () => {
     if (activeNetworkId && address) {
@@ -95,7 +101,13 @@ export function DefiDemoClient({
           networkId: activeNetworkId,
           walletAddress: address,
         },
-        { granted: true, demo: false },
+        {
+          granted: true,
+          demo: false,
+          txHash: null,
+          blockNumber: null,
+          explorerUrl: null,
+        },
       );
       utils.token.complianceAccess.invalidate({
         networkId: activeNetworkId,
@@ -294,6 +306,8 @@ export function DefiDemoClient({
               expectedChainId={selectedNetworkData.chainId}
               expectedNetworkName={selectedNetworkData.name}
               isGranted={hasComplianceAccess}
+              grantedTxHash={complianceTxHash}
+              grantedExplorerUrl={complianceExplorerUrl}
               onGranted={handleAccessGranted}
             />
           )}

@@ -134,6 +134,10 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   );
 
   const complianceGranted = isDemo ? true : Boolean(complianceAccess?.granted);
+  const complianceTxHash =
+    isDemo || !complianceAccess?.granted ? null : complianceAccess?.txHash;
+  const complianceExplorerUrl =
+    isDemo || !complianceAccess?.granted ? null : complianceAccess?.explorerUrl;
 
   // Auto-select first network if none selected
   useEffect(() => {
@@ -332,6 +336,8 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                     expectedChainId={selectedNetworkData?.chainId}
                     expectedNetworkName={selectedNetworkData?.name}
                     isGranted={complianceGranted}
+                    grantedTxHash={complianceTxHash}
+                    grantedExplorerUrl={complianceExplorerUrl}
                     onGranted={() => {
                       if (selectedNetworkData?.id && address) {
                         utils.token.complianceAccess.invalidate({

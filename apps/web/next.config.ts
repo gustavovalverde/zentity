@@ -137,10 +137,20 @@ const nextConfig: NextConfig = {
       });
     }
 
+    const coopHeaders = [
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+      { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+    ];
+
     return [
       {
         source: "/(.*)",
         headers,
+      },
+      // Enable SharedArrayBuffer only on routes that need threaded WASM
+      {
+        source: "/sign-up",
+        headers: coopHeaders,
       },
     ];
   },

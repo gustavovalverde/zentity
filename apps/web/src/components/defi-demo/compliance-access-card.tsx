@@ -38,6 +38,8 @@ interface ComplianceAccessCardProps {
   onGranted: () => void;
   expectedChainId?: number;
   expectedNetworkName?: string;
+  grantedTxHash?: string | null;
+  grantedExplorerUrl?: string | null;
 }
 
 export function ComplianceAccessCard({
@@ -47,6 +49,8 @@ export function ComplianceAccessCard({
   onGranted,
   expectedChainId,
   expectedNetworkName,
+  grantedTxHash,
+  grantedExplorerUrl,
 }: ComplianceAccessCardProps) {
   const { address } = useAppKitAccount();
   const walletAddress = address as `0x${string}` | undefined;
@@ -189,7 +193,38 @@ export function ComplianceAccessCard({
           <Alert variant="success">
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              Compliance access granted. You can now transfer tokens.
+              <div className="space-y-1">
+                <div>
+                  Compliance access granted. You can now transfer tokens.
+                </div>
+                {grantedTxHash && (
+                  <div className="text-xs text-muted-foreground">
+                    Already granted on-chain.
+                    {grantedExplorerUrl ? (
+                      <>
+                        {" "}
+                        <a
+                          href={grantedExplorerUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          View transaction
+                        </a>
+                      </>
+                    ) : (
+                      <>
+                        {" "}
+                        <span className="font-mono">
+                          {`${grantedTxHash.slice(0, 6)}...${grantedTxHash.slice(
+                            -4,
+                          )}`}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </AlertDescription>
           </Alert>
         ) : (

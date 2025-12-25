@@ -21,6 +21,7 @@ import {
   canCreateProvider,
   createProvider,
   getEnabledNetworks,
+  getExplorerTxUrl,
   getNetworkById,
   isDemoMode,
 } from "@/lib/blockchain";
@@ -479,7 +480,13 @@ export const tokenRouter = router({
     .query(async ({ input }) => {
       // Demo mode
       if (isDemoMode()) {
-        return { granted: true, demo: true };
+        return {
+          granted: true,
+          demo: true,
+          txHash: null,
+          blockNumber: null,
+          explorerUrl: null,
+        };
       }
 
       const network = getNetworkById(input.networkId);
@@ -493,7 +500,13 @@ export const tokenRouter = router({
       const identityRegistry = network.contracts.identityRegistry;
       const complianceRules = network.contracts.complianceRules;
       if (!identityRegistry || !complianceRules) {
-        return { granted: false, demo: false };
+        return {
+          granted: false,
+          demo: false,
+          txHash: null,
+          blockNumber: null,
+          explorerUrl: null,
+        };
       }
 
       const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
@@ -533,7 +546,30 @@ export const tokenRouter = router({
           toBlock: "latest",
         });
 
-        return { granted: logs.length > 0, demo: false };
+        const latestLog =
+          logs.length > 0
+            ? logs.reduce((latest, log) =>
+                (log.blockNumber ?? BigInt(0)) >
+                (latest.blockNumber ?? BigInt(0))
+                  ? log
+                  : latest,
+              )
+            : null;
+
+        const txHash = latestLog?.transactionHash ?? null;
+        const blockNumber = latestLog?.blockNumber
+          ? Number(latestLog.blockNumber)
+          : null;
+
+        return {
+          granted: logs.length > 0,
+          demo: false,
+          txHash,
+          blockNumber,
+          explorerUrl: txHash
+            ? getExplorerTxUrl(input.networkId, txHash)
+            : null,
+        };
       } catch (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
