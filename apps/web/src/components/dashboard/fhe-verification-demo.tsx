@@ -123,15 +123,15 @@ export function FheVerificationDemo({
               <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
                 {result.isOver18 ? (
                   <>
-                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <CheckCircle className="h-5 w-5 text-success" />
                     <span className="font-medium">Age Check Passed</span>
-                    <Badge variant="default" className="ml-auto">
+                    <Badge variant="success" className="ml-auto">
                       {"≥"} 18 Years
                     </Badge>
                   </>
                 ) : (
                   <>
-                    <XCircle className="h-5 w-5 text-red-500" />
+                    <XCircle className="h-5 w-5 text-destructive" />
                     <span className="font-medium">Age Check Failed</span>
                     <Badge variant="destructive" className="ml-auto">
                       {"<"} 18 Years

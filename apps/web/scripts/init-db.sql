@@ -157,3 +157,25 @@ CREATE INDEX IF NOT EXISTS idx_kyc_status_user_id ON kyc_status(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_proofs_user_id ON identity_proofs (user_id);
 CREATE INDEX IF NOT EXISTS idx_identity_proofs_document_hash ON identity_proofs (document_hash);
 CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at ON onboarding_sessions(expires_at);
+
+-- Blockchain attestations (multi-network)
+CREATE TABLE IF NOT EXISTS blockchain_attestations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  wallet_address TEXT NOT NULL,
+  network_id TEXT NOT NULL,           -- "fhevm_sepolia", "hardhat", etc.
+  chain_id INTEGER NOT NULL,
+  status TEXT DEFAULT 'pending',      -- pending, submitted, confirmed, failed
+  tx_hash TEXT,
+  block_number INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  confirmed_at TEXT,
+  error_message TEXT,
+  retry_count INTEGER DEFAULT 0,
+  UNIQUE(user_id, network_id)         -- User can attest once per network
+);
+
+CREATE INDEX IF NOT EXISTS idx_attestations_user_id ON blockchain_attestations(user_id);
+CREATE INDEX IF NOT EXISTS idx_attestations_network ON blockchain_attestations(network_id);
+CREATE INDEX IF NOT EXISTS idx_attestations_status ON blockchain_attestations(status);

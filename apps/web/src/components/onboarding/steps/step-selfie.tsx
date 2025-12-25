@@ -18,12 +18,9 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { STABILITY_FRAMES, useSelfieLivenessFlow } from "@/hooks/liveness";
 import { useHumanLiveness } from "@/hooks/use-human-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
-import {
-  STABILITY_FRAMES,
-  useSelfieLivenessFlow,
-} from "@/hooks/use-selfie-liveness-flow";
 import {
   getLivenessDebugEnabled,
   SMILE_DELTA_THRESHOLD,
@@ -263,7 +260,7 @@ export function StepSelfie() {
                     </div>
                   )}
                   {lastVerifyError && (
-                    <div className="mt-1 text-red-200">
+                    <div className="mt-1 text-destructive/80">
                       verify: {lastVerifyError}
                     </div>
                   )}
@@ -338,7 +335,9 @@ export function StepSelfie() {
                 ry="170"
                 fill="none"
                 stroke={
-                  challengeState === "waiting_challenge" ? "#eab308" : "#ffffff"
+                  challengeState === "waiting_challenge"
+                    ? "var(--warning)"
+                    : "var(--foreground)"
                 }
                 strokeWidth="3"
                 strokeDasharray={
@@ -351,7 +350,9 @@ export function StepSelfie() {
               {/* Corner guides */}
               <g
                 stroke={
-                  challengeState === "waiting_challenge" ? "#eab308" : "#ffffff"
+                  challengeState === "waiting_challenge"
+                    ? "var(--warning)"
+                    : "var(--foreground)"
                 }
                 strokeWidth="3"
                 strokeLinecap="round"
@@ -426,9 +427,9 @@ export function StepSelfie() {
               role="status"
               aria-live="polite"
               aria-atomic="true"
-              className="rounded-lg bg-yellow-500/95 px-6 py-4 shadow-lg backdrop-blur"
+              className="rounded-lg bg-warning/90 px-6 py-4 shadow-lg backdrop-blur"
             >
-              <div className="flex items-center gap-3 text-yellow-950">
+              <div className="flex items-center gap-3 text-warning-foreground">
                 {/* Challenge-specific icon */}
                 {currentChallenge.challengeType === "smile" && (
                   <Smile className="h-8 w-8" aria-hidden="true" />
@@ -449,7 +450,8 @@ export function StepSelfie() {
                       <span className="text-xs w-14">You:</span>
                       <Progress
                         value={challengeProgress}
-                        className="h-2 w-32 bg-yellow-200"
+                        className="h-2 w-32 bg-warning/20"
+                        indicatorClassName="bg-warning"
                         aria-label={`Your progress: ${challengeProgress.toFixed(0)}%`}
                       />
                       <span className="text-xs w-8">
@@ -460,7 +462,8 @@ export function StepSelfie() {
                       <span className="text-xs w-14">Server:</span>
                       <Progress
                         value={serverProgress?.progress ?? 0}
-                        className="h-2 w-32 bg-yellow-200"
+                        className="h-2 w-32 bg-warning/20"
+                        indicatorClassName="bg-warning"
                         aria-label={`Server progress: ${serverProgress?.progress ?? 0}%`}
                       />
                       <span className="text-xs w-8">
@@ -470,7 +473,7 @@ export function StepSelfie() {
                   </div>
                   {/* Server hint */}
                   {serverHint && (
-                    <p className="mt-2 text-xs text-yellow-900 font-medium">
+                    <p className="mt-2 text-xs text-warning-foreground font-medium">
                       {serverHint}
                     </p>
                   )}
@@ -479,7 +482,7 @@ export function StepSelfie() {
                     statusMessage &&
                     (currentChallenge.challengeType === "turn_left" ||
                       currentChallenge.challengeType === "turn_right") && (
-                      <p className="mt-1 text-xs text-yellow-900">
+                      <p className="mt-1 text-xs text-warning-foreground">
                         {statusMessage}
                       </p>
                     )}
@@ -498,9 +501,9 @@ export function StepSelfie() {
             <div
               role="status"
               aria-live="polite"
-              className="rounded-lg bg-green-500/95 px-6 py-4"
+              className="rounded-lg bg-success/90 px-6 py-4"
             >
-              <div className="flex items-center gap-2 text-white">
+              <div className="flex items-center gap-2 text-success-foreground">
                 <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                 <p className="font-medium">
                   {currentChallenge?.title || "Challenge"} detected!
@@ -516,9 +519,9 @@ export function StepSelfie() {
             <div
               role="status"
               aria-live="polite"
-              className="rounded-lg bg-green-500/95 px-6 py-4"
+              className="rounded-lg bg-success/90 px-6 py-4"
             >
-              <div className="flex items-center gap-2 text-white">
+              <div className="flex items-center gap-2 text-success-foreground">
                 <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
                 <p className="font-medium">Great! Next challenge...</p>
               </div>
@@ -598,9 +601,9 @@ export function StepSelfie() {
 
       {/* Success indicator */}
       {challengeState === "all_passed" && (
-        <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
-          <AlertDescription className="ml-2 text-green-700 dark:text-green-300">
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription className="ml-2">
             Liveness verified! All {completedChallenges.length} challenges
             passed. Click &quot;Next&quot; to continue.
           </AlertDescription>

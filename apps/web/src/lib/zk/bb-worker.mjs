@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync, mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 import { UltraHonkBackend } from "@aztec/bb.js";
@@ -18,6 +19,28 @@ function normalizePublicInput(input) {
 
 const backendCache = new Map();
 const vkeyCache = new Map();
+const crsPath =
+  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
+
+if (!process.env.CRS_PATH) {
+  process.env.CRS_PATH = crsPath;
+}
+
+try {
+  mkdirSync(crsPath, { recursive: true });
+} catch {
+  // Best-effort: directory might already exist or be read-only.
+}
+
+function logError(prefix, error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : null;
+  if (stack) {
+    process.stderr.write(`${prefix}: ${message}\n${stack}\n`);
+  } else {
+    process.stderr.write(`${prefix}: ${message}\n`);
+  }
+}
 
 function getCacheKey(circuitType, bytecode) {
   return `${circuitType}:${sha256Hex(bytecode)}`;
@@ -36,9 +59,18 @@ async function getBackend(circuitType, bytecode) {
   const cached = backendCache.get(cacheKey);
   if (cached) return cached;
 
+  const crsExists =
+    existsSync(`${crsPath}/g1.dat`) || existsSync(`${crsPath}/g1.dat.gz`);
+
+  if (!crsExists) {
+    process.stderr.write(
+      `bb-worker: CRS cache not found at ${crsPath}. Will attempt download.\n`,
+    );
+  }
+
   const backend = new UltraHonkBackend(bytecode, {
     threads: 1,
-    crsPath: process.env.BB_CRS_PATH || "/tmp/.bb-crs",
+    crsPath,
   });
 
   backendCache.set(cacheKey, backend);
@@ -113,6 +145,7 @@ rl.on("line", (line) => {
       process.stdout.write(`${JSON.stringify({ id, result })}\n`);
     })
     .catch((error) => {
+      logError("bb-worker request failed", error);
       process.stdout.write(
         `${JSON.stringify({
           id,

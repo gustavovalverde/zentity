@@ -1,11 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { getDefaultDatabasePath, getSqliteDb } from "@/lib/db";
 
-import { calculateKycLevel, ensureKycStatus } from "../route";
-
-const db = getSqliteDb(getDefaultDatabasePath());
+import { db } from "../kyc-db";
+import { calculateKycLevel, ensureKycStatus } from "../kyc-utils";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME_TYPES = [

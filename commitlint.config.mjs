@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   extends: ["@commitlint/config-conventional"],
   rules: {
     "type-enum": [
@@ -18,6 +18,7 @@ module.exports = {
         "revert",
       ],
     ],
-    "subject-case": [2, "always", "lower-case"],
+    // Disable subject-case - conventional commits don't enforce case after type prefix
+    "subject-case": [0],
   },
 };

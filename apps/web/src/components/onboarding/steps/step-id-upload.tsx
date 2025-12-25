@@ -304,15 +304,15 @@ export function StepIdUpload() {
         processingState === "processing") && (
         <div className="space-y-4 animate-in fade-in duration-300">
           {/* Status header */}
-          <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
-            <Loader2 className="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center gap-3 rounded-lg border border-info/30 bg-info/10 p-4 text-info">
+            <Loader2 className="h-5 w-5 animate-spin" />
             <div>
-              <p className="font-medium text-blue-700 dark:text-blue-300">
+              <p className="font-medium">
                 {processingState === "converting"
                   ? "Preparing document..."
                   : "Analyzing document..."}
               </p>
-              <p className="text-sm text-blue-600 dark:text-blue-400">
+              <p className="text-sm text-info/80">
                 {processingState === "processing" &&
                   "Verifying your document securely"}
               </p>
@@ -347,13 +347,11 @@ export function StepIdUpload() {
       {/* Verified document display */}
       {processingState === "verified" && documentResult && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950">
-            <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+          <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-success">
+            <CheckCircle2 className="h-5 w-5" />
             <div>
-              <p className="font-medium text-green-700 dark:text-green-300">
-                Document Verified
-              </p>
-              <p className="text-sm text-green-600 dark:text-green-400">
+              <p className="font-medium">Document Verified</p>
+              <p className="text-sm text-success/80">
                 {DOCUMENT_TYPE_LABELS[documentResult.documentType]} detected
               </p>
             </div>
@@ -439,13 +437,11 @@ export function StepIdUpload() {
       {/* Rejected document display */}
       {processingState === "rejected" && documentResult && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
-            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
+            <AlertCircle className="h-5 w-5" />
             <div className="flex-1">
-              <p className="font-medium text-red-700 dark:text-red-300">
-                Document Not Accepted
-              </p>
-              <p className="text-sm text-red-600 dark:text-red-400">
+              <p className="font-medium">Document Not Accepted</p>
+              <p className="text-sm text-destructive/80">
                 {documentResult.documentType === "unknown"
                   ? "Unable to identify document type"
                   : "Could not extract required information from document"}
@@ -544,9 +540,11 @@ export function StepIdUpload() {
 
       {/* Upload area - only show if no file selected or rejected */}
       {!fileName && processingState === "idle" && (
-        <button
+        <Button
+          type="button"
+          variant="outline"
           className={cn(
-            "relative flex min-h-[200px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            "relative flex min-h-[200px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
             dragActive
               ? "border-primary bg-primary/5"
               : "border-muted-foreground/25",
@@ -556,7 +554,6 @@ export function StepIdUpload() {
           onDragOver={handleDrag}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          type="button"
           aria-describedby="id-upload-help"
         >
           <input
@@ -572,7 +569,7 @@ export function StepIdUpload() {
           <p id="id-upload-help" className="mt-1 text-sm text-muted-foreground">
             JPEG, PNG, or WebP (max 10MB)
           </p>
-        </button>
+        </Button>
       )}
 
       <Alert>

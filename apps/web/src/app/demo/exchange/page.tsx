@@ -14,6 +14,9 @@
 
 import { useState } from "react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   generateAgeProof,
   generateDocValidityProof,
@@ -238,10 +241,10 @@ export default function ExchangeSimulatorPage() {
     livenessStatus === false;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
+    <div className="min-h-screen bg-background text-foreground p-8">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Exchange Simulator Demo</h1>
-        <p className="text-gray-400 mb-8">
+        <p className="text-muted-foreground mb-8">
           Demonstrates privacy-preserving identity verification for regulated
           entities
         </p>
@@ -260,7 +263,7 @@ export default function ExchangeSimulatorPage() {
               key={s}
               className={`h-2 flex-1 rounded ${
                 step === s
-                  ? "bg-blue-500"
+                  ? "bg-info"
                   : i <
                       [
                         "intro",
@@ -270,8 +273,8 @@ export default function ExchangeSimulatorPage() {
                         "verification",
                         "summary",
                       ].indexOf(step)
-                    ? "bg-green-500"
-                    : "bg-gray-700"
+                    ? "bg-success"
+                    : "bg-muted"
               }`}
             />
           ))}
@@ -280,38 +283,38 @@ export default function ExchangeSimulatorPage() {
         {/* Step content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left: Current step */}
-          <div className="bg-gray-800 rounded-lg p-6">
+          <div className="rounded-lg border bg-card p-6">
             {flowError && (
-              <div className="mb-4 rounded border border-red-700 bg-red-900/30 p-3 text-sm text-red-200">
-                {flowError}
-              </div>
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{flowError}</AlertDescription>
+              </Alert>
             )}
             {step === "intro" && (
               <div>
                 <h2 className="text-xl font-semibold mb-4">
                   Welcome to the Exchange Demo
                 </h2>
-                <p className="text-gray-300 mb-4">
+                <p className="text-muted-foreground mb-4">
                   This demo simulates a crypto exchange (like Binance or
                   Coinbase) requesting KYC verification from a Zentity user.
                 </p>
-                <div className="bg-gray-700 rounded p-4 mb-4">
+                <div className="rounded border bg-muted/40 p-4 mb-4">
                   <h3 className="font-medium mb-2">The Flow:</h3>
-                  <ol className="list-decimal list-inside text-sm text-gray-300 space-y-1">
+                  <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1">
                     <li>Exchange generates RSA keypair</li>
                     <li>User consents to share data</li>
                     <li>Zentity creates encrypted disclosure package</li>
                     <li>Exchange decrypts PII and verifies proofs</li>
                   </ol>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={handleGenerateKeypair}
                   disabled={isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
+                  className="w-full"
                 >
                   {isLoading ? "Loading..." : "Start Demo as Exchange"}
-                </button>
+                </Button>
               </div>
             )}
 
@@ -320,28 +323,28 @@ export default function ExchangeSimulatorPage() {
                 <h2 className="text-xl font-semibold mb-4">
                   Step 1: Exchange Requests Verification
                 </h2>
-                <div className="bg-green-900/30 border border-green-700 rounded p-4 mb-4">
-                  <p className="text-green-400 text-sm">
+                <Alert variant="success" className="mb-4">
+                  <AlertDescription>
                     Exchange keypair generated
-                  </p>
-                </div>
-                <div className="bg-gray-700 rounded p-4 mb-4">
+                  </AlertDescription>
+                </Alert>
+                <div className="rounded border bg-muted/40 p-4 mb-4">
                   <h3 className="font-medium mb-2">Exchange Public Key:</h3>
-                  <code className="text-xs text-gray-400 break-all block">
+                  <code className="text-xs text-muted-foreground break-all block">
                     {exchangeKeypair?.publicKey.substring(0, 100)}...
                   </code>
                 </div>
-                <p className="text-gray-300 text-sm mb-4">
+                <p className="text-muted-foreground text-sm mb-4">
                   The exchange sends their public key to Zentity. PII will be
                   encrypted to this key.
                 </p>
-                <button
+                <Button
                   type="button"
                   onClick={() => setStep("user-consent")}
-                  className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium"
+                  className="w-full"
                 >
                   Continue to User Consent
-                </button>
+                </Button>
               </div>
             )}
 
@@ -350,38 +353,37 @@ export default function ExchangeSimulatorPage() {
                 <h2 className="text-xl font-semibold mb-4">
                   Step 2: User Consent
                 </h2>
-                <div className="bg-yellow-900/30 border border-yellow-700 rounded p-4 mb-4">
-                  <h3 className="font-medium text-yellow-400 mb-2">
-                    Consent Request
-                  </h3>
-                  <p className="text-sm text-gray-300">
+                <Alert variant="warning" className="mb-4">
+                  <AlertTitle className="text-sm">Consent Request</AlertTitle>
+                  <AlertDescription className="text-sm">
                     <strong>CryptoExchange Inc.</strong> is requesting access
                     to:
-                  </p>
-                  <ul className="list-disc list-inside text-sm text-gray-300 mt-2">
+                  </AlertDescription>
+                  <ul className="list-disc list-inside text-sm text-muted-foreground mt-2">
                     <li>Full Name</li>
                     <li>Date of Birth</li>
                     <li>Nationality</li>
                     <li>Document Number</li>
                     <li>Identity Verification Proofs</li>
                   </ul>
-                </div>
+                </Alert>
                 <div className="flex gap-4">
-                  <button
+                  <Button
                     type="button"
                     onClick={resetDemo}
-                    className="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded font-medium"
+                    variant="outline"
+                    className="flex-1"
                   >
                     Deny
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     onClick={handleUserConsent}
                     disabled={isLoading}
-                    className="flex-1 bg-green-600 hover:bg-green-700 px-4 py-3 rounded font-medium disabled:opacity-50"
+                    className="flex-1"
                   >
                     {isLoading ? "Creating..." : "Approve"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -391,17 +393,17 @@ export default function ExchangeSimulatorPage() {
                 <h2 className="text-xl font-semibold mb-4">
                   Step 3: Disclosure Package Created
                 </h2>
-                <div className="bg-green-900/30 border border-green-700 rounded p-4 mb-4">
-                  <p className="text-green-400 text-sm">
+                <Alert variant="success" className="mb-4">
+                  <AlertDescription>
                     Package created and encrypted
-                  </p>
-                </div>
-                <div className="bg-gray-700 rounded p-4 mb-4 space-y-2">
+                  </AlertDescription>
+                </Alert>
+                <div className="rounded border bg-muted/40 p-4 mb-4 space-y-2">
                   <div>
-                    <span className="text-gray-400 text-sm">
+                    <span className="text-muted-foreground text-sm">
                       Encrypted PII:
                     </span>
-                    <code className="text-xs text-blue-400 block truncate">
+                    <code className="text-xs text-info block truncate">
                       {disclosurePackage?.encryptedPii.encryptedData.substring(
                         0,
                         50,
@@ -410,36 +412,36 @@ export default function ExchangeSimulatorPage() {
                     </code>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-sm">
+                    <span className="text-muted-foreground text-sm">
                       Proofs included:
                     </span>
                     <div className="flex gap-2 mt-1">
                       {disclosurePackage?.proofs.ageProof && (
-                        <span className="bg-purple-900/50 text-purple-300 text-xs px-2 py-1 rounded">
+                        <Badge variant="info" className="text-xs">
                           Age
-                        </span>
+                        </Badge>
                       )}
                       {disclosurePackage?.proofs.faceMatchProof && (
-                        <span className="bg-purple-900/50 text-purple-300 text-xs px-2 py-1 rounded">
+                        <Badge variant="info" className="text-xs">
                           Face Match
-                        </span>
+                        </Badge>
                       )}
                       {disclosurePackage?.proofs.docValidityProof && (
-                        <span className="bg-purple-900/50 text-purple-300 text-xs px-2 py-1 rounded">
+                        <Badge variant="info" className="text-xs">
                           Doc Validity
-                        </span>
+                        </Badge>
                       )}
                     </div>
                   </div>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={handleDecryptPii}
                   disabled={isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
+                  className="w-full"
                 >
                   {isLoading ? "Decrypting..." : "Exchange: Decrypt PII"}
-                </button>
+                </Button>
               </div>
             )}
 
@@ -448,40 +450,42 @@ export default function ExchangeSimulatorPage() {
                 <h2 className="text-xl font-semibold mb-4">
                   Step 4: Verify Proofs
                 </h2>
-                <div className="bg-green-900/30 border border-green-700 rounded p-4 mb-4">
-                  <p className="text-green-400 text-sm">
+                <Alert variant="success" className="mb-4">
+                  <AlertDescription>
                     PII decrypted successfully
-                  </p>
-                </div>
-                <div className="bg-gray-700 rounded p-4 mb-4">
+                  </AlertDescription>
+                </Alert>
+                <div className="rounded border bg-muted/40 p-4 mb-4">
                   <h3 className="font-medium mb-2">Decrypted PII:</h3>
                   <div className="space-y-1 text-sm">
                     <p>
-                      <span className="text-gray-400">Name:</span>{" "}
+                      <span className="text-muted-foreground">Name:</span>{" "}
                       {decryptedPii?.fullName}
                     </p>
                     <p>
-                      <span className="text-gray-400">DOB:</span>{" "}
+                      <span className="text-muted-foreground">DOB:</span>{" "}
                       {decryptedPii?.dateOfBirth}
                     </p>
                     <p>
-                      <span className="text-gray-400">Nationality:</span>{" "}
+                      <span className="text-muted-foreground">
+                        Nationality:
+                      </span>{" "}
                       {decryptedPii?.nationality}
                     </p>
                     <p>
-                      <span className="text-gray-400">Document:</span>{" "}
+                      <span className="text-muted-foreground">Document:</span>{" "}
                       {decryptedPii?.documentNumber}
                     </p>
                   </div>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={handleVerifyProofs}
                   disabled={isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded font-medium disabled:opacity-50"
+                  className="w-full"
                 >
                   {isLoading ? "Verifying..." : "Verify ZK Proofs"}
-                </button>
+                </Button>
               </div>
             )}
 
@@ -491,27 +495,27 @@ export default function ExchangeSimulatorPage() {
                   Verification Complete
                 </h2>
                 {hasAnyFailure ? (
-                  <div className="bg-red-900/30 border border-red-700 rounded p-4 mb-4">
-                    <p className="text-red-400 font-medium">
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertDescription>
                       One or more verifications failed
-                    </p>
-                  </div>
+                    </AlertDescription>
+                  </Alert>
                 ) : (
-                  <div className="bg-green-900/30 border border-green-700 rounded p-4 mb-4">
-                    <p className="text-green-400 font-medium">
+                  <Alert variant="success" className="mb-4">
+                    <AlertDescription>
                       All verifications passed
-                    </p>
-                  </div>
+                    </AlertDescription>
+                  </Alert>
                 )}
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center gap-2">
                     <span
                       className={`w-4 h-4 rounded-full ${
                         ageStatus === undefined
-                          ? "bg-gray-500"
+                          ? "bg-muted"
                           : ageStatus
-                            ? "bg-green-500"
-                            : "bg-red-500"
+                            ? "bg-success"
+                            : "bg-destructive"
                       }`}
                     />
                     <span>
@@ -527,10 +531,10 @@ export default function ExchangeSimulatorPage() {
                     <span
                       className={`w-4 h-4 rounded-full ${
                         faceMatchStatus === undefined
-                          ? "bg-gray-500"
+                          ? "bg-muted"
                           : faceMatchStatus
-                            ? "bg-green-500"
-                            : "bg-red-500"
+                            ? "bg-success"
+                            : "bg-destructive"
                       }`}
                     />
                     <span>
@@ -546,10 +550,10 @@ export default function ExchangeSimulatorPage() {
                     <span
                       className={`w-4 h-4 rounded-full ${
                         docValidityStatus === undefined
-                          ? "bg-gray-500"
+                          ? "bg-muted"
                           : docValidityStatus
-                            ? "bg-green-500"
-                            : "bg-red-500"
+                            ? "bg-success"
+                            : "bg-destructive"
                       }`}
                     />
                     <span>
@@ -564,7 +568,7 @@ export default function ExchangeSimulatorPage() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`w-4 h-4 rounded-full ${
-                        livenessStatus ? "bg-green-500" : "bg-red-500"
+                        livenessStatus ? "bg-success" : "bg-destructive"
                       }`}
                     />
                     <span>
@@ -573,19 +577,20 @@ export default function ExchangeSimulatorPage() {
                     </span>
                   </div>
                 </div>
-                <button
+                <Button
                   type="button"
                   onClick={resetDemo}
-                  className="w-full bg-gray-600 hover:bg-gray-700 px-4 py-3 rounded font-medium"
+                  variant="outline"
+                  className="w-full"
                 >
                   Restart Demo
-                </button>
+                </Button>
               </div>
             )}
           </div>
 
           {/* Right: Data storage comparison */}
-          <div className="bg-gray-800 rounded-lg p-6">
+          <div className="rounded-lg border bg-card p-6">
             <h2 className="text-xl font-semibold mb-4">
               What Each Party Stores
             </h2>
@@ -593,102 +598,108 @@ export default function ExchangeSimulatorPage() {
             <div className="space-y-6">
               {/* Zentity */}
               <div>
-                <h3 className="font-medium text-blue-400 mb-2">
-                  Zentity Stores:
-                </h3>
-                <div className="bg-gray-700 rounded p-3 text-sm space-y-1">
-                  <p className="text-green-400">
+                <h3 className="font-medium text-info mb-2">Zentity Stores:</h3>
+                <div className="rounded border bg-muted/40 p-3 text-sm space-y-1">
+                  <p className="text-success">
                     SHA256(name + salt){" "}
-                    <span className="text-gray-500">commitment</span>
+                    <span className="text-muted-foreground">commitment</span>
                   </p>
-                  <p className="text-green-400">
+                  <p className="text-success">
                     SHA256(doc_number + salt){" "}
-                    <span className="text-gray-500">commitment</span>
+                    <span className="text-muted-foreground">commitment</span>
                   </p>
-                  <p className="text-green-400">
+                  <p className="text-success">
                     FHE(birth_year){" "}
-                    <span className="text-gray-500">encrypted</span>
+                    <span className="text-muted-foreground">encrypted</span>
                   </p>
-                  <p className="text-green-400">
+                  <p className="text-success">
                     user_salt{" "}
-                    <span className="text-gray-500">used for GDPR erasure</span>
+                    <span className="text-muted-foreground">
+                      used for GDPR erasure
+                    </span>
                   </p>
-                  <p className="text-green-400">
+                  <p className="text-success">
                     verification_status{" "}
-                    <span className="text-gray-500">boolean flags</span>
+                    <span className="text-muted-foreground">boolean flags</span>
                   </p>
-                  <p className="text-red-400 line-through">
+                  <p className="text-destructive line-through">
                     Document image{" "}
-                    <span className="text-gray-500">never stored</span>
+                    <span className="text-muted-foreground">never stored</span>
                   </p>
-                  <p className="text-red-400 line-through">
+                  <p className="text-destructive line-through">
                     Face embeddings{" "}
-                    <span className="text-gray-500">never stored</span>
+                    <span className="text-muted-foreground">never stored</span>
                   </p>
-                  <p className="text-red-400 line-through">
+                  <p className="text-destructive line-through">
                     Actual name/DOB{" "}
-                    <span className="text-gray-500">never stored</span>
+                    <span className="text-muted-foreground">never stored</span>
                   </p>
                 </div>
               </div>
 
               {/* Exchange */}
               <div>
-                <h3 className="font-medium text-purple-400 mb-2">
+                <h3 className="font-medium text-info mb-2">
                   Exchange Receives & Stores:
                 </h3>
-                <div className="bg-gray-700 rounded p-3 text-sm space-y-1">
-                  <p className="text-yellow-400">
+                <div className="rounded border bg-muted/40 p-3 text-sm space-y-1">
+                  <p className="text-warning">
                     Full Name{" "}
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       regulatory requirement
                     </span>
                   </p>
-                  <p className="text-yellow-400">
+                  <p className="text-warning">
                     Date of Birth{" "}
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       regulatory requirement
                     </span>
                   </p>
-                  <p className="text-yellow-400">
+                  <p className="text-warning">
                     Nationality{" "}
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       regulatory requirement
                     </span>
                   </p>
-                  <p className="text-yellow-400">
+                  <p className="text-warning">
                     Document Number{" "}
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       required in some jurisdictions
                     </span>
                   </p>
-                  <p className="text-green-400">
+                  <p className="text-success">
                     ZK Proofs{" "}
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       cryptographic verification
                     </span>
                   </p>
-                  <p className="text-green-400">
+                  <p className="text-success">
                     Liveness Attestation{" "}
-                    <span className="text-gray-500">signed statement</span>
+                    <span className="text-muted-foreground">
+                      signed statement
+                    </span>
                   </p>
-                  <p className="text-red-400 line-through">
+                  <p className="text-destructive line-through">
                     Biometrics{" "}
-                    <span className="text-gray-500">never disclosed</span>
+                    <span className="text-muted-foreground">
+                      never disclosed
+                    </span>
                   </p>
-                  <p className="text-red-400 line-through">
+                  <p className="text-destructive line-through">
                     Face embeddings{" "}
-                    <span className="text-gray-500">never disclosed</span>
+                    <span className="text-muted-foreground">
+                      never disclosed
+                    </span>
                   </p>
                 </div>
               </div>
 
               {/* Key insight */}
-              <div className="bg-blue-900/30 border border-blue-700 rounded p-4">
-                <h3 className="font-medium text-blue-400 mb-2">
+              <div className="border border-info/30 bg-info/10 rounded p-4">
+                <h3 className="font-medium text-info mb-2">
                   Key Privacy Wins:
                 </h3>
-                <ul className="text-sm text-gray-300 space-y-1">
+                <ul className="text-sm text-muted-foreground space-y-1">
                   <li>Biometrics never leave Zentity</li>
                   <li>Zentity never stores actual PII long-term</li>
                   <li>Exchange gets regulatory compliance</li>

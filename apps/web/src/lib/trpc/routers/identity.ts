@@ -42,6 +42,7 @@ import {
 } from "@/lib/db";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
+import { calculateBirthYearOffset } from "@/lib/identity/birth-year";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
@@ -412,6 +413,11 @@ export const identityRouter = router({
         faceMatched &&
         !isDuplicateDocument;
 
+      // Calculate birth year offset from extracted DOB (for on-chain attestation)
+      const birthYearOffset = calculateBirthYearOffset(
+        documentResult?.extractedData?.dateOfBirth,
+      );
+
       if (documentProcessed && documentResult?.commitments && !existingProof) {
         try {
           createIdentityProof({
@@ -437,6 +443,7 @@ export const identityRouter = router({
             dobFullCiphertext: dobFullFheResult?.ciphertext,
             livenessScoreCiphertext: livenessScoreFheResult?.ciphertext,
             firstNameEncrypted: firstNameEncrypted || undefined,
+            birthYearOffset,
           });
         } catch {
           issues.push("failed_to_save_proof");
@@ -462,6 +469,7 @@ export const identityRouter = router({
               livenessScoreCiphertext: livenessScoreFheResult.ciphertext,
             }),
             ...(firstNameEncrypted && { firstNameEncrypted }),
+            ...(birthYearOffset !== undefined && { birthYearOffset }),
           });
         } catch {
           issues.push("failed_to_update_proof");

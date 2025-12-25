@@ -6,8 +6,21 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      secrets:
-        - better_auth_secret
+        - NEXT_PUBLIC_PROJECT_ID=${NEXT_PUBLIC_PROJECT_ID:-}
+        - NEXT_PUBLIC_ENABLE_FHEVM=${NEXT_PUBLIC_ENABLE_FHEVM:-false}
+        - NEXT_PUBLIC_ENABLE_HARDHAT=${NEXT_PUBLIC_ENABLE_HARDHAT:-false}
+        - NEXT_PUBLIC_FHEVM_RPC_URL=${NEXT_PUBLIC_FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+        - NEXT_PUBLIC_FHEVM_NETWORK_ID=${NEXT_PUBLIC_FHEVM_NETWORK_ID:-fhevm_sepolia}
+        - NEXT_PUBLIC_FHEVM_CHAIN_ID=${NEXT_PUBLIC_FHEVM_CHAIN_ID:-11155111}
+        - NEXT_PUBLIC_FHEVM_NETWORK_NAME=${NEXT_PUBLIC_FHEVM_NETWORK_NAME:-fhEVM (Sepolia)}
+        - NEXT_PUBLIC_FHEVM_EXPLORER_URL=${NEXT_PUBLIC_FHEVM_EXPLORER_URL:-https://sepolia.etherscan.io}
+        - NEXT_PUBLIC_FHEVM_PROVIDER_ID=${NEXT_PUBLIC_FHEVM_PROVIDER_ID:-zama}
+        - NEXT_PUBLIC_ATTESTATION_DEMO=${NEXT_PUBLIC_ATTESTATION_DEMO:-true}
+        - FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY:-}
+        - FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES:-}
+        - FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20:-}
+        # Build-time secret for Next.js static generation (not in final image due to multi-stage build)
+        - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-docker-build-secret-change-in-production}
     ports:
       - "3000:3000"
     environment:
@@ -20,6 +33,20 @@ services:
       - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - DATABASE_PATH=/var/lib/zentity/web/dev.db
+      - BB_CRS_PATH=/var/lib/zentity/bb-crs
+      # Blockchain attestation (server-side)
+      - REGISTRAR_PRIVATE_KEY=${REGISTRAR_PRIVATE_KEY:-}
+      - FHEVM_REGISTRAR_PRIVATE_KEY=${FHEVM_REGISTRAR_PRIVATE_KEY:-}
+      - LOCAL_REGISTRAR_PRIVATE_KEY=${LOCAL_REGISTRAR_PRIVATE_KEY:-}
+      - FHEVM_RPC_URL=${FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      - FHEVM_NETWORK_ID=${FHEVM_NETWORK_ID:-fhevm_sepolia}
+      - FHEVM_CHAIN_ID=${FHEVM_CHAIN_ID:-11155111}
+      - FHEVM_NETWORK_NAME=${FHEVM_NETWORK_NAME:-fhEVM (Sepolia)}
+      - FHEVM_EXPLORER_URL=${FHEVM_EXPLORER_URL:-https://sepolia.etherscan.io}
+      - FHEVM_PROVIDER_ID=${FHEVM_PROVIDER_ID:-zama}
+      - FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY:-}
+      - FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES:-}
+      - FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20:-}
     depends_on:
       fhe-service:
         condition: service_healthy
@@ -28,6 +55,8 @@ services:
     volumes:
       # Persist SQLite database across container restarts
       - frontend-data:/var/lib/zentity/web
+      # Persist bb.js CRS cache across restarts
+      - bb-crs:/var/lib/zentity/bb-crs
     restart: unless-stopped
     networks:
       - zentity-network
@@ -72,9 +101,5 @@ volumes:
     driver: local
   frontend-data:
     driver: local
-
-# Build-time secrets (sourced from environment variables)
-# Ensure BETTER_AUTH_SECRET is set in .env or shell environment
-secrets:
-  better_auth_secret:
-    environment: BETTER_AUTH_SECRET
+  bb-crs:
+    driver: local

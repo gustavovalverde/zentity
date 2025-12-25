@@ -138,9 +138,13 @@ const bbWorkerPending = new Map<
   }
 >();
 
-const DEFAULT_BB_WORKER_PATH = fileURLToPath(
-  new URL("./bb-worker.mjs", import.meta.url),
-);
+const DEFAULT_BB_WORKER_PATH = (() => {
+  try {
+    return fileURLToPath(new URL("./bb-worker.mjs", import.meta.url));
+  } catch {
+    return path.resolve(process.cwd(), "src/lib/zk/bb-worker.mjs");
+  }
+})();
 
 function getBbWorkerScriptPath(): string {
   return process.env.BB_WORKER_PATH || DEFAULT_BB_WORKER_PATH;

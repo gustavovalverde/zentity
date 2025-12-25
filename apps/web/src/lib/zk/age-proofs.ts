@@ -23,7 +23,7 @@ let initialized = false;
 function ensureInitialized(): void {
   if (initialized) return;
 
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS age_proofs (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -42,7 +42,7 @@ function ensureInitialized(): void {
     )
   `);
 
-  db.exec(`
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_age_proofs_user_id ON age_proofs(user_id)
   `);
 

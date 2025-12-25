@@ -57,7 +57,7 @@ export function TransparencySection({
           <CardContent className="space-y-4">
             <div className="space-y-3">
               <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Lock className="h-5 w-5 text-blue-500 mt-0.5" />
+                <Lock className="h-5 w-5 text-info mt-0.5" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">Document Hash</span>
@@ -75,7 +75,7 @@ export function TransparencySection({
               </div>
 
               <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Shield className="h-5 w-5 text-green-500 mt-0.5" />
+                <Shield className="h-5 w-5 text-success mt-0.5" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">Name Commitment</span>
@@ -95,7 +95,7 @@ export function TransparencySection({
               </div>
 
               <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Eye className="h-5 w-5 text-purple-500 mt-0.5" />
+                <Eye className="h-5 w-5 text-info mt-0.5" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">DOB Ciphertext</span>
@@ -115,7 +115,7 @@ export function TransparencySection({
               </div>
 
               <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Shield className="h-5 w-5 text-amber-500 mt-0.5" />
+                <Shield className="h-5 w-5 text-success mt-0.5" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">Age Proof</span>
@@ -123,7 +123,7 @@ export function TransparencySection({
                       ZK-SNARK
                     </Badge>
                     {hasAgeProof && (
-                      <Badge className="text-xs bg-green-600">
+                      <Badge variant="success" className="text-xs">
                         Verified 18+
                       </Badge>
                     )}
@@ -141,7 +141,7 @@ export function TransparencySection({
 
             <div className="pt-2 border-t">
               <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                <EyeOff className="h-4 w-4 text-red-500" />
+                <EyeOff className="h-4 w-4 text-destructive" />
                 What We NEVER Store
               </h4>
               <div className="flex flex-wrap gap-2">
@@ -157,7 +157,7 @@ export function TransparencySection({
                   <Badge
                     key={item}
                     variant="outline"
-                    className="text-xs text-red-600 border-red-300 dark:border-red-700"
+                    className="text-xs text-destructive border-destructive/30"
                   >
                     {item}
                   </Badge>

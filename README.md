@@ -321,6 +321,9 @@ Zentity uses three complementary techniques:
 | Document | Description |
 |----------|-------------|
 | [System Architecture](docs/architecture.md) | End-to-end components + data flow + storage model |
+| [Web3 Architecture](docs/web3-architecture.md) | FHEVM module, providers, encryption/decryption flows |
+| [Web2 → Web3 Transition](docs/web2-to-web3-transition.md) | End-to-end flow from verification to on-chain attestation |
+| [Blockchain Setup](docs/blockchain-setup.md) | FHEVM network config, envs, faucets, deployments |
 | [ZK Proof Architecture](docs/zk-architecture.md) | Circuits + proving/verifying model |
 | [ZK Nationality Proofs](docs/zk-nationality-proofs.md) | Merkle tree nationality verification |
 | [API Collection](tooling/bruno-collection/README.md) | Bruno API testing collection |

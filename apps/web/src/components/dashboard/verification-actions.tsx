@@ -121,12 +121,12 @@ export function VerificationActions() {
     <div className="flex items-center gap-2">
       {result.isValid ? (
         <>
-          <CheckCircle className="h-4 w-4 text-green-500" />
-          <Badge className="bg-green-600">Verified 18+</Badge>
+          <CheckCircle className="h-4 w-4 text-success" />
+          <Badge variant="success">Verified 18+</Badge>
         </>
       ) : (
         <>
-          <XCircle className="h-4 w-4 text-red-500" />
+          <XCircle className="h-4 w-4 text-destructive" />
           <Badge variant="destructive">Not Verified</Badge>
         </>
       )}
@@ -153,7 +153,7 @@ export function VerificationActions() {
           {/* ZK Verification */}
           <div className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-blue-500" />
+              <Shield className="h-5 w-5 text-info" />
               <span className="font-medium">ZK Proof Verification</span>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -180,7 +180,7 @@ export function VerificationActions() {
           {/* FHE Verification */}
           <div className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-purple-500" />
+              <Key className="h-5 w-5 text-info" />
               <span className="font-medium">FHE Computation</span>
             </div>
             <p className="text-xs text-muted-foreground">

@@ -52,8 +52,8 @@ function Requirement({
           "inline-flex h-4 w-4 items-center justify-center rounded-full border",
           ok
             ? tone === "danger"
-              ? "border-red-600 text-red-600"
-              : "border-green-600 text-green-600"
+              ? "border-destructive text-destructive"
+              : "border-success text-success"
             : "border-muted-foreground/40 text-muted-foreground/60",
         )}
         aria-hidden
@@ -62,8 +62,8 @@ function Requirement({
       </span>
       <span
         className={cn(
-          ok && tone === "danger" && "text-red-700 dark:text-red-300",
-          ok && tone !== "danger" && "text-green-700 dark:text-green-300",
+          ok && tone === "danger" && "text-destructive",
+          ok && tone !== "danger" && "text-success",
         )}
       >
         {label}
@@ -219,14 +219,12 @@ export function PasswordRequirements({
     }
     if (pwned.state === "safe") {
       return (
-        <div className="text-xs text-green-700 dark:text-green-300">
-          Not found in known breaches
-        </div>
+        <div className="text-xs text-success">Not found in known breaches</div>
       );
     }
     if (pwned.state === "compromised") {
       return (
-        <div className="text-xs text-red-700 dark:text-red-300">
+        <div className="text-xs text-destructive">
           Found in known breaches — choose a different password
         </div>
       );
@@ -245,10 +243,10 @@ export function PasswordRequirements({
         <span
           className={cn(
             "text-xs font-medium",
-            strengthLabel === "Strong" && "text-green-700 dark:text-green-300",
-            strengthLabel === "Good" && "text-green-700 dark:text-green-300",
+            strengthLabel === "Strong" && "text-success",
+            strengthLabel === "Good" && "text-success",
             strengthLabel === "Okay" && "text-muted-foreground",
-            strengthLabel === "Weak" && "text-red-700 dark:text-red-300",
+            strengthLabel === "Weak" && "text-destructive",
           )}
         >
           {strengthLabel}

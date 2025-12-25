@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import {
   deleteAgeProofs,
+  deleteBlockchainAttestationsByUserId,
   deleteIdentityProof,
   deleteOnboardingSession,
   getDefaultDatabasePath,
@@ -93,10 +94,13 @@ export const accountRouter = router({
       // 2. Delete age proofs (ZK proofs, FHE ciphertexts)
       deleteAgeProofs(userId);
 
-      // 3. Clean up any orphaned onboarding sessions
+      // 3. Delete blockchain attestation records
+      deleteBlockchainAttestationsByUserId(userId);
+
+      // 4. Clean up any orphaned onboarding sessions
       deleteOnboardingSession(session.user.email);
 
-      // 4. Delete user from better-auth (cascades to sessions, accounts)
+      // 5. Delete user from better-auth (cascades to sessions, accounts)
       // This also invalidates the current session
       const deleteUser = db.prepare(`DELETE FROM "user" WHERE id = ?`);
       deleteUser.run(userId);

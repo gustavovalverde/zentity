@@ -12,6 +12,10 @@
 // Onboarding sessions
 // RP authorization codes
 
+export type {
+  AttestationStatus,
+  BlockchainAttestation,
+} from "./db";
 // Onboarding session management (uses next/headers)
 export type {
   EncryptedPiiData,
@@ -21,18 +25,28 @@ export type {
 export {
   cleanupExpiredOnboardingSessions,
   consumeRpAuthorizationCode,
+  // Blockchain attestations
+  createBlockchainAttestation,
   createIdentityProof,
   createRpAuthorizationCode,
   deleteAgeProofs,
+  deleteBlockchainAttestationsByUserId,
   deleteIdentityProof,
   deleteOnboardingSession,
   documentHashExists,
   encryptFirstName,
+  getBlockchainAttestationByUserAndNetwork,
+  getBlockchainAttestationsByUserId,
   getIdentityProofByUserId,
   getUserAgeProof,
   getUserAgeProofPayload,
   getUserFirstName,
   getVerificationStatus,
+  resetBlockchainAttestationForRetry,
+  updateBlockchainAttestationConfirmed,
+  updateBlockchainAttestationFailed,
+  updateBlockchainAttestationSubmitted,
+  updateBlockchainAttestationWallet,
   updateIdentityProofFlags,
   updateUserName,
 } from "./db";

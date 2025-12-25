@@ -1,0 +1,15 @@
+# Gitleaks configuration for Zentity
+# See: https://github.com/gitleaks/gitleaks#configuration
+
+title = "Zentity gitleaks config"
+
+# Allowlist for documentation examples with placeholder values
+[allowlist]
+description = "Allow documentation placeholders"
+paths = [
+  '''docs/blockchain-setup\.md''',
+]
+regexTarget = "line"
+regexes = [
+  '''<your_private_key_here>''',
+]

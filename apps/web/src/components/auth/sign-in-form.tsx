@@ -3,7 +3,6 @@
 import { useForm } from "@tanstack/react-form";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -21,7 +20,6 @@ import { signIn } from "@/lib/auth";
 import { makeFieldValidator } from "@/lib/utils";
 
 export function SignInForm() {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,8 +46,7 @@ export function SignInForm() {
         }
 
         toast.success("Signed in successfully!");
-        router.push("/dashboard");
-        router.refresh();
+        window.location.assign("/dashboard");
       } catch {
         const errorMsg = "An unexpected error occurred. Please try again.";
         setError(errorMsg);

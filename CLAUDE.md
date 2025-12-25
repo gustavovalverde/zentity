@@ -36,6 +36,30 @@ bun run test         # Run unit tests (Vitest via Bun)
 bun run test:e2e     # Run Playwright tests
 ```
 
+### E2E Notes (Hardhat vs Sepolia)
+
+**Hardhat (default):**
+
+- `bun run test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.js`.
+- Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`).
+- Uses the seeded E2E database: `apps/web/e2e/.data/e2e.db`.
+
+**Existing dev server:**
+
+- Set `E2E_EXTERNAL_WEB_SERVER=true` so Playwright doesn’t spawn its own server.
+- Ensure `DATABASE_PATH` matches `E2E_DATABASE_PATH` (seeded DB) or auth/attestation steps will fail.
+
+**Sepolia (fhEVM):**
+
+- Start server with `NEXT_PUBLIC_ENABLE_FHEVM=true` and `NEXT_PUBLIC_ENABLE_HARDHAT=false`.
+- Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `FHEVM_*` contract addresses + registrar key.
+- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true bunx playwright test e2e/web3-sepolia.spec.ts`
+- Sepolia E2E **skips** if envs are missing or the MetaMask account has no SepoliaETH (grant compliance access is disabled).
+
+**Logs:**
+
+- Next dev logs: `apps/web/.next/dev/logs/next-development.log`
+
 ### Noir Circuits (apps/web/noir-circuits)
 
 ```bash
@@ -92,11 +116,13 @@ railway up apps/web --path-as-root --service web
 ```
 
 **Service URLs (production)**:
+
 - Web: `https://app.zentity.xyz`
 - FHE: `http://fhe.railway.internal:5001` (internal only)
 - OCR: `http://ocr.railway.internal:5004` (internal only)
 
 **Required env vars** (set via Railway dashboard):
+
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`
 - `INTERNAL_SERVICE_TOKEN`, `DATABASE_PATH`
 - `FHE_SERVICE_URL`, `OCR_SERVICE_URL`

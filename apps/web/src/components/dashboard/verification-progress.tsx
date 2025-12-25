@@ -91,7 +91,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
             <div key={check.id} className="flex items-center gap-3">
               <div className="flex-shrink-0">
                 {check.completed ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <CheckCircle className="h-5 w-5 text-success" />
                 ) : (
                   <Circle className="h-5 w-5 text-muted-foreground" />
                 )}
@@ -113,12 +113,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
                   {check.description}
                 </p>
               </div>
-              <Badge
-                variant={check.completed ? "default" : "outline"}
-                className={
-                  check.completed ? "bg-green-600 hover:bg-green-600" : ""
-                }
-              >
+              <Badge variant={check.completed ? "success" : "outline"}>
                 {check.completed ? "Done" : "Pending"}
               </Badge>
             </div>

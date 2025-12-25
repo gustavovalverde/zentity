@@ -41,11 +41,9 @@ export default function Home() {
             identity while keeping your information private.
           </p>
 
-          <Alert className="mt-8 border-amber-500/30 bg-amber-500/5 text-left">
-            <AlertTriangle className="text-amber-500" />
-            <AlertTitle className="text-amber-600 dark:text-amber-400">
-              Proof of Concept
-            </AlertTitle>
+          <Alert variant="warning" className="mt-8 text-left">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Proof of Concept</AlertTitle>
             <AlertDescription>
               Zentity is under active development. Our cryptographic approach is
               being validated. Use for evaluation only - do not submit

@@ -39,3 +39,39 @@ Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 ## Security & Configuration Tips
 
 Never commit secrets. Copy `.env.example` to `.env` / `.env.local` and override service URLs or auth keys locally.
+
+## E2E (Playwright/Synpress) - Web
+
+E2E lives in `apps/web/e2e` and relies on a seeded SQLite DB plus MetaMask.
+
+### Default (Hardhat, auto web server)
+
+- Run: `cd apps/web && bun run test:e2e`
+- Playwright will start its own dev server via `e2e/automation/start-web3-dev.js`:
+  - Boots Hardhat node + deploys contracts from `../zama/zentity-fhevm-contracts`
+  - Sets `NEXT_PUBLIC_ENABLE_HARDHAT=true`, `NEXT_PUBLIC_ENABLE_FHEVM=false`
+  - Uses `apps/web/e2e/.data/e2e.db`
+- If contracts repo lives elsewhere, set `E2E_CONTRACTS_PATH=/path/to/zentity-fhevm-contracts`.
+
+### Existing dev server (port 3000)
+
+- Start your own server with the correct envs.
+- Run tests with: `E2E_EXTERNAL_WEB_SERVER=true bunx playwright test`
+- **Important:** set `DATABASE_PATH` to the same file as `E2E_DATABASE_PATH` so server + tests share the same seed DB:
+  - `DATABASE_PATH=apps/web/e2e/.data/e2e.db`
+
+### Sepolia (fhEVM)
+
+- Start server with fhEVM enabled and Hardhat disabled:
+  - `NEXT_PUBLIC_ENABLE_FHEVM=true`
+  - `NEXT_PUBLIC_ENABLE_HARDHAT=false`
+- Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `FHEVM_*` contract addresses + registrar key.
+- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true bunx playwright test e2e/web3-sepolia.spec.ts`
+- The Sepolia test will **skip** if:
+  - Required envs are missing, or
+  - The MetaMask account has **no SepoliaETH** (grant compliance access is disabled).
+
+### Logs / debugging
+
+- Next dev logs: `apps/web/.next/dev/logs/next-development.log`
+- If tests hang, check MetaMask popups and network balance (Sepolia requires gas).

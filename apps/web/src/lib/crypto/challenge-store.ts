@@ -31,7 +31,7 @@ const CHALLENGE_TTL_MS = 15 * 60 * 1000;
 const db = getSqliteDb(getDefaultDatabasePath());
 
 function initializeChallengeTable(): void {
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS zk_challenges (
       nonce TEXT PRIMARY KEY,
       circuit_type TEXT NOT NULL,

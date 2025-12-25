@@ -32,7 +32,7 @@ COPY --link package.json bun.lock ./
 
 # Install dependencies with BuildKit cache mount for Bun
 # Cache persists across builds, significantly speeds up installs
-RUN --mount=type=cache,id=bun-cache,target=/root/.bun/install/cache \
+RUN --mount=type=cache,id=s/a0dbf135-6670-4cf9-8c14-247262ab102f-/root/.bun/install/cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
 # --- Stage 2: Builder ---
@@ -42,19 +42,48 @@ COPY --link . .
 ARG GIT_SHA
 ARG BUILD_TIME
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+ARG NEXT_PUBLIC_PROJECT_ID
+ARG NEXT_PUBLIC_ENABLE_FHEVM=true
+ARG NEXT_PUBLIC_ENABLE_HARDHAT=false
+ARG NEXT_PUBLIC_FHEVM_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+ARG NEXT_PUBLIC_FHEVM_NETWORK_ID=fhevm_sepolia
+ARG NEXT_PUBLIC_FHEVM_CHAIN_ID=11155111
+ARG NEXT_PUBLIC_FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
+ARG NEXT_PUBLIC_FHEVM_EXPLORER_URL=https://sepolia.etherscan.io
+ARG NEXT_PUBLIC_FHEVM_PROVIDER_ID=zama
+ARG NEXT_PUBLIC_ATTESTATION_DEMO=false
+# Sepolia fhEVM contract addresses (from zentity-fhevm-contracts deployment)
+ARG FHEVM_IDENTITY_REGISTRY=0x863e7181546cfBe7FcE9a24979E54975a777636A
+ARG FHEVM_COMPLIANCE_RULES=0x99FA766A8e9e782361e694104657513290D2D645
+ARG FHEVM_COMPLIANT_ERC20=0xB74A51FCf5881c3505d902b53AD229430f7BFFeB
+# TODO: We should revert this to a secret mount once Railway supports it
+# Railway injects this as build arg (multi-stage build discards it from final image)
+ARG BETTER_AUTH_SECRET
+ENV BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_PUBLIC_PROJECT_ID=${NEXT_PUBLIC_PROJECT_ID}
+ENV NEXT_PUBLIC_ENABLE_FHEVM=${NEXT_PUBLIC_ENABLE_FHEVM}
+ENV NEXT_PUBLIC_ENABLE_HARDHAT=${NEXT_PUBLIC_ENABLE_HARDHAT}
+ENV NEXT_PUBLIC_FHEVM_RPC_URL=${NEXT_PUBLIC_FHEVM_RPC_URL}
+ENV NEXT_PUBLIC_FHEVM_NETWORK_ID=${NEXT_PUBLIC_FHEVM_NETWORK_ID}
+ENV NEXT_PUBLIC_FHEVM_CHAIN_ID=${NEXT_PUBLIC_FHEVM_CHAIN_ID}
+ENV NEXT_PUBLIC_FHEVM_NETWORK_NAME=${NEXT_PUBLIC_FHEVM_NETWORK_NAME}
+ENV NEXT_PUBLIC_FHEVM_EXPLORER_URL=${NEXT_PUBLIC_FHEVM_EXPLORER_URL}
+ENV NEXT_PUBLIC_FHEVM_PROVIDER_ID=${NEXT_PUBLIC_FHEVM_PROVIDER_ID}
+ENV NEXT_PUBLIC_ATTESTATION_DEMO=${NEXT_PUBLIC_ATTESTATION_DEMO}
+ENV FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY}
+ENV FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES}
+ENV FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20}
 ENV DATABASE_PATH=/tmp/dev.db
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 
-# Build with secret mount - REQUIRED (build fails without it)
-# This prevents running with insecure defaults
-# Pass via: docker build --secret id=better_auth_secret,src=<file> ...
-RUN --mount=type=secret,id=better_auth_secret,required=true \
-    touch /tmp/dev.db && \
-    BETTER_AUTH_SECRET=$(cat /run/secrets/better_auth_secret) bun run build
+# Build Next.js
+# NODE_OPTIONS increases heap size for webpack build (build traces phase is memory intensive)
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN touch /tmp/dev.db && bun run build
 
 # --- Stage 3: Runtime ---
 FROM oven/bun:1-slim@sha256:10c077f99e1d7dd7fa2947d8ed0a8c2094fa85577856062e43c8967dc97e9fc6 AS runner
@@ -67,7 +96,7 @@ ARG APP_GID
 ARG APP_USER
 ARG APP_HOME
 
-RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 gosu curl \
+RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 gosu curl nodejs ca-certificates \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 WORKDIR ${APP_HOME}
@@ -77,6 +106,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV BB_NODE_BINARY=/usr/bin/node
+ENV BB_CRS_PATH=/var/lib/zentity/bb-crs
 
 # Create non-root user (high UID/GID avoids host user namespace conflicts)
 RUN groupadd --gid ${APP_GID} nodejs && \
@@ -90,13 +121,19 @@ COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/stati
 # Copy native modules (tfjs-node + human.js - can't be traced by standalone)
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@tensorflow ./node_modules/@tensorflow
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
+# Copy bb.js (Noir/Barretenberg) assets + workers (server-side verification)
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@aztec ./node_modules/@aztec
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
 
 # Copy scripts
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
+# Copy bb-worker for server-side Noir verification (not traced into standalone output)
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src/lib/zk/bb-worker.mjs ./src/lib/zk/bb-worker.mjs
+
 RUN mkdir -p /var/lib/zentity/web && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity
+RUN mkdir -p /var/lib/zentity/bb-crs && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity/bb-crs
 
 # Note: Container starts as root to fix volume permissions, then drops to ${APP_USER} via gosu
 

@@ -32,6 +32,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { Spinner } from "@/components/ui/spinner";
 import {
   defaultWizardData,
   type WizardData,
@@ -215,6 +216,7 @@ export function WizardProvider({
   const hydrationStartedRef = useRef(false);
   const isInitializedRef = useRef(false);
   const lastSavedStepRef = useRef<WizardStep>(1);
+  const hasLocalSessionRef = useRef(false);
   const [pendingNavigation, setPendingNavigation] = useState<{
     targetStep: WizardStep;
     warning: string;
@@ -228,17 +230,19 @@ export function WizardProvider({
 
     const loadServerSession = async () => {
       try {
+        if (hasLocalSessionRef.current) {
+          return;
+        }
         if (forceReset) {
           // Explicit start-over (e.g., from "Start Verification" CTA).
           // Clear any existing cookie+DB session, then start at step 1.
-          try {
-            await trpc.onboarding.clearSession.mutate();
-          } catch {
-            // Ignore if no session exists
-          }
+          // Fire-and-forget so UI isn't blocked on API availability.
+          void trpc.onboarding.clearSession.mutate().catch(() => {});
 
           dispatch({ type: "RESET" });
           lastSavedStepRef.current = 1;
+          isInitializedRef.current = true;
+          setIsHydrated(true);
 
           // Remove one-shot param so refresh can resume normally.
           const params = new URLSearchParams(searchParams.toString());
@@ -255,6 +259,10 @@ export function WizardProvider({
         const serverState = (await trpc.onboarding.getSession.query()) as
           | ServerSessionState
           | undefined;
+
+        if (hasLocalSessionRef.current) {
+          return;
+        }
 
         if (serverState?.hasSession && serverState.email) {
           // Restore state from server
@@ -391,31 +399,34 @@ export function WizardProvider({
 
   // Start fresh session (clears any existing session to prevent session bleeding)
   const startFresh = useCallback(async (email: string) => {
+    hasLocalSessionRef.current = true;
+
     // Reset local state first
     dispatch({ type: "RESET" });
 
-    // Create new session with forceNew flag (clears any existing session)
-    try {
-      await trpc.onboarding.saveSession.mutate({
+    dispatch({
+      type: "LOAD_STATE",
+      state: {
+        currentStep: 1,
+        data: { email },
+        serverState: {
+          documentProcessed: false,
+          livenessPassed: false,
+          faceMatchPassed: false,
+        },
+      },
+    });
+    lastSavedStepRef.current = 1;
+
+    // Create new session with forceNew flag (clears any existing session).
+    // Fire-and-forget so UI can advance even if the network is slow.
+    void trpc.onboarding.saveSession
+      .mutate({
         email,
         step: 1,
         forceNew: true,
-      });
-
-      dispatch({
-        type: "LOAD_STATE",
-        state: {
-          currentStep: 1,
-          data: { email },
-          serverState: {
-            documentProcessed: false,
-            livenessPassed: false,
-            faceMatchPassed: false,
-          },
-        },
-      });
-      lastSavedStepRef.current = 1;
-    } catch {}
+      })
+      .catch(() => {});
   }, []);
 
   // Skip liveness verification
@@ -582,7 +593,10 @@ export function WizardProvider({
     return (
       <WizardContext.Provider value={value}>
         <div className="flex items-center justify-center py-12">
-          <div className="animate-pulse text-muted-foreground">Loading...</div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Spinner size="sm" />
+            <span>Loading...</span>
+          </div>
         </div>
       </WizardContext.Provider>
     );

@@ -48,10 +48,7 @@ function VerificationBadge({
   label: string;
 }) {
   return (
-    <Badge
-      variant={passed ? "default" : "outline"}
-      className={passed ? "bg-green-600" : ""}
-    >
+    <Badge variant={passed ? "success" : "outline"}>
       {passed ? (
         <CheckCircle2 className="mr-1 h-3 w-3" />
       ) : (
@@ -244,10 +241,11 @@ export function UserDataSection() {
             <p className="text-sm font-medium">Verification Status</p>
             <Badge
               variant={
-                data.verification.level === "full" ? "default" : "outline"
-              }
-              className={
-                data.verification.level === "full" ? "bg-green-600" : ""
+                data.verification.level === "full"
+                  ? "success"
+                  : data.verification.level === "basic"
+                    ? "warning"
+                    : "outline"
               }
             >
               {data.verification.level === "full"

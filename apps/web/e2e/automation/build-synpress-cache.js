@@ -1,0 +1,276 @@
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import {
+  createCache,
+  ensureCacheDirExists,
+  prepareExtension,
+} from "@synthetixio/synpress-cache";
+import { build, transformSync } from "esbuild";
+import fs from "fs-extra";
+import { glob } from "glob";
+
+const webRoot = process.cwd();
+const repoRoot = path.resolve(webRoot, "..", "..");
+const contractsPath =
+  process.env.E2E_CONTRACTS_PATH ||
+  path.resolve(repoRoot, "..", "zama", "zentity-fhevm-contracts");
+
+const hardhatPort = Number(process.env.E2E_HARDHAT_PORT || 8545);
+const hardhatUrl = `http://127.0.0.1:${hardhatPort}`;
+
+let hardhatProcess = null;
+
+async function waitForRpc(url) {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId" }),
+      });
+      if (res.ok) return true;
+    } catch {
+      // ignore
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`Hardhat RPC not responding at ${url}`);
+}
+
+async function ensureHardhatNode() {
+  try {
+    const response = await fetch(hardhatUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId" }),
+    });
+    if (response.ok) return false;
+  } catch {
+    // not running
+  }
+
+  hardhatProcess = spawn(
+    "bunx",
+    ["hardhat", "node", "--hostname", "127.0.0.1", "--port", `${hardhatPort}`],
+    {
+      cwd: contractsPath,
+      stdio: "inherit",
+    },
+  );
+
+  await waitForRpc(hardhatUrl);
+  return true;
+}
+
+function stopHardhat() {
+  if (hardhatProcess && !hardhatProcess.killed) {
+    hardhatProcess.kill("SIGTERM");
+  }
+}
+
+function extractWalletSetupFunction(sourceCode) {
+  const callIndex = sourceCode.indexOf("defineWalletSetup");
+  if (callIndex === -1) {
+    throw new Error("Could not find defineWalletSetup call");
+  }
+  const openParen = sourceCode.indexOf("(", callIndex);
+  if (openParen === -1) {
+    throw new Error("Could not find defineWalletSetup opening paren");
+  }
+
+  let depth = 1;
+  let commaIndex = -1;
+  let closeParen = -1;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let escapeChar = false;
+
+  for (let i = openParen + 1; i < sourceCode.length; i += 1) {
+    const ch = sourceCode[i];
+
+    if (escapeChar) {
+      escapeChar = false;
+      continue;
+    }
+
+    if (inSingle) {
+      if (ch === "\\") escapeChar = true;
+      else if (ch === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === "\\") escapeChar = true;
+      else if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (inTemplate) {
+      if (ch === "\\") escapeChar = true;
+      else if (ch === "`") inTemplate = false;
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+    if (ch === "`") {
+      inTemplate = true;
+      continue;
+    }
+
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        closeParen = i;
+        break;
+      }
+      continue;
+    }
+
+    if (ch === "," && depth === 1 && commaIndex === -1) {
+      commaIndex = i;
+    }
+  }
+
+  if (commaIndex === -1 || closeParen === -1) {
+    throw new Error("Could not extract defineWalletSetup callback");
+  }
+
+  return sourceCode.slice(commaIndex + 1, closeParen).trim();
+}
+
+function buildWalletSetupFunction(walletSetupFunctionString) {
+  const { code } = transformSync(walletSetupFunctionString, {
+    format: "esm",
+    minifyWhitespace: true,
+    target: "es2022",
+    drop: ["console", "debugger"],
+    loader: "ts",
+    logLevel: "silent",
+    platform: "node",
+  });
+  return code;
+}
+
+function getWalletSetupFuncHash(walletSetupString) {
+  const hash = createHash("shake256", { outputLength: 10 });
+  return hash.update(walletSetupString).digest("hex");
+}
+
+async function compileWalletSetupFunctions() {
+  const _cacheDir = ensureCacheDirExists();
+  const outDir = path.join(webRoot, ".synpress-wallet-setup-dist");
+  await fs.ensureDir(outDir);
+
+  const walletSetupDir = path.join(webRoot, "e2e", "wallet-setup");
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log(
+    "[synpress-cache] compiling wallet setup files from",
+    walletSetupDir,
+  );
+  const fileList = (
+    await glob(path.join(walletSetupDir, "**", "*.setup.{ts,js,mjs}"))
+  ).sort();
+  if (!fileList.length) {
+    throw new Error(
+      `No wallet setup files found at ${walletSetupDir}. Ensure files end with .setup.ts/.js/.mjs`,
+    );
+  }
+
+  await build({
+    entryPoints: fileList,
+    outdir: outDir,
+    format: "esm",
+    platform: "node",
+    target: "es2022",
+    bundle: false,
+    splitting: false,
+    sourcemap: false,
+    outExtension: { ".js": ".mjs" },
+    logLevel: "silent",
+  });
+
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log("[synpress-cache] compiled wallet setup files", fileList);
+  return { outDir, fileList };
+}
+
+async function buildSynpressCache() {
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log("[synpress-cache] building cache");
+  const { outDir, fileList } = await compileWalletSetupFunctions();
+  const hashes = [];
+  const hashMappings = [];
+  for (const filePath of fileList) {
+    const base = path.basename(filePath).replace(/\.(ts|js|mjs)$/, ".mjs");
+    const compiledPath = path.join(outDir, base);
+    // biome-ignore lint/suspicious/noConsole: debug output for cache build
+    console.log("[synpress-cache] loading compiled setup", compiledPath);
+    const mod = await import(pathToFileURL(compiledPath).href);
+    // biome-ignore lint/suspicious/noConsole: debug output for cache build
+    console.log("[synpress-cache] loaded compiled setup", compiledPath);
+    const hash = mod?.default?.hash;
+    if (!hash) {
+      throw new Error(
+        `Missing hash for compiled wallet setup: ${compiledPath}`,
+      );
+    }
+    hashes.push(hash);
+
+    const sourceCode = await fs.readFile(filePath, "utf8");
+    const callbackSource = extractWalletSetupFunction(sourceCode);
+    const built = buildWalletSetupFunction(callbackSource);
+    const sourceHash = getWalletSetupFuncHash(built);
+    hashMappings.push({ compiledHash: hash, sourceHash });
+  }
+
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log("[synpress-cache] create cache for hashes", hashes, hashMappings);
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log("[synpress-cache] createCache start");
+  await createCache(outDir, hashes, prepareExtension, true);
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log("[synpress-cache] createCache done");
+
+  for (const { compiledHash, sourceHash } of hashMappings) {
+    if (!sourceHash || sourceHash === compiledHash) continue;
+    const cacheDir = ensureCacheDirExists();
+    const compiledPath = path.join(cacheDir, compiledHash);
+    const sourcePath = path.join(cacheDir, sourceHash);
+    const sourceExists = await fs.pathExists(sourcePath);
+    if (!sourceExists) {
+      await fs.copy(compiledPath, sourcePath);
+    }
+  }
+}
+
+async function main() {
+  // biome-ignore lint/suspicious/noConsole: debug output for cache build
+  console.log("[synpress-cache] start");
+  const started = await ensureHardhatNode();
+  process.env.SYNPRESS_NETWORK_RPC_URL = hardhatUrl;
+  process.env.SYNPRESS_NETWORK_CHAIN_ID = "31337";
+  await buildSynpressCache();
+
+  if (started) stopHardhat();
+  process.exit(0);
+}
+
+main().catch((error) => {
+  // biome-ignore lint/suspicious/noConsole: surface setup failures
+  console.error(error);
+  stopHardhat();
+  process.exit(1);
+});
