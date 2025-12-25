@@ -307,14 +307,29 @@ export const tokenRouter = router({
         const provider = createProvider(input.networkId);
         // Access the wallet client through the provider
         // @ts-expect-error - accessing protected method for mint operation
-        const client = provider.getWalletClient();
+        const walletClient = provider.getWalletClient();
 
-        const txHash = await client.writeContract({
+        const txHash = await walletClient.writeContract({
           address: contractAddress as `0x${string}`,
           abi: COMPLIANT_ERC20_ABI,
           functionName: "mint",
           args: [input.walletAddress as `0x${string}`, amount],
         });
+
+        // Wait for transaction confirmation before returning success
+        // This ensures logs are queryable and history shows the mint
+        const viemChain =
+          VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
+        if (viemChain) {
+          const publicClient = createPublicClient({
+            chain: viemChain,
+            transport: http(network.rpcUrl),
+          });
+          await publicClient.waitForTransactionReceipt({
+            hash: txHash,
+            confirmations: 1,
+          });
+        }
 
         return {
           success: true,

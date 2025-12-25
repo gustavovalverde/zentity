@@ -79,8 +79,30 @@ export function getUserFriendlyError(error: unknown): string {
     return "Unauthorized ciphertext handle. Re-encrypt and retry.";
   }
 
-  // Return first line of original message for unknown errors
-  return msg.split("\n")[0] || "An unexpected error occurred";
+  // FHE/ACL errors (Zama fhEVM)
+  if (lower.includes("sendernotallowed") || msg.includes("0x23dada53")) {
+    return "ACL permission denied. The contract lacks permission to grant access. Please re-attest your identity.";
+  }
+
+  if (lower.includes("notattested") || msg.includes("0x99efb890")) {
+    return "Identity not attested on-chain. Please register your identity first.";
+  }
+
+  if (lower.includes("invalidciphertexthandle") || msg.includes("0x72c0afff")) {
+    return "Invalid encrypted data handle. Your attestation may be corrupted. Please re-attest.";
+  }
+
+  if (lower.includes("handledoesnotexist") || msg.includes("0xa4fbc572")) {
+    return "Encrypted data not found. Your attestation may have expired. Please re-attest.";
+  }
+
+  // Extract the reason from viem/wagmi errors, or show first 3 lines
+  const reasonMatch = msg.match(/reason:\s*(.+)/);
+  if (reasonMatch) return reasonMatch[1];
+  return (
+    msg.split("\n").slice(0, 3).join(" ").slice(0, 200) ||
+    "An unexpected error occurred"
+  );
 }
 
 /**
@@ -92,6 +114,11 @@ export function getUserFriendlyError(error: unknown): string {
  */
 export function getAttestationError(error: unknown): string {
   const msg = getErrorMessage(error);
-  // Preserve the primary error line from viem/tRPC without hiding details.
-  return msg.split("\n")[0] || "An unexpected error occurred";
+  // Extract the reason from viem/tRPC errors, or show more context
+  const reasonMatch = msg.match(/reason:\s*(.+)/);
+  if (reasonMatch) return reasonMatch[1];
+  return (
+    msg.split("\n").slice(0, 3).join(" ").slice(0, 200) ||
+    "An unexpected error occurred"
+  );
 }

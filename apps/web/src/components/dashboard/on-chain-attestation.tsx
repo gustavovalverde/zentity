@@ -121,6 +121,32 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
       selectedNetworkData?.complianceRules,
   );
 
+  // Verify on-chain attestation status (catches stale DB records after contract redeployment)
+  const { data: onChainStatus, isLoading: isCheckingOnChain } =
+    trpcReact.token.isAttested.useQuery(
+      {
+        networkId: selectedNetworkData?.id ?? "",
+        address: address ?? "",
+      },
+      {
+        enabled: Boolean(
+          showComplianceAccess && selectedNetworkData?.id && address && !isDemo,
+        ),
+        staleTime: 30000,
+      },
+    );
+
+  // If DB says attested but on-chain says not, user needs to re-attest
+  const needsReAttestation =
+    !isDemo &&
+    showComplianceAccess &&
+    onChainStatus &&
+    !onChainStatus.isAttested;
+
+  // Only show compliance card if actually attested on-chain (or still loading)
+  const showComplianceCard =
+    showComplianceAccess && !needsReAttestation && !isCheckingOnChain;
+
   const { data: complianceAccess } = trpcReact.token.complianceAccess.useQuery(
     {
       networkId: selectedNetworkData?.id ?? "",
@@ -128,7 +154,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
     },
     {
       enabled: Boolean(
-        showComplianceAccess && selectedNetworkData?.id && address && !isDemo,
+        showComplianceCard && selectedNetworkData?.id && address && !isDemo,
       ),
     },
   );
@@ -321,7 +347,28 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                   />
                 )}
 
-                {showComplianceAccess && (
+                {/* Re-attestation required warning (DB says confirmed but chain says not) */}
+                {needsReAttestation && (
+                  <Alert variant="warning">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Re-attestation Required</strong> - The identity
+                      contracts have been updated. Click &quot;Update
+                      Attestation&quot; above to re-register your identity
+                      on-chain before granting compliance access.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Loading on-chain status */}
+                {showComplianceAccess && isCheckingOnChain && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verifying on-chain attestation...
+                  </div>
+                )}
+
+                {showComplianceCard && (
                   <ComplianceAccessCard
                     identityRegistry={
                       selectedNetworkData?.identityRegistry as

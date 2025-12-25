@@ -72,6 +72,26 @@ export function DefiDemoClient({
         selectedNetworkData?.identityRegistry,
     );
 
+  // Check on-chain attestation status (validates DB record against actual contract)
+  const { data: attestationStatus, isLoading: attestationLoading } =
+    trpcReact.token.isAttested.useQuery(
+      {
+        networkId: activeNetworkId ?? "",
+        address: address ?? "",
+      },
+      {
+        enabled: Boolean(activeNetworkId && address && !isDemoMode),
+        staleTime: 30000,
+      },
+    );
+
+  // If DB says attested but on-chain says not, user needs to re-attest
+  const needsReAttestation =
+    !isDemoMode &&
+    attestedNetworkId &&
+    attestationStatus &&
+    !attestationStatus.isAttested;
+
   const { data: complianceAccess } = trpcReact.token.complianceAccess.useQuery(
     {
       networkId: activeNetworkId ?? "",
@@ -79,7 +99,11 @@ export function DefiDemoClient({
     },
     {
       enabled: Boolean(
-        requiresAccessGrant && activeNetworkId && address && !isDemoMode,
+        requiresAccessGrant &&
+          activeNetworkId &&
+          address &&
+          !isDemoMode &&
+          !needsReAttestation,
       ),
     },
   );
@@ -215,6 +239,49 @@ export function DefiDemoClient({
             Connect the wallet you registered on-chain to continue
           </p>
           {isMounted && <appkit-button />}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Loading attestation status
+  if (attestationLoading && !isDemoMode) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          Verifying on-chain attestation...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // On-chain attestation mismatch - contracts were redeployed
+  if (needsReAttestation) {
+    return (
+      <Card className="border-warning/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-warning">
+            <AlertTriangle className="h-5 w-5" />
+            Re-attestation Required
+          </CardTitle>
+          <CardDescription>
+            Your on-chain identity registration needs to be renewed
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              The identity contracts have been updated. Please register your
+              identity on-chain again to continue using compliant DeFi features.
+            </AlertDescription>
+          </Alert>
+          <Button variant="outline" asChild>
+            <a href="/dashboard">
+              Register On-Chain
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </a>
+          </Button>
         </CardContent>
       </Card>
     );

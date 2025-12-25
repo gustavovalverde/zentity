@@ -121,8 +121,13 @@ export function ComplianceAccessCard({
       }
       if (!hasFunds) return;
 
+      // Gas overrides for networks where wagmi auto-estimation fails with FHE contracts
       const txOverrides =
-        chainId === 31337 ? { gas: BigInt(500_000) } : undefined;
+        chainId === 31337
+          ? { gas: BigInt(500_000) } // Hardhat
+          : chainId === 11155111
+            ? { gas: BigInt(1_000_000) } // Sepolia (fhEVM operations need more gas)
+            : undefined;
 
       await writeContractAsync({
         address: identityRegistry,
@@ -284,10 +289,26 @@ export function ComplianceAccessCard({
 
         {error && (
           <Alert variant="destructive">
-            <AlertDescription>
-              {error instanceof Error
-                ? error.message.split("\n")[0]
-                : "Grant failed"}
+            <AlertDescription className="break-words">
+              {(() => {
+                if (!(error instanceof Error)) return "Grant failed";
+                const msg = error.message;
+                // Check for FHE/ACL error selectors
+                if (msg.includes("0x23dada53"))
+                  return "ACL permission denied. The contract lacks permission to your encrypted data. Please update your attestation.";
+                if (msg.includes("0x99efb890"))
+                  return "Identity not attested. Please register on-chain first.";
+                if (msg.includes("0x72c0afff") || msg.includes("0xa4fbc572"))
+                  return "Invalid encrypted data. Your attestation may have expired. Please re-attest.";
+                // Extract reason or show more context
+                const reason = msg.match(/reason:\s*(.+)/)?.[1];
+                if (reason) return reason;
+                // Show error data if present
+                const dataMatch = msg.match(/data:\s*(0x[a-fA-F0-9]+)/);
+                if (dataMatch)
+                  return `Contract reverted with: ${dataMatch[1].slice(0, 10)}...`;
+                return msg.split("\n").slice(0, 3).join(" ").slice(0, 250);
+              })()}
             </AlertDescription>
           </Alert>
         )}
