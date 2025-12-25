@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { DefiDemoClient } from "@/components/defi-demo/defi-demo-client";
 import { auth } from "@/lib/auth/auth";
@@ -6,8 +7,14 @@ import {
   getBlockchainAttestationsByUserId,
   getVerificationStatus,
 } from "@/lib/db";
+import { isWeb3Enabled } from "@/lib/feature-flags";
 
 export default async function DefiDemoPage() {
+  // Redirect if Web3 is disabled
+  if (!isWeb3Enabled()) {
+    redirect("/dashboard");
+  }
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });

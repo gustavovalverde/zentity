@@ -19,8 +19,8 @@ services:
         - FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY:-}
         - FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES:-}
         - FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20:-}
-      secrets:
-        - better_auth_secret
+        # Build-time secret for Next.js static generation (not in final image due to multi-stage build)
+        - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-docker-build-secret-change-in-production}
     ports:
       - "3000:3000"
     environment:
@@ -103,9 +103,3 @@ volumes:
     driver: local
   bb-crs:
     driver: local
-
-# Build-time secrets (sourced from environment variables)
-# Ensure BETTER_AUTH_SECRET is set in .env or shell environment
-secrets:
-  better_auth_secret:
-    environment: BETTER_AUTH_SECRET

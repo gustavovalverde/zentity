@@ -2,9 +2,15 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { SignOutButton } from "@/components/auth/sign-out-button";
-import { Logo } from "@/components/logo";
+import { AppSidebar } from "@/components/dashboard/app-sidebar";
+import { DynamicBreadcrumb } from "@/components/dashboard/dynamic-breadcrumb";
 import { ModeToggle } from "@/components/mode-toggle";
+import { Separator } from "@/components/ui/separator";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { auth } from "@/lib/auth/auth";
 
 export default async function DashboardLayout({
@@ -21,40 +27,31 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border">
-        <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <Link href="/dashboard">
-            <Logo />
-          </Link>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              {session.user.email}
-            </span>
-            <Link
-              href="/dashboard/settings"
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              Settings
-            </Link>
-            <SignOutButton />
+    <SidebarProvider>
+      <AppSidebar user={session.user} />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <DynamicBreadcrumb />
+          <div className="ml-auto">
             <ModeToggle />
           </div>
-        </nav>
-      </header>
-      <main className="flex-1 py-8">
-        <div className="mx-auto max-w-6xl px-4">{children}</div>
-      </main>
-      <footer className="border-t border-border py-4">
-        <div className="mx-auto max-w-6xl px-4 text-center text-xs text-muted-foreground">
-          <Link
-            href="/api/build-info"
-            className="text-muted-foreground/70 hover:text-muted-foreground"
-          >
-            Verify build attestation
-          </Link>
-        </div>
-      </footer>
-    </div>
+        </header>
+        <main className="flex-1 p-4 md:p-6">
+          <div className="mx-auto max-w-6xl">{children}</div>
+        </main>
+        <footer className="border-t py-4 px-4">
+          <div className="mx-auto max-w-6xl text-center text-xs text-muted-foreground">
+            <Link
+              href="/api/build-info"
+              className="text-muted-foreground/70 hover:text-muted-foreground"
+            >
+              Verify build attestation
+            </Link>
+          </div>
+        </footer>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { ComplianceAccessCard } from "@/components/defi-demo/compliance-access-card";
+import { ComplianceAccessCard } from "@/components/blockchain/compliance-access-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
