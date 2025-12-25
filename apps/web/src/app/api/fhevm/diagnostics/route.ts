@@ -175,13 +175,18 @@ export async function GET() {
       import("@zama-fhe/relayer-sdk/node"),
       import("node-tfhe"),
     ]);
-    const { createInstance, SepoliaConfig } = relayerSdk;
+    const { createInstance, MainnetConfig, SepoliaConfig } = relayerSdk;
     const tfheModule = tfheModuleRaw as TfheModuleShape;
     tfheModuleLoaded = Boolean(tfheModule.__wasm);
 
+    // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
+    const effectiveChainId =
+      Number.isFinite(chainId) && chainId > 0 ? chainId : 11155111;
+    const baseConfig = effectiveChainId === 1 ? MainnetConfig : SepoliaConfig;
+
     const instance = await createInstance({
-      ...SepoliaConfig,
-      chainId: Number.isFinite(chainId) && chainId > 0 ? chainId : 11155111,
+      ...baseConfig,
+      chainId: effectiveChainId,
       ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
         ? { gatewayChainId }
         : {}),

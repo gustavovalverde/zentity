@@ -91,13 +91,13 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
   await ensureZamaRelayerSdkLoaded(signal);
 
   // Dynamic import to enable tree-shaking of WASM modules in production
-  const { initSDK, createInstance, SepoliaConfig } = await import(
-    "@zama-fhe/relayer-sdk/bundle"
-  );
+  const { initSDK, createInstance, MainnetConfig, SepoliaConfig } =
+    await import("@zama-fhe/relayer-sdk/bundle");
 
   await initSDK();
 
   const relayerUrl = process.env.NEXT_PUBLIC_FHEVM_RELAYER_URL?.trim();
+  const chainId = Number(process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || "");
   const gatewayChainId = Number(
     process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID || "",
   );
@@ -109,8 +109,12 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
     process.env.NEXT_PUBLIC_FHEVM_DECRYPTION_ADDRESS;
   const verifyingContractAddressInputVerification =
     process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS;
+
+  // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
+  const baseConfig = chainId === 1 ? MainnetConfig : SepoliaConfig;
+
   const instance = await createInstance({
-    ...SepoliaConfig,
+    ...baseConfig,
     ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
       ? { gatewayChainId }
       : {}),

@@ -84,7 +84,7 @@ export class FhevmZamaProvider
       responseProto.__fhevmBytesPatch = true;
     }
 
-    const { createInstance, SepoliaConfig } = await import(
+    const { createInstance, MainnetConfig, SepoliaConfig } = await import(
       "@zama-fhe/relayer-sdk/node"
     );
 
@@ -112,8 +112,12 @@ export class FhevmZamaProvider
       process.env.FHEVM_INPUT_VERIFICATION_ADDRESS ||
       process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS;
 
+    // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
+    const baseConfig =
+      this.config.chainId === 1 ? MainnetConfig : SepoliaConfig;
+
     return createInstance({
-      ...SepoliaConfig,
+      ...baseConfig,
       chainId: this.config.chainId,
       ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
         ? { gatewayChainId }
