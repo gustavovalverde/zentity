@@ -30,7 +30,7 @@ COPY --link requirements.txt .
 
 # Pre-compile wheels for all dependencies
 # This separates compilation from installation, enabling better caching
-RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+RUN --mount=type=cache,id=s/c844c584-828c-402c-9dc4-ee20eb39d936-/root/.cache/pip,target=/root/.cache/pip \
     pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 # --- Stage 2: Runtime ---

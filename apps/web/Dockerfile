@@ -32,7 +32,7 @@ COPY --link package.json bun.lock ./
 
 # Install dependencies with BuildKit cache mount for Bun
 # Cache persists across builds, significantly speeds up installs
-RUN --mount=type=cache,id=bun-cache,target=/root/.bun/install/cache \
+RUN --mount=type=cache,id=s/a0dbf135-6670-4cf9-8c14-247262ab102f-/root/.bun/install/cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
 # --- Stage 2: Builder ---
@@ -55,6 +55,10 @@ ARG NEXT_PUBLIC_ATTESTATION_DEMO=false
 ARG FHEVM_IDENTITY_REGISTRY
 ARG FHEVM_COMPLIANCE_RULES
 ARG FHEVM_COMPLIANT_ERC20
+# TODO: We should revert this to a secret mount once Railway supports it
+# Railway injects this as build arg (multi-stage build discards it from final image)
+ARG BETTER_AUTH_SECRET
+ENV BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
@@ -75,12 +79,10 @@ ENV DATABASE_PATH=/tmp/dev.db
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 
-# Build with secret mount - REQUIRED (build fails without it)
-# This prevents running with insecure defaults
-# Pass via: docker build --secret id=better_auth_secret,src=<file> ...
-RUN --mount=type=secret,id=better_auth_secret,required=true \
-    touch /tmp/dev.db && \
-    BETTER_AUTH_SECRET=$(cat /run/secrets/better_auth_secret) bun run build
+# Build Next.js
+# NODE_OPTIONS increases heap size for webpack build (build traces phase is memory intensive)
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN touch /tmp/dev.db && bun run build
 
 # --- Stage 3: Runtime ---
 FROM oven/bun:1-slim@sha256:10c077f99e1d7dd7fa2947d8ed0a8c2094fa85577856062e43c8967dc97e9fc6 AS runner
@@ -104,6 +106,7 @@ ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV BB_NODE_BINARY=/usr/bin/node
+ENV BB_CRS_PATH=/var/lib/zentity/bb-crs
 
 # Create non-root user (high UID/GID avoids host user namespace conflicts)
 RUN groupadd --gid ${APP_GID} nodejs && \

@@ -37,8 +37,8 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs
 
 # Build dependencies only with cache mounts (this layer is cached)
 # --locked ensures reproducible builds using Cargo.lock
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-target,target=${APP_HOME}/target \
+RUN --mount=type=cache,id=s/6bb539e1-aad1-4b72-baf0-6e9253435464-/usr/local/cargo/registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=s/6bb539e1-aad1-4b72-baf0-6e9253435464-/app/target,target=${APP_HOME}/target \
     cargo build --locked --release && \
     rm -rf src
 
@@ -48,8 +48,8 @@ RUN touch src/main.rs
 # Build with build info (option_env! reads these at compile time)
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-target,target=${APP_HOME}/target \
+RUN --mount=type=cache,id=s/6bb539e1-aad1-4b72-baf0-6e9253435464-/usr/local/cargo/registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=s/6bb539e1-aad1-4b72-baf0-6e9253435464-/app/target,target=${APP_HOME}/target \
     cargo build --locked --release && \
     cp ${APP_HOME}/target/release/fhe-service ${APP_HOME}/fhe-service
 
