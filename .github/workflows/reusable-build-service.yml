@@ -110,10 +110,7 @@ jobs:
             GIT_SHA=${{ github.sha }}
             BUILD_TIME=${{ steps.timestamp.outputs.value }}
             SOURCE_DATE_EPOCH=${{ steps.timestamp.outputs.epoch }}
-          # Web service requires BETTER_AUTH_SECRET for build
-          # FHE and OCR services don't need secrets
-          # Note: secrets.BETTER_AUTH_SECRET must be configured in repository settings
-          secrets: ${{ (inputs.service_name == 'web' && secrets.BETTER_AUTH_SECRET != '') && format('better_auth_secret={0}', secrets.BETTER_AUTH_SECRET) || '' }}
+            ${{ inputs.service_name == 'web' && secrets.BETTER_AUTH_SECRET != '' && format('BETTER_AUTH_SECRET={0}', secrets.BETTER_AUTH_SECRET) || '' }}
           # Provenance/SBOM only on push (creates manifest list incompatible with load)
           provenance: ${{ github.event_name != 'pull_request' }}
           sbom: ${{ github.event_name != 'pull_request' }}

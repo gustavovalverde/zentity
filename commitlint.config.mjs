@@ -18,7 +18,7 @@ export default {
         "revert",
       ],
     ],
-    // Allow sentence-case subjects (e.g., "Add feature" instead of "add feature")
-    "subject-case": [2, "always", "sentence-case"],
+    // Disable subject-case - conventional commits don't enforce case after type prefix
+    "subject-case": [0],
   },
 };
