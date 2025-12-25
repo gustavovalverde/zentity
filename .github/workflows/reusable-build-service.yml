@@ -86,7 +86,9 @@ jobs:
 
       - name: Get build timestamp
         id: timestamp
-        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         id: push
@@ -107,7 +109,7 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             BUILD_TIME=${{ steps.timestamp.outputs.value }}
-            SOURCE_DATE_EPOCH=${{ github.event.repository.pushed_at }}
+            SOURCE_DATE_EPOCH=${{ steps.timestamp.outputs.epoch }}
           # Web service requires BETTER_AUTH_SECRET for build
           # FHE and OCR services don't need secrets
           # Note: secrets.BETTER_AUTH_SECRET must be configured in repository settings
