@@ -52,6 +52,9 @@ ARG NEXT_PUBLIC_FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
 ARG NEXT_PUBLIC_FHEVM_EXPLORER_URL=https://sepolia.etherscan.io
 ARG NEXT_PUBLIC_FHEVM_PROVIDER_ID=zama
 ARG NEXT_PUBLIC_ATTESTATION_DEMO=false
+ARG FHEVM_IDENTITY_REGISTRY
+ARG FHEVM_COMPLIANCE_RULES
+ARG FHEVM_COMPLIANT_ERC20
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
@@ -65,6 +68,9 @@ ENV NEXT_PUBLIC_FHEVM_NETWORK_NAME=${NEXT_PUBLIC_FHEVM_NETWORK_NAME}
 ENV NEXT_PUBLIC_FHEVM_EXPLORER_URL=${NEXT_PUBLIC_FHEVM_EXPLORER_URL}
 ENV NEXT_PUBLIC_FHEVM_PROVIDER_ID=${NEXT_PUBLIC_FHEVM_PROVIDER_ID}
 ENV NEXT_PUBLIC_ATTESTATION_DEMO=${NEXT_PUBLIC_ATTESTATION_DEMO}
+ENV FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY}
+ENV FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES}
+ENV FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20}
 ENV DATABASE_PATH=/tmp/dev.db
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
@@ -87,7 +93,7 @@ ARG APP_GID
 ARG APP_USER
 ARG APP_HOME
 
-RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 gosu curl \
+RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 gosu curl nodejs ca-certificates \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 WORKDIR ${APP_HOME}
@@ -97,6 +103,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV BB_NODE_BINARY=/usr/bin/node
 
 # Create non-root user (high UID/GID avoids host user namespace conflicts)
 RUN groupadd --gid ${APP_GID} nodejs && \
@@ -110,13 +117,19 @@ COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/stati
 # Copy native modules (tfjs-node + human.js - can't be traced by standalone)
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@tensorflow ./node_modules/@tensorflow
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
+# Copy bb.js (Noir/Barretenberg) assets + workers (server-side verification)
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@aztec ./node_modules/@aztec
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
 
 # Copy scripts
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
+# Copy bb-worker for server-side Noir verification (not traced into standalone output)
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src/lib/zk/bb-worker.mjs ./src/lib/zk/bb-worker.mjs
+
 RUN mkdir -p /var/lib/zentity/web && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity
+RUN mkdir -p /var/lib/zentity/bb-crs && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity/bb-crs
 
 # Note: Container starts as root to fix volume permissions, then drops to ${APP_USER} via gosu
 

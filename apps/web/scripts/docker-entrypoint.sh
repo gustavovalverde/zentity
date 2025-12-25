@@ -9,6 +9,15 @@ DB_DIR=$(dirname "$DB_PATH")
 
 echo "[entrypoint] Database path: $DB_PATH"
 
+# Optional CRS pre-warm for bb.js (best-effort)
+if [ -n "${BB_CRS_PATH:-}" ]; then
+  mkdir -p "$BB_CRS_PATH" 2>/dev/null || true
+  if [ -z "$(ls -A "$BB_CRS_PATH" 2>/dev/null)" ]; then
+    echo "[entrypoint] Pre-warming CRS cache in ${BB_CRS_PATH}..."
+    node -e "import { Crs } from '@aztec/bb.js'; const crs = await Crs.new(2**14+1, process.env.BB_CRS_PATH || process.env.CRS_PATH); await crs.init(); console.log('[entrypoint] CRS cache ready');" || true
+  fi
+fi
+
 # Fix volume permissions if running as root
 if [ "$(id -u)" = "0" ]; then
   echo "[entrypoint] Running as root, fixing volume permissions..."

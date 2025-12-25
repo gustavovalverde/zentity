@@ -1,5 +1,16 @@
 import type { AttestationErrorCode } from "./types";
 
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  ExecutionRevertedError,
+  HttpRequestError,
+  InsufficientFundsError,
+  RpcRequestError,
+  TimeoutError,
+  WebSocketRequestError,
+} from "viem";
+
 import { IdentityRegistryABI } from "@/lib/contracts";
 
 // Full IdentityRegistry ABI (kept in sync with contracts package)
@@ -8,42 +19,71 @@ export const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
 /**
  * Categorize error message for better frontend handling.
  */
-export function categorizeError(message: string): AttestationErrorCode {
-  const m = message.toLowerCase();
+function findViemError(
+  error: unknown,
+  predicate: (err: unknown) => boolean,
+): Error | null {
+  if (error instanceof BaseError) {
+    return (error.walk(predicate) as Error | null) ?? null;
+  }
+  return null;
+}
 
-  // Network errors
+export function getErrorSummary(error: unknown): {
+  shortMessage: string;
+  details?: string;
+} {
+  if (error instanceof BaseError) {
+    return {
+      shortMessage: error.shortMessage || error.message,
+      details: error.details,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      shortMessage: error.message,
+    };
+  }
+
+  return { shortMessage: "Unknown error" };
+}
+
+export function categorizeError(error: unknown): AttestationErrorCode {
   if (
-    m.includes("network") ||
-    m.includes("timeout") ||
-    m.includes("etimedout") ||
-    m.includes("econnrefused") ||
-    m.includes("fetch") ||
-    m.includes("rate limit")
+    findViemError(
+      error,
+      (err) =>
+        err instanceof TimeoutError ||
+        err instanceof HttpRequestError ||
+        err instanceof WebSocketRequestError ||
+        err instanceof RpcRequestError,
+    )
   ) {
     return "NETWORK";
   }
 
-  // Encryption errors (FHE SDK related)
   if (
-    m.includes("encrypt") ||
-    m.includes("fhevm") ||
-    m.includes("instance") ||
-    m.includes("gateway")
-  ) {
-    return "ENCRYPTION";
-  }
-
-  // Contract errors
-  if (
-    m.includes("revert") ||
-    m.includes("execution") ||
-    m.includes("nonce") ||
-    m.includes("gas") ||
-    m.includes("insufficient funds") ||
-    m.includes("no funds") ||
-    m.includes("no balance")
+    findViemError(
+      error,
+      (err) =>
+        err instanceof ExecutionRevertedError ||
+        err instanceof ContractFunctionRevertedError ||
+        err instanceof InsufficientFundsError,
+    )
   ) {
     return "CONTRACT";
+  }
+
+  // FHE/relayer errors typically don't have stable types; fall back to message.
+  const summary = getErrorSummary(error).shortMessage.toLowerCase();
+  if (
+    summary.includes("encrypt") ||
+    summary.includes("fhevm") ||
+    summary.includes("gateway") ||
+    summary.includes("relayer")
+  ) {
+    return "ENCRYPTION";
   }
 
   return "UNKNOWN";

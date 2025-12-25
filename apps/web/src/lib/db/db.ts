@@ -40,7 +40,7 @@ const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
  * No raw ID document images or extracted attributes are stored in this table.
  */
 function initializeIdentityProofsTable(): void {
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS identity_proofs (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
@@ -103,7 +103,7 @@ function initializeIdentityProofsTable(): void {
   // SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN, so we use try/catch
   for (const col of identityProofsColumnsToAdd) {
     try {
-      db.exec(`ALTER TABLE identity_proofs ADD COLUMN ${col.name} ${col.type}`);
+      db.run(`ALTER TABLE identity_proofs ADD COLUMN ${col.name} ${col.type}`);
     } catch {
       // Column already exists, ignore
     }
@@ -662,7 +662,7 @@ export async function getUserFirstName(userId: string): Promise<string | null> {
  * - Expired sessions are automatically cleaned up
  */
 function initializeOnboardingSessionsTable(): void {
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS onboarding_sessions (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -730,7 +730,7 @@ const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
  * - Expiry + one-time use provide baseline replay resistance
  */
 function initializeRpAuthorizationCodesTable(): void {
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS rp_authorization_codes (
       code TEXT PRIMARY KEY,
       client_id TEXT NOT NULL,
@@ -1010,7 +1010,7 @@ export interface BlockchainAttestation {
  * Users can attest on multiple networks (one attestation per network).
  */
 function initializeBlockchainAttestationsTable(): void {
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS blockchain_attestations (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,

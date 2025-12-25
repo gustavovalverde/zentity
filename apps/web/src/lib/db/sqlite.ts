@@ -43,12 +43,12 @@ function ensureDatabaseDirExists(dbPath: string) {
 
 function applyPragmas(db: Database) {
   try {
-    db.exec("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA journal_mode = WAL");
   } catch {
     // Best-effort: ignore SQLITE_BUSY / readonly FS during builds.
   }
   try {
-    db.exec("PRAGMA synchronous = NORMAL");
+    db.run("PRAGMA synchronous = NORMAL");
   } catch {
     // Best-effort
   }

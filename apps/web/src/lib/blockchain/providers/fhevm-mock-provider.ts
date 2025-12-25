@@ -16,7 +16,11 @@ import type {
 import { FhevmType } from "@fhevm/mock-utils";
 
 import { BaseProvider } from "./base-provider";
-import { categorizeError, IDENTITY_REGISTRY_ABI } from "./fhevm-utils";
+import {
+  categorizeError,
+  getErrorSummary,
+  IDENTITY_REGISTRY_ABI,
+} from "./fhevm-utils";
 
 export class FhevmMockProvider
   extends BaseProvider
@@ -221,13 +225,12 @@ export class FhevmMockProvider
         txHash,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      const errorCode = categorizeError(errorMessage);
+      const summary = getErrorSummary(error);
+      const errorCode = categorizeError(error);
 
       return {
         status: "failed",
-        error: errorMessage,
+        error: summary.shortMessage,
         errorCode,
       };
     }

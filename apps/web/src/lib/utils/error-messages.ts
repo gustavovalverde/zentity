@@ -92,17 +92,6 @@ export function getUserFriendlyError(error: unknown): string {
  */
 export function getAttestationError(error: unknown): string {
   const msg = getErrorMessage(error);
-  const lower = msg.toLowerCase();
-
-  // Attestation-specific errors
-  if (lower.includes("execution reverted")) {
-    return "Transaction rejected by contract. You may already be registered.";
-  }
-
-  if (lower.includes("insufficient funds")) {
-    return "Registrar wallet needs more testnet ETH. Contact support.";
-  }
-
-  // Fall back to generic handler
-  return getUserFriendlyError(error);
+  // Preserve the primary error line from viem/tRPC without hiding details.
+  return msg.split("\n")[0] || "An unexpected error occurred";
 }

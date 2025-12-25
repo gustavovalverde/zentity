@@ -14,7 +14,11 @@ import type {
 } from "./types";
 
 import { BaseProvider } from "./base-provider";
-import { categorizeError, IDENTITY_REGISTRY_ABI } from "./fhevm-utils";
+import {
+  categorizeError,
+  getErrorSummary,
+  IDENTITY_REGISTRY_ABI,
+} from "./fhevm-utils";
 
 /**
  * Provider for FHEVM networks.
@@ -200,29 +204,12 @@ export class FhevmZamaProvider
         txHash,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      const formatCause = (cause: unknown) => {
-        if (cause instanceof Error) return cause.message;
-        if (typeof cause === "string") return cause;
-        try {
-          return JSON.stringify(cause);
-        } catch {
-          return String(cause);
-        }
-      };
-      const errorCause =
-        error instanceof Error && "cause" in error && error.cause
-          ? formatCause(error.cause)
-          : "";
-      const detailedMessage = errorCause
-        ? `${errorMessage} (cause: ${errorCause})`
-        : errorMessage;
-      const errorCode = categorizeError(detailedMessage);
+      const summary = getErrorSummary(error);
+      const errorCode = categorizeError(error);
 
       return {
         status: "failed",
-        error: detailedMessage,
+        error: summary.shortMessage,
         errorCode,
       };
     }
