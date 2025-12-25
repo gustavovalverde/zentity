@@ -2,7 +2,9 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,rust,nextjs,windows,macos,linux,visualstudiocode,pycharm,rust-analyzer
 
 ### Fixtures ###
+# Ignore test fixtures but allow e2e/fixtures for synpress
 fixtures/
+!apps/web/e2e/fixtures/
 
 ### Temporary files ###
 commit-message.txt

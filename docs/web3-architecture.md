@@ -577,7 +577,7 @@ window.__FHEVM_PROVIDER_FACTORIES__ = {
 
 Then set:
 
-```
+```bash
 FHEVM_PROVIDER_ID=customVendor
 NEXT_PUBLIC_FHEVM_PROVIDER_ID=customVendor
 ```
