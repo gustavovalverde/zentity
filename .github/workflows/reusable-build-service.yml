@@ -112,8 +112,9 @@ jobs:
           # FHE and OCR services don't need secrets
           # Note: secrets.BETTER_AUTH_SECRET must be configured in repository settings
           secrets: ${{ (inputs.service_name == 'web' && secrets.BETTER_AUTH_SECRET != '') && format('better_auth_secret={0}', secrets.BETTER_AUTH_SECRET) || '' }}
-          provenance: true
-          sbom: true
+          # Provenance/SBOM only on push (creates manifest list incompatible with load)
+          provenance: ${{ github.event_name != 'pull_request' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
 
       # Attestation and signing only on official repository (not forks)
       - name: Generate artifact attestation

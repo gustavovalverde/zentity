@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   extends: ["@commitlint/config-conventional"],
   rules: {
     "type-enum": [
@@ -18,6 +18,7 @@ module.exports = {
         "revert",
       ],
     ],
-    "subject-case": [2, "always", "lower-case"],
+    // Allow sentence-case subjects (e.g., "Add feature" instead of "add feature")
+    "subject-case": [2, "always", "sentence-case"],
   },
 };
