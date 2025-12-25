@@ -49,6 +49,7 @@ const MINT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 // uint64.max = ~18.4 * 10^18, so max total supply is ~18 tokens.
 // We limit per-mint to 10 tokens to allow multiple mints before hitting cap.
 const MAX_MINT_AMOUNT = BigInt(10) * BigInt(10) ** BigInt(18); // 10 tokens
+const UINT64_MAX = (BigInt(1) << BigInt(64)) - BigInt(1); // Max supply for euint64 balances
 
 const mintAttemptTracker = new Map<
   string,
@@ -90,6 +91,8 @@ export const tokenRouter = router({
           symbol: "ZTY",
           decimals: 18,
           totalSupply: "100000000000000000000000", // 100,000 tokens
+          remainingSupply: "18446744073709551615", // Unlimited in demo
+          remainingTokens: 18.4,
           contractAddress: "0xDEMO000000000000000000000000000000000003",
           demo: true,
         };
@@ -148,11 +151,17 @@ export const tokenRouter = router({
           }),
         ]);
 
+        const totalSupplyBigInt = totalSupply as bigint;
+        const remaining = UINT64_MAX - totalSupplyBigInt;
+        const remainingTokens = Number(remaining / BigInt(10 ** 16)) / 100;
+
         return {
           name: name as string,
           symbol: symbol as string,
           decimals: decimals as number,
-          totalSupply: (totalSupply as bigint).toString(),
+          totalSupply: totalSupplyBigInt.toString(),
+          remainingSupply: remaining.toString(),
+          remainingTokens,
           contractAddress,
           demo: false,
         };
@@ -268,6 +277,29 @@ export const tokenRouter = router({
           code: "BAD_REQUEST",
           message: `Network ${input.networkId} is not configured`,
         });
+      }
+
+      // Pre-check: verify supply capacity before sending tx
+      const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
+      if (chain) {
+        const readClient = createPublicClient({
+          chain,
+          transport: http(network.rpcUrl),
+        });
+        const currentSupply = (await readClient.readContract({
+          address: contractAddress as `0x${string}`,
+          abi: COMPLIANT_ERC20_ABI,
+          functionName: "totalSupply",
+        })) as bigint;
+
+        if (currentSupply + amount > UINT64_MAX) {
+          const remaining = UINT64_MAX - currentSupply;
+          const remainingTokens = Number(remaining / BigInt(10 ** 16)) / 100;
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Supply cap reached. Only ${remainingTokens.toFixed(2)} tokens can be minted (euint64 limit).`,
+          });
+        }
       }
 
       // Mint tokens using provider's wallet (owner)

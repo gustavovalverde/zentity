@@ -32,6 +32,12 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
   const [amount, setAmount] = useState("");
   const utils = trpcReact.useUtils();
 
+  // Query token info for remaining supply
+  const { data: tokenInfo } = trpcReact.token.info.useQuery(
+    { networkId },
+    { staleTime: 30000 }, // Refresh every 30s
+  );
+
   const mintMutation = trpcReact.token.mint.useMutation({
     onSuccess: () => {
       // Refresh token info and history
@@ -39,6 +45,9 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
       utils.token.history.invalidate({ networkId, walletAddress });
     },
   });
+
+  const remainingTokens = tokenInfo?.remainingTokens ?? 18.4;
+  const isSupplyExhausted = remainingTokens <= 0;
 
   const handleMint = async () => {
     if (!amount || Number.parseFloat(amount) <= 0) return;
@@ -81,7 +90,8 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
               disabled={
                 mintMutation.isPending ||
                 !amount ||
-                Number.parseFloat(amount) <= 0
+                Number.parseFloat(amount) <= 0 ||
+                isSupplyExhausted
               }
             >
               {mintMutation.isPending ? (
@@ -92,8 +102,16 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Max 10 tokens per request (euint64 limit). Rate limited to 3
-            requests/hour.
+            {isSupplyExhausted ? (
+              <span className="text-destructive">
+                Supply cap reached. Contract uses euint64 (~18.4 max tokens).
+              </span>
+            ) : (
+              <>
+                {remainingTokens.toFixed(2)} tokens remaining (of ~18.4 max).
+                Rate limited to 3 requests/hour.
+              </>
+            )}
           </p>
         </div>
 
