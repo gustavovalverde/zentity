@@ -8,12 +8,29 @@
  * Only cryptographic proofs are returned.
  */
 
+/**
+ * Timeout for proof generation operations.
+ * First proof can take longer due to WASM/CRS initialization.
+ */
+const WORKER_TIMEOUT_MS = 120_000; // 2 minutes
+
+/**
+ * Timeout for health check operations.
+ */
+const HEALTH_CHECK_TIMEOUT_MS = 30_000; // 30 seconds
+
 type ProofType =
   | "age"
   | "doc_validity"
   | "nationality"
   | "nationality_client"
-  | "face_match";
+  | "face_match"
+  | "health_check";
+
+/**
+ * Empty payload for health check requests
+ */
+export type HealthCheckPayload = Record<string, never>;
 
 export interface WorkerRequest {
   id: string;
@@ -23,7 +40,8 @@ export interface WorkerRequest {
     | DocValidityPayload
     | NationalityProofPayload
     | NationalityClientPayload
-    | FaceMatchPayload;
+    | FaceMatchPayload
+    | HealthCheckPayload;
 }
 
 export interface AgeProofPayload {
@@ -93,6 +111,17 @@ const pendingRequests = new Map<
 >();
 
 /**
+ * Worker log message type for diagnostic logging
+ */
+interface WorkerLogMessage {
+  type: "log";
+  stage: string;
+  msg: string;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+/**
  * Initialize the worker (lazy, singleton)
  */
 async function getWorker(): Promise<Worker> {
@@ -107,8 +136,21 @@ async function getWorker(): Promise<Worker> {
         { type: "module" },
       );
 
-      newWorker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        const { id, success, result, error } = event.data;
+      newWorker.onmessage = (
+        event: MessageEvent<WorkerResponse | WorkerLogMessage>,
+      ) => {
+        const data = event.data;
+
+        // Handle log messages from worker (for diagnostics)
+        if ("type" in data && data.type === "log") {
+          // biome-ignore lint/suspicious/noConsole: Diagnostic logging for production debugging
+          console.log(`[noir-worker:${data.stage}]`, data.msg, data);
+          return;
+        }
+
+        // Handle proof response messages
+        const response = data as WorkerResponse;
+        const { id, success, result, error } = response;
         const pending = pendingRequests.get(id);
 
         if (pending) {
@@ -125,6 +167,8 @@ async function getWorker(): Promise<Worker> {
       };
 
       newWorker.onerror = (error) => {
+        // biome-ignore lint/suspicious/noConsole: Error logging for debugging
+        console.error("[noir-worker] Uncaught error:", error.message);
         // Reject all pending requests
         for (const [id, pending] of pendingRequests) {
           pending.reject(new Error(`Worker error: ${error.message}`));
@@ -159,7 +203,25 @@ export async function generateAgeProofWorker(
   const id = generateId();
 
   return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(
+        new Error(
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
+        ),
+      );
+    }, WORKER_TIMEOUT_MS);
+
+    pendingRequests.set(id, {
+      resolve: (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      reject: (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    });
 
     const request: WorkerRequest = {
       id,
@@ -177,14 +239,33 @@ export async function generateFaceMatchProofWorker(
   const w = await getWorker();
   const id = generateId();
 
-  const request: WorkerRequest = {
-    id,
-    type: "face_match",
-    payload,
-  };
-
   return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(
+        new Error(
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
+        ),
+      );
+    }, WORKER_TIMEOUT_MS);
+
+    pendingRequests.set(id, {
+      resolve: (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      reject: (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    });
+
+    const request: WorkerRequest = {
+      id,
+      type: "face_match",
+      payload,
+    };
+
     w.postMessage(request);
   });
 }
@@ -199,7 +280,25 @@ export async function generateDocValidityProofWorker(
   const id = generateId();
 
   return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(
+        new Error(
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
+        ),
+      );
+    }, WORKER_TIMEOUT_MS);
+
+    pendingRequests.set(id, {
+      resolve: (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      reject: (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    });
 
     const request: WorkerRequest = {
       id,
@@ -222,7 +321,25 @@ async function _generateNationalityProofWorker(
   const id = generateId();
 
   return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(
+        new Error(
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
+        ),
+      );
+    }, WORKER_TIMEOUT_MS);
+
+    pendingRequests.set(id, {
+      resolve: (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      reject: (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    });
 
     const request: WorkerRequest = {
       id,
@@ -251,7 +368,25 @@ export async function generateNationalityProofClientWorker(
   const id = generateId();
 
   return new Promise((resolve, reject) => {
-    pendingRequests.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(
+        new Error(
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
+        ),
+      );
+    }, WORKER_TIMEOUT_MS);
+
+    pendingRequests.set(id, {
+      resolve: (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      reject: (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    });
 
     const request: WorkerRequest = {
       id,
@@ -272,5 +407,59 @@ function _terminateWorker(): void {
     worker = null;
     workerInitPromise = null;
     pendingRequests.clear();
+  }
+}
+
+/**
+ * Health check result
+ */
+export interface WorkerHealthStatus {
+  workerReady: boolean;
+  modulesLoaded: boolean;
+  error?: string;
+}
+
+/**
+ * Check if the worker is healthy and modules can be loaded.
+ * Useful for diagnosing production issues.
+ */
+export async function checkWorkerHealth(): Promise<WorkerHealthStatus> {
+  try {
+    const w = await getWorker();
+    const id = generateId();
+
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        pendingRequests.delete(id);
+        resolve({
+          workerReady: true,
+          modulesLoaded: false,
+          error: `Health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s - WASM modules may not be accessible`,
+        });
+      }, HEALTH_CHECK_TIMEOUT_MS);
+
+      pendingRequests.set(id, {
+        resolve: () => {
+          clearTimeout(timeoutId);
+          resolve({ workerReady: true, modulesLoaded: true });
+        },
+        reject: (error) => {
+          clearTimeout(timeoutId);
+          resolve({
+            workerReady: true,
+            modulesLoaded: false,
+            error: error.message,
+          });
+        },
+      });
+
+      w.postMessage({ id, type: "health_check", payload: {} });
+    });
+  } catch (error) {
+    return {
+      workerReady: false,
+      modulesLoaded: false,
+      error: error instanceof Error ? error.message : "Worker creation failed",
+    };
   }
 }

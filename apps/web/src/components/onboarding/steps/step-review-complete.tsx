@@ -337,11 +337,40 @@ export function StepReviewComplete() {
         setProofStatus("generating");
         try {
           proofResult = await generateAgeProof(birthYear, currentYear, 18);
-        } catch (_zkError) {
-          setError(
-            "Privacy verification services are temporarily unavailable. " +
-              "Your information has not been stored. Please try again in a few minutes.",
-          );
+        } catch (zkError) {
+          const errorMessage =
+            zkError instanceof Error ? zkError.message : "Unknown error";
+          const isTimeout = errorMessage.includes("timed out");
+          const isWasmError =
+            errorMessage.toLowerCase().includes("wasm") ||
+            errorMessage.toLowerCase().includes("module");
+
+          // Log for diagnostics
+          // biome-ignore lint/suspicious/noConsole: Error logging for production debugging
+          console.error("[step-review] ZK proof generation failed:", {
+            error: errorMessage,
+            isTimeout,
+            isWasmError,
+          });
+
+          if (isTimeout) {
+            setError(
+              "Privacy verification is taking too long. This may be due to " +
+                "network issues loading cryptographic libraries. Please refresh " +
+                "the page and try again.",
+            );
+          } else if (isWasmError) {
+            setError(
+              "Unable to load cryptographic libraries. Please try refreshing " +
+                "the page. If using a VPN or content blocker, it may be blocking " +
+                "required resources.",
+            );
+          } else {
+            setError(
+              "Privacy verification services are temporarily unavailable. " +
+                "Your information has not been stored. Please try again in a few minutes.",
+            );
+          }
           setProofStatus("error");
           setSubmitting(false);
           return;

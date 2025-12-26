@@ -9,8 +9,14 @@
 #   NEXT_PUBLIC_APP_URL=https://app.zentity.xyz
 #   INTERNAL_SERVICE_TOKEN=<secret>
 #   DATABASE_PATH=/var/lib/zentity/web/dev.db
+#   BB_CRS_PATH=/var/lib/zentity/bb-crs
 #   FHE_SERVICE_URL=http://fhe.railway.internal:5001
 #   OCR_SERVICE_URL=http://ocr.railway.internal:5004
+#
+# Required volumes (create via Railway dashboard):
+#   web-volume → /var/lib/zentity
+#     - Persists SQLite database at /var/lib/zentity/web/dev.db
+#     - Persists BB CRS cache at /var/lib/zentity/bb-crs
 
 [build]
 builder = "DOCKERFILE"
