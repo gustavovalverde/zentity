@@ -28,6 +28,25 @@ import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts
 
 import { COUNTRY_CODES, COUNTRY_GROUPS, TREE_DEPTH } from "./nationality-data";
 
+/**
+ * Diagnostic logging for production debugging.
+ * Logs are sent to both console and main thread for visibility.
+ */
+function logWorker(
+  stage: string,
+  msg: string,
+  data?: Record<string, unknown>,
+): void {
+  const timestamp = new Date().toISOString();
+  const payload = { type: "log" as const, stage, msg, timestamp, ...data };
+  console.log(`[noir-worker:${stage}]`, msg, data ?? "");
+  try {
+    self.postMessage(payload);
+  } catch {
+    // Ignore if postMessage fails
+  }
+}
+
 // Module cache for lazy loading
 interface ModuleCache {
   Noir: typeof import("@noir-lang/noir_js").Noir;
@@ -138,21 +157,44 @@ if (typeof globalThis.fetch === "function") {
  * Initialize Noir.js and bb.js (lazy, once)
  */
 async function getModules(): Promise<ModuleCache> {
-  if (moduleCache) return moduleCache;
+  if (moduleCache) {
+    logWorker("init", "Using cached modules");
+    return moduleCache;
+  }
 
-  const [noirModule, bbModule] = await Promise.all([
-    import("@noir-lang/noir_js"),
-    import("@aztec/bb.js"),
-  ]);
+  logWorker("init", "Starting module initialization");
 
-  moduleCache = {
-    Noir: noirModule.Noir,
-    UltraHonkBackend: bbModule.UltraHonkBackend,
-    Fr: bbModule.Fr,
-    BarretenbergSync: bbModule.BarretenbergSync,
-  };
+  try {
+    logWorker("import", "Importing @noir-lang/noir_js...");
+    const noirImportStart = performance.now();
+    const noirModule = await import("@noir-lang/noir_js");
+    logWorker("import", "@noir-lang/noir_js loaded", {
+      durationMs: Math.round(performance.now() - noirImportStart),
+    });
 
-  return moduleCache;
+    logWorker("import", "Importing @aztec/bb.js...");
+    const bbImportStart = performance.now();
+    const bbModule = await import("@aztec/bb.js");
+    logWorker("import", "@aztec/bb.js loaded", {
+      durationMs: Math.round(performance.now() - bbImportStart),
+    });
+
+    moduleCache = {
+      Noir: noirModule.Noir,
+      UltraHonkBackend: bbModule.UltraHonkBackend,
+      Fr: bbModule.Fr,
+      BarretenbergSync: bbModule.BarretenbergSync,
+    };
+
+    logWorker("init", "Module initialization complete");
+    return moduleCache;
+  } catch (error) {
+    logWorker("error", "Module import failed", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -436,9 +478,35 @@ async function generateNationalityProofClient(
 self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
 
+  // Handle health check outside of queue for immediate response
+  if (request.type === "health_check") {
+    logWorker("health", "Health check received, initializing modules...");
+    try {
+      await getModules();
+      logWorker("health", "Health check passed - modules loaded");
+      self.postMessage({
+        id: request.id,
+        success: true,
+        result: { healthy: true },
+      });
+    } catch (error) {
+      logWorker("health", "Health check failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      self.postMessage({
+        id: request.id,
+        success: false,
+        error: error instanceof Error ? error.message : "Health check failed",
+      });
+    }
+    return;
+  }
+
   workerQueue = workerQueue
     .then(async () => {
       const { id, type, payload } = request;
+      logWorker("proof", `Starting ${type} proof generation`, { id });
+      const proofStart = performance.now();
 
       try {
         let result: { proof: number[]; publicInputs: string[] };
@@ -464,6 +532,9 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           throw new Error(`Unknown proof type: ${type}`);
         }
 
+        const durationMs = Math.round(performance.now() - proofStart);
+        logWorker("proof", `${type} proof generated`, { id, durationMs });
+
         const response: WorkerResponse = {
           id,
           success: true,
@@ -471,6 +542,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         };
         self.postMessage(response);
       } catch (error) {
+        const durationMs = Math.round(performance.now() - proofStart);
+        logWorker("error", `${type} proof generation failed`, {
+          id,
+          durationMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
         const response: WorkerResponse = {
           id,
           success: false,
@@ -483,3 +561,6 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       // Keep the queue alive even if a previous request failed.
     });
 };
+
+// Log worker initialization
+logWorker("init", "Worker script loaded");

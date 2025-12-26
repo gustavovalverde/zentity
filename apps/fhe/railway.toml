@@ -8,6 +8,10 @@
 #   HOST=0.0.0.0  (IPv4 required for Railway healthchecks)
 #   INTERNAL_SERVICE_TOKEN=<secret>
 #   FHE_KEYS_DIR=/var/lib/zentity/fhe
+#
+# Required volumes (create via Railway dashboard):
+#   fhe-volume → /var/lib/zentity/fhe
+#     - Persists TFHE encryption keys (avoids regeneration on restart)
 
 [build]
 builder = "DOCKERFILE"

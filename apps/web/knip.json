@@ -7,7 +7,8 @@
     "src/hooks/fhevm/use-fhe-encryption.ts",
     "src/lib/wagmi/empty-module.js",
     "src/lib/wagmi/empty-module/index.js",
-    "src/lib/wagmi/empty-module/internal/index.js"
+    "src/lib/wagmi/empty-module/internal/index.js",
+    "src/lib/zk/noir-worker-manager.ts"
   ],
   "ignoreDependencies": [
     "@vladmandic/human-models",

@@ -42,6 +42,9 @@ jobs:
           restore-keys: |
             pre-commit-${{ runner.os }}-
       - uses: pre-commit/action@v3.0.1
+        env:
+          # Skip no-commit-to-branch hook in CI - it's meant for local dev only
+          SKIP: no-commit-to-branch
 
   # ============================================
   # TypeScript / JavaScript (apps/web)

@@ -179,3 +179,17 @@ CREATE TABLE IF NOT EXISTS blockchain_attestations (
 CREATE INDEX IF NOT EXISTS idx_attestations_user_id ON blockchain_attestations(user_id);
 CREATE INDEX IF NOT EXISTS idx_attestations_network ON blockchain_attestations(network_id);
 CREATE INDEX IF NOT EXISTS idx_attestations_status ON blockchain_attestations(status);
+
+-- RP (Relying Party) authorization codes for OAuth-style redirect flow
+CREATE TABLE IF NOT EXISTS rp_authorization_codes (
+  code TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  state TEXT,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  created_at INTEGER DEFAULT (unixepoch()),
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_rp_authorization_codes_expires_at ON rp_authorization_codes (expires_at);

@@ -82,7 +82,7 @@ ENV BUILD_TIME=${BUILD_TIME}
 
 # Build Next.js
 # NODE_OPTIONS increases heap size for webpack build (build traces phase is memory intensive)
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN touch /tmp/dev.db && bun run build
 
 # --- Stage 3: Runtime ---
@@ -123,6 +123,8 @@ COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
 # Copy bb.js (Noir/Barretenberg) assets + workers (server-side verification)
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@aztec ./node_modules/@aztec
+# Copy noir-lang WASM modules for client-side proof generation in Web Worker
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@noir-lang ./node_modules/@noir-lang
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
 
 # Copy scripts
