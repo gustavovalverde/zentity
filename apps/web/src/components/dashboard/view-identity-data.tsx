@@ -34,22 +34,10 @@ import { IdentityRegistryABI } from "@/lib/contracts";
 import { useFHEDecrypt, useInMemoryStorage } from "@/lib/fhevm";
 import { trpcReact } from "@/lib/trpc/client";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
+import { getCountryName } from "@/lib/zk/nationality-data";
 
 // IdentityRegistry ABI (kept in sync with contracts package)
 const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
-
-// Country code mapping (ISO 3166-1 numeric to name)
-const COUNTRY_CODES: Record<number, string> = {
-  840: "United States",
-  826: "United Kingdom",
-  276: "Germany",
-  250: "France",
-  392: "Japan",
-  156: "China",
-  124: "Canada",
-  36: "Australia",
-  // Add more as needed
-};
 
 function normalizeHandle(handle: unknown): `0x${string}` | undefined {
   if (!handle) return undefined;
@@ -331,8 +319,7 @@ export function ViewIdentityData() {
 
   // Get country name
   const countryName = decryptedData
-    ? COUNTRY_CODES[decryptedData.countryCode] ||
-      `Country ${decryptedData.countryCode}`
+    ? getCountryName(decryptedData.countryCode)
     : undefined;
 
   // Not connected, no confirmed attestation, or no contract address

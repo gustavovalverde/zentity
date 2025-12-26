@@ -75,6 +75,85 @@ export const COUNTRY_CODES: Record<string, number> = {
   USA: 840, // United States
 };
 
+// Reverse mapping: numeric code → country name
+export const COUNTRY_NAMES: Record<number, string> = {
+  // EU countries
+  40: "Austria",
+  56: "Belgium",
+  100: "Bulgaria",
+  191: "Croatia",
+  196: "Cyprus",
+  203: "Czech Republic",
+  208: "Denmark",
+  233: "Estonia",
+  246: "Finland",
+  250: "France",
+  276: "Germany",
+  300: "Greece",
+  348: "Hungary",
+  372: "Ireland",
+  380: "Italy",
+  428: "Latvia",
+  440: "Lithuania",
+  442: "Luxembourg",
+  470: "Malta",
+  528: "Netherlands",
+  616: "Poland",
+  620: "Portugal",
+  642: "Romania",
+  703: "Slovakia",
+  705: "Slovenia",
+  724: "Spain",
+  752: "Sweden",
+
+  // Additional EEA/Schengen
+  352: "Iceland",
+  438: "Liechtenstein",
+  578: "Norway",
+  756: "Switzerland",
+
+  // LATAM
+  32: "Argentina",
+  68: "Bolivia",
+  76: "Brazil",
+  152: "Chile",
+  170: "Colombia",
+  188: "Costa Rica",
+  192: "Cuba",
+  214: "Dominican Republic",
+  218: "Ecuador",
+  222: "El Salvador",
+  320: "Guatemala",
+  340: "Honduras",
+  484: "Mexico",
+  558: "Nicaragua",
+  591: "Panama",
+  600: "Paraguay",
+  604: "Peru",
+  858: "Uruguay",
+  862: "Venezuela",
+
+  // Five Eyes
+  36: "Australia",
+  124: "Canada",
+  554: "New Zealand",
+  826: "United Kingdom",
+  840: "United States",
+
+  // Additional (from attestation.ts)
+  392: "Japan",
+  410: "South Korea",
+  156: "China",
+  356: "India",
+};
+
+/**
+ * Get country name from ISO 3166-1 numeric code
+ */
+export function getCountryName(numericCode: number): string {
+  return COUNTRY_NAMES[numericCode] || `Unknown (${numericCode})`;
+}
+
 // Country group definitions (ISO alpha-3 codes)
 export const COUNTRY_GROUPS: Record<string, string[]> = {
   EU: [
