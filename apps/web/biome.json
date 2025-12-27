@@ -22,7 +22,12 @@
       "!!**/playwright-report",
       "!!**/test-results",
       "!!**/dist",
-      "!!**/build"
+      "!!**/build",
+      "!!**/public/coi-serviceworker.js",
+      "!!**/public/fhevm",
+      "!!**/public/bb",
+      "!!**/public/workerHelpers.js",
+      "!!**/public/*.wasm"
     ]
   },
   "overrides": [

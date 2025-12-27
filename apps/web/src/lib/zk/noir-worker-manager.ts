@@ -8,6 +8,11 @@
  * Only cryptographic proofs are returned.
  */
 
+const ENABLE_WORKER_LOGS =
+  process.env.NEXT_PUBLIC_NOIR_DEBUG === "true" &&
+  (process.env.NODE_ENV === "development" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "local");
+
 /**
  * Timeout for proof generation operations.
  * First proof can take longer due to WASM/CRS initialization.
@@ -26,6 +31,11 @@ type ProofType =
   | "nationality_client"
   | "face_match"
   | "health_check";
+
+export interface WorkerInitMessage {
+  type: "init";
+  origin: string;
+}
 
 /**
  * Empty payload for health check requests
@@ -135,6 +145,12 @@ async function getWorker(): Promise<Worker> {
         new URL("./noir-prover.worker.ts", import.meta.url),
         { type: "module" },
       );
+      if (typeof window !== "undefined") {
+        newWorker.postMessage({
+          type: "init",
+          origin: window.location.origin,
+        } satisfies WorkerInitMessage);
+      }
 
       newWorker.onmessage = (
         event: MessageEvent<WorkerResponse | WorkerLogMessage>,
@@ -143,8 +159,10 @@ async function getWorker(): Promise<Worker> {
 
         // Handle log messages from worker (for diagnostics)
         if ("type" in data && data.type === "log") {
-          // biome-ignore lint/suspicious/noConsole: Diagnostic logging for production debugging
-          console.log(`[noir-worker:${data.stage}]`, data.msg, data);
+          if (ENABLE_WORKER_LOGS) {
+            // biome-ignore lint/suspicious/noConsole: Diagnostic logging for local debugging
+            console.log(`[noir-worker:${data.stage}]`, data.msg, data);
+          }
           return;
         }
 

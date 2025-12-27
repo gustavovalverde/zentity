@@ -4,6 +4,7 @@
     ".synpress-wallet-setup-dist/**",
     "src/components/ui/**",
     "scripts/**",
+    "public/coi-serviceworker.js",
     "src/hooks/fhevm/use-fhe-encryption.ts",
     "src/lib/wagmi/empty-module.js",
     "src/lib/wagmi/empty-module/index.js",

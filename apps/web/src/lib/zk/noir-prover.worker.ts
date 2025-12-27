@@ -14,6 +14,7 @@ import type {
   FaceMatchPayload,
   NationalityClientPayload,
   NationalityProofPayload,
+  WorkerInitMessage,
   WorkerRequest,
   WorkerResponse,
 } from "./noir-worker-manager";
@@ -28,18 +29,25 @@ import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts
 
 import { COUNTRY_CODES, COUNTRY_GROUPS, TREE_DEPTH } from "./nationality-data";
 
+const ENABLE_WORKER_LOGS =
+  process.env.NEXT_PUBLIC_NOIR_DEBUG === "true" &&
+  (process.env.NODE_ENV === "development" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "local");
+
 /**
- * Diagnostic logging for production debugging.
- * Logs are sent to both console and main thread for visibility.
+ * Diagnostic logging (development only).
+ * Logs are forwarded to the main thread when explicitly enabled.
  */
 function logWorker(
   stage: string,
   msg: string,
   data?: Record<string, unknown>,
 ): void {
+  if (!ENABLE_WORKER_LOGS) return;
   const timestamp = new Date().toISOString();
-  const payload = { type: "log" as const, stage, msg, timestamp, ...data };
-  console.log(`[noir-worker:${stage}]`, msg, data ?? "");
+  const payload = data
+    ? { type: "log" as const, stage, msg, timestamp, ...data }
+    : { type: "log" as const, stage, msg, timestamp };
   try {
     self.postMessage(payload);
   } catch {
@@ -75,6 +83,38 @@ const proverBackendCache = new Map<
   import("@aztec/bb.js").UltraHonkBackend
 >();
 let workerQueue: Promise<void> = Promise.resolve();
+
+const MAX_THREADS = 8;
+let loggedIsolationFallback = false;
+
+/**
+ * Local path for bb.js WASM (copied by setup-coep-assets.mjs).
+ * Serving locally avoids CDN latency and improves reliability.
+ * Note: bb.js appends "-threads" when multi-threading is enabled,
+ * so we pass the base path and it requests "barretenberg-threads.wasm.gz".
+ */
+const BB_WASM_PATH = "/bb/barretenberg.wasm.gz";
+
+function getIsolationSupport() {
+  const sharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
+  const crossOriginIsolated = globalThis.crossOriginIsolated === true;
+  return {
+    sharedArrayBuffer,
+    crossOriginIsolated,
+    canUseThreads: sharedArrayBuffer && crossOriginIsolated,
+  };
+}
+
+function getThreadCount(): number {
+  const { canUseThreads } = getIsolationSupport();
+  if (!canUseThreads) return 1;
+  const available = self.navigator?.hardwareConcurrency ?? 4;
+  return Math.max(1, Math.min(MAX_THREADS, available));
+}
+
+const bbLogger = (msg: string) => {
+  logWorker("bb", msg);
+};
 
 // bb.js expects `Buffer` to exist in the browser/worker runtime.
 // In the browser, `buffer` provides a Uint8Array-backed Buffer that doesn't
@@ -120,36 +160,44 @@ globalThis.Buffer = Buffer;
 
 // Some bundlers load module workers via `blob:` URLs. In that case, `fetch("/...")`
 // fails because the base URL is non-hierarchical. Normalize absolute-path fetches
-// to an origin-qualified URL.
-if (typeof globalThis.fetch === "function") {
-  let origin: string | null = null;
-  try {
-    origin = new URL(globalThis.location.href).origin;
-  } catch {
-    origin = null;
+// to an origin-qualified URL when possible.
+let fetchOrigin: string | null = null;
+const originalFetch =
+  typeof globalThis.fetch === "function" ? globalThis.fetch : null;
+
+function setFetchOrigin(origin: string | null) {
+  if (!originalFetch || !origin || origin === "null") return;
+  if (fetchOrigin === origin) return;
+  fetchOrigin = origin;
+
+  const originalFetchBound = originalFetch.bind(globalThis);
+  const wrappedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    // Fix absolute paths for blob: URL workers
+    if (typeof input === "string" && input.startsWith("/")) {
+      return originalFetchBound(`${origin}${input}`, init);
+    }
+    if (input instanceof URL && input.pathname.startsWith("/")) {
+      return originalFetchBound(
+        new URL(`${origin}${input.pathname}${input.search}`),
+        init,
+      );
+    }
+    return originalFetchBound(input, init);
+  }) as typeof fetch;
+
+  if ("preconnect" in originalFetch) {
+    wrappedFetch.preconnect = originalFetch.preconnect;
   }
 
-  if (origin) {
-    const originalFetch = globalThis.fetch;
-    const originalFetchBound = originalFetch.bind(globalThis);
-    const wrappedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-      if (typeof input === "string" && input.startsWith("/")) {
-        return originalFetchBound(`${origin}${input}`, init);
-      }
-      if (input instanceof URL && input.pathname.startsWith("/")) {
-        return originalFetchBound(
-          new URL(`${origin}${input.pathname}${input.search}`),
-          init,
-        );
-      }
-      return originalFetchBound(input, init);
-    }) as typeof fetch;
+  globalThis.fetch = wrappedFetch;
+}
 
-    if ("preconnect" in originalFetch) {
-      wrappedFetch.preconnect = originalFetch.preconnect;
-    }
-
-    globalThis.fetch = wrappedFetch;
+if (originalFetch) {
+  try {
+    const origin = new URL(globalThis.location.href).origin;
+    setFetchOrigin(origin);
+  } catch {
+    // Origin will be injected from main thread when running under blob: URLs.
   }
 }
 
@@ -203,7 +251,20 @@ async function getModules(): Promise<ModuleCache> {
 async function getBarretenberg() {
   if (bbInstance) return bbInstance;
   const { BarretenbergSync } = await getModules();
-  bbInstance = await BarretenbergSync.initSingleton();
+  const { canUseThreads, sharedArrayBuffer, crossOriginIsolated } =
+    getIsolationSupport();
+  if (!canUseThreads && !loggedIsolationFallback) {
+    loggedIsolationFallback = true;
+    logWorker(
+      "init",
+      "SharedArrayBuffer unavailable; using single-threaded WASM",
+      {
+        sharedArrayBuffer,
+        crossOriginIsolated,
+      },
+    );
+  }
+  bbInstance = await BarretenbergSync.initSingleton(BB_WASM_PATH, bbLogger);
   return bbInstance;
 }
 
@@ -233,8 +294,26 @@ async function getProverBackend(circuit: CircuitName) {
   const existing = proverBackendCache.get(circuit);
   if (existing) return existing;
   const { UltraHonkBackend } = await getModules();
+  const { canUseThreads, sharedArrayBuffer, crossOriginIsolated } =
+    getIsolationSupport();
+  if (!canUseThreads && !loggedIsolationFallback) {
+    loggedIsolationFallback = true;
+    logWorker(
+      "init",
+      "SharedArrayBuffer unavailable; using single-threaded proving",
+      {
+        sharedArrayBuffer,
+        crossOriginIsolated,
+      },
+    );
+  }
+  const threads = getThreadCount();
   const artifact = getCircuitArtifact(circuit) as { bytecode: string };
-  const backend = new UltraHonkBackend(artifact.bytecode, { threads: 1 });
+  const backend = new UltraHonkBackend(artifact.bytecode, {
+    threads,
+    logger: bbLogger,
+    wasmPath: BB_WASM_PATH,
+  });
   proverBackendCache.set(circuit, backend);
   return backend;
 }
@@ -367,15 +446,22 @@ async function generateAgeProof(
   payload: AgeProofPayload,
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("age_verification");
+  logWorker("proof", "Executing age witness");
   const { witness } = await noir.execute({
     birth_year: payload.birthYear.toString(),
     current_year: payload.currentYear.toString(),
     min_age: payload.minAge.toString(),
     nonce: nonceToField(payload.nonce),
   });
+  logWorker("proof", "Age witness ready", { size: witness.length });
 
   const backend = await getProverBackend("age_verification");
+  logWorker("proof", "Generating age proof");
   const proof = await backend.generateProof(witness);
+  logWorker("proof", "Age proof generated", {
+    proofSize: proof.proof.length,
+    publicInputs: proof.publicInputs.length,
+  });
 
   // Convert Uint8Array to regular array for transfer
   return {
@@ -391,14 +477,21 @@ async function generateDocValidityProof(
   payload: DocValidityPayload,
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("doc_validity");
+  logWorker("proof", "Executing doc validity witness");
   const { witness } = await noir.execute({
     expiry_date: payload.expiryDate.toString(),
     current_date: payload.currentDate.toString(),
     nonce: nonceToField(payload.nonce),
   });
+  logWorker("proof", "Doc validity witness ready", { size: witness.length });
 
   const backend = await getProverBackend("doc_validity");
+  logWorker("proof", "Generating doc validity proof");
   const proof = await backend.generateProof(witness);
+  logWorker("proof", "Doc validity proof generated", {
+    proofSize: proof.proof.length,
+    publicInputs: proof.publicInputs.length,
+  });
 
   return {
     proof: Array.from(proof.proof),
@@ -410,14 +503,21 @@ async function generateFaceMatchProof(
   payload: FaceMatchPayload,
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("face_match");
+  logWorker("proof", "Executing face match witness");
   const { witness } = await noir.execute({
     similarity_score: payload.similarityScore.toString(),
     threshold: payload.threshold.toString(),
     nonce: nonceToField(payload.nonce),
   });
+  logWorker("proof", "Face match witness ready", { size: witness.length });
 
   const backend = await getProverBackend("face_match");
+  logWorker("proof", "Generating face match proof");
   const proof = await backend.generateProof(witness);
+  logWorker("proof", "Face match proof generated", {
+    proofSize: proof.proof.length,
+    publicInputs: proof.publicInputs.length,
+  });
 
   return {
     proof: Array.from(proof.proof),
@@ -432,6 +532,7 @@ async function generateNationalityProof(
   payload: NationalityProofPayload,
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("nationality_membership");
+  logWorker("proof", "Executing nationality witness");
   const { witness } = await noir.execute({
     nationality_code: payload.nationalityCode.toString(),
     merkle_root: payload.merkleRoot,
@@ -439,9 +540,15 @@ async function generateNationalityProof(
     path_indices: payload.pathIndices,
     nonce: nonceToField(payload.nonce),
   });
+  logWorker("proof", "Nationality witness ready", { size: witness.length });
 
   const backend = await getProverBackend("nationality_membership");
+  logWorker("proof", "Generating nationality proof");
   const proof = await backend.generateProof(witness);
+  logWorker("proof", "Nationality proof generated", {
+    proofSize: proof.proof.length,
+    publicInputs: proof.publicInputs.length,
+  });
 
   return {
     proof: Array.from(proof.proof),
@@ -475,8 +582,23 @@ async function generateNationalityProofClient(
 /**
  * Handle incoming messages from the main thread
  */
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+self.onmessage = async (
+  event: MessageEvent<WorkerRequest | WorkerInitMessage>,
+) => {
   const request = event.data;
+
+  if (
+    typeof request === "object" &&
+    request &&
+    "type" in request &&
+    request.type === "init" &&
+    "origin" in request
+  ) {
+    const origin = typeof request.origin === "string" ? request.origin : null;
+    setFetchOrigin(origin);
+    logWorker("init", "Fetch origin set", { origin });
+    return;
+  }
 
   // Handle health check outside of queue for immediate response
   if (request.type === "health_check") {
@@ -563,4 +685,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 };
 
 // Log worker initialization
-logWorker("init", "Worker script loaded");
+logWorker("init", "Worker script loaded", {
+  crossOriginIsolated: globalThis.crossOriginIsolated ?? false,
+  sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
+  hardwareConcurrency: self.navigator?.hardwareConcurrency ?? null,
+});

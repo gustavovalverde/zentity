@@ -8,8 +8,9 @@
     "bun": "1.3.x"
   },
   "scripts": {
-    "dev": "bun ./node_modules/next/dist/bin/next dev --webpack",
-    "build": "bun ./node_modules/next/dist/bin/next build --webpack",
+    "setup:coep-assets": "bun scripts/setup-coep-assets.mjs",
+    "dev": "bun run setup:coep-assets && bun ./node_modules/next/dist/bin/next dev --webpack",
+    "build": "bun run setup:coep-assets && bun ./node_modules/next/dist/bin/next build --webpack",
     "start": "bun ./node_modules/next/dist/bin/next start",
     "clean": "rm -rf .next test-results playwright-report coverage",
     "lint": "biome check . --write",
