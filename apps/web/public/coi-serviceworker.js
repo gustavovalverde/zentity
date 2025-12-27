@@ -1,6 +1,12 @@
 /*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
 /*! Modified for Zentity - always use credentialless mode */
 let coepCredentialless = true;
+let coopHeader = "same-origin";
+const allowedCoopHeaders = new Set([
+  "same-origin",
+  "same-origin-allow-popups",
+  "unsafe-none",
+]);
 if (typeof window === "undefined") {
   self.addEventListener("install", () => self.skipWaiting());
   self.addEventListener("activate", (event) =>
@@ -21,6 +27,10 @@ if (typeof window === "undefined") {
         });
     } else if (ev.data.type === "coepCredentialless") {
       coepCredentialless = ev.data.value;
+    } else if (ev.data.type === "coop") {
+      if (allowedCoopHeaders.has(ev.data.value)) {
+        coopHeader = ev.data.value;
+      }
     }
   });
 
@@ -57,7 +67,7 @@ if (typeof window === "undefined") {
           if (!coepCredentialless) {
             newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
           }
-          newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
+          newHeaders.set("Cross-Origin-Opener-Policy", coopHeader);
 
           return new Response(response.body, {
             status: response.status,
@@ -85,6 +95,7 @@ if (typeof window === "undefined") {
       coepCredentialless: () => true,
       coepDegrade: () => false,
       doReload: () => window.location.reload(),
+      coop: () => "same-origin",
       quiet: false,
       ...window.coi,
     };
@@ -109,6 +120,13 @@ if (typeof window === "undefined") {
             ? false
             : coi.coepCredentialless(),
       });
+      const coopValue = typeof coi.coop === "function" ? coi.coop() : coi.coop;
+      if (coopValue) {
+        n.serviceWorker.controller.postMessage({
+          type: "coop",
+          value: coopValue,
+        });
+      }
       if (reloadToDegrade) {
         !coi.quiet && console.log("Reloading page to degrade COEP.");
         window.sessionStorage.setItem("coiReloadedBySelf", "coepdegrade");

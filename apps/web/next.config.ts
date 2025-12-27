@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-import path from "node:path";
-
 const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployments
   output: "standalone",
@@ -36,87 +34,27 @@ const nextConfig: NextConfig = {
     "@zama-fhe/relayer-sdk/node",
     "node-tfhe",
     "node-tkms",
+    // Optional dependencies for wallet SDKs (avoid bundler resolution issues)
+    "pino-pretty",
+    "lokijs",
+    "encoding",
   ],
 
-  // Webpack fallback configuration (for --webpack builds)
-  webpack: (config, { isServer }) => {
-    const webpack = require("webpack");
-    // Enable top-level await + layers for webpack builds
-    config.experiments = {
-      ...config.experiments,
-      topLevelAwait: true,
-      layers: true,
-    };
-
-    // Treat WASM as an emitted asset so wasm-bindgen JS loaders can fetch it.
-    // This avoids Webpack trying to resolve "wbg" imports inside wasm modules.
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: "asset/resource",
-    });
-
-    // Polyfill node:buffer for browser bundles (noir worker uses node:buffer)
-    config.resolve = config.resolve || {};
-    config.resolve.alias = {
-      ...(config.resolve.alias || {}),
+  turbopack: {
+    resolveAlias: {
       "node:buffer": "buffer",
-      "@coinbase/wallet-sdk": path.resolve(
-        __dirname,
-        "src/lib/wagmi/empty-module",
-      ),
-      "@gemini-wallet/core": path.resolve(
-        __dirname,
-        "src/lib/wagmi/empty-module",
-      ),
-      "@metamask/sdk": path.resolve(__dirname, "src/lib/wagmi/empty-module"),
-      "@react-native-async-storage/async-storage": path.resolve(
-        __dirname,
-        "src/lib/wagmi/empty-module",
-      ),
-      porto: path.resolve(__dirname, "src/lib/wagmi/empty-module"),
-      "porto/internal": path.resolve(
-        __dirname,
-        "src/lib/wagmi/empty-module/internal",
-      ),
-    };
-    config.resolve.fallback = {
-      ...(config.resolve.fallback || {}),
-      buffer: require.resolve("buffer/"),
-    };
-    config.plugins = config.plugins || [];
-    config.plugins.push(
-      new webpack.NormalModuleReplacementPlugin(
-        /^node:/,
-        (resource: { request?: string }) => {
-          // Strip node: scheme so webpack resolves browser fallbacks.
-          // Example: node:buffer -> buffer
-          if (resource.request) {
-            resource.request = resource.request.replace(/^node:/, "");
-          }
-        },
-      ),
-      new webpack.ProvidePlugin({
-        Buffer: ["buffer", "Buffer"],
-      }),
-    );
-
-    // Official Reown AppKit recommendation for WalletConnect
-    // https://docs.reown.com/appkit/next/core/installation
-    config.externals.push("pino-pretty", "lokijs", "encoding");
-
-    // On server, bb.js is loaded from node_modules at runtime
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push({
-        "@aztec/bb.js": "commonjs @aztec/bb.js",
-        "@zama-fhe/relayer-sdk": "commonjs @zama-fhe/relayer-sdk",
-        "@zama-fhe/relayer-sdk/node": "commonjs @zama-fhe/relayer-sdk/node",
-        "node-tfhe": "commonjs node-tfhe",
-        "node-tkms": "commonjs node-tkms",
-      });
-    }
-
-    return config;
+      "@coinbase/wallet-sdk": "./src/lib/wagmi/empty-module",
+      "@gemini-wallet/core": "./src/lib/wagmi/empty-module",
+      "@metamask/sdk": "./src/lib/wagmi/empty-module",
+      "@react-native-async-storage/async-storage":
+        "./src/lib/wagmi/empty-module",
+      porto: "./src/lib/wagmi/empty-module",
+      "porto/internal": "./src/lib/wagmi/empty-module/internal",
+      // Optional deps referenced by wallet tooling
+      "pino-pretty": "./src/lib/wagmi/empty-module",
+      lokijs: "./src/lib/wagmi/empty-module",
+      encoding: "./src/lib/wagmi/empty-module",
+    },
   },
 
   async headers() {

@@ -58,14 +58,6 @@ bun run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-> **Note**: The default dev script uses `--webpack` because Turbopack
-> currently fails to resolve `node-tfhe` WASM paths in development. If you
-> want to try Turbopack anyway, run:
->
-> ```bash
-> bun run dev:turbo
-> ```
-
 ### Build
 
 ```bash
@@ -129,6 +121,10 @@ Defaults (can be overridden via env):
 - `SYNPRESS_NETWORK_CHAIN_ID` defaults to `31337`.
 - `SYNPRESS_NETWORK_NAME` defaults to `Hardhat Local`.
 - `SYNPRESS_NETWORK_SYMBOL` defaults to `ETH`.
+
+If you run E2E against an existing dev server, set
+`NEXT_PUBLIC_COOP=same-origin-allow-popups` so popup-based wallet SDKs can
+communicate without COOP blocking them.
 
 The setup step spins up a local Hardhat node temporarily so MetaMask can add
 the network during wallet cache creation.

@@ -86,7 +86,7 @@ ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 
 # Build Next.js
-# NODE_OPTIONS increases heap size for webpack build (build traces phase is memory intensive)
+# NODE_OPTIONS increases heap size for Next build (trace generation can be memory intensive)
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN touch /tmp/dev.db && bun run build
 

@@ -51,6 +51,11 @@ export default async function RootLayout({
   const cookies = headersObj.get("cookie");
   const session = await auth.api.getSession({ headers: headersObj });
   const walletScopeId = session?.user?.id ?? null;
+  const coopHeader =
+    process.env.NEXT_PUBLIC_COOP === "same-origin-allow-popups" ||
+    process.env.NEXT_PUBLIC_COOP === "unsafe-none"
+      ? process.env.NEXT_PUBLIC_COOP
+      : "same-origin";
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -60,6 +65,14 @@ export default async function RootLayout({
             First visit triggers a reload to activate the SW.
             Must be a raw script tag - Next.js Script component doesn't work
             correctly with service worker self-registration. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.coi = Object.assign({}, window.coi, { coop: ${JSON.stringify(
+              coopHeader,
+            )} });`,
+          }}
+        />
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/coi-serviceworker.js" />
       </head>

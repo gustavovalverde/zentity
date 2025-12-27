@@ -19,7 +19,7 @@ import type {
   WorkerResponse,
 } from "./noir-worker-manager";
 
-import { Buffer } from "node:buffer";
+import { Buffer } from "buffer";
 
 // Circuit artifacts - these are bundled with the worker
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
