@@ -1,3 +1,5 @@
+import type { ChildProcess } from "node:child_process";
+
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -21,9 +23,9 @@ const contractsPath =
 const hardhatPort = Number(process.env.E2E_HARDHAT_PORT || 8545);
 const hardhatUrl = `http://127.0.0.1:${hardhatPort}`;
 
-let hardhatProcess = null;
+let hardhatProcess: ChildProcess | null = null;
 
-async function waitForRpc(url) {
+async function waitForRpc(url: string): Promise<boolean> {
   for (let attempt = 0; attempt < 30; attempt++) {
     try {
       const res = await fetch(url, {
@@ -40,7 +42,7 @@ async function waitForRpc(url) {
   throw new Error(`Hardhat RPC not responding at ${url}`);
 }
 
-async function ensureHardhatNode() {
+async function ensureHardhatNode(): Promise<boolean> {
   try {
     const response = await fetch(hardhatUrl, {
       method: "POST",
@@ -71,7 +73,7 @@ function stopHardhat() {
   }
 }
 
-function extractWalletSetupFunction(sourceCode) {
+function extractWalletSetupFunction(sourceCode: string): string {
   const callIndex = sourceCode.indexOf("defineWalletSetup");
   if (callIndex === -1) {
     throw new Error("Could not find defineWalletSetup call");
@@ -151,7 +153,7 @@ function extractWalletSetupFunction(sourceCode) {
   return sourceCode.slice(commaIndex + 1, closeParen).trim();
 }
 
-function buildWalletSetupFunction(walletSetupFunctionString) {
+function buildWalletSetupFunction(walletSetupFunctionString: string): string {
   const source = `(${walletSetupFunctionString})`;
   const result = ts.transpileModule(source, {
     compilerOptions: {
@@ -163,12 +165,15 @@ function buildWalletSetupFunction(walletSetupFunctionString) {
   return result.outputText.trim();
 }
 
-function getWalletSetupFuncHash(walletSetupString) {
+function getWalletSetupFuncHash(walletSetupString: string): string {
   const hash = createHash("shake256", { outputLength: 10 });
   return hash.update(walletSetupString).digest("hex");
 }
 
-async function compileWalletSetupFunctions() {
+async function compileWalletSetupFunctions(): Promise<{
+  outDir: string;
+  fileList: string[];
+}> {
   const _cacheDir = ensureCacheDirExists();
   const outDir = path.join(webRoot, ".synpress-wallet-setup-dist");
   await fs.ensureDir(outDir);
@@ -209,22 +214,30 @@ async function compileWalletSetupFunctions() {
   return { outDir, fileList };
 }
 
+type WalletSetupModule = {
+  default?: {
+    hash?: string;
+  };
+};
+
 async function buildSynpressCache() {
   // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] building cache");
   const { outDir, fileList } = await compileWalletSetupFunctions();
-  const hashes = [];
-  const hashMappings = [];
+  const hashes: string[] = [];
+  const hashMappings: Array<{ compiledHash: string; sourceHash: string }> = [];
   for (const filePath of fileList) {
     const base = path.basename(filePath).replace(/\.(ts|js|mjs)$/, ".mjs");
     const compiledPath = path.join(outDir, base);
     // biome-ignore lint/suspicious/noConsole: debug output for cache build
     console.log("[synpress-cache] loading compiled setup", compiledPath);
-    const mod = await import(pathToFileURL(compiledPath).href);
+    const mod = (await import(pathToFileURL(compiledPath).href)) as
+      | WalletSetupModule
+      | undefined;
     // biome-ignore lint/suspicious/noConsole: debug output for cache build
     console.log("[synpress-cache] loaded compiled setup", compiledPath);
     const hash = mod?.default?.hash;
-    if (!hash) {
+    if (!hash || typeof hash !== "string") {
       throw new Error(
         `Missing hash for compiled wallet setup: ${compiledPath}`,
       );

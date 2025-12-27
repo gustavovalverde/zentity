@@ -33,7 +33,7 @@ export default defineConfig({
   ...(useWebServer
     ? {
         webServer: {
-          command: "node e2e/automation/start-web3-dev.js",
+          command: "bun e2e/automation/start-web3-dev.ts",
           url: "http://localhost:3000",
           reuseExistingServer: true,
           timeout: 240 * 1000,
