@@ -1,3 +1,5 @@
+import type { ChildProcess } from "node:child_process";
+
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -9,9 +11,9 @@ const contractsPath =
 
 const hardhatPort = Number(process.env.E2E_HARDHAT_PORT || 8545);
 const hardhatUrl = `http://127.0.0.1:${hardhatPort}`;
-let hardhatProcess = null;
+let hardhatProcess: ChildProcess | null = null;
 
-async function waitForRpc(url) {
+async function waitForRpc(url: string): Promise<boolean> {
   for (let attempt = 0; attempt < 30; attempt++) {
     try {
       const res = await fetch(url, {
@@ -28,7 +30,7 @@ async function waitForRpc(url) {
   throw new Error(`Hardhat RPC not responding at ${url}`);
 }
 
-async function ensureHardhatNode() {
+async function ensureHardhatNode(): Promise<boolean> {
   try {
     const response = await fetch(hardhatUrl, {
       method: "POST",
@@ -55,7 +57,13 @@ async function ensureHardhatNode() {
   return true;
 }
 
-function deployContracts() {
+type ContractsEnv = {
+  identityRegistry?: string;
+  complianceRules?: string;
+  compliantErc20?: string;
+};
+
+function deployContracts(): ContractsEnv {
   const deploy = spawnSync("bun", ["run", "deploy:local", "--", "--reset"], {
     cwd: contractsPath,
     stdio: "inherit",
@@ -80,7 +88,7 @@ function deployContracts() {
     process.exit(printed.status ?? 1);
   }
 
-  const env = {};
+  const env: Record<string, string> = {};
   for (const line of printed.stdout.trim().split(/\r?\n/)) {
     const [key, value] = line.split("=");
     if (key && value) env[key.trim()] = value.trim();
@@ -93,7 +101,7 @@ function deployContracts() {
   };
 }
 
-function startDevServer(contracts) {
+function startDevServer(contracts: ContractsEnv) {
   const env = {
     ...process.env,
     NEXT_PUBLIC_ENABLE_HARDHAT: "true",

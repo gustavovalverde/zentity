@@ -88,7 +88,7 @@ const MAX_THREADS = 8;
 let loggedIsolationFallback = false;
 
 /**
- * Local path for bb.js WASM (copied by setup-coep-assets.mjs).
+ * Local path for bb.js WASM (copied by setup-coep-assets.ts).
  * Serving locally avoids CDN latency and improves reliability.
  * Note: bb.js appends "-threads" when multi-threading is enabled,
  * so we pass the base path and it requests "barretenberg-threads.wasm.gz".
