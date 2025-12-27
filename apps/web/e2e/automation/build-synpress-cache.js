@@ -8,9 +8,9 @@ import {
   ensureCacheDirExists,
   prepareExtension,
 } from "@synthetixio/synpress-cache";
-import { build, transformSync } from "esbuild";
 import fs from "fs-extra";
 import { glob } from "glob";
+import * as ts from "typescript";
 
 const webRoot = process.cwd();
 const repoRoot = path.resolve(webRoot, "..", "..");
@@ -152,16 +152,15 @@ function extractWalletSetupFunction(sourceCode) {
 }
 
 function buildWalletSetupFunction(walletSetupFunctionString) {
-  const { code } = transformSync(walletSetupFunctionString, {
-    format: "esm",
-    minifyWhitespace: true,
-    target: "es2022",
-    drop: ["console", "debugger"],
-    loader: "ts",
-    logLevel: "silent",
-    platform: "node",
+  const source = `(${walletSetupFunctionString})`;
+  const result = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      removeComments: true,
+    },
   });
-  return code;
+  return result.outputText.trim();
 }
 
 function getWalletSetupFuncHash(walletSetupString) {
@@ -189,18 +188,21 @@ async function compileWalletSetupFunctions() {
     );
   }
 
-  await build({
-    entryPoints: fileList,
-    outdir: outDir,
-    format: "esm",
-    platform: "node",
-    target: "es2022",
-    bundle: false,
-    splitting: false,
-    sourcemap: false,
-    outExtension: { ".js": ".mjs" },
-    logLevel: "silent",
-  });
+  for (const filePath of fileList) {
+    const source = await fs.readFile(filePath, "utf8");
+    const result = ts.transpileModule(source, {
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        sourceMap: false,
+        inlineSourceMap: false,
+      },
+      fileName: filePath,
+    });
+    const base = path.basename(filePath).replace(/\.(ts|js|mjs)$/, ".mjs");
+    const outPath = path.join(outDir, base);
+    await fs.writeFile(outPath, result.outputText, "utf8");
+  }
 
   // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] compiled wallet setup files", fileList);

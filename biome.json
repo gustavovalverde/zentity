@@ -14,7 +14,8 @@
       "!!**/dist/**",
       "!!**/build/**",
       "!!**/coverage/**",
-      "!!**/.synpress-wallet-setup-dist/**"
+      "!!**/.synpress-wallet-setup-dist/**",
+      "!!apps/web/public/fhevm/**"
     ]
   },
   "formatter": {

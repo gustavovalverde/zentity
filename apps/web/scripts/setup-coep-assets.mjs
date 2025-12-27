@@ -18,6 +18,17 @@ const assets = [
     required: true,
   },
   {
+    id: "bb-single",
+    from: path.join(
+      root,
+      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz",
+    ),
+    // bb.js drops the "-threads" suffix when threads=1, so serve a copy
+    // under the non-threaded filename for environments without COI/SAB.
+    to: path.join(root, "public/bb/barretenberg.wasm.gz"),
+    required: true,
+  },
+  {
     id: "zama-sdk",
     from: path.join(
       root,

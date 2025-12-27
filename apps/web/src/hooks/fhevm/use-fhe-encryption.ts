@@ -108,7 +108,9 @@ export const toHex = (value: Uint8Array | string): `0x${string}` => {
   if (typeof value === "string") {
     return (value.startsWith("0x") ? value : `0x${value}`) as `0x${string}`;
   }
-  return `0x${Buffer.from(value).toString("hex")}` as `0x${string}`;
+  return `0x${Array.from(value)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}` as `0x${string}`;
 };
 
 /**
