@@ -24,6 +24,13 @@
 /.next/
 /out/
 
+# generated COEP assets (copied from node_modules by setup-coep-assets.mjs)
+/public/bb/
+/public/fhevm/
+/public/tfhe_bg.wasm
+/public/kms_lib_bg.wasm
+/public/workerHelpers.js
+
 # production
 /build
 

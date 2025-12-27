@@ -54,7 +54,15 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <head />
+      <head>
+        {/* Enable cross-origin isolation for SharedArrayBuffer (ZK proofs).
+            Service worker intercepts ALL requests and adds COEP/COOP headers.
+            First visit triggers a reload to activate the SW.
+            Must be a raw script tag - Next.js Script component doesn't work
+            correctly with service worker self-registration. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/coi-serviceworker.js" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

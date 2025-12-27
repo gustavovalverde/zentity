@@ -1,7 +1,6 @@
 import type { FhevmProviderFactory } from "../types";
 
-const DEFAULT_ZAMA_SDK_URL =
-  "https://cdn.zama.org/relayer-sdk-js/0.3.0-6/relayer-sdk-js.umd.cjs";
+const DEFAULT_ZAMA_SDK_URL = "/fhevm/relayer-sdk-js.umd.js";
 
 let zamaSdkLoadPromise: Promise<void> | null = null;
 

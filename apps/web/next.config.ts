@@ -120,7 +120,11 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
-    const headers = [
+    // Security headers applied to all routes.
+    // NOTE: COEP/COOP headers are NOT set here - they're handled by coi-serviceworker.js
+    // This is intentional: server-side COEP headers conflict with service worker approach.
+    // See: https://web.dev/articles/coop-coep
+    const baseHeaders = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "DENY" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -131,28 +135,13 @@ const nextConfig: NextConfig = {
     ];
 
     if (process.env.NODE_ENV === "production") {
-      headers.push({
+      baseHeaders.push({
         key: "Strict-Transport-Security",
         value: "max-age=31536000; includeSubDomains",
       });
     }
 
-    const coopHeaders = [
-      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-      { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
-    ];
-
-    return [
-      {
-        source: "/(.*)",
-        headers,
-      },
-      // Enable SharedArrayBuffer only on routes that need threaded WASM
-      {
-        source: "/sign-up",
-        headers: coopHeaders,
-      },
-    ];
+    return [{ source: "/(.*)", headers: baseHeaders }];
   },
 };
 

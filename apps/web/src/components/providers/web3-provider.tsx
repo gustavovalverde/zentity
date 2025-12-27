@@ -69,6 +69,14 @@ export function Web3Provider({
     let isCancelled = false;
     const defaultNetwork = networks[0] ?? fhevmSepolia;
     const activeStorageKey = storageKey;
+    // Disable AppKit analytics under cross-origin isolation (COEP) since
+    // third-party analytics scripts may fail with restricted fetch policies.
+    // Can be explicitly enabled via NEXT_PUBLIC_APPKIT_ANALYTICS=true.
+    const analyticsEnabled =
+      process.env.NEXT_PUBLIC_APPKIT_ANALYTICS === "true" ||
+      (process.env.NEXT_PUBLIC_APPKIT_ANALYTICS !== "false" &&
+        typeof window !== "undefined" &&
+        !window.crossOriginIsolated);
 
     const initializeAppKit = () =>
       createAppKit({
@@ -89,7 +97,7 @@ export function Web3Provider({
               .filter(Boolean)
           : undefined,
         features: {
-          analytics: true,
+          analytics: analyticsEnabled,
           email: false,
           socials: false,
         },
