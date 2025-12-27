@@ -24,6 +24,14 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@vladmandic/human",
     "@tensorflow/tfjs-node",
+    // tfjs-node transitive deps (Turbopack hash mismatch workaround)
+    "@tensorflow/tfjs",
+    "@tensorflow/tfjs-core",
+    "@tensorflow/tfjs-backend-cpu",
+    "@tensorflow/tfjs-converter",
+    "@tensorflow/tfjs-layers",
+    "@tensorflow/tfjs-data",
+    "@mapbox/node-pre-gyp",
     // bb.js works on both browser and Node.js
     // - Browser: Used by Web Worker for proof generation
     // - Server: Used by noir-verifier.ts for proof verification
