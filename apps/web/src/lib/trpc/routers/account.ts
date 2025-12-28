@@ -10,12 +10,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import {
-  deleteAgeProofs,
   deleteBlockchainAttestationsByUserId,
-  deleteIdentityProof,
+  deleteIdentityData,
   deleteOnboardingSession,
   getDefaultDatabasePath,
-  getIdentityProofByUserId,
+  getLatestIdentityDocumentByUserId,
   getSqliteDb,
   getUserFirstName,
   getVerificationStatus,
@@ -38,8 +37,8 @@ export const accountRouter = router({
     // Get verification status
     const verification = getVerificationStatus(userId);
 
-    // Get identity proof for additional data
-    const proof = getIdentityProofByUserId(userId);
+    // Get latest verified document details
+    const document = getLatestIdentityDocumentByUserId(userId);
 
     // Get user creation date from better-auth user table
     const userRow = db
@@ -54,8 +53,8 @@ export const accountRouter = router({
         level: verification.level,
         checks: verification.checks,
       },
-      documentType: proof?.documentType ?? null,
-      countryVerified: proof?.countryVerified ?? null,
+      documentType: document?.documentType ?? null,
+      countryVerified: document?.issuerCountry ?? null,
     };
   }),
 
@@ -88,19 +87,16 @@ export const accountRouter = router({
       }
 
       // Execute deletion in order:
-      // 1. Delete identity proofs (removes salt, making commitments unlinkable)
-      deleteIdentityProof(userId);
+      // 1. Delete identity attestation data (removes salts/commitments)
+      deleteIdentityData(userId);
 
-      // 2. Delete age proofs (ZK proofs, FHE ciphertexts)
-      deleteAgeProofs(userId);
-
-      // 3. Delete blockchain attestation records
+      // 2. Delete blockchain attestation records
       deleteBlockchainAttestationsByUserId(userId);
 
-      // 4. Clean up any orphaned onboarding sessions
+      // 3. Clean up any orphaned onboarding sessions
       deleteOnboardingSession(session.user.email);
 
-      // 5. Delete user from better-auth (cascades to sessions, accounts)
+      // 4. Delete user from better-auth (cascades to sessions, accounts)
       // This also invalidates the current session
       const deleteUser = db.prepare(`DELETE FROM "user" WHERE id = ?`);
       deleteUser.run(userId);

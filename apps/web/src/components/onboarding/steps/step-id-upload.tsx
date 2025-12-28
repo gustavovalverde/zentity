@@ -117,7 +117,7 @@ export function StepIdUpload() {
 
   const processDocument = useCallback(
     async (base64: string): Promise<DocumentResult> => {
-      return trpc.kyc.processDocument.mutate({ image: base64 });
+      return trpc.identity.processDocument.mutate({ image: base64 });
     },
     [],
   );

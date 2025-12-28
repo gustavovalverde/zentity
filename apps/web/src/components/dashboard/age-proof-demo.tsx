@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  CheckCircle,
-  Clock,
-  FileCheck,
-  Loader2,
-  Shield,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle, FileCheck, Loader2, Shield, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getUserProof, verifyAgeProof } from "@/lib/crypto";
+import { getUserProof } from "@/lib/crypto";
 
 export function AgeProofDemo() {
   const [storedProofSummary, setStoredProofSummary] = useState<{
@@ -28,11 +21,7 @@ export function AgeProofDemo() {
     isOver18: boolean;
   } | null>(null);
   const [loadingStoredProof, setLoadingStoredProof] = useState(true);
-  const [verifying, setVerifying] = useState(false);
-  const [result, setResult] = useState<{
-    isValid: boolean;
-    verificationTimeMs: number;
-  } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,7 +41,7 @@ export function AgeProofDemo() {
           setStoredProofSummary(null);
         }
       } catch {
-        // Ignore load errors; the verify button will surface errors when explicitly invoked.
+        // Ignore load errors; the refresh button will surface errors when explicitly invoked.
       } finally {
         if (!cancelled) setLoadingStoredProof(false);
       }
@@ -64,26 +53,24 @@ export function AgeProofDemo() {
     };
   }, []);
 
-  const handleVerifyProof = async () => {
-    setVerifying(true);
+  const handleRefreshProof = async () => {
+    setRefreshing(true);
     setError(null);
-    setResult(null);
 
     try {
-      const stored = await getUserProof(true);
-      if (!stored?.proof || !stored.publicSignals) {
-        throw new Error("No stored proof available");
+      const stored = await getUserProof();
+      if (stored?.proofId) {
+        setStoredProofSummary({
+          proofId: stored.proofId,
+          isOver18: stored.isOver18,
+        });
+      } else {
+        setStoredProofSummary(null);
       }
-
-      const data = await verifyAgeProof(stored.proof, stored.publicSignals);
-      setResult({
-        isValid: Boolean(data.isValid),
-        verificationTimeMs: data.verificationTimeMs,
-      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed");
+      setError(err instanceof Error ? err.message : "Failed to refresh proof");
     } finally {
-      setVerifying(false);
+      setRefreshing(false);
     }
   };
 
@@ -95,10 +82,10 @@ export function AgeProofDemo() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <FileCheck className="h-5 w-5" />
-          ZK Age Proof Verification
+          ZK Age Proof Status
         </CardTitle>
         <CardDescription>
-          Verify the zero-knowledge proof that confirms age {"≥"} 18
+          Review the last verified zero-knowledge proof for age {"≥"} 18
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -129,30 +116,30 @@ export function AgeProofDemo() {
             </div>
 
             <Button
-              onClick={handleVerifyProof}
-              disabled={verifying}
+              onClick={handleRefreshProof}
+              disabled={refreshing}
               className="w-full"
               variant="outline"
             >
-              {verifying ? (
+              {refreshing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verifying ZK Proof...
+                  Refreshing...
                 </>
               ) : (
                 <>
                   <Shield className="mr-2 h-4 w-4" />
-                  Verify ZK Proof
+                  Refresh Status
                 </>
               )}
             </Button>
 
-            {result && (
+            {storedProofSummary && (
               <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
-                {result.isValid ? (
+                {displayVerified ? (
                   <>
                     <CheckCircle className="h-5 w-5 text-success" />
-                    <span className="font-medium">Proof Valid</span>
+                    <span className="font-medium">Proof Verified</span>
                     <Badge variant="success" className="ml-auto">
                       Age {"≥"} 18 Confirmed
                     </Badge>
@@ -160,19 +147,12 @@ export function AgeProofDemo() {
                 ) : (
                   <>
                     <XCircle className="h-5 w-5 text-destructive" />
-                    <span className="font-medium">Proof Invalid</span>
+                    <span className="font-medium">Not Verified</span>
                     <Badge variant="destructive" className="ml-auto">
-                      Verification Failed
+                      Verification Missing
                     </Badge>
                   </>
                 )}
-              </div>
-            )}
-
-            {result && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                Verification time: {result.verificationTimeMs}ms
               </div>
             )}
 

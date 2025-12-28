@@ -17,6 +17,8 @@
  */
 import "server-only";
 
+import crypto from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
@@ -31,6 +33,15 @@ import {
   verifyAgeFhe,
   verifyLivenessThresholdFhe,
 } from "@/lib/crypto/fhe-client";
+import { verifyAttestationClaim } from "@/lib/crypto/signed-claims";
+import {
+  getLatestIdentityDocumentId,
+  getLatestSignedClaimByUserAndType,
+  getUserAgeProof,
+  getUserAgeProofFull,
+  insertEncryptedAttribute,
+  insertZkProofRecord,
+} from "@/lib/db";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import {
   CIRCUIT_SPECS,
@@ -38,7 +49,6 @@ import {
   normalizeChallengeNonce,
   parsePublicInputToNumber,
 } from "@/lib/zk";
-import { getLatestAgeProof, insertAgeProof } from "@/lib/zk/age-proofs";
 import {
   getBbJsVersion,
   getCircuitMetadata,
@@ -216,52 +226,40 @@ export const cryptoRouter = router({
    * Verifies a Noir ZK proof using UltraHonk (Barretenberg).
    *
    * Performs:
-   * 1. Optional nonce validation (replay prevention)
+   * 1. Nonce validation (replay prevention)
    * 2. Policy enforcement (min age, current date, thresholds)
    * 3. Cryptographic proof verification
    * 4. Circuit output validation (is_old_enough, is_valid, etc.)
    */
-  verifyProof: publicProcedure
+  verifyProof: protectedProcedure
     .input(
       z.object({
         proof: z.string().min(1),
         publicInputs: z.array(z.string()),
         circuitType: circuitTypeSchema,
-        validateNonce: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const circuitType = input.circuitType;
       const circuitSpec = CIRCUIT_SPECS[circuitType];
 
-      // Validate nonce if requested (replay resistance).
-      if (input.validateNonce) {
-        const userId = ctx.session?.user?.id;
-        if (!userId) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: "Authentication required for nonce validation",
-          });
-        }
+      // Nonce validation is mandatory for all proofs (replay resistance).
+      if (input.publicInputs.length <= circuitSpec.nonceIndex) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Missing nonce at public input index ${circuitSpec.nonceIndex}`,
+        });
+      }
 
-        if (input.publicInputs.length <= circuitSpec.nonceIndex) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Missing nonce at public input index ${circuitSpec.nonceIndex}`,
-          });
-        }
-
-        const nonceHex = normalizeChallengeNonce(
-          input.publicInputs[circuitSpec.nonceIndex],
-        );
-
-        const challenge = consumeChallenge(nonceHex, circuitType, userId);
-        if (!challenge) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Invalid or expired challenge nonce",
-          });
-        }
+      const nonceHex = normalizeChallengeNonce(
+        input.publicInputs[circuitSpec.nonceIndex],
+      );
+      const challenge = consumeChallenge(nonceHex, circuitType, ctx.userId);
+      if (!challenge) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid or expired challenge nonce",
+        });
       }
 
       // Policy enforcement for age verification
@@ -374,6 +372,8 @@ export const cryptoRouter = router({
           });
         }
 
+        const userId = ctx.userId;
+
         const providedThreshold = parsePublicInputToNumber(
           input.publicInputs[0],
         );
@@ -390,6 +390,58 @@ export const cryptoRouter = router({
             code: "BAD_REQUEST",
             message: `threshold ${providedThreshold} exceeds maximum 10000 (100.00%)`,
           });
+        }
+
+        const signedClaim = getLatestSignedClaimByUserAndType(
+          userId,
+          "face_match_score",
+        );
+        if (!signedClaim) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Missing signed face match claim",
+          });
+        }
+
+        let claimPayload: Awaited<ReturnType<typeof verifyAttestationClaim>>;
+        try {
+          claimPayload = await verifyAttestationClaim(
+            signedClaim.signature,
+            "face_match_score",
+            userId,
+          );
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Invalid signed face match claim",
+          });
+        }
+        const claimData = claimPayload.data as {
+          confidence?: number;
+          confidenceFixed?: number;
+        };
+        const confidenceFixed =
+          typeof claimData.confidenceFixed === "number"
+            ? claimData.confidenceFixed
+            : typeof claimData.confidence === "number"
+              ? Math.round(claimData.confidence * 10000)
+              : null;
+        if (confidenceFixed === null || Number.isNaN(confidenceFixed)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid face match claim payload",
+          });
+        }
+
+        if (confidenceFixed < providedThreshold) {
+          return {
+            isValid: false,
+            reason: "Face match threshold not met (signed claim)",
+            verificationTimeMs: 0,
+          };
         }
 
         const isMatch = parsePublicInputToNumber(
@@ -414,7 +466,7 @@ export const cryptoRouter = router({
    */
   createChallenge: protectedProcedure
     .input(z.object({ circuitType: circuitTypeSchema }))
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const challenge = createChallenge(input.circuitType, ctx.userId);
       return {
         nonce: challenge.nonce,
@@ -434,7 +486,9 @@ export const cryptoRouter = router({
   getUserProof: protectedProcedure
     .input(z.object({ full: z.boolean().optional() }).optional())
     .query(({ ctx, input }) => {
-      return getLatestAgeProof(ctx.userId, { full: input?.full === true });
+      return input?.full === true
+        ? getUserAgeProofFull(ctx.userId)
+        : getUserAgeProof(ctx.userId);
     }),
 
   /**
@@ -524,21 +578,42 @@ export const cryptoRouter = router({
       }
 
       const isOver18 = true;
+      const proofId = crypto.randomUUID();
 
-      const { proofId } = insertAgeProof({
+      const proofHash = crypto
+        .createHash("sha256")
+        .update(input.proof)
+        .digest("hex");
+      insertZkProofRecord({
+        id: proofId,
         userId: ctx.userId,
-        proof: input.proof,
-        publicSignals: input.publicSignals,
+        documentId: getLatestIdentityDocumentId(ctx.userId),
+        proofType: "age_verification",
+        proofHash,
+        proofPayload: input.proof,
+        publicInputs: JSON.stringify(input.publicSignals),
         isOver18,
         generationTimeMs: input.generationTimeMs,
-        dobCiphertext: input.dobCiphertext,
-        fheClientKeyId: input.fheClientKeyId,
-        fheEncryptionTimeMs: input.fheEncryptionTimeMs,
+        nonce: nonceHex,
+        policyVersion: null,
         circuitType: verificationResult.circuitType,
         noirVersion: verificationResult.noirVersion,
         circuitHash: verificationResult.circuitHash,
         bbVersion: verificationResult.bbVersion,
+        verified: true,
       });
+
+      if (input.dobCiphertext) {
+        insertEncryptedAttribute({
+          id: crypto.randomUUID(),
+          userId: ctx.userId,
+          source: "web3_tfhe",
+          attributeType: "birth_year",
+          ciphertext: input.dobCiphertext,
+          keyId: input.fheClientKeyId ?? null,
+          encryptionTimeMs: input.fheEncryptionTimeMs ?? null,
+        });
+      }
 
       return {
         success: true,

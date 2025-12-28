@@ -21,7 +21,7 @@ This document provides a comprehensive overview of Zentity's web3 implementation
 
 ## Overview
 
-Zentity's web3 stack enables privacy-preserving identity attestation and compliant DeFi interactions using Fully Homomorphic Encryption (FHE). Users can attest their verified identity on-chain while keeping sensitive data (birth year, nationality, KYC level) encrypted. Smart contracts can perform compliance checks on encrypted data without ever seeing plaintext values.
+Zentity's web3 stack enables privacy-preserving identity attestation and compliant DeFi interactions using Fully Homomorphic Encryption (FHE). Users can attest their verified identity on-chain while keeping sensitive data (birth year, nationality, compliance level) encrypted. Smart contracts can perform compliance checks on encrypted data without ever seeing plaintext values.
 
 ### Key Technologies
 
@@ -100,7 +100,7 @@ flowchart TD
     EncIn -- "2) tx call" --> ERC["CompliantERC20"]
 
     subgraph OnChain["On-chain fhEVM"]
-      IR -- "3) Stores encrypted attrs" --> IRState["birthYear, country, kyc, blacklist"]
+      IR -- "3) Stores encrypted attrs" --> IRState["birthYear, country, compliance, blacklist"]
       IR -- "4) ACL grants" --> ACL["ACL per ciphertext handle"]
       ERC -- "5) calls" --> CR["ComplianceRules"]
       CR -- "6) queries" --> IR
@@ -126,7 +126,7 @@ flowchart TD
 ### Data Privacy Model
 
 1. **Identity Verification** happens off-chain (document OCR, liveness detection)
-2. **Identity Data** (birth year offset, country code, KYC level) is encrypted client-side or server-side using FHE
+2. **Identity Data** (birth year offset, country code, compliance level) is encrypted client-side or server-side using FHE
 3. **Encrypted Handles** are stored on-chain in the IdentityRegistry contract
 4. **Compliance Checks** operate on encrypted data - the smart contract never sees plaintext
 5. **User Decryption** requires EIP-712 signature authorization - only the user can decrypt their own data
@@ -637,7 +637,7 @@ sequenceDiagram
     UI->>API: attestation.submit({networkId, walletAddress})
     API->>API: Validate user is fully verified
     API->>DB: Fetch identity proof
-    Note over API: Extract birthYearOffset,<br/>countryCode, kycLevel
+    Note over API: Extract birthYearOffset,<br/>countryCode, complianceLevel
     API->>DB: Create attestation record (pending)
 
     Note over API,BC: ── Phase 2: Encryption & Submission ──

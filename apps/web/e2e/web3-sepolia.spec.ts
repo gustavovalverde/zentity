@@ -138,12 +138,11 @@ test.describe("Web3 workflow (Sepolia)", () => {
       chainId: sepoliaChainId,
     });
 
-    const attestationTitle = page
-      .locator("[data-slot='card-title']", {
-        hasText: "On-Chain Attestation",
-      })
-      .first();
-    await attestationTitle.scrollIntoViewIfNeeded();
+    await page.goto("/dashboard/attestation");
+    await expect(page).toHaveURL(/dashboard\/attestation/);
+    const attestationTitle = page.getByRole("heading", {
+      name: /On-Chain Attestation/i,
+    });
     await expect(attestationTitle).toBeVisible({ timeout: 60_000 });
     const lockedText = page.getByText(/Complete identity verification first/i, {
       exact: false,

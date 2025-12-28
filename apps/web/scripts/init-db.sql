@@ -59,78 +59,74 @@ CREATE TABLE IF NOT EXISTS zk_challenges (
   expires_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS age_proofs (
+CREATE TABLE IF NOT EXISTS identity_bundles (
+  user_id TEXT PRIMARY KEY REFERENCES "user" ("id") ON DELETE CASCADE,
+  wallet_address TEXT,
+  status TEXT DEFAULT 'pending',
+  policy_version TEXT,
+  issuer_id TEXT,
+  attestation_expires_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS identity_documents (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  proof TEXT NOT NULL,
-  public_signals TEXT NOT NULL,
-  is_over_18 INTEGER NOT NULL,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  document_type TEXT,
+  issuer_country TEXT,
+  document_hash TEXT,
+  name_commitment TEXT,
+  user_salt TEXT,
+  birth_year_offset INTEGER,
+  first_name_encrypted TEXT,
+  verified_at TEXT,
+  confidence_score REAL,
+  status TEXT DEFAULT 'verified',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS zk_proofs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  document_id TEXT,
+  proof_type TEXT NOT NULL,
+  proof_hash TEXT NOT NULL,
+  proof_payload TEXT,
+  public_inputs TEXT,
+  is_over_18 INTEGER,
   generation_time_ms INTEGER,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  dob_ciphertext TEXT,
-  fhe_client_key_id TEXT,
-  fhe_encryption_time_ms INTEGER,
+  nonce TEXT,
+  policy_version TEXT,
   circuit_type TEXT,
   noir_version TEXT,
   circuit_hash TEXT,
   bb_version TEXT,
-  FOREIGN KEY (user_id) REFERENCES user(id)
+  verified INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS kyc_documents (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  document_type TEXT NOT NULL,
-  -- PRIVACY: do not store image bytes; only metadata is persisted.
-  file_name TEXT NOT NULL,
-  file_mime_type TEXT NOT NULL,
-  file_size INTEGER NOT NULL,
-  status TEXT DEFAULT 'pending',
-  metadata TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  verified_at TEXT,
-  FOREIGN KEY (user_id) REFERENCES user(id)
-);
-
-CREATE TABLE IF NOT EXISTS kyc_status (
-  id TEXT PRIMARY KEY,
-  user_id TEXT UNIQUE NOT NULL,
-  document_uploaded INTEGER DEFAULT 0,
-  document_verified INTEGER DEFAULT 0,
-  selfie_uploaded INTEGER DEFAULT 0,
-  selfie_verified INTEGER DEFAULT 0,
-  face_match_score REAL,
-  kyc_completed INTEGER DEFAULT 0,
-  kyc_level TEXT DEFAULT 'none',
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES user(id)
-);
-
-CREATE TABLE IF NOT EXISTS identity_proofs (
+CREATE TABLE IF NOT EXISTS encrypted_attributes (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
-  document_hash TEXT NOT NULL,
-  name_commitment TEXT NOT NULL,
-  user_salt TEXT NOT NULL,
-  dob_ciphertext TEXT,
-  fhe_client_key_id TEXT,
-  document_type TEXT,
-  country_verified TEXT,
-  is_document_verified INTEGER DEFAULT 0,
-  is_liveness_passed INTEGER DEFAULT 0,
-  is_face_matched INTEGER DEFAULT 0,
-  verification_method TEXT,
-  verified_at TEXT,
-  confidence_score REAL,
-  created_at TEXT DEFAULT (datetime('now')),
-  updated_at TEXT DEFAULT (datetime('now')),
-  doc_validity_proof TEXT,            -- ZK proof that document is not expired
-  nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt), ISO 3166-1 alpha-3
-  gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218: 0=Unknown, 1=Male, 2=Female, 9=N/A)
-  dob_full_ciphertext TEXT,           -- FHE encrypted full DOB as YYYYMMDD (u32)
-  nationality_membership_proof TEXT,  -- ZK proof of nationality group membership (EU, SCHENGEN, etc.)
-  liveness_score_ciphertext TEXT,     -- FHE encrypted liveness score (0.0-1.0 as u16 0-10000)
-  first_name_encrypted TEXT           -- JWE encrypted first name for dashboard display
+  source TEXT NOT NULL,
+  attribute_type TEXT NOT NULL,
+  ciphertext TEXT NOT NULL,
+  key_id TEXT,
+  encryption_time_ms INTEGER,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS signed_claims (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  document_id TEXT,
+  claim_type TEXT NOT NULL,
+  claim_payload TEXT NOT NULL,
+  signature TEXT NOT NULL,
+  issued_at TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 -- Temporary onboarding sessions (encrypted wizard state)
@@ -151,11 +147,15 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
 
 -- Indexes for application tables
 CREATE INDEX IF NOT EXISTS idx_zk_challenges_expires_at ON zk_challenges(expires_at);
-CREATE INDEX IF NOT EXISTS idx_age_proofs_user_id ON age_proofs(user_id);
-CREATE INDEX IF NOT EXISTS idx_kyc_documents_user_id ON kyc_documents(user_id);
-CREATE INDEX IF NOT EXISTS idx_kyc_status_user_id ON kyc_status(user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_proofs_user_id ON identity_proofs (user_id);
-CREATE INDEX IF NOT EXISTS idx_identity_proofs_document_hash ON identity_proofs (document_hash);
+CREATE INDEX IF NOT EXISTS idx_identity_bundles_status ON identity_bundles (status);
+CREATE INDEX IF NOT EXISTS idx_identity_documents_user_id ON identity_documents (user_id);
+CREATE INDEX IF NOT EXISTS idx_identity_documents_doc_hash ON identity_documents (document_hash);
+CREATE INDEX IF NOT EXISTS idx_zk_proofs_user_id ON zk_proofs (user_id);
+CREATE INDEX IF NOT EXISTS idx_zk_proofs_type ON zk_proofs (proof_type);
+CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_user_id ON encrypted_attributes (user_id);
+CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_type ON encrypted_attributes (attribute_type);
+CREATE INDEX IF NOT EXISTS idx_signed_claims_user_id ON signed_claims (user_id);
+CREATE INDEX IF NOT EXISTS idx_signed_claims_type ON signed_claims (claim_type);
 CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at ON onboarding_sessions(expires_at);
 
 -- Blockchain attestations (multi-network)

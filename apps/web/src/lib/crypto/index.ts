@@ -17,6 +17,5 @@ export {
   getProofChallenge,
   getUserProof,
   storeAgeProof,
-  verifyAgeProof,
   verifyAgeViaFHE,
 } from "./crypto-client";

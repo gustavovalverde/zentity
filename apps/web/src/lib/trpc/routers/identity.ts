@@ -29,17 +29,21 @@ import {
   encryptGenderFhe,
   encryptLivenessScoreFhe,
 } from "@/lib/crypto/fhe-client";
+import { signAttestationClaim } from "@/lib/crypto/signed-claims";
 import {
-  createIdentityProof,
+  createIdentityDocument,
   documentHashExists,
   encryptFirstName,
-  getIdentityProofByUserId,
+  getLatestIdentityDocumentByUserId,
   getSessionFromCookie,
   getVerificationStatus,
-  updateIdentityProofFlags,
+  insertEncryptedAttribute,
+  insertSignedClaim,
   updateUserName,
+  upsertIdentityBundle,
   validateStepAccess,
 } from "@/lib/db";
+import { processDocument } from "@/lib/document";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { calculateBirthYearOffset } from "@/lib/identity/birth-year";
@@ -56,10 +60,43 @@ import {
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
 import { buildDisplayName, HttpError } from "@/lib/utils";
 
-import { protectedProcedure, router } from "../server";
+import { protectedProcedure, publicProcedure, router } from "../server";
 
 // Lower threshold for ID photos which may be older/lower quality than selfies.
 const FACE_MATCH_MIN_CONFIDENCE = 0.35;
+
+// In-memory rate limiter (document OCR). Resets on server restart.
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 10;
+
+let lastRateLimitCleanupTimeMs = 0;
+
+function cleanupRateLimitMap(now: number): void {
+  if (now - lastRateLimitCleanupTimeMs < RATE_LIMIT_WINDOW_MS) return;
+  lastRateLimitCleanupTimeMs = now;
+
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  cleanupRateLimitMap(now);
+
+  const record = rateLimitMap.get(ip);
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+
+  if (record.count >= RATE_LIMIT_MAX_REQUESTS) return true;
+  record.count++;
+  return false;
+}
 
 interface VerifyIdentityResponse {
   success: boolean;
@@ -118,6 +155,56 @@ function generateNameCommitment(fullName: string, userSalt: string): string {
 }
 
 export const identityRouter = router({
+  /**
+   * OCR-only document processing used by onboarding.
+   *
+   * Validates onboarding session, applies rate limiting,
+   * and returns extracted document fields for review.
+   */
+  processDocument: publicProcedure
+    .input(z.object({ image: z.string().min(1, "Image is required") }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await getSessionFromCookie();
+      const validation = validateStepAccess(session, "process-document");
+      if (!validation.valid) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: validation.error || "Session required",
+        });
+      }
+
+      const forwarded = ctx.req.headers.get("x-forwarded-for");
+      const ip = forwarded ? forwarded.split(",")[0].trim() : "unknown";
+
+      if (isRateLimited(ip)) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many requests. Please wait a moment and try again.",
+        });
+      }
+
+      try {
+        return await processDocument(input.image);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (
+            error.message.includes("ECONNREFUSED") ||
+            error.message.includes("fetch failed")
+          ) {
+            throw new TRPCError({
+              code: "SERVICE_UNAVAILABLE",
+              message:
+                "Document processing service unavailable. Please try again later.",
+            });
+          }
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to process document. Please try a clearer image.",
+        });
+      }
+    }),
   /** Returns the current verification status for the authenticated user. */
   status: protectedProcedure.query(({ ctx }) => {
     return getVerificationStatus(ctx.userId);
@@ -161,8 +248,9 @@ export const identityRouter = router({
       }
 
       const userId = ctx.userId;
-      const existingProof = getIdentityProofByUserId(userId);
-      const userSalt = input.userSalt || existingProof?.userSalt;
+      const existingDocument = getLatestIdentityDocumentByUserId(userId);
+      const userSalt =
+        input.userSalt ?? existingDocument?.userSalt ?? undefined;
 
       let documentResult: OcrProcessResult | null = null;
       try {
@@ -180,7 +268,7 @@ export const identityRouter = router({
         const hashExists = documentHashExists(
           documentResult.commitments.documentHash,
         );
-        if (hashExists && !existingProof) {
+        if (hashExists && !existingDocument) {
           isDuplicateDocument = true;
           issues.push("duplicate_document");
         }
@@ -194,6 +282,12 @@ export const identityRouter = router({
         face_match_confidence: number;
         issues: string[];
       } | null = null;
+
+      let antispoofScore = 0;
+      let liveScore = 0;
+      let livenessPassedLocal = false;
+      let facesMatchLocal = false;
+      let faceMatchConfidence = 0;
 
       try {
         const human = await getHumanServer();
@@ -228,27 +322,22 @@ export const identityRouter = router({
         const docFace = getLargestFace(docResult);
         const localIssues: string[] = [];
 
-        let antispoofScore = 0;
-        let liveScore = 0;
-        let livenessPassed = false;
         if (selfieFace) {
           antispoofScore = getRealScore(selfieFace);
           liveScore = getLiveScore(selfieFace);
-          livenessPassed =
+          livenessPassedLocal =
             antispoofScore >= ANTISPOOF_REAL_THRESHOLD &&
             liveScore >= ANTISPOOF_LIVE_THRESHOLD;
         } else {
           localIssues.push("no_selfie_face");
         }
 
-        let facesMatch = false;
-        let faceMatchConfidence = 0;
         if (selfieFace && docFace) {
           const selfieEmb = getEmbeddingVector(selfieFace);
           const docEmb = getEmbeddingVector(docFace);
           if (selfieEmb && docEmb) {
             faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
-            facesMatch = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
+            facesMatchLocal = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
           } else {
             localIssues.push("embedding_failed");
           }
@@ -257,10 +346,10 @@ export const identityRouter = router({
         }
 
         verificationResult = {
-          verified: livenessPassed && facesMatch,
-          is_live: livenessPassed,
+          verified: livenessPassedLocal && facesMatchLocal,
+          is_live: livenessPassedLocal,
           antispoof_score: antispoofScore,
-          faces_match: facesMatch,
+          faces_match: facesMatchLocal,
           face_match_confidence: faceMatchConfidence,
           issues: localIssues,
         };
@@ -268,6 +357,79 @@ export const identityRouter = router({
         issues.push(...localIssues);
       } catch {
         issues.push("verification_service_failed");
+      }
+
+      const documentProcessed = Boolean(documentResult?.commitments);
+      const identityDocumentId = documentProcessed ? uuidv4() : null;
+
+      // Store signed claims for tamper-resistant verification (server measured)
+      if (verificationResult) {
+        const issuedAt = new Date().toISOString();
+        const documentHash = documentResult?.commitments?.documentHash ?? null;
+        const antispoofScoreFixed = Math.round(
+          verificationResult.antispoof_score * 10000,
+        );
+        const liveScoreFixed = Math.round(liveScore * 10000);
+
+        try {
+          const livenessClaimPayload = {
+            type: "liveness_score" as const,
+            userId,
+            issuedAt,
+            version: 1,
+            documentHash,
+            data: {
+              antispoofScore: verificationResult.antispoof_score,
+              liveScore,
+              passed: verificationResult.is_live,
+              antispoofScoreFixed,
+              liveScoreFixed,
+            },
+          };
+
+          const livenessSignature =
+            await signAttestationClaim(livenessClaimPayload);
+          insertSignedClaim({
+            id: uuidv4(),
+            userId,
+            documentId: identityDocumentId,
+            claimType: livenessClaimPayload.type,
+            claimPayload: JSON.stringify(livenessClaimPayload),
+            signature: livenessSignature,
+            issuedAt,
+          });
+
+          const faceMatchClaimPayload = {
+            type: "face_match_score" as const,
+            userId,
+            issuedAt,
+            version: 1,
+            documentHash,
+            data: {
+              confidence: verificationResult.face_match_confidence,
+              confidenceFixed: Math.round(
+                verificationResult.face_match_confidence * 10000,
+              ),
+              thresholdFixed: Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000),
+              passed: verificationResult.faces_match,
+            },
+          };
+
+          const faceMatchSignature = await signAttestationClaim(
+            faceMatchClaimPayload,
+          );
+          insertSignedClaim({
+            id: uuidv4(),
+            userId,
+            documentId: identityDocumentId,
+            claimType: faceMatchClaimPayload.type,
+            claimPayload: JSON.stringify(faceMatchClaimPayload),
+            signature: faceMatchSignature,
+            issuedAt,
+          });
+        } catch {
+          issues.push("signed_claim_generation_failed");
+        }
       }
 
       let fheResult: { ciphertext: string; clientKeyId: string } | null = null;
@@ -392,13 +554,12 @@ export const identityRouter = router({
         }
       }
 
-      const documentProcessed = Boolean(documentResult?.commitments);
       const isDocumentValid =
         documentProcessed &&
         (documentResult?.confidence ?? 0) > 0.3 &&
         Boolean(documentResult?.extractedData?.documentNumber);
-      const livenessPassed = verificationResult?.is_live || false;
-      const faceMatched = verificationResult?.faces_match || false;
+      const livenessPassed = verificationResult?.is_live ?? livenessPassedLocal;
+      const facesMatch = verificationResult?.faces_match ?? facesMatchLocal;
       const ageProofGenerated = false;
       const dobEncrypted = Boolean(fheResult?.ciphertext);
       const docValidityProofGenerated = false;
@@ -410,7 +571,7 @@ export const identityRouter = router({
         documentProcessed &&
         isDocumentValid &&
         livenessPassed &&
-        faceMatched &&
+        facesMatch &&
         !isDuplicateDocument;
 
       // Calculate birth year offset from extracted DOB (for on-chain attestation)
@@ -418,62 +579,87 @@ export const identityRouter = router({
         documentResult?.extractedData?.dateOfBirth,
       );
 
-      if (documentProcessed && documentResult?.commitments && !existingProof) {
+      const bundleStatus = verified
+        ? "verified"
+        : documentProcessed
+          ? "failed"
+          : "pending";
+      upsertIdentityBundle({
+        userId,
+        status: bundleStatus,
+        issuerId: "zentity-attestation",
+      });
+
+      if (
+        documentProcessed &&
+        identityDocumentId &&
+        documentResult?.commitments
+      ) {
         try {
-          createIdentityProof({
-            id: uuidv4(),
+          createIdentityDocument({
+            id: identityDocumentId,
             userId,
-            documentHash: documentResult.commitments.documentHash,
-            nameCommitment: documentResult.commitments.nameCommitment,
-            userSalt: documentResult.commitments.userSalt,
-            documentType: documentResult.documentType,
-            countryVerified:
+            documentType: documentResult.documentType ?? null,
+            issuerCountry:
               documentResult.documentOrigin ||
-              documentResult.extractedData?.nationalityCode,
-            isDocumentVerified: isDocumentValid,
-            isLivenessPassed: livenessPassed,
-            isFaceMatched: faceMatched,
-            verificationMethod: "ocr_local",
-            verifiedAt: verified ? new Date().toISOString() : undefined,
-            confidenceScore: documentResult.confidence,
-            dobCiphertext: fheResult?.ciphertext,
-            fheClientKeyId: fheResult?.clientKeyId,
-            nationalityCommitment: nationalityCommitment || undefined,
-            genderCiphertext: genderFheResult?.ciphertext,
-            dobFullCiphertext: dobFullFheResult?.ciphertext,
-            livenessScoreCiphertext: livenessScoreFheResult?.ciphertext,
-            firstNameEncrypted: firstNameEncrypted || undefined,
-            birthYearOffset,
+              documentResult.extractedData?.nationalityCode ||
+              null,
+            documentHash: documentResult.commitments.documentHash ?? null,
+            nameCommitment: documentResult.commitments.nameCommitment ?? null,
+            userSalt: documentResult.commitments.userSalt ?? null,
+            birthYearOffset: birthYearOffset ?? null,
+            firstNameEncrypted: firstNameEncrypted ?? null,
+            verifiedAt: verified ? new Date().toISOString() : null,
+            confidenceScore: documentResult.confidence ?? null,
+            status: verified ? "verified" : "failed",
           });
         } catch {
-          issues.push("failed_to_save_proof");
+          issues.push("failed_to_create_identity_document");
         }
-      } else if (existingProof) {
-        try {
-          updateIdentityProofFlags(userId, {
-            isLivenessPassed: livenessPassed,
-            isFaceMatched: faceMatched,
-            verifiedAt: verified ? new Date().toISOString() : undefined,
-            ...(fheResult && {
-              dobCiphertext: fheResult.ciphertext,
-              fheClientKeyId: fheResult.clientKeyId,
-            }),
-            ...(nationalityCommitment && { nationalityCommitment }),
-            ...(genderFheResult && {
-              genderCiphertext: genderFheResult.ciphertext,
-            }),
-            ...(dobFullFheResult && {
-              dobFullCiphertext: dobFullFheResult.ciphertext,
-            }),
-            ...(livenessScoreFheResult && {
-              livenessScoreCiphertext: livenessScoreFheResult.ciphertext,
-            }),
-            ...(firstNameEncrypted && { firstNameEncrypted }),
-            ...(birthYearOffset !== undefined && { birthYearOffset }),
-          });
-        } catch {
-          issues.push("failed_to_update_proof");
-        }
+      }
+
+      if (fheResult?.ciphertext) {
+        insertEncryptedAttribute({
+          id: uuidv4(),
+          userId,
+          source: "web2_tfhe",
+          attributeType: "birth_year",
+          ciphertext: fheResult.ciphertext,
+          keyId: fheResult.clientKeyId ?? null,
+        });
+      }
+
+      if (dobFullFheResult?.ciphertext) {
+        insertEncryptedAttribute({
+          id: uuidv4(),
+          userId,
+          source: "web2_tfhe",
+          attributeType: "dob_full",
+          ciphertext: dobFullFheResult.ciphertext,
+          keyId: dobFullFheResult.clientKeyId ?? null,
+        });
+      }
+
+      if (genderFheResult?.ciphertext) {
+        insertEncryptedAttribute({
+          id: uuidv4(),
+          userId,
+          source: "web2_tfhe",
+          attributeType: "gender_code",
+          ciphertext: genderFheResult.ciphertext,
+          keyId: genderFheResult.clientKeyId ?? null,
+        });
+      }
+
+      if (livenessScoreFheResult?.ciphertext) {
+        insertEncryptedAttribute({
+          id: uuidv4(),
+          userId,
+          source: "web2_tfhe",
+          attributeType: "liveness_score",
+          ciphertext: livenessScoreFheResult.ciphertext,
+          keyId: livenessScoreFheResult.clientKeyId ?? null,
+        });
       }
 
       if (
@@ -502,7 +688,7 @@ export const identityRouter = router({
             documentResult?.extractedData?.nationalityCode,
           isDocumentValid,
           livenessPassed,
-          faceMatched,
+          faceMatched: facesMatch,
           isDuplicateDocument,
           ageProofGenerated,
           dobEncrypted,
@@ -536,8 +722,8 @@ export const identityRouter = router({
       }),
     )
     .mutation(({ ctx, input }) => {
-      const proof = getIdentityProofByUserId(ctx.userId);
-      if (!proof) {
+      const document = getLatestIdentityDocumentByUserId(ctx.userId);
+      if (!document?.userSalt || !document.nameCommitment) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "User has not completed identity verification",
@@ -546,12 +732,12 @@ export const identityRouter = router({
 
       const claimedCommitment = generateNameCommitment(
         input.claimedName,
-        proof.userSalt,
+        document.userSalt,
       );
 
       const matches = crypto.timingSafeEqual(
         Buffer.from(claimedCommitment),
-        Buffer.from(proof.nameCommitment),
+        Buffer.from(document.nameCommitment),
       );
 
       return { matches };

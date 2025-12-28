@@ -43,24 +43,24 @@ sequenceDiagram
     actor User
     participant UI as Zentity Web App
     participant BE as Zentity Backend
-    participant KYC as KYC/Liveness Services
+    participant Verifier as KYC/Liveness Services
     participant SDK as FHEVM SDK
     participant Registrar as Registrar Wallet
     participant IR as IdentityRegistry
     participant CR as ComplianceRules
     participant ERC as CompliantERC20
 
-    Note over User,KYC: ── Phase 1: Web2 Identity Verification ──
+    Note over User,Verifier: ── Phase 1: Web2 Identity Verification ──
     User->>UI: Complete verification flow
     UI->>BE: Submit document images
-    BE->>KYC: OCR + liveness + face match
-    KYC-->>BE: KYC result + attributes
+    BE->>Verifier: OCR + liveness + face match
+    Verifier-->>BE: Verification result + attributes
     BE->>BE: Store commitments (no plaintext)
     BE-->>UI: Verification complete
 
     Note over UI,IR: ── Phase 2: Web3 Attestation ──
     UI->>SDK: Encrypt identity attributes
-    Note over SDK: birthYearOffset, countryCode,<br/>kycLevel, blacklist status
+    Note over SDK: birthYearOffset, countryCode,<br/>complianceLevel, blacklist status
     SDK-->>UI: Ciphertext handles + proof
     UI->>Registrar: Request attestation
     Registrar->>IR: attestIdentity(user, handles, proof)
@@ -122,7 +122,7 @@ The Web3 layer handles **encrypted storage and computation**:
 // IdentityRegistry.sol
 mapping(address => euint8) private _birthYearOffset;   // Years from 1900
 mapping(address => euint16) private _countryCode;      // ISO 3166-1 numeric
-mapping(address => euint8) private _kycLevel;          // 0-255 verification level
+mapping(address => euint8) private _complianceLevel;          // 0-255 verification level
 mapping(address => ebool) private _isBlacklisted;      // Sanctions check
 ```
 
@@ -165,7 +165,7 @@ The fhEVM never decrypts data for computation. All operations happen on cipherte
 ```mermaid
 flowchart TD
     subgraph "On-chain fhEVM"
-        IR[IdentityRegistry] --> |"stores"| IRState["Encrypted Attributes<br/>birthYear, country, kyc, blacklist"]
+        IR[IdentityRegistry] --> |"stores"| IRState["Encrypted Attributes<br/>birthYear, country, compliance, blacklist"]
         IR --> |"manages"| ACL["ACL<br/>Per-ciphertext permissions"]
 
         CR[ComplianceRules] --> |"queries"| IR
@@ -256,7 +256,7 @@ flowchart LR
    - Transfer amounts → `euint64`
 
 2. **Server-Side Encryption** (via Registrar)
-   - KYC level → `euint8`
+   - compliance level → `euint8`
    - Blacklist status → `ebool`
 
 3. **Never Encrypted**
@@ -445,7 +445,7 @@ FHEVM_COMPLIANT_ERC20=0x...
 
 - **Birth year** (encrypted, never stored in plaintext on-chain)
 - **Nationality** (encrypted country code)
-- **KYC level** (encrypted verification tier)
+- **Compliance level (KYC tier)** (encrypted verification tier)
 - **Compliance result** (encrypted boolean)
 - **Transfer amounts** (encrypted balances)
 

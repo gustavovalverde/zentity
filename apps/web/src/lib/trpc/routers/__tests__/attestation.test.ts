@@ -23,7 +23,7 @@ vi.mock("@/lib/blockchain", () => ({
 }));
 
 const mockGetVerificationStatus = vi.fn();
-const mockGetIdentityProofByUserId = vi.fn();
+const mockGetLatestIdentityDocumentByUserId = vi.fn();
 const mockGetBlockchainAttestationsByUserId = vi.fn();
 const mockGetBlockchainAttestationByUserAndNetwork = vi.fn();
 const mockCreateBlockchainAttestation = vi.fn();
@@ -38,8 +38,8 @@ vi.mock("@/lib/db", async (importOriginal) => {
     ...actual,
     getVerificationStatus: (...args: unknown[]) =>
       mockGetVerificationStatus(...args),
-    getIdentityProofByUserId: (...args: unknown[]) =>
-      mockGetIdentityProofByUserId(...args),
+    getLatestIdentityDocumentByUserId: (...args: unknown[]) =>
+      mockGetLatestIdentityDocumentByUserId(...args),
     getBlockchainAttestationsByUserId: (...args: unknown[]) =>
       mockGetBlockchainAttestationsByUserId(...args),
     getBlockchainAttestationByUserAndNetwork: (...args: unknown[]) =>
@@ -154,9 +154,9 @@ describe("attestation router", () => {
         ageProof: true,
       },
     });
-    mockGetIdentityProofByUserId.mockReturnValue({
+    mockGetLatestIdentityDocumentByUserId.mockReturnValue({
       birthYearOffset: 90,
-      countryVerified: "USA",
+      issuerCountry: "USA",
     });
     mockGetNetworkById.mockReturnValue({
       id: "fhevm_sepolia",

@@ -63,7 +63,23 @@ logger = logging.getLogger(__name__)
 # Configuration
 PORT = int(os.getenv("PORT", "5004"))
 INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
+INTERNAL_SERVICE_TOKEN_REQUIRED = os.getenv("INTERNAL_SERVICE_TOKEN_REQUIRED", "").strip().lower()
+NODE_ENV = os.getenv("NODE_ENV", "").strip().lower()
+APP_ENV = os.getenv("APP_ENV", "").strip().lower()
+RUST_ENV = os.getenv("RUST_ENV", "").strip().lower()
 VERSION = "1.0.0"
+
+if not INTERNAL_SERVICE_TOKEN and (
+    NODE_ENV == "production"
+    or APP_ENV == "production"
+    or RUST_ENV == "production"
+    or INTERNAL_SERVICE_TOKEN_REQUIRED in ("1", "true", "yes")
+):
+    logger.error(
+        "INTERNAL_SERVICE_TOKEN is required in production. "
+        "Set INTERNAL_SERVICE_TOKEN or INTERNAL_SERVICE_TOKEN_REQUIRED=0."
+    )
+    raise SystemExit(1)
 
 
 def _get_git_sha() -> str:

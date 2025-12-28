@@ -1,9 +1,15 @@
 /**
  * Database utilities for Zentity
  *
- * This module provides database access for identity proofs and verification data.
+ * This module provides database access for identity attestations and verification data.
  * Uses the same `bun:sqlite` instance as Better Auth.
  */
+
+import type {
+  AgeProofFull,
+  AgeProofPayload,
+  AgeProofSummary,
+} from "@/lib/crypto/age-proof-types";
 
 import { EncryptJWT, jwtDecrypt } from "jose";
 
@@ -17,398 +23,25 @@ import {
 
 const db = getSqliteDb(getDefaultDatabasePath());
 
-const identityProofsColumnsToAdd: Array<{ name: string; type: string }> = [
-  { name: "doc_validity_proof", type: "TEXT" },
-  { name: "nationality_commitment", type: "TEXT" },
-  { name: "gender_ciphertext", type: "TEXT" },
-  { name: "dob_full_ciphertext", type: "TEXT" },
-  { name: "nationality_membership_proof", type: "TEXT" },
-  { name: "liveness_score_ciphertext", type: "TEXT" },
-  { name: "first_name_encrypted", type: "TEXT" },
-  { name: "birth_year_offset", type: "INTEGER" },
-];
-
-/**
- * Initialize the identity_proofs table.
- *
- * This table stores privacy-preserving identity verification data:
- * - Cryptographic commitments (hashes) - not reversible
- * - FHE-encrypted data - can only be computed on, not read
- * - Boolean verification flags - results of verification steps
- * - Optional reversible encrypted display data (for UX only)
- *
- * No raw ID document images or extracted attributes are stored in this table.
- */
-function initializeIdentityProofsTable(): void {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS identity_proofs (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
-
-      -- Cryptographic commitments (non-reversible hashes)
-      document_hash TEXT NOT NULL,        -- SHA256(doc_number + user_salt)
-      name_commitment TEXT NOT NULL,      -- SHA256(full_name + user_salt)
-
-      -- User's salt for commitments (stored encrypted, enables GDPR erasure)
-      user_salt TEXT NOT NULL,
-
-      -- FHE encrypted data (can only be computed on, not decrypted by us)
-      dob_ciphertext TEXT,                -- FHE encrypted birth year
-      fhe_client_key_id TEXT,             -- Reference to user's FHE key
-
-      -- Document information (non-PII)
-      document_type TEXT,                 -- 'cedula', 'passport', 'drivers_license'
-      country_verified TEXT,              -- Country code: 'DOM', 'USA', etc.
-
-      -- Verification flags (boolean results)
-      is_document_verified INTEGER DEFAULT 0,
-      is_liveness_passed INTEGER DEFAULT 0,
-      is_face_matched INTEGER DEFAULT 0,
-
-      -- Verification metadata
-      verification_method TEXT,           -- 'ocr_local', 'ocr_cloud', 'manual'
-      verified_at TEXT,                   -- ISO timestamp when verified
-      confidence_score REAL,              -- Overall confidence (0.0-1.0)
-
-      -- Timestamps
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-
-      -- Document validity and nationality
-      doc_validity_proof TEXT,            -- ZK proof that document is not expired
-      nationality_commitment TEXT,        -- SHA256(nationality_code + user_salt)
-
-      -- FHE expansion
-      gender_ciphertext TEXT,             -- FHE encrypted gender (ISO 5218)
-      dob_full_ciphertext TEXT,           -- FHE encrypted full DOB as YYYYMMDD (u32)
-
-      -- Advanced ZK + liveness FHE
-      nationality_membership_proof TEXT,  -- ZK proof of nationality group membership
-      liveness_score_ciphertext TEXT,     -- FHE encrypted liveness score (0.0-1.0 as u16)
-
-      -- User display data (JWE encrypted, reversible for user display)
-      first_name_encrypted TEXT           -- JWE encrypted first name for dashboard display
-    );
-
-    -- Unique constraint: one identity proof per user
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_proofs_user_id
-      ON identity_proofs (user_id);
-
-    -- Index for duplicate document detection
-    CREATE INDEX IF NOT EXISTS idx_identity_proofs_document_hash
-      ON identity_proofs (document_hash);
-  `);
-
-  // Schema patch: add missing columns to existing tables
-  // SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN, so we use try/catch
-  for (const col of identityProofsColumnsToAdd) {
-    try {
-      db.run(`ALTER TABLE identity_proofs ADD COLUMN ${col.name} ${col.type}`);
-    } catch {
-      // Column already exists, ignore
-    }
-  }
-}
-
-/**
- * Identity proof data structure
- */
-interface IdentityProof {
-  id: string;
-  userId: string;
-
-  // Commitments
-  documentHash: string;
-  nameCommitment: string;
-  userSalt: string;
-
-  // FHE data
-  dobCiphertext?: string;
-  fheClientKeyId?: string;
-
-  // Document info
-  documentType?: string;
-  countryVerified?: string;
-
-  // Verification flags
-  isDocumentVerified: boolean;
-  isLivenessPassed: boolean;
-  isFaceMatched: boolean;
-
-  // Metadata
-  verificationMethod?: string;
-  verifiedAt?: string;
-  confidenceScore?: number;
-  createdAt: string;
-  updatedAt: string;
-
-  // Document validity and nationality
-  docValidityProof?: string; // ZK proof that document is not expired
-  nationalityCommitment?: string; // SHA256(nationality_code + user_salt)
-
-  // FHE expansion
-  genderCiphertext?: string; // FHE encrypted gender (ISO 5218)
-  dobFullCiphertext?: string; // FHE encrypted full DOB as YYYYMMDD (u32)
-
-  // Advanced ZK + liveness FHE
-  nationalityMembershipProof?: string; // ZK proof of nationality group membership
-  livenessScoreCiphertext?: string; // FHE encrypted liveness score (0.0-1.0 as u16)
-
-  // User display data (JWE encrypted, reversible)
-  firstNameEncrypted?: string; // JWE encrypted first name for dashboard display
-
-  // Age data for attestation (non-PII - just birth year in compact form)
-  birthYearOffset?: number; // Years since 1900 (0-255)
-}
-
-/**
- * Create a new identity proof record
- */
-export function createIdentityProof(
-  proof: Omit<IdentityProof, "createdAt" | "updatedAt">,
-): void {
-  const stmt = db.prepare(`
-    INSERT INTO identity_proofs (
-      id, user_id, document_hash, name_commitment, user_salt,
-      dob_ciphertext, fhe_client_key_id,
-      document_type, country_verified, is_document_verified,
-      is_liveness_passed, is_face_matched, verification_method,
-      verified_at, confidence_score,
-      doc_validity_proof, nationality_commitment,
-      gender_ciphertext, dob_full_ciphertext,
-      nationality_membership_proof, liveness_score_ciphertext,
-      first_name_encrypted, birth_year_offset
-    ) VALUES (
-      ?, ?, ?, ?, ?,
-      ?, ?,
-      ?, ?, ?,
-      ?, ?, ?,
-      ?, ?,
-      ?, ?,
-      ?, ?,
-      ?, ?,
-      ?, ?
-    )
-  `);
-
-  stmt.run(
-    proof.id,
-    proof.userId,
-    proof.documentHash,
-    proof.nameCommitment,
-    proof.userSalt,
-    proof.dobCiphertext || null,
-    proof.fheClientKeyId || null,
-    proof.documentType || null,
-    proof.countryVerified || null,
-    proof.isDocumentVerified ? 1 : 0,
-    proof.isLivenessPassed ? 1 : 0,
-    proof.isFaceMatched ? 1 : 0,
-    proof.verificationMethod || null,
-    proof.verifiedAt || null,
-    proof.confidenceScore || null,
-    proof.docValidityProof || null,
-    proof.nationalityCommitment || null,
-    proof.genderCiphertext || null,
-    proof.dobFullCiphertext || null,
-    proof.nationalityMembershipProof || null,
-    proof.livenessScoreCiphertext || null,
-    proof.firstNameEncrypted || null,
-    proof.birthYearOffset ?? null,
-  );
-}
-
-/**
- * Get identity proof by user ID
- */
-export function getIdentityProofByUserId(userId: string): IdentityProof | null {
-  const stmt = db.prepare(`
-    SELECT
-      id, user_id as userId, document_hash as documentHash,
-      name_commitment as nameCommitment, user_salt as userSalt,
-      dob_ciphertext as dobCiphertext, fhe_client_key_id as fheClientKeyId,
-      document_type as documentType, country_verified as countryVerified,
-      is_document_verified as isDocumentVerified,
-      is_liveness_passed as isLivenessPassed, is_face_matched as isFaceMatched,
-      verification_method as verificationMethod, verified_at as verifiedAt,
-      confidence_score as confidenceScore, created_at as createdAt,
-      updated_at as updatedAt,
-      doc_validity_proof as docValidityProof,
-      nationality_commitment as nationalityCommitment,
-      gender_ciphertext as genderCiphertext,
-      dob_full_ciphertext as dobFullCiphertext,
-      nationality_membership_proof as nationalityMembershipProof,
-      liveness_score_ciphertext as livenessScoreCiphertext,
-      first_name_encrypted as firstNameEncrypted,
-      birth_year_offset as birthYearOffset
-    FROM identity_proofs
-    WHERE user_id = ?
-  `);
-
-  const row = stmt.get(userId) as Record<string, unknown> | undefined;
-  if (!row) return null;
-
-  return {
-    ...row,
-    isDocumentVerified: Boolean(row.isDocumentVerified),
-    isLivenessPassed: Boolean(row.isLivenessPassed),
-    isFaceMatched: Boolean(row.isFaceMatched),
-  } as IdentityProof;
-}
-
-/**
- * Update identity proof verification flags
- */
-export function updateIdentityProofFlags(
-  userId: string,
-  flags: {
-    isDocumentVerified?: boolean;
-    isLivenessPassed?: boolean;
-    isFaceMatched?: boolean;
-    verifiedAt?: string;
-    dobCiphertext?: string;
-    fheClientKeyId?: string;
-    // Document validity and nationality
-    docValidityProof?: string;
-    nationalityCommitment?: string;
-    // FHE expansion
-    genderCiphertext?: string;
-    dobFullCiphertext?: string;
-    // Advanced ZK + liveness FHE
-    nationalityMembershipProof?: string;
-    livenessScoreCiphertext?: string;
-    // User display data
-    firstNameEncrypted?: string;
-    // Age data for attestation
-    birthYearOffset?: number;
-  },
-): void {
-  const updates: string[] = [];
-  const values: (string | number)[] = [];
-
-  if (flags.isDocumentVerified !== undefined) {
-    updates.push("is_document_verified = ?");
-    values.push(flags.isDocumentVerified ? 1 : 0);
-  }
-  if (flags.isLivenessPassed !== undefined) {
-    updates.push("is_liveness_passed = ?");
-    values.push(flags.isLivenessPassed ? 1 : 0);
-  }
-  if (flags.isFaceMatched !== undefined) {
-    updates.push("is_face_matched = ?");
-    values.push(flags.isFaceMatched ? 1 : 0);
-  }
-  if (flags.verifiedAt !== undefined) {
-    updates.push("verified_at = ?");
-    values.push(flags.verifiedAt);
-  }
-  if (flags.dobCiphertext !== undefined) {
-    updates.push("dob_ciphertext = ?");
-    values.push(flags.dobCiphertext);
-  }
-  if (flags.fheClientKeyId !== undefined) {
-    updates.push("fhe_client_key_id = ?");
-    values.push(flags.fheClientKeyId);
-  }
-  // Document validity and nationality
-  if (flags.docValidityProof !== undefined) {
-    updates.push("doc_validity_proof = ?");
-    values.push(flags.docValidityProof);
-  }
-  if (flags.nationalityCommitment !== undefined) {
-    updates.push("nationality_commitment = ?");
-    values.push(flags.nationalityCommitment);
-  }
-  // FHE expansion
-  if (flags.genderCiphertext !== undefined) {
-    updates.push("gender_ciphertext = ?");
-    values.push(flags.genderCiphertext);
-  }
-  if (flags.dobFullCiphertext !== undefined) {
-    updates.push("dob_full_ciphertext = ?");
-    values.push(flags.dobFullCiphertext);
-  }
-  // Advanced ZK + liveness FHE
-  if (flags.nationalityMembershipProof !== undefined) {
-    updates.push("nationality_membership_proof = ?");
-    values.push(flags.nationalityMembershipProof);
-  }
-  if (flags.livenessScoreCiphertext !== undefined) {
-    updates.push("liveness_score_ciphertext = ?");
-    values.push(flags.livenessScoreCiphertext);
-  }
-  // User display data
-  if (flags.firstNameEncrypted !== undefined) {
-    updates.push("first_name_encrypted = ?");
-    values.push(flags.firstNameEncrypted);
-  }
-  // Age data for attestation
-  if (flags.birthYearOffset !== undefined) {
-    updates.push("birth_year_offset = ?");
-    values.push(flags.birthYearOffset);
-  }
-
-  updates.push("updated_at = datetime('now')");
-  values.push(userId);
-
-  const stmt = db.prepare(`
-    UPDATE identity_proofs
-    SET ${updates.join(", ")}
-    WHERE user_id = ?
-  `);
-
-  stmt.run(...values);
-}
-
 /**
  * Check if a document hash already exists (prevent duplicate signups)
  */
 export function documentHashExists(documentHash: string): boolean {
   const stmt = db.prepare(`
-    SELECT 1 FROM identity_proofs WHERE document_hash = ?
+    SELECT 1 FROM identity_documents WHERE document_hash = ?
   `);
   return stmt.get(documentHash) != null;
 }
 
 /**
- * Verify a name claim against stored commitment
+ * Delete user's identity attestation data (GDPR right to erasure)
  */
-function _verifyNameClaimForUser(
-  userId: string,
-  claimedNameHash: string,
-): boolean {
-  const stmt = db.prepare(`
-    SELECT name_commitment FROM identity_proofs WHERE user_id = ?
-  `);
-  const row = stmt.get(userId) as { name_commitment: string } | undefined;
-
-  if (!row) return false;
-  return row.name_commitment === claimedNameHash;
-}
-
-/**
- * Delete user's identity proof (GDPR right to erasure)
- *
- * This effectively "forgets" the user's identity by removing their salt,
- * making all commitments unlinkable.
- */
-export function deleteIdentityProof(userId: string): void {
-  const stmt = db.prepare(`
-    DELETE FROM identity_proofs WHERE user_id = ?
-  `);
-  stmt.run(userId);
-}
-
-/**
- * Delete user's age proofs (GDPR right to erasure)
- *
- * Removes all ZK proofs and FHE ciphertexts associated with the user.
- */
-export function deleteAgeProofs(userId: string): void {
-  const stmt = db.prepare(`
-    DELETE FROM age_proofs WHERE user_id = ?
-  `);
-  stmt.run(userId);
+export function deleteIdentityData(userId: string): void {
+  db.prepare(`DELETE FROM identity_bundles WHERE user_id = ?`).run(userId);
+  db.prepare(`DELETE FROM identity_documents WHERE user_id = ?`).run(userId);
+  db.prepare(`DELETE FROM zk_proofs WHERE user_id = ?`).run(userId);
+  db.prepare(`DELETE FROM encrypted_attributes WHERE user_id = ?`).run(userId);
+  db.prepare(`DELETE FROM signed_claims WHERE user_id = ?`).run(userId);
 }
 
 /**
@@ -424,14 +57,17 @@ export function getVerificationStatus(userId: string): {
     ageProof: boolean;
   };
 } {
-  const proof = getIdentityProofByUserId(userId);
-  const ageProof = getUserAgeProof(userId);
+  const latestDocument = getLatestIdentityDocumentByUserId(userId);
+  const zkProofs = getZkProofsByUserId(userId);
+  const signedClaimTypes = getSignedClaimTypesByUserId(userId);
 
   const checks = {
-    document: proof?.isDocumentVerified ?? false,
-    liveness: proof?.isLivenessPassed ?? false,
-    faceMatch: proof?.isFaceMatched ?? false,
-    ageProof: Boolean(ageProof?.isOver18),
+    document: latestDocument?.status === "verified",
+    liveness: signedClaimTypes.includes("liveness_score"),
+    faceMatch: signedClaimTypes.includes("face_match_score"),
+    ageProof: zkProofs.some(
+      (proof) => proof.proofType === "age_verification" && proof.verified,
+    ),
   };
 
   const passedChecks = Object.values(checks).filter(Boolean).length;
@@ -478,33 +114,14 @@ function _getUserName(userId: string): string | null {
 }
 
 /**
- * Age proof data structure (from age_proofs table)
+ * Get user's age proof (summary view).
  */
-interface AgeProof {
-  proofId: string;
-  isOver18: boolean;
-  generationTimeMs: number;
-  createdAt: string;
-  hasFheEncryption: boolean;
-  fheEncryptionTimeMs: number | null;
-  dobCiphertext: string | null;
-}
-
-interface AgeProofPayload {
-  proof: string;
-  publicSignals: string[];
-  isOver18: boolean;
-}
-
-/**
- * Get user's age proof (ZK proof from onboarding)
- */
-export function getUserAgeProof(userId: string): AgeProof | null {
+export function getUserAgeProof(userId: string): AgeProofSummary | null {
   try {
     const stmt = db.prepare(`
-      SELECT id, is_over_18, generation_time_ms, created_at, dob_ciphertext, fhe_encryption_time_ms
-      FROM age_proofs
-      WHERE user_id = ?
+      SELECT id, is_over_18, generation_time_ms, created_at
+      FROM zk_proofs
+      WHERE user_id = ? AND proof_type = 'age_verification' AND verified = 1
       ORDER BY created_at DESC
       LIMIT 1
     `);
@@ -512,24 +129,101 @@ export function getUserAgeProof(userId: string): AgeProof | null {
     const proof = stmt.get(userId) as
       | {
           id: string;
-          is_over_18: number;
-          generation_time_ms: number;
+          is_over_18: number | null;
+          generation_time_ms: number | null;
           created_at: string;
-          dob_ciphertext: string | null;
-          fhe_encryption_time_ms: number | null;
         }
       | undefined;
 
     if (!proof) return null;
 
+    const encrypted = getLatestEncryptedAttributeByUserAndType(
+      userId,
+      "birth_year",
+    );
+
     return {
       proofId: proof.id,
       isOver18: Boolean(proof.is_over_18),
-      generationTimeMs: proof.generation_time_ms,
+      generationTimeMs: proof.generation_time_ms ?? null,
       createdAt: proof.created_at,
-      hasFheEncryption: !!proof.dob_ciphertext,
-      fheEncryptionTimeMs: proof.fhe_encryption_time_ms,
-      dobCiphertext: proof.dob_ciphertext,
+      dobCiphertext: encrypted?.ciphertext ?? null,
+      fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get user's age proof with full payload.
+ */
+export function getUserAgeProofFull(userId: string): AgeProofFull | null {
+  try {
+    const stmt = db.prepare(`
+      SELECT
+        id,
+        is_over_18,
+        generation_time_ms,
+        created_at,
+        proof_payload,
+        public_inputs,
+        circuit_type,
+        noir_version,
+        circuit_hash,
+        bb_version
+      FROM zk_proofs
+      WHERE user_id = ? AND proof_type = 'age_verification' AND verified = 1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(userId) as
+      | {
+          id: string;
+          is_over_18: number | null;
+          generation_time_ms: number | null;
+          created_at: string;
+          proof_payload: string | null;
+          public_inputs: string | null;
+          circuit_type: string | null;
+          noir_version: string | null;
+          circuit_hash: string | null;
+          bb_version: string | null;
+        }
+      | undefined;
+
+    if (!row) return null;
+
+    let publicSignalsValue: string[] | null = null;
+    if (row.public_inputs) {
+      try {
+        const parsed = JSON.parse(row.public_inputs) as unknown;
+        if (Array.isArray(parsed)) {
+          publicSignalsValue = parsed.map(String);
+        }
+      } catch {}
+    }
+
+    const encrypted = getLatestEncryptedAttributeByUserAndType(
+      userId,
+      "birth_year",
+    );
+
+    return {
+      proofId: row.id,
+      isOver18: Boolean(row.is_over_18),
+      generationTimeMs: row.generation_time_ms ?? null,
+      createdAt: row.created_at,
+      dobCiphertext: encrypted?.ciphertext ?? null,
+      fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
+      proof: row.proof_payload ?? null,
+      publicSignals: publicSignalsValue,
+      fheClientKeyId: encrypted?.keyId ?? null,
+      circuitType: row.circuit_type ?? null,
+      noirVersion: row.noir_version ?? null,
+      circuitHash: row.circuit_hash ?? null,
+      bbVersion: row.bb_version ?? null,
     };
   } catch {
     return null;
@@ -542,40 +236,592 @@ export function getUserAgeProof(userId: string): AgeProof | null {
  * Used for disclosure flows where a relying party needs the proof material.
  */
 export function getUserAgeProofPayload(userId: string): AgeProofPayload | null {
-  try {
-    const stmt = db.prepare(`
-      SELECT proof, public_signals, is_over_18
-      FROM age_proofs
-      WHERE user_id = ?
-      ORDER BY created_at DESC
-      LIMIT 1
-    `);
+  const full = getUserAgeProofFull(userId);
+  if (!full?.proof || !full.publicSignals) return null;
+  return {
+    proof: full.proof,
+    publicSignals: full.publicSignals,
+    isOver18: full.isOver18,
+  };
+}
 
-    const row = stmt.get(userId) as
-      | { proof: string; public_signals: string; is_over_18: number }
-      | undefined;
+// ============================================================================
+// Attestation Schema (Web2)
+// ============================================================================
 
-    if (!row) return null;
+/**
+ * Initialize identity_bundles table.
+ *
+ * One bundle per user, tracks verification status and policy version.
+ */
+function initializeIdentityBundlesTable(): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS identity_bundles (
+      user_id TEXT PRIMARY KEY REFERENCES "user" ("id") ON DELETE CASCADE,
+      wallet_address TEXT,
+      status TEXT DEFAULT 'pending',
+      policy_version TEXT,
+      issuer_id TEXT,
+      attestation_expires_at TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
 
-    const proofValue = JSON.parse(row.proof) as unknown;
-    const publicSignalsValue = JSON.parse(row.public_signals) as unknown;
-    if (typeof proofValue !== "string") return null;
-    if (!Array.isArray(publicSignalsValue)) return null;
+    CREATE INDEX IF NOT EXISTS idx_identity_bundles_status
+      ON identity_bundles (status);
+  `);
+}
 
-    return {
-      proof: proofValue,
-      publicSignals: publicSignalsValue.map(String),
-      isOver18: Boolean(row.is_over_18),
-    };
-  } catch {
-    return null;
+/**
+ * Initialize identity_documents table.
+ *
+ * Multiple verified documents can be associated with one user.
+ */
+const identityDocumentsColumnsToAdd: Array<{ name: string; type: string }> = [
+  { name: "birth_year_offset", type: "INTEGER" },
+  { name: "first_name_encrypted", type: "TEXT" },
+];
+
+function initializeIdentityDocumentsTable(): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS identity_documents (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+      document_type TEXT,
+      issuer_country TEXT,
+      document_hash TEXT,
+      name_commitment TEXT,
+      user_salt TEXT,
+      birth_year_offset INTEGER,
+      first_name_encrypted TEXT,
+      verified_at TEXT,
+      confidence_score REAL,
+      status TEXT DEFAULT 'verified',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_identity_documents_user_id
+      ON identity_documents (user_id);
+    CREATE INDEX IF NOT EXISTS idx_identity_documents_doc_hash
+      ON identity_documents (document_hash);
+  `);
+
+  for (const col of identityDocumentsColumnsToAdd) {
+    try {
+      db.run(
+        `ALTER TABLE identity_documents ADD COLUMN ${col.name} ${col.type}`,
+      );
+    } catch {
+      // Column already exists, ignore
+    }
   }
 }
 
-// Initialize tables on module load, but skip during `next build` to avoid
-// SQLite lock contention across build workers.
+/**
+ * Initialize zk_proofs table.
+ *
+ * Stores ZK proof metadata for auditability.
+ */
+const zkProofColumnsToAdd: Array<{ name: string; type: string }> = [
+  { name: "proof_payload", type: "TEXT" },
+  { name: "is_over_18", type: "INTEGER" },
+  { name: "generation_time_ms", type: "INTEGER" },
+  { name: "circuit_type", type: "TEXT" },
+  { name: "noir_version", type: "TEXT" },
+  { name: "circuit_hash", type: "TEXT" },
+  { name: "bb_version", type: "TEXT" },
+];
+
+function initializeZkProofsTable(): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS zk_proofs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+      document_id TEXT,
+      proof_type TEXT NOT NULL,
+      proof_hash TEXT NOT NULL,
+      proof_payload TEXT,
+      public_inputs TEXT,
+      is_over_18 INTEGER,
+      generation_time_ms INTEGER,
+      nonce TEXT,
+      policy_version TEXT,
+      circuit_type TEXT,
+      noir_version TEXT,
+      circuit_hash TEXT,
+      bb_version TEXT,
+      verified INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_zk_proofs_user_id
+      ON zk_proofs (user_id);
+    CREATE INDEX IF NOT EXISTS idx_zk_proofs_type
+      ON zk_proofs (proof_type);
+  `);
+
+  for (const col of zkProofColumnsToAdd) {
+    try {
+      db.run(`ALTER TABLE zk_proofs ADD COLUMN ${col.name} ${col.type}`);
+    } catch {
+      // Column already exists, ignore
+    }
+  }
+}
+
+/**
+ * Initialize encrypted_attributes table.
+ *
+ * Stores FHE ciphertexts for private attributes.
+ */
+function initializeEncryptedAttributesTable(): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS encrypted_attributes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+      source TEXT NOT NULL,
+      attribute_type TEXT NOT NULL,
+      ciphertext TEXT NOT NULL,
+      key_id TEXT,
+      encryption_time_ms INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_user_id
+      ON encrypted_attributes (user_id);
+    CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_type
+      ON encrypted_attributes (attribute_type);
+  `);
+
+  try {
+    db.run(
+      `ALTER TABLE encrypted_attributes ADD COLUMN encryption_time_ms INTEGER`,
+    );
+  } catch {
+    // Column already exists, ignore
+  }
+}
+
+/**
+ * Initialize signed_claims table.
+ *
+ * Stores server-signed measurements (liveness, face match, OCR signals).
+ */
+function initializeSignedClaimsTable(): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS signed_claims (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+      document_id TEXT,
+      claim_type TEXT NOT NULL,
+      claim_payload TEXT NOT NULL,
+      signature TEXT NOT NULL,
+      issued_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_signed_claims_user_id
+      ON signed_claims (user_id);
+    CREATE INDEX IF NOT EXISTS idx_signed_claims_type
+      ON signed_claims (claim_type);
+  `);
+}
+
+export interface IdentityBundle {
+  userId: string;
+  walletAddress: string | null;
+  status: string;
+  policyVersion: string | null;
+  issuerId: string | null;
+  attestationExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IdentityDocument {
+  id: string;
+  userId: string;
+  documentType: string | null;
+  issuerCountry: string | null;
+  documentHash: string | null;
+  nameCommitment: string | null;
+  userSalt: string | null;
+  birthYearOffset: number | null;
+  firstNameEncrypted: string | null;
+  verifiedAt: string | null;
+  confidenceScore: number | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ZkProofRecord {
+  id: string;
+  userId: string;
+  documentId: string | null;
+  proofType: string;
+  proofHash: string;
+  publicInputs: string | null;
+  nonce: string | null;
+  policyVersion: string | null;
+  verified: boolean;
+  createdAt: string;
+}
+
+type ZkProofInsert = {
+  id: string;
+  userId: string;
+  documentId?: string | null;
+  proofType: string;
+  proofHash: string;
+  publicInputs?: string | null;
+  nonce?: string | null;
+  policyVersion?: string | null;
+  verified?: boolean;
+  proofPayload?: string | null;
+  isOver18?: boolean | null;
+  generationTimeMs?: number | null;
+  circuitType?: string | null;
+  noirVersion?: string | null;
+  circuitHash?: string | null;
+  bbVersion?: string | null;
+};
+
+export interface EncryptedAttributeRecord {
+  id: string;
+  userId: string;
+  source: string;
+  attributeType: string;
+  ciphertext: string;
+  keyId: string | null;
+  encryptionTimeMs?: number | null;
+  createdAt: string;
+}
+
+export interface SignedClaimRecord {
+  id: string;
+  userId: string;
+  documentId: string | null;
+  claimType: string;
+  claimPayload: string;
+  signature: string;
+  issuedAt: string;
+  createdAt: string;
+}
+
+export function getIdentityBundleByUserId(
+  userId: string,
+): IdentityBundle | null {
+  const stmt = db.prepare(`
+    SELECT
+      user_id as userId,
+      wallet_address as walletAddress,
+      status,
+      policy_version as policyVersion,
+      issuer_id as issuerId,
+      attestation_expires_at as attestationExpiresAt,
+      created_at as createdAt,
+      updated_at as updatedAt
+    FROM identity_bundles
+    WHERE user_id = ?
+    LIMIT 1
+  `);
+
+  return (stmt.get(userId) as IdentityBundle | undefined) ?? null;
+}
+
+export function getLatestIdentityDocumentByUserId(
+  userId: string,
+): IdentityDocument | null {
+  const stmt = db.prepare(`
+    SELECT
+      id,
+      user_id as userId,
+      document_type as documentType,
+      issuer_country as issuerCountry,
+      document_hash as documentHash,
+      name_commitment as nameCommitment,
+      user_salt as userSalt,
+      birth_year_offset as birthYearOffset,
+      first_name_encrypted as firstNameEncrypted,
+      verified_at as verifiedAt,
+      confidence_score as confidenceScore,
+      status,
+      created_at as createdAt,
+      updated_at as updatedAt
+    FROM identity_documents
+    WHERE user_id = ?
+    ORDER BY
+      CASE WHEN verified_at IS NULL THEN 1 ELSE 0 END,
+      verified_at DESC,
+      created_at DESC
+    LIMIT 1
+  `);
+
+  return (stmt.get(userId) as IdentityDocument | undefined) ?? null;
+}
+
+export function getZkProofsByUserId(userId: string): ZkProofRecord[] {
+  const stmt = db.prepare(`
+    SELECT
+      id,
+      user_id as userId,
+      document_id as documentId,
+      proof_type as proofType,
+      proof_hash as proofHash,
+      public_inputs as publicInputs,
+      nonce,
+      policy_version as policyVersion,
+      verified,
+      created_at as createdAt
+    FROM zk_proofs
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `);
+
+  return stmt.all(userId) as ZkProofRecord[];
+}
+
+export function getEncryptedAttributeTypesByUserId(userId: string): string[] {
+  const stmt = db.prepare(`
+    SELECT DISTINCT attribute_type as attributeType
+    FROM encrypted_attributes
+    WHERE user_id = ?
+    ORDER BY attribute_type ASC
+  `);
+
+  return (stmt.all(userId) as { attributeType: string }[]).map(
+    (row) => row.attributeType,
+  );
+}
+
+export function getLatestEncryptedAttributeByUserAndType(
+  userId: string,
+  attributeType: string,
+): {
+  ciphertext: string;
+  keyId: string | null;
+  encryptionTimeMs: number | null;
+  createdAt: string;
+} | null {
+  const stmt = db.prepare(`
+    SELECT
+      ciphertext,
+      key_id as keyId,
+      encryption_time_ms as encryptionTimeMs,
+      created_at as createdAt
+    FROM encrypted_attributes
+    WHERE user_id = ? AND attribute_type = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+
+  return (
+    (stmt.get(userId, attributeType) as
+      | {
+          ciphertext: string;
+          keyId: string | null;
+          encryptionTimeMs: number | null;
+          createdAt: string;
+        }
+      | undefined) ?? null
+  );
+}
+
+export function getSignedClaimTypesByUserId(userId: string): string[] {
+  const stmt = db.prepare(`
+    SELECT DISTINCT claim_type as claimType
+    FROM signed_claims
+    WHERE user_id = ?
+    ORDER BY claim_type ASC
+  `);
+
+  return (stmt.all(userId) as { claimType: string }[]).map(
+    (row) => row.claimType,
+  );
+}
+
+export function upsertIdentityBundle(data: {
+  userId: string;
+  walletAddress?: string | null;
+  status?: string;
+  policyVersion?: string | null;
+  issuerId?: string | null;
+  attestationExpiresAt?: string | null;
+}): void {
+  const stmt = db.prepare(`
+    INSERT INTO identity_bundles (
+      user_id, wallet_address, status, policy_version, issuer_id, attestation_expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      wallet_address = excluded.wallet_address,
+      status = excluded.status,
+      policy_version = excluded.policy_version,
+      issuer_id = excluded.issuer_id,
+      attestation_expires_at = excluded.attestation_expires_at,
+      updated_at = datetime('now')
+  `);
+
+  stmt.run(
+    data.userId,
+    data.walletAddress ?? null,
+    data.status ?? "pending",
+    data.policyVersion ?? null,
+    data.issuerId ?? null,
+    data.attestationExpiresAt ?? null,
+  );
+}
+
+export function createIdentityDocument(
+  data: Omit<IdentityDocument, "createdAt" | "updatedAt">,
+): void {
+  const stmt = db.prepare(`
+    INSERT INTO identity_documents (
+      id, user_id, document_type, issuer_country, document_hash, name_commitment,
+      user_salt, birth_year_offset, first_name_encrypted, verified_at, confidence_score, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    data.id,
+    data.userId,
+    data.documentType ?? null,
+    data.issuerCountry ?? null,
+    data.documentHash ?? null,
+    data.nameCommitment ?? null,
+    data.userSalt ?? null,
+    data.birthYearOffset ?? null,
+    data.firstNameEncrypted ?? null,
+    data.verifiedAt ?? null,
+    data.confidenceScore ?? null,
+    data.status,
+  );
+}
+
+export function getLatestIdentityDocumentId(userId: string): string | null {
+  const stmt = db.prepare(`
+    SELECT id
+    FROM identity_documents
+    WHERE user_id = ?
+    ORDER BY
+      CASE WHEN verified_at IS NULL THEN 1 ELSE 0 END,
+      verified_at DESC,
+      created_at DESC
+    LIMIT 1
+  `);
+
+  const row = stmt.get(userId) as { id?: string } | undefined;
+  return row?.id ?? null;
+}
+
+export function insertZkProofRecord(data: ZkProofInsert): void {
+  const stmt = db.prepare(`
+    INSERT INTO zk_proofs (
+      id,
+      user_id,
+      document_id,
+      proof_type,
+      proof_hash,
+      proof_payload,
+      public_inputs,
+      is_over_18,
+      generation_time_ms,
+      nonce,
+      policy_version,
+      circuit_type,
+      noir_version,
+      circuit_hash,
+      bb_version,
+      verified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    data.id,
+    data.userId,
+    data.documentId ?? null,
+    data.proofType,
+    data.proofHash,
+    data.proofPayload ?? null,
+    data.publicInputs ?? null,
+    data.isOver18 == null ? null : data.isOver18 ? 1 : 0,
+    data.generationTimeMs ?? null,
+    data.nonce ?? null,
+    data.policyVersion ?? null,
+    data.circuitType ?? null,
+    data.noirVersion ?? null,
+    data.circuitHash ?? null,
+    data.bbVersion ?? null,
+    data.verified ? 1 : 0,
+  );
+}
+
+export function insertEncryptedAttribute(
+  data: Omit<EncryptedAttributeRecord, "createdAt">,
+): void {
+  const stmt = db.prepare(`
+    INSERT INTO encrypted_attributes (
+      id, user_id, source, attribute_type, ciphertext, key_id, encryption_time_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    data.id,
+    data.userId,
+    data.source,
+    data.attributeType,
+    data.ciphertext,
+    data.keyId ?? null,
+    data.encryptionTimeMs ?? null,
+  );
+}
+
+export function insertSignedClaim(
+  data: Omit<SignedClaimRecord, "createdAt">,
+): void {
+  const stmt = db.prepare(`
+    INSERT INTO signed_claims (
+      id, user_id, document_id, claim_type, claim_payload, signature, issued_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(
+    data.id,
+    data.userId,
+    data.documentId ?? null,
+    data.claimType,
+    data.claimPayload,
+    data.signature,
+    data.issuedAt,
+  );
+}
+
+export function getLatestSignedClaimByUserAndType(
+  userId: string,
+  claimType: string,
+): SignedClaimRecord | null {
+  const stmt = db.prepare(`
+    SELECT
+      id, user_id as userId, document_id as documentId, claim_type as claimType,
+      claim_payload as claimPayload, signature, issued_at as issuedAt,
+      created_at as createdAt
+    FROM signed_claims
+    WHERE user_id = ? AND claim_type = ?
+    ORDER BY issued_at DESC
+    LIMIT 1
+  `);
+
+  return (stmt.get(userId, claimType) as SignedClaimRecord | undefined) ?? null;
+}
+
+// Initialize attestation schema tables.
 if (!isSqliteBuildTime()) {
-  initializeIdentityProofsTable();
+  initializeIdentityBundlesTable();
+  initializeIdentityDocumentsTable();
+  initializeZkProofsTable();
+  initializeEncryptedAttributesTable();
+  initializeSignedClaimsTable();
 }
 
 // ============================================================================
@@ -643,10 +889,10 @@ async function decryptFirstName(
  * Returns null if no proof exists or decryption fails.
  */
 export async function getUserFirstName(userId: string): Promise<string | null> {
-  const proof = getIdentityProofByUserId(userId);
-  if (!proof?.firstNameEncrypted) return null;
+  const document = getLatestIdentityDocumentByUserId(userId);
+  if (!document?.firstNameEncrypted) return null;
 
-  return decryptFirstName(proof.firstNameEncrypted);
+  return decryptFirstName(document.firstNameEncrypted);
 }
 
 /**

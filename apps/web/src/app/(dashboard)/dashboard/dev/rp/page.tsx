@@ -15,11 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth/auth";
-import {
-  getIdentityProofByUserId,
-  getUserAgeProof,
-  getVerificationStatus,
-} from "@/lib/db";
+import { getUserAgeProof, getVerificationStatus } from "@/lib/db";
 
 export default async function RPIntegrationPage() {
   const session = await auth.api.getSession({
@@ -28,16 +24,17 @@ export default async function RPIntegrationPage() {
 
   const userId = session?.user?.id;
   const ageProof = userId ? getUserAgeProof(userId) : null;
-  const identityProof = userId ? getIdentityProofByUserId(userId) : null;
   const verificationStatus = userId ? getVerificationStatus(userId) : null;
 
-  const hasProof = ageProof?.isOver18 || verificationStatus?.verified || false;
+  const hasProof = verificationStatus?.verified || ageProof?.isOver18 || false;
 
   const checks = {
-    document: identityProof?.isDocumentVerified ?? false,
-    liveness: identityProof?.isLivenessPassed ?? false,
-    faceMatch: identityProof?.isFaceMatched ?? false,
-    ageProof: Boolean(ageProof?.isOver18),
+    document: verificationStatus?.checks.document ?? false,
+    liveness: verificationStatus?.checks.liveness ?? false,
+    faceMatch: verificationStatus?.checks.faceMatch ?? false,
+    ageProof: Boolean(
+      verificationStatus?.checks.ageProof || ageProof?.isOver18,
+    ),
   };
 
   return (
@@ -67,10 +64,7 @@ export default async function RPIntegrationPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <FheVerificationDemo
-          dobCiphertext={
-            ageProof?.dobCiphertext ?? identityProof?.dobCiphertext
-          }
-          fheClientKeyId={identityProof?.fheClientKeyId}
+          dobCiphertext={ageProof?.dobCiphertext ?? undefined}
         />
 
         <Card>

@@ -17,6 +17,9 @@ interface TransparencySectionProps {
   nameCommitment?: string;
   dobCiphertext?: string;
   hasAgeProof: boolean;
+  proofTypes?: string[];
+  encryptedAttributes?: string[];
+  signedClaimTypes?: string[];
 }
 
 export function TransparencySection({
@@ -24,12 +27,34 @@ export function TransparencySection({
   nameCommitment,
   dobCiphertext,
   hasAgeProof,
+  proofTypes = [],
+  encryptedAttributes = [],
+  signedClaimTypes = [],
 }: TransparencySectionProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const truncateHash = (hash: string) => {
     if (hash.length <= 20) return hash;
     return `${hash.slice(0, 10)}...${hash.slice(-10)}`;
+  };
+
+  const proofLabels: Record<string, string> = {
+    age_verification: "Age ≥ 18",
+    doc_validity: "Document Valid",
+    nationality_membership: "Nationality Group",
+    face_match: "Face Match",
+  };
+
+  const claimLabels: Record<string, string> = {
+    liveness_score: "Liveness Score",
+    face_match_score: "Face Match Score",
+  };
+
+  const attributeLabels: Record<string, string> = {
+    birth_year: "Birth Year",
+    dob_full: "Date of Birth",
+    gender_code: "Gender Code",
+    liveness_score: "Liveness Score",
   };
 
   return (
@@ -98,7 +123,9 @@ export function TransparencySection({
                 <Eye className="h-5 w-5 text-info mt-0.5" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">DOB Ciphertext</span>
+                    <span className="text-sm font-medium">
+                      Birth Year Ciphertext
+                    </span>
                     <Badge variant="outline" className="text-xs">
                       FHE
                     </Badge>
@@ -135,6 +162,69 @@ export function TransparencySection({
                     Cryptographic proof that age {"\u2265"} 18 without revealing
                     birth date
                   </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t space-y-3">
+              <div>
+                <h4 className="text-sm font-medium mb-2">Proofs Stored</h4>
+                <div className="flex flex-wrap gap-2">
+                  {proofTypes.length === 0 ? (
+                    <Badge variant="outline" className="text-xs">
+                      None yet
+                    </Badge>
+                  ) : (
+                    proofTypes.map((proof) => (
+                      <Badge
+                        key={proof}
+                        variant="secondary"
+                        className="text-xs"
+                      >
+                        {proofLabels[proof] ?? proof}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-2">
+                  Encrypted Attributes
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {encryptedAttributes.length === 0 ? (
+                    <Badge variant="outline" className="text-xs">
+                      None yet
+                    </Badge>
+                  ) : (
+                    encryptedAttributes.map((attr) => (
+                      <Badge key={attr} variant="secondary" className="text-xs">
+                        {attributeLabels[attr] ?? attr}
+                      </Badge>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-2">Signed Claims</h4>
+                <div className="flex flex-wrap gap-2">
+                  {signedClaimTypes.length === 0 ? (
+                    <Badge variant="outline" className="text-xs">
+                      None yet
+                    </Badge>
+                  ) : (
+                    signedClaimTypes.map((claim) => (
+                      <Badge
+                        key={claim}
+                        variant="secondary"
+                        className="text-xs"
+                      >
+                        {claimLabels[claim] ?? claim}
+                      </Badge>
+                    ))
+                  )}
                 </div>
               </div>
             </div>

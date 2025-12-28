@@ -38,7 +38,7 @@ export function MagicLinkForm() {
         });
 
         if (result.error) {
-          // Check if user doesn't exist (they need to sign up first with KYC)
+          // Check if user doesn't exist (they need to sign up first with identity verification)
           if (
             result.error.message?.includes("user") ||
             result.error.message?.includes("not found")

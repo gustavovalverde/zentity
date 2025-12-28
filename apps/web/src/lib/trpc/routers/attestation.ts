@@ -31,7 +31,7 @@ import {
   createBlockchainAttestation,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
-  getIdentityProofByUserId,
+  getLatestIdentityDocumentByUserId,
   getVerificationStatus,
   resetBlockchainAttestationForRetry,
   updateBlockchainAttestationConfirmed,
@@ -115,9 +115,9 @@ function countryCodeToNumeric(alphaCode: string): number {
 }
 
 /**
- * Map KYC verification level to numeric value.
+ * Map verification/compliance level to numeric value.
  */
-function getKycLevel(status: {
+function getComplianceLevel(status: {
   verified: boolean;
   level: "none" | "basic" | "full";
 }): number {
@@ -264,12 +264,12 @@ export const attestationRouter = router({
         });
       }
 
-      // Get identity proof for attestation data
-      const identityProof = getIdentityProofByUserId(ctx.userId);
-      if (!identityProof) {
+      // Get latest identity document for attestation data
+      const identityDocument = getLatestIdentityDocumentByUserId(ctx.userId);
+      if (!identityDocument) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Identity proof not found",
+          message: "Identity document not found",
         });
       }
 
@@ -376,13 +376,13 @@ export const attestationRouter = router({
       }
 
       // Extract identity data for attestation
-      // birthYearOffset is calculated during document verification and stored in identity_proofs
-      const birthYearOffset = identityProof.birthYearOffset;
+      // birthYearOffset is calculated during document verification and stored in identity_documents
+      const birthYearOffset = identityDocument.birthYearOffset;
       if (birthYearOffset === null || birthYearOffset === undefined) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message:
-            "Birth year missing from identity proof. Re-run identity verification before attesting on-chain.",
+            "Birth year missing from identity document. Re-run identity verification before attesting on-chain.",
         });
       }
       if (
@@ -396,9 +396,9 @@ export const attestationRouter = router({
         });
       }
       const countryCode = countryCodeToNumeric(
-        identityProof.countryVerified || "",
+        identityDocument.issuerCountry || "",
       );
-      const kycLevel = getKycLevel(verificationStatus);
+      const complianceLevel = getComplianceLevel(verificationStatus);
 
       // Submit attestation via provider
       try {
@@ -407,7 +407,7 @@ export const attestationRouter = router({
           identityData: {
             birthYearOffset,
             countryCode,
-            kycLevel,
+            complianceLevel,
             isBlacklisted: false,
           },
         });

@@ -74,8 +74,27 @@ async fn main() {
         .ok()
         .filter(|value| !value.is_empty());
 
+    let node_env = std::env::var("NODE_ENV").unwrap_or_default();
+    let app_env = std::env::var("APP_ENV").unwrap_or_default();
+    let rust_env = std::env::var("RUST_ENV").unwrap_or_default();
+    let require_internal_token = matches!(node_env.as_str(), "production")
+        || matches!(app_env.as_str(), "production")
+        || matches!(rust_env.as_str(), "production")
+        || matches!(
+            std::env::var("INTERNAL_SERVICE_TOKEN_REQUIRED")
+                .unwrap_or_default()
+                .to_lowercase()
+                .as_str(),
+            "1" | "true" | "yes"
+        );
+
     if internal_token.is_some() {
         tracing::info!("Authentication enabled (INTERNAL_SERVICE_TOKEN configured)");
+    } else if require_internal_token {
+        tracing::error!(
+            "INTERNAL_SERVICE_TOKEN is required in production. Set INTERNAL_SERVICE_TOKEN or INTERNAL_SERVICE_TOKEN_REQUIRED=0."
+        );
+        std::process::exit(1);
     } else {
         tracing::warn!("Running without authentication (INTERNAL_SERVICE_TOKEN not set)");
     }

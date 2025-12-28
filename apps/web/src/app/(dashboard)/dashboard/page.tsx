@@ -25,10 +25,14 @@ import {
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth/auth";
 import {
-  getIdentityProofByUserId,
-  getUserAgeProof,
+  getEncryptedAttributeTypesByUserId,
+  getIdentityBundleByUserId,
+  getLatestEncryptedAttributeByUserAndType,
+  getLatestIdentityDocumentByUserId,
+  getSignedClaimTypesByUserId,
   getUserFirstName,
   getVerificationStatus,
+  getZkProofsByUserId,
 } from "@/lib/db";
 import { getFirstPart } from "@/lib/utils";
 
@@ -63,11 +67,25 @@ export default async function DashboardPage() {
 
   const userId = session?.user?.id;
 
-  // Fetch age proof (ZK proof from onboarding)
-  const ageProof = userId ? getUserAgeProof(userId) : null;
-
-  // Fetch identity proof (from document verification)
-  const identityProof = userId ? getIdentityProofByUserId(userId) : null;
+  // Fetch off-chain attestation data
+  const identityBundle = userId ? getIdentityBundleByUserId(userId) : null;
+  const latestDocument = userId
+    ? getLatestIdentityDocumentByUserId(userId)
+    : null;
+  const zkProofs = userId ? getZkProofsByUserId(userId) : [];
+  const encryptedAttributes = userId
+    ? getEncryptedAttributeTypesByUserId(userId)
+    : [];
+  const birthYearCiphertext = userId
+    ? getLatestEncryptedAttributeByUserAndType(userId, "birth_year")
+    : null;
+  const dobFullCiphertext = userId
+    ? getLatestEncryptedAttributeByUserAndType(userId, "dob_full")
+    : null;
+  const signedClaimTypes = userId ? getSignedClaimTypesByUserId(userId) : [];
+  const proofTypes = Array.from(
+    new Set(zkProofs.map((proof) => proof.proofType)),
+  );
 
   // Get verification status
   const verificationStatus = userId ? getVerificationStatus(userId) : null;
@@ -77,25 +95,29 @@ export default async function DashboardPage() {
 
   // Build verification checks combining both sources
   const checks: VerificationChecks = {
-    document: identityProof?.isDocumentVerified ?? false,
-    liveness: identityProof?.isLivenessPassed ?? false,
-    faceMatch: identityProof?.isFaceMatched ?? false,
-    ageProof: Boolean(ageProof?.isOver18),
-    fheEncryption:
-      !!ageProof?.hasFheEncryption || !!identityProof?.dobCiphertext,
+    document: latestDocument?.status === "verified",
+    liveness: signedClaimTypes.includes("liveness_score"),
+    faceMatch: signedClaimTypes.includes("face_match_score"),
+    ageProof: proofTypes.includes("age_verification"),
+    fheEncryption: encryptedAttributes.length > 0,
   };
 
-  const hasProof = ageProof?.isOver18 || verificationStatus?.verified || false;
+  const hasProof =
+    identityBundle?.status === "verified" ||
+    Object.values(checks).some(Boolean);
 
   // Identity data for transparency section
   const identityData = {
-    documentHash: identityProof?.documentHash,
-    nameCommitment: identityProof?.nameCommitment,
-    dobCiphertext: ageProof?.dobCiphertext ?? identityProof?.dobCiphertext,
+    documentHash: latestDocument?.documentHash ?? undefined,
+    nameCommitment: latestDocument?.nameCommitment ?? undefined,
+    dobCiphertext:
+      birthYearCiphertext?.ciphertext ??
+      dobFullCiphertext?.ciphertext ??
+      undefined,
     // Document metadata (non-PII, safe to display)
-    documentType: identityProof?.documentType,
-    countryVerified: identityProof?.countryVerified,
-    verifiedAt: identityProof?.verifiedAt,
+    documentType: latestDocument?.documentType ?? undefined,
+    countryVerified: latestDocument?.issuerCountry ?? undefined,
+    verifiedAt: latestDocument?.verifiedAt ?? undefined,
   };
 
   // Determine the best name to display
@@ -325,6 +347,9 @@ export default async function DashboardPage() {
           nameCommitment={identityData.nameCommitment}
           dobCiphertext={identityData.dobCiphertext}
           hasAgeProof={checks.ageProof}
+          proofTypes={proofTypes}
+          encryptedAttributes={encryptedAttributes}
+          signedClaimTypes={signedClaimTypes}
         />
       )}
 

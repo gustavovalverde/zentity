@@ -247,18 +247,18 @@ export PRIVATE_KEY=0x...your-registrar-private-key
 npx hardhat run scripts/deploy.ts --network fhevmSepolia
 ```
 
-The deploy script will output:
+The deploy script will output (example):
 
 ```text
-IdentityRegistry deployed to: 0x1234...
-ComplianceRules deployed to: 0x5678...
+IdentityRegistry deployed to: 0x05c6FB879BbF0Cab2B0206523583F94E49Ba62e2
+ComplianceRules deployed to: 0x78dE340fc7A6ba470a5dD8b0a5f5933cD48dC164
 ```
 
 ### Add to your `.env`
 
 ```bash
-FHEVM_IDENTITY_REGISTRY=0x1234...  # From deploy output
-FHEVM_COMPLIANCE_RULES=0x5678...   # From deploy output
+FHEVM_IDENTITY_REGISTRY=0x05c6FB879BbF0Cab2B0206523583F94E49Ba62e2  # From deploy output
+FHEVM_COMPLIANCE_RULES=0x78dE340fc7A6ba470a5dD8b0a5f5933cD48dC164   # From deploy output
 ```
 
 ### Verify Contracts (Optional)

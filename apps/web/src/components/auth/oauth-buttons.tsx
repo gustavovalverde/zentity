@@ -70,7 +70,7 @@ export function OAuthButtons({
         });
 
         if (result.error) {
-          // Check if user doesn't exist (they need KYC first)
+          // Check if user doesn't exist (they need identity verification first)
           if (
             result.error.message?.includes("user") ||
             result.error.message?.includes("not found")
