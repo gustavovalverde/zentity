@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgeProofFull } from "@/lib/zk/age-proofs";
+import type { AgeProofFull } from "@/lib/crypto/age-proof-types";
 
 import {
   AlertTriangle,

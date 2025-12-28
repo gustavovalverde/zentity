@@ -20,7 +20,7 @@
  * // Submit attestation
  * const result = await provider.submitAttestation({
  *   userAddress: "0x...",
- *   identityData: { birthYearOffset: 90, countryCode: 840, kycLevel: 3, isBlacklisted: false }
+ *   identityData: { birthYearOffset: 90, countryCode: 840, complianceLevel: 3, isBlacklisted: false }
  * });
  * ```
  */

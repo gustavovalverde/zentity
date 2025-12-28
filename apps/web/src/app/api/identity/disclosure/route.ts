@@ -12,7 +12,7 @@
  * - ZK proofs (face match, age) are included but not encrypted
  *
  * USE CASE:
- * Crypto exchanges/banks need Name, DOB, Nationality for KYC/AML compliance.
+ * Crypto exchanges/banks need Name, DOB, Nationality for identity/AML compliance.
  * This enables that while:
  * 1. Protecting user privacy (E2E encryption)
  * 2. Providing cryptographic proofs (ZK)
@@ -26,7 +26,8 @@ import { v4 as uuidv4 } from "uuid";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import {
-  getIdentityProofByUserId,
+  getLatestIdentityDocumentByUserId,
+  getLatestSignedClaimByUserAndType,
   getUserAgeProofPayload,
   getVerificationStatus,
 } from "@/lib/db";
@@ -242,8 +243,8 @@ export async function POST(
       );
     }
 
-    // Get existing identity proof for user salt
-    const identityProof = getIdentityProofByUserId(userId);
+    // Get existing identity document for user salt
+    const identityDocument = getLatestIdentityDocumentByUserId(userId);
 
     // =========================================================================
     // STEP 1: Extract PII from document
@@ -265,7 +266,7 @@ export async function POST(
     try {
       documentResult = await processDocumentOcr({
         image: body.documentImage,
-        userSalt: identityProof?.userSalt,
+        userSalt: identityDocument?.userSalt ?? undefined,
       });
     } catch (error) {
       const { status } = toServiceErrorPayload(
@@ -481,12 +482,28 @@ export async function POST(
     }
 
     // Liveness attestation (signed statement)
-    if (identityProof?.isLivenessPassed) {
-      proofs.livenessAttestation = {
-        verified: true,
-        timestamp: identityProof.verifiedAt || createdAt,
-        method: identityProof.verificationMethod || "standard",
-      };
+    const livenessClaim = getLatestSignedClaimByUserAndType(
+      userId,
+      "liveness_score",
+    );
+    if (livenessClaim) {
+      let passed = true;
+      try {
+        const payload = JSON.parse(livenessClaim.claimPayload) as {
+          data?: { passed?: boolean };
+        };
+        if (payload?.data?.passed === false) {
+          passed = false;
+        }
+      } catch {}
+
+      if (passed) {
+        proofs.livenessAttestation = {
+          verified: true,
+          timestamp: livenessClaim.issuedAt || createdAt,
+          method: "signed_claim",
+        };
+      }
     }
 
     // PII has been extracted, encrypted, and is being returned

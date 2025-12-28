@@ -20,8 +20,6 @@ const HARDHAT_NETWORK_EXPLORER_URL =
 export default defineWalletSetup(
   WALLET_PASSWORD,
   async (context, walletPage) => {
-    // Synpress debug logging (wallet-setup-debug guide).
-    // Avoid logging sensitive secrets; only log whether values are present.
     // biome-ignore lint/suspicious/noConsole: debug-only log for Synpress setup
     console.log("[synpress] wallet setup start", {
       hasSeedPhrase: Boolean(SEED_PHRASE),

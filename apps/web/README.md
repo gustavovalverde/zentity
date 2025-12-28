@@ -1,6 +1,6 @@
 # Zentity Web Application
 
-Privacy-preserving KYC frontend built with Next.js 16 and React 19.
+Privacy-preserving identity verification and compliance frontend built with Next.js 16 and React 19.
 
 ## Overview
 
@@ -147,7 +147,6 @@ src/
 │   │   ├── rp/             # External RP integration endpoints (Hono)
 │   │   ├── crypto/         # Public ZK artifacts + nationality helpers
 │   │   ├── identity/       # Disclosure endpoints
-│   │   ├── kyc/            # KYC metadata/upload endpoints (optional)
 │   │   └── password/       # Password pwned checks
 │   ├── dashboard/          # User dashboard
 │   └── onboarding/         # Verification wizard
@@ -166,11 +165,9 @@ src/
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/auth/*` | Various | Authentication (better-auth) |
-| `/api/trpc/*` | Various | Internal app APIs (crypto, onboarding, identity, liveness, kyc) |
+| `/api/trpc/*` | Various | Internal app APIs (crypto, onboarding, identity, liveness) |
 | `/api/rp/*` | Various | External relying party (RP) integrations |
 | `/api/identity/disclosure` | POST | Disclosure bundle (demo/integrations) |
-| `/api/kyc` | GET | KYC status (metadata only) |
-| `/api/kyc/upload` | POST | Upload document metadata (no bytes stored) |
 | `/api/crypto/circuits` | GET | Circuit manifest (IDs, vkey hashes, public input spec) |
 | `/api/crypto/circuits/[circuitType]/vkey` | GET | Circuit verification key (base64) + hash |
 | `/api/crypto/nationality-proof` | GET/POST | Nationality membership helpers (Merkle inputs) |

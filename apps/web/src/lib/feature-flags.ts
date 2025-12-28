@@ -8,5 +8,7 @@
  * Used to conditionally render blockchain-related UI sections.
  */
 export function isWeb3Enabled(): boolean {
-  return process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false";
+  const fhevmEnabled = process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false";
+  const hardhatEnabled = process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true";
+  return fhevmEnabled || hardhatEnabled;
 }

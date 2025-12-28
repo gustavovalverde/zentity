@@ -7,8 +7,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
+import { consumeChallenge } from "@/lib/crypto/challenge-store";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
+import {
+  CIRCUIT_SPECS,
+  normalizeChallengeNonce,
+  parsePublicInputToNumber,
+} from "@/lib/zk";
 import { verifyNoirProof } from "@/lib/zk/noir-verifier";
 
 /**
@@ -51,6 +56,21 @@ export async function POST(request: NextRequest) {
           error:
             "publicInputs must have at least 3 elements [merkle_root, nonce, is_member]",
         },
+        { status: 400 },
+      );
+    }
+
+    const nonceHex = normalizeChallengeNonce(
+      publicInputs[CIRCUIT_SPECS.nationality_membership.nonceIndex],
+    );
+    const challenge = consumeChallenge(
+      nonceHex,
+      "nationality_membership",
+      authResult.session.user.id,
+    );
+    if (!challenge) {
+      return NextResponse.json(
+        { error: "Invalid or expired challenge nonce" },
         { status: 400 },
       );
     }

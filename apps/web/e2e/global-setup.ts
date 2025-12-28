@@ -96,6 +96,8 @@ function ensureE2EDatabaseInitialized() {
       `E2E DB init failed: ${result.stderr || result.stdout || "unknown error"}`,
     );
   }
+
+  applySchemaMigrations(E2E_DB_PATH);
 }
 
 function ensureDatabaseInitialized(dbPath: string) {
@@ -116,6 +118,8 @@ function ensureDatabaseInitialized(dbPath: string) {
       `DB init failed for ${dbPath}: ${result.stderr || result.stdout || "unknown error"}`,
     );
   }
+
+  applySchemaMigrations(dbPath);
 }
 
 function runSql(dbPath: string, sql: string) {
@@ -131,6 +135,47 @@ function runSql(dbPath: string, sql: string) {
   return result.stdout.trim();
 }
 
+const SCHEMA_MIGRATIONS = [
+  { table: "zk_proofs", column: "proof_payload", type: "TEXT" },
+  { table: "zk_proofs", column: "is_over_18", type: "INTEGER" },
+  { table: "zk_proofs", column: "generation_time_ms", type: "INTEGER" },
+  { table: "zk_proofs", column: "circuit_type", type: "TEXT" },
+  { table: "zk_proofs", column: "noir_version", type: "TEXT" },
+  { table: "zk_proofs", column: "circuit_hash", type: "TEXT" },
+  { table: "zk_proofs", column: "bb_version", type: "TEXT" },
+  {
+    table: "encrypted_attributes",
+    column: "encryption_time_ms",
+    type: "INTEGER",
+  },
+];
+
+function applySchemaMigrations(dbPath: string) {
+  for (const migration of SCHEMA_MIGRATIONS) {
+    ensureColumn(dbPath, migration.table, migration.column, migration.type);
+  }
+}
+
+function ensureColumn(
+  dbPath: string,
+  table: string,
+  column: string,
+  type: string,
+) {
+  const result = runSql(
+    dbPath,
+    `SELECT COUNT(*) as count FROM pragma_table_info('${table}') WHERE name = '${column}';`,
+  );
+  const count = Number.parseInt(result, 10);
+  if (Number.isNaN(count)) {
+    throw new Error(
+      `Failed to inspect schema for ${table}.${column}: ${result || "unknown"}`,
+    );
+  }
+  if (count > 0) return;
+  runSql(dbPath, `ALTER TABLE ${table} ADD COLUMN ${column} ${type};`);
+}
+
 function seedVerifiedIdentity(dbPath: string, email: string) {
   const userId = runSql(
     dbPath,
@@ -142,70 +187,163 @@ function seedVerifiedIdentity(dbPath: string, email: string) {
   }
 
   const now = new Date().toISOString();
-  const proofId = crypto.randomUUID();
-  const ageProofId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const bundleId = userId;
   const salt = crypto.randomBytes(16).toString("hex");
   const docHash = `doc_${crypto.randomUUID().replace(/-/g, "")}`;
   const nameCommitment = `name_${crypto.randomUUID().replace(/-/g, "")}`;
+  const policyVersion = "poc-v1";
 
-  const identitySql = `
-    INSERT OR REPLACE INTO identity_proofs (
-      id,
+  const identityBundleSql = `
+    INSERT OR REPLACE INTO identity_bundles (
       user_id,
-      document_hash,
-      name_commitment,
-      user_salt,
-      document_type,
-      country_verified,
-      is_document_verified,
-      is_liveness_passed,
-      is_face_matched,
-      verification_method,
-      verified_at,
-      confidence_score,
+      status,
+      policy_version,
+      issuer_id,
       created_at,
-      updated_at,
-      birth_year_offset
+      updated_at
     ) VALUES (
-      '${proofId}',
-      '${userId}',
-      '${docHash}',
-      '${nameCommitment}',
-      '${salt}',
-      'passport',
-      'USA',
-      1,
-      1,
-      1,
-      'e2e',
+      '${bundleId}',
+      'verified',
+      '${policyVersion}',
+      'zentity-kyc',
       '${now}',
-      0.99,
-      '${now}',
-      '${now}',
-      90
+      '${now}'
     );
   `;
 
-  const ageProofSql = `
-    INSERT OR REPLACE INTO age_proofs (
+  const identityDocumentSql = `
+    INSERT OR REPLACE INTO identity_documents (
       id,
       user_id,
-      proof,
-      public_signals,
+      document_type,
+      issuer_country,
+      document_hash,
+      name_commitment,
+      user_salt,
+      birth_year_offset,
+      verified_at,
+      confidence_score,
+      status,
+      created_at,
+      updated_at
+    ) VALUES (
+      '${documentId}',
+      '${userId}',
+      'passport',
+      'USA',
+      '${docHash}',
+      '${nameCommitment}',
+      '${salt}',
+      90,
+      '${now}',
+      0.99,
+      'verified',
+      '${now}',
+      '${now}'
+    );
+  `;
+
+  const signedClaimsSql = `
+    INSERT OR REPLACE INTO signed_claims (
+      id,
+      user_id,
+      document_id,
+      claim_type,
+      claim_payload,
+      signature,
+      issued_at,
+      created_at
+    ) VALUES
+      (
+        '${crypto.randomUUID()}',
+        '${userId}',
+        '${documentId}',
+        'liveness_score',
+        '{"type":"liveness_score","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"passed":true,"antispoofScore":0.98,"liveScore":0.97}}',
+        'e2e-signature',
+        '${now}',
+        '${now}'
+      ),
+      (
+        '${crypto.randomUUID()}',
+        '${userId}',
+        '${documentId}',
+        'face_match_score',
+        '{"type":"face_match_score","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"passed":true,"confidence":0.93}}',
+        'e2e-signature',
+        '${now}',
+        '${now}'
+      );
+  `;
+
+  const zkProofSql = `
+    INSERT OR REPLACE INTO zk_proofs (
+      id,
+      user_id,
+      document_id,
+      proof_type,
+      proof_hash,
+      proof_payload,
+      public_inputs,
       is_over_18,
+      generation_time_ms,
+      nonce,
+      policy_version,
+      circuit_type,
+      noir_version,
+      circuit_hash,
+      bb_version,
+      verified,
       created_at
     ) VALUES (
-      '${ageProofId}',
+      '${crypto.randomUUID()}',
       '${userId}',
+      '${documentId}',
+      'age_verification',
+      'proof_${crypto.randomUUID().replace(/-/g, "")}',
       'mock-proof',
-      'mock-signals',
+      '["${new Date().getFullYear()}","18","${crypto.randomUUID()}","1"]',
+      1,
+      1240,
+      '${crypto.randomUUID()}',
+      '${policyVersion}',
+      'age_verification',
+      null,
+      null,
+      null,
       1,
       '${now}'
     );
   `;
 
-  runSql(dbPath, identitySql);
-  runSql(dbPath, ageProofSql);
+  const encryptedAttributesSql = `
+    INSERT OR REPLACE INTO encrypted_attributes (
+      id,
+      user_id,
+      source,
+      attribute_type,
+      ciphertext,
+      key_id,
+      encryption_time_ms,
+      created_at
+    ) VALUES (
+      '${crypto.randomUUID()}',
+      '${userId}',
+      'e2e_seed',
+      'birth_year',
+      'mock-ciphertext',
+      'default',
+      42,
+      '${now}'
+    );
+  `;
+
+  runSql(dbPath, identityBundleSql);
+  runSql(dbPath, identityDocumentSql);
+  runSql(dbPath, signedClaimsSql);
+  runSql(dbPath, zkProofSql);
+  runSql(dbPath, encryptedAttributesSql);
 }
 
 function resetBlockchainState(dbPath: string) {

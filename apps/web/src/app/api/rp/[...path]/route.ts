@@ -15,8 +15,6 @@ import {
 import {
   consumeRpAuthorizationCode,
   createRpAuthorizationCode,
-  getIdentityProofByUserId,
-  getUserAgeProof,
   getVerificationStatus,
 } from "@/lib/db";
 
@@ -140,24 +138,13 @@ app.post("/exchange", async (c) => {
   }
 
   const userId = consumed.userId;
-  const ageProof = getUserAgeProof(userId);
-  const identityProof = getIdentityProofByUserId(userId);
   const verificationStatus = getVerificationStatus(userId);
-
-  const checks = {
-    document: identityProof?.isDocumentVerified ?? false,
-    liveness: identityProof?.isLivenessPassed ?? false,
-    faceMatch: identityProof?.isFaceMatched ?? false,
-    ageProof: Boolean(ageProof?.isOver18),
-  };
-
-  const verified = Boolean(verificationStatus?.verified || ageProof?.isOver18);
 
   return c.json({
     success: true,
-    verified,
-    level: verificationStatus?.level ?? (verified ? "basic" : "none"),
-    checks,
+    verified: verificationStatus.verified,
+    level: verificationStatus.level,
+    checks: verificationStatus.checks,
   });
 });
 

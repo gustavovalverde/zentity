@@ -85,7 +85,9 @@ export default async function VerificationPage() {
                   <div>
                     <p className="text-muted-foreground">Generation Time</p>
                     <p className="font-mono font-medium">
-                      {proof.generationTimeMs}ms
+                      {proof.generationTimeMs !== null
+                        ? `${proof.generationTimeMs}ms`
+                        : "N/A"}
                     </p>
                   </div>
                   <div>

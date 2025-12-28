@@ -34,7 +34,7 @@
         "@wagmi/core": "3.0.0",
         "@walletconnect/ethereum-provider": "^2.23.1",
         "@zama-fhe/relayer-sdk": "0.3.0-8",
-        "@zentity/fhevm-contracts": "^0.1.1",
+        "@zentity/fhevm-contracts": "^0.2.0",
         "better-auth": "^1.4.7",
         "buffer": "^6.0.3",
         "class-variance-authority": "^0.7.1",
@@ -989,7 +989,7 @@
 
     "@zama-fhe/relayer-sdk": ["@zama-fhe/relayer-sdk@0.3.0-8", "", { "dependencies": { "commander": "^14.0.0", "ethers": "^6.15.0", "fetch-retry": "^6.0.0", "keccak": "^3.0.4", "node-tfhe": "1.4.0-alpha.3", "node-tkms": "^0.12.0", "tfhe": "1.4.0-alpha.3", "tkms": "^0.12.0", "wasm-feature-detect": "^1.8.0" }, "bin": { "relayer": "bin/relayer.js" } }, "sha512-Y0NJcijV/3YJc0KulEHF1oPIWPuaOanWRyr+pNVthnRaaRrrH9HKUdaPPB9uw3vb2CEihAeysLKtmqEtcArPXQ=="],
 
-    "@zentity/fhevm-contracts": ["@zentity/fhevm-contracts@0.1.1", "", { "dependencies": { "@fhevm/solidity": "0.9.1", "@openzeppelin/confidential-contracts": "0.3.0" }, "peerDependencies": { "ethers": "^6.16.0", "viem": "^2.43.1" } }, "sha512-09sLN+mx2QXUtbDmGnbnMUm7g/1wB6w7S1Ujuzn2AYx+dEoxnoPKOIsC8HZbLMrOBYkFsWVxZi0NsmsUrE64CA=="],
+    "@zentity/fhevm-contracts": ["@zentity/fhevm-contracts@0.2.0", "", { "dependencies": { "@fhevm/solidity": "0.9.1", "@openzeppelin/confidential-contracts": "0.3.0" }, "peerDependencies": { "ethers": "^6.16.0", "viem": "^2.43.1" } }, "sha512-TjayRX3o17M+zZS8dm85jT/gCLuxC1y3N5W8C4UDBDMHOJjx0I2HzoNHDEA1Oh+lMJv5rP1fHaKSC74iM3FFQQ=="],
 
     "abbrev": ["abbrev@1.1.1", "", {}, "sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q=="],
 

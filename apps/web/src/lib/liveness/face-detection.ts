@@ -1,5 +1,5 @@
 /**
- * Face matching utilities for KYC verification.
+ * Face matching utilities for identity verification.
  *
  * This module provides face matching functionality using the internal
  * Human.js-based liveness service.

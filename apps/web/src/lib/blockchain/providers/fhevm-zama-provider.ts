@@ -172,7 +172,7 @@ export class FhevmZamaProvider
       // Add all identity fields as encrypted values
       encryptedInput.add8(params.identityData.birthYearOffset); // euint8
       encryptedInput.add16(params.identityData.countryCode); // euint16
-      encryptedInput.add8(params.identityData.kycLevel); // euint8
+      encryptedInput.add8(params.identityData.complianceLevel); // euint8
       encryptedInput.addBool(params.identityData.isBlacklisted); // ebool
 
       // Encrypt and get handles + proof
@@ -197,7 +197,7 @@ export class FhevmZamaProvider
           params.userAddress as `0x${string}`,
           handles[0], // encBirthYearOffset
           handles[1], // encCountryCode
-          handles[2], // encKycLevel
+          handles[2], // encComplianceLevel
           handles[3], // encIsBlacklisted
           inputProofHex,
         ],

@@ -1,7 +1,7 @@
 /**
  * Onboarding Wizard Provider
  *
- * Manages the multi-step KYC wizard state using React Context + Reducer.
+ * Manages the multi-step identity verification wizard state using React Context + Reducer.
  * Syncs state with server-side onboarding session for persistence.
  *
  * Steps:

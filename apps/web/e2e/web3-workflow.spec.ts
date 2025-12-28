@@ -52,8 +52,10 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       chainId: hardhatNetwork.chainId,
     });
 
+    await page.goto("/dashboard/attestation");
+    await expect(page).toHaveURL(/dashboard\/attestation/);
     await expect(
-      page.getByText("On-Chain Attestation", { exact: false }),
+      page.getByRole("heading", { name: /On-Chain Attestation/i }),
     ).toBeVisible({ timeout: 60_000 });
 
     const hardhatNetworkButton = page.getByRole("button", {

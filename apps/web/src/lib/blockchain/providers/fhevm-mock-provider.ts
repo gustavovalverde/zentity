@@ -86,7 +86,7 @@ export class FhevmMockProvider
         byteLength: 2,
       },
       {
-        value: BigInt(identityData.kycLevel),
+        value: BigInt(identityData.complianceLevel),
         fheType: FhevmType.euint8,
         fhevmType: FhevmType.euint8,
         byteLength: 1,

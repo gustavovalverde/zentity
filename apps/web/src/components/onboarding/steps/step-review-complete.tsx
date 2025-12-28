@@ -45,7 +45,6 @@ import {
   generateAgeProof,
   getProofChallenge,
   storeAgeProof,
-  verifyAgeProof,
 } from "@/lib/crypto";
 import {
   type FaceMatchResult,
@@ -62,7 +61,6 @@ type ProofStatus =
   | "creating-account"
   | "encrypting"
   | "generating"
-  | "verifying"
   | "verifying-identity"
   | "storing"
   | "complete"
@@ -309,7 +307,7 @@ export function StepReviewComplete() {
       // Get birth year from extracted DOB
       const birthYear = getBirthYear(data.extractedDOB);
 
-      // Variables to hold crypto results (generated BEFORE account creation)
+      // Variables to hold crypto results (generated AFTER account creation)
       let fheResult: {
         ciphertext: string;
         clientKeyId: string;
@@ -321,9 +319,27 @@ export function StepReviewComplete() {
         generationTimeMs: number;
       } | null = null;
 
-      // If we have DOB, we MUST generate proofs BEFORE creating account
-      // This is critical: DOB is extracted from document which is NOT stored
-      // If we create account without proofs, we lose the DOB forever
+      // Create the account before generating server-bound proofs.
+      setProofStatus("creating-account");
+      const result = await signUp.email({
+        email: data.email,
+        password: formData.password,
+        name: accountName,
+      });
+
+      if (result.error) {
+        const rawMessage = getBetterAuthErrorMessage(
+          result.error,
+          "Failed to create account",
+        );
+        const policyMessage = getPasswordPolicyErrorMessage(result.error);
+        setError(policyMessage || rawMessage);
+        if (policyMessage) passwordInputRef.current?.focus();
+        setProofStatus("error");
+        setSubmitting(false);
+        return;
+      }
+
       if (birthYear) {
         const currentYear = new Date().getFullYear();
 
@@ -333,10 +349,13 @@ export function StepReviewComplete() {
           fheResult = await encryptDOB(birthYear);
         } catch (_fheError) {}
 
-        // Generate ZK proof of age (privacy-preserving) - THIS IS REQUIRED
+        // Generate ZK proof of age (privacy-preserving) - requires server-issued nonce
         setProofStatus("generating");
         try {
-          proofResult = await generateAgeProof(birthYear, currentYear, 18);
+          const challenge = await getProofChallenge("age_verification");
+          proofResult = await generateAgeProof(birthYear, currentYear, 18, {
+            nonce: challenge.nonce,
+          });
         } catch (zkError) {
           const errorMessage =
             zkError instanceof Error ? zkError.message : "Unknown error";
@@ -371,68 +390,6 @@ export function StepReviewComplete() {
                 "Your information has not been stored. Please try again in a few minutes.",
             );
           }
-          setProofStatus("error");
-          setSubmitting(false);
-          return;
-        }
-
-        // Verify the proof locally to ensure it's valid
-        setProofStatus("verifying");
-        const verifyResult = await verifyAgeProof(
-          proofResult.proof,
-          proofResult.publicSignals,
-        );
-
-        if (!verifyResult.isValid) {
-          setError("Age verification failed. Please try again.");
-          setProofStatus("error");
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      // NOW create the account (only after proofs are ready)
-      setProofStatus("creating-account");
-      const result = await signUp.email({
-        email: data.email,
-        password: formData.password,
-        name: accountName,
-      });
-
-      if (result.error) {
-        const rawMessage = getBetterAuthErrorMessage(
-          result.error,
-          "Failed to create account",
-        );
-        const policyMessage = getPasswordPolicyErrorMessage(result.error);
-        setError(policyMessage || rawMessage);
-        if (policyMessage) passwordInputRef.current?.focus();
-        setProofStatus("error");
-        setSubmitting(false);
-        return;
-      }
-
-      // For persisted proofs, require a server-issued nonce (replay resistance).
-      // The pre-signup proof uses a client nonce (no auth yet), so we generate
-      // a second proof after signup using a server challenge nonce.
-      let proofResultToStore = proofResult;
-      if (birthYear) {
-        try {
-          const currentYear = new Date().getFullYear();
-          const challenge = await getProofChallenge("age_verification");
-          proofResultToStore = await generateAgeProof(
-            birthYear,
-            currentYear,
-            18,
-            {
-              nonce: challenge.nonce,
-            },
-          );
-        } catch (_err) {
-          // If we can't generate a persisted proof, don't proceed to store anything.
-          setError(
-            "Failed to generate a replay-resistant age proof. Please try again.",
-          );
           setProofStatus("error");
           setSubmitting(false);
           return;
@@ -473,12 +430,12 @@ export function StepReviewComplete() {
 
       // Store the proof AND FHE ciphertext
       // NOTE: isOver18 is derived server-side from the verified proof
-      if (proofResultToStore) {
+      if (proofResult) {
         setProofStatus("storing");
         await storeAgeProof(
-          proofResultToStore.proof,
-          proofResultToStore.publicSignals,
-          proofResultToStore.generationTimeMs,
+          proofResult.proof,
+          proofResult.publicSignals,
+          proofResult.generationTimeMs,
           fheResult
             ? {
                 dobCiphertext: fheResult.ciphertext,
@@ -517,14 +474,13 @@ export function StepReviewComplete() {
   const hasDOB = Boolean(data.extractedDOB);
 
   const getStepStatus = (
-    step: "account" | "encrypt" | "proof" | "verify" | "identity" | "store",
+    step: "account" | "encrypt" | "proof" | "identity" | "store",
   ): "pending" | "active" | "complete" | "skipped" => {
     const statusOrder: ProofStatus[] = [
       "idle",
       "creating-account",
       "encrypting",
       "generating",
-      "verifying",
       "verifying-identity",
       "storing",
       "complete",
@@ -535,9 +491,8 @@ export function StepReviewComplete() {
       account: 1,
       encrypt: 2,
       proof: 3,
-      verify: 4,
-      identity: 5,
-      store: 6,
+      identity: 4,
+      store: 5,
     };
 
     // Skip identity step if no documents provided
@@ -547,10 +502,7 @@ export function StepReviewComplete() {
 
     // Skip crypto steps if no DOB
     if (
-      (step === "encrypt" ||
-        step === "proof" ||
-        step === "verify" ||
-        step === "store") &&
+      (step === "encrypt" || step === "proof" || step === "store") &&
       !hasDOB
     ) {
       return "skipped";
@@ -964,11 +916,6 @@ export function StepReviewComplete() {
                 icon={<Shield className="h-4 w-4" />}
               />
               <StepIndicator
-                label="Verifying proof"
-                status={getStepStatus("verify")}
-                icon={<Check className="h-4 w-4" />}
-              />
-              <StepIndicator
                 label="Verifying identity (document + face)"
                 status={getStepStatus("identity")}
                 icon={<UserCheck className="h-4 w-4" />}
@@ -1019,8 +966,8 @@ export function StepReviewComplete() {
                 </>
               )}
               <li>
-                Only proofs and commitments are stored - all PII is deleted
-                immediately
+                Only commitments, proofs, signed claims, and encrypted
+                attributes are stored - all PII is deleted immediately
               </li>
             </ul>
           </AlertDescription>
@@ -1032,9 +979,10 @@ export function StepReviewComplete() {
           <div>
             <p className="text-sm font-medium">What we keep</p>
             <ul className="mt-2 list-inside list-disc text-sm text-muted-foreground space-y-1">
-              <li>Encrypted birth year (FHE) and a ZK proof you are 18+</li>
-              <li>Document hash/commitment (no raw image)</li>
-              <li>Face-match proof outcome (boolean + confidence)</li>
+              <li>Identity bundle + document record (type, issuer, status)</li>
+              <li>ZK proof metadata (hashes, public inputs, nonces)</li>
+              <li>Signed liveness and face-match claims (server measured)</li>
+              <li>Encrypted attributes for future compliance checks</li>
             </ul>
           </div>
           <div>
@@ -1048,9 +996,8 @@ export function StepReviewComplete() {
           <div>
             <p className="text-sm font-medium">Why</p>
             <p className="text-sm text-muted-foreground">
-              You keep control of PII; we keep only the cryptographic evidence
-              required to prove you&apos;re over 18 and matched to your
-              document.
+              You keep control of PII; we keep only cryptographic evidence and
+              encrypted attributes needed for compliance verification.
             </p>
           </div>
         </div>

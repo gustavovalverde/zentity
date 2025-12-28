@@ -252,11 +252,15 @@ sequenceDiagram
 Tables (via `better-auth` + custom):
 
 - `user`, `session`, `account`, `verification` — Authentication
-- `identity_proofs` — Salted commitments + encrypted display data + verification flags
-- `age_proofs` — Proof payload + public signals + metadata
+- `identity_bundles` — User-level bundle metadata (status, policy version)
+- `identity_documents` — Per-document commitments + verification metadata
+- `zk_proofs` — Proof payloads + public signals + metadata
+- `encrypted_attributes` — TFHE ciphertexts (Web2) + metadata
+- `signed_claims` — Server-signed scores and structured claims
 - `zk_challenges` — Server-issued one-time nonces
 - `onboarding_sessions` — Short-lived wizard state (encrypted PII only)
-- `kyc_documents`, `kyc_status` — KYC metadata (no image bytes)
+- `blockchain_attestations` — Per-network attestation records
+- `rp_authorization_codes` — OAuth-style RP flow
 
 ---
 

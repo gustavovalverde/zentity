@@ -31,13 +31,13 @@ export const metadata: Metadata = {
     siteName: "Zentity",
     title: "Zentity - Prove everything. Reveal nothing.",
     description:
-      "Privacy-first KYC using zero-knowledge proofs. Verify identity without storing personal data.",
+      "Privacy-first identity verification using zero-knowledge proofs. Verify without storing personal data.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Zentity - Prove everything. Reveal nothing.",
     description:
-      "Privacy-first KYC using zero-knowledge proofs. Verify identity without storing personal data.",
+      "Privacy-first identity verification using zero-knowledge proofs. Verify without storing personal data.",
   },
 };
 

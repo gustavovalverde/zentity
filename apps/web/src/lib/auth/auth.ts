@@ -58,7 +58,7 @@ export const auth = betterAuth({
       // For now, silently succeed - the user won't receive an email but can retry
     },
   },
-  // OAuth providers for account linking (users must complete KYC first)
+  // OAuth providers for account linking (users must complete identity verification first)
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || "",

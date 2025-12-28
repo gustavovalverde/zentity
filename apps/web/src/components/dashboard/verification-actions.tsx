@@ -14,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getUserProof, verifyAgeProof, verifyAgeViaFHE } from "@/lib/crypto";
+import { getUserProof, verifyAgeViaFHE } from "@/lib/crypto";
 
 interface VerificationResult {
   method: "zk" | "fhe";
@@ -69,22 +69,19 @@ export function VerificationActions() {
     setZkResult(null);
 
     try {
-      const data = await loadProofData();
-      if (!data || !data.proof || data.publicSignals.length === 0) {
-        throw new Error("ZK proof data not available");
+      const summary = await getUserProof();
+      if (!summary?.proofId) {
+        throw new Error("No stored ZK proof available");
       }
-
-      const startTime = Date.now();
-      const result = await verifyAgeProof(data.proof, data.publicSignals);
-      const timeMs = Date.now() - startTime;
-
       setZkResult({
         method: "zk",
-        isValid: result.isValid,
-        timeMs,
+        isValid: summary.isOver18,
+        timeMs: 0,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "ZK verification failed");
+      setError(
+        err instanceof Error ? err.message : "Failed to refresh ZK status",
+      );
     } finally {
       setIsVerifyingZK(false);
     }
@@ -130,10 +127,14 @@ export function VerificationActions() {
           <Badge variant="destructive">Not Verified</Badge>
         </>
       )}
-      <span className="text-xs text-muted-foreground flex items-center gap-1">
-        <Clock className="h-3 w-3" />
-        {result.timeMs}ms
-      </span>
+      {result.timeMs > 0 ? (
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          {result.timeMs}ms
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground">stored</span>
+      )}
     </div>
   );
 
@@ -154,10 +155,10 @@ export function VerificationActions() {
           <div className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-info" />
-              <span className="font-medium">ZK Proof Verification</span>
+              <span className="font-medium">Stored ZK Proof</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Verify using the zero-knowledge proof stored during registration
+              View the last verified ZK proof status from registration
             </p>
             <Button
               onClick={handleVerifyZK}
@@ -168,10 +169,10 @@ export function VerificationActions() {
               {isVerifyingZK ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verifying...
+                  Refreshing...
                 </>
               ) : (
-                "Verify via ZK"
+                "Refresh ZK Status"
               )}
             </Button>
             {zkResult && <ResultBadge result={zkResult} />}

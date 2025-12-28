@@ -60,7 +60,7 @@ function normalizeHandle(handle: unknown): `0x${string}` | undefined {
 interface DecryptedIdentity {
   birthYearOffset: number;
   countryCode: number;
-  kycLevel: number;
+  complianceLevel: number;
   isBlacklisted: boolean;
 }
 
@@ -166,13 +166,13 @@ export function ViewIdentityData() {
   });
 
   const {
-    data: rawKycLevelHandle,
-    isLoading: isKycLoading,
-    refetch: refetchKyc,
+    data: rawComplianceLevelHandle,
+    isLoading: isComplianceLoading,
+    refetch: refetchCompliance,
   } = useReadContract({
     address: contractAddress,
     abi: IDENTITY_REGISTRY_ABI,
-    functionName: "getKycLevel",
+    functionName: "getComplianceLevel",
     args: address ? [address] : undefined,
     account: address,
     query: { enabled: readEnabled },
@@ -194,14 +194,16 @@ export function ViewIdentityData() {
   const isAttested = rawIsAttested as boolean | undefined;
   const birthYearHandle = rawBirthYearHandle as `0x${string}` | undefined;
   const countryCodeHandle = rawCountryCodeHandle as `0x${string}` | undefined;
-  const kycLevelHandle = rawKycLevelHandle as `0x${string}` | undefined;
+  const complianceLevelHandle = rawComplianceLevelHandle as
+    | `0x${string}`
+    | undefined;
   const blacklistHandle = rawBlacklistHandle as `0x${string}` | undefined;
 
   const isLoadingContract =
     isAttestedLoading ||
     isBirthYearLoading ||
     isCountryLoading ||
-    isKycLoading ||
+    isComplianceLoading ||
     isBlacklistLoading;
 
   const refetch = useCallback(async () => {
@@ -209,14 +211,14 @@ export function ViewIdentityData() {
       refetchIsAttested(),
       refetchBirthYear(),
       refetchCountry(),
-      refetchKyc(),
+      refetchCompliance(),
       refetchBlacklist(),
     ]);
   }, [
     refetchIsAttested,
     refetchBirthYear,
     refetchCountry,
-    refetchKyc,
+    refetchCompliance,
     refetchBlacklist,
   ]);
 
@@ -226,7 +228,7 @@ export function ViewIdentityData() {
       !contractAddress ||
       birthYearHandle === undefined ||
       countryCodeHandle === undefined ||
-      kycLevelHandle === undefined ||
+      complianceLevelHandle === undefined ||
       blacklistHandle === undefined
     ) {
       return [];
@@ -234,7 +236,7 @@ export function ViewIdentityData() {
     const normalizedHandles = [
       normalizeHandle(birthYearHandle),
       normalizeHandle(countryCodeHandle),
-      normalizeHandle(kycLevelHandle),
+      normalizeHandle(complianceLevelHandle),
       normalizeHandle(blacklistHandle),
     ];
     if (normalizedHandles.some((handle) => !handle || handle.length !== 66)) {
@@ -248,7 +250,7 @@ export function ViewIdentityData() {
     contractAddress,
     birthYearHandle,
     countryCodeHandle,
-    kycLevelHandle,
+    complianceLevelHandle,
     blacklistHandle,
   ]);
 
@@ -285,7 +287,7 @@ export function ViewIdentityData() {
     return {
       birthYearOffset: Number(decryptResults[handles[0]] ?? 0),
       countryCode: Number(decryptResults[handles[1]] ?? 0),
-      kycLevel: Number(decryptResults[handles[2]] ?? 0),
+      complianceLevel: Number(decryptResults[handles[2]] ?? 0),
       isBlacklisted: Boolean(decryptResults[handles[3]] ?? false),
     };
   }, [decryptResults, decryptRequests]);
@@ -445,10 +447,10 @@ export function ViewIdentityData() {
             icon="globe"
           />
           <IdentityField
-            label="KYC Level"
+            label="Compliance Level"
             value={
-              decryptedData?.kycLevel !== undefined
-                ? `Level ${decryptedData.kycLevel}`
+              decryptedData?.complianceLevel !== undefined
+                ? `Level ${decryptedData.complianceLevel}`
                 : undefined
             }
             isVisible={isVisible}

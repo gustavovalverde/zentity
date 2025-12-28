@@ -21,6 +21,7 @@ import {
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
+  getProofChallenge,
 } from "@/lib/crypto";
 
 // Types for the demo
@@ -109,10 +110,22 @@ export default function ExchangeSimulatorPage() {
     setIsLoading(true);
     setFlowError(null);
     try {
+      const now = new Date();
+      const currentDateInt =
+        now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+      const [ageChallenge, faceChallenge, docChallenge] = await Promise.all([
+        getProofChallenge("age_verification"),
+        getProofChallenge("face_match"),
+        getProofChallenge("doc_validity"),
+      ]);
       const results = await Promise.allSettled([
-        generateAgeProof(1990, new Date().getFullYear(), 18),
-        generateFaceMatchProof(8000, 6000),
-        generateDocValidityProof(20271231),
+        generateAgeProof(1990, new Date().getFullYear(), 18, {
+          nonce: ageChallenge.nonce,
+        }),
+        generateFaceMatchProof(8000, 6000, { nonce: faceChallenge.nonce }),
+        generateDocValidityProof(20271231, currentDateInt, {
+          nonce: docChallenge.nonce,
+        }),
       ]);
 
       const [ageProof, faceMatchProof, docValidityProof] = results;
@@ -296,7 +309,8 @@ export default function ExchangeSimulatorPage() {
                 </h2>
                 <p className="text-muted-foreground mb-4">
                   This demo simulates a crypto exchange (like Binance or
-                  Coinbase) requesting KYC verification from a Zentity user.
+                  Coinbase) requesting identity verification from a Zentity
+                  user.
                 </p>
                 <div className="rounded border bg-muted/40 p-4 mb-4">
                   <h3 className="font-medium mb-2">The Flow:</h3>

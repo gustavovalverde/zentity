@@ -2,8 +2,8 @@
  * Zero-Knowledge Proofs Module - Client-Safe Exports
  *
  * This barrel file only exports modules that are safe for client components.
- * For server-only ZK utilities (noir-verifier, age-proofs), import directly
- * from the specific module files.
+ * For server-only ZK utilities (noir-verifier), import directly from the
+ * specific module files.
  */
 
 // Nationality data and codes (client-safe, just data)

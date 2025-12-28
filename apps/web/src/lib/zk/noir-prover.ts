@@ -164,10 +164,11 @@ export async function generateFaceMatchProofNoir(
  * @returns Proof of membership without revealing nationality
  *
  * @example
+ * const challenge = await getProofChallenge("nationality_membership");
  * const result = await generateNationalityProofNoir({
  *   nationalityCode: "DEU", // Germany
  *   groupName: "EU",
- *   nonce: generateClientNonce()
+ *   nonce: challenge.nonce,
  * });
  * // Proves German nationality is in EU without revealing "Germany"
  */

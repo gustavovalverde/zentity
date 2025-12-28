@@ -8,6 +8,10 @@
 "use client";
 
 import type { inferRouterOutputs } from "@trpc/server";
+import type {
+  AgeProofFull,
+  AgeProofSummary,
+} from "@/lib/crypto/age-proof-types";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
 import { trpc } from "@/lib/trpc/client";
@@ -20,15 +24,6 @@ import {
 } from "@/lib/zk";
 
 type CryptoOutputs = inferRouterOutputs<AppRouter>["crypto"];
-type GetUserProofOutput = CryptoOutputs["getUserProof"];
-type GetUserProofFullOutput = Extract<
-  NonNullable<GetUserProofOutput>,
-  { proof: unknown }
->;
-type GetUserProofSummaryOutput = Exclude<
-  NonNullable<GetUserProofOutput>,
-  { proof: unknown }
->;
 
 // Types for ZK proof operations
 interface ProofResult {
@@ -49,32 +44,12 @@ interface VerifyAgeFHEResult {
   computationTimeMs: number;
 }
 
-interface VerifyResult {
-  isValid: boolean;
-  verificationTimeMs: number;
-  circuitType?: string;
-  noirVersion?: string | null;
-  circuitHash?: string | null;
-  bbVersion?: string | null;
-}
-
 type ServiceHealth = CryptoOutputs["health"];
 
 interface ChallengeResponse {
   nonce: string;
   circuitType: string;
   expiresAt: string;
-}
-
-/**
- * Generate a cryptographic nonce for client-side proof generation.
- * This doesn't require server auth - it's just a random value for replay resistance.
- */
-function generateClientNonce(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return `0x${Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")}`;
 }
 
 /**
@@ -91,17 +66,12 @@ export async function generateAgeProof(
   birthYear: number,
   currentYear: number = new Date().getFullYear(),
   minAge: number = 18,
-  options?: {
-    /**
-     * Optional nonce to bind the proof to a server challenge.
-     * When persisting proofs server-side, prefer a server-issued nonce from getProofChallenge().
-     */
-    nonce?: string;
+  options: {
+    /** Server-issued nonce to bind the proof to a challenge. */
+    nonce: string;
   },
 ): Promise<ProofResult> {
-  // Generate client-side nonce for replay resistance
-  // This binds the proof to this specific request without needing server auth
-  const nonce = options?.nonce ?? generateClientNonce();
+  const nonce = options.nonce;
 
   const result = await generateAgeProofNoir({
     birthYear,
@@ -129,9 +99,8 @@ export async function generateAgeProof(
 async function _generateNationalityProof(
   nationalityCode: string,
   groupName: string,
+  nonce: string,
 ): Promise<ProofResult> {
-  const nonce = generateClientNonce();
-
   const result = await generateNationalityProofNoir({
     nationalityCode,
     groupName,
@@ -165,9 +134,9 @@ function getTodayAsIntClient(): number {
 export async function generateDocValidityProof(
   expiryDate: number,
   currentDate: number = getTodayAsIntClient(),
-  options?: { nonce?: string },
+  options: { nonce: string },
 ): Promise<ProofResult> {
-  const nonce = options?.nonce ?? generateClientNonce();
+  const nonce = options.nonce;
 
   const result = await generateDocValidityProofNoir({
     expiryDate,
@@ -194,9 +163,9 @@ export async function generateDocValidityProof(
 export async function generateFaceMatchProof(
   similarityScore: number,
   threshold: number,
-  options?: { nonce?: string },
+  options: { nonce: string },
 ): Promise<ProofResult> {
-  const nonce = options?.nonce ?? generateClientNonce();
+  const nonce = options.nonce;
 
   const result = await generateFaceMatchProofNoir({
     similarityScore,
@@ -212,28 +181,6 @@ export async function generateFaceMatchProof(
 }
 
 /**
- * Verify a zero-knowledge proof of age
- * @param proof - Base64 encoded UltraHonk ZK proof
- * @param publicInputs - The public inputs from the proof
- */
-export async function verifyAgeProof(
-  proof: string,
-  publicInputs: string[],
-): Promise<VerifyResult> {
-  try {
-    return await trpc.crypto.verifyProof.mutate({
-      proof,
-      publicInputs,
-      circuitType: "age_verification",
-    });
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : "Failed to verify proof",
-    );
-  }
-}
-
-/**
  * Check health of crypto services
  */
 async function _checkCryptoHealth(): Promise<ServiceHealth> {
@@ -244,9 +191,8 @@ async function _checkCryptoHealth(): Promise<ServiceHealth> {
  * Get a server-issued challenge nonce for replay-resistant proof generation.
  * The nonce must be included as a public input in the proof.
  *
- * NOTE: This requires authentication and is used for flows where server
- * validation of the nonce is required. For pre-auth flows (onboarding),
- * use client-side nonces via generateAgeProof() instead.
+ * NOTE: This requires authentication.
+ * For persisted proofs, always use a server-issued nonce.
  *
  * @param circuitType - The type of circuit the nonce is for
  */
@@ -318,15 +264,13 @@ export async function storeAgeProof(
  * Get user's stored age proof
  * @param full - If true, returns full proof details including ciphertext
  */
-export async function getUserProof(
-  full: true,
-): Promise<GetUserProofFullOutput | null>;
+export async function getUserProof(full: true): Promise<AgeProofFull | null>;
 export async function getUserProof(
   full?: false,
-): Promise<GetUserProofSummaryOutput | null>;
+): Promise<AgeProofSummary | null>;
 export async function getUserProof(
   full: boolean = false,
-): Promise<GetUserProofOutput> {
+): Promise<AgeProofFull | AgeProofSummary | null> {
   try {
     return await trpc.crypto.getUserProof.query({ full });
   } catch (error) {

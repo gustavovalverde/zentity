@@ -20,8 +20,8 @@ export interface AttestationParams {
     birthYearOffset: number;
     /** ISO 3166-1 numeric country code */
     countryCode: number;
-    /** KYC verification level (0-3) */
-    kycLevel: number;
+    /** Compliance verification level (0-3) */
+    complianceLevel: number;
     /** Whether user is blacklisted */
     isBlacklisted: boolean;
   };
