@@ -1,0 +1,132 @@
+# cargo-nextest configuration for FHE service
+# See: https://nexte.st/docs/configuration/
+#
+# IMPORTANT: TFHE key generation is EXTREMELY slow (~10-30s per test binary).
+# Each test binary (http_age_test, http_liveness_test, etc.) generates its own
+# keys on first use due to OnceLock being per-process. This means:
+# - First test in each binary is slow (key generation)
+# - Subsequent tests in same binary are fast (cached keys)
+# - Running many test binaries in parallel = many parallel key generations
+#
+# Strategy: Limit concurrency for crypto-heavy test binaries to avoid
+# overwhelming the system with parallel key generations.
+
+[store]
+dir = "target/nextest"
+
+# =============================================================================
+# Test Groups
+# =============================================================================
+
+[test-groups]
+# Tests that require TFHE key generation - limit concurrency heavily
+# Each test binary generates ~100MB keys, so we limit parallel binaries
+fhe-heavy = { max-threads = 2 }
+
+# Lightweight tests (no FHE keys needed)
+lightweight = { max-threads = 8 }
+
+# =============================================================================
+# Default Profile (local development)
+# =============================================================================
+
+[profile.default]
+# Long default timeout - TFHE operations are slow
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+# Show output for failing tests immediately
+failure-output = "immediate"
+
+# Don't show output for passing tests
+success-output = "never"
+
+retries = 0
+
+# =============================================================================
+# Per-Test Overrides (default profile)
+# =============================================================================
+
+# HTTP tests that use TFHE encryption (need key generation per binary)
+# These are slow on FIRST test, fast on subsequent tests in same binary
+[[profile.default.overrides]]
+filter = '''
+  package(fhe-service)
+  & (binary(http_age_test)
+     | binary(http_liveness_test)
+     | binary(http_country_code_test)
+     | binary(http_compliance_level_test)
+     | binary(http_keys_test)
+     | binary(http_error_test)
+     | binary(concurrency_test)
+     | binary(persistence_test))
+'''
+slow-timeout = { period = "300s", terminate-after = 2 }
+threads-required = 2
+test-group = 'fhe-heavy'
+
+# Unit tests with FHE roundtrips
+[[profile.default.overrides]]
+filter = 'test(roundtrip) | test(encrypt_and_verify)'
+slow-timeout = { period = "180s", terminate-after = 2 }
+threads-required = 2
+test-group = 'fhe-heavy'
+
+# Fast HTTP tests (no FHE keys needed)
+[[profile.default.overrides]]
+filter = 'binary(http_health_test) | binary(http_auth_test)'
+slow-timeout = { period = "30s" }
+test-group = 'lightweight'
+
+# =============================================================================
+# CI Profile
+# =============================================================================
+
+[profile.ci]
+fail-fast = false
+slow-timeout = { period = "300s", terminate-after = 3 }
+retries = 1
+failure-output = "immediate-final"
+success-output = "final"
+
+[[profile.ci.overrides]]
+filter = '''
+  package(fhe-service)
+  & (binary(http_age_test)
+     | binary(http_liveness_test)
+     | binary(http_country_code_test)
+     | binary(http_compliance_level_test)
+     | binary(http_keys_test)
+     | binary(http_error_test)
+     | binary(concurrency_test)
+     | binary(persistence_test))
+'''
+slow-timeout = { period = "600s", terminate-after = 2 }
+retries = 2
+
+[[profile.ci.overrides]]
+filter = 'test(roundtrip) | test(encrypt_and_verify)'
+slow-timeout = { period = "600s", terminate-after = 2 }
+retries = 2
+
+# =============================================================================
+# Fast Profile (skip crypto-heavy tests)
+# =============================================================================
+
+[profile.fast]
+slow-timeout = { period = "30s", terminate-after = 1 }
+
+[[profile.fast.overrides]]
+filter = '''
+  binary(http_age_test)
+  | binary(http_liveness_test)
+  | binary(http_country_code_test)
+  | binary(http_compliance_level_test)
+  | binary(http_keys_test)
+  | binary(http_error_test)
+  | binary(concurrency_test)
+  | binary(persistence_test)
+  | test(roundtrip)
+  | test(encrypt_and_verify)
+'''
+# Effectively skip these by timing out immediately
+slow-timeout = { period = "1s", terminate-after = 1 }

@@ -1,22 +1,11 @@
-# https://docs.docker.com/engine/reference/builder/#dockerignore-file
-#
-# Exclude everything first, then whitelist only what's needed for the build.
-# This keeps the Docker context small and builds fast.
+# Keep build context small while including source and build metadata.
 
-# Exclude everything
-*
-
-# Include Cargo manifests
-!Cargo.toml
-!Cargo.lock
-
-# Include source code
-!src/
-!tests/
-
-# Include startup script
-!start.sh
-
-# Include Dockerfile (for reference, not used in build context)
-!Dockerfile
-!railway.toml
+target/
+**/target/
+.git/
+.gitignore
+.DS_Store
+.env
+.env.*
+*.log
+.ruff_cache/

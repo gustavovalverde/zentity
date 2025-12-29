@@ -2,9 +2,8 @@
 //!
 //! Provides FHE-based encryption for compliance level values.
 
-use super::decode_compressed_public_key;
+use super::{decode_compressed_public_key, encode_bincode_base64};
 use crate::error::FheError;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tfhe::prelude::*;
 use tfhe::FheUint8;
 
@@ -28,21 +27,21 @@ pub fn encrypt_compliance_level(
     let encrypted = FheUint8::try_encrypt(compliance_level, &public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
-    let bytes = bincode::serialize(&encrypted)?;
-    Ok(BASE64.encode(&bytes))
+    encode_bincode_base64(&encrypted)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::decode_bincode_base64;
     use crate::crypto::test_helpers::get_test_keys;
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
     #[test]
     fn encrypt_compliance_level_roundtrip_base64() {
         let (_client_key, public_key_b64, _key_id) = get_test_keys();
         let ciphertext = encrypt_compliance_level(3, &public_key_b64).unwrap();
-        assert!(BASE64.decode(ciphertext).is_ok());
+        let decoded: Result<FheUint8, _> = decode_bincode_base64(&ciphertext);
+        assert!(decoded.is_ok());
     }
 
     #[test]

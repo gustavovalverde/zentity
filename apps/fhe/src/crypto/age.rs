@@ -4,9 +4,11 @@
 //! (years since 1900). This avoids storing full DOB while still supporting
 //! age threshold checks.
 
-use super::{decode_compressed_public_key, setup_for_verification};
+use super::{
+    decode_bincode_base64, decode_compressed_public_key, encode_bincode_base64,
+    setup_for_verification,
+};
 use crate::error::FheError;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tfhe::prelude::*;
 use tfhe::FheUint16;
 
@@ -35,10 +37,7 @@ pub fn encrypt_birth_year_offset(
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     // Serialize to bytes using bincode
-    let bytes = bincode::serialize(&encrypted)?;
-
-    // Encode as base64
-    Ok(BASE64.encode(&bytes))
+    encode_bincode_base64(&encrypted)
 }
 
 /// Verify age on encrypted birth year offset.
@@ -67,11 +66,7 @@ pub fn verify_age_offset(
 
     setup_for_verification(key_id)?;
 
-    // Decode base64
-    let bytes = BASE64.decode(ciphertext_b64)?;
-
-    // Deserialize to FheUint16 using bincode
-    let encrypted_birth_year_offset: FheUint16 = bincode::deserialize(&bytes)?;
+    let encrypted_birth_year_offset: FheUint16 = decode_bincode_base64(ciphertext_b64)?;
 
     // Compute max allowed offset for the min age (older => smaller offset)
     let min_offset = current_offset - min_age;
@@ -80,15 +75,13 @@ pub fn verify_age_offset(
     let encrypted_is_adult = encrypted_birth_year_offset.le(min_offset);
 
     // Serialize encrypted boolean result (client will decrypt)
-    let bytes = bincode::serialize(&encrypted_is_adult)?;
-    Ok(BASE64.encode(&bytes))
+    encode_bincode_base64(&encrypted_is_adult)
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::test_helpers::get_test_keys;
     use super::*;
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use tfhe::FheBool;
 
     #[test]
@@ -98,8 +91,7 @@ mod tests {
         let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
         let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
-        let result_bytes = BASE64.decode(result_ciphertext).unwrap();
-        let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+        let encrypted: FheBool = decode_bincode_base64(&result_ciphertext).unwrap();
         let is_adult = encrypted.decrypt(&client_key);
 
         assert!(is_adult);

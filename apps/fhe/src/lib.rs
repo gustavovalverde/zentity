@@ -5,5 +5,10 @@
 //!
 //! This library module exposes the crypto primitives for use in integration tests.
 
+pub mod app;
+pub mod auth;
 pub mod crypto;
 pub mod error;
+pub mod routes;
+pub mod settings;
+pub mod test_support;

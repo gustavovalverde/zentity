@@ -2,9 +2,8 @@
 //!
 //! Provides FHE-based encryption for ISO numeric country codes.
 
-use super::decode_compressed_public_key;
+use super::{decode_compressed_public_key, encode_bincode_base64};
 use crate::error::FheError;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tfhe::prelude::*;
 use tfhe::FheUint16;
 
@@ -25,21 +24,21 @@ pub fn encrypt_country_code(country_code: u16, public_key_b64: &str) -> Result<S
     let encrypted = FheUint16::try_encrypt(country_code, &public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
-    let bytes = bincode::serialize(&encrypted)?;
-    Ok(BASE64.encode(&bytes))
+    encode_bincode_base64(&encrypted)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::decode_bincode_base64;
     use crate::crypto::test_helpers::get_test_keys;
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
     #[test]
     fn encrypt_country_code_roundtrip_base64() {
         let (_client_key, public_key_b64, _key_id) = get_test_keys();
         let ciphertext = encrypt_country_code(840, &public_key_b64).unwrap();
-        assert!(BASE64.decode(ciphertext).is_ok());
+        let decoded: Result<FheUint16, _> = decode_bincode_base64(&ciphertext);
+        assert!(decoded.is_ok());
     }
 
     #[test]

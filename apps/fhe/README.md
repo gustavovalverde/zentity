@@ -153,7 +153,8 @@ Verify a liveness threshold on encrypted score.
 | `INTERNAL_SERVICE_TOKEN` | Require auth for non-public endpoints | (optional) |
 | `INTERNAL_SERVICE_TOKEN_REQUIRED` | Force auth even if token missing | `false` |
 | `FHE_BODY_LIMIT_MB` | Max request body size (MB) | `64` |
-| `FHE_KEYS_DIR` | Persist server keys to disk | (optional) |
+| `FHE_PERSIST_KEYS` | Persist server keys to default disk path | `false` |
+| `FHE_KEYS_DIR` | Persist server keys to this directory | (optional) |
 
 ## Development
 
