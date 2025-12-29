@@ -19,7 +19,21 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {}, []);
+  useEffect(() => {
+    const payload = {
+      name: error.name,
+      message: error.message,
+      digest: error.digest,
+      path: window.location.pathname,
+      stack: error.stack,
+    };
+
+    void fetch("/api/log-client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">

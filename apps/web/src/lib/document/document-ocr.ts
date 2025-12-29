@@ -66,6 +66,7 @@ function getBaseUrl(): string {
  */
 async function processDocumentOCR(
   imageBase64: string,
+  requestId?: string,
 ): Promise<DocumentResult> {
   // Remove data URL prefix if present
   const cleanImage = imageBase64.includes(",")
@@ -74,7 +75,10 @@ async function processDocumentOCR(
 
   const response = await fetch(`${getBaseUrl()}/api/ocr`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(requestId ? { "X-Request-Id": requestId } : {}),
+    },
     body: JSON.stringify({ image: cleanImage }),
   });
 
@@ -117,9 +121,10 @@ async function processDocumentOCR(
  */
 export async function processDocument(
   imageBase64: string,
+  requestId?: string,
 ): Promise<DocumentResult> {
   try {
-    return await processDocumentOCR(imageBase64);
+    return await processDocumentOCR(imageBase64, requestId);
   } catch (_error) {
     // OCR service unavailable
     return {

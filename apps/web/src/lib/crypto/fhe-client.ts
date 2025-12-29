@@ -3,10 +3,14 @@ import "server-only";
 import { fetchJson, HttpError } from "@/lib/utils";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 
-function getInternalServiceAuthHeaders(): Record<string, string> {
+function getInternalServiceAuthHeaders(
+  requestId?: string,
+): Record<string, string> {
   const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) return {};
-  return { "X-Zentity-Internal-Token": token };
+  const headers: Record<string, string> = {};
+  if (token) headers["X-Zentity-Internal-Token"] = token;
+  if (requestId) headers["X-Request-Id"] = requestId;
+  return headers;
 }
 
 export type FheOperation =
@@ -105,6 +109,7 @@ interface FheRegisterKeyResult {
 export async function encryptBirthYearOffsetFhe(args: {
   birthYearOffset: number;
   publicKey: string;
+  requestId?: string;
 }): Promise<FheCiphertextResult> {
   const url = `${getFheServiceUrl()}/encrypt-birth-year-offset`;
   return withFheError("encrypt_birth_year_offset", () =>
@@ -112,7 +117,7 @@ export async function encryptBirthYearOffsetFhe(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         birthYearOffset: args.birthYearOffset,
@@ -125,6 +130,7 @@ export async function encryptBirthYearOffsetFhe(args: {
 export async function encryptCountryCodeFhe(args: {
   countryCode: number;
   publicKey: string;
+  requestId?: string;
 }): Promise<FheCiphertextResult> {
   const url = `${getFheServiceUrl()}/encrypt-country-code`;
   return withFheError("encrypt_country_code", () =>
@@ -132,7 +138,7 @@ export async function encryptCountryCodeFhe(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         countryCode: args.countryCode,
@@ -145,6 +151,7 @@ export async function encryptCountryCodeFhe(args: {
 export async function encryptComplianceLevelFhe(args: {
   complianceLevel: number;
   publicKey: string;
+  requestId?: string;
 }): Promise<FheCiphertextResult> {
   const url = `${getFheServiceUrl()}/encrypt-compliance-level`;
   return withFheError("encrypt_compliance_level", () =>
@@ -152,7 +159,7 @@ export async function encryptComplianceLevelFhe(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         complianceLevel: args.complianceLevel,
@@ -165,6 +172,7 @@ export async function encryptComplianceLevelFhe(args: {
 export async function encryptLivenessScoreFhe(args: {
   score: number;
   publicKey: string;
+  requestId?: string;
 }): Promise<FheEncryptLivenessResult> {
   const url = `${getFheServiceUrl()}/encrypt-liveness`;
   return withFheError("encrypt_liveness", () =>
@@ -172,7 +180,7 @@ export async function encryptLivenessScoreFhe(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         score: args.score,
@@ -184,6 +192,7 @@ export async function encryptLivenessScoreFhe(args: {
 
 export async function registerFheKey(args: {
   serverKey: string;
+  requestId?: string;
 }): Promise<FheRegisterKeyResult> {
   const url = `${getFheServiceUrl()}/keys/register`;
   return withFheError("register_key", () =>
@@ -191,7 +200,7 @@ export async function registerFheKey(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         serverKey: args.serverKey,
@@ -205,6 +214,7 @@ export async function verifyAgeFhe(args: {
   currentYear: number;
   minAge: number;
   keyId: string;
+  requestId?: string;
 }): Promise<FheVerifyAgeResult> {
   const url = `${getFheServiceUrl()}/verify-age-offset`;
   return withFheError("verify_age_offset", () =>
@@ -212,7 +222,7 @@ export async function verifyAgeFhe(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         ciphertext: args.ciphertext,
@@ -228,6 +238,7 @@ export async function verifyLivenessThresholdFhe(args: {
   ciphertext: string;
   threshold: number;
   keyId: string;
+  requestId?: string;
 }): Promise<FheVerifyLivenessThresholdResult> {
   const url = `${getFheServiceUrl()}/verify-liveness-threshold`;
   return withFheError("verify_liveness_threshold", () =>
@@ -235,7 +246,7 @@ export async function verifyLivenessThresholdFhe(args: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...getInternalServiceAuthHeaders(),
+        ...getInternalServiceAuthHeaders(args.requestId),
       },
       body: JSON.stringify({
         ciphertext: args.ciphertext,

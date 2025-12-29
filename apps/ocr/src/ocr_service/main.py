@@ -17,9 +17,11 @@ from starlette import status
 
 from .api import extract, health, ocr, process, verify
 from .core.auth import add_internal_auth_middleware
+from .core.logging import configure_logging, get_request_id, set_request_id
 from .services.ocr_engine import warmup_engine
 from .settings import Settings
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +42,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=settings.version,
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def request_id_middleware(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id")
+        set_request_id(request_id)
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = get_request_id()
+        return response
 
     # Privacy: Avoid echoing request bodies (e.g., base64 images) back in 422 responses.
     @app.exception_handler(RequestValidationError)

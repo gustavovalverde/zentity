@@ -488,8 +488,11 @@ export const cryptoRouter = router({
         serverKey: z.string().min(1, "serverKey is required"),
       }),
     )
-    .mutation(async ({ input }) => {
-      return await registerFheKey({ serverKey: input.serverKey });
+    .mutation(async ({ ctx, input }) => {
+      return await registerFheKey({
+        serverKey: input.serverKey,
+        requestId: ctx.requestId,
+      });
     }),
 
   /**
@@ -505,13 +508,14 @@ export const cryptoRouter = router({
         keyId: z.string().min(1, "keyId is required"),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
       const data = await verifyAgeFhe({
         ciphertext: input.ciphertext,
         currentYear: input.currentYear || new Date().getFullYear(),
         minAge: input.minAge ?? 18,
         keyId: input.keyId,
+        requestId: ctx.requestId,
       });
 
       return {
@@ -527,10 +531,11 @@ export const cryptoRouter = router({
         publicKey: z.string().min(1, "publicKey is required"),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const result = await encryptLivenessScoreFhe({
         score: input.score,
         publicKey: input.publicKey,
+        requestId: ctx.requestId,
       });
 
       return {
@@ -547,11 +552,12 @@ export const cryptoRouter = router({
         keyId: z.string().min(1, "keyId is required"),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const result = await verifyLivenessThresholdFhe({
         ciphertext: input.ciphertext,
         threshold: input.threshold ?? 0.3,
         keyId: input.keyId,
+        requestId: ctx.requestId,
       });
 
       return {
@@ -805,6 +811,7 @@ export const cryptoRouter = router({
           const encrypted = await encryptComplianceLevelFhe({
             complianceLevel,
             publicKey: bundle.fhePublicKey,
+            requestId: ctx.requestId,
           });
           insertEncryptedAttribute({
             id: crypto.randomUUID(),
@@ -817,10 +824,9 @@ export const cryptoRouter = router({
           });
         } catch (error) {
           // Compliance level encryption is best-effort; proof storage should still succeed.
-          // biome-ignore lint/suspicious/noConsole: surface non-blocking FHE errors in server logs.
-          console.warn(
-            "[crypto.storeProof] compliance level encryption failed:",
-            error,
+          ctx.log.warn(
+            { error: error instanceof Error ? error.message : String(error) },
+            "Compliance level encryption failed (non-blocking)",
           );
         }
       }

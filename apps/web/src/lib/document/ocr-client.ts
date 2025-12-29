@@ -3,10 +3,14 @@ import "server-only";
 import { fetchJson } from "@/lib/utils";
 import { getOcrServiceUrl } from "@/lib/utils/service-urls";
 
-function getInternalServiceAuthHeaders(): Record<string, string> {
+function getInternalServiceAuthHeaders(
+  requestId?: string,
+): Record<string, string> {
   const token = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!token) return {};
-  return { "X-Zentity-Internal-Token": token };
+  const headers: Record<string, string> = {};
+  if (token) headers["X-Zentity-Internal-Token"] = token;
+  if (requestId) headers["X-Request-Id"] = requestId;
+  return headers;
 }
 
 interface OcrCommitments {
@@ -42,13 +46,14 @@ const OCR_TIMEOUT_MS = 40000;
 export async function processDocumentOcr(args: {
   image: string;
   userSalt?: string;
+  requestId?: string;
 }): Promise<OcrProcessResult> {
   const url = `${getOcrServiceUrl()}/process`;
   return fetchJson<OcrProcessResult>(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...getInternalServiceAuthHeaders(),
+      ...getInternalServiceAuthHeaders(args.requestId),
     },
     body: JSON.stringify({
       image: args.image,
@@ -60,13 +65,14 @@ export async function processDocumentOcr(args: {
 
 export async function ocrDocumentOcr(args: {
   image: string;
+  requestId?: string;
 }): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/ocr`;
   return fetchJson<unknown>(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...getInternalServiceAuthHeaders(),
+      ...getInternalServiceAuthHeaders(args.requestId),
     },
     body: JSON.stringify({
       image: args.image,
@@ -75,11 +81,13 @@ export async function ocrDocumentOcr(args: {
   });
 }
 
-export async function getOcrHealth(): Promise<unknown> {
+export async function getOcrHealth(args?: {
+  requestId?: string;
+}): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/health`;
   return fetchJson<unknown>(url, {
     headers: {
-      ...getInternalServiceAuthHeaders(),
+      ...getInternalServiceAuthHeaders(args?.requestId),
     },
   });
 }

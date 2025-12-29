@@ -275,7 +275,7 @@ export const identityRouter = router({
       }
 
       try {
-        return await processDocument(input.image);
+        return await processDocument(input.image, ctx.requestId);
       } catch (error) {
         if (error instanceof Error) {
           if (
@@ -360,6 +360,7 @@ export const identityRouter = router({
         documentResult = await processDocumentOcr({
           image: input.documentImage,
           userSalt,
+          requestId: ctx.requestId,
         });
         issues.push(...(documentResult?.validationIssues || []));
       } catch {
@@ -704,6 +705,7 @@ export const identityRouter = router({
             birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
               birthYearOffset,
               publicKey: fhePublicKey,
+              requestId: ctx.requestId,
             });
           } catch (error) {
             const issue =
@@ -742,6 +744,7 @@ export const identityRouter = router({
               ...(await encryptCountryCodeFhe({
                 countryCode: countryCodeNumeric,
                 publicKey: fhePublicKey,
+                requestId: ctx.requestId,
               })),
               countryCode: countryCodeNumeric,
             };
@@ -764,6 +767,7 @@ export const identityRouter = router({
             livenessScoreFheResult = await encryptLivenessScoreFhe({
               score: livenessScore,
               publicKey: fhePublicKey,
+              requestId: ctx.requestId,
             });
           } catch (error) {
             const issue =

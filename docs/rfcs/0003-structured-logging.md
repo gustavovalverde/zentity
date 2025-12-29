@@ -2,17 +2,18 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Implemented |
 | **Created** | 2024-12-29 |
+| **Updated** | 2025-12-29 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
 
-Replace ad-hoc `console.log` statements with Pino structured logging, adding request correlation, log levels, and privacy-safe PII scrubbing while keeping all data on-premises.
+Replace ad-hoc `console.log` statements with Pino structured logging, add request correlation across web + OCR + FHE services, and enforce privacy-safe PII scrubbing and client error reporting while keeping all data on-premises.
 
 ## Problem Statement
 
-The current logging approach has significant gaps:
+Prior to implementation, the logging approach had significant gaps:
 
 1. **Minimal Logging**: Only 3 instances of `console.log/warn` in the entire codebase:
 
@@ -25,7 +26,7 @@ The current logging approach has significant gaps:
    console.log("Liveness score:", score);
    ```
 
-2. **No Request Correlation**: Impossible to trace a request across tRPC procedures, FHE service calls, and database operations.
+2. **No Request Correlation**: Impossible to trace a request across tRPC procedures, OCR/FHE service calls, and database operations.
 
 3. **No Log Levels**: Can't filter by severity (debug, info, warn, error) or enable verbose logging in development only.
 
@@ -59,65 +60,48 @@ The current logging approach has significant gaps:
 ### New Structure
 
 ```text
-src/lib/logging/
+apps/web/src/lib/logging/
 ├── logger.ts               # Pino instance + configuration
-├── middleware.ts           # tRPC logging middleware
 ├── error-logger.ts         # Centralized error capture with fingerprinting
-├── redact.ts               # PII redaction utilities
+├── redact.ts               # PII redaction + message sanitization
 └── index.ts                # Public API
 ```
 
 ### Logger Configuration
 
 ```typescript
-// src/lib/logging/logger.ts
+// apps/web/src/lib/logging/logger.ts
 import pino from "pino";
+import { REDACT_KEYS } from "./redact";
 
 const isDev = process.env.NODE_ENV !== "production";
+const redactPaths = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  'req.headers["x-zentity-internal-token"]',
+  ...Array.from(REDACT_KEYS, (key) => `*.${key}`),
+];
 
 export const logger = pino({
   level: process.env.LOG_LEVEL || (isDev ? "debug" : "info"),
-
-  // Structured JSON in production, pretty-print in dev
-  transport: isDev
-    ? { target: "pino-pretty", options: { colorize: true } }
-    : undefined,
-
-  // Base context for all logs
+  ...(isDev && {
+    transport: { target: "pino-pretty", options: { colorize: true } },
+  }),
   base: {
     service: "zentity-web",
-    version: process.env.npm_package_version,
+    env: process.env.NODE_ENV || "development",
   },
-
-  // Redact sensitive fields
   redact: {
-    paths: [
-      "*.password",
-      "*.secret",
-      "*.token",
-      "*.image",
-      "*.documentImage",
-      "*.faceData",
-      "*.birthDate",
-      "*.nationality",
-      "req.headers.authorization",
-      "req.headers.cookie",
-    ],
+    paths: redactPaths,
     censor: "[REDACTED]",
   },
-
-  // Custom serializers
   serializers: {
-    req: (req) => ({
-      method: req.method,
-      url: req.url,
-      // Omit headers to avoid leaking cookies
-    }),
+    req: (req) => ({ method: req.method, url: new URL(req.url).pathname }),
     err: pino.stdSerializers.err,
   },
 });
 
-// Create child logger with request context
+// Create child logger with request context (no user identifiers)
 export function createRequestLogger(requestId: string) {
   return logger.child({ requestId });
 }
@@ -126,174 +110,148 @@ export function createRequestLogger(requestId: string) {
 ### Request Correlation
 
 ```typescript
-// src/lib/logging/middleware.ts
-import { middleware } from "@trpc/server";
-import { createRequestLogger } from "./logger";
-import { randomUUID } from "crypto";
+// apps/web/src/lib/trpc/server.ts
+export async function createTrpcContext({ req }: { req: Request }) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  const requestId =
+    req.headers.get("x-request-id") ||
+    req.headers.get("x-correlation-id") ||
+    randomUUID();
 
-export const loggingMiddleware = middleware(async ({ ctx, path, type, next }) => {
-  const requestId = randomUUID();
-  const log = createRequestLogger(requestId);
+  return { req, session: session ?? null, requestId };
+}
+
+const withLogging = trpc.middleware(async ({ ctx, path, type, input, next }) => {
+  const log = createRequestLogger(ctx.requestId);
+  const inputMeta = extractInputMeta(input);
   const start = performance.now();
 
-  log.info({ path, type }, "tRPC request started");
+  log.info({ path, type, ...inputMeta }, "tRPC request");
 
   try {
-    const result = await next({
-      ctx: { ...ctx, log, requestId },
-    });
-
-    const duration = performance.now() - start;
-    log.info({ path, type, duration, ok: result.ok }, "tRPC request completed");
-
+    const result = await next({ ctx: { ...ctx, log, debug: isDebugEnabled() } });
+    log.info({ path, ok: true }, "tRPC complete");
     return result;
   } catch (error) {
-    const duration = performance.now() - start;
-    log.error({ path, type, duration, error }, "tRPC request failed");
+    const duration = Math.round(performance.now() - start);
+    logError(error, { requestId: ctx.requestId, path, duration }, log);
     throw error;
   }
 });
 ```
 
+**Cross-service propagation**
+
+- Web → OCR/FHE clients include `X-Request-Id` on outbound calls.
+- OCR service logs include `request_id` via middleware and logging filter.
+- FHE service includes `request_id` on tracing spans via `TraceLayer`.
+
 ### Error Fingerprinting
 
 ```typescript
-// src/lib/logging/error-logger.ts
-import { createHash } from "crypto";
+// apps/web/src/lib/logging/error-logger.ts
+import { createHash } from "node:crypto";
 import { logger } from "./logger";
+import { sanitizeLogMessage } from "./redact";
 
 interface ErrorContext {
   requestId?: string;
   path?: string;
-  userId?: string; // Optional - only if already authenticated
+  operation?: string;
+  duration?: number;
 }
 
 export function logError(error: unknown, context: ErrorContext = {}) {
   const err = error instanceof Error ? error : new Error(String(error));
-
-  // Create fingerprint for grouping similar errors
+  const safeMessage = sanitizeLogMessage(err.message);
   const fingerprint = createHash("sha256")
-    .update(`${err.name}:${err.message}:${getStackLocation(err)}`)
+    .update(`${err.name}:${safeMessage}:${getStackLocation(err)}`)
     .digest("hex")
     .slice(0, 12);
 
-  logger.error({
-    ...context,
-    fingerprint,
-    error: {
-      name: err.name,
-      message: err.message,
-      stack: err.stack,
+  logger.error(
+    {
+      ...context,
+      fingerprint,
+      error: {
+        name: err.name,
+        message: safeMessage,
+        stack: err.stack?.replace(err.message, safeMessage),
+      },
     },
-  }, `Error [${fingerprint}]: ${err.message}`);
+    `[${fingerprint}] ${safeMessage}`,
+  );
 
   return fingerprint;
-}
-
-function getStackLocation(err: Error): string {
-  const stack = err.stack?.split("\n")[1] || "";
-  const match = stack.match(/at\s+(.+?)\s+\((.+?):(\d+):(\d+)\)/);
-  return match ? `${match[2]}:${match[3]}` : "unknown";
 }
 ```
 
 ### PII Redaction
 
 ```typescript
-// src/lib/logging/redact.ts
-// Extend existing REDACT_KEYS pattern from trpc/client.ts
-
-const REDACT_KEYS = new Set([
-  // Images and biometrics
+// apps/web/src/lib/logging/redact.ts
+export const REDACT_KEYS = new Set([
   "image",
   "documentImage",
-  "faceImage",
   "selfieImage",
-  "faceDescriptor",
+  "baselineImage",
+  "frameData",
+  "idImage",
   "faceData",
-
-  // PII fields
+  "faceDescriptor",
+  "embedding",
   "birthDate",
   "dateOfBirth",
   "dob",
   "nationality",
+  "nationalityCode",
   "documentNumber",
   "firstName",
   "lastName",
   "fullName",
-
-  // Credentials
   "password",
   "secret",
   "token",
   "privateKey",
   "clientKey",
+  "serverKey",
+  "publicKey",
+  "fhePublicKey",
+  "ciphertext",
+  "userSalt",
 ]);
 
-export function redactObject<T extends Record<string, unknown>>(
-  obj: T,
-  depth = 0,
-  seen = new WeakSet()
-): T {
-  if (depth > 10 || seen.has(obj)) return obj;
-  seen.add(obj);
+export function sanitizeLogMessage(message: string): string {
+  // Redacts emails, long numbers, long hex values, and data URLs.
+}
 
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (REDACT_KEYS.has(key)) {
-      result[key] = "[REDACTED]";
-    } else if (typeof value === "string" && value.startsWith("data:image")) {
-      result[key] = "[BASE64_IMAGE]";
-    } else if (value && typeof value === "object" && !Array.isArray(value)) {
-      result[key] = redactObject(value as Record<string, unknown>, depth + 1, seen);
-    } else {
-      result[key] = value;
-    }
-  }
-  return result as T;
+export function sanitizeForLog(value: unknown): unknown {
+  // Handles circular refs, depth limits, base64 detection, and key redaction.
 }
 ```
 
 ### Integration with tRPC
 
 ```typescript
-// src/lib/trpc/trpc.ts
-import { loggingMiddleware } from "@/lib/logging/middleware";
+// apps/web/src/lib/trpc/server.ts
+const trpc = initTRPC.context<TrpcContext>().create();
 
-const t = initTRPC.context<Context>().create({
-  transformer: superjson,
-});
-
-// Add logging to all procedures
-export const publicProcedure = t.procedure.use(loggingMiddleware);
-export const protectedProcedure = t.procedure
-  .use(loggingMiddleware)
-  .use(authMiddleware);
+export const publicProcedure = trpc.procedure.use(withLogging);
+export const protectedProcedure = trpc.procedure
+  .use(withLogging)
+  .use(enforceAuth);
 ```
 
 ### Usage in Routers
 
 ```typescript
-// src/lib/trpc/routers/identity.ts
-export const identityRouter = router({
-  verify: protectedProcedure
-    .input(verifyIdentitySchema)
-    .mutation(async ({ ctx, input }) => {
-      const { log, requestId } = ctx;
-
-      log.info({ documentType: input.documentType }, "Starting identity verification");
-
-      try {
-        const result = await processDocument(input.image);
-        log.info({ documentId: result.id }, "Document processed successfully");
-        return result;
-      } catch (error) {
-        // Error already logged by middleware, but add context
-        log.error({ error, step: "document_processing" }, "Document processing failed");
-        throw error;
-      }
-    }),
-});
+// apps/web/src/lib/trpc/routers/liveness.ts
+if (ctx.debug) {
+  ctx.log.debug(
+    { stage: "baseline", faceDetected: true, challengeCount: input.challenges.length },
+    "Liveness baseline processed",
+  );
+}
 ```
 
 ### Log Output Examples
@@ -301,137 +259,83 @@ export const identityRouter = router({
 **Development (pretty-printed):**
 
 ```text
-[12:34:56.789] INFO (zentity-web): tRPC request started
+[12:34:56.789] INFO (zentity-web): tRPC request
     requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     path: "identity.verify"
     type: "mutation"
 
-[12:34:57.123] INFO (zentity-web): Document processed successfully
-    requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    documentId: "doc_abc123"
-
-[12:34:57.456] INFO (zentity-web): tRPC request completed
+[12:34:57.456] INFO (zentity-web): tRPC complete
     requestId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     path: "identity.verify"
-    duration: 667
     ok: true
 ```
 
 **Production (JSON):**
 
 ```json
-{"level":30,"time":1703847296789,"service":"zentity-web","requestId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","path":"identity.verify","type":"mutation","msg":"tRPC request started"}
-{"level":30,"time":1703847297123,"service":"zentity-web","requestId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","documentId":"doc_abc123","msg":"Document processed successfully"}
-{"level":30,"time":1703847297456,"service":"zentity-web","requestId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","path":"identity.verify","duration":667,"ok":true,"msg":"tRPC request completed"}
+{"level":30,"time":1703847296789,"service":"zentity-web","requestId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","path":"identity.verify","type":"mutation","msg":"tRPC request"}
+{"level":30,"time":1703847297456,"service":"zentity-web","requestId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","path":"identity.verify","ok":true,"msg":"tRPC complete"}
 ```
 
-## Implementation Steps
+## Implementation (as shipped)
 
-### Step 1: Add Dependencies
-
-```bash
-cd apps/web
-bun add pino
-bun add -D pino-pretty
-```
-
-### Step 2: Create Logger Module
-
-Create `src/lib/logging/logger.ts` with Pino configuration.
-
-### Step 3: Create Middleware
-
-Create `src/lib/logging/middleware.ts` with tRPC logging middleware.
-
-### Step 4: Create Error Logger
-
-Create `src/lib/logging/error-logger.ts` with fingerprinting.
-
-### Step 5: Create Redaction Utilities
-
-Create `src/lib/logging/redact.ts` extending existing patterns.
-
-### Step 6: Update tRPC Base
-
-Modify `src/lib/trpc/trpc.ts` to include logging middleware.
-
-### Step 7: Update Context Type
-
-Add `log` and `requestId` to tRPC context:
-
-```typescript
-// src/lib/trpc/context.ts
-import type { Logger } from "pino";
-
-export interface Context {
-  session: Session | null;
-  log: Logger;
-  requestId: string;
-}
-```
-
-### Step 8: Replace console.log Calls
-
-Update all existing `console.log/warn` to use structured logger:
-
-| File | Current | New |
-|------|---------|-----|
-| `routers/crypto.ts` | `console.warn("Proof verification failed:", ...)` | `ctx.log.warn({ issues }, "Proof verification failed")` |
-| `routers/liveness.ts` | `console.log("Baseline detection result:", ...)` | `ctx.log.debug({ result }, "Baseline detection result")` |
-| `routers/liveness.ts` | `console.log("Liveness score:", ...)` | `ctx.log.info({ score }, "Liveness score calculated")` |
-
-### Step 9: Add Environment Variable
-
-```bash
-# .env.example
-LOG_LEVEL=debug  # debug, info, warn, error
-```
-
-### Step 10: Update Error Boundaries
-
-Integrate error logger with React error boundaries:
-
-```typescript
-// src/app/error.tsx
-import { logError } from "@/lib/logging";
-
-export default function Error({ error, reset }) {
-  useEffect(() => {
-    logError(error, { path: "global-error-boundary" });
-  }, [error]);
-  // ...
-}
-```
+- Added Pino logger module with shared redaction + message sanitization.
+- Request correlation is generated in `createTrpcContext`, logged in `withLogging`, and propagated to OCR/FHE via `X-Request-Id`.
+- Client error boundary posts to `/api/log-client-error`; production omits message/stack.
+- OCR service logs include `request_id` and mask IPs in auth warnings.
+- FHE service trace spans include `request_id`.
+- Server-side console logging in liveness frame endpoint replaced with Pino.
+- Liveness debug flag removed from API payload; UI debug overlay gated by `NEXT_PUBLIC_DEBUG`.
+- Tests added for redaction, error logging, request-id propagation, and client error route.
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/logging/logger.ts` | Create | Pino instance + config |
-| `src/lib/logging/middleware.ts` | Create | tRPC logging middleware |
-| `src/lib/logging/error-logger.ts` | Create | Error fingerprinting |
-| `src/lib/logging/redact.ts` | Create | PII redaction |
-| `src/lib/logging/index.ts` | Create | Public API |
-| `src/lib/trpc/trpc.ts` | Modify | Add logging middleware |
-| `src/lib/trpc/context.ts` | Modify | Add log to context |
-| `src/lib/trpc/routers/crypto.ts` | Modify | Replace console.warn |
-| `src/lib/trpc/routers/liveness.ts` | Modify | Replace console.log |
-| `src/app/error.tsx` | Modify | Add error logging |
-| `.env.example` | Modify | Add LOG_LEVEL |
+| `apps/web/src/lib/logging/logger.ts` | Create | Pino instance + config |
+| `apps/web/src/lib/logging/error-logger.ts` | Create | Error fingerprinting + sanitization |
+| `apps/web/src/lib/logging/redact.ts` | Create | PII redaction + message sanitization |
+| `apps/web/src/lib/logging/index.ts` | Create | Public API |
+| `apps/web/src/lib/trpc/server.ts` | Modify | Request correlation + logging middleware |
+| `apps/web/src/lib/trpc/routers/crypto.ts` | Modify | Propagate requestId to FHE |
+| `apps/web/src/lib/trpc/routers/identity.ts` | Modify | Propagate requestId to OCR/FHE |
+| `apps/web/src/lib/trpc/routers/liveness.ts` | Modify | Debug logs without biometrics |
+| `apps/web/src/app/api/log-client-error/route.ts` | Create | Client error ingestion |
+| `apps/web/src/app/error.tsx` | Modify | Client error reporting |
+| `apps/web/src/app/api/liveness/frame/route.ts` | Modify | Replace console error |
+| `apps/web/src/app/api/ocr/route.ts` | Modify | Propagate requestId to OCR |
+| `apps/web/src/app/api/ocr/health/route.ts` | Modify | Propagate requestId to OCR |
+| `apps/web/src/lib/document/ocr-client.ts` | Modify | Add requestId header |
+| `apps/web/src/lib/crypto/fhe-client.ts` | Modify | Add requestId header |
+| `apps/ocr/src/ocr_service/core/logging.py` | Create | Request ID logging filter |
+| `apps/ocr/src/ocr_service/main.py` | Modify | Request ID middleware |
+| `apps/ocr/src/ocr_service/core/auth.py` | Modify | Mask IP in auth warnings |
+| `apps/fhe/src/main.rs` | Modify | Request ID in trace spans |
+
+## Tests Added
+
+- `apps/web/src/lib/logging/__tests__/redact.test.ts`
+- `apps/web/src/lib/logging/__tests__/error-logger.test.ts`
+- `apps/web/src/lib/crypto/__tests__/fhe-client-logging.test.ts`
+- `apps/web/src/lib/document/__tests__/ocr-client-logging.test.ts`
+- `apps/web/src/app/api/log-client-error/__tests__/route.test.ts`
 
 ## Security/Privacy Considerations
 
-1. **No PII in Logs**: Redaction at source prevents accidental exposure
+1. **No PII in Logs**: Redaction at source + message sanitization prevents accidental exposure
 2. **No External Services**: Logs stay on Railway/Docker - no third-party data sharing
-3. **Request IDs are Random**: UUIDs can't be linked to users
+3. **Request IDs are Random**: UUIDs can't be linked to users; user identifiers are not logged
 4. **No Session Data**: Cookies and auth tokens redacted
 5. **Image Data Blocked**: Base64 images detected and replaced
-6. **Stack Traces in Errors Only**: Location info only in error level logs
+6. **Client Errors Sanitized**: Client error endpoint omits message/stack in production
+7. **Service Auth Logs Mask IP**: OCR auth logs obfuscate client IPs
 
 ## Technical Notes
 
 - **Performance**: Pino is 10x faster than Winston - minimal overhead
 - **Railway Integration**: JSON logs are automatically indexed by Railway
+- **Request Correlation**: `X-Request-Id` propagates through web → OCR/FHE; OCR/FHE logs include the same ID
+- **Client Errors**: Logged via `/api/log-client-error` (sanitized; no stack/message in prod)
 - **Future Enhancement**: Can add Grafana Loki for log aggregation if needed (self-hosted)
 - **Log Rotation**: Railway handles log retention; no local rotation needed
 

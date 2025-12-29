@@ -3,6 +3,7 @@
 //! Provides endpoints for encrypting data and performing age verification
 //! using Fully Homomorphic Encryption (TFHE-rs).
 
+use axum::{body::Body, http::Request};
 use fhe_service::{app::build_router, crypto, settings::Settings};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -39,7 +40,21 @@ async fn main() {
 
     tracing::info!("FHE body limit set to {} MB", settings.body_limit_mb());
 
-    let app = build_router(&settings).layer(TraceLayer::new_for_http());
+    let trace_layer = TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
+        let request_id = req
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("-");
+        tracing::info_span!(
+            "http.request",
+            method = %req.method(),
+            path = %req.uri().path(),
+            request_id = %request_id
+        )
+    });
+
+    let app = build_router(&settings).layer(trace_layer);
 
     let addr = settings.socket_addr();
     tracing::info!("FHE Service listening on {}", addr);

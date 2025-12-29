@@ -90,7 +90,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     getSquareDetectionCanvas,
     human,
     humanReady,
-    livenessDebugEnabled,
+    debugEnabled,
     initialSelfieImage,
     onVerified,
     onReset,
@@ -176,7 +176,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   );
 
   const syncDebugCanvasSize = useCallback(() => {
-    if (!livenessDebugEnabled) return;
+    if (!debugEnabled) return;
     const video = videoRef.current;
     const canvas = debugCanvasRef.current;
     if (!video || !canvas) return;
@@ -185,11 +185,11 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     if (!width || !height) return;
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
-  }, [livenessDebugEnabled, videoRef]);
+  }, [debugEnabled, videoRef]);
 
   const drawDebugOverlay = useCallback(
     (result: unknown) => {
-      if (!livenessDebugEnabled) return;
+      if (!debugEnabled) return;
       if (!human || !videoRef.current) return;
       const canvas = debugCanvasRef.current;
       if (!canvas) return;
@@ -249,12 +249,12 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         // ignore draw errors in debug mode
       }
     },
-    [livenessDebugEnabled, human, syncDebugCanvasSize, videoRef],
+    [debugEnabled, human, syncDebugCanvasSize, videoRef],
   );
 
   const updateDebug = useCallback(
     (result: unknown, face: ReturnType<typeof getPrimaryFace>) => {
-      if (!livenessDebugEnabled) return;
+      if (!debugEnabled) return;
 
       const now = performance.now();
       if (now - debugLastUpdateRef.current < 250) return;
@@ -296,27 +296,27 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           : undefined,
       });
     },
-    [livenessDebugEnabled, videoRef],
+    [debugEnabled, videoRef],
   );
 
   useEffect(() => {
-    if (!livenessDebugEnabled) return;
+    if (!debugEnabled) return;
     const video = videoRef.current;
     if (!video) return;
     const handle = () => syncDebugCanvasSize();
     video.addEventListener("loadedmetadata", handle);
     handle();
     return () => video.removeEventListener("loadedmetadata", handle);
-  }, [livenessDebugEnabled, syncDebugCanvasSize, videoRef]);
+  }, [debugEnabled, syncDebugCanvasSize, videoRef]);
 
   useEffect(() => {
-    if (!livenessDebugEnabled) return;
+    if (!debugEnabled) return;
     const canvas = debugCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     if (!isStreaming) ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }, [livenessDebugEnabled, isStreaming]);
+  }, [debugEnabled, isStreaming]);
 
   const beginCamera = useCallback(async () => {
     setChallengeState("loading_session");
@@ -473,7 +473,6 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
               image: c.image,
               turnStartYaw: c.turnStartYaw,
             })),
-            debug: livenessDebugEnabled,
           }),
           VERIFY_TIMEOUT,
           "Verification is taking too long. Please try again.",
@@ -502,7 +501,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           blinkCount: null,
         });
       } catch (err) {
-        if (livenessDebugEnabled) {
+        if (debugEnabled) {
           // biome-ignore lint/suspicious/noConsole: debug-only liveness diagnostics
           console.warn("Liveness verify failed", { err, lastVerifyResponse });
         }
@@ -518,7 +517,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       baselineImage,
       completedChallenges,
       currentChallenge,
-      livenessDebugEnabled,
+      debugEnabled,
       buildChallengeInfo,
       stopCamera,
       lastVerifyResponse,
@@ -717,7 +716,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   // Separate rendering loop for smooth debug overlay (60fps)
   // Uses human.next() for temporal smoothing between detections
   useEffect(() => {
-    if (!livenessDebugEnabled || !isStreaming || !human) return;
+    if (!debugEnabled || !isStreaming || !human) return;
     if (
       challengeState !== "detecting" &&
       challengeState !== "waiting_challenge"
@@ -744,7 +743,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     animationId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animationId);
   }, [
-    livenessDebugEnabled,
+    debugEnabled,
     isStreaming,
     human,
     challengeState,
@@ -965,7 +964,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     debugFrame,
     lastVerifyError,
     lastVerifyResponse,
-    livenessDebugEnabled,
+    debugEnabled,
     beginCamera,
     retryChallenge,
   };

@@ -7,6 +7,8 @@
 
 import type { ChallengeType } from "@/lib/liveness";
 
+import { randomUUID } from "node:crypto";
+
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -24,6 +26,7 @@ import {
   getYawDegrees,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64 } from "@/lib/liveness/human-server";
+import { createRequestLogger, sanitizeLogMessage } from "@/lib/logging";
 
 import { sendSSEEvent } from "../stream/sse";
 
@@ -152,6 +155,11 @@ function calculateProgress(
 export async function POST(req: NextRequest) {
   let sessionId: string | undefined;
   let challengeType: ChallengeType | undefined;
+  const requestId =
+    req.headers.get("x-request-id") ||
+    req.headers.get("x-correlation-id") ||
+    randomUUID();
+  const log = createRequestLogger(requestId);
   try {
     const body = await req.json();
     const parsed = frameSchema.safeParse(body);
@@ -192,12 +200,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true, ...progress });
   } catch (error) {
     // Avoid logging frame data (PII); only log minimal context.
-    // biome-ignore lint/suspicious/noConsole: server-side diagnostics
-    console.error("[liveness.frame] processing failed", {
-      sessionId,
-      challengeType,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    log.error(
+      {
+        path: "/api/liveness/frame",
+        sessionId: sessionId ? `${sessionId.slice(0, 8)}...` : undefined,
+        challengeType,
+        error: sanitizeLogMessage(
+          error instanceof Error ? error.message : String(error),
+        ),
+      },
+      "Liveness frame processing failed",
+    );
     return NextResponse.json(
       { error: "Frame processing failed" },
       { status: 500 },

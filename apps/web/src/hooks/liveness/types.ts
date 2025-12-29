@@ -90,7 +90,7 @@ export type UseSelfieLivenessFlowArgs = {
   getSquareDetectionCanvas?: () => HTMLCanvasElement | null;
   human: Human | null;
   humanReady: boolean;
-  livenessDebugEnabled: boolean;
+  debugEnabled: boolean;
   initialSelfieImage?: string | null;
   onVerified: (args: {
     selfieImage: string;

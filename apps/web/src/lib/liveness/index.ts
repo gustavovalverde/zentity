@@ -10,8 +10,6 @@
 export type { ChallengeInfo, ChallengeType } from "./liveness-challenges";
 
 export { CHALLENGE_INSTRUCTIONS } from "./liveness-challenges";
-// Debug utilities (client-safe)
-export { getLivenessDebugEnabled } from "./liveness-debug";
 // Policy thresholds (client-safe, just constants)
 export {
   ANTISPOOF_LIVE_THRESHOLD,

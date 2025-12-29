@@ -31,6 +31,7 @@ async function createCaller(ip: string) {
       headers: { "x-forwarded-for": ip },
     }),
     session: null,
+    requestId: "test-request-id",
   });
 }
 
