@@ -33,7 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --link Cargo.toml Cargo.lock ./
 
 # Create dummy src for dependency caching
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "pub fn dummy() {}" > src/lib.rs
 
 # Build dependencies only with cache mounts (this layer is cached)
 # --locked ensures reproducible builds using Cargo.lock

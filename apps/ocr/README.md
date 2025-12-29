@@ -318,6 +318,8 @@ Issuing Country Commitment: SHA256(normalize(issuing_country_code) + ":" + user_
 - Issuing country commitment (for fraud detection - mismatch with nationality)
 - User salt (enables verification)
 
+**Note:** The web app reduces `document_hash` into a field element to bind ZK proofs via `claim_hash`.
+
 **What gets discarded (PII):**
 
 - Original document image

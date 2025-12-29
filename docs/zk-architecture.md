@@ -1,12 +1,12 @@
 # ZK Proof Architecture
 
-> **Related docs:** [System Architecture](architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [README](../README.md)
+> **Related docs:** [System Architecture](architecture.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [README](../README.md)
 
 This document describes Zentity's zero-knowledge proof system using Noir and UltraHonk.
 
 ## Overview
 
-Zentity uses client-side ZK proof generation to ensure sensitive data never leaves the user's browser. The architecture consists of:
+Zentity uses client-side ZK proof generation so the **private inputs to proofs stay in the browser during proving**. The architecture consists of:
 
 1. **Noir Circuits** - ZK logic written in Noir language
 2. **Client-Side Prover** - Browser-based proof generation using Noir.js + bb.js
@@ -37,14 +37,14 @@ Zentity uses client-side ZK proof generation to ensure sensitive data never leav
 
 Four ZK circuits are implemented:
 
-| Circuit | Purpose | Private Input | Public Output |
-|---------|---------|---------------|---------------|
-| `age_verification` | Prove age >= threshold | Birth year | true/false |
-| `doc_validity` | Prove document not expired | Expiry date | true/false |
-| `nationality_membership` | Prove country in group | Nationality code | true/false |
-| `face_match` | Prove face similarity >= threshold | Similarity score | true/false |
+| Circuit | Purpose | Private Inputs | Public Inputs → Output |
+|---------|---------|----------------|------------------------|
+| `age_verification` | Prove age >= threshold | birth_year, document_hash | current_year, min_age, nonce, claim_hash → is_old_enough |
+| `doc_validity` | Prove document not expired | expiry_date, document_hash | current_date, nonce, claim_hash → is_valid |
+| `nationality_membership` | Prove country in group | nationality_code, document_hash | merkle_root, nonce, claim_hash → is_member |
+| `face_match` | Prove face similarity >= threshold | similarity_score, document_hash | threshold, nonce, claim_hash → is_match |
 
-All circuits include a `nonce` public input for replay resistance.
+All circuits include a `nonce` public input for replay resistance and a `claim_hash` that binds the proof to server-signed OCR claims.
 
 ### Directory Structure
 
@@ -53,19 +53,19 @@ apps/web/noir-circuits/
 ├── age_verification/
 │   ├── Nargo.toml
 │   ├── src/main.nr
-│   └── target/age_verification.json
+│   └── artifacts/age_verification.json
 ├── doc_validity/
 │   ├── Nargo.toml
 │   ├── src/main.nr
-│   └── target/doc_validity.json
+│   └── artifacts/doc_validity.json
 ├── face_match/
 │   ├── Nargo.toml
 │   ├── src/main.nr
-│   └── target/face_match.json
+│   └── artifacts/face_match.json
 └── nationality_membership/
     ├── Nargo.toml
     ├── src/main.nr
-    └── target/nationality_membership.json
+    └── artifacts/nationality_membership.json
 ```
 
 ---
@@ -77,12 +77,19 @@ apps/web/noir-circuits/
 Proves age meets a minimum threshold without revealing birth year.
 
 ```noir
+use nodash::poseidon2;
+
 fn main(
-    birth_year: Field,       // Private: actual birth year
-    current_year: pub Field, // Public: current year
-    min_age: pub Field,      // Public: minimum age (18, 21, 25)
-    nonce: pub Field         // Public: replay resistance
+    birth_year: Field,        // Private: actual birth year
+    document_hash: Field,     // Private: document commitment
+    current_year: pub Field,  // Public: current year
+    min_age: pub Field,       // Public: minimum age (18, 21, 25)
+    nonce: pub Field,         // Public: replay resistance
+    claim_hash: pub Field     // Public: claim hash binding to OCR data
 ) -> pub bool {
+    let _ = nonce;
+    let computed_hash = poseidon2([birth_year, document_hash]);
+    assert(computed_hash == claim_hash, "Claim hash mismatch");
     let age = current_year as u32 - birth_year as u32;
     age >= min_age as u32
 }
@@ -93,11 +100,18 @@ fn main(
 Proves document hasn't expired without revealing the expiry date.
 
 ```noir
+use nodash::poseidon2;
+
 fn main(
-    expiry_date: Field,      // Private: YYYYMMDD
-    current_date: pub Field, // Public: YYYYMMDD
-    nonce: pub Field         // Public: replay resistance
+    expiry_date: Field,       // Private: YYYYMMDD
+    document_hash: Field,     // Private: document commitment
+    current_date: pub Field,  // Public: YYYYMMDD
+    nonce: pub Field,         // Public: replay resistance
+    claim_hash: pub Field     // Public: claim hash binding to OCR data
 ) -> pub bool {
+    let _ = nonce;
+    let computed_hash = poseidon2([expiry_date, document_hash]);
+    assert(computed_hash == claim_hash, "Claim hash mismatch");
     expiry_date as u32 >= current_date as u32
 }
 ```
@@ -107,13 +121,20 @@ fn main(
 Proves nationality is in a group (EU, SCHENGEN, etc.) using Merkle tree membership.
 
 ```noir
+use nodash::poseidon2;
+
 fn main(
     nationality_code: Field,            // Private: ISO numeric code
-    merkle_root: pub Field,             // Public: group identifier
+    document_hash: Field,               // Private: document commitment
     path_elements: [Field; 8],          // Private: Merkle path
     path_indices: [u1; 8],              // Private: path directions
-    nonce: pub Field                    // Public: replay resistance
+    merkle_root: pub Field,             // Public: group identifier
+    nonce: pub Field,                   // Public: replay resistance
+    claim_hash: pub Field               // Public: claim hash binding to OCR data
 ) -> pub bool {
+    let _ = nonce;
+    let computed_hash = poseidon2([nationality_code, document_hash]);
+    assert(computed_hash == claim_hash, "Claim hash mismatch");
     // Verify Merkle path from leaf to root
 }
 ```
@@ -123,11 +144,18 @@ fn main(
 Proves face similarity score meets threshold without revealing exact score.
 
 ```noir
+use nodash::poseidon2;
+
 fn main(
     similarity_score: Field, // Private: 0-10000 (0.00%-100.00%)
+    document_hash: Field,    // Private: document commitment
     threshold: pub Field,    // Public: minimum threshold
-    nonce: pub Field         // Public: replay resistance
+    nonce: pub Field,        // Public: replay resistance
+    claim_hash: pub Field    // Public: claim hash binding to OCR data
 ) -> pub bool {
+    let _ = nonce;
+    let computed_hash = poseidon2([similarity_score, document_hash]);
+    assert(computed_hash == claim_hash, "Claim hash mismatch");
     similarity_score as u32 >= threshold as u32
 }
 ```
@@ -146,21 +174,27 @@ const ageResult = await generateAgeProofNoir({
   birthYear: 1990,
   currentYear: 2025,
   minAge: 18,
-  nonce: challengeNonce
+  nonce: challengeNonce,
+  documentHashField,
+  claimHash
 });
 
 // Document validity proof
 const docResult = await generateDocValidityProofNoir({
   expiryDate: 20271231,
   currentDate: 20251212,
-  nonce: challengeNonce
+  nonce: challengeNonce,
+  documentHashField,
+  claimHash
 });
 
 // Nationality proof
 const natResult = await generateNationalityProofNoir({
   nationalityCode: "DEU",
   groupName: "EU",
-  nonce: challengeNonce
+  nonce: challengeNonce,
+  documentHashField,
+  claimHash
 });
 ```
 
@@ -189,6 +223,31 @@ Key files:
 ---
 
 ## Server-Side Verification
+
+Server-side verification uses a **child process delegation pattern** to isolate bb.js operations:
+
+```text
+Next.js API Route              bb-worker.mjs (child process)
+       │                              │
+       │─── spawn Node.js process ───▶│ Initialize once
+       │                              │
+       │─── JSON-RPC over stdin  ────▶│
+       │    (verify request)          │ Load circuit, verify proof
+       │                              │
+       │◀─── JSON-RPC over stdout ────│
+       │     (result)                 │
+```
+
+**Why delegation?**
+
+- **Isolation**: WASM/native operations run in separate process memory
+- **Timeout handling**: Main thread can kill stale workers (configurable via `BB_WORKER_TIMEOUT_MS`)
+- **Backend caching**: Worker caches `UltraHonkBackend` instances per circuit
+
+**Key files:**
+
+- `noir-verifier.ts` - Spawns and communicates with worker
+- `bb-worker.mjs` - Standalone Node.js script with JSON-RPC interface
 
 ### Verifier API
 
@@ -348,11 +407,12 @@ apps/web/
 │   ├── doc_validity/
 │   ├── face_match/
 │   └── nationality_membership/
-├── src/lib/
+├── src/lib/zk/
 │   ├── noir-prover.ts       # Client-side API
-│   ├── noir-prover.worker.ts # Web Worker
+│   ├── noir-prover.worker.ts # Browser Web Worker
 │   ├── noir-worker-manager.ts # Worker pool
-│   ├── noir-verifier.ts     # Server-side verification
+│   ├── noir-verifier.ts     # Server-side verification (spawns bb-worker)
+│   ├── bb-worker.mjs        # Child process for bb.js isolation
 │   ├── zk-circuit-spec.ts   # Circuit type definitions
 │   ├── nationality-data.ts  # Country codes
 │   └── nationality-merkle.ts # Merkle tree utils

@@ -9,7 +9,10 @@ import { getBetterAuthSecret } from "@/lib/utils/env";
 const CLAIMS_ISSUER = "zentity-attestation";
 const CLAIMS_AUDIENCE = "zentity-claims";
 
-export type AttestationClaimType = "liveness_score" | "face_match_score";
+export type AttestationClaimType =
+  | "liveness_score"
+  | "face_match_score"
+  | "ocr_result";
 
 export type LivenessClaimData = {
   antispoofScore: number;
@@ -24,6 +27,22 @@ export type FaceMatchClaimData = {
   confidenceFixed: number;
   thresholdFixed: number;
   passed: boolean;
+  claimHash: string | null;
+};
+
+export type OcrClaimData = {
+  documentType?: string | null;
+  issuerCountry?: string | null;
+  nationalityCode?: string | null;
+  nationalityCodeNumeric?: number | null;
+  expiryDate?: number | null; // YYYYMMDD
+  birthYear?: number | null;
+  confidence?: number | null;
+  claimHashes: {
+    age?: string | null;
+    docValidity?: string | null;
+    nationality?: string | null;
+  };
 };
 
 export type AttestationClaimPayload = {
@@ -31,8 +50,10 @@ export type AttestationClaimPayload = {
   userId: string;
   issuedAt: string;
   version: number;
+  policyVersion: string;
   documentHash?: string | null;
-  data: LivenessClaimData | FaceMatchClaimData;
+  documentHashField?: string | null;
+  data: LivenessClaimData | FaceMatchClaimData | OcrClaimData;
 };
 
 function getSigningKey(): Uint8Array {
@@ -78,7 +99,13 @@ export async function verifyAttestationClaim(
     throw new Error("Claim user mismatch");
   }
 
-  if (!claim.type || !claim.userId || !claim.issuedAt || !claim.data) {
+  if (
+    !claim.type ||
+    !claim.userId ||
+    !claim.issuedAt ||
+    !claim.policyVersion ||
+    !claim.data
+  ) {
     throw new Error("Claim payload missing required fields");
   }
 

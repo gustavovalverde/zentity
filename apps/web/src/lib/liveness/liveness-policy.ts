@@ -23,3 +23,7 @@ export const TURN_YAW_SIGNIFICANT_DELTA_DEG = 12;
 //   Gesture challenges (smile, head turns) prove liveness far more reliably.
 export const ANTISPOOF_REAL_THRESHOLD = 0.5;
 export const ANTISPOOF_LIVE_THRESHOLD = 0;
+
+// Face match minimum confidence required for ID-to-selfie verification.
+// TODO(zk/fhe): Raise to 0.60 once face matching quality improves.
+export const FACE_MATCH_MIN_CONFIDENCE = 0.35;

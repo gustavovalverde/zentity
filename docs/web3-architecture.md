@@ -1,5 +1,7 @@
 # Web3 Architecture Documentation
 
+> **Related docs:** [Web2 to Web3 Transition](web2-to-web3-transition.md) | [Blockchain Setup](blockchain-setup.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
+
 This document provides a comprehensive overview of Zentity's web3 implementation, covering Fully Homomorphic Encryption (FHE), blockchain attestation, and wallet integration.
 
 ## Table of Contents
@@ -100,7 +102,7 @@ flowchart TD
     EncIn -- "2) tx call" --> ERC["CompliantERC20"]
 
     subgraph OnChain["On-chain fhEVM"]
-      IR -- "3) Stores encrypted attrs" --> IRState["birthYear, country, compliance, blacklist"]
+      IR -- "3) Stores encrypted attrs" --> IRState["birthYearOffset, country, compliance, blacklist"]
       IR -- "4) ACL grants" --> ACL["ACL per ciphertext handle"]
       ERC -- "5) calls" --> CR["ComplianceRules"]
       CR -- "6) queries" --> IR
@@ -126,10 +128,11 @@ flowchart TD
 ### Data Privacy Model
 
 1. **Identity Verification** happens off-chain (document OCR, liveness detection)
-2. **Identity Data** (birth year offset, country code, compliance level) is encrypted client-side or server-side using FHE
+2. **Identity Data** (birth year offset, country code, compliance level) is encrypted client-side using the FHEVM SDK
 3. **Encrypted Handles** are stored on-chain in the IdentityRegistry contract
 4. **Compliance Checks** operate on encrypted data - the smart contract never sees plaintext
-5. **User Decryption** requires EIP-712 signature authorization - only the user can decrypt their own data
+5. **Attestation Metadata** stores `policy_hash` + `proof_set_hash` for auditability
+6. **User Decryption** requires EIP-712 signature authorization - only the user can decrypt their own data
 
 ---
 
@@ -477,6 +480,8 @@ interface GenericStringStorage {
 
 - **Key**: `${userAddress}:${eip712TypeHash}`
 - **Value**: JSON containing ephemeral keypair + signature + expiry
+
+**TTL Enforcement:** The `FhevmDecryptionSignature.isValid()` method checks if `timestampNow() < startTimestamp + durationDays * 86400`. Expired signatures are automatically replaced on next decrypt.
 
 ---
 

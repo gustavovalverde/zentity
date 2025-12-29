@@ -14,7 +14,7 @@ import {
   deleteIdentityData,
   deleteOnboardingSession,
   getDefaultDatabasePath,
-  getLatestIdentityDocumentByUserId,
+  getSelectedIdentityDocumentByUserId,
   getSqliteDb,
   getUserFirstName,
   getVerificationStatus,
@@ -38,7 +38,7 @@ export const accountRouter = router({
     const verification = getVerificationStatus(userId);
 
     // Get latest verified document details
-    const document = getLatestIdentityDocumentByUserId(userId);
+    const document = getSelectedIdentityDocumentByUserId(userId);
 
     // Get user creation date from better-auth user table
     const userRow = db

@@ -25,7 +25,7 @@ Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographi
 > [!CAUTION]
 > **Proof of Concept - Active Development**
 >
-> Zentity is a PoC demonstrating privacy-preserving KYC. While we apply best-effort security practices:
+> Zentity is a PoC demonstrating privacy-preserving compliance and identity verification. While we apply best-effort security practices:
 >
 > - **Breaking changes expected** - Backward compatibility is not a goal
 > - **Cryptographic validation in progress** - Our ZK/FHE approach is still being validated
@@ -53,6 +53,10 @@ cp .env.example .env
 # Generate a strong auth secret (required for production-mode containers)
 openssl rand -base64 32
 # Paste it into .env as BETTER_AUTH_SECRET
+
+# Optional: increase FHE request body limit if key registration fails
+# (default is 64MB)
+# FHE_BODY_LIMIT_MB=64
 
 docker compose up --build
 ```
@@ -103,18 +107,21 @@ flowchart LR
   end
   OCR[OCR :5004]
   FHE[FHE :5001]
+  BC[Blockchain<br/>fhEVM]
 
   UI -->|doc + selfie| API
   API --> OCR
   API --> FHE
   W -->|proofs| API
   API --> DB
+  API -->|attestation| BC
 ```
 
 > [!TIP]
 > **Deep-dive documentation:**
 >
 > - [System Architecture](docs/architecture.md) — data flow, storage model, privacy guarantees
+> - [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) — attestation schema, data classification, privacy boundaries
 > - [ZK Circuits](docs/zk-architecture.md) — circuit specs, client/server proving
 > - [Nationality Proofs](docs/zk-nationality-proofs.md) — Merkle trees, country groups
 > - [Password Security](docs/password-security.md) — breached-password blocking + privacy-preserving UX pre-check
@@ -123,24 +130,28 @@ flowchart LR
 ## What’s Implemented (PoC)
 
 - 4-step onboarding wizard (email → upload ID → liveness → complete)
+- Server-side OCR/liveness/face match with signed claims for tamper resistance
 - Client-side ZK proving (Web Worker) + server-side verification:
-  - age proof (`age ≥ 18`, persisted)
-  - doc validity, nationality membership, face-match threshold proofs (available as circuits/demos)
+  - age, doc validity, nationality membership, face-match threshold proofs
+- Multi-document identity model with document-scoped proofs + evidence packs
 - Salted SHA256 commitments for dedup + later integrity checks (name, document number, nationality)
-- FHE service integration (encrypt + compare on ciphertexts) for PoC policy checks
-- Disclosure demo flow (RP-style verification of received proof payloads)
+- FHE key registration + encryption for birth_year_offset, country_code, compliance_level, liveness score
+- Disclosure demo flow (RP-style verification of proofs + evidence pack)
 - OAuth-style RP redirect flow (clean URL + one-time authorization code exchange)
 
 ## Data Handling (at a glance)
 
 The PoC stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
 
-- Plaintext at rest: account email (authentication)
+- Plaintext at rest: account email; document metadata (type, issuer country, birth_year_offset)
 - Encrypted at rest: short-lived onboarding PII (wizard continuity), display-only first name
 - Non-reversible at rest: salted commitments (SHA256)
-- Proof/ciphertext at rest: ZK proof payloads + TFHE ciphertexts
+- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claims, evidence pack hashes
+- On-chain (optional): encrypted identity attestation via FHEVM—only user can decrypt
 
-Details: `docs/architecture.md`
+**User-controlled privacy:** FHE keys are generated and stored client-side (browser IndexedDB). The server registers only the public + server keys (evaluation keys) for computation and encrypts with the public key—it cannot decrypt user data. Only the user can decrypt their own encrypted attributes.
+
+Details: `docs/architecture.md` | `docs/attestation-privacy-architecture.md`
 
 <details id="background-and-use-cases">
 <summary>Background and use cases</summary>
@@ -164,7 +175,7 @@ Meanwhile, identity verification systems store millions of passport photos, birt
 
 ### The Opportunity
 
-KYC and identity verification is the perfect domain for privacy-preserving cryptography:
+Compliance and identity verification is the perfect domain for privacy-preserving cryptography:
 
 - **High-value PII**: Names, birthdates, document numbers, face images
 - **Binary decisions**: "Is this person over 18?" doesn't require knowing their exact birthday
@@ -178,18 +189,18 @@ Zentity proves these cryptographic techniques **can work together** in a real ap
 | Technique | Traditional Barrier | Zentity Approach |
 |-----------|---------------------|------------------|
 | Zero-Knowledge Proofs | Complex circuit design | Pre-built circuits for age, nationality, document validity |
-| Fully Homomorphic Encryption | Slow, requires expertise | TFHE-rs with optimized operations for KYC use cases |
+| Fully Homomorphic Encryption | Slow, requires expertise | TFHE-rs with optimized operations for compliance use cases |
 | Cryptographic Commitments | Roll-your-own risk | Standardized SHA256 + salt with GDPR erasure support |
 | Merkle Trees | Custom implementation | Ready-to-use country group trees (EU, EEA, SCHENGEN) |
 
 The result: **complete identity verification with minimized plaintext storage** (no raw ID images/selfies stored; cryptographic artifacts persisted; authentication data stored as required).
 
 > [!NOTE]
-> Zentity is a demonstration project showing that privacy-preserving KYC is technically feasible today. It serves as a reference architecture for teams building production systems.
+> Zentity is a demonstration project showing that privacy-preserving compliance is technically feasible today. It serves as a reference architecture for teams building production systems.
 
 ## What is Zentity?
 
-Zentity is a privacy-preserving KYC platform that enables identity verification for banks, crypto exchanges, and fintechs—without storing or accessing sensitive personal information.
+Zentity is a privacy-preserving compliance platform that enables identity verification for banks, crypto exchanges, and fintechs—without storing or accessing sensitive personal information.
 
 ### Currently Available
 
@@ -202,7 +213,7 @@ Zentity is a privacy-preserving KYC platform that enables identity verification 
 
 ### Planned Features
 
-- **ZK Face Match Proofs** - Prove face similarity inside a ZK circuit
+- **Passkey-wrapped FHE keys** - Protect client keys with WebAuthn
 - **AML/Sanctions screening** - Privacy-preserving sanctions list checking
 - **Accredited investor verification** - Prove income thresholds without revealing amounts
 - **Source of funds verification** - ZK proofs for financial compliance
@@ -237,7 +248,7 @@ FHE → Verifier: true/false (score never revealed)
 > **Limitations (non-production):**
 >
 > - Server-side re-scoring blocks simple UI tampering, but can't prove frames came from a live camera; replayed or edited frames can still be submitted.
-> - Human's antispoof/liveness models are lightweight "quick checks" and not KYC‑grade on their own.
+> - Human's antispoof/liveness models are lightweight "quick checks" and not compliance‑grade on their own.
 > - Model weights are bundled locally via `@vladmandic/human-models` and served from `/human-models/*`; first run may still be slow while models initialize, but no external download is needed.
 > - Liveness sessions are stored in memory and reset on server restart.
 
@@ -321,11 +332,15 @@ Zentity uses three complementary techniques:
 | Document | Description |
 |----------|-------------|
 | [System Architecture](docs/architecture.md) | End-to-end components + data flow + storage model |
+| [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) | Attestation schema, data classification, privacy boundaries |
+| [Tamper Model](docs/tamper-model.md) | Integrity controls and threat model |
 | [Web3 Architecture](docs/web3-architecture.md) | FHEVM module, providers, encryption/decryption flows |
 | [Web2 → Web3 Transition](docs/web2-to-web3-transition.md) | End-to-end flow from verification to on-chain attestation |
 | [Blockchain Setup](docs/blockchain-setup.md) | FHEVM network config, envs, faucets, deployments |
 | [ZK Proof Architecture](docs/zk-architecture.md) | Circuits + proving/verifying model |
 | [ZK Nationality Proofs](docs/zk-nationality-proofs.md) | Merkle tree nationality verification |
+| [Password Security](docs/password-security.md) | Breached-password blocking + privacy-preserving UX |
+| [RP Redirect Flow](docs/rp-redirect-flow.md) | OAuth-style RP handoff (clean URL + one-time code) |
 | [API Collection](tooling/bruno-collection/README.md) | Bruno API testing collection |
 
 ## License

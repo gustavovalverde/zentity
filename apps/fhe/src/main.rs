@@ -65,8 +65,8 @@ async fn main() {
 
     tracing::info!("Starting FHE Service...");
 
-    // Initialize crypto keys (this can take a while on first run)
-    tracing::info!("Initializing FHE keys (this may take ~30-60s on first run)...");
+    // Initialize crypto keys (loads persisted server keys if available)
+    tracing::info!("Initializing FHE server key store...");
     crypto::init_keys();
     tracing::info!("FHE keys initialized successfully");
 
@@ -99,29 +99,30 @@ async fn main() {
         tracing::warn!("Running without authentication (INTERNAL_SERVICE_TOKEN not set)");
     }
 
-    let enable_keygen_endpoint = std::env::var("ENABLE_KEYGEN_ENDPOINT")
-        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    let body_limit_mb: usize = std::env::var("FHE_BODY_LIMIT_MB")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(64);
+    let body_limit_bytes = body_limit_mb.saturating_mul(1024 * 1024);
+    tracing::info!("FHE body limit set to {} MB", body_limit_mb);
 
     // Build router
-    let mut app = Router::new()
+    let app = Router::new()
         .route("/health", get(routes::health))
-        .route("/build-info", get(routes::build_info));
-
-    if enable_keygen_endpoint {
-        app = app.route("/keys/generate", post(routes::generate_keys));
-    }
-
-    let app = app
-        // Birth year encryption (u16)
-        .route("/encrypt", post(routes::encrypt))
-        .route("/verify-age", post(routes::verify_age))
-        // Gender encryption (ISO 5218, u8)
-        .route("/encrypt-gender", post(routes::encrypt_gender))
-        .route("/verify-gender", post(routes::verify_gender))
-        // Full DOB encryption (YYYYMMDD, u32)
-        .route("/encrypt-dob", post(routes::encrypt_dob))
-        .route("/verify-age-precise", post(routes::verify_age_precise))
+        .route("/build-info", get(routes::build_info))
+        .route("/keys/register", post(routes::register_key))
+        // Birth year offset encryption (years since 1900)
+        .route(
+            "/encrypt-birth-year-offset",
+            post(routes::encrypt_birth_year_offset),
+        )
+        .route("/verify-age-offset", post(routes::verify_age_offset))
+        // Country code + compliance level encryption
+        .route("/encrypt-country-code", post(routes::encrypt_country_code))
+        .route(
+            "/encrypt-compliance-level",
+            post(routes::encrypt_compliance_level),
+        )
         // Liveness score encryption (0.0-1.0 as u16)
         .route("/encrypt-liveness", post(routes::encrypt_liveness))
         .route(
@@ -132,7 +133,7 @@ async fn main() {
             internal_token,
             internal_auth,
         ))
-        .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(body_limit_bytes))
         .layer(TraceLayer::new_for_http());
 
     // Get port from environment or default to 5001

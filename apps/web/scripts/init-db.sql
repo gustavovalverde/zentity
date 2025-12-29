@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS identity_bundles (
   policy_version TEXT,
   issuer_id TEXT,
   attestation_expires_at TEXT,
+  fhe_key_id TEXT,
+  fhe_public_key TEXT,
+  fhe_status TEXT,
+  fhe_error TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -129,6 +133,18 @@ CREATE TABLE IF NOT EXISTS signed_claims (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS attestation_evidence (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  document_id TEXT NOT NULL,
+  policy_version TEXT,
+  policy_hash TEXT,
+  proof_set_hash TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, document_id)
+);
+
 -- Temporary onboarding sessions (encrypted wizard state)
 CREATE TABLE IF NOT EXISTS onboarding_sessions (
   id TEXT PRIMARY KEY,
@@ -156,6 +172,10 @@ CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_user_id ON encrypted_attribu
 CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_type ON encrypted_attributes (attribute_type);
 CREATE INDEX IF NOT EXISTS idx_signed_claims_user_id ON signed_claims (user_id);
 CREATE INDEX IF NOT EXISTS idx_signed_claims_type ON signed_claims (claim_type);
+CREATE INDEX IF NOT EXISTS idx_attestation_evidence_user_id
+  ON attestation_evidence (user_id);
+CREATE INDEX IF NOT EXISTS idx_attestation_evidence_document_id
+  ON attestation_evidence (document_id);
 CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at ON onboarding_sessions(expires_at);
 
 -- Blockchain attestations (multi-network)

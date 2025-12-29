@@ -266,6 +266,7 @@ export const COUNTRY_GROUPS: Record<string, string[]> = {
     "URY",
     "VEN",
   ],
+  GLOBAL: Object.keys(COUNTRY_CODES),
   FIVE_EYES: ["AUS", "CAN", "NZL", "GBR", "USA"],
 };
 

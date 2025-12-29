@@ -44,28 +44,28 @@ describe("Liveness FHE (tRPC)", () => {
     it("should throw UNAUTHORIZED when not authenticated", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.encryptLiveness({ score: 0.85 }),
+        caller.encryptLiveness({ score: 0.85, publicKey: "public-key" }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("should throw BAD_REQUEST when score is missing", async () => {
       const caller = createCaller(authedSession);
-      await expect(caller.encryptLiveness({} as any)).rejects.toMatchObject({
-        code: "BAD_REQUEST",
-      });
+      await expect(
+        caller.encryptLiveness({ publicKey: "public-key" } as any),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should throw BAD_REQUEST when score is out of range (> 1.0)", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: 1.5 }),
+        caller.encryptLiveness({ score: 1.5, publicKey: "public-key" }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should throw BAD_REQUEST when score is negative", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: -0.1 }),
+        caller.encryptLiveness({ score: -0.1, publicKey: "public-key" }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -78,16 +78,17 @@ describe("Liveness FHE (tRPC)", () => {
           json: () =>
             Promise.resolve({
               ciphertext: "encrypted-ciphertext-base64",
-              clientKeyId: "default",
               score: 0.85,
             }),
         }),
       );
 
       const caller = createCaller(authedSession);
-      const data = await caller.encryptLiveness({ score: 0.85 });
+      const data = await caller.encryptLiveness({
+        score: 0.85,
+        publicKey: "public-key",
+      });
       expect(data.ciphertext).toBe("encrypted-ciphertext-base64");
-      expect(data.clientKeyId).toBe("default");
       expect(data.score).toBe(0.85);
     });
 
@@ -104,7 +105,7 @@ describe("Liveness FHE (tRPC)", () => {
 
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: 0.85 }),
+        caller.encryptLiveness({ score: 0.85, publicKey: "public-key" }),
       ).rejects.toBeInstanceOf(Error);
     });
 
@@ -117,7 +118,6 @@ describe("Liveness FHE (tRPC)", () => {
           json: () =>
             Promise.resolve({
               ciphertext: "encrypted",
-              clientKeyId: "default",
               score: 0.0,
             }),
         }),
@@ -125,7 +125,10 @@ describe("Liveness FHE (tRPC)", () => {
 
       // Test score = 0.0
       const caller = createCaller(authedSession);
-      const response0 = await caller.encryptLiveness({ score: 0.0 });
+      const response0 = await caller.encryptLiveness({
+        score: 0.0,
+        publicKey: "public-key",
+      });
       expect(response0.score).toBe(0.0);
 
       // Test score = 1.0
@@ -136,12 +139,14 @@ describe("Liveness FHE (tRPC)", () => {
         json: () =>
           Promise.resolve({
             ciphertext: "encrypted",
-            clientKeyId: "default",
             score: 1.0,
           }),
       });
 
-      const response1 = await caller.encryptLiveness({ score: 1.0 });
+      const response1 = await caller.encryptLiveness({
+        score: 1.0,
+        publicKey: "public-key",
+      });
       expect(response1.score).toBe(1.0);
     });
   });
@@ -150,7 +155,11 @@ describe("Liveness FHE (tRPC)", () => {
     it("should throw UNAUTHORIZED when not authenticated", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.verifyLivenessThreshold({ ciphertext: "test", threshold: 0.3 }),
+        caller.verifyLivenessThreshold({
+          ciphertext: "test",
+          threshold: 0.3,
+          keyId: "key-id",
+        }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
@@ -164,7 +173,11 @@ describe("Liveness FHE (tRPC)", () => {
     it("should throw BAD_REQUEST when threshold is out of range", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.verifyLivenessThreshold({ ciphertext: "test", threshold: 1.5 }),
+        caller.verifyLivenessThreshold({
+          ciphertext: "test",
+          threshold: 1.5,
+          keyId: "key-id",
+        }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -179,16 +192,18 @@ describe("Liveness FHE (tRPC)", () => {
             statusText: "OK",
             json: () =>
               Promise.resolve({
-                passesThreshold: true,
+                passesCiphertext: "encrypted-result",
                 threshold: 0.3,
-                computationTimeMs: 100,
               }),
           });
         }),
       );
 
       const caller = createCaller(authedSession);
-      await caller.verifyLivenessThreshold({ ciphertext: "encrypted-data" });
+      await caller.verifyLivenessThreshold({
+        ciphertext: "encrypted-data",
+        keyId: "key-id",
+      });
       expect(capturedBody.threshold).toBe(0.3);
     });
 
@@ -200,9 +215,8 @@ describe("Liveness FHE (tRPC)", () => {
           statusText: "OK",
           json: () =>
             Promise.resolve({
-              passesThreshold: true,
+              passesCiphertext: "encrypted-result",
               threshold: 0.5,
-              computationTimeMs: 150,
             }),
         }),
       );
@@ -211,11 +225,11 @@ describe("Liveness FHE (tRPC)", () => {
       const data = await caller.verifyLivenessThreshold({
         ciphertext: "encrypted-data",
         threshold: 0.5,
+        keyId: "key-id",
       });
 
-      expect(data.passesThreshold).toBe(true);
+      expect(data.passesCiphertext).toBe("encrypted-result");
       expect(data.threshold).toBe(0.5);
-      expect(data.computationTimeMs).toBe(150);
     });
 
     it("should return false when threshold not met", async () => {
@@ -226,9 +240,8 @@ describe("Liveness FHE (tRPC)", () => {
           statusText: "OK",
           json: () =>
             Promise.resolve({
-              passesThreshold: false,
+              passesCiphertext: "encrypted-result",
               threshold: 0.9,
-              computationTimeMs: 150,
             }),
         }),
       );
@@ -237,8 +250,9 @@ describe("Liveness FHE (tRPC)", () => {
       const data = await caller.verifyLivenessThreshold({
         ciphertext: "encrypted-data",
         threshold: 0.9,
+        keyId: "key-id",
       });
-      expect(data.passesThreshold).toBe(false);
+      expect(data.passesCiphertext).toBe("encrypted-result");
     });
   });
 });

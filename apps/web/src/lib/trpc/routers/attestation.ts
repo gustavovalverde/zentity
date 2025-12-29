@@ -31,7 +31,7 @@ import {
   createBlockchainAttestation,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
-  getLatestIdentityDocumentByUserId,
+  getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
   resetBlockchainAttestationForRetry,
   updateBlockchainAttestationConfirmed,
@@ -39,6 +39,10 @@ import {
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
 } from "@/lib/db";
+import {
+  countryCodeToNumeric,
+  getComplianceLevel,
+} from "@/lib/identity/compliance";
 
 import { protectedProcedure, router } from "../server";
 
@@ -71,67 +75,7 @@ function checkRateLimit(userId: string, networkId: string): boolean {
   return true;
 }
 
-/**
- * Convert country code (ISO 3166-1 alpha-3) to numeric code
- * for on-chain storage.
- */
-function countryCodeToNumeric(alphaCode: string): number {
-  const countryMap: Record<string, number> = {
-    USA: 840,
-    DOM: 214,
-    MEX: 484,
-    CAN: 124,
-    GBR: 826,
-    DEU: 276,
-    FRA: 250,
-    ESP: 724,
-    ITA: 380,
-    PRT: 620,
-    NLD: 528,
-    BEL: 56,
-    CHE: 756,
-    AUT: 40,
-    POL: 616,
-    SWE: 752,
-    NOR: 578,
-    DNK: 208,
-    FIN: 246,
-    IRL: 372,
-    AUS: 36,
-    NZL: 554,
-    JPN: 392,
-    KOR: 410,
-    CHN: 156,
-    IND: 356,
-    BRA: 76,
-    ARG: 32,
-    CHL: 152,
-    COL: 170,
-    PER: 604,
-    VEN: 862,
-  };
-
-  return countryMap[alphaCode.toUpperCase()] || 0;
-}
-
-/**
- * Map verification/compliance level to numeric value.
- */
-function getComplianceLevel(status: {
-  verified: boolean;
-  level: "none" | "basic" | "full";
-}): number {
-  switch (status.level) {
-    case "full":
-      return 3;
-    case "basic":
-      return 2;
-    case "none":
-      return 1;
-    default:
-      return 0;
-  }
-}
+// countryCodeToNumeric / getComplianceLevel moved to lib/identity/compliance
 
 export const attestationRouter = router({
   /**
@@ -265,7 +209,7 @@ export const attestationRouter = router({
       }
 
       // Get latest identity document for attestation data
-      const identityDocument = getLatestIdentityDocumentByUserId(ctx.userId);
+      const identityDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
       if (!identityDocument) {
         throw new TRPCError({
           code: "NOT_FOUND",

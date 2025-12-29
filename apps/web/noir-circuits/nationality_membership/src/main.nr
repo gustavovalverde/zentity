@@ -4,9 +4,11 @@
 // Public inputs:
 //   - merkle_root: The root of the Merkle tree representing the country group
 //   - nonce: Challenge nonce for replay resistance
+//   - claim_hash: Poseidon2(nationality_code, document_hash) binding to OCR claim
 //
 // Private inputs:
 //   - nationality_code: The ISO numeric country code (e.g., 276 for Germany)
+//   - document_hash: Commitment to the document (kept private)
 //   - path_elements: The sibling hashes along the Merkle path
 //   - path_indices: The direction at each level (0=left, 1=right)
 //
@@ -20,13 +22,18 @@ global TREE_DEPTH: u32 = 8;
 
 fn main(
     nationality_code: Field,                    // Private: actual nationality code
-    merkle_root: pub Field,                     // Public: identifies the country group
+    document_hash: Field,                       // Private: document commitment
     path_elements: [Field; TREE_DEPTH],         // Private: Merkle path siblings
     path_indices: [u1; TREE_DEPTH],             // Private: path directions
-    nonce: pub Field                            // Public: challenge nonce (replay resistance)
+    merkle_root: pub Field,                     // Public: identifies the country group
+    nonce: pub Field,                           // Public: challenge nonce (replay resistance)
+    claim_hash: pub Field                       // Public: claim hash binding to OCR data
 ) -> pub bool {
     // Nonce is included as public input for replay resistance
     let _ = nonce;
+    // Bind proof to signed OCR claim
+    let computed_hash = poseidon2([nationality_code, document_hash]);
+    assert(computed_hash == claim_hash, "Claim hash mismatch");
     // Hash the nationality code to get the leaf
     let leaf = poseidon2([nationality_code]);
 
@@ -81,6 +88,8 @@ fn test_merkle_path_computation() {
     }
 
     // Now verify the circuit works (nonce can be any value)
-    let result = main(nationality_code, expected_root, path_elements, path_indices, 12345);
+    let doc_hash = 999;
+    let claim_hash = poseidon2([nationality_code, doc_hash]);
+    let result = main(nationality_code, doc_hash, path_elements, path_indices, expected_root, 12345, claim_hash);
     assert(result == true);
 }

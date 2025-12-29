@@ -23,13 +23,13 @@ import {
 import { verifyAgeViaFHE } from "@/lib/crypto";
 
 interface FheVerificationDemoProps {
-  dobCiphertext?: string;
-  fheClientKeyId?: string;
+  birthYearOffsetCiphertext?: string;
+  fheKeyId?: string;
 }
 
 export function FheVerificationDemo({
-  dobCiphertext,
-  fheClientKeyId: _fheClientKeyId,
+  birthYearOffsetCiphertext,
+  fheKeyId,
 }: FheVerificationDemoProps) {
   const [computing, setComputing] = useState(false);
   const [result, setResult] = useState<{
@@ -39,7 +39,7 @@ export function FheVerificationDemo({
   const [error, setError] = useState<string | null>(null);
 
   const handleFheVerification = async () => {
-    if (!dobCiphertext) return;
+    if (!birthYearOffsetCiphertext || !fheKeyId) return;
 
     setComputing(true);
     setError(null);
@@ -47,7 +47,12 @@ export function FheVerificationDemo({
 
     try {
       setResult(
-        await verifyAgeViaFHE(dobCiphertext, new Date().getFullYear(), 18),
+        await verifyAgeViaFHE(
+          birthYearOffsetCiphertext,
+          fheKeyId,
+          new Date().getFullYear(),
+          18,
+        ),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Computation failed");
@@ -73,12 +78,12 @@ export function FheVerificationDemo({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!dobCiphertext ? (
+        {!birthYearOffsetCiphertext || !fheKeyId ? (
           <Alert>
             <Lock className="h-4 w-4" />
             <AlertDescription>
-              No encrypted DOB available. Complete identity verification to
-              encrypt your birth year.
+              No encrypted birth year offset or key available. Complete identity
+              verification to encrypt your data.
             </AlertDescription>
           </Alert>
         ) : (
@@ -86,7 +91,7 @@ export function FheVerificationDemo({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">
-                  Encrypted Birth Year
+                  Encrypted Birth Year Offset
                 </span>
                 <Badge variant="secondary">
                   <Lock className="h-3 w-3 mr-1" />
@@ -95,7 +100,7 @@ export function FheVerificationDemo({
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
                 <code className="break-all">
-                  {truncateCiphertext(dobCiphertext)}
+                  {truncateCiphertext(birthYearOffsetCiphertext)}
                 </code>
               </div>
             </div>
@@ -158,9 +163,9 @@ export function FheVerificationDemo({
               <Lock className="h-4 w-4" />
               <AlertDescription className="text-xs">
                 <strong>Fully Homomorphic Encryption:</strong> The server
-                computed (current_year - birth_year {"≥"} 18) on encrypted data
-                without ever decrypting it. The actual birth year remains
-                secret.
+                computed (current_year_offset - birth_year_offset {"≥"} 18) on
+                encrypted data without ever decrypting it. The actual birth year
+                remains secret.
               </AlertDescription>
             </Alert>
           </>

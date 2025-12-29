@@ -12,6 +12,7 @@ function getInternalServiceAuthHeaders(): Record<string, string> {
 interface OcrCommitments {
   documentHash: string;
   nameCommitment: string;
+  issuingCountryCommitment?: string;
   userSalt: string;
 }
 

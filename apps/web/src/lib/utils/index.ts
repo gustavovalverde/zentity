@@ -7,7 +7,7 @@
  */
 
 // Base64 encoding/decoding (client-safe)
-export { bytesToBase64 } from "./base64";
+export { base64ToBytes, bytesToBase64 } from "./base64";
 // HTTP client utilities (client-safe)
 export { fetchJson, HttpError } from "./http";
 

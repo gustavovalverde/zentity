@@ -3,7 +3,7 @@
 //! Provides FHE-based liveness score encryption and threshold verification.
 //! Scores are floats from 0.0 to 1.0, stored as u16 (0-10000) for 4 decimal precision.
 
-use super::{get_key_store, setup_for_verification};
+use super::{decode_compressed_public_key, setup_for_verification};
 use crate::error::FheError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tfhe::prelude::*;
@@ -42,58 +42,51 @@ pub fn threshold_to_u16(threshold: f64) -> Result<u16, FheError> {
     Ok((threshold * SCORE_SCALE).round() as u16)
 }
 
-/// Encrypt a liveness score using the specified client key
+/// Encrypt a liveness score using the provided public key.
 ///
 /// Args:
 ///   score: Float from 0.0 to 1.0
-///   client_key_id: ID of the client key to use
+///   public_key_b64: Base64-encoded compressed public key
 ///
 /// Returns:
 ///   Base64-encoded ciphertext of the score (stored as u16 0-10000)
-pub fn encrypt_liveness_score(score: f64, client_key_id: &str) -> Result<String, FheError> {
+pub fn encrypt_liveness_score(score: f64, public_key_b64: &str) -> Result<String, FheError> {
     let scaled_score = score_to_u16(score)?;
+    let public_key = decode_compressed_public_key(public_key_b64)?;
+    let encrypted = FheUint16::try_encrypt(scaled_score, &public_key)
+        .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
-    let key_store = get_key_store();
-
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
-
-    let encrypted = FheUint16::encrypt(scaled_score, &client_key);
-
-    // Serialize to bytes using bincode 2.x serde API
-    let bytes = bincode::serde::encode_to_vec(&encrypted, bincode::config::standard())?;
+    // Serialize to bytes using bincode
+    let bytes = bincode::serialize(&encrypted)?;
 
     // Encode as base64
     Ok(BASE64.encode(&bytes))
 }
 
-/// Verify if encrypted liveness score meets a threshold
+/// Verify if encrypted liveness score meets a threshold.
+/// Returns an encrypted boolean (base64) that must be decrypted by the client.
 ///
 /// Performs homomorphic comparison: encrypted_score >= threshold
 /// Only reveals whether the threshold was met, not the actual score.
 pub fn verify_liveness_threshold(
     ciphertext_b64: &str,
     threshold: f64,
-    client_key_id: &str,
-) -> Result<bool, FheError> {
+    key_id: &str,
+) -> Result<String, FheError> {
     let threshold_scaled = threshold_to_u16(threshold)?;
-    let client_key = setup_for_verification(client_key_id)?;
+    setup_for_verification(key_id)?;
 
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
 
-    // Deserialize to FheUint16 using bincode 2.x serde API
-    let (encrypted_score, _): (FheUint16, _) =
-        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
+    // Deserialize to FheUint16 using bincode
+    let encrypted_score: FheUint16 = bincode::deserialize(&bytes)?;
 
     // Check if score >= threshold (homomorphic comparison)
     let encrypted_passes = encrypted_score.ge(threshold_scaled);
 
-    // Decrypt only the boolean result
-    let passes: bool = encrypted_passes.decrypt(&client_key);
-
-    Ok(passes)
+    let bytes = bincode::serialize(&encrypted_passes)?;
+    Ok(BASE64.encode(&bytes))
 }
 
 #[cfg(test)]
@@ -214,5 +207,22 @@ mod tests {
         let error = result.unwrap_err();
         assert!(error.to_string().contains("1.5"));
         assert!(error.to_string().contains("0.0 and 1.0"));
+    }
+
+    #[test]
+    fn encrypt_and_verify_liveness_roundtrip() {
+        use super::super::test_helpers::get_test_keys;
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+        use tfhe::FheBool;
+
+        let (client_key, public_key_b64, key_id) = get_test_keys();
+        let ciphertext = encrypt_liveness_score(0.85, &public_key_b64).unwrap();
+        let result_ciphertext = verify_liveness_threshold(&ciphertext, 0.3, &key_id).unwrap();
+
+        let result_bytes = BASE64.decode(result_ciphertext).unwrap();
+        let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+        let passes = encrypted.decrypt(&client_key);
+
+        assert!(passes);
     }
 }

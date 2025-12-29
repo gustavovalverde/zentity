@@ -1,36 +1,28 @@
 # FHE Service
 
-Fully Homomorphic Encryption service for privacy-preserving identity verification using TFHE-rs.
+Fully Homomorphic Encryption service for privacy-preserving compliance checks using TFHE-rs.
 
 ## Overview
 
-This service enables privacy-preserving verification by encrypting sensitive data with Fully Homomorphic Encryption (FHE). Computations can be performed on encrypted data without decryption, ensuring PII never leaves the user's control unencrypted.
+This service encrypts sensitive attributes with **client-owned keys** and performs homomorphic checks without decryption. Only the user can decrypt results because the client key never leaves the browser.
 
 ### What Gets Encrypted
 
 | Data | Format | Purpose |
 |------|--------|---------|
-| Birth Year | Integer (e.g., 1990) | Age threshold verification |
-| Full DOB | Integer YYYYMMDD (e.g., 19900515) | Precise age calculations |
-| Gender | Integer (ISO 5218: 0=unknown, 1=male, 2=female) | Gender-specific verification |
-| Liveness Score | Float scaled to int (e.g., 0.85 → 85) | Anti-spoofing threshold checks |
+| Birth year offset | Integer (years since 1900) | Age threshold checks |
+| Country code | ISO 3166-1 numeric (0-999) | Compliance allowlists |
+| Compliance level | Integer (0-10) | Tiered verification policies |
+| Liveness score | Float (0.0-1.0, scaled to 0-10000) | Anti-spoof threshold checks |
 
-## Technology
+## Key Model (Client-Owned)
 
-- **Language**: Rust
-- **Framework**: Axum
-- **Crypto Library**: TFHE-rs v1.4.2
-- **Port**: 5001
+1. **Browser generates TFHE keys** via `apps/web/src/lib/crypto/tfhe-browser.ts`
+2. **Client key** stays in IndexedDB (never sent to server)
+3. **Public + server keys** are sent to the FHE service
+4. FHE service returns a **`key_id`** for server-side computations
 
-## How It Works
-
-```text
-1. Client encrypts birth_year → ciphertext
-2. Server computes: (current_year - ciphertext) >= min_age
-3. Computation happens ON ENCRYPTED DATA
-4. Only boolean result is decrypted → is_over_18
-5. Birth year NEVER leaves client unencrypted
-```
+**Result:** server can compute on ciphertext but cannot decrypt.
 
 ## Endpoints
 
@@ -38,157 +30,136 @@ This service enables privacy-preserving verification by encrypting sensitive dat
 
 Service health check.
 
-**Response:**
+### `GET /build-info`
 
-```json
-{
-  "status": "healthy",
-  "service": "fhe-service"
-}
-```
+Build metadata for deployment verification.
 
-### `POST /keys/generate`
+### `POST /keys/register`
 
-Generate new FHE key pair for a client.
-
-**Response:**
-
-```json
-{
-  "keyId": "uuid",
-  "publicKey": "base64-encoded-key",
-  "generationTimeMs": 450
-}
-```
-
-### `POST /encrypt`
-
-Encrypt a birth year using FHE.
+Register a client-generated server key.
 
 **Request:**
 
 ```json
-{
-  "birthYear": 1990,
-  "publicKey": "base64-encoded-key"
-}
+{ "serverKey": "base64-encoded-key" }
 ```
 
 **Response:**
 
 ```json
-{
-  "ciphertext": "base64-encoded-ciphertext",
-  "encryptionTimeMs": 1
-}
+{ "keyId": "uuid" }
 ```
 
-### `POST /verify-age`
+### `POST /encrypt-birth-year-offset`
 
-Verify age threshold on encrypted birth year.
+Encrypt birth year offset (years since 1900).
 
 **Request:**
 
 ```json
-{
-  "ciphertext": "base64-encoded-ciphertext",
-  "minAge": 18,
-  "currentYear": 2024
-}
+{ "birthYearOffset": 90, "publicKey": "base64-encoded-key" }
 ```
 
 **Response:**
 
 ```json
-{
-  "isOverAge": true,
-  "computationTimeMs": 80
-}
+{ "ciphertext": "base64-encoded-ciphertext" }
 ```
 
-### `POST /encrypt-dob`
+### `POST /verify-age-offset`
 
-Encrypt full date of birth (YYYYMMDD format).
+Verify age threshold on encrypted birth year offset.
 
 **Request:**
 
 ```json
-{
-  "dateOfBirth": "1990-05-15"
-}
+{ "ciphertext": "...", "currentYear": 2025, "minAge": 18, "keyId": "uuid" }
 ```
 
 **Response:**
 
 ```json
-{
-  "ciphertext": "base64-encoded-ciphertext",
-  "encryptionTimeMs": 2
-}
+{ "resultCiphertext": "base64-encoded-ciphertext" }
 ```
 
-### `POST /encrypt-gender`
+### `POST /encrypt-country-code`
 
-Encrypt gender using ISO 5218 encoding.
+Encrypt ISO 3166-1 numeric country code.
 
 **Request:**
 
 ```json
-{
-  "gender": "M"
-}
+{ "countryCode": 840, "publicKey": "base64-encoded-key" }
 ```
 
 **Response:**
 
 ```json
-{
-  "ciphertext": "base64-encoded-ciphertext",
-  "genderCode": 1,
-  "encryptionTimeMs": 1
-}
+{ "ciphertext": "...", "countryCode": 840 }
 ```
 
-Gender codes: `M`/`male` → 1, `F`/`female` → 2, other → 0
+### `POST /encrypt-compliance-level`
+
+Encrypt a compliance tier (0-10).
+
+**Request:**
+
+```json
+{ "complianceLevel": 3, "publicKey": "base64-encoded-key" }
+```
+
+**Response:**
+
+```json
+{ "ciphertext": "...", "complianceLevel": 3 }
+```
 
 ### `POST /encrypt-liveness`
 
-Encrypt anti-spoofing liveness score.
+Encrypt a liveness score (0.0-1.0).
 
 **Request:**
 
 ```json
-{
-  "score": 0.85
-}
+{ "score": 0.85, "publicKey": "base64-encoded-key" }
 ```
 
 **Response:**
 
 ```json
-{
-  "ciphertext": "base64-encoded-ciphertext",
-  "scaledScore": 85,
-  "encryptionTimeMs": 1
-}
+{ "ciphertext": "...", "score": 0.85 }
 ```
 
-Score is scaled to integer (0-100) for FHE operations.
+### `POST /verify-liveness-threshold`
 
-## Performance (Apple Silicon)
+Verify a liveness threshold on encrypted score.
 
-| Operation | Time |
-|-----------|------|
-| Key generation | ~450ms |
-| Encryption | <1ms |
-| Homomorphic ops | ~80ms |
-| Decryption | <1ms |
+**Request:**
+
+```json
+{ "ciphertext": "...", "threshold": 0.35, "keyId": "uuid" }
+```
+
+**Response:**
+
+```json
+{ "passesCiphertext": "base64-encoded-ciphertext", "threshold": 0.35 }
+```
+
+## Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `INTERNAL_SERVICE_TOKEN` | Require auth for non-public endpoints | (optional) |
+| `INTERNAL_SERVICE_TOKEN_REQUIRED` | Force auth even if token missing | `false` |
+| `FHE_BODY_LIMIT_MB` | Max request body size (MB) | `64` |
+| `FHE_KEYS_DIR` | Persist server keys to disk | (optional) |
 
 ## Development
 
 ### Prerequisites
 
-- Rust 1.70+
+- Rust 1.91+
 - Cargo
 
 ### Build
@@ -200,26 +171,7 @@ cargo build --release
 ### Run
 
 ```bash
-cargo run --release
+cargo run
 ```
 
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | 5001 | Service port |
-| `RUST_LOG` | info | Log level |
-
-## Docker
-
-```bash
-docker build -t zentity-fhe-service .
-docker run -p 5001:5001 zentity-fhe-service
-```
-
-## Privacy Guarantees
-
-- Birth year is encrypted on the client side
-- Server never sees the plaintext birth year
-- Only boolean result (is_over_18) is returned
-- Ciphertext is stored, not the actual DOB
+The service listens on `http://localhost:5001` by default.

@@ -7,6 +7,7 @@
 
 "use client";
 
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 
 /**
@@ -36,7 +37,7 @@ export interface FaceMatchResult {
 export async function matchFaces(
   idImage: string,
   selfieImage: string,
-  minConfidence: number = 0.35,
+  minConfidence: number = FACE_MATCH_MIN_CONFIDENCE,
 ): Promise<FaceMatchResult> {
   try {
     const result = await trpc.liveness.faceMatch.mutate({

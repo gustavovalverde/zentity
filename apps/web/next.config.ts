@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 
+import bundleAnalyzer from "@next/bundle-analyzer";
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+});
+
 const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployments
   output: "standalone",
@@ -85,10 +91,17 @@ const nextConfig: NextConfig = {
         key: "Strict-Transport-Security",
         value: "max-age=31536000; includeSubDomains",
       });
+    } else {
+      baseHeaders.push({
+        key: "Content-Security-Policy",
+        value:
+          "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'; " +
+          "worker-src 'self' blob:;",
+      });
     }
 
     return [{ source: "/(.*)", headers: baseHeaders }];
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

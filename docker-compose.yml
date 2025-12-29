@@ -74,6 +74,7 @@ services:
       - RUST_LOG=info
       - PORT=5001
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - FHE_BODY_LIMIT_MB=${FHE_BODY_LIMIT_MB:-64}
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
     volumes:
       - fhe-keys:/var/lib/zentity/fhe

@@ -14,6 +14,11 @@ import type {
 } from "@/lib/crypto/age-proof-types";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
+import {
+  decryptFheBool,
+  getOrCreateFheKeyMaterial,
+  persistFheKeyId,
+} from "@/lib/crypto/tfhe-browser";
 import { trpc } from "@/lib/trpc/client";
 import { bytesToBase64 } from "@/lib/utils";
 import {
@@ -33,12 +38,6 @@ interface ProofResult {
 }
 
 // Types for FHE operations
-interface EncryptDOBResult {
-  ciphertext: string;
-  clientKeyId: string;
-  encryptionTimeMs: number;
-}
-
 interface VerifyAgeFHEResult {
   isOver18: boolean;
   computationTimeMs: number;
@@ -69,6 +68,10 @@ export async function generateAgeProof(
   options: {
     /** Server-issued nonce to bind the proof to a challenge. */
     nonce: string;
+    /** Poseidon field element for document hash commitment. */
+    documentHashField: string;
+    /** Poseidon claim hash from signed OCR claim. */
+    claimHash: string;
   },
 ): Promise<ProofResult> {
   const nonce = options.nonce;
@@ -78,6 +81,8 @@ export async function generateAgeProof(
     currentYear,
     minAge,
     nonce,
+    documentHashField: options.documentHashField,
+    claimHash: options.claimHash,
   });
 
   return {
@@ -100,11 +105,15 @@ async function _generateNationalityProof(
   nationalityCode: string,
   groupName: string,
   nonce: string,
+  documentHashField: string,
+  claimHash: string,
 ): Promise<ProofResult> {
   const result = await generateNationalityProofNoir({
     nationalityCode,
     groupName,
     nonce,
+    documentHashField,
+    claimHash,
   });
 
   return {
@@ -112,6 +121,20 @@ async function _generateNationalityProof(
     publicSignals: result.publicInputs,
     generationTimeMs: result.generationTimeMs,
   };
+}
+
+export async function generateNationalityProof(
+  nationalityCode: string,
+  groupName: string,
+  options: { nonce: string; documentHashField: string; claimHash: string },
+): Promise<ProofResult> {
+  return _generateNationalityProof(
+    nationalityCode,
+    groupName,
+    options.nonce,
+    options.documentHashField,
+    options.claimHash,
+  );
 }
 
 /**
@@ -134,7 +157,7 @@ function getTodayAsIntClient(): number {
 export async function generateDocValidityProof(
   expiryDate: number,
   currentDate: number = getTodayAsIntClient(),
-  options: { nonce: string },
+  options: { nonce: string; documentHashField: string; claimHash: string },
 ): Promise<ProofResult> {
   const nonce = options.nonce;
 
@@ -142,6 +165,8 @@ export async function generateDocValidityProof(
     expiryDate,
     currentDate,
     nonce,
+    documentHashField: options.documentHashField,
+    claimHash: options.claimHash,
   });
 
   return {
@@ -163,7 +188,7 @@ export async function generateDocValidityProof(
 export async function generateFaceMatchProof(
   similarityScore: number,
   threshold: number,
-  options: { nonce: string },
+  options: { nonce: string; documentHashField: string; claimHash: string },
 ): Promise<ProofResult> {
   const nonce = options.nonce;
 
@@ -171,6 +196,8 @@ export async function generateFaceMatchProof(
     similarityScore,
     threshold,
     nonce,
+    documentHashField: options.documentHashField,
+    claimHash: options.claimHash,
   });
 
   return {
@@ -185,6 +212,14 @@ export async function generateFaceMatchProof(
  */
 async function _checkCryptoHealth(): Promise<ServiceHealth> {
   return trpc.crypto.health.query();
+}
+
+export async function getSignedClaims(
+  documentId?: string | null,
+): Promise<CryptoOutputs["getSignedClaims"]> {
+  return documentId
+    ? trpc.crypto.getSignedClaims.query({ documentId })
+    : trpc.crypto.getSignedClaims.query();
 }
 
 /**
@@ -217,8 +252,7 @@ export async function getProofChallenge(
  * @param proof - Base64 encoded UltraHonk ZK proof
  * @param publicSignals - The public signals from the proof
  * @param generationTimeMs - Time to generate the ZK proof
- * @param fheData - Optional FHE encryption data
- *
+ * @param documentId - Optional document ID to bind proof storage to a specific document
  * NOTE: isOver18 is intentionally NOT a parameter.
  * The server extracts this from publicSignals[3] after cryptographic verification.
  * (Index: [0]=current_year, [1]=min_age, [2]=nonce, [3]=is_old_enough)
@@ -227,31 +261,29 @@ export async function getProofChallenge(
  * IMPORTANT: Persisted proofs must include a server-issued nonce from getProofChallenge().
  * Client-generated nonces are rejected by the storage endpoint.
  */
-export async function storeAgeProof(
+export async function storeProof(
+  circuitType:
+    | "age_verification"
+    | "doc_validity"
+    | "nationality_membership"
+    | "face_match",
   proof: string,
   publicSignals: string[],
   generationTimeMs: number,
-  fheData?: {
-    dobCiphertext: string;
-    fheClientKeyId: string;
-    fheEncryptionTimeMs: number;
-  },
+  documentId?: string | null,
 ): Promise<{
   success: boolean;
   proofId: string;
-  isOver18: boolean;
+  proofHash: string;
   verificationTimeMs: number;
 }> {
   try {
-    return await trpc.crypto.storeAgeProof.mutate({
+    return await trpc.crypto.storeProof.mutate({
+      circuitType,
       proof,
       publicSignals,
       generationTimeMs,
-      ...(fheData && {
-        dobCiphertext: fheData.dobCiphertext,
-        fheClientKeyId: fheData.fheClientKeyId,
-        fheEncryptionTimeMs: fheData.fheEncryptionTimeMs,
-      }),
+      ...(documentId ? { documentId } : {}),
     });
   } catch (error) {
     throw new Error(
@@ -284,39 +316,50 @@ export async function getUserProof(
 // FHE (Fully Homomorphic Encryption) Functions
 // ============================================================================
 
-/**
- * Encrypt date of birth using FHE
- * The ciphertext can be stored and used for homomorphic age computations
- * @param birthYear - The user's birth year to encrypt
- */
-export async function encryptDOB(birthYear: number): Promise<EncryptDOBResult> {
-  try {
-    return await trpc.crypto.encryptDob.mutate({ birthYear });
-  } catch (error) {
-    throw new Error(
-      error instanceof Error ? error.message : "Failed to encrypt DOB",
-    );
+export async function ensureFheKeyRegistration(): Promise<{
+  keyId: string;
+  publicKey: string;
+}> {
+  const keyMaterial = await getOrCreateFheKeyMaterial();
+  if (keyMaterial.keyId) {
+    return { keyId: keyMaterial.keyId, publicKey: keyMaterial.publicKeyB64 };
   }
+
+  const response = await trpc.crypto.registerFheKey.mutate({
+    serverKey: keyMaterial.serverKeyB64,
+  });
+  await persistFheKeyId(response.keyId);
+
+  return { keyId: response.keyId, publicKey: keyMaterial.publicKeyB64 };
 }
 
 /**
- * Verify age using FHE (homomorphic computation on encrypted DOB)
+ * Verify age using FHE (homomorphic computation on encrypted birth year offset)
  * This performs a live computation on the encrypted data without decrypting it
- * @param ciphertext - The encrypted DOB ciphertext
+ * @param ciphertext - The encrypted birth year offset ciphertext
+ * @param keyId - Server key identifier registered for this ciphertext
  * @param currentYear - The current year (defaults to current year)
  * @param minAge - Minimum age to check (defaults to 18)
  */
 export async function verifyAgeViaFHE(
   ciphertext: string,
+  keyId: string,
   currentYear: number = new Date().getFullYear(),
   minAge: number = 18,
 ): Promise<VerifyAgeFHEResult> {
   try {
-    return await trpc.crypto.verifyAgeFhe.mutate({
+    const start = Date.now();
+    const result = await trpc.crypto.verifyAgeFhe.mutate({
       ciphertext,
       currentYear,
       minAge,
+      keyId,
     });
+    const isOver18 = await decryptFheBool(result.resultCiphertext);
+    return {
+      isOver18,
+      computationTimeMs: Date.now() - start,
+    };
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to verify age via FHE",

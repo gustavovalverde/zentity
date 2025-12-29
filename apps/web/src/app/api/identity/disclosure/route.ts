@@ -19,24 +19,21 @@
  * 3. Minimizing Zentity's liability (no PII storage)
  */
 
-import { UltraHonkBackend } from "@aztec/bb.js";
-import { Noir } from "@noir-lang/noir_js";
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import {
-  getLatestIdentityDocumentByUserId,
-  getLatestSignedClaimByUserAndType,
-  getUserAgeProofPayload,
+  decryptUserSalt,
+  getAttestationEvidenceByUserAndDocument,
+  getLatestSignedClaimByUserTypeAndDocument,
+  getLatestZkProofPayloadByUserAndType,
+  getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
 } from "@/lib/db";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
-import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
-import { bytesToBase64 } from "@/lib/utils";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
-import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
 
 interface DisclosureRequest {
   // RP identification
@@ -47,9 +44,6 @@ interface DisclosureRequest {
   // Document for fresh PII extraction
   documentImage: string;
 
-  // Selfie for face match proof generation
-  selfieImage: string;
-
   // Fields to include in disclosure
   fields: {
     fullName?: boolean;
@@ -58,9 +52,6 @@ interface DisclosureRequest {
     documentType?: boolean;
     documentNumber?: boolean;
   };
-
-  // Optional: threshold for face match proof
-  faceMatchThreshold?: number;
 }
 
 interface DisclosureResponse {
@@ -77,15 +68,30 @@ interface DisclosureResponse {
   // Verification proofs (public, not encrypted)
   proofs: {
     faceMatch?: {
-      proof: unknown;
+      proof: string;
       publicSignals: string[];
       isMatch: boolean;
       threshold: number;
+      thresholdScaled: number;
     };
     ageProof?: {
-      proof: unknown;
+      proof: string;
       publicSignals: string[];
       isOver18: boolean;
+      minAge: number;
+      currentYear: number;
+    };
+    docValidityProof?: {
+      proof: string;
+      publicSignals: string[];
+      isValid: boolean;
+      currentDate: number;
+    };
+    nationalityProof?: {
+      proof: string;
+      publicSignals: string[];
+      isMember: boolean;
+      groupRoot: string;
     };
     livenessAttestation?: {
       verified: boolean;
@@ -93,6 +99,22 @@ interface DisclosureResponse {
       method: string;
     };
   };
+
+  // Signed claims for auditability (JWT signature + canonical payload)
+  signedClaims?: {
+    ocr?: { payload: string; signature: string; issuedAt: string };
+    liveness?: { payload: string; signature: string; issuedAt: string };
+    faceMatch?: { payload: string; signature: string; issuedAt: string };
+  };
+
+  evidence?: {
+    policyVersion: string | null;
+    policyHash: string | null;
+    proofSetHash: string | null;
+  } | null;
+
+  // Document binding metadata
+  documentHash?: string | null;
 
   // Package metadata
   createdAt: string;
@@ -227,7 +249,7 @@ export async function POST(
       );
     }
 
-    if (!body.documentImage || !body.selfieImage) {
+    if (!body.documentImage) {
       return NextResponse.json(
         {
           success: false,
@@ -237,14 +259,48 @@ export async function POST(
           proofs: {},
           createdAt,
           expiresAt,
-          error: "Document and selfie images are required for disclosure",
+          error: "Document image is required for disclosure",
         },
         { status: 400 },
       );
     }
 
-    // Get existing identity document for user salt
-    const identityDocument = getLatestIdentityDocumentByUserId(userId);
+    // Get existing identity document for user salt + document binding
+    const identityDocument = getSelectedIdentityDocumentByUserId(userId);
+    if (!identityDocument?.userSalt) {
+      return NextResponse.json(
+        {
+          success: false,
+          packageId,
+          encryptionMethod: "none",
+          encryptedFields: [],
+          proofs: {},
+          createdAt,
+          expiresAt,
+          error:
+            "Identity document is missing required cryptographic metadata. Please re-run verification.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const decryptedSalt = await decryptUserSalt(identityDocument.userSalt);
+    if (!decryptedSalt) {
+      return NextResponse.json(
+        {
+          success: false,
+          packageId,
+          encryptionMethod: "none",
+          encryptedFields: [],
+          proofs: {},
+          createdAt,
+          expiresAt,
+          error:
+            "Unable to decrypt identity commitments. Please re-run verification.",
+        },
+        { status: 409 },
+      );
+    }
 
     // =========================================================================
     // STEP 1: Extract PII from document
@@ -259,6 +315,9 @@ export async function POST(
         nationality?: string;
         nationalityCode?: string;
       };
+      commitments?: {
+        documentHash?: string | null;
+      };
       documentType?: string;
       documentOrigin?: string;
     } | null = null;
@@ -266,7 +325,7 @@ export async function POST(
     try {
       documentResult = await processDocumentOcr({
         image: body.documentImage,
-        userSalt: identityDocument?.userSalt ?? undefined,
+        userSalt: decryptedSalt,
       });
     } catch (error) {
       const { status } = toServiceErrorPayload(
@@ -288,117 +347,140 @@ export async function POST(
       );
     }
 
-    // =========================================================================
-    // STEP 2: Generate Face Match ZK Proof using Human.js + ZK Service
-    // =========================================================================
-    let faceMatchProof: {
-      proof: unknown;
-      publicSignals: string[];
-      isMatch: boolean;
-      threshold: number;
-    } | null = null;
+    const documentHash = documentResult?.commitments?.documentHash ?? null;
+    if (!documentHash || !identityDocument.documentHash) {
+      return NextResponse.json(
+        {
+          success: false,
+          packageId,
+          encryptionMethod: "none",
+          encryptedFields: [],
+          proofs: {},
+          createdAt,
+          expiresAt,
+          error:
+            "Unable to validate document commitments. Please re-run verification.",
+        },
+        { status: 409 },
+      );
+    }
 
-    try {
-      const human = await getHumanServer();
-      const proofThreshold = body.faceMatchThreshold || 0.6;
-
-      // Detect faces in both images using Human.js
-      const [selfieResult, docResult] = await Promise.all([
-        detectFromBase64(body.selfieImage),
-        detectFromBase64(body.documentImage),
-      ]);
-
-      // Helper to get largest face
-      const selectLargestFace = (
-        res: ReturnType<typeof detectFromBase64> extends Promise<infer T>
-          ? T
-          : never,
-      ) => {
-        const faces = Array.isArray(res?.face) ? res.face : [];
-        if (faces.length === 0) return null;
-        return faces.reduce((best: (typeof faces)[0], f: (typeof faces)[0]) => {
-          const getArea = (face: (typeof faces)[0]) => {
-            const box = face?.box;
-            if (!box) return 0;
-            if (Array.isArray(box)) return (box[2] ?? 0) * (box[3] ?? 0);
-            return (
-              ((box as { width?: number }).width ?? 0) *
-              ((box as { height?: number }).height ?? 0)
-            );
-          };
-          return getArea(f) > getArea(best) ? f : best;
-        }, faces[0]);
-      };
-
-      // Helper to get embedding
-      const getEmbedding = (
-        face: ReturnType<typeof selectLargestFace>,
-      ): number[] | null => {
-        if (!face) return null;
-        const emb =
-          (face as { embedding?: number[] | Float32Array }).embedding ??
-          (face as { descriptor?: number[] | Float32Array }).descriptor;
-        if (!emb) return null;
-        if (Array.isArray(emb)) return emb.map((n) => Number(n));
-        if (emb instanceof Float32Array) return Array.from(emb);
-        return null;
-      };
-
-      const selfieFace = selectLargestFace(await selfieResult);
-      const docFace = selectLargestFace(await docResult);
-
-      if (selfieFace && docFace) {
-        const selfieEmb = getEmbedding(selfieFace);
-        const docEmb = getEmbedding(docFace);
-
-        if (selfieEmb && docEmb) {
-          // Calculate similarity using Human.js
-          const similarityScore = human.match.similarity(docEmb, selfieEmb);
-
-          // Scale to circuit format (0-10000 for 0.00%-100.00%)
-          const scaledScore = Math.round(similarityScore * 10000);
-          const scaledThreshold = Math.round(proofThreshold * 10000);
-
-          // Generate ZK proof using face_match circuit
-          const noir = new Noir(faceMatchCircuit as never);
-          const backend = new UltraHonkBackend(
-            (faceMatchCircuit as { bytecode: string }).bytecode,
-          );
-
-          // Generate a disclosure-specific nonce (not validated, just for uniqueness)
-          const disclosureNonce = `0x${crypto.randomUUID().replace(/-/g, "")}`;
-
-          const { witness } = await noir.execute({
-            similarity_score: scaledScore.toString(),
-            threshold: scaledThreshold.toString(),
-            nonce: disclosureNonce,
-          });
-
-          const proofResult = await backend.generateProof(witness);
-          const isMatch =
-            parsePublicInputToNumber(
-              proofResult.publicInputs[CIRCUIT_SPECS.face_match.resultIndex],
-            ) === 1;
-
-          faceMatchProof = {
-            proof: bytesToBase64(proofResult.proof),
-            publicSignals: proofResult.publicInputs,
-            isMatch,
-            threshold: proofThreshold,
-          };
-        }
-      }
-    } catch (_error) {
-      // Non-fatal: continue without face match proof
+    if (documentHash !== identityDocument.documentHash) {
+      return NextResponse.json(
+        {
+          success: false,
+          packageId,
+          encryptionMethod: "none",
+          encryptedFields: [],
+          proofs: {},
+          createdAt,
+          expiresAt,
+          error:
+            "Provided document does not match the verified identity record.",
+        },
+        { status: 403 },
+      );
     }
 
     // =========================================================================
-    // STEP 3: Get existing age proof (if available)
+    // STEP 2: Load verified proofs bound to the stored document
     // =========================================================================
-    const ageProof = getUserAgeProofPayload(userId);
+    const documentId = identityDocument.id;
+    const proofs: DisclosureResponse["proofs"] = {};
+
+    const ageProofPayload = getLatestZkProofPayloadByUserAndType(
+      userId,
+      "age_verification",
+      documentId,
+    );
+    if (ageProofPayload) {
+      const currentYear = parsePublicInputToNumber(
+        ageProofPayload.publicSignals[0],
+      );
+      const minAge = parsePublicInputToNumber(ageProofPayload.publicSignals[1]);
+      const isOver18 =
+        parsePublicInputToNumber(
+          ageProofPayload.publicSignals[
+            CIRCUIT_SPECS.age_verification.resultIndex
+          ],
+        ) === 1;
+      proofs.ageProof = {
+        proof: ageProofPayload.proof,
+        publicSignals: ageProofPayload.publicSignals,
+        isOver18,
+        minAge,
+        currentYear,
+      };
+    }
+
+    const docValidityPayload = getLatestZkProofPayloadByUserAndType(
+      userId,
+      "doc_validity",
+      documentId,
+    );
+    if (docValidityPayload) {
+      const currentDate = parsePublicInputToNumber(
+        docValidityPayload.publicSignals[0],
+      );
+      const isValid =
+        parsePublicInputToNumber(
+          docValidityPayload.publicSignals[
+            CIRCUIT_SPECS.doc_validity.resultIndex
+          ],
+        ) === 1;
+      proofs.docValidityProof = {
+        proof: docValidityPayload.proof,
+        publicSignals: docValidityPayload.publicSignals,
+        isValid,
+        currentDate,
+      };
+    }
+
+    const nationalityPayload = getLatestZkProofPayloadByUserAndType(
+      userId,
+      "nationality_membership",
+      documentId,
+    );
+    if (nationalityPayload) {
+      const groupRoot = nationalityPayload.publicSignals[0];
+      const isMember =
+        parsePublicInputToNumber(
+          nationalityPayload.publicSignals[
+            CIRCUIT_SPECS.nationality_membership.resultIndex
+          ],
+        ) === 1;
+      proofs.nationalityProof = {
+        proof: nationalityPayload.proof,
+        publicSignals: nationalityPayload.publicSignals,
+        isMember,
+        groupRoot,
+      };
+    }
+
+    const faceMatchPayload = getLatestZkProofPayloadByUserAndType(
+      userId,
+      "face_match",
+      documentId,
+    );
+    if (faceMatchPayload) {
+      const thresholdScaled = parsePublicInputToNumber(
+        faceMatchPayload.publicSignals[0],
+      );
+      const isMatch =
+        parsePublicInputToNumber(
+          faceMatchPayload.publicSignals[CIRCUIT_SPECS.face_match.resultIndex],
+        ) === 1;
+      proofs.faceMatch = {
+        proof: faceMatchPayload.proof,
+        publicSignals: faceMatchPayload.publicSignals,
+        isMatch,
+        thresholdScaled,
+        threshold: thresholdScaled / 10000,
+      };
+    }
 
     // =========================================================================
-    // STEP 4: Build and encrypt PII package
+    // STEP 3: Build and encrypt PII package
     // =========================================================================
     const piiPackage: Record<string, string | undefined> = {};
     const encryptedFields: string[] = [];
@@ -469,24 +551,22 @@ export async function POST(
     }
 
     // =========================================================================
-    // STEP 5: Build response with proofs
+    // STEP 4: Build response with proofs + signed claims
     // =========================================================================
-    const proofs: DisclosureResponse["proofs"] = {};
+    const signedClaims: DisclosureResponse["signedClaims"] = {};
 
-    if (faceMatchProof) {
-      proofs.faceMatch = faceMatchProof;
-    }
-
-    if (ageProof) {
-      proofs.ageProof = ageProof;
-    }
-
-    // Liveness attestation (signed statement)
-    const livenessClaim = getLatestSignedClaimByUserAndType(
+    const livenessClaim = getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "liveness_score",
+      documentId,
     );
-    if (livenessClaim) {
+    if (livenessClaim?.signature && livenessClaim.claimPayload) {
+      signedClaims.liveness = {
+        payload: livenessClaim.claimPayload,
+        signature: livenessClaim.signature,
+        issuedAt: livenessClaim.issuedAt || createdAt,
+      };
+
       let passed = true;
       try {
         const payload = JSON.parse(livenessClaim.claimPayload) as {
@@ -506,9 +586,44 @@ export async function POST(
       }
     }
 
+    const faceMatchClaim = getLatestSignedClaimByUserTypeAndDocument(
+      userId,
+      "face_match_score",
+      documentId,
+    );
+    if (faceMatchClaim?.signature && faceMatchClaim.claimPayload) {
+      signedClaims.faceMatch = {
+        payload: faceMatchClaim.claimPayload,
+        signature: faceMatchClaim.signature,
+        issuedAt: faceMatchClaim.issuedAt || createdAt,
+      };
+    }
+
+    const ocrClaim = getLatestSignedClaimByUserTypeAndDocument(
+      userId,
+      "ocr_result",
+      documentId,
+    );
+    if (ocrClaim?.signature && ocrClaim.claimPayload) {
+      signedClaims.ocr = {
+        payload: ocrClaim.claimPayload,
+        signature: ocrClaim.signature,
+        issuedAt: ocrClaim.issuedAt || createdAt,
+      };
+    }
+
     // PII has been extracted, encrypted, and is being returned
     // Document image is NOT stored - only transmitted to OCR service transiently
     // Encrypted package can only be decrypted by RP
+
+    const signedClaimsPayload =
+      signedClaims && Object.keys(signedClaims).length > 0
+        ? signedClaims
+        : undefined;
+    const evidence =
+      documentId && verificationStatus.verified
+        ? getAttestationEvidenceByUserAndDocument(userId, documentId)
+        : null;
 
     return NextResponse.json({
       success: true,
@@ -517,6 +632,15 @@ export async function POST(
       encryptionMethod: "RSA-OAEP+AES-GCM-256",
       encryptedFields,
       proofs,
+      signedClaims: signedClaimsPayload,
+      evidence: evidence
+        ? {
+            policyVersion: evidence.policyVersion,
+            policyHash: evidence.policyHash,
+            proofSetHash: evidence.proofSetHash,
+          }
+        : null,
+      documentHash,
       createdAt,
       expiresAt,
     });

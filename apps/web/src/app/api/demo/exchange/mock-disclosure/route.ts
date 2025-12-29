@@ -29,25 +29,25 @@ const MOCK_PII = {
 // Mock ZK proofs (shape only; these are not valid cryptographic proofs)
 const MOCK_AGE_PROOF = {
   proof: "bW9jay1hZ2UtcHJvb2Y=",
-  // Public inputs: [current_year, min_age, nonce, is_old_enough]
-  publicSignals: [String(new Date().getFullYear()), "18", "0x01", "1"],
+  // Public inputs: [current_year, min_age, nonce, claim_hash, is_old_enough]
+  publicSignals: [String(new Date().getFullYear()), "18", "0x01", "0x02", "1"],
 };
 
 const MOCK_FACE_MATCH_PROOF = {
   proof: "bW9jay1mYWNlLW1hdGNoLXByb29m",
-  // Public inputs: [threshold, nonce, is_match]
-  publicSignals: ["6000", "0x01", "1"],
+  // Public inputs: [threshold, nonce, claim_hash, is_match]
+  publicSignals: ["6000", "0x01", "0x02", "1"],
 };
 
 const MOCK_DOC_VALIDITY_PROOF = {
   proof: "bW9jay1kb2MtdmFsaWRpdHktcHJvb2Y=",
-  // Public inputs: [current_date, nonce, is_valid]
+  // Public inputs: [current_date, nonce, claim_hash, is_valid]
   publicSignals: (() => {
     const now = new Date();
     const currentDate = Number(
       `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`,
     );
-    return [String(currentDate), "0x01", "1"];
+    return [String(currentDate), "0x01", "0x02", "1"];
   })(),
 };
 
@@ -150,6 +150,11 @@ export async function POST(request: NextRequest) {
         faceMatchProof: providedProofs.faceMatchProof ?? MOCK_FACE_MATCH_PROOF,
         docValidityProof:
           providedProofs.docValidityProof ?? MOCK_DOC_VALIDITY_PROOF,
+      },
+      evidence: {
+        policyVersion: "compliance-policy-2025-12-28",
+        policyHash: "mock-policy-hash",
+        proofSetHash: "mock-proof-set-hash",
       },
       livenessAttestation,
       metadata: {

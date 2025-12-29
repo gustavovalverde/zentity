@@ -41,66 +41,64 @@ pub async fn build_info() -> Json<BuildInfoResponse> {
     })
 }
 
-// Key generation
-#[derive(Serialize)]
+// Key registration
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GenerateKeysResponse {
-    client_key_id: String,
+pub struct RegisterKeyRequest {
+    /// Base64-encoded compressed server key (bincode serialized)
+    server_key: String,
 }
 
-pub async fn generate_keys() -> Json<GenerateKeysResponse> {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterKeyResponse {
+    key_id: String,
+}
+
+pub async fn register_key(
+    Json(payload): Json<RegisterKeyRequest>,
+) -> Result<Json<RegisterKeyResponse>, FheError> {
+    let server_key = crypto::decode_server_key(&payload.server_key)?;
     let key_store = crypto::get_key_store();
-    let key_id = key_store.generate_client_key();
+    let key_id = key_store.register_server_key(server_key);
 
-    Json(GenerateKeysResponse {
-        client_key_id: key_id,
-    })
+    Ok(Json(RegisterKeyResponse { key_id }))
 }
 
-// Encrypt request/response
+// Birth year offset encryption
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptRequest {
-    birth_year: u16,
-    /// Client key ID for encryption. Defaults to "default" if not provided.
-    /// WARNING: Clients sharing the same key ID share encryption keys.
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
-}
-
-/// Returns the default client key ID used when none is specified.
-fn default_key_id() -> String {
-    "default".to_string()
+pub struct EncryptBirthYearOffsetRequest {
+    /// Years since 1900 (0-255)
+    birth_year_offset: u16,
+    /// Base64-encoded compressed public key (bincode serialized).
+    public_key: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptResponse {
+pub struct EncryptBirthYearOffsetResponse {
     ciphertext: String,
-    client_key_id: String,
 }
 
-pub async fn encrypt(
-    Json(payload): Json<EncryptRequest>,
-) -> Result<Json<EncryptResponse>, FheError> {
-    let ciphertext = crypto::encrypt_birth_year(payload.birth_year, &payload.client_key_id)?;
+pub async fn encrypt_birth_year_offset(
+    Json(payload): Json<EncryptBirthYearOffsetRequest>,
+) -> Result<Json<EncryptBirthYearOffsetResponse>, FheError> {
+    let ciphertext =
+        crypto::encrypt_birth_year_offset(payload.birth_year_offset, &payload.public_key)?;
 
-    Ok(Json(EncryptResponse {
-        ciphertext,
-        client_key_id: payload.client_key_id,
-    }))
+    Ok(Json(EncryptBirthYearOffsetResponse { ciphertext }))
 }
 
-// Verify age request/response
+// Verify age request/response (birth year offset)
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAgeRequest {
+pub struct VerifyAgeOffsetRequest {
     ciphertext: String,
     current_year: u16,
     #[serde(default = "default_min_age")]
     min_age: u16,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
+    key_id: String,
 }
 
 fn default_min_age() -> u16 {
@@ -109,159 +107,81 @@ fn default_min_age() -> u16 {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAgeResponse {
-    is_over_18: bool,
+pub struct VerifyAgeOffsetResponse {
+    result_ciphertext: String,
 }
 
-pub async fn verify_age(
-    Json(payload): Json<VerifyAgeRequest>,
-) -> Result<Json<VerifyAgeResponse>, FheError> {
-    let is_over_18 = crypto::verify_age(
+pub async fn verify_age_offset(
+    Json(payload): Json<VerifyAgeOffsetRequest>,
+) -> Result<Json<VerifyAgeOffsetResponse>, FheError> {
+    let result_ciphertext = crypto::verify_age_offset(
         &payload.ciphertext,
         payload.current_year,
         payload.min_age,
-        &payload.client_key_id,
+        &payload.key_id,
     )?;
 
-    Ok(Json(VerifyAgeResponse { is_over_18 }))
+    Ok(Json(VerifyAgeOffsetResponse { result_ciphertext }))
 }
 
 // ============================================================================
-// Gender Encryption (ISO/IEC 5218)
+// Country Code Encryption
 // ============================================================================
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptGenderRequest {
-    /// Gender code per ISO/IEC 5218: 0=NotKnown, 1=Male, 2=Female, 9=NotApplicable
-    gender_code: u8,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
+pub struct EncryptCountryCodeRequest {
+    /// ISO 3166-1 numeric code (0-999)
+    country_code: u16,
+    public_key: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptGenderResponse {
+pub struct EncryptCountryCodeResponse {
     ciphertext: String,
-    client_key_id: String,
-    gender_code: u8,
+    country_code: u16,
 }
 
-pub async fn encrypt_gender(
-    Json(payload): Json<EncryptGenderRequest>,
-) -> Result<Json<EncryptGenderResponse>, FheError> {
-    let ciphertext = crypto::encrypt_gender(payload.gender_code, &payload.client_key_id)?;
+pub async fn encrypt_country_code(
+    Json(payload): Json<EncryptCountryCodeRequest>,
+) -> Result<Json<EncryptCountryCodeResponse>, FheError> {
+    let ciphertext = crypto::encrypt_country_code(payload.country_code, &payload.public_key)?;
 
-    Ok(Json(EncryptGenderResponse {
+    Ok(Json(EncryptCountryCodeResponse {
         ciphertext,
-        client_key_id: payload.client_key_id,
-        gender_code: payload.gender_code,
+        country_code: payload.country_code,
     }))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyGenderRequest {
-    ciphertext: String,
-    /// Claimed gender code to verify against
-    claimed_gender: u8,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyGenderResponse {
-    matches: bool,
-}
-
-pub async fn verify_gender(
-    Json(payload): Json<VerifyGenderRequest>,
-) -> Result<Json<VerifyGenderResponse>, FheError> {
-    let matches = crypto::verify_gender_match(
-        &payload.ciphertext,
-        payload.claimed_gender,
-        &payload.client_key_id,
-    )?;
-
-    Ok(Json(VerifyGenderResponse { matches }))
-}
-
 // ============================================================================
-// Full DOB Encryption (YYYYMMDD as u32)
+// Compliance Level Encryption
 // ============================================================================
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptDobRequest {
-    /// Date of birth as YYYYMMDD integer or ISO 8601 string (YYYY-MM-DD)
-    dob: String,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
+pub struct EncryptComplianceLevelRequest {
+    /// Compliance tier (0-10)
+    compliance_level: u8,
+    public_key: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptDobResponse {
+pub struct EncryptComplianceLevelResponse {
     ciphertext: String,
-    client_key_id: String,
-    /// DOB as YYYYMMDD integer
-    dob_int: u32,
+    compliance_level: u8,
 }
 
-pub async fn encrypt_dob(
-    Json(payload): Json<EncryptDobRequest>,
-) -> Result<Json<EncryptDobResponse>, FheError> {
-    // Parse the date string to YYYYMMDD integer
-    let dob_int = crypto::parse_date_to_int(&payload.dob)?;
+pub async fn encrypt_compliance_level(
+    Json(payload): Json<EncryptComplianceLevelRequest>,
+) -> Result<Json<EncryptComplianceLevelResponse>, FheError> {
+    let ciphertext =
+        crypto::encrypt_compliance_level(payload.compliance_level, &payload.public_key)?;
 
-    let ciphertext = crypto::encrypt_dob(dob_int, &payload.client_key_id)?;
-
-    Ok(Json(EncryptDobResponse {
+    Ok(Json(EncryptComplianceLevelResponse {
         ciphertext,
-        client_key_id: payload.client_key_id,
-        dob_int,
-    }))
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyAgePreciseRequest {
-    ciphertext: String,
-    /// Current date as YYYYMMDD integer (optional, defaults to today)
-    current_date: Option<u32>,
-    #[serde(default = "default_min_age")]
-    min_age: u16,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyAgePreciseResponse {
-    is_over_age: bool,
-    min_age: u16,
-    current_date: u32,
-}
-
-pub async fn verify_age_precise(
-    Json(payload): Json<VerifyAgePreciseRequest>,
-) -> Result<Json<VerifyAgePreciseResponse>, FheError> {
-    let current_date = payload
-        .current_date
-        .unwrap_or_else(crypto::get_current_date_int);
-
-    let is_over_age = crypto::verify_age_precise(
-        &payload.ciphertext,
-        current_date,
-        payload.min_age,
-        &payload.client_key_id,
-    )?;
-
-    Ok(Json(VerifyAgePreciseResponse {
-        is_over_age,
-        min_age: payload.min_age,
-        current_date,
+        compliance_level: payload.compliance_level,
     }))
 }
 
@@ -274,15 +194,13 @@ pub async fn verify_age_precise(
 pub struct EncryptLivenessRequest {
     /// Liveness score from 0.0 to 1.0
     score: f64,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
+    public_key: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptLivenessResponse {
     ciphertext: String,
-    client_key_id: String,
     /// Original score that was encrypted (for confirmation)
     score: f64,
 }
@@ -290,11 +208,10 @@ pub struct EncryptLivenessResponse {
 pub async fn encrypt_liveness(
     Json(payload): Json<EncryptLivenessRequest>,
 ) -> Result<Json<EncryptLivenessResponse>, FheError> {
-    let ciphertext = crypto::encrypt_liveness_score(payload.score, &payload.client_key_id)?;
+    let ciphertext = crypto::encrypt_liveness_score(payload.score, &payload.public_key)?;
 
     Ok(Json(EncryptLivenessResponse {
         ciphertext,
-        client_key_id: payload.client_key_id,
         score: payload.score,
     }))
 }
@@ -305,28 +222,24 @@ pub struct VerifyLivenessThresholdRequest {
     ciphertext: String,
     /// Minimum required score (0.0 to 1.0)
     threshold: f64,
-    #[serde(default = "default_key_id")]
-    client_key_id: String,
+    key_id: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyLivenessThresholdResponse {
-    passes_threshold: bool,
+    passes_ciphertext: String,
     threshold: f64,
 }
 
 pub async fn verify_liveness_threshold(
     Json(payload): Json<VerifyLivenessThresholdRequest>,
 ) -> Result<Json<VerifyLivenessThresholdResponse>, FheError> {
-    let passes_threshold = crypto::verify_liveness_threshold(
-        &payload.ciphertext,
-        payload.threshold,
-        &payload.client_key_id,
-    )?;
+    let passes_ciphertext =
+        crypto::verify_liveness_threshold(&payload.ciphertext, payload.threshold, &payload.key_id)?;
 
     Ok(Json(VerifyLivenessThresholdResponse {
-        passes_threshold,
+        passes_ciphertext,
         threshold: payload.threshold,
     }))
 }

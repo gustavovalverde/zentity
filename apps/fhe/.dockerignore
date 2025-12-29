@@ -12,6 +12,7 @@
 
 # Include source code
 !src/
+!tests/
 
 # Include startup script
 !start.sh

@@ -1,5 +1,7 @@
 # Blockchain Setup Guide
 
+> **Related docs:** [Web3 Architecture](web3-architecture.md) | [Web2 → Web3 Transition](web2-to-web3-transition.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
+
 This guide explains how to configure blockchain-related environment variables for Zentity's on-chain attestation feature.
 
 ---

@@ -23,7 +23,7 @@ vi.mock("@/lib/blockchain", () => ({
 }));
 
 const mockGetVerificationStatus = vi.fn();
-const mockGetLatestIdentityDocumentByUserId = vi.fn();
+const mockGetSelectedIdentityDocumentByUserId = vi.fn();
 const mockGetBlockchainAttestationsByUserId = vi.fn();
 const mockGetBlockchainAttestationByUserAndNetwork = vi.fn();
 const mockCreateBlockchainAttestation = vi.fn();
@@ -38,8 +38,8 @@ vi.mock("@/lib/db", async (importOriginal) => {
     ...actual,
     getVerificationStatus: (...args: unknown[]) =>
       mockGetVerificationStatus(...args),
-    getLatestIdentityDocumentByUserId: (...args: unknown[]) =>
-      mockGetLatestIdentityDocumentByUserId(...args),
+    getSelectedIdentityDocumentByUserId: (...args: unknown[]) =>
+      mockGetSelectedIdentityDocumentByUserId(...args),
     getBlockchainAttestationsByUserId: (...args: unknown[]) =>
       mockGetBlockchainAttestationsByUserId(...args),
     getBlockchainAttestationByUserAndNetwork: (...args: unknown[]) =>
@@ -128,8 +128,10 @@ describe("attestation router", () => {
       checks: {
         document: false,
         liveness: false,
-        faceMatch: false,
         ageProof: false,
+        docValidityProof: false,
+        nationalityProof: false,
+        faceMatchProof: false,
       },
     });
 
@@ -150,11 +152,13 @@ describe("attestation router", () => {
       checks: {
         document: true,
         liveness: true,
-        faceMatch: true,
         ageProof: true,
+        docValidityProof: true,
+        nationalityProof: true,
+        faceMatchProof: true,
       },
     });
-    mockGetLatestIdentityDocumentByUserId.mockReturnValue({
+    mockGetSelectedIdentityDocumentByUserId.mockReturnValue({
       birthYearOffset: 90,
       issuerCountry: "USA",
     });

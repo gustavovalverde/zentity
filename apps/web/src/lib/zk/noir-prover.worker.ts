@@ -449,9 +449,11 @@ async function generateAgeProof(
   logWorker("proof", "Executing age witness");
   const { witness } = await noir.execute({
     birth_year: payload.birthYear.toString(),
+    document_hash: payload.documentHashField,
     current_year: payload.currentYear.toString(),
     min_age: payload.minAge.toString(),
     nonce: nonceToField(payload.nonce),
+    claim_hash: payload.claimHash,
   });
   logWorker("proof", "Age witness ready", { size: witness.length });
 
@@ -480,8 +482,10 @@ async function generateDocValidityProof(
   logWorker("proof", "Executing doc validity witness");
   const { witness } = await noir.execute({
     expiry_date: payload.expiryDate.toString(),
+    document_hash: payload.documentHashField,
     current_date: payload.currentDate.toString(),
     nonce: nonceToField(payload.nonce),
+    claim_hash: payload.claimHash,
   });
   logWorker("proof", "Doc validity witness ready", { size: witness.length });
 
@@ -506,8 +510,10 @@ async function generateFaceMatchProof(
   logWorker("proof", "Executing face match witness");
   const { witness } = await noir.execute({
     similarity_score: payload.similarityScore.toString(),
+    document_hash: payload.documentHashField,
     threshold: payload.threshold.toString(),
     nonce: nonceToField(payload.nonce),
+    claim_hash: payload.claimHash,
   });
   logWorker("proof", "Face match witness ready", { size: witness.length });
 
@@ -535,10 +541,12 @@ async function generateNationalityProof(
   logWorker("proof", "Executing nationality witness");
   const { witness } = await noir.execute({
     nationality_code: payload.nationalityCode.toString(),
+    document_hash: payload.documentHashField,
     merkle_root: payload.merkleRoot,
     path_elements: payload.pathElements,
     path_indices: payload.pathIndices,
     nonce: nonceToField(payload.nonce),
+    claim_hash: payload.claimHash,
   });
   logWorker("proof", "Nationality witness ready", { size: witness.length });
 
@@ -576,6 +584,8 @@ async function generateNationalityProofClient(
     pathElements: merkleData.pathElements,
     pathIndices: merkleData.pathIndices,
     nonce: payload.nonce,
+    documentHashField: payload.documentHashField,
+    claimHash: payload.claimHash,
   });
 }
 

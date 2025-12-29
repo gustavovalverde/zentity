@@ -7,7 +7,6 @@
 
 import type {
   AgeProofFull,
-  AgeProofPayload,
   AgeProofSummary,
 } from "@/lib/crypto/age-proof-types";
 
@@ -42,6 +41,7 @@ export function deleteIdentityData(userId: string): void {
   db.prepare(`DELETE FROM zk_proofs WHERE user_id = ?`).run(userId);
   db.prepare(`DELETE FROM encrypted_attributes WHERE user_id = ?`).run(userId);
   db.prepare(`DELETE FROM signed_claims WHERE user_id = ?`).run(userId);
+  db.prepare(`DELETE FROM attestation_evidence WHERE user_id = ?`).run(userId);
 }
 
 /**
@@ -53,29 +53,37 @@ export function getVerificationStatus(userId: string): {
   checks: {
     document: boolean;
     liveness: boolean;
-    faceMatch: boolean;
     ageProof: boolean;
+    docValidityProof: boolean;
+    nationalityProof: boolean;
+    faceMatchProof: boolean;
   };
 } {
-  const latestDocument = getLatestIdentityDocumentByUserId(userId);
-  const zkProofs = getZkProofsByUserId(userId);
-  const signedClaimTypes = getSignedClaimTypesByUserId(userId);
+  const selectedDocument = getSelectedIdentityDocumentByUserId(userId);
+  const documentId = selectedDocument?.id ?? null;
+  const zkProofTypes = documentId
+    ? getZkProofTypesByUserAndDocument(userId, documentId)
+    : [];
+  const signedClaimTypes = documentId
+    ? getSignedClaimTypesByUserAndDocument(userId, documentId)
+    : [];
 
   const checks = {
-    document: latestDocument?.status === "verified",
+    document: selectedDocument?.status === "verified",
     liveness: signedClaimTypes.includes("liveness_score"),
-    faceMatch: signedClaimTypes.includes("face_match_score"),
-    ageProof: zkProofs.some(
-      (proof) => proof.proofType === "age_verification" && proof.verified,
-    ),
+    ageProof: zkProofTypes.includes("age_verification"),
+    docValidityProof: zkProofTypes.includes("doc_validity"),
+    nationalityProof: zkProofTypes.includes("nationality_membership"),
+    faceMatchProof: zkProofTypes.includes("face_match"),
   };
 
   const passedChecks = Object.values(checks).filter(Boolean).length;
+  const totalChecks = Object.values(checks).length;
 
   let level: "none" | "basic" | "full" = "none";
-  if (passedChecks >= 4) {
+  if (passedChecks === totalChecks) {
     level = "full";
-  } else if (passedChecks >= 2) {
+  } else if (passedChecks >= Math.ceil(totalChecks / 2)) {
     level = "basic";
   }
 
@@ -139,7 +147,7 @@ export function getUserAgeProof(userId: string): AgeProofSummary | null {
 
     const encrypted = getLatestEncryptedAttributeByUserAndType(
       userId,
-      "birth_year",
+      "birth_year_offset",
     );
 
     return {
@@ -147,7 +155,7 @@ export function getUserAgeProof(userId: string): AgeProofSummary | null {
       isOver18: Boolean(proof.is_over_18),
       generationTimeMs: proof.generation_time_ms ?? null,
       createdAt: proof.created_at,
-      dobCiphertext: encrypted?.ciphertext ?? null,
+      birthYearOffsetCiphertext: encrypted?.ciphertext ?? null,
       fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
     };
   } catch {
@@ -207,7 +215,7 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
 
     const encrypted = getLatestEncryptedAttributeByUserAndType(
       userId,
-      "birth_year",
+      "birth_year_offset",
     );
 
     return {
@@ -215,11 +223,11 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
       isOver18: Boolean(row.is_over_18),
       generationTimeMs: row.generation_time_ms ?? null,
       createdAt: row.created_at,
-      dobCiphertext: encrypted?.ciphertext ?? null,
+      birthYearOffsetCiphertext: encrypted?.ciphertext ?? null,
       fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
       proof: row.proof_payload ?? null,
       publicSignals: publicSignalsValue,
-      fheClientKeyId: encrypted?.keyId ?? null,
+      fheKeyId: encrypted?.keyId ?? null,
       circuitType: row.circuit_type ?? null,
       noirVersion: row.noir_version ?? null,
       circuitHash: row.circuit_hash ?? null,
@@ -230,19 +238,39 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
   }
 }
 
-/**
- * Get the latest persisted age proof payload (proof + public signals).
- *
- * Used for disclosure flows where a relying party needs the proof material.
- */
-export function getUserAgeProofPayload(userId: string): AgeProofPayload | null {
-  const full = getUserAgeProofFull(userId);
-  if (!full?.proof || !full.publicSignals) return null;
-  return {
-    proof: full.proof,
-    publicSignals: full.publicSignals,
-    isOver18: full.isOver18,
-  };
+export function getLatestZkProofPayloadByUserAndType(
+  userId: string,
+  proofType: string,
+  documentId?: string | null,
+): { proof: string; publicSignals: string[] } | null {
+  const baseQuery = `
+    SELECT proof_payload as proofPayload, public_inputs as publicInputs
+    FROM zk_proofs
+    WHERE user_id = ? AND proof_type = ?
+  `;
+  const query = documentId
+    ? `${baseQuery} AND document_id = ? ORDER BY created_at DESC LIMIT 1`
+    : `${baseQuery} ORDER BY created_at DESC LIMIT 1`;
+  const stmt = db.prepare(query);
+  const row = (
+    documentId
+      ? stmt.get(userId, proofType, documentId)
+      : stmt.get(userId, proofType)
+  ) as
+    | { proofPayload?: string | null; publicInputs?: string | null }
+    | undefined;
+  if (!row?.proofPayload || !row.publicInputs) return null;
+
+  try {
+    const parsed = JSON.parse(row.publicInputs) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return {
+      proof: row.proofPayload,
+      publicSignals: parsed.map(String),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ============================================================================
@@ -263,6 +291,10 @@ function initializeIdentityBundlesTable(): void {
       policy_version TEXT,
       issuer_id TEXT,
       attestation_expires_at TEXT,
+      fhe_key_id TEXT,
+      fhe_public_key TEXT,
+      fhe_status TEXT,
+      fhe_error TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -270,6 +302,21 @@ function initializeIdentityBundlesTable(): void {
     CREATE INDEX IF NOT EXISTS idx_identity_bundles_status
       ON identity_bundles (status);
   `);
+
+  const columnsToAdd = [
+    { name: "fhe_key_id", type: "TEXT" },
+    { name: "fhe_public_key", type: "TEXT" },
+    { name: "fhe_status", type: "TEXT" },
+    { name: "fhe_error", type: "TEXT" },
+  ];
+
+  for (const col of columnsToAdd) {
+    try {
+      db.run(`ALTER TABLE identity_bundles ADD COLUMN ${col.name} ${col.type}`);
+    } catch {
+      // Column already exists, ignore
+    }
+  }
 }
 
 /**
@@ -428,6 +475,27 @@ function initializeSignedClaimsTable(): void {
   `);
 }
 
+function initializeAttestationEvidenceTable(): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS attestation_evidence (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+      document_id TEXT NOT NULL,
+      policy_version TEXT,
+      policy_hash TEXT,
+      proof_set_hash TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, document_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_attestation_evidence_user_id
+      ON attestation_evidence (user_id);
+    CREATE INDEX IF NOT EXISTS idx_attestation_evidence_document_id
+      ON attestation_evidence (document_id);
+  `);
+}
+
 export interface IdentityBundle {
   userId: string;
   walletAddress: string | null;
@@ -435,6 +503,10 @@ export interface IdentityBundle {
   policyVersion: string | null;
   issuerId: string | null;
   attestationExpiresAt: string | null;
+  fheKeyId: string | null;
+  fhePublicKey: string | null;
+  fheStatus: string | null;
+  fheError: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -510,6 +582,17 @@ export interface SignedClaimRecord {
   createdAt: string;
 }
 
+export interface AttestationEvidenceRecord {
+  id: string;
+  userId: string;
+  documentId: string;
+  policyVersion: string | null;
+  policyHash: string | null;
+  proofSetHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export function getIdentityBundleByUserId(
   userId: string,
 ): IdentityBundle | null {
@@ -521,6 +604,10 @@ export function getIdentityBundleByUserId(
       policy_version as policyVersion,
       issuer_id as issuerId,
       attestation_expires_at as attestationExpiresAt,
+      fhe_key_id as fheKeyId,
+      fhe_public_key as fhePublicKey,
+      fhe_status as fheStatus,
+      fhe_error as fheError,
       created_at as createdAt,
       updated_at as updatedAt
     FROM identity_bundles
@@ -562,6 +649,36 @@ export function getLatestIdentityDocumentByUserId(
   return (stmt.get(userId) as IdentityDocument | undefined) ?? null;
 }
 
+export function getIdentityDocumentsByUserId(
+  userId: string,
+): IdentityDocument[] {
+  const stmt = db.prepare(`
+    SELECT
+      id,
+      user_id as userId,
+      document_type as documentType,
+      issuer_country as issuerCountry,
+      document_hash as documentHash,
+      name_commitment as nameCommitment,
+      user_salt as userSalt,
+      birth_year_offset as birthYearOffset,
+      first_name_encrypted as firstNameEncrypted,
+      verified_at as verifiedAt,
+      confidence_score as confidenceScore,
+      status,
+      created_at as createdAt,
+      updated_at as updatedAt
+    FROM identity_documents
+    WHERE user_id = ?
+    ORDER BY
+      CASE WHEN verified_at IS NULL THEN 1 ELSE 0 END,
+      verified_at DESC,
+      created_at DESC
+  `);
+
+  return stmt.all(userId) as IdentityDocument[];
+}
+
 export function getZkProofsByUserId(userId: string): ZkProofRecord[] {
   const stmt = db.prepare(`
     SELECT
@@ -581,6 +698,22 @@ export function getZkProofsByUserId(userId: string): ZkProofRecord[] {
   `);
 
   return stmt.all(userId) as ZkProofRecord[];
+}
+
+export function getZkProofTypesByUserAndDocument(
+  userId: string,
+  documentId: string,
+): string[] {
+  const stmt = db.prepare(`
+    SELECT DISTINCT proof_type as proofType
+    FROM zk_proofs
+    WHERE user_id = ? AND document_id = ? AND verified = 1
+    ORDER BY proof_type ASC
+  `);
+
+  return (stmt.all(userId, documentId) as { proofType: string }[]).map(
+    (row) => row.proofType,
+  );
 }
 
 export function getEncryptedAttributeTypesByUserId(userId: string): string[] {
@@ -629,17 +762,165 @@ export function getLatestEncryptedAttributeByUserAndType(
   );
 }
 
-export function getSignedClaimTypesByUserId(userId: string): string[] {
+export function getSignedClaimTypesByUserAndDocument(
+  userId: string,
+  documentId: string,
+): string[] {
   const stmt = db.prepare(`
     SELECT DISTINCT claim_type as claimType
     FROM signed_claims
-    WHERE user_id = ?
+    WHERE user_id = ? AND document_id = ?
     ORDER BY claim_type ASC
   `);
 
-  return (stmt.all(userId) as { claimType: string }[]).map(
+  return (stmt.all(userId, documentId) as { claimType: string }[]).map(
     (row) => row.claimType,
   );
+}
+
+export function getProofHashesByUserAndDocument(
+  userId: string,
+  documentId: string,
+): string[] {
+  const stmt = db.prepare(`
+    SELECT proof_hash as proofHash
+    FROM zk_proofs
+    WHERE user_id = ? AND document_id = ? AND verified = 1
+    ORDER BY proof_hash ASC
+  `);
+
+  return (stmt.all(userId, documentId) as { proofHash: string }[]).map(
+    (row) => row.proofHash,
+  );
+}
+
+export function upsertAttestationEvidence(args: {
+  userId: string;
+  documentId: string;
+  policyVersion: string | null;
+  policyHash: string | null;
+  proofSetHash: string | null;
+}): void {
+  const stmt = db.prepare(`
+    INSERT INTO attestation_evidence (
+      id, user_id, document_id, policy_version, policy_hash, proof_set_hash
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, document_id) DO UPDATE SET
+      policy_version = excluded.policy_version,
+      policy_hash = excluded.policy_hash,
+      proof_set_hash = excluded.proof_set_hash,
+      updated_at = datetime('now')
+  `);
+
+  stmt.run(
+    args.documentId,
+    args.userId,
+    args.documentId,
+    args.policyVersion,
+    args.policyHash,
+    args.proofSetHash,
+  );
+}
+
+export function getAttestationEvidenceByUserAndDocument(
+  userId: string,
+  documentId: string,
+): AttestationEvidenceRecord | null {
+  const stmt = db.prepare(`
+    SELECT
+      id,
+      user_id as userId,
+      document_id as documentId,
+      policy_version as policyVersion,
+      policy_hash as policyHash,
+      proof_set_hash as proofSetHash,
+      created_at as createdAt,
+      updated_at as updatedAt
+    FROM attestation_evidence
+    WHERE user_id = ? AND document_id = ?
+    LIMIT 1
+  `);
+
+  return (
+    (stmt.get(userId, documentId) as AttestationEvidenceRecord | undefined) ??
+    null
+  );
+}
+
+export function getSelectedIdentityDocumentByUserId(
+  userId: string,
+): IdentityDocument | null {
+  const documents = getIdentityDocumentsByUserId(userId);
+  if (documents.length === 0) return null;
+
+  const proofRows = db
+    .prepare(`
+    SELECT document_id as documentId, proof_type as proofType, verified
+    FROM zk_proofs
+    WHERE user_id = ?
+  `)
+    .all(userId) as Array<{
+    documentId: string | null;
+    proofType: string;
+    verified: number;
+  }>;
+
+  const claimRows = db
+    .prepare(`
+    SELECT document_id as documentId, claim_type as claimType
+    FROM signed_claims
+    WHERE user_id = ?
+  `)
+    .all(userId) as Array<{
+    documentId: string | null;
+    claimType: string;
+  }>;
+
+  const proofTypesByDocument = new Map<string, Set<string>>();
+  for (const row of proofRows) {
+    if (!row.documentId || !row.verified) continue;
+    if (!proofTypesByDocument.has(row.documentId)) {
+      proofTypesByDocument.set(row.documentId, new Set());
+    }
+    proofTypesByDocument.get(row.documentId)?.add(row.proofType);
+  }
+
+  const claimTypesByDocument = new Map<string, Set<string>>();
+  for (const row of claimRows) {
+    if (!row.documentId) continue;
+    if (!claimTypesByDocument.has(row.documentId)) {
+      claimTypesByDocument.set(row.documentId, new Set());
+    }
+    claimTypesByDocument.get(row.documentId)?.add(row.claimType);
+  }
+
+  const requiredProofs = [
+    "age_verification",
+    "doc_validity",
+    "nationality_membership",
+    "face_match",
+  ];
+  const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
+
+  const hasAll = (set: Set<string> | undefined, required: string[]) =>
+    required.every((item) => set?.has(item));
+
+  for (const doc of documents) {
+    if (doc.status !== "verified") continue;
+    const proofs = proofTypesByDocument.get(doc.id);
+    const claims = claimTypesByDocument.get(doc.id);
+    if (hasAll(proofs, requiredProofs) && hasAll(claims, requiredClaims)) {
+      return doc;
+    }
+  }
+
+  for (const doc of documents) {
+    if (doc.status === "verified") {
+      return doc;
+    }
+  }
+
+  return documents[0] ?? null;
 }
 
 export function upsertIdentityBundle(data: {
@@ -649,17 +930,26 @@ export function upsertIdentityBundle(data: {
   policyVersion?: string | null;
   issuerId?: string | null;
   attestationExpiresAt?: string | null;
+  fheKeyId?: string | null;
+  fhePublicKey?: string | null;
+  fheStatus?: string | null;
+  fheError?: string | null;
 }): void {
   const stmt = db.prepare(`
     INSERT INTO identity_bundles (
-      user_id, wallet_address, status, policy_version, issuer_id, attestation_expires_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      user_id, wallet_address, status, policy_version, issuer_id, attestation_expires_at,
+      fhe_key_id, fhe_public_key, fhe_status, fhe_error
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       wallet_address = excluded.wallet_address,
       status = excluded.status,
       policy_version = excluded.policy_version,
       issuer_id = excluded.issuer_id,
       attestation_expires_at = excluded.attestation_expires_at,
+      fhe_key_id = excluded.fhe_key_id,
+      fhe_public_key = excluded.fhe_public_key,
+      fhe_status = excluded.fhe_status,
+      fhe_error = excluded.fhe_error,
       updated_at = datetime('now')
   `);
 
@@ -670,6 +960,37 @@ export function upsertIdentityBundle(data: {
     data.policyVersion ?? null,
     data.issuerId ?? null,
     data.attestationExpiresAt ?? null,
+    data.fheKeyId ?? null,
+    data.fhePublicKey ?? null,
+    data.fheStatus ?? null,
+    data.fheError ?? null,
+  );
+}
+
+export function updateIdentityBundleStatus(args: {
+  userId: string;
+  status: string;
+  policyVersion?: string | null;
+  issuerId?: string | null;
+  attestationExpiresAt?: string | null;
+}): void {
+  const stmt = db.prepare(`
+    UPDATE identity_bundles
+    SET
+      status = ?,
+      policy_version = COALESCE(?, policy_version),
+      issuer_id = COALESCE(?, issuer_id),
+      attestation_expires_at = COALESCE(?, attestation_expires_at),
+      updated_at = datetime('now')
+    WHERE user_id = ?
+  `);
+
+  stmt.run(
+    args.status,
+    args.policyVersion ?? null,
+    args.issuerId ?? null,
+    args.attestationExpiresAt ?? null,
+    args.userId,
   );
 }
 
@@ -697,22 +1018,6 @@ export function createIdentityDocument(
     data.confidenceScore ?? null,
     data.status,
   );
-}
-
-export function getLatestIdentityDocumentId(userId: string): string | null {
-  const stmt = db.prepare(`
-    SELECT id
-    FROM identity_documents
-    WHERE user_id = ?
-    ORDER BY
-      CASE WHEN verified_at IS NULL THEN 1 ELSE 0 END,
-      verified_at DESC,
-      created_at DESC
-    LIMIT 1
-  `);
-
-  const row = stmt.get(userId) as { id?: string } | undefined;
-  return row?.id ?? null;
 }
 
 export function insertZkProofRecord(data: ZkProofInsert): void {
@@ -797,9 +1102,10 @@ export function insertSignedClaim(
   );
 }
 
-export function getLatestSignedClaimByUserAndType(
+export function getLatestSignedClaimByUserTypeAndDocument(
   userId: string,
   claimType: string,
+  documentId: string,
 ): SignedClaimRecord | null {
   const stmt = db.prepare(`
     SELECT
@@ -807,12 +1113,16 @@ export function getLatestSignedClaimByUserAndType(
       claim_payload as claimPayload, signature, issued_at as issuedAt,
       created_at as createdAt
     FROM signed_claims
-    WHERE user_id = ? AND claim_type = ?
+    WHERE user_id = ? AND claim_type = ? AND document_id = ?
     ORDER BY issued_at DESC
     LIMIT 1
   `);
 
-  return (stmt.get(userId, claimType) as SignedClaimRecord | undefined) ?? null;
+  return (
+    (stmt.get(userId, claimType, documentId) as
+      | SignedClaimRecord
+      | undefined) ?? null
+  );
 }
 
 // Initialize attestation schema tables.
@@ -822,6 +1132,7 @@ if (!isSqliteBuildTime()) {
   initializeZkProofsTable();
   initializeEncryptedAttributesTable();
   initializeSignedClaimsTable();
+  initializeAttestationEvidenceTable();
 }
 
 // ============================================================================
@@ -883,13 +1194,46 @@ async function decryptFirstName(
 }
 
 /**
+ * Encrypt user salt using JWE (AES-256-GCM)
+ *
+ * User salt is required to verify commitments but should not be stored in plaintext.
+ */
+export async function encryptUserSalt(userSalt: string): Promise<string> {
+  const secret = await getEncryptionSecret();
+
+  const token = await new EncryptJWT({ userSalt })
+    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
+    .setIssuedAt()
+    .encrypt(secret);
+
+  return token;
+}
+
+/**
+ * Decrypt user salt from JWE token
+ *
+ * @returns The decrypted salt, or null if decryption fails
+ */
+export async function decryptUserSalt(
+  encryptedToken: string,
+): Promise<string | null> {
+  try {
+    const secret = await getEncryptionSecret();
+    const { payload } = await jwtDecrypt(encryptedToken, secret);
+    return (payload.userSalt as string) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get user's decrypted first name for display
  *
  * Fetches the identity proof and decrypts the stored first name.
  * Returns null if no proof exists or decryption fails.
  */
 export async function getUserFirstName(userId: string): Promise<string | null> {
-  const document = getLatestIdentityDocumentByUserId(userId);
+  const document = getSelectedIdentityDocumentByUserId(userId);
   if (!document?.firstNameEncrypted) return null;
 
   return decryptFirstName(document.firstNameEncrypted);

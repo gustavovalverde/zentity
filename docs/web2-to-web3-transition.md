@@ -1,6 +1,20 @@
 # Web2 to Web3 Transition Guide
 
+> **Related docs:** [Web3 Architecture](web3-architecture.md) | [Blockchain Setup](blockchain-setup.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
+
 This document explains the end-to-end flow from Web2 identity verification to Web3 on-chain attestation and encrypted compliance checks.
+
+## PoC Limitations
+
+The current implementation has several known limitations that would need to be addressed for production:
+
+| Limitation | Current State | Production Requirement |
+|------------|---------------|------------------------|
+| **Country codes** | ~55 countries supported (EU, EEA, LATAM, Five Eyes, + 4 additional) | Full ISO 3166-1 (195+ countries) |
+| **Rate limiting** | In-memory Map (resets on server restart) | Redis or database-backed |
+| **Liveness sessions** | In-memory storage | Persistent storage (Redis/DB) |
+
+**Note:** The `attestation.submit` endpoint supports a demo mode that simulates successful attestation without executing real blockchain transactions. This is controlled by the `NEXT_PUBLIC_DEMO_MODE` environment variable.
 
 ## Table of Contents
 
@@ -19,7 +33,7 @@ This document explains the end-to-end flow from Web2 identity verification to We
 
 ## Overview
 
-Zentity bridges traditional identity verification (KYC/liveness) with privacy-preserving blockchain attestation. The key insight is that **identity verification happens off-chain**, but the **attestation and compliance enforcement happen on-chain with encrypted data**.
+Zentity bridges traditional identity verification (compliance/liveness) with privacy-preserving blockchain attestation. The key insight is that **identity verification happens off-chain**, but the **attestation and compliance enforcement happen on-chain with encrypted data**.
 
 ### The Two Worlds
 
@@ -43,7 +57,7 @@ sequenceDiagram
     actor User
     participant UI as Zentity Web App
     participant BE as Zentity Backend
-    participant Verifier as KYC/Liveness Services
+    participant Verifier as Compliance/Liveness Services
     participant SDK as FHEVM SDK
     participant Registrar as Registrar Wallet
     participant IR as IdentityRegistry
@@ -55,7 +69,7 @@ sequenceDiagram
     UI->>BE: Submit document images
     BE->>Verifier: OCR + liveness + face match
     Verifier-->>BE: Verification result + attributes
-    BE->>BE: Store commitments (no plaintext)
+    BE->>BE: Store commitments + signed claims + encrypted attrs
     BE-->>UI: Verification complete
 
     Note over UI,IR: ── Phase 2: Web3 Attestation ──
@@ -93,7 +107,7 @@ The Web2 layer handles all **sensitive data collection and verification**:
 
 ### Data Processing
 
-- **Attribute extraction**: Birth year, nationality, document expiry
+- **Attribute extraction**: Birth year offset, nationality, document expiry
 - **ZK proof generation**: Client-side proofs for age, nationality membership
 - **FHE encryption**: Prepare encrypted inputs for on-chain storage
 
@@ -105,9 +119,12 @@ SQLite Database
 ├── Verification status (verified/pending/failed)
 ├── ZK proofs (age >= 18, nationality in EU, etc.)
 ├── Cryptographic commitments (SHA-256 of attributes)
+├── Signed claims (OCR, liveness, face match)
+├── Encrypted attributes (birth_year_offset, country_code, compliance_level, liveness_score)
+├── Evidence pack (policy_hash, proof_set_hash)
 └── Attestation records (txHash, status, networkId)
 
-NOT stored: Raw images, plaintext PII, birth dates, addresses
+NOT stored: Raw images, plaintext PII, full DOB, biometric templates
 ```
 
 ---
@@ -122,9 +139,11 @@ The Web3 layer handles **encrypted storage and computation**:
 // IdentityRegistry.sol
 mapping(address => euint8) private _birthYearOffset;   // Years from 1900
 mapping(address => euint16) private _countryCode;      // ISO 3166-1 numeric
-mapping(address => euint8) private _complianceLevel;          // 0-255 verification level
+mapping(address => euint8) private _complianceLevel;   // 0-10 verification level
 mapping(address => ebool) private _isBlacklisted;      // Sanctions check
 ```
+
+Public metadata should include `policy_hash` + `proof_set_hash` so auditors can verify which proofs and policy version were used for the attestation.
 
 ### On-Chain Operations
 
@@ -165,7 +184,7 @@ The fhEVM never decrypts data for computation. All operations happen on cipherte
 ```mermaid
 flowchart TD
     subgraph "On-chain fhEVM"
-        IR[IdentityRegistry] --> |"stores"| IRState["Encrypted Attributes<br/>birthYear, country, compliance, blacklist"]
+        IR[IdentityRegistry] --> |"stores"| IRState["Encrypted Attributes<br/>birthYearOffset, country, compliance, blacklist"]
         IR --> |"manages"| ACL["ACL<br/>Per-ciphertext permissions"]
 
         CR[ComplianceRules] --> |"queries"| IR
@@ -445,7 +464,7 @@ FHEVM_COMPLIANT_ERC20=0x...
 
 - **Birth year** (encrypted, never stored in plaintext on-chain)
 - **Nationality** (encrypted country code)
-- **Compliance level (KYC tier)** (encrypted verification tier)
+- **Compliance level (verification tier)** (encrypted verification tier)
 - **Compliance result** (encrypted boolean)
 - **Transfer amounts** (encrypted balances)
 

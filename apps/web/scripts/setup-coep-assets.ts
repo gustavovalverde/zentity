@@ -6,6 +6,9 @@ const root = process.cwd();
 // Assets served locally for better performance and reliability.
 // With coi-serviceworker, COEP headers are injected into all responses.
 const assets = [
+  // =========================================================================
+  // Barretenberg (Noir ZK proofs)
+  // =========================================================================
   {
     id: "bb-threads",
     from: path.join(
@@ -28,6 +31,39 @@ const assets = [
     to: path.join(root, "public/bb/barretenberg.wasm.gz"),
     required: true,
   },
+  // =========================================================================
+  // TFHE-rs (client-side FHE encryption/decryption)
+  // Copied to public to avoid Turbopack hanging on 5MB WASM analysis.
+  // tfhe-browser.ts loads from /tfhe/ instead of node_modules.
+  // =========================================================================
+  {
+    id: "tfhe-wasm",
+    from: path.join(root, "node_modules/tfhe/tfhe_bg.wasm"),
+    to: path.join(root, "public/tfhe/tfhe_bg.wasm"),
+    required: true,
+  },
+  {
+    id: "tfhe-js",
+    from: path.join(root, "node_modules/tfhe/tfhe.js"),
+    to: path.join(root, "public/tfhe/tfhe.js"),
+    required: true,
+  },
+  {
+    id: "tfhe-worker-helpers",
+    from: path.join(
+      root,
+      "node_modules/tfhe/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js",
+    ),
+    // Must match the import path in tfhe.js
+    to: path.join(
+      root,
+      "public/tfhe/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js",
+    ),
+    required: true,
+  },
+  // =========================================================================
+  // Zama fhEVM Relayer SDK
+  // =========================================================================
   {
     id: "zama-sdk",
     from: path.join(
