@@ -20,5 +20,7 @@ export default {
     ],
     // Disable subject-case - conventional commits don't enforce case after type prefix
     "subject-case": [0],
+    // Disable body-max-line-length - URLs often exceed 100 chars
+    "body-max-line-length": [0],
   },
 };
