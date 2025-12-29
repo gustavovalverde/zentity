@@ -16,7 +16,7 @@ Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 - Toolchain versions are pinned in `.mise.toml` (Node 24, Bun 1.3, Rust 1.91, Python 3.12).
 - Web (`apps/web`): `bun install`, `bun run dev` (localhost:3000), `bun run build`, `bun run lint`, `bun run test`, `bun run test:e2e`, `bun run circuits:compile` (Noir), `bun run circuits:test`.
 - FHE (`apps/fhe`): `cargo run` (port 5001), `cargo test`.
-- OCR (`apps/ocr`): `pip install -r requirements.txt`, `uvicorn app.main:app --reload --port 5004`, `pytest`.
+- OCR (`apps/ocr`): `pip install -e '.[test]'`, `PYTHONPATH=src uvicorn ocr_service.main:app --reload --port 5004`, `pytest`.
 
 ## Coding Style & Naming Conventions
 

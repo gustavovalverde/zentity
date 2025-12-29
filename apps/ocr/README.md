@@ -544,13 +544,21 @@ Verify a name claim against a stored commitment.
 cd apps/ocr
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e '.[test]'
 ```
 
 ### Running Locally
 
 ```bash
-uvicorn app.main:app --port 5004 --reload
+PYTHONPATH=src uvicorn ocr_service.main:app --port 5004 --reload
+```
+
+### Runtime Dependencies
+
+Production images install from the pinned lockfile:
+
+```bash
+pip install -r requirements.lock
 ```
 
 ### Environment Variables
@@ -577,14 +585,14 @@ docker run -p 5004:5004 zentity-ocr-service
 
 ```text
 apps/ocr/
-├── app/
-│   ├── main.py              # FastAPI application & endpoints
-│   ├── ocr.py               # RapidOCR text extraction
-│   ├── document_detector.py # Document type detection
-│   ├── parser.py            # Field extraction & country detection
-│   ├── validators.py        # Dynamic validation with stdnum
-│   └── commitments.py       # Cryptographic commitment generation
-├── requirements.txt
+├── src/ocr_service/
+│   ├── main.py              # FastAPI application factory
+│   ├── schemas.py           # API request/response models
+│   ├── api/                 # Route handlers
+│   ├── services/            # OCR + parsing + validation pipeline
+│   └── core/                # Settings/auth helpers
+├── pyproject.toml
+├── requirements.lock
 ├── Dockerfile
 └── README.md
 ```
@@ -593,12 +601,11 @@ apps/ocr/
 
 | Module | Responsibility |
 |--------|---------------|
-| `main.py` | API endpoints, request/response models |
-| `ocr.py` | Image preprocessing, RapidOCR integration |
-| `document_detector.py` | Identify document type from text patterns |
-| `parser.py` | Extract fields, detect country, normalize formats |
-| `validators.py` | Dynamic validator discovery, rich error messages |
-| `commitments.py` | SHA256 hashing, salt generation |
+| `main.py` | App factory and wiring |
+| `schemas.py` | API request/response models |
+| `api/` | Route handlers |
+| `services/` | OCR, parsing, validation, commitments |
+| `core/` | Settings + auth middleware |
 
 ---
 

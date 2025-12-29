@@ -26,12 +26,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # Copy requirements first for dependency caching
-COPY --link requirements.txt .
+COPY --link requirements.lock .
 
 # Pre-compile wheels for all dependencies
 # This separates compilation from installation, enabling better caching
 RUN --mount=type=cache,id=s/c844c584-828c-402c-9dc4-ee20eb39d936-/root/.cache/pip,target=/root/.cache/pip \
-    pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+    pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.lock
 
 # --- Stage 2: Runtime ---
 FROM python:3.12-slim@sha256:fa48eefe2146644c2308b909d6bb7651a768178f84fc9550dcd495e4d6d84d01 AS runtime
@@ -57,15 +57,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-COPY --link requirements.txt .
+COPY --link requirements.lock .
 
 # Copy and install pre-built wheels from builder stage
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir --no-index --find-links /wheels -r requirements.txt \
+RUN pip install --no-cache-dir --no-index --find-links /wheels -r requirements.lock \
     && rm -rf /wheels
 
 # Set cache location BEFORE pre-downloading models
 ENV XDG_CACHE_HOME=/var/cache/zentity/ocr
+ENV PYTHONPATH=${APP_HOME}/src
 RUN mkdir -p /var/cache/zentity/ocr
 
 # Pre-download RapidOCR models
@@ -78,7 +79,7 @@ RUN groupadd --gid ${APP_GID} ${APP_USER} && \
 RUN mkdir -p /var/lib/zentity/ocr && \
     chown -R ${APP_UID}:${APP_GID} /var/cache/zentity /var/lib/zentity
 
-COPY --link --chown=${APP_UID}:${APP_GID} app/ ./app/
+COPY --link --chown=${APP_UID}:${APP_GID} src/ ./src/
 COPY --link --chown=${APP_UID}:${APP_GID} start.sh .
 RUN chmod +x start.sh
 

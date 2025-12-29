@@ -98,8 +98,8 @@ cargo test               # Run tests
 
 ```bash
 python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --port 5004 --reload
+pip install -e '.[test]'
+PYTHONPATH=src uvicorn ocr_service.main:app --port 5004 --reload
 pytest
 ```
 
@@ -171,7 +171,7 @@ mise install
 cd apps/web && bun install
 
 # OCR service
-cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -e '.[test]'
 
 # FHE Service (compiles on first run)
 cd apps/fhe && cargo build --release
@@ -187,7 +187,7 @@ cd apps/web && bun run dev
 cd apps/fhe && cargo run --release
 
 # Terminal 3: OCR Service
-cd apps/ocr && source venv/bin/activate && uvicorn app.main:app --reload --port 5004
+cd apps/ocr && source venv/bin/activate && PYTHONPATH=src uvicorn ocr_service.main:app --reload --port 5004
 ```
 
 ## Key Data Flow
