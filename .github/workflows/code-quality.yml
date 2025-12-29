@@ -179,20 +179,16 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # master
-        with:
-          toolchain: "1.85.0"
       # cargo-deny for banned crates and source restrictions
       - uses: EmbarkStudios/cargo-deny-action@e2f4ede4a4e60ea15ff31bc0647485d80c66cfba # v2.0.4
         with:
           manifest-path: apps/fhe/Cargo.toml
           command: check bans sources
-      # cargo-audit for CVE scanning (requires Rust 1.85.0+ for edition2024 support)
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-      - name: Run cargo-audit
-        run: cargo audit --file apps/fhe/Cargo.lock
-        continue-on-error: true
+      # cargo-audit for CVE scanning using dedicated action (no manual install needed)
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          working-directory: apps/fhe
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # ============================================
   # Commit & PR Quality
