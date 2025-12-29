@@ -59,12 +59,16 @@ export interface AgeProofPayload {
   currentYear: number;
   minAge: number;
   nonce: string; // Hex string for replay resistance
+  documentHashField: string; // Field element (hex) binding to document commitment
+  claimHash: string; // Field element (hex) binding to signed claim
 }
 
 export interface DocValidityPayload {
   expiryDate: number;
   currentDate: number;
   nonce: string; // Hex string for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 export interface NationalityProofPayload {
@@ -73,6 +77,8 @@ export interface NationalityProofPayload {
   pathElements: string[]; // Pre-computed path (8 elements)
   pathIndices: number[]; // Pre-computed indices (8 values, 0 or 1)
   nonce: string; // Hex string for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 /**
@@ -84,12 +90,16 @@ export interface NationalityClientPayload {
   nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
   groupName: string; // Group to prove membership in (e.g., "EU", "SCHENGEN")
   nonce: string; // Hex string for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 export interface FaceMatchPayload {
   similarityScore: number; // Scaled integer 0-10000
   threshold: number; // Scaled integer 0-10000
   nonce: string; // Hex string for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 export interface WorkerResponse {

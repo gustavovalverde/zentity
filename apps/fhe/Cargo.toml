@@ -5,6 +5,14 @@ edition = "2021"
 license = "LicenseRef-OSaasy"
 license-file = "../../LICENSE"
 
+[lib]
+name = "fhe_service"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fhe-service"
+path = "src/main.rs"
+
 [dependencies]
 # FHE library
 tfhe = { version = "~1.4", features = ["integer"] }
@@ -17,7 +25,7 @@ tower-http = { version = "~0.6.8", features = ["cors", "trace"] }
 # Serialization
 serde = { version = "~1.0", features = ["derive"] }
 serde_json = "~1.0"
-bincode = { version = "~2.0.1", features = ["serde"] }
+bincode = "1.3.3"
 base64 = "~0.22.1"
 
 # Utilities

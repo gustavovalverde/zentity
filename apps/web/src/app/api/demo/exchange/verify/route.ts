@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
           circuitType: "age_verification",
         });
         // Check both cryptographic validity AND circuit output
-        // Public inputs: [current_year, min_age, nonce, is_old_enough]
+        // Public inputs: [current_year, min_age, nonce, claim_hash, is_old_enough]
         const isOldEnough = parsePublicInputToNumber(
           proofs.ageProof.publicSignals[
             CIRCUIT_SPECS.age_verification.resultIndex
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           publicInputs: proofs.faceMatchProof.publicSignals,
           circuitType: "face_match",
         });
-        // Public inputs: [threshold, nonce, is_match]
+        // Public inputs: [threshold, nonce, claim_hash, is_match]
         const isMatch = parsePublicInputToNumber(
           proofs.faceMatchProof.publicSignals[
             CIRCUIT_SPECS.face_match.resultIndex
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
           circuitType: "doc_validity",
         });
         // Check both cryptographic validity AND circuit output
-        // Public inputs: [current_date, nonce, is_valid]
+        // Public inputs: [current_date, nonce, claim_hash, is_valid]
         const isDocValid = parsePublicInputToNumber(
           proofs.docValidityProof.publicSignals[
             CIRCUIT_SPECS.doc_validity.resultIndex

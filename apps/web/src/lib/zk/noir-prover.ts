@@ -28,24 +28,32 @@ interface AgeProofInput {
   currentYear: number;
   minAge: number;
   nonce: string; // Hex nonce for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 interface DocValidityInput {
   expiryDate: number; // YYYYMMDD format
   currentDate: number; // YYYYMMDD format
   nonce: string; // Hex nonce for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 interface FaceMatchInput {
   similarityScore: number; // Scaled integer 0-10000
   threshold: number; // Scaled integer 0-10000
   nonce: string; // Hex nonce for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 interface NationalityProofInput {
   nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
   groupName: string; // Group to prove membership (e.g., "EU", "SCHENGEN")
   nonce: string; // Hex nonce for replay resistance
+  documentHashField: string;
+  claimHash: string;
 }
 
 /**
@@ -83,6 +91,8 @@ export async function generateAgeProofNoir(
     currentYear: input.currentYear,
     minAge: input.minAge,
     nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
   });
 
   return {
@@ -123,6 +133,8 @@ export async function generateDocValidityProofNoir(
     expiryDate: input.expiryDate,
     currentDate: input.currentDate,
     nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
   });
 
   return {
@@ -145,6 +157,8 @@ export async function generateFaceMatchProofNoir(
     similarityScore: input.similarityScore,
     threshold: input.threshold,
     nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
   });
 
   return {
@@ -185,6 +199,8 @@ export async function generateNationalityProofNoir(
     nationalityCode: input.nationalityCode,
     groupName: input.groupName,
     nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
   });
 
   return {

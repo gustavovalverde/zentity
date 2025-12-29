@@ -175,8 +175,8 @@ export default function DevViewPage() {
             <div className="rounded-lg border p-4">
               <p className="text-sm text-muted-foreground">Ciphertext Size</p>
               <p className="text-2xl font-mono font-bold">
-                {proofData.dobCiphertext
-                  ? formatBytes(proofData.dobCiphertext)
+                {proofData.birthYearOffsetCiphertext
+                  ? formatBytes(proofData.birthYearOffsetCiphertext)
                   : "N/A"}
               </p>
             </div>
@@ -283,13 +283,13 @@ export default function DevViewPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {proofData.dobCiphertext ? (
+          {proofData.birthYearOffsetCiphertext ? (
             <>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">TFHE-rs</Badge>
                 <Badge variant="secondary">Fully Homomorphic</Badge>
                 <Badge variant="outline">
-                  Key ID: {proofData.fheClientKeyId || "default"}
+                  Key ID: {proofData.fheKeyId || "unregistered"}
                 </Badge>
               </div>
 
@@ -313,7 +313,7 @@ export default function DevViewPage() {
                       className="absolute right-2 top-2 z-10"
                       onClick={() =>
                         copyToClipboard(
-                          proofData.dobCiphertext || "",
+                          proofData.birthYearOffsetCiphertext || "",
                           "ciphertext",
                         )
                       }
@@ -325,9 +325,9 @@ export default function DevViewPage() {
                       )}
                     </Button>
                     <pre className="max-h-32 overflow-auto rounded-lg bg-muted p-4 text-xs break-all">
-                      {proofData.dobCiphertext.length > 500
-                        ? `${proofData.dobCiphertext.slice(0, 500)}...`
-                        : proofData.dobCiphertext}
+                      {proofData.birthYearOffsetCiphertext.length > 500
+                        ? `${proofData.birthYearOffsetCiphertext.slice(0, 500)}...`
+                        : proofData.birthYearOffsetCiphertext}
                     </pre>
                   </div>
                 </CollapsibleContent>

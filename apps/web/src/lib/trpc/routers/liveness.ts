@@ -42,6 +42,7 @@ import {
   getYawDegrees,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import {
   createLivenessSession,
   getChallengeInfo,
@@ -361,7 +362,7 @@ export const livenessRouter = router({
       const startTime = Date.now();
 
       const human = await getHumanServer();
-      const minConfidence = input.minConfidence ?? 0.35;
+      const minConfidence = input.minConfidence ?? FACE_MATCH_MIN_CONFIDENCE;
 
       const idResultInitial = await detectFromBase64(input.idImage);
       const idFaceInitial = getLargestFace(idResultInitial);

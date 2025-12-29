@@ -5,14 +5,14 @@
  * and challenge-response anti-replay protection.
  *
  * Key operations:
- * - encryptDob/encryptLiveness: Encrypt sensitive data via TFHE-rs backend
+ * - encryptLiveness: Encrypt sensitive data via TFHE-rs backend
  * - verifyProof: Verify Noir ZK proofs with policy enforcement
  * - createChallenge: Issue nonces for replay-resistant proof generation
- * - storeAgeProof: Persist verified age proofs for authenticated users
+ * - storeProof: Persist verified ZK proofs for authenticated users
  *
  * Policy enforcement:
  * - MIN_AGE_POLICY: Age proofs must verify age >= 18
- * - MIN_FACE_MATCH_THRESHOLD: Face similarity must be >= 60%
+ * - MIN_FACE_MATCH_THRESHOLD: Face similarity must be >= FACE_MATCH_MIN_CONFIDENCE
  * - Nonce validation prevents proof replay attacks
  */
 import "server-only";
@@ -23,25 +23,43 @@ import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
+  ISSUER_ID,
+  MIN_AGE_POLICY,
+  POLICY_VERSION,
+} from "@/lib/attestation/policy";
+import { POLICY_HASH } from "@/lib/attestation/policy-hash";
+import {
   consumeChallenge,
   createChallenge,
   getActiveChallengeCount,
 } from "@/lib/crypto/challenge-store";
 import {
-  encryptDobFhe,
+  encryptComplianceLevelFhe,
   encryptLivenessScoreFhe,
+  registerFheKey,
   verifyAgeFhe,
   verifyLivenessThresholdFhe,
 } from "@/lib/crypto/fhe-client";
-import { verifyAttestationClaim } from "@/lib/crypto/signed-claims";
 import {
-  getLatestIdentityDocumentId,
-  getLatestSignedClaimByUserAndType,
+  type FaceMatchClaimData,
+  type OcrClaimData,
+  verifyAttestationClaim,
+} from "@/lib/crypto/signed-claims";
+import {
+  getIdentityBundleByUserId,
+  getLatestSignedClaimByUserTypeAndDocument,
+  getProofHashesByUserAndDocument,
+  getSelectedIdentityDocumentByUserId,
   getUserAgeProof,
   getUserAgeProofFull,
+  getVerificationStatus,
   insertEncryptedAttribute,
   insertZkProofRecord,
+  updateIdentityBundleStatus,
+  upsertAttestationEvidence,
 } from "@/lib/db";
+import { getComplianceLevel } from "@/lib/identity/compliance";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import {
   CIRCUIT_SPECS,
@@ -67,8 +85,9 @@ const circuitTypeSchema = z.enum([
 ]);
 
 // Server-enforced policy minimums (cannot be bypassed by client).
-const MIN_AGE_POLICY = 18;
-const MIN_FACE_MATCH_THRESHOLD = 6000; // 60.00% as fixed-point (threshold / 10000)
+// TODO(zk/fhe): Raise FACE_MATCH_MIN_CONFIDENCE to 0.60 once model quality improves.
+const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
+const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 
 /** Checks if a backend service is reachable via its /health endpoint. */
 async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
@@ -87,6 +106,351 @@ async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
     clearTimeout(timeoutId);
     return null;
   }
+}
+
+function parseFieldToBigInt(value: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Invalid field element in public inputs",
+    });
+  }
+}
+
+type NoirVerificationResult = Awaited<ReturnType<typeof verifyNoirProof>>;
+type ProofVerificationResult = NoirVerificationResult & { reason?: string };
+
+async function getVerifiedClaim(
+  userId: string,
+  claimType: "ocr_result" | "face_match_score" | "liveness_score",
+  documentId: string | null,
+) {
+  if (!documentId) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Missing document context for signed claim verification",
+    });
+  }
+
+  const signedClaim = getLatestSignedClaimByUserTypeAndDocument(
+    userId,
+    claimType,
+    documentId,
+  );
+  if (!signedClaim) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Missing signed ${claimType} claim for document`,
+    });
+  }
+
+  try {
+    return await verifyAttestationClaim(
+      signedClaim.signature,
+      claimType,
+      userId,
+    );
+  } catch (error) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        error instanceof Error
+          ? error.message
+          : `Invalid signed ${claimType} claim`,
+    });
+  }
+}
+
+function assertPolicyVersion(
+  claim: { policyVersion?: string },
+  claimType: string,
+): void {
+  if (!claim.policyVersion || claim.policyVersion !== POLICY_VERSION) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `${claimType} policy version mismatch`,
+    });
+  }
+}
+
+function computeProofHash(args: {
+  proof: string;
+  publicInputs: string[];
+  policyVersion: string;
+}): string {
+  const hash = crypto.createHash("sha256");
+  hash.update(Buffer.from(args.proof, "base64"));
+  hash.update(JSON.stringify(args.publicInputs));
+  hash.update(args.policyVersion);
+  return hash.digest("hex");
+}
+
+function computeProofSetHash(args: {
+  proofHashes: string[];
+  policyHash: string;
+}): string {
+  const hash = crypto.createHash("sha256");
+  const normalized = [...args.proofHashes].sort();
+  hash.update(JSON.stringify(normalized));
+  hash.update(args.policyHash);
+  return hash.digest("hex");
+}
+
+async function verifyProofInternal(args: {
+  userId: string;
+  circuitType: z.infer<typeof circuitTypeSchema>;
+  proof: string;
+  publicInputs: string[];
+  documentId: string | null;
+}): Promise<{ result: ProofVerificationResult; nonceHex: string }> {
+  const circuitType = args.circuitType;
+  const circuitSpec = CIRCUIT_SPECS[circuitType];
+  const circuitMeta = getCircuitMetadata(circuitType);
+  const bbVersion = getBbJsVersion();
+
+  if (args.publicInputs.length < circuitSpec.minPublicInputs) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `${circuitType} requires ${circuitSpec.minPublicInputs} public inputs`,
+    });
+  }
+
+  const nonceHex = normalizeChallengeNonce(
+    args.publicInputs[circuitSpec.nonceIndex],
+  );
+
+  const failure = (reason: string, verificationTimeMs = 0) => ({
+    result: {
+      isValid: false,
+      reason,
+      verificationTimeMs,
+      circuitType,
+      noirVersion: circuitMeta.noirVersion,
+      circuitHash: circuitMeta.circuitHash,
+      circuitId: null,
+      verificationKeyHash: null,
+      bbVersion,
+    },
+    nonceHex,
+  });
+  const claimHashInput = args.publicInputs[circuitSpec.claimHashIndex];
+  if (!claimHashInput) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Missing claim hash in public inputs",
+    });
+  }
+  const claimHashBigInt = parseFieldToBigInt(claimHashInput);
+
+  if (circuitType === "age_verification") {
+    const providedYear = parsePublicInputToNumber(args.publicInputs[0]);
+    const providedMinAge = parsePublicInputToNumber(args.publicInputs[1]);
+    const actualYear = new Date().getFullYear();
+
+    if (Math.abs(providedYear - actualYear) > 1) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid current_year: ${providedYear} (expected ~${actualYear})`,
+      });
+    }
+
+    if (providedMinAge < MIN_AGE_POLICY) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `min_age ${providedMinAge} below policy minimum ${MIN_AGE_POLICY}`,
+      });
+    }
+
+    const ocrClaim = await getVerifiedClaim(
+      args.userId,
+      "ocr_result",
+      args.documentId,
+    );
+    assertPolicyVersion(ocrClaim, "ocr_result");
+    const claimData = ocrClaim.data as OcrClaimData;
+    const expectedHash = claimData.claimHashes?.age;
+    if (!expectedHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing age claim hash in OCR claim",
+      });
+    }
+    if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Age claim hash mismatch",
+      });
+    }
+  }
+
+  if (circuitType === "doc_validity") {
+    const providedDate = parsePublicInputToNumber(args.publicInputs[0]);
+    const actualDate = getTodayAsInt();
+    if (providedDate !== actualDate) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid current_date: ${providedDate} (expected ${actualDate})`,
+      });
+    }
+
+    const ocrClaim = await getVerifiedClaim(
+      args.userId,
+      "ocr_result",
+      args.documentId,
+    );
+    assertPolicyVersion(ocrClaim, "ocr_result");
+    const claimData = ocrClaim.data as OcrClaimData;
+    const expectedHash = claimData.claimHashes?.docValidity;
+    if (!expectedHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing document validity claim hash in OCR claim",
+      });
+    }
+    if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Document validity claim hash mismatch",
+      });
+    }
+  }
+
+  if (circuitType === "nationality_membership") {
+    const ocrClaim = await getVerifiedClaim(
+      args.userId,
+      "ocr_result",
+      args.documentId,
+    );
+    assertPolicyVersion(ocrClaim, "ocr_result");
+    const claimData = ocrClaim.data as OcrClaimData;
+    const expectedHash = claimData.claimHashes?.nationality;
+    if (!expectedHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing nationality claim hash in OCR claim",
+      });
+    }
+    if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Nationality claim hash mismatch",
+      });
+    }
+  }
+
+  if (circuitType === "face_match") {
+    const providedThreshold = parsePublicInputToNumber(args.publicInputs[0]);
+
+    if (providedThreshold < MIN_FACE_MATCH_THRESHOLD) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `threshold ${providedThreshold} below policy minimum ${MIN_FACE_MATCH_THRESHOLD} (${MIN_FACE_MATCH_PERCENT}.00%)`,
+      });
+    }
+
+    if (providedThreshold > 10000) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `threshold ${providedThreshold} exceeds maximum 10000 (100.00%)`,
+      });
+    }
+
+    const faceClaim = await getVerifiedClaim(
+      args.userId,
+      "face_match_score",
+      args.documentId,
+    );
+    assertPolicyVersion(faceClaim, "face_match_score");
+    const claimData = faceClaim.data as FaceMatchClaimData;
+    if (!claimData.claimHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing face match claim hash",
+      });
+    }
+    if (parseFieldToBigInt(claimData.claimHash) !== claimHashBigInt) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Face match claim hash mismatch",
+      });
+    }
+
+    const confidenceFixed =
+      typeof claimData.confidenceFixed === "number"
+        ? claimData.confidenceFixed
+        : typeof claimData.confidence === "number"
+          ? Math.round(claimData.confidence * 10000)
+          : null;
+    if (confidenceFixed === null || Number.isNaN(confidenceFixed)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Invalid face match claim payload",
+      });
+    }
+
+    if (confidenceFixed < providedThreshold) {
+      return failure("Face match threshold not met (signed claim)");
+    }
+  }
+
+  const verificationResult = await verifyNoirProof({
+    proof: args.proof,
+    publicInputs: args.publicInputs,
+    circuitType,
+  });
+
+  if (!verificationResult.isValid) {
+    return { result: verificationResult, nonceHex };
+  }
+
+  if (circuitType === "age_verification") {
+    const isOldEnough = parsePublicInputToNumber(
+      args.publicInputs[circuitSpec.resultIndex],
+    );
+    if (isOldEnough !== 1) {
+      return failure(
+        "Age requirement not met",
+        verificationResult.verificationTimeMs,
+      );
+    }
+  }
+
+  if (circuitType === "doc_validity") {
+    const isDocValid = parsePublicInputToNumber(
+      args.publicInputs[circuitSpec.resultIndex],
+    );
+    if (isDocValid !== 1) {
+      return failure("Document expired", verificationResult.verificationTimeMs);
+    }
+  }
+
+  if (circuitType === "nationality_membership") {
+    const isMember = parsePublicInputToNumber(
+      args.publicInputs[circuitSpec.resultIndex],
+    );
+    if (isMember !== 1) {
+      return failure(
+        "Nationality not in group",
+        verificationResult.verificationTimeMs,
+      );
+    }
+  }
+
+  if (circuitType === "face_match") {
+    const isMatch = parsePublicInputToNumber(
+      args.publicInputs[circuitSpec.resultIndex],
+    );
+    if (isMatch !== 1) {
+      return failure(
+        "Face match threshold not met",
+        verificationResult.verificationTimeMs,
+      );
+    }
+  }
+
+  return { result: verificationResult, nonceHex };
 }
 
 export const cryptoRouter = router({
@@ -118,45 +482,19 @@ export const cryptoRouter = router({
     };
   }),
 
-  /**
-   * Encrypts date of birth using TFHE-rs (FHE service).
-   * Returns ciphertext that can only be decrypted by the FHE service.
-   */
-  encryptDob: publicProcedure
+  registerFheKey: protectedProcedure
     .input(
       z.object({
-        dob: z.string().optional(),
-        birthYear: z.number().optional(),
-        clientKeyId: z.string().optional(),
+        serverKey: z.string().min(1, "serverKey is required"),
       }),
     )
     .mutation(async ({ input }) => {
-      const dobValue =
-        input.dob || (input.birthYear ? `${input.birthYear}-01-01` : null);
-      if (!dobValue) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "dob or birthYear is required",
-        });
-      }
-
-      const startTime = Date.now();
-      const data = await encryptDobFhe({
-        dob: String(dobValue),
-        clientKeyId: input.clientKeyId || "default",
-      });
-      const encryptionTimeMs = Date.now() - startTime;
-
-      return {
-        ciphertext: data.ciphertext,
-        clientKeyId: data.clientKeyId,
-        encryptionTimeMs,
-      };
+      return await registerFheKey({ serverKey: input.serverKey });
     }),
 
   /**
-   * Verifies age threshold on FHE-encrypted birth year.
-   * Computation happens on ciphertext; result is decrypted server-side.
+   * Verifies age threshold on FHE-encrypted birth year offset.
+   * Computation happens on ciphertext; result is returned encrypted for client decryption.
    */
   verifyAgeFhe: publicProcedure
     .input(
@@ -164,6 +502,7 @@ export const cryptoRouter = router({
         ciphertext: z.string().min(1, "ciphertext is required"),
         currentYear: z.number().optional(),
         minAge: z.number().optional(),
+        keyId: z.string().min(1, "keyId is required"),
       }),
     )
     .mutation(async ({ input }) => {
@@ -172,10 +511,11 @@ export const cryptoRouter = router({
         ciphertext: input.ciphertext,
         currentYear: input.currentYear || new Date().getFullYear(),
         minAge: input.minAge ?? 18,
+        keyId: input.keyId,
       });
 
       return {
-        isOver18: data.isOver18,
+        resultCiphertext: data.resultCiphertext,
         computationTimeMs: Date.now() - startTime,
       };
     }),
@@ -184,18 +524,17 @@ export const cryptoRouter = router({
     .input(
       z.object({
         score: z.number().min(0).max(1),
-        clientKeyId: z.string().optional(),
+        publicKey: z.string().min(1, "publicKey is required"),
       }),
     )
     .mutation(async ({ input }) => {
       const result = await encryptLivenessScoreFhe({
         score: input.score,
-        clientKeyId: input.clientKeyId || "default",
+        publicKey: input.publicKey,
       });
 
       return {
         ciphertext: result.ciphertext,
-        clientKeyId: result.clientKeyId,
         score: result.score,
       };
     }),
@@ -205,20 +544,19 @@ export const cryptoRouter = router({
       z.object({
         ciphertext: z.string().min(1, "ciphertext is required"),
         threshold: z.number().min(0).max(1).optional(),
-        clientKeyId: z.string().optional(),
+        keyId: z.string().min(1, "keyId is required"),
       }),
     )
     .mutation(async ({ input }) => {
       const result = await verifyLivenessThresholdFhe({
         ciphertext: input.ciphertext,
         threshold: input.threshold ?? 0.3,
-        clientKeyId: input.clientKeyId || "default",
+        keyId: input.keyId,
       });
 
       return {
-        passesThreshold: result.passesThreshold,
+        passesCiphertext: result.passesCiphertext,
         threshold: result.threshold,
-        computationTimeMs: result.computationTimeMs,
       };
     }),
 
@@ -237,223 +575,32 @@ export const cryptoRouter = router({
         proof: z.string().min(1),
         publicInputs: z.array(z.string()),
         circuitType: circuitTypeSchema,
+        documentId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const circuitType = input.circuitType;
-      const circuitSpec = CIRCUIT_SPECS[circuitType];
+      const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const documentId = input.documentId ?? selectedDocument?.id ?? null;
+      const { result, nonceHex } = await verifyProofInternal({
+        userId: ctx.userId,
+        circuitType: input.circuitType,
+        proof: input.proof,
+        publicInputs: input.publicInputs,
+        documentId,
+      });
 
-      // Nonce validation is mandatory for all proofs (replay resistance).
-      if (input.publicInputs.length <= circuitSpec.nonceIndex) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Missing nonce at public input index ${circuitSpec.nonceIndex}`,
-        });
-      }
+      if (!result.isValid) return result;
 
-      const nonceHex = normalizeChallengeNonce(
-        input.publicInputs[circuitSpec.nonceIndex],
+      const challenge = consumeChallenge(
+        nonceHex,
+        input.circuitType,
+        ctx.userId,
       );
-      const challenge = consumeChallenge(nonceHex, circuitType, ctx.userId);
       if (!challenge) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Invalid or expired challenge nonce",
         });
-      }
-
-      // Policy enforcement for age verification
-      if (circuitType === "age_verification") {
-        if (input.publicInputs.length < circuitSpec.minPublicInputs) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `age_verification requires ${circuitSpec.minPublicInputs} public inputs`,
-          });
-        }
-
-        const providedYear = parsePublicInputToNumber(input.publicInputs[0]);
-        const providedMinAge = parsePublicInputToNumber(input.publicInputs[1]);
-        const actualYear = new Date().getFullYear();
-
-        if (Math.abs(providedYear - actualYear) > 1) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Invalid current_year: ${providedYear} (expected ~${actualYear})`,
-          });
-        }
-
-        if (providedMinAge < MIN_AGE_POLICY) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `min_age ${providedMinAge} below policy minimum ${MIN_AGE_POLICY}`,
-          });
-        }
-      }
-
-      // Policy enforcement for doc validity
-      if (circuitType === "doc_validity") {
-        if (input.publicInputs.length < circuitSpec.minPublicInputs) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `doc_validity requires ${circuitSpec.minPublicInputs} public inputs`,
-          });
-        }
-
-        const providedDate = parsePublicInputToNumber(input.publicInputs[0]);
-        const actualDate = getTodayAsInt();
-        if (providedDate !== actualDate) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Invalid current_date: ${providedDate} (expected ${actualDate})`,
-          });
-        }
-      }
-
-      // Verify the proof cryptographically using Noir/UltraHonk.
-      const result = await verifyNoirProof({
-        proof: input.proof,
-        publicInputs: input.publicInputs,
-        circuitType,
-      });
-
-      if (!result.isValid) return result;
-
-      // Enforce circuit output values (is_old_enough / is_valid / is_member / is_match).
-      if (circuitType === "age_verification") {
-        const isOldEnough = parsePublicInputToNumber(
-          input.publicInputs[circuitSpec.resultIndex],
-        );
-        if (isOldEnough !== 1) {
-          return {
-            isValid: false,
-            reason: "Age requirement not met",
-            verificationTimeMs: result.verificationTimeMs,
-          };
-        }
-      }
-
-      if (circuitType === "doc_validity") {
-        const isDocValid = parsePublicInputToNumber(
-          input.publicInputs[circuitSpec.resultIndex],
-        );
-        if (isDocValid !== 1) {
-          return {
-            isValid: false,
-            reason: "Document expired",
-            verificationTimeMs: result.verificationTimeMs,
-          };
-        }
-      }
-
-      if (circuitType === "nationality_membership") {
-        if (input.publicInputs.length < circuitSpec.minPublicInputs) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `nationality_membership requires ${circuitSpec.minPublicInputs} public inputs`,
-          });
-        }
-        const isMember = parsePublicInputToNumber(
-          input.publicInputs[circuitSpec.resultIndex],
-        );
-        if (isMember !== 1) {
-          return {
-            isValid: false,
-            reason: "Nationality not in group",
-            verificationTimeMs: result.verificationTimeMs,
-          };
-        }
-      }
-
-      if (circuitType === "face_match") {
-        if (input.publicInputs.length < circuitSpec.minPublicInputs) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `face_match requires ${circuitSpec.minPublicInputs} public inputs`,
-          });
-        }
-
-        const userId = ctx.userId;
-
-        const providedThreshold = parsePublicInputToNumber(
-          input.publicInputs[0],
-        );
-
-        if (providedThreshold < MIN_FACE_MATCH_THRESHOLD) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `threshold ${providedThreshold} below policy minimum ${MIN_FACE_MATCH_THRESHOLD} (60.00%)`,
-          });
-        }
-
-        if (providedThreshold > 10000) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `threshold ${providedThreshold} exceeds maximum 10000 (100.00%)`,
-          });
-        }
-
-        const signedClaim = getLatestSignedClaimByUserAndType(
-          userId,
-          "face_match_score",
-        );
-        if (!signedClaim) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Missing signed face match claim",
-          });
-        }
-
-        let claimPayload: Awaited<ReturnType<typeof verifyAttestationClaim>>;
-        try {
-          claimPayload = await verifyAttestationClaim(
-            signedClaim.signature,
-            "face_match_score",
-            userId,
-          );
-        } catch (error) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Invalid signed face match claim",
-          });
-        }
-        const claimData = claimPayload.data as {
-          confidence?: number;
-          confidenceFixed?: number;
-        };
-        const confidenceFixed =
-          typeof claimData.confidenceFixed === "number"
-            ? claimData.confidenceFixed
-            : typeof claimData.confidence === "number"
-              ? Math.round(claimData.confidence * 10000)
-              : null;
-        if (confidenceFixed === null || Number.isNaN(confidenceFixed)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Invalid face match claim payload",
-          });
-        }
-
-        if (confidenceFixed < providedThreshold) {
-          return {
-            isValid: false,
-            reason: "Face match threshold not met (signed claim)",
-            verificationTimeMs: 0,
-          };
-        }
-
-        const isMatch = parsePublicInputToNumber(
-          input.publicInputs[circuitSpec.resultIndex],
-        );
-        if (isMatch !== 1) {
-          return {
-            isValid: false,
-            reason: "Face match threshold not met",
-            verificationTimeMs: result.verificationTimeMs,
-          };
-        }
       }
 
       return result;
@@ -492,82 +639,112 @@ export const cryptoRouter = router({
     }),
 
   /**
-   * Stores a verified age proof for the authenticated user.
+   * Fetch latest signed claims for proof generation (OCR + face match + liveness).
+   */
+  getSignedClaims: protectedProcedure
+    .input(z.object({ documentId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const documentId = input?.documentId ?? selectedDocument?.id ?? null;
+      if (!documentId) {
+        return {
+          documentId: null,
+          ocr: null,
+          faceMatch: null,
+          liveness: null,
+        };
+      }
+
+      const ocr = getLatestSignedClaimByUserTypeAndDocument(
+        ctx.userId,
+        "ocr_result",
+        documentId,
+      );
+      const faceMatch = getLatestSignedClaimByUserTypeAndDocument(
+        ctx.userId,
+        "face_match_score",
+        documentId,
+      );
+      const liveness = getLatestSignedClaimByUserTypeAndDocument(
+        ctx.userId,
+        "liveness_score",
+        documentId,
+      );
+
+      return {
+        documentId,
+        ocr: ocr
+          ? await verifyAttestationClaim(
+              ocr.signature,
+              "ocr_result",
+              ctx.userId,
+            )
+          : null,
+        faceMatch: faceMatch
+          ? await verifyAttestationClaim(
+              faceMatch.signature,
+              "face_match_score",
+              ctx.userId,
+            )
+          : null,
+        liveness: liveness
+          ? await verifyAttestationClaim(
+              liveness.signature,
+              "liveness_score",
+              ctx.userId,
+            )
+          : null,
+      };
+    }),
+
+  /**
+   * Stores a verified ZK proof for the authenticated user.
    *
    * Validates:
-   * - Public signals format matches age_verification circuit
-   * - Proof year is within ±1 of current year
-   * - min_age meets policy minimum (18)
-   * - Cryptographic proof is valid
+   * - Public signals format matches circuit spec
+   * - Policy enforcement (age/current date/thresholds)
+   * - Signed claim binding via claim_hash
+   * - Cryptographic proof validity
    * - Challenge nonce is valid and unconsumed
    */
-  storeAgeProof: protectedProcedure
+  storeProof: protectedProcedure
     .input(
       z.object({
+        circuitType: circuitTypeSchema,
         proof: z.string().min(1),
         publicSignals: z.array(z.string()),
         generationTimeMs: z.number().optional(),
-        dobCiphertext: z.string().optional(),
-        fheClientKeyId: z.string().optional(),
-        fheEncryptionTimeMs: z.number().optional(),
+        documentId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const ageSpec = CIRCUIT_SPECS.age_verification;
-      if (input.publicSignals.length < ageSpec.minPublicInputs) {
+      const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const documentId = input.documentId ?? selectedDocument?.id ?? null;
+      if (!documentId) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `publicSignals must have at least ${ageSpec.minPublicInputs} elements: [current_year, min_age, nonce, is_old_enough]`,
+          message: "Missing document context for proof storage",
         });
       }
 
-      const providedYear = parsePublicInputToNumber(input.publicSignals[0]);
-      const providedMinAge = parsePublicInputToNumber(input.publicSignals[1]);
-      const isOldEnough = parsePublicInputToNumber(
-        input.publicSignals[ageSpec.resultIndex],
-      );
-      const actualYear = new Date().getFullYear();
-
-      if (Math.abs(providedYear - actualYear) > 1) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Invalid proof year: ${providedYear} (expected ~${actualYear})`,
-        });
-      }
-
-      if (providedMinAge < MIN_AGE_POLICY) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `min_age ${providedMinAge} below policy minimum ${MIN_AGE_POLICY}`,
-        });
-      }
-
-      const verificationResult = await verifyNoirProof({
+      const { result, nonceHex } = await verifyProofInternal({
+        userId: ctx.userId,
+        circuitType: input.circuitType,
         proof: input.proof,
         publicInputs: input.publicSignals,
-        circuitType: "age_verification",
+        documentId,
       });
 
-      if (!verificationResult.isValid) {
+      if (!result.isValid) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Proof verification failed: invalid cryptographic proof",
+          message: result.reason || "Proof verification failed",
         });
       }
 
-      if (isOldEnough !== 1) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Age requirement not met: proof shows user is not over 18",
-        });
-      }
-
-      const nonceHex = normalizeChallengeNonce(
-        input.publicSignals[ageSpec.nonceIndex],
-      );
       const challenge = consumeChallenge(
         nonceHex,
-        "age_verification",
+        input.circuitType,
         ctx.userId,
       );
       if (!challenge) {
@@ -577,53 +754,96 @@ export const cryptoRouter = router({
         });
       }
 
-      const isOver18 = true;
       const proofId = crypto.randomUUID();
+      const proofHash = computeProofHash({
+        proof: input.proof,
+        publicInputs: input.publicSignals,
+        policyVersion: POLICY_VERSION,
+      });
 
-      const proofHash = crypto
-        .createHash("sha256")
-        .update(input.proof)
-        .digest("hex");
       insertZkProofRecord({
         id: proofId,
         userId: ctx.userId,
-        documentId: getLatestIdentityDocumentId(ctx.userId),
-        proofType: "age_verification",
+        documentId,
+        proofType: input.circuitType,
         proofHash,
         proofPayload: input.proof,
         publicInputs: JSON.stringify(input.publicSignals),
-        isOver18,
+        isOver18: input.circuitType === "age_verification" ? true : null,
         generationTimeMs: input.generationTimeMs,
         nonce: nonceHex,
-        policyVersion: null,
-        circuitType: verificationResult.circuitType,
-        noirVersion: verificationResult.noirVersion,
-        circuitHash: verificationResult.circuitHash,
-        bbVersion: verificationResult.bbVersion,
+        policyVersion: POLICY_VERSION,
+        circuitType: result.circuitType,
+        noirVersion: result.noirVersion,
+        circuitHash: result.circuitHash,
+        bbVersion: result.bbVersion,
         verified: true,
       });
 
-      if (input.dobCiphertext) {
-        insertEncryptedAttribute({
-          id: crypto.randomUUID(),
+      const proofHashes = getProofHashesByUserAndDocument(
+        ctx.userId,
+        documentId,
+      );
+      const proofSetHash = computeProofSetHash({
+        proofHashes,
+        policyHash: POLICY_HASH,
+      });
+      upsertAttestationEvidence({
+        userId: ctx.userId,
+        documentId,
+        policyVersion: POLICY_VERSION,
+        policyHash: POLICY_HASH,
+        proofSetHash,
+      });
+
+      const bundle = getIdentityBundleByUserId(ctx.userId);
+      if (bundle?.fhePublicKey) {
+        try {
+          const verificationStatus = getVerificationStatus(ctx.userId);
+          const complianceLevel = getComplianceLevel(verificationStatus);
+          const startTime = Date.now();
+          const encrypted = await encryptComplianceLevelFhe({
+            complianceLevel,
+            publicKey: bundle.fhePublicKey,
+          });
+          insertEncryptedAttribute({
+            id: crypto.randomUUID(),
+            userId: ctx.userId,
+            source: "web2_tfhe",
+            attributeType: "compliance_level",
+            ciphertext: encrypted.ciphertext,
+            keyId: bundle.fheKeyId ?? null,
+            encryptionTimeMs: Date.now() - startTime,
+          });
+        } catch (error) {
+          // Compliance level encryption is best-effort; proof storage should still succeed.
+          // biome-ignore lint/suspicious/noConsole: surface non-blocking FHE errors in server logs.
+          console.warn(
+            "[crypto.storeProof] compliance level encryption failed:",
+            error,
+          );
+        }
+      }
+
+      const verificationStatus = getVerificationStatus(ctx.userId);
+      if (verificationStatus.verified) {
+        updateIdentityBundleStatus({
           userId: ctx.userId,
-          source: "web3_tfhe",
-          attributeType: "birth_year",
-          ciphertext: input.dobCiphertext,
-          keyId: input.fheClientKeyId ?? null,
-          encryptionTimeMs: input.fheEncryptionTimeMs ?? null,
+          status: "verified",
+          policyVersion: POLICY_VERSION,
+          issuerId: ISSUER_ID,
         });
       }
 
       return {
         success: true,
         proofId,
-        isOver18,
-        verificationTimeMs: verificationResult.verificationTimeMs,
-        circuitType: verificationResult.circuitType,
-        noirVersion: verificationResult.noirVersion,
-        circuitHash: verificationResult.circuitHash,
-        bbVersion: verificationResult.bbVersion,
+        proofHash,
+        verificationTimeMs: result.verificationTimeMs,
+        circuitType: result.circuitType,
+        noirVersion: result.noirVersion,
+        circuitHash: result.circuitHash,
+        bbVersion: result.bbVersion,
       };
     }),
 });

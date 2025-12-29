@@ -16,6 +16,7 @@ export type CircuitType =
 type CircuitSpec = {
   minPublicInputs: number;
   nonceIndex: number;
+  claimHashIndex: number;
   resultIndex: number;
 };
 
@@ -25,14 +26,34 @@ type CircuitSpec = {
  * IMPORTANT: These indices must match the order produced by bb.js for the compiled circuits.
  */
 export const CIRCUIT_SPECS: Record<CircuitType, CircuitSpec> = {
-  // [current_year, min_age, nonce, is_old_enough]
-  age_verification: { minPublicInputs: 4, nonceIndex: 2, resultIndex: 3 },
-  // [current_date, nonce, is_valid]
-  doc_validity: { minPublicInputs: 3, nonceIndex: 1, resultIndex: 2 },
-  // [merkle_root, nonce, is_member]
-  nationality_membership: { minPublicInputs: 3, nonceIndex: 1, resultIndex: 2 },
-  // [threshold, nonce, is_match]
-  face_match: { minPublicInputs: 3, nonceIndex: 1, resultIndex: 2 },
+  // [current_year, min_age, nonce, claim_hash, is_old_enough]
+  age_verification: {
+    minPublicInputs: 5,
+    nonceIndex: 2,
+    claimHashIndex: 3,
+    resultIndex: 4,
+  },
+  // [current_date, nonce, claim_hash, is_valid]
+  doc_validity: {
+    minPublicInputs: 4,
+    nonceIndex: 1,
+    claimHashIndex: 2,
+    resultIndex: 3,
+  },
+  // [merkle_root, nonce, claim_hash, is_member]
+  nationality_membership: {
+    minPublicInputs: 4,
+    nonceIndex: 1,
+    claimHashIndex: 2,
+    resultIndex: 3,
+  },
+  // [threshold, nonce, claim_hash, is_match]
+  face_match: {
+    minPublicInputs: 4,
+    nonceIndex: 1,
+    claimHashIndex: 2,
+    resultIndex: 3,
+  },
 };
 
 export function isCircuitType(value: unknown): value is CircuitType {

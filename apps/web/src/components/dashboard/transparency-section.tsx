@@ -15,7 +15,7 @@ import {
 interface TransparencySectionProps {
   documentHash?: string;
   nameCommitment?: string;
-  dobCiphertext?: string;
+  birthYearOffsetCiphertext?: string;
   hasAgeProof: boolean;
   proofTypes?: string[];
   encryptedAttributes?: string[];
@@ -25,7 +25,7 @@ interface TransparencySectionProps {
 export function TransparencySection({
   documentHash,
   nameCommitment,
-  dobCiphertext,
+  birthYearOffsetCiphertext,
   hasAgeProof,
   proofTypes = [],
   encryptedAttributes = [],
@@ -51,9 +51,9 @@ export function TransparencySection({
   };
 
   const attributeLabels: Record<string, string> = {
-    birth_year: "Birth Year",
-    dob_full: "Date of Birth",
-    gender_code: "Gender Code",
+    birth_year_offset: "Birth Year Offset",
+    country_code: "Country Code",
+    compliance_level: "Compliance Level",
     liveness_score: "Liveness Score",
   };
 
@@ -124,19 +124,19 @@ export function TransparencySection({
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">
-                      Birth Year Ciphertext
+                      Birth Year Offset Ciphertext
                     </span>
                     <Badge variant="outline" className="text-xs">
                       FHE
                     </Badge>
                   </div>
                   <code className="text-xs text-muted-foreground block font-mono">
-                    {dobCiphertext
-                      ? truncateHash(dobCiphertext)
+                    {birthYearOffsetCiphertext
+                      ? truncateHash(birthYearOffsetCiphertext)
                       : "Not encrypted"}
                   </code>
                   <p className="text-xs text-muted-foreground">
-                    Homomorphically encrypted birth year
+                    Homomorphically encrypted birth year offset
                   </p>
                 </div>
               </div>

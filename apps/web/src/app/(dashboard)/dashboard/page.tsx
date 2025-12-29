@@ -28,11 +28,11 @@ import {
   getEncryptedAttributeTypesByUserId,
   getIdentityBundleByUserId,
   getLatestEncryptedAttributeByUserAndType,
-  getLatestIdentityDocumentByUserId,
-  getSignedClaimTypesByUserId,
+  getSelectedIdentityDocumentByUserId,
+  getSignedClaimTypesByUserAndDocument,
   getUserFirstName,
   getVerificationStatus,
-  getZkProofsByUserId,
+  getZkProofTypesByUserAndDocument,
 } from "@/lib/db";
 import { getFirstPart } from "@/lib/utils";
 
@@ -70,22 +70,27 @@ export default async function DashboardPage() {
   // Fetch off-chain attestation data
   const identityBundle = userId ? getIdentityBundleByUserId(userId) : null;
   const latestDocument = userId
-    ? getLatestIdentityDocumentByUserId(userId)
+    ? getSelectedIdentityDocumentByUserId(userId)
     : null;
-  const zkProofs = userId ? getZkProofsByUserId(userId) : [];
+  const selectedDocumentId = latestDocument?.id ?? null;
+  const zkProofTypes =
+    userId && selectedDocumentId
+      ? getZkProofTypesByUserAndDocument(userId, selectedDocumentId)
+      : [];
   const encryptedAttributes = userId
     ? getEncryptedAttributeTypesByUserId(userId)
     : [];
-  const birthYearCiphertext = userId
-    ? getLatestEncryptedAttributeByUserAndType(userId, "birth_year")
+  const birthYearOffsetCiphertext = userId
+    ? getLatestEncryptedAttributeByUserAndType(userId, "birth_year_offset")
     : null;
-  const dobFullCiphertext = userId
-    ? getLatestEncryptedAttributeByUserAndType(userId, "dob_full")
-    : null;
-  const signedClaimTypes = userId ? getSignedClaimTypesByUserId(userId) : [];
-  const proofTypes = Array.from(
-    new Set(zkProofs.map((proof) => proof.proofType)),
-  );
+  const signedClaimTypes =
+    userId && selectedDocumentId
+      ? getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId)
+      : [];
+  const proofTypes = Array.from(new Set(zkProofTypes));
+  const fheStatus = identityBundle?.fheStatus ?? null;
+  const fheError =
+    identityBundle?.fheStatus === "error" ? identityBundle.fheError : null;
 
   // Get verification status
   const verificationStatus = userId ? getVerificationStatus(userId) : null;
@@ -97,9 +102,13 @@ export default async function DashboardPage() {
   const checks: VerificationChecks = {
     document: latestDocument?.status === "verified",
     liveness: signedClaimTypes.includes("liveness_score"),
-    faceMatch: signedClaimTypes.includes("face_match_score"),
     ageProof: proofTypes.includes("age_verification"),
-    fheEncryption: encryptedAttributes.length > 0,
+    docValidityProof: proofTypes.includes("doc_validity"),
+    nationalityProof: proofTypes.includes("nationality_membership"),
+    faceMatchProof: proofTypes.includes("face_match"),
+    fheEncryption:
+      fheStatus === "complete" ? true : encryptedAttributes.length > 0,
+    fheError,
   };
 
   const hasProof =
@@ -110,10 +119,8 @@ export default async function DashboardPage() {
   const identityData = {
     documentHash: latestDocument?.documentHash ?? undefined,
     nameCommitment: latestDocument?.nameCommitment ?? undefined,
-    dobCiphertext:
-      birthYearCiphertext?.ciphertext ??
-      dobFullCiphertext?.ciphertext ??
-      undefined,
+    birthYearOffsetCiphertext:
+      birthYearOffsetCiphertext?.ciphertext ?? undefined,
     // Document metadata (non-PII, safe to display)
     documentType: latestDocument?.documentType ?? undefined,
     countryVerified: latestDocument?.issuerCountry ?? undefined,
@@ -345,7 +352,7 @@ export default async function DashboardPage() {
         <TransparencySection
           documentHash={identityData.documentHash}
           nameCommitment={identityData.nameCommitment}
-          dobCiphertext={identityData.dobCiphertext}
+          birthYearOffsetCiphertext={identityData.birthYearOffsetCiphertext}
           hasAgeProof={checks.ageProof}
           proofTypes={proofTypes}
           encryptedAttributes={encryptedAttributes}

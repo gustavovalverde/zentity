@@ -83,6 +83,7 @@ function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
+      // biome-ignore lint/suspicious/noDocumentCookie: sidebar state is intentionally persisted via cookie.
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
     },
     [setOpenProp, open],
@@ -606,10 +607,15 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean;
 }) {
-  // Random width between 50 to 90%.
+  const seed = React.useId();
+  // Deterministic width between 50% and 90% to avoid hydration mismatch.
   const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`;
-  }, []);
+    let hash = 0;
+    for (let i = 0; i < seed.length; i += 1) {
+      hash = (hash * 31 + seed.charCodeAt(i)) % 41;
+    }
+    return `${50 + hash}%`;
+  }, [seed]);
 
   return (
     <div

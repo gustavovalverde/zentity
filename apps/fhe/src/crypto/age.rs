@@ -1,54 +1,107 @@
-//! Age Verification Operations
+//! Age Verification Operations (Birth Year Offset)
 //!
-//! Provides FHE-based age verification operations.
+//! Provides FHE-based age verification operations using a birth year offset
+//! (years since 1900). This avoids storing full DOB while still supporting
+//! age threshold checks.
 
-use super::{get_key_store, setup_for_verification};
+use super::{decode_compressed_public_key, setup_for_verification};
 use crate::error::FheError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tfhe::prelude::*;
 use tfhe::FheUint16;
 
-/// Encrypt a birth year using the specified client key
-pub fn encrypt_birth_year(birth_year: u16, client_key_id: &str) -> Result<String, FheError> {
-    let key_store = get_key_store();
+const BASE_YEAR: u16 = 1900;
+const MAX_OFFSET: u16 = 255;
 
-    let client_key = key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| FheError::KeyNotFound(client_key_id.to_string()))?;
+fn validate_offset(offset: u16) -> Result<(), FheError> {
+    if offset > MAX_OFFSET {
+        return Err(FheError::InvalidInput(format!(
+            "Birth year offset must be 0-{} (got {})",
+            MAX_OFFSET, offset
+        )));
+    }
+    Ok(())
+}
 
-    let encrypted = FheUint16::encrypt(birth_year, &client_key);
+/// Encrypt a birth year offset (years since 1900) using the provided public key
+pub fn encrypt_birth_year_offset(
+    birth_year_offset: u16,
+    public_key_b64: &str,
+) -> Result<String, FheError> {
+    validate_offset(birth_year_offset)?;
 
-    // Serialize to bytes using bincode 2.x serde API
-    let bytes = bincode::serde::encode_to_vec(&encrypted, bincode::config::standard())?;
+    let public_key = decode_compressed_public_key(public_key_b64)?;
+    let encrypted = FheUint16::try_encrypt(birth_year_offset, &public_key)
+        .map_err(|error| FheError::Tfhe(error.to_string()))?;
+
+    // Serialize to bytes using bincode
+    let bytes = bincode::serialize(&encrypted)?;
 
     // Encode as base64
     Ok(BASE64.encode(&bytes))
 }
 
-/// Verify age on encrypted data
-pub fn verify_age(
+/// Verify age on encrypted birth year offset.
+///
+/// Returns an encrypted boolean (base64) that must be decrypted by the client.
+pub fn verify_age_offset(
     ciphertext_b64: &str,
     current_year: u16,
     min_age: u16,
-    client_key_id: &str,
-) -> Result<bool, FheError> {
-    let client_key = setup_for_verification(client_key_id)?;
+    key_id: &str,
+) -> Result<String, FheError> {
+    if current_year < BASE_YEAR {
+        return Err(FheError::InvalidInput(format!(
+            "Current year must be >= {} (got {})",
+            BASE_YEAR, current_year
+        )));
+    }
+
+    let current_offset = current_year - BASE_YEAR;
+    if min_age > current_offset {
+        return Err(FheError::InvalidInput(format!(
+            "Min age {} is too large for current year {}",
+            min_age, current_year
+        )));
+    }
+
+    setup_for_verification(key_id)?;
 
     // Decode base64
     let bytes = BASE64.decode(ciphertext_b64)?;
 
-    // Deserialize to FheUint16 using bincode 2.x serde API
-    let (encrypted_birth_year, _): (FheUint16, _) =
-        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
+    // Deserialize to FheUint16 using bincode
+    let encrypted_birth_year_offset: FheUint16 = bincode::deserialize(&bytes)?;
 
-    // Compute age homomorphically: current_year - birth_year
-    let encrypted_age = current_year - &encrypted_birth_year;
+    // Compute max allowed offset for the min age (older => smaller offset)
+    let min_offset = current_offset - min_age;
 
-    // Check if age >= min_age
-    let encrypted_is_adult = encrypted_age.ge(min_age);
+    // Check if offset <= min_offset (born on or before cutoff)
+    let encrypted_is_adult = encrypted_birth_year_offset.le(min_offset);
 
-    // Decrypt only the boolean result
-    let is_over_18: bool = encrypted_is_adult.decrypt(&client_key);
+    // Serialize encrypted boolean result (client will decrypt)
+    let bytes = bincode::serialize(&encrypted_is_adult)?;
+    Ok(BASE64.encode(&bytes))
+}
 
-    Ok(is_over_18)
+#[cfg(test)]
+mod tests {
+    use super::super::test_helpers::get_test_keys;
+    use super::*;
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    use tfhe::FheBool;
+
+    #[test]
+    fn encrypt_and_verify_age_roundtrip() {
+        let (client_key, public_key_b64, key_id) = get_test_keys();
+        let offset = 2000u16 - BASE_YEAR;
+        let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+        let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
+
+        let result_bytes = BASE64.decode(result_ciphertext).unwrap();
+        let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+        let is_adult = encrypted.decrypt(&client_key);
+
+        assert!(is_adult);
+    }
 }

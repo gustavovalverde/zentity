@@ -15,10 +15,10 @@ import { auth } from "@/lib/auth/auth";
 import {
   getEncryptedAttributeTypesByUserId,
   getIdentityBundleByUserId,
-  getLatestIdentityDocumentByUserId,
-  getSignedClaimTypesByUserId,
+  getSelectedIdentityDocumentByUserId,
+  getSignedClaimTypesByUserAndDocument,
   getVerificationStatus,
-  getZkProofsByUserId,
+  getZkProofTypesByUserAndDocument,
 } from "@/lib/db";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
@@ -37,16 +37,20 @@ export default async function AttestationPage() {
   const isVerified = verificationStatus?.verified ?? false;
   const identityBundle = userId ? getIdentityBundleByUserId(userId) : null;
   const latestDocument = userId
-    ? getLatestIdentityDocumentByUserId(userId)
+    ? getSelectedIdentityDocumentByUserId(userId)
     : null;
-  const zkProofs = userId ? getZkProofsByUserId(userId) : [];
-  const proofTypes = Array.from(
-    new Set(zkProofs.map((proof) => proof.proofType)),
-  );
+  const selectedDocumentId = latestDocument?.id ?? null;
+  const proofTypes =
+    userId && selectedDocumentId
+      ? getZkProofTypesByUserAndDocument(userId, selectedDocumentId)
+      : [];
   const encryptedAttributes = userId
     ? getEncryptedAttributeTypesByUserId(userId)
     : [];
-  const signedClaimTypes = userId ? getSignedClaimTypesByUserId(userId) : [];
+  const signedClaimTypes =
+    userId && selectedDocumentId
+      ? getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId)
+      : [];
 
   const proofLabels: Record<string, string> = {
     age_verification: "Age ≥ 18",

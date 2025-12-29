@@ -32,8 +32,10 @@ type AccountData = {
     checks: {
       document: boolean;
       liveness: boolean;
-      faceMatch: boolean;
       ageProof: boolean;
+      docValidityProof: boolean;
+      nationalityProof: boolean;
+      faceMatchProof: boolean;
     };
   };
   documentType: string | null;
@@ -265,12 +267,20 @@ export function UserDataSection() {
               label="Liveness"
             />
             <VerificationBadge
-              passed={data.verification.checks.faceMatch}
-              label="Face Match"
+              passed={data.verification.checks.faceMatchProof}
+              label="Face Match (ZK)"
             />
             <VerificationBadge
               passed={data.verification.checks.ageProof}
               label="Age (18+)"
+            />
+            <VerificationBadge
+              passed={data.verification.checks.docValidityProof}
+              label="Document Valid"
+            />
+            <VerificationBadge
+              passed={data.verification.checks.nationalityProof}
+              label="Nationality"
             />
           </div>
         </div>

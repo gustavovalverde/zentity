@@ -25,7 +25,8 @@ import { verifyNoirProof } from "@/lib/zk/noir-verifier";
  * Public inputs for nationality_membership circuit (with nonce):
  * - [0] merkle_root: The Merkle root of the country group
  * - [1] nonce: Replay resistance nonce
- * - [2] is_member: Boolean result (1 = member, 0 = not member)
+ * - [2] claim_hash: Poseidon2(nationality_code, document_hash)
+ * - [3] is_member: Boolean result (1 = member, 0 = not member)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -50,11 +51,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (publicInputs.length < 3) {
+    if (publicInputs.length < 4) {
       return NextResponse.json(
         {
           error:
-            "publicInputs must have at least 3 elements [merkle_root, nonce, is_member]",
+            "publicInputs must have at least 4 elements [merkle_root, nonce, claim_hash, is_member]",
         },
         { status: 400 },
       );
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Enforce circuit output: is_member must be 1
-    // Index 2 is is_member (after merkle_root and nonce)
+    // Index 3 is is_member (after merkle_root, nonce, claim_hash)
     const isMember = parsePublicInputToNumber(
       publicInputs[CIRCUIT_SPECS.nationality_membership.resultIndex],
     );

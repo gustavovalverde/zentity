@@ -331,7 +331,7 @@ function seedVerifiedIdentity(dbPath: string, email: string) {
       '${crypto.randomUUID()}',
       '${userId}',
       'e2e_seed',
-      'birth_year',
+      'birth_year_offset',
       'mock-ciphertext',
       'default',
       42,

@@ -1,15 +1,19 @@
 //! FHE Key Management
 //!
-//! Handles generation, storage, and retrieval of FHE keys.
+//! Handles registration, storage, and retrieval of server keys derived from
+//! client-owned keypairs. Client keys never leave the browser.
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use tfhe::{generate_keys, set_server_key, ClientKey, ConfigBuilder, ServerKey};
+use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, ServerKey};
 use tracing::{info, warn};
 use uuid::Uuid;
+
+use crate::error::FheError;
 
 /// Global key storage
 static KEYS: OnceCell<KeyStore> = OnceCell::new();
@@ -19,21 +23,33 @@ const KEYSTORE_FILE_NAME: &str = "keystore.bincode";
 
 #[derive(Serialize, Deserialize)]
 struct PersistedKeyStore {
-    client_keys: HashMap<String, ClientKey>,
-    server_key: ServerKey,
+    server_keys: HashMap<String, ServerKey>,
 }
 
-/// Global FHE key storage with thread-safe access.
+/// Global FHE server key storage with thread-safe access.
 ///
 /// # Thread Safety
-/// - `client_keys`: Protected by RwLock for concurrent read access during verification
-/// - `server_key`: Immutable after initialization; cloned per-thread as TFHE-rs requires
-///   per-thread server key context (see `setup_for_verification`)
+/// - `server_keys`: Protected by RwLock for concurrent read access during verification
 /// - `keys_dir`: If Some, keys are persisted atomically to disk
 pub struct KeyStore {
-    client_keys: RwLock<HashMap<String, ClientKey>>,
-    server_key: ServerKey,
+    server_keys: RwLock<HashMap<String, ServerKey>>,
     keys_dir: Option<PathBuf>,
+}
+
+pub fn decode_compressed_public_key(public_key_b64: &str) -> Result<CompressedPublicKey, FheError> {
+    let bytes = BASE64.decode(public_key_b64)?;
+    let key: CompressedPublicKey = bincode::deserialize(&bytes)?;
+    Ok(key)
+}
+
+pub fn decode_compressed_server_key(server_key_b64: &str) -> Result<CompressedServerKey, FheError> {
+    let bytes = BASE64.decode(server_key_b64)?;
+    let key: CompressedServerKey = bincode::deserialize(&bytes)?;
+    Ok(key)
+}
+
+pub fn decode_server_key(server_key_b64: &str) -> Result<ServerKey, FheError> {
+    Ok(decode_compressed_server_key(server_key_b64)?.decompress())
 }
 
 impl KeyStore {
@@ -62,8 +78,7 @@ impl KeyStore {
     fn try_load_from_disk(keys_dir: &Path) -> Option<PersistedKeyStore> {
         let path = Self::keystore_path(keys_dir);
         let bytes = std::fs::read(&path).ok()?;
-        let (parsed, _): (PersistedKeyStore, _) =
-            bincode::serde::decode_from_slice(&bytes, bincode::config::standard()).ok()?;
+        let parsed: PersistedKeyStore = bincode::deserialize(&bytes).ok()?;
         Some(parsed)
     }
 
@@ -73,15 +88,14 @@ impl KeyStore {
         };
 
         let payload = PersistedKeyStore {
-            client_keys: self
-                .client_keys
+            server_keys: self
+                .server_keys
                 .read()
                 .expect("RwLock poisoned - concurrent panic occurred")
                 .clone(),
-            server_key: self.server_key.clone(),
         };
 
-        let bytes = match bincode::serde::encode_to_vec(&payload, bincode::config::standard()) {
+        let bytes = match bincode::serialize(&payload) {
             Ok(value) => value,
             Err(error) => {
                 warn!("Failed to serialize keystore for persistence: {error}");
@@ -109,10 +123,8 @@ impl KeyStore {
         if let Some(keys_dir) = keys_dir.as_ref() {
             if let Some(persisted) = Self::try_load_from_disk(keys_dir) {
                 info!("Loaded TFHE keys from disk: {}", keys_dir.display());
-                set_server_key(persisted.server_key.clone());
                 return Self {
-                    client_keys: RwLock::new(persisted.client_keys),
-                    server_key: persisted.server_key,
+                    server_keys: RwLock::new(persisted.server_keys),
                     keys_dir: Some(keys_dir.clone()),
                 };
             }
@@ -122,19 +134,8 @@ impl KeyStore {
             );
         }
 
-        let config = ConfigBuilder::default().build();
-        let (client_key, server_key) = generate_keys(config);
-
-        // Set server key globally for FHE operations
-        set_server_key(server_key.clone());
-
-        let mut client_keys = HashMap::new();
-        let default_key_id = "default".to_string();
-        client_keys.insert(default_key_id, client_key);
-
         let store = Self {
-            client_keys: RwLock::new(client_keys),
-            server_key,
+            server_keys: RwLock::new(HashMap::new()),
             keys_dir,
         };
 
@@ -143,34 +144,25 @@ impl KeyStore {
         store
     }
 
-    /// Generate a new client key and return its ID
-    pub fn generate_client_key(&self) -> String {
-        let config = ConfigBuilder::default().build();
-        let (client_key, _) = generate_keys(config);
-
+    /// Register a server key derived from a client-provided keypair.
+    pub fn register_server_key(&self, server_key: ServerKey) -> String {
         let key_id = Uuid::new_v4().to_string();
-        self.client_keys
+        self.server_keys
             .write()
             .expect("RwLock poisoned - concurrent panic occurred")
-            .insert(key_id.clone(), client_key);
+            .insert(key_id.clone(), server_key);
 
         self.try_persist_to_disk();
-
         key_id
     }
 
-    /// Get a client key by ID
-    pub fn get_client_key(&self, key_id: &str) -> Option<ClientKey> {
-        self.client_keys
+    /// Get a server key by ID
+    pub fn get_server_key(&self, key_id: &str) -> Option<ServerKey> {
+        self.server_keys
             .read()
             .expect("RwLock poisoned - concurrent panic occurred")
             .get(key_id)
             .cloned()
-    }
-
-    /// Get the server key
-    pub fn get_server_key(&self) -> &ServerKey {
-        &self.server_key
     }
 }
 
@@ -185,16 +177,16 @@ pub fn get_key_store() -> &'static KeyStore {
         .expect("Keys not initialized. Call init_keys() first.")
 }
 
-/// Sets up server key context and retrieves client key for verification operations.
+/// Sets up server key context for verification operations.
 ///
 /// This helper eliminates repeated boilerplate across verify functions:
 /// 1. Gets the global key store
 /// 2. Sets the server key for this thread (required by TFHE-rs)
-/// 3. Retrieves and returns the specified client key
-pub fn setup_for_verification(client_key_id: &str) -> Result<ClientKey, crate::error::FheError> {
+pub fn setup_for_verification(key_id: &str) -> Result<(), crate::error::FheError> {
     let key_store = get_key_store();
-    set_server_key(key_store.get_server_key().clone());
-    key_store
-        .get_client_key(client_key_id)
-        .ok_or_else(|| crate::error::FheError::KeyNotFound(client_key_id.to_string()))
+    let server_key = key_store
+        .get_server_key(key_id)
+        .ok_or_else(|| crate::error::FheError::KeyNotFound(key_id.to_string()))?;
+    set_server_key(server_key);
+    Ok(())
 }

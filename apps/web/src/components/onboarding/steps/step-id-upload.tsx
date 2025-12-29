@@ -164,6 +164,18 @@ export function StepIdUpload() {
         const result = await processDocument(dataUrl);
         updateData({ documentResult: result });
 
+        const hasExpiredDocument =
+          result.validationIssues.includes("document_expired");
+        if (hasExpiredDocument) {
+          setProcessingState("rejected");
+          setUploadError(ERROR_RECOVERY_TIPS.document_expired);
+          toast.error("Document expired", {
+            description: ERROR_RECOVERY_TIPS.document_expired,
+          });
+          await updateServerProgress({ documentProcessed: false, step: 2 });
+          return;
+        }
+
         // Check if document is valid (recognized type with extracted data)
         const isValid =
           result.documentType !== "unknown" &&

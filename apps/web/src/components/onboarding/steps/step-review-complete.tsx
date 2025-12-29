@@ -4,6 +4,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import {
+  AlertTriangle,
   ArrowLeftRight,
   Check,
   Database,
@@ -33,6 +34,7 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
+import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import {
   getBetterAuthErrorMessage,
   getPasswordLengthError,
@@ -41,15 +43,20 @@ import {
   signUp,
 } from "@/lib/auth";
 import {
-  encryptDOB,
+  ensureFheKeyRegistration,
   generateAgeProof,
+  generateDocValidityProof,
+  generateFaceMatchProof,
+  generateNationalityProof,
   getProofChallenge,
-  storeAgeProof,
+  getSignedClaims,
+  storeProof,
 } from "@/lib/crypto";
 import {
   type FaceMatchResult,
   matchFaces,
 } from "@/lib/liveness/face-detection";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 import { cn, makeFieldValidator } from "@/lib/utils";
 
@@ -124,6 +131,7 @@ export function StepReviewComplete() {
   const { state, updateData, setSubmitting, reset } = useWizard();
   const { data } = state;
   const [error, setError] = useState<string | null>(null);
+  const [fheWarning, setFheWarning] = useState<string | null>(null);
   const [proofStatus, setProofStatus] = useState<ProofStatus>("idle");
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.extractedName || "");
@@ -207,13 +215,6 @@ export function StepReviewComplete() {
       age--;
     }
     return age;
-  };
-
-  const getBirthYear = (dob: string | null): number | null => {
-    if (!dob) return null;
-    const date = new Date(dob);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.getFullYear();
   };
 
   // Get the best selfie frame for face matching (or fall back to the regular selfie)
@@ -304,20 +305,24 @@ export function StepReviewComplete() {
       const accountName =
         editedName || data.extractedName || data.email.split("@")[0];
 
-      // Get birth year from extracted DOB
-      const birthYear = getBirthYear(data.extractedDOB);
+      const hasIdentityDocs = Boolean(
+        data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
+      );
 
       // Variables to hold crypto results (generated AFTER account creation)
-      let fheResult: {
-        ciphertext: string;
-        clientKeyId: string;
-        encryptionTimeMs: number;
-      } | null = null;
-      let proofResult: {
-        proof: string; // Base64 encoded UltraHonk ZK proof
+      let fheKeyInfo: { keyId: string; publicKey: string } | null = null;
+      const proofResults: Array<{
+        circuitType:
+          | "age_verification"
+          | "doc_validity"
+          | "nationality_membership"
+          | "face_match";
+        proof: string;
         publicSignals: string[];
         generationTimeMs: number;
-      } | null = null;
+      }> = [];
+      let identityVerified = !hasIdentityDocs;
+      let activeDocumentId: string | null = data.identityDocumentId ?? null;
 
       // Create the account before generating server-bound proofs.
       setProofStatus("creating-account");
@@ -340,21 +345,219 @@ export function StepReviewComplete() {
         return;
       }
 
-      if (birthYear) {
-        const currentYear = new Date().getFullYear();
-
-        // Encrypt DOB with FHE (for future homomorphic computations)
+      if (hasIdentityDocs) {
+        // Register client-owned FHE keys for server-side encryption/computation.
         setProofStatus("encrypting");
         try {
-          fheResult = await encryptDOB(birthYear);
-        } catch (_fheError) {}
+          fheKeyInfo = await ensureFheKeyRegistration();
+        } catch (fheError) {
+          const message =
+            fheError instanceof Error
+              ? fheError.message
+              : "FHE key registration failed";
+          setFheWarning(
+            "FHE encryption is unavailable right now. Your account will still be created, but homomorphic encryption will be marked as failed.",
+          );
+          // biome-ignore lint/suspicious/noConsole: needed for debugging FHE failures
+          console.warn("[step-review] FHE key registration failed:", message);
+        }
+      }
 
-        // Generate ZK proof of age (privacy-preserving) - requires server-issued nonce
+      // Full identity verification (document + liveness + face matching)
+      // Use the same selfie that was used for local face matching (bestSelfieFrame or fallback to selfieImage)
+      const selfieToVerify = data.bestSelfieFrame || data.selfieImage;
+      if (hasIdentityDocs && data.idDocumentBase64 && selfieToVerify) {
+        setProofStatus("verifying-identity");
+        try {
+          const identityResult = await trpc.identity.verify.mutate({
+            documentImage: data.idDocumentBase64,
+            selfieImage: selfieToVerify,
+            ...(fheKeyInfo && {
+              fheKeyId: fheKeyInfo.keyId,
+              fhePublicKey: fheKeyInfo.publicKey,
+            }),
+          });
+
+          if (!identityResult.verified) {
+            const issue =
+              identityResult.issues?.length && identityResult.issues[0]
+                ? identityResult.issues[0]
+                : null;
+            throw new Error(
+              issue ||
+                "Identity verification did not pass. Please retake your ID photo and selfie and try again.",
+            );
+          }
+          if (identityResult.documentId) {
+            activeDocumentId = identityResult.documentId;
+            updateData({ identityDocumentId: identityResult.documentId });
+          }
+          identityVerified = true;
+        } catch (identityError) {
+          const message =
+            identityError instanceof Error
+              ? identityError.message
+              : "Identity verification failed. Please try again.";
+          toast.error("Identity verification incomplete", {
+            description: message,
+          });
+          setProofStatus("error");
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      if (identityVerified) {
         setProofStatus("generating");
         try {
-          const challenge = await getProofChallenge("age_verification");
-          proofResult = await generateAgeProof(birthYear, currentYear, 18, {
-            nonce: challenge.nonce,
+          if (!activeDocumentId) {
+            throw new Error(
+              "Missing document context for proof generation. Please retry verification.",
+            );
+          }
+          const claims = await getSignedClaims(activeDocumentId);
+          if (!claims.ocr || !claims.faceMatch) {
+            throw new Error("Signed claims unavailable for proof generation");
+          }
+
+          const ocrClaim = claims.ocr;
+          const faceClaim = claims.faceMatch;
+          const ocrData = ocrClaim.data as {
+            birthYear?: number | null;
+            expiryDate?: number | null;
+            nationalityCode?: string | null;
+            claimHashes?: {
+              age?: string | null;
+              docValidity?: string | null;
+              nationality?: string | null;
+            };
+          };
+          const faceData = faceClaim.data as {
+            confidence?: number;
+            confidenceFixed?: number;
+            thresholdFixed?: number;
+            claimHash?: string | null;
+          };
+
+          const documentHashField = ocrClaim.documentHashField;
+          if (!documentHashField) {
+            throw new Error("Missing document hash field");
+          }
+
+          const ageClaimHash = ocrData.claimHashes?.age;
+          const docValidityClaimHash = ocrData.claimHashes?.docValidity;
+          const nationalityClaimHash = ocrData.claimHashes?.nationality;
+
+          if (
+            ocrData.birthYear === null ||
+            ocrData.birthYear === undefined ||
+            !ageClaimHash
+          ) {
+            throw new Error("Missing birth year claim for age proof");
+          }
+          if (
+            ocrData.expiryDate === null ||
+            ocrData.expiryDate === undefined ||
+            !docValidityClaimHash
+          ) {
+            throw new Error("Missing expiry date claim for document proof");
+          }
+          if (!ocrData.nationalityCode || !nationalityClaimHash) {
+            throw new Error("Missing nationality claim for membership proof");
+          }
+          if (!faceData.claimHash) {
+            throw new Error("Missing face match claim hash");
+          }
+
+          const ageChallenge = await getProofChallenge("age_verification");
+          const ageProof = await generateAgeProof(
+            ocrData.birthYear,
+            new Date().getFullYear(),
+            18,
+            {
+              nonce: ageChallenge.nonce,
+              documentHashField,
+              claimHash: ageClaimHash,
+            },
+          );
+          proofResults.push({
+            circuitType: "age_verification",
+            ...ageProof,
+          });
+
+          const docChallenge = await getProofChallenge("doc_validity");
+          const now = new Date();
+          const currentDateInt =
+            now.getFullYear() * 10000 +
+            (now.getMonth() + 1) * 100 +
+            now.getDate();
+          const docProof = await generateDocValidityProof(
+            ocrData.expiryDate,
+            currentDateInt,
+            {
+              nonce: docChallenge.nonce,
+              documentHashField,
+              claimHash: docValidityClaimHash,
+            },
+          );
+          proofResults.push({
+            circuitType: "doc_validity",
+            ...docProof,
+          });
+
+          const nationalityChallenge = await getProofChallenge(
+            "nationality_membership",
+          );
+          const nationalityProof = await generateNationalityProof(
+            ocrData.nationalityCode,
+            NATIONALITY_GROUP,
+            {
+              nonce: nationalityChallenge.nonce,
+              documentHashField,
+              claimHash: nationalityClaimHash,
+            },
+          );
+          proofResults.push({
+            circuitType: "nationality_membership",
+            ...nationalityProof,
+          });
+
+          const similarityFixed =
+            typeof faceData.confidenceFixed === "number"
+              ? faceData.confidenceFixed
+              : typeof faceData.confidence === "number"
+                ? Math.round(faceData.confidence * 10000)
+                : null;
+          if (similarityFixed === null) {
+            throw new Error("Missing face match confidence for proof");
+          }
+
+          const thresholdFixed =
+            typeof faceData.thresholdFixed === "number"
+              ? faceData.thresholdFixed
+              : Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
+          if (
+            faceClaim.documentHashField &&
+            faceClaim.documentHashField !== documentHashField
+          ) {
+            throw new Error("Face match document hash mismatch");
+          }
+          const faceDocumentHashField =
+            faceClaim.documentHashField || documentHashField;
+
+          const faceChallenge = await getProofChallenge("face_match");
+          const faceProof = await generateFaceMatchProof(
+            similarityFixed,
+            thresholdFixed,
+            {
+              nonce: faceChallenge.nonce,
+              documentHashField: faceDocumentHashField,
+              claimHash: faceData.claimHash,
+            },
+          );
+          proofResults.push({
+            circuitType: "face_match",
+            ...faceProof,
           });
         } catch (zkError) {
           const errorMessage =
@@ -396,54 +599,17 @@ export function StepReviewComplete() {
         }
       }
 
-      // Full identity verification (document + liveness + face matching)
-      // Use the same selfie that was used for local face matching (bestSelfieFrame or fallback to selfieImage)
-      const selfieToVerify = data.bestSelfieFrame || data.selfieImage;
-      if (data.idDocumentBase64 && selfieToVerify) {
-        setProofStatus("verifying-identity");
-        try {
-          const identityResult = await trpc.identity.verify.mutate({
-            documentImage: data.idDocumentBase64,
-            selfieImage: selfieToVerify,
-          });
-
-          if (!identityResult.verified) {
-            const issue =
-              identityResult.issues?.length && identityResult.issues[0]
-                ? identityResult.issues[0]
-                : null;
-            throw new Error(
-              issue ||
-                "Identity verification did not pass. Please retake your ID photo and selfie and try again.",
-            );
-          }
-        } catch (identityError) {
-          const message =
-            identityError instanceof Error
-              ? identityError.message
-              : "Identity verification failed. Please try again.";
-          toast.error("Identity verification incomplete", {
-            description: message,
-          });
-        }
-      }
-
-      // Store the proof AND FHE ciphertext
-      // NOTE: isOver18 is derived server-side from the verified proof
-      if (proofResult) {
+      if (identityVerified && proofResults.length > 0) {
         setProofStatus("storing");
-        await storeAgeProof(
-          proofResult.proof,
-          proofResult.publicSignals,
-          proofResult.generationTimeMs,
-          fheResult
-            ? {
-                dobCiphertext: fheResult.ciphertext,
-                fheClientKeyId: fheResult.clientKeyId,
-                fheEncryptionTimeMs: fheResult.encryptionTimeMs,
-              }
-            : undefined,
-        );
+        for (const proof of proofResults) {
+          await storeProof(
+            proof.circuitType,
+            proof.proof,
+            proof.publicSignals,
+            proof.generationTimeMs,
+            activeDocumentId,
+          );
+        }
       }
 
       setProofStatus("complete");
@@ -471,7 +637,7 @@ export function StepReviewComplete() {
   const hasIdentityDocs = Boolean(
     data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
   );
-  const hasDOB = Boolean(data.extractedDOB);
+  const hasDob = Boolean(data.extractedDOB);
 
   const getStepStatus = (
     step: "account" | "encrypt" | "proof" | "identity" | "store",
@@ -500,10 +666,10 @@ export function StepReviewComplete() {
       return "skipped";
     }
 
-    // Skip crypto steps if no DOB
+    // Skip crypto steps if no identity documents
     if (
       (step === "encrypt" || step === "proof" || step === "store") &&
-      !hasDOB
+      !hasIdentityDocs
     ) {
       return "skipped";
     }
@@ -543,6 +709,13 @@ export function StepReviewComplete() {
               Try again
             </Button>
           </AlertDescription>
+        </Alert>
+      )}
+
+      {fheWarning && (
+        <Alert variant="info">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{fheWarning}</AlertDescription>
         </Alert>
       )}
 
@@ -941,7 +1114,7 @@ export function StepReviewComplete() {
           <AlertDescription>
             <strong>Privacy-First Verification:</strong>
             <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-              {hasDOB && (
+              {hasDob && (
                 <>
                   <li>
                     Your birth year is encrypted using FHE (Fully Homomorphic

@@ -4,7 +4,7 @@
 
 ## The Problem
 
-In traditional KYC systems, when a service needs to verify that a user is from an EU country, they must:
+In traditional KYC/AML systems, when a service needs to verify that a user is from an EU country, they must:
 
 1. See the user's actual passport
 2. Extract the nationality field (e.g., "Germany")
@@ -129,13 +129,19 @@ global TREE_DEPTH: u32 = 8;
 
 fn main(
     nationality_code: Field,                    // Private: actual nationality code
-    merkle_root: pub Field,                     // Public: identifies the country group
+    document_hash: Field,                       // Private: document commitment
     path_elements: [Field; TREE_DEPTH],         // Private: Merkle path siblings
     path_indices: [u1; TREE_DEPTH],             // Private: path directions
-    nonce: pub Field                            // Public: challenge nonce (replay resistance)
+    merkle_root: pub Field,                     // Public: identifies the country group
+    nonce: pub Field,                           // Public: challenge nonce (replay resistance)
+    claim_hash: pub Field                       // Public: claim hash binding to OCR data
 ) -> pub bool {
     // Nonce is included as public input for replay resistance
     let _ = nonce;
+
+    // Bind proof to signed OCR claim
+    let computed_hash = poseidon2([nationality_code, document_hash]);
+    assert(computed_hash == claim_hash, "Claim hash mismatch");
 
     // Hash the nationality code to get the leaf
     let leaf = poseidon2([nationality_code]);
@@ -202,6 +208,8 @@ export async function generateNationalityProofNoir(
     nationalityCode: input.nationalityCode,
     groupName: input.groupName,
     nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
   });
 
   return {
@@ -218,7 +226,7 @@ export async function generateNationalityProofNoir(
 // apps/web/src/lib/noir-verifier.ts
 
 import { UltraHonkBackend } from "@aztec/bb.js";
-import nationalityCircuit from "@/noir-circuits/nationality_membership/target/nationality_membership.json";
+import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
 
 export async function verifyNoirProof(
   input: NoirVerifyInput,
@@ -305,15 +313,15 @@ Proofs are generated in Web Workers to keep the UI responsive.
 2. **Uniqueness:** Same person could generate multiple proofs
 3. **Timeliness:** Nonce provides session binding, not timestamp
 
-### Integration with KYC
+### Integration with KYC / Regulated Onboarding
 
 In Zentity's flow:
 
-1. OCR extracts nationality from passport (e.g., "DEU")
+1. OCR extracts nationality from passport (e.g., "DEU") and signs the claim
 2. Passport authenticity verified via MRZ checksums
 3. Face match verifies it's your passport
-4. ZK nationality proof is generated **client-side** in the browser
-5. Only the proof is sent to server and stored, never "DEU"
+4. ZK nationality proof is generated **client-side** in the browser, bound to `claim_hash`
+5. Only the proof + public inputs are sent to the server and stored, never "DEU"
 
 ---
 
@@ -325,7 +333,7 @@ apps/web/
 │   └── nationality_membership/
 │       ├── Nargo.toml
 │       ├── src/main.nr           # Noir circuit source
-│       └── target/
+│       └── artifacts/
 │           └── nationality_membership.json  # Compiled ACIR
 ├── src/lib/
 │   ├── nationality-data.ts       # Country codes and group definitions

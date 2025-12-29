@@ -88,6 +88,7 @@ export interface WizardData {
   password: string;
   confirmPassword: string;
   preferredName: string | null; // Optional display name
+  identityDocumentId: string | null;
 }
 
 export const defaultWizardData: WizardData = {
@@ -110,4 +111,5 @@ export const defaultWizardData: WizardData = {
   password: "",
   confirmPassword: "",
   preferredName: null,
+  identityDocumentId: null,
 };

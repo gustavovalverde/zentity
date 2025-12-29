@@ -179,23 +179,28 @@ src/
 The web application implements privacy-preserving patterns:
 
 1. **Salted Commitments** — Names, document numbers, nationality stored as salted SHA256 hashes
-2. **FHE Encryption** — DOB, gender, and liveness scores encrypted with TFHE-rs
+2. **FHE Encryption** — birth_year_offset, country_code, compliance_level, liveness score encrypted with TFHE-rs (client-owned keys)
 3. **ZK Proofs** — Age, document validity, face match, and nationality proofs via Noir/UltraHonk (client-side)
-4. **Transient Processing** — Images processed and discarded immediately
-5. **Password Security** — Server-side blocked breached passwords (Better Auth) + privacy-preserving UX pre-check
+4. **Signed Claims** — OCR, liveness, and face match scores signed by the backend
+5. **Transient Processing** — Images processed and discarded immediately
+6. **Password Security** — Server-side blocked breached passwords (Better Auth) + privacy-preserving UX pre-check
 
-No raw ID document images or extracted document fields are stored in plaintext. (Authentication still stores account email/name as required for login.)
+No raw ID document images or extracted document fields are stored in plaintext beyond minimal metadata. (Authentication still stores account email/name as required for login.)
 
-Details: `../../docs/password-security.md`
+Details: `../../docs/attestation-privacy-architecture.md` | `../../docs/password-security.md`
 
 ## Commitment & Proof Model
 
-Zentity stores two kinds of privacy-preserving artifacts:
+Zentity stores privacy-preserving artifacts across multiple tables:
 
-- **Commitments (hashes)** in `identity_proofs`: salted SHA256 commitments to specific attributes (e.g. document number, full name, nationality). The per-user salt is stored encrypted so deleting it makes these commitments unlinkable.
-- **Proof material** in `age_proofs`: a server-verified Noir/UltraHonk proof + its public signals for `age ≥ 18`, plus optional FHE ciphertexts used for homomorphic computations.
+- **identity_bundles** — user-level status + FHE key registration
+- **identity_documents** — per-document commitments + metadata
+- **zk_proofs** — proof payloads + public inputs + verification metadata
+- **encrypted_attributes** — TFHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score)
+- **signed_claims** — server-signed OCR/liveness/face match claims
+- **attestation_evidence** — policy_hash + proof_set_hash for audits
 
-Important: in this PoC, the ZK proof statements are about values extracted in the browser (e.g. `birthYear` from OCR). They are not cryptographically bound to a signed passport/ID document.
+Important: proofs are bound to server-signed claims + document hash, but not yet to cryptographic document signatures.
 
 ### Attribute Commitments vs. Single “Identity Commitment”
 
@@ -209,70 +214,9 @@ Trade-offs:
 - The current approach is simpler to implement and iterate on, but it does less to bind claims to document integrity and can require re-parsing/re-proving for new claim types.
 - A single identity commitment enables stronger composability (one parse, many proofs) and can cryptographically bind all claims to signed data, but it typically requires larger circuits and more involved witness construction.
 
-## Database Schema
+## Database Schema (high level)
 
-The database stores only cryptographic artifacts and non-PII metadata:
-
-### `identity_proofs` (commitments, flags, encrypted display data)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | TEXT | Primary key |
-| `user_id` | TEXT | Foreign key to users |
-| `document_hash` | TEXT | SHA256(doc_number + user_salt) |
-| `name_commitment` | TEXT | SHA256(full_name + user_salt) |
-| `nationality_commitment` | TEXT | SHA256(nationality_code + user_salt) |
-| `user_salt` | TEXT | Encrypted salt (enables erasure) |
-| `dob_ciphertext` | TEXT | FHE encrypted birth year |
-| `dob_full_ciphertext` | TEXT | FHE encrypted full DOB (YYYYMMDD) |
-| `gender_ciphertext` | TEXT | FHE encrypted gender (ISO 5218) |
-| `liveness_score_ciphertext` | TEXT | FHE encrypted anti-spoof score |
-| `doc_validity_proof` | TEXT | ZK proof that document is not expired |
-| `nationality_membership_proof` | TEXT | ZK proof of nationality group membership |
-| `document_type` | TEXT | Document type label |
-| `country_verified` | TEXT | ISO 3166-1 alpha-3 country code |
-| `is_document_verified` | INTEGER | Document validation result |
-| `is_liveness_passed` | INTEGER | Liveness result |
-| `is_face_matched` | INTEGER | Face match result |
-| `verification_method` | TEXT | Verification method label |
-| `verified_at` | TEXT | ISO timestamp (when verified) |
-| `confidence_score` | REAL | Overall confidence (0.0-1.0) |
-| `first_name_encrypted` | TEXT | JWE encrypted first name for display |
-| `created_at` | TEXT | Created timestamp |
-| `updated_at` | TEXT | Updated timestamp |
-
-### `age_proofs` (persisted proof payloads)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | TEXT | Primary key |
-| `user_id` | TEXT | Foreign key to users |
-| `proof` | TEXT | Base64 UltraHonk proof (JSON string) |
-| `public_signals` | TEXT | Public inputs (JSON array of strings) |
-| `is_over_18` | INTEGER | Server-derived result from verified proof |
-| `generation_time_ms` | INTEGER | Client-side proof generation time |
-| `dob_ciphertext` | TEXT | Optional FHE ciphertext stored alongside proof |
-| `fhe_client_key_id` | TEXT | Optional FHE key reference |
-| `fhe_encryption_time_ms` | INTEGER | Optional FHE encryption time |
-| `circuit_type` | TEXT | Circuit ID used for verification |
-| `noir_version` | TEXT | Noir.js version |
-| `circuit_hash` | TEXT | Circuit hash |
-| `bb_version` | TEXT | Barretenberg version |
-| `created_at` | TEXT | Created timestamp |
-
-### `zk_challenges` (one-time nonces for replay resistance)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `nonce` | TEXT | 128-bit nonce (hex, no `0x`) |
-| `circuit_type` | TEXT | Circuit ID bound to this nonce |
-| `user_id` | TEXT | Optional user binding |
-| `created_at` | INTEGER | Epoch milliseconds |
-| `expires_at` | INTEGER | Epoch milliseconds |
-
-### Schema Updates
-
-On startup, the app ensures required tables and columns exist (see `src/lib/db.ts`, `src/lib/challenge-store.ts`, and `src/lib/age-proofs.ts`).
+The schema is managed in `apps/web/scripts/init-db.sql` and `apps/web/src/lib/db/db.ts`. Tables are created/altered on startup.
 
 ## Docker
 

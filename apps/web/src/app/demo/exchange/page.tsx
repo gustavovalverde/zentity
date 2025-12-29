@@ -22,6 +22,7 @@ import {
   generateDocValidityProof,
   generateFaceMatchProof,
   getProofChallenge,
+  getSignedClaims,
 } from "@/lib/crypto";
 
 // Types for the demo
@@ -113,18 +114,78 @@ export default function ExchangeSimulatorPage() {
       const now = new Date();
       const currentDateInt =
         now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+      const claims = await getSignedClaims();
+      if (!claims.ocr || !claims.faceMatch) {
+        setFlowError("Missing signed claims for demo proofs");
+        return;
+      }
+
+      const ocrData = claims.ocr.data as {
+        birthYear?: number | null;
+        expiryDate?: number | null;
+        claimHashes?: {
+          age?: string | null;
+          docValidity?: string | null;
+        };
+      };
+      const faceData = claims.faceMatch.data as {
+        confidence?: number;
+        confidenceFixed?: number;
+        thresholdFixed?: number;
+        claimHash?: string | null;
+      };
+
+      const documentHashField = claims.ocr.documentHashField;
+      const ageClaimHash = ocrData.claimHashes?.age;
+      const docClaimHash = ocrData.claimHashes?.docValidity;
+      const faceClaimHash = faceData.claimHash;
+
+      if (
+        !documentHashField ||
+        ocrData.birthYear == null ||
+        ocrData.expiryDate == null ||
+        !ageClaimHash ||
+        !docClaimHash ||
+        !faceClaimHash
+      ) {
+        setFlowError("Incomplete OCR/face match claims for demo proofs");
+        return;
+      }
+
+      const similarityFixed =
+        typeof faceData.confidenceFixed === "number"
+          ? faceData.confidenceFixed
+          : typeof faceData.confidence === "number"
+            ? Math.round(faceData.confidence * 10000)
+            : null;
+      const thresholdFixed =
+        typeof faceData.thresholdFixed === "number"
+          ? faceData.thresholdFixed
+          : Math.round(0.6 * 10000);
+      if (similarityFixed === null) {
+        setFlowError("Missing face match score for demo proofs");
+        return;
+      }
       const [ageChallenge, faceChallenge, docChallenge] = await Promise.all([
         getProofChallenge("age_verification"),
         getProofChallenge("face_match"),
         getProofChallenge("doc_validity"),
       ]);
       const results = await Promise.allSettled([
-        generateAgeProof(1990, new Date().getFullYear(), 18, {
+        generateAgeProof(ocrData.birthYear, new Date().getFullYear(), 18, {
           nonce: ageChallenge.nonce,
+          documentHashField,
+          claimHash: ageClaimHash,
         }),
-        generateFaceMatchProof(8000, 6000, { nonce: faceChallenge.nonce }),
-        generateDocValidityProof(20271231, currentDateInt, {
+        generateFaceMatchProof(similarityFixed, thresholdFixed, {
+          nonce: faceChallenge.nonce,
+          documentHashField,
+          claimHash: faceClaimHash,
+        }),
+        generateDocValidityProof(ocrData.expiryDate, currentDateInt, {
           nonce: docChallenge.nonce,
+          documentHashField,
+          claimHash: docClaimHash,
         }),
       ]);
 
@@ -623,7 +684,7 @@ export default function ExchangeSimulatorPage() {
                     <span className="text-muted-foreground">commitment</span>
                   </p>
                   <p className="text-success">
-                    FHE(birth_year){" "}
+                    FHE(birth_year_offset){" "}
                     <span className="text-muted-foreground">encrypted</span>
                   </p>
                   <p className="text-success">

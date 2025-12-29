@@ -25,7 +25,8 @@ interface VerificationResult {
 interface ProofData {
   proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
-  dobCiphertext: string | null;
+  birthYearOffsetCiphertext: string | null;
+  fheKeyId: string | null;
 }
 
 export function VerificationActions() {
@@ -49,7 +50,8 @@ export function VerificationActions() {
       const loaded = {
         proof: data.proof || "",
         publicSignals: data.publicSignals || [],
-        dobCiphertext: data.dobCiphertext || null,
+        birthYearOffsetCiphertext: data.birthYearOffsetCiphertext || null,
+        fheKeyId: data.fheKeyId || null,
       };
       setProofData(loaded);
       return loaded;
@@ -94,13 +96,16 @@ export function VerificationActions() {
 
     try {
       const data = await loadProofData();
-      if (!data || !data.dobCiphertext) {
+      if (!data || !data.birthYearOffsetCiphertext || !data.fheKeyId) {
         throw new Error(
-          "FHE ciphertext not available. FHE service may have been unavailable during registration.",
+          "FHE ciphertext or key is missing. Complete identity verification with FHE enabled.",
         );
       }
 
-      const result = await verifyAgeViaFHE(data.dobCiphertext);
+      const result = await verifyAgeViaFHE(
+        data.birthYearOffsetCiphertext,
+        data.fheKeyId,
+      );
 
       setFheResult({
         method: "fhe",

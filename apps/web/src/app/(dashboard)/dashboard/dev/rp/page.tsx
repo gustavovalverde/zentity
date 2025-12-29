@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth/auth";
-import { getUserAgeProof, getVerificationStatus } from "@/lib/db";
+import { getUserAgeProofFull, getVerificationStatus } from "@/lib/db";
 
 export default async function RPIntegrationPage() {
   const session = await auth.api.getSession({
@@ -23,7 +23,7 @@ export default async function RPIntegrationPage() {
   });
 
   const userId = session?.user?.id;
-  const ageProof = userId ? getUserAgeProof(userId) : null;
+  const ageProof = userId ? getUserAgeProofFull(userId) : null;
   const verificationStatus = userId ? getVerificationStatus(userId) : null;
 
   const hasProof = verificationStatus?.verified || ageProof?.isOver18 || false;
@@ -31,10 +31,12 @@ export default async function RPIntegrationPage() {
   const checks = {
     document: verificationStatus?.checks.document ?? false,
     liveness: verificationStatus?.checks.liveness ?? false,
-    faceMatch: verificationStatus?.checks.faceMatch ?? false,
     ageProof: Boolean(
       verificationStatus?.checks.ageProof || ageProof?.isOver18,
     ),
+    docValidityProof: verificationStatus?.checks.docValidityProof ?? false,
+    nationalityProof: verificationStatus?.checks.nationalityProof ?? false,
+    faceMatchProof: verificationStatus?.checks.faceMatchProof ?? false,
   };
 
   return (
@@ -64,7 +66,10 @@ export default async function RPIntegrationPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <FheVerificationDemo
-          dobCiphertext={ageProof?.dobCiphertext ?? undefined}
+          birthYearOffsetCiphertext={
+            ageProof?.birthYearOffsetCiphertext ?? undefined
+          }
+          fheKeyId={ageProof?.fheKeyId ?? undefined}
         />
 
         <Card>
@@ -91,8 +96,10 @@ export default async function RPIntegrationPage() {
   "checks": {
     "document": ${checks.document},
     "liveness": ${checks.liveness},
-    "faceMatch": ${checks.faceMatch},
-    "ageProof": ${checks.ageProof}
+    "ageProof": ${checks.ageProof},
+    "docValidityProof": ${checks.docValidityProof},
+    "nationalityProof": ${checks.nationalityProof},
+    "faceMatchProof": ${checks.faceMatchProof}
   }
 }`}
               </pre>

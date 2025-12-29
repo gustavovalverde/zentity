@@ -4,7 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zentity is a privacy-preserving KYC platform using zero-knowledge proofs (ZK), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
+Zentity is a privacy-preserving compliance/KYC platform using zero-knowledge proofs (ZK), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
+
+## Key Documentation
+
+**Understanding the privacy model (read these first):**
+
+- [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) — Attestation schema, data classification, privacy boundaries
+- [Tamper Model](docs/tamper-model.md) — Integrity controls and threat model
+
+**For Web3/blockchain integration:**
+
+- [Web3 Architecture](docs/web3-architecture.md) — FHEVM hooks, encryption/decryption flows
+- [Web2 to Web3 Transition](docs/web2-to-web3-transition.md) — End-to-end attestation flow
+- [Blockchain Setup](docs/blockchain-setup.md) — Network config, contract deployment
+
+**For detailed system design:**
+
+- [Architecture](docs/architecture.md) — Components, data flow, storage model
+- [ZK Architecture](docs/zk-architecture.md) — Noir circuits and proving
 
 ## Architecture
 
@@ -180,10 +198,13 @@ The main verification flow is orchestrated via `trpc.identity.verify`:
 2. **FHE Service** → Encrypt DOB, gender, liveness score with TFHE-rs
 3. **Client-side Noir** → Generate UltraHonk proofs (age, document validity, nationality, face match) in browser
 4. **Human.js** (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
+5. **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
 
-All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, etc.).
+All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trpc.attestation.*`, etc.).
 
-**Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE, so sensitive data (birth year, nationality) never leaves the user's device. Only cryptographic commitments, FHE ciphertexts, and ZK proofs are persisted. Images are processed transiently.
+**Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
+
+**User-controlled encryption**: FHE keys are generated and stored client-side in browser IndexedDB (see [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md)). The server receives only public/evaluation keys—it can compute on encrypted data but cannot decrypt. Only the user can decrypt their own data via `decryptFheBool()` in the browser.
 
 ## Code Conventions
 
@@ -202,9 +223,12 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 |--------|---------|
 | `crypto` | FHE encryption, ZK proof verification, challenge nonces |
 | `identity` | Full identity verification (document + selfie + liveness) |
-| `kyc` | Document OCR processing |
+| `kyc` | Document OCR processing (router name; used in regulated/KYC flows) |
 | `liveness` | Multi-gesture liveness detection sessions |
 | `onboarding` | Wizard state management and step validation |
+| `attestation` | On-chain identity attestation (submit, refresh, networks) |
+| `account` | User account management |
+| `token` | Session/token operations |
 
 **Client usage:**
 

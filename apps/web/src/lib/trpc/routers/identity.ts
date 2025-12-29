@@ -5,7 +5,7 @@
  * 1. Document OCR + commitment generation (privacy-preserving hashes)
  * 2. Face detection on selfie with anti-spoofing checks
  * 3. Face matching between document photo and selfie
- * 4. FHE encryption of sensitive fields (DOB, gender, liveness score)
+ * 4. FHE encryption of sensitive fields (birth year offset, country code, liveness score)
  * 5. Nationality commitment generation
  *
  * Privacy principle: Raw PII is never stored. Only cryptographic commitments,
@@ -22,19 +22,27 @@ import { TRPCError } from "@trpc/server";
 import { v4 as uuidv4 } from "uuid";
 import z from "zod";
 
+import {
+  computeClaimHash,
+  getDocumentHashField,
+} from "@/lib/attestation/claim-hash";
+import { ISSUER_ID, POLICY_VERSION } from "@/lib/attestation/policy";
 import { sha256CommitmentHex } from "@/lib/crypto";
 import {
-  encryptBirthYearFhe,
-  encryptDobFhe,
-  encryptGenderFhe,
+  encryptBirthYearOffsetFhe,
+  encryptCountryCodeFhe,
   encryptLivenessScoreFhe,
+  FheServiceError,
 } from "@/lib/crypto/fhe-client";
 import { signAttestationClaim } from "@/lib/crypto/signed-claims";
 import {
   createIdentityDocument,
+  decryptUserSalt,
   documentHashExists,
   encryptFirstName,
+  encryptUserSalt,
   getLatestIdentityDocumentByUserId,
+  getSelectedIdentityDocumentByUserId,
   getSessionFromCookie,
   getVerificationStatus,
   insertEncryptedAttribute,
@@ -47,9 +55,11 @@ import { processDocument } from "@/lib/document";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { calculateBirthYearOffset } from "@/lib/identity/birth-year";
+import { countryCodeToNumeric } from "@/lib/identity/compliance";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
+  FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/liveness";
 import {
   getEmbeddingVector,
@@ -58,12 +68,12 @@ import {
   getRealScore,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
-import { buildDisplayName, HttpError } from "@/lib/utils";
+import { buildDisplayName } from "@/lib/utils";
+import { getNationalityCode } from "@/lib/zk/nationality-data";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
-// Lower threshold for ID photos which may be older/lower quality than selfies.
-const FACE_MATCH_MIN_CONFIDENCE = 0.35;
+// Face match threshold aligned with policy (see liveness-policy).
 
 // In-memory rate limiter (document OCR). Resets on server restart.
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -101,6 +111,7 @@ function isRateLimited(ip: string): boolean {
 interface VerifyIdentityResponse {
   success: boolean;
   verified: boolean;
+  documentId?: string | null;
 
   results: {
     documentProcessed: boolean;
@@ -111,9 +122,10 @@ interface VerifyIdentityResponse {
     faceMatched: boolean;
     isDuplicateDocument: boolean;
     ageProofGenerated: boolean;
-    dobEncrypted: boolean;
+    birthYearOffsetEncrypted: boolean;
     docValidityProofGenerated: boolean;
     nationalityCommitmentGenerated: boolean;
+    countryCodeEncrypted: boolean;
     livenessScoreEncrypted: boolean;
   };
 
@@ -127,6 +139,15 @@ interface VerifyIdentityResponse {
 
   processingTimeMs: number;
   issues: string[];
+  fheStatus?: "pending" | "complete" | "error";
+  fheErrors?: Array<{
+    operation: string;
+    issue: string;
+    kind: string;
+    status?: number;
+    message?: string;
+    bodyText?: string;
+  }>;
   error?: string;
 }
 
@@ -152,6 +173,76 @@ function generateNameCommitment(fullName: string, userSalt: string): string {
   const normalized = normalizeName(fullName);
   const data = `${normalized}:${userSalt}`;
   return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+function parseBirthYear(dateValue?: string | null): number | null {
+  if (!dateValue) return null;
+  if (dateValue.includes("/")) {
+    const parts = dateValue.split("/");
+    if (parts.length === 3) {
+      const year = Number.parseInt(parts[2] ?? "", 10);
+      return Number.isFinite(year) ? year : null;
+    }
+  }
+  if (dateValue.includes("-")) {
+    const parts = dateValue.split("-");
+    if (parts.length >= 1) {
+      const year = Number.parseInt(parts[0] ?? "", 10);
+      return Number.isFinite(year) ? year : null;
+    }
+  }
+  if (dateValue.length === 8) {
+    const year = Number.parseInt(dateValue.slice(0, 4), 10);
+    return Number.isFinite(year) ? year : null;
+  }
+  return null;
+}
+
+function parseDateToInt(dateValue?: string | null): number | null {
+  if (!dateValue) return null;
+  if (dateValue.includes("/")) {
+    const parts = dateValue.split("/");
+    if (parts.length === 3) {
+      const month = Number.parseInt(parts[0] ?? "", 10);
+      const day = Number.parseInt(parts[1] ?? "", 10);
+      const year = Number.parseInt(parts[2] ?? "", 10);
+      if (
+        Number.isFinite(year) &&
+        Number.isFinite(month) &&
+        Number.isFinite(day)
+      ) {
+        return year * 10000 + month * 100 + day;
+      }
+    }
+  }
+  if (dateValue.includes("-")) {
+    const parts = dateValue.split("-");
+    if (parts.length === 3) {
+      const year = Number.parseInt(parts[0] ?? "", 10);
+      const month = Number.parseInt(parts[1] ?? "", 10);
+      const day = Number.parseInt(parts[2] ?? "", 10);
+      if (
+        Number.isFinite(year) &&
+        Number.isFinite(month) &&
+        Number.isFinite(day)
+      ) {
+        return year * 10000 + month * 100 + day;
+      }
+    }
+  }
+  if (dateValue.length === 8 && /^\d+$/.test(dateValue)) {
+    const year = Number.parseInt(dateValue.slice(0, 4), 10);
+    const month = Number.parseInt(dateValue.slice(4, 6), 10);
+    const day = Number.parseInt(dateValue.slice(6, 8), 10);
+    if (
+      Number.isFinite(year) &&
+      Number.isFinite(month) &&
+      Number.isFinite(day)
+    ) {
+      return year * 10000 + month * 100 + day;
+    }
+  }
+  return null;
 }
 
 export const identityRouter = router({
@@ -229,6 +320,8 @@ export const identityRouter = router({
         documentImage: z.string().min(1),
         selfieImage: z.string().min(1),
         userSalt: z.string().optional(),
+        fhePublicKey: z.string().optional(),
+        fheKeyId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -249,8 +342,18 @@ export const identityRouter = router({
 
       const userId = ctx.userId;
       const existingDocument = getLatestIdentityDocumentByUserId(userId);
-      const userSalt =
-        input.userSalt ?? existingDocument?.userSalt ?? undefined;
+      let userSalt = input.userSalt;
+      if (!userSalt && existingDocument?.userSalt) {
+        const decryptedSalt = await decryptUserSalt(existingDocument.userSalt);
+        if (decryptedSalt) {
+          userSalt = decryptedSalt;
+        } else {
+          issues.push("user_salt_decrypt_failed");
+        }
+      }
+      const fhePublicKey = input.fhePublicKey;
+      const fheKeyId = input.fheKeyId;
+      const hasFheKeyMaterial = Boolean(fhePublicKey && fheKeyId);
 
       let documentResult: OcrProcessResult | null = null;
       try {
@@ -361,11 +464,102 @@ export const identityRouter = router({
 
       const documentProcessed = Boolean(documentResult?.commitments);
       const identityDocumentId = documentProcessed ? uuidv4() : null;
+      const documentHash = documentResult?.commitments?.documentHash ?? null;
+      let documentHashField: string | null = null;
+      if (documentHash) {
+        try {
+          documentHashField = await getDocumentHashField(documentHash);
+        } catch {
+          issues.push("document_hash_field_failed");
+        }
+      }
+
+      const issuedAt = new Date().toISOString();
+
+      // Store OCR signed claim for tamper-resistant verification
+      if (documentProcessed && documentHash && documentHashField) {
+        try {
+          const birthYear = parseBirthYear(
+            documentResult?.extractedData?.dateOfBirth,
+          );
+          const expiryDate = parseDateToInt(
+            documentResult?.extractedData?.expirationDate,
+          );
+          const nationalityCode =
+            documentResult?.extractedData?.nationalityCode ?? null;
+          const nationalityCodeNumeric = nationalityCode
+            ? (getNationalityCode(nationalityCode) ?? null)
+            : null;
+
+          const claimHashes: {
+            age?: string | null;
+            docValidity?: string | null;
+            nationality?: string | null;
+          } = {
+            age: null,
+            docValidity: null,
+            nationality: null,
+          };
+
+          if (birthYear) {
+            claimHashes.age = await computeClaimHash({
+              value: birthYear,
+              documentHashField,
+            });
+          }
+          if (expiryDate) {
+            claimHashes.docValidity = await computeClaimHash({
+              value: expiryDate,
+              documentHashField,
+            });
+          }
+          if (nationalityCodeNumeric) {
+            claimHashes.nationality = await computeClaimHash({
+              value: nationalityCodeNumeric,
+              documentHashField,
+            });
+          }
+
+          const ocrClaimPayload = {
+            type: "ocr_result" as const,
+            userId,
+            issuedAt,
+            version: 1,
+            policyVersion: POLICY_VERSION,
+            documentHash,
+            documentHashField,
+            data: {
+              documentType: documentResult?.documentType ?? null,
+              issuerCountry:
+                documentResult?.documentOrigin ||
+                documentResult?.extractedData?.nationalityCode ||
+                null,
+              nationalityCode,
+              nationalityCodeNumeric,
+              expiryDate,
+              birthYear,
+              confidence: documentResult?.confidence ?? null,
+              claimHashes,
+            },
+          };
+
+          const ocrSignature = await signAttestationClaim(ocrClaimPayload);
+          insertSignedClaim({
+            id: uuidv4(),
+            userId,
+            documentId: identityDocumentId,
+            claimType: ocrClaimPayload.type,
+            claimPayload: JSON.stringify(ocrClaimPayload),
+            signature: ocrSignature,
+            issuedAt,
+          });
+        } catch {
+          issues.push("signed_ocr_claim_failed");
+        }
+      }
 
       // Store signed claims for tamper-resistant verification (server measured)
       if (verificationResult) {
-        const issuedAt = new Date().toISOString();
-        const documentHash = documentResult?.commitments?.documentHash ?? null;
         const antispoofScoreFixed = Math.round(
           verificationResult.antispoof_score * 10000,
         );
@@ -377,7 +571,9 @@ export const identityRouter = router({
             userId,
             issuedAt,
             version: 1,
+            policyVersion: POLICY_VERSION,
             documentHash,
+            documentHashField,
             data: {
               antispoofScore: verificationResult.antispoof_score,
               liveScore,
@@ -404,7 +600,9 @@ export const identityRouter = router({
             userId,
             issuedAt,
             version: 1,
+            policyVersion: POLICY_VERSION,
             documentHash,
+            documentHashField,
             data: {
               confidence: verificationResult.face_match_confidence,
               confidenceFixed: Math.round(
@@ -412,6 +610,14 @@ export const identityRouter = router({
               ),
               thresholdFixed: Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000),
               passed: verificationResult.faces_match,
+              claimHash: documentHashField
+                ? await computeClaimHash({
+                    value: Math.round(
+                      verificationResult.face_match_confidence * 10000,
+                    ),
+                    documentHashField,
+                  })
+                : null,
             },
           };
 
@@ -432,51 +638,79 @@ export const identityRouter = router({
         }
       }
 
-      let fheResult: { ciphertext: string; clientKeyId: string } | null = null;
+      let birthYearOffsetFheResult: { ciphertext: string } | null = null;
+      let countryCodeFheResult: {
+        ciphertext: string;
+        countryCode: number;
+      } | null = null;
       let nationalityCommitment: string | null = null;
-      let genderFheResult: {
-        ciphertext: string;
-        clientKeyId: string;
-        genderCode: number;
-      } | null = null;
-      let dobFullFheResult: {
-        ciphertext: string;
-        clientKeyId: string;
-        dobInt: number;
-      } | null = null;
       let livenessScoreFheResult: {
         ciphertext: string;
-        clientKeyId: string;
         score: number;
       } | null = null;
       let firstNameEncrypted: string | null = null;
-
-      const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
-      if (dateOfBirth) {
-        let birthYear: number | null = null;
-        if (dateOfBirth.includes("/")) {
-          const parts = dateOfBirth.split("/");
-          birthYear = parseInt(parts[2], 10);
-        } else if (dateOfBirth.includes("-")) {
-          birthYear = parseInt(dateOfBirth.split("-")[0], 10);
+      const fheErrors: Array<{
+        operation: string;
+        issue: string;
+        kind: string;
+        status?: number;
+        message?: string;
+        bodyText?: string;
+      }> = [];
+      let fheKeyMissingReported = false;
+      const recordFheFailure = (
+        issue: string,
+        operation: string,
+        error: unknown,
+      ) => {
+        issues.push(issue);
+        if (error instanceof FheServiceError) {
+          fheErrors.push({
+            operation: error.operation,
+            issue,
+            kind: error.kind,
+            status: error.status,
+            message: error.message,
+            bodyText: error.bodyText,
+          });
+          return;
         }
 
-        if (
-          birthYear &&
-          birthYear > 1900 &&
-          birthYear <= new Date().getFullYear()
-        ) {
+        fheErrors.push({
+          operation,
+          issue,
+          kind: "unknown",
+          message:
+            error instanceof Error
+              ? error.message
+              : error
+                ? String(error)
+                : "Missing FHE key material",
+        });
+      };
+      const reportMissingFheKey = () => {
+        if (fheKeyMissingReported) return;
+        fheKeyMissingReported = true;
+        recordFheFailure("fhe_key_missing", "key_registration", null);
+      };
+
+      const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
+      const birthYearOffset = calculateBirthYearOffset(dateOfBirth);
+      if (birthYearOffset !== undefined) {
+        if (!hasFheKeyMaterial || !fhePublicKey) {
+          reportMissingFheKey();
+        } else {
           try {
-            fheResult = await encryptBirthYearFhe({
-              birthYear,
-              clientKeyId: "default",
+            birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
+              birthYearOffset,
+              publicKey: fhePublicKey,
             });
           } catch (error) {
-            if (error instanceof HttpError) {
-              issues.push("fhe_encryption_failed");
-            } else {
-              issues.push("fhe_service_unavailable");
-            }
+            const issue =
+              error instanceof FheServiceError && error.kind === "http"
+                ? "fhe_encryption_failed"
+                : "fhe_service_unavailable";
+            recordFheFailure(issue, "encrypt_birth_year_offset", error);
           }
         }
       }
@@ -493,54 +727,50 @@ export const identityRouter = router({
         }
       }
 
-      const gender = documentResult?.extractedData?.gender;
-      if (gender) {
-        try {
-          const genderCode = gender === "M" ? 1 : gender === "F" ? 2 : 0;
-          const genderData = await encryptGenderFhe({
-            genderCode,
-            clientKeyId: "default",
-          });
-          genderFheResult = {
-            ...genderData,
-            genderCode,
-          };
-        } catch (error) {
-          if (error instanceof HttpError) {
-            issues.push("gender_fhe_encryption_failed");
-          } else {
-            issues.push("gender_fhe_service_unavailable");
-          }
-        }
-      }
-
-      if (dateOfBirth) {
-        try {
-          dobFullFheResult = await encryptDobFhe({
-            dob: dateOfBirth,
-            clientKeyId: "default",
-          });
-        } catch (error) {
-          if (error instanceof HttpError) {
-            issues.push("dob_full_fhe_encryption_failed");
-          } else {
-            issues.push("dob_full_fhe_service_unavailable");
+      const issuerCountry =
+        documentResult?.documentOrigin ||
+        documentResult?.extractedData?.nationalityCode;
+      const countryCodeNumeric = issuerCountry
+        ? countryCodeToNumeric(issuerCountry)
+        : 0;
+      if (countryCodeNumeric > 0) {
+        if (!hasFheKeyMaterial || !fhePublicKey) {
+          reportMissingFheKey();
+        } else {
+          try {
+            countryCodeFheResult = {
+              ...(await encryptCountryCodeFhe({
+                countryCode: countryCodeNumeric,
+                publicKey: fhePublicKey,
+              })),
+              countryCode: countryCodeNumeric,
+            };
+          } catch (error) {
+            const issue =
+              error instanceof FheServiceError && error.kind === "http"
+                ? "fhe_encryption_failed"
+                : "fhe_service_unavailable";
+            recordFheFailure(issue, "encrypt_country_code", error);
           }
         }
       }
 
       const livenessScore = verificationResult?.antispoof_score;
       if (livenessScore !== undefined && livenessScore !== null) {
-        try {
-          livenessScoreFheResult = await encryptLivenessScoreFhe({
-            score: livenessScore,
-            clientKeyId: "default",
-          });
-        } catch (error) {
-          if (error instanceof HttpError) {
-            issues.push("liveness_score_fhe_encryption_failed");
-          } else {
-            issues.push("liveness_score_fhe_service_unavailable");
+        if (!hasFheKeyMaterial || !fhePublicKey) {
+          reportMissingFheKey();
+        } else {
+          try {
+            livenessScoreFheResult = await encryptLivenessScoreFhe({
+              score: livenessScore,
+              publicKey: fhePublicKey,
+            });
+          } catch (error) {
+            const issue =
+              error instanceof FheServiceError && error.kind === "http"
+                ? "liveness_score_fhe_encryption_failed"
+                : "liveness_score_fhe_service_unavailable";
+            recordFheFailure(issue, "encrypt_liveness", error);
           }
         }
       }
@@ -561,12 +791,24 @@ export const identityRouter = router({
       const livenessPassed = verificationResult?.is_live ?? livenessPassedLocal;
       const facesMatch = verificationResult?.faces_match ?? facesMatchLocal;
       const ageProofGenerated = false;
-      const dobEncrypted = Boolean(fheResult?.ciphertext);
+      const birthYearOffsetEncrypted = Boolean(
+        birthYearOffsetFheResult?.ciphertext,
+      );
       const docValidityProofGenerated = false;
       const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
+      const countryCodeEncrypted = Boolean(countryCodeFheResult?.ciphertext);
       const livenessScoreEncrypted = Boolean(
         livenessScoreFheResult?.ciphertext,
       );
+      const fheSucceeded =
+        birthYearOffsetEncrypted ||
+        countryCodeEncrypted ||
+        livenessScoreEncrypted;
+      const fheStatus: "pending" | "complete" | "error" = fheSucceeded
+        ? "complete"
+        : fheErrors.length > 0
+          ? "error"
+          : "pending";
       const verified =
         documentProcessed &&
         isDocumentValid &&
@@ -575,20 +817,28 @@ export const identityRouter = router({
         !isDuplicateDocument;
 
       // Calculate birth year offset from extracted DOB (for on-chain attestation)
-      const birthYearOffset = calculateBirthYearOffset(
-        documentResult?.extractedData?.dateOfBirth,
-      );
+      const birthYearOffsetFinal =
+        birthYearOffset === undefined ? null : birthYearOffset;
 
       const bundleStatus = verified
-        ? "verified"
+        ? "pending"
         : documentProcessed
           ? "failed"
           : "pending";
-      upsertIdentityBundle({
+      const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
         userId,
         status: bundleStatus,
-        issuerId: "zentity-attestation",
-      });
+        issuerId: ISSUER_ID,
+        policyVersion: POLICY_VERSION,
+        fheStatus,
+        fheError: fheStatus === "error" ? (fheErrors[0]?.issue ?? null) : null,
+      };
+      if (fheKeyId && fhePublicKey) {
+        bundleUpdate.fheKeyId = fheKeyId;
+        bundleUpdate.fhePublicKey = fhePublicKey;
+      }
+
+      upsertIdentityBundle(bundleUpdate);
 
       if (
         documentProcessed &&
@@ -596,6 +846,9 @@ export const identityRouter = router({
         documentResult?.commitments
       ) {
         try {
+          const encryptedUserSalt = documentResult.commitments.userSalt
+            ? await encryptUserSalt(documentResult.commitments.userSalt)
+            : null;
           createIdentityDocument({
             id: identityDocumentId,
             userId,
@@ -606,8 +859,8 @@ export const identityRouter = router({
               null,
             documentHash: documentResult.commitments.documentHash ?? null,
             nameCommitment: documentResult.commitments.nameCommitment ?? null,
-            userSalt: documentResult.commitments.userSalt ?? null,
-            birthYearOffset: birthYearOffset ?? null,
+            userSalt: encryptedUserSalt,
+            birthYearOffset: birthYearOffsetFinal,
             firstNameEncrypted: firstNameEncrypted ?? null,
             verifiedAt: verified ? new Date().toISOString() : null,
             confidenceScore: documentResult.confidence ?? null,
@@ -618,36 +871,25 @@ export const identityRouter = router({
         }
       }
 
-      if (fheResult?.ciphertext) {
+      if (birthYearOffsetFheResult?.ciphertext) {
         insertEncryptedAttribute({
           id: uuidv4(),
           userId,
           source: "web2_tfhe",
-          attributeType: "birth_year",
-          ciphertext: fheResult.ciphertext,
-          keyId: fheResult.clientKeyId ?? null,
+          attributeType: "birth_year_offset",
+          ciphertext: birthYearOffsetFheResult.ciphertext,
+          keyId: fheKeyId ?? null,
         });
       }
 
-      if (dobFullFheResult?.ciphertext) {
+      if (countryCodeFheResult?.ciphertext) {
         insertEncryptedAttribute({
           id: uuidv4(),
           userId,
           source: "web2_tfhe",
-          attributeType: "dob_full",
-          ciphertext: dobFullFheResult.ciphertext,
-          keyId: dobFullFheResult.clientKeyId ?? null,
-        });
-      }
-
-      if (genderFheResult?.ciphertext) {
-        insertEncryptedAttribute({
-          id: uuidv4(),
-          userId,
-          source: "web2_tfhe",
-          attributeType: "gender_code",
-          ciphertext: genderFheResult.ciphertext,
-          keyId: genderFheResult.clientKeyId ?? null,
+          attributeType: "country_code",
+          ciphertext: countryCodeFheResult.ciphertext,
+          keyId: fheKeyId ?? null,
         });
       }
 
@@ -658,7 +900,7 @@ export const identityRouter = router({
           source: "web2_tfhe",
           attributeType: "liveness_score",
           ciphertext: livenessScoreFheResult.ciphertext,
-          keyId: livenessScoreFheResult.clientKeyId ?? null,
+          keyId: fheKeyId ?? null,
         });
       }
 
@@ -680,6 +922,7 @@ export const identityRouter = router({
       return {
         success: true,
         verified,
+        documentId: identityDocumentId,
         results: {
           documentProcessed,
           documentType: documentResult?.documentType,
@@ -691,11 +934,14 @@ export const identityRouter = router({
           faceMatched: facesMatch,
           isDuplicateDocument,
           ageProofGenerated,
-          dobEncrypted,
+          birthYearOffsetEncrypted,
           docValidityProofGenerated,
           nationalityCommitmentGenerated,
+          countryCodeEncrypted,
           livenessScoreEncrypted,
         },
+        fheStatus,
+        fheErrors: fheErrors.length > 0 ? fheErrors : undefined,
         transientData: documentResult?.extractedData
           ? {
               fullName: documentResult.extractedData.fullName,
@@ -721,8 +967,8 @@ export const identityRouter = router({
         claimedName: z.string().trim().min(1, "Claimed name is required"),
       }),
     )
-    .mutation(({ ctx, input }) => {
-      const document = getLatestIdentityDocumentByUserId(ctx.userId);
+    .mutation(async ({ ctx, input }) => {
+      const document = getSelectedIdentityDocumentByUserId(ctx.userId);
       if (!document?.userSalt || !document.nameCommitment) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -730,9 +976,17 @@ export const identityRouter = router({
         });
       }
 
+      const decryptedSalt = await decryptUserSalt(document.userSalt);
+      if (!decryptedSalt) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Unable to decrypt verification salt",
+        });
+      }
+
       const claimedCommitment = generateNameCommitment(
         input.claimedName,
-        document.userSalt,
+        decryptedSalt,
       );
 
       const matches = crypto.timingSafeEqual(

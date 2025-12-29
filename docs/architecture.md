@@ -1,6 +1,6 @@
 # System Architecture & Data Flow (PoC)
 
-> **Related docs:** [ZK Architecture](zk-architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [README](../README.md)
+> **Related docs:** [ZK Architecture](zk-architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md) | [Web3 Architecture](web3-architecture.md) | [README](../README.md)
 
 This document describes **how Zentity's services connect**, **how data flows through the system**, and **what is (and isn't) persisted**.
 
@@ -75,7 +75,7 @@ Zentity uses three complementary techniques:
 ├─────────────────────────────────────────────────────────────────┤
 │              FULLY HOMOMORPHIC ENCRYPTION (FHE)                 │
 │           Perform computations on encrypted data                │
-│         Age comparisons • Gender matching • Liveness scores     │
+│  Birth year offset • Country code • Compliance level • Liveness │
 ├─────────────────────────────────────────────────────────────────┤
 │               CRYPTOGRAPHIC COMMITMENTS                         │
 │           One-way hashes for identity verification              │
@@ -88,7 +88,7 @@ Zentity uses three complementary techniques:
 | Problem | Solution | How It Works |
 |---------|----------|--------------|
 | "Verify my name without storing it" | **Commitment** | SHA256(name + salt); verify by recomputing |
-| "Check if I'm over 18 without seeing my DOB" | **FHE** | Encrypted DOB compared homomorphically |
+| "Check if I'm over 18 without seeing my DOB" | **FHE** | Encrypted birth year offset compared homomorphically |
 | "Prove I'm EU citizen without revealing country" | **ZK Proof** | Merkle tree membership proof |
 | "Delete my data for GDPR" | **Commitment** | Delete salt → commitment becomes unlinkable |
 
@@ -107,12 +107,37 @@ A commitment is a one-way hash that binds you to a value without revealing it.
 
 FHE allows computations on encrypted data without decryption.
 
-1. Encrypt: `encrypted_dob = FHE.encrypt(1990-05-15)`
-2. Compute: `is_adult = encrypted_dob <= (current_year - 18)`
+1. Encrypt: `encrypted_birth_year_offset = FHE.encrypt(90)` (years since 1900)
+2. Compute: `is_adult = encrypted_birth_year_offset <= (current_year - 1900 - 18)`
 3. Decrypt result only: `true`
-4. Server never sees actual birthday
+4. Server never sees the full birth date
 
 **Library:** [TFHE-rs](https://github.com/zama-ai/tfhe-rs) (Rust)
+
+### Client-Side Key Ownership (Current Implementation)
+
+The FHE architecture uses client-side key ownership for user-controlled privacy:
+
+| Aspect | Implementation |
+|--------|----------------|
+| Key generation | Browser (TFHE-rs WASM via `tfhe-browser.ts`) |
+| Key storage | IndexedDB (plaintext, per-device) |
+| Encryption | FHE service encrypts with client public key |
+| Who can decrypt | Only user (client key never leaves browser) |
+| Server receives | Public key + server key (registered as `key_id` for computation) |
+
+**Key files:**
+
+- `apps/web/src/lib/crypto/tfhe-browser.ts` — TFHE-rs WASM loading and key generation
+- `apps/web/src/lib/crypto/fhe-key-store.ts` — IndexedDB persistence for client keys
+
+**Privacy guarantee:** The server can compute on encrypted data but cannot decrypt results—only the user can. The client key (`clientKey`) never leaves the browser.
+
+**Planned enhancements** (not yet implemented):
+
+- WebAuthn/Passkey-wrapped key storage (keys currently stored plaintext in IndexedDB)
+- Multi-device key sync via server-stored encrypted backups
+- See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for roadmap details.
 
 ---
 
@@ -123,11 +148,13 @@ FHE allows computations on encrypted data without decryption.
 | Data | Form | Purpose |
 |------|------|---------|
 | Account email | Plaintext | Authentication |
+| Document metadata (type, issuer country, birth_year_offset) | Plaintext | UX + compliance context |
 | Commitments (name, doc#, nationality) | Salted SHA256 | Dedup + integrity checks |
 | Per-user salt | JWE encrypted | Enables GDPR erasure |
-| ZK proof payloads | Proof + public signals | Disclosure + verification |
-| Challenge nonces | Random 128-bit + TTL | Replay resistance |
-| FHE ciphertexts (DOB, gender, liveness) | TFHE ciphertext | Policy checks without decrypting |
+| ZK proof payloads + public inputs | Proof bytes | Disclosure + verification |
+| Evidence pack (policy_hash, proof_set_hash) | Hashes | Audit trail |
+| Signed claims (OCR, liveness, face match) | Signed JSON | Tamper-resistant measurements |
+| FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext | Policy checks without decrypting |
 | First name (display only) | JWE encrypted | UX convenience |
 | Onboarding PII | JWE encrypted + TTL | Wizard continuity (short-lived) |
 
@@ -138,10 +165,11 @@ FHE allows computations on encrypted data without decryption.
 | Document images | Request body only → discarded |
 | Selfie images | Request body only → discarded |
 | Face embeddings | Memory only → discarded |
-| Plaintext birth date | Only as FHE ciphertext |
+| Full DOB (YYYYMMDD) | Never stored |
 | Plaintext name | Only as SHA256 commitment |
 | Plaintext nationality | Only as SHA256 commitment |
 | Document number | Only as SHA256 commitment |
+| Client FHE keys | Stored only in browser IndexedDB |
 
 **Key guarantee:** Application-level persistence never includes raw PII or biometric data.
 
@@ -150,9 +178,10 @@ FHE allows computations on encrypted data without decryption.
 1. **Transient image processing** — Images exist only in request bodies; discarded after verification
 2. **One-way commitments** — SHA256 + user salt; cannot derive original values
 3. **FHE for sensitive numerics** — Server computes on ciphertext without decryption
-4. **Client-side ZK proving** — Birth year, nationality never sent to server; only proofs
-5. **GDPR erasure** — Delete `user_salt` → commitments become unlinkable
-6. **No biometric storage** — Face embeddings computed transiently, never persisted
+4. **Claim-hash binding** — Proofs are tied to server-signed claims + document hashes
+5. **Client-side ZK proving** — Birth year and nationality are not persisted; only proofs are stored
+6. **GDPR erasure** — Delete `user_salt` → commitments become unlinkable
+7. **No biometric storage** — Face embeddings computed transiently, never persisted
 
 ---
 
@@ -175,10 +204,11 @@ No PII shared. Relying party only learns "over 18" + liveness passed.
 User → Zentity: Complete verification
 User → Exchange: "I want to onboard"
 Exchange → Zentity: Request PII disclosure
-Zentity → Exchange: Encrypted package (RSA-OAEP + AES-GCM)
-  - Name, DOB, Nationality (E2E encrypted)
-  - Face match result (no biometrics)
-  - Liveness attestation
+Zentity → Exchange: Encrypted package (RSA-OAEP + AES-GCM) + public proofs
+  - Name, DOB, Nationality, Document number (E2E encrypted)
+  - ZK proofs (age/doc validity/nationality/face match)
+  - Signed claims (liveness + face match)
+  - Evidence pack (policy_hash + proof_set_hash)
 
 Exchange stores: PII (regulatory requirement)
 Zentity stores: Cryptographic artifacts only
@@ -206,26 +236,24 @@ sequenceDiagram
   UI->>API: tRPC identity.verify (doc + selfie)
   API->>OCR: OCR + parse doc (transient)
   OCR-->>API: extracted fields + commitment inputs
+  API->>FHE: encrypt birth_year_offset / country_code / liveness
+  FHE-->>API: ciphertexts
+  API->>DB: INSERT identity_documents + encrypted_attributes + signed_claims
   API-->>UI: verification flags + commitments
 
-  Note over UI: Birth year used locally for ZK proving
+  Note over UI: ZK proofs bound to claim_hash + document_hash
   UI->>API: tRPC crypto.createChallenge (age_verification)
   API->>DB: INSERT zk_challenges (nonce, ttl, user_id)
   API-->>UI: nonce + expiresAt
 
-  UI->>W: generate age proof (birthYear, currentYear, minAge, nonce)
+  UI->>W: generate proof (circuitType, inputs, nonce, claim_hash)
   W-->>UI: proof + publicSignals
 
-  UI->>API: tRPC crypto.storeAgeProof (proof, publicSignals)
+  UI->>API: tRPC crypto.storeProof (circuitType, proof, publicSignals, documentId)
   API->>API: Verify proof (UltraHonk)
   API->>DB: Consume nonce (one-time)
-  API->>DB: INSERT age_proofs
-  API-->>UI: success + proofId + isOver18
-
-  UI->>API: (optional) tRPC crypto.encryptDob
-  API->>FHE: encrypt DOB
-  FHE-->>API: ciphertext
-  API-->>UI: ciphertext
+  API->>DB: INSERT zk_proofs + attestation_evidence
+  API-->>UI: success + proofId
 ```
 
 ### Disclosure (Relying Party)
@@ -239,11 +267,47 @@ sequenceDiagram
   participant RP as Relying Party
 
   UI->>API: Request disclosure package
-  API->>DB: Read commitments / ciphertexts / proofs
-  API-->>RP: Disclosure payload + proof payloads
+  API->>DB: Read commitments / ciphertexts / proofs / evidence
+  API-->>RP: Disclosure payload + proof payloads + evidence pack
   RP->>RP: Verify ZK proof(s)
   RP-->>UI: Accept / reject
 ```
+
+---
+
+## Web3 Layer (Optional)
+
+For users who want on-chain identity attestation, Zentity supports FHEVM (Fully Homomorphic Encryption for EVM):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant User
+  participant UI as Zentity UI
+  participant API as Zentity API
+  participant BC as Blockchain (fhEVM)
+
+  Note over User,API: After Web2 verification is complete
+  User->>UI: Click "Register on Blockchain"
+  UI->>UI: Encrypt identity attributes (FHEVM SDK)
+  UI->>API: attestation.submit(networkId, walletAddress)
+  API->>BC: attestIdentity(user, handles, proof)
+  BC-->>API: txHash
+  API-->>UI: Attestation pending
+  Note over BC: Identity stored as encrypted ciphertext handles
+```
+
+**Key capabilities:**
+
+- Encrypted identity attributes stored in smart contracts (birth_year_offset, country_code, compliance_level)
+- Attestation metadata includes policy_hash + proof_set_hash for auditability
+- Compliance checks run on encrypted data—contracts never see plaintext
+- User controls access grants via ACL (`grantAccessTo()`)
+- Silent failure pattern prevents information leakage
+
+**tRPC router:** `trpc.attestation.*` (submit, refresh, networks)
+
+See [Web3 Architecture](web3-architecture.md) and [Web2 to Web3 Transition](web2-to-web3-transition.md) for complete details.
 
 ---
 
@@ -251,15 +315,27 @@ sequenceDiagram
 
 Tables (via `better-auth` + custom):
 
-- `user`, `session`, `account`, `verification` — Authentication
+**Authentication (better-auth):**
+
+- `user`, `session`, `account`, `verification`
+
+**Identity verification (Web2):**
+
 - `identity_bundles` — User-level bundle metadata (status, policy version)
 - `identity_documents` — Per-document commitments + verification metadata
 - `zk_proofs` — Proof payloads + public signals + metadata
-- `encrypted_attributes` — TFHE ciphertexts (Web2) + metadata
+- `encrypted_attributes` — TFHE ciphertexts + metadata
 - `signed_claims` — Server-signed scores and structured claims
+- `attestation_evidence` — Policy hash + proof set hash (audit trail)
 - `zk_challenges` — Server-issued one-time nonces
 - `onboarding_sessions` — Short-lived wizard state (encrypted PII only)
-- `blockchain_attestations` — Per-network attestation records
+
+**Blockchain attestation (Web3):**
+
+- `blockchain_attestations` — Per-network attestation records (status, txHash, networkId, walletAddress)
+
+**Third-party integrations:**
+
 - `rp_authorization_codes` — OAuth-style RP flow
 
 ---
@@ -267,5 +343,5 @@ Tables (via `better-auth` + custom):
 ## Notes for Cryptography Reviewers
 
 - Commitments are **per-attribute** (salted SHA256), not a single identity commitment.
-- ZK proofs are generated over browser-available values (e.g., birth year), not yet bound to signed passport credentials.
+- ZK proofs are bound to server-signed claims + document hash, but not yet bound to cryptographic document signatures.
 - Challenge nonces are server-issued and one-time-use; they mitigate replay attacks.

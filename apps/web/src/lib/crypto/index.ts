@@ -10,12 +10,14 @@
 export { sha256CommitmentHex } from "./commitments";
 // Crypto client for client-side ZK proofs (client-safe)
 export {
-  encryptDOB,
+  ensureFheKeyRegistration,
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
+  generateNationalityProof,
   getProofChallenge,
+  getSignedClaims,
   getUserProof,
-  storeAgeProof,
+  storeProof,
   verifyAgeViaFHE,
 } from "./crypto-client";
