@@ -35,9 +35,9 @@ export function PocDisclaimer() {
               </h3>
               <p className="text-muted-foreground mt-1">
                 Zentity is a proof of concept demonstrating that
-                privacy-preserving KYC is technically feasible. We're actively
-                validating our cryptographic approach across ZK proofs, FHE, and
-                commitment schemes.
+                privacy-preserving compliance/KYC is technically feasible. We're
+                actively validating our cryptographic approach across ZK proofs,
+                FHE, and commitment schemes.
               </p>
             </div>
           </div>

@@ -37,7 +37,7 @@ const useCases = [
     color: "orange" as const,
     title: "Crypto Exchanges",
     description:
-      "Comply with MiCA & FATF Travel Rule without creating a PII honeypot that attracts hackers.",
+      "Comply with MiCA & FATF Travel Rule using proofs instead of raw PII.",
   },
   {
     icon: IconGlass,
@@ -51,14 +51,14 @@ const useCases = [
     color: "blue" as const,
     title: "Cross-Border Hire",
     description:
-      "Verify right-to-work status or professional accreditation without storing copies of passports.",
+      "Verify right-to-work status or accreditation without storing passport scans.",
   },
   {
     icon: IconWorld,
     color: "emerald" as const,
     title: "EU Residency",
     description:
-      "Prove distinct attributes like 'Is EU Resident' without revealing the specific country of origin.",
+      "Prove EU residency without revealing the specific country of origin.",
   },
 ];
 

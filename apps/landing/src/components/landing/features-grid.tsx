@@ -73,7 +73,7 @@ const categories: Category[] = [
         icon: IconCalendar,
         color: "purple",
         title: "Age Verification",
-        description: "Prove 18+, 21+, or 25+ without revealing your birthday.",
+        description: "Prove 18+, 21+, or 25+ with privacy-preserving proofs.",
       },
       {
         icon: IconFileText,
@@ -85,7 +85,7 @@ const categories: Category[] = [
         icon: IconScan,
         color: "orange",
         title: "Liveness Detection",
-        description: "Multi-gesture challenges prove you're real.",
+        description: "Liveness checks with encrypted scoring.",
       },
     ],
   },
@@ -97,7 +97,7 @@ const categories: Category[] = [
         icon: IconLock,
         color: "blue",
         title: "Encrypted Storage",
-        description: "Data stored as FHE ciphertexts—never decrypted.",
+        description: "Encrypted data that only the user can decrypt.",
       },
       {
         icon: IconUserCheck,
@@ -109,7 +109,7 @@ const categories: Category[] = [
         icon: IconWorld,
         color: "emerald",
         title: "Nationality Proofs",
-        description: "Prove EU citizen without revealing country.",
+        description: "Prove EU membership without revealing your country.",
       },
     ],
   },
@@ -126,8 +126,8 @@ const categories: Category[] = [
       {
         icon: IconKey,
         color: "yellow",
-        title: "OAuth Integration",
-        description: "Familiar redirect flows and one-time codes.",
+        title: "Audit Bundles",
+        description: "Audit-ready proof bundles without raw PII.",
       },
     ],
   },
@@ -180,7 +180,7 @@ export function FeaturesGrid() {
       <div className="mx-auto max-w-4xl">
         <div className="text-center mb-16">
           <h2 className="text-3xl font-bold sm:text-4xl">
-            8 verification features, zero data stored
+            8 verification features, zero raw data stored
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
             Complete identity verification without the privacy trade-offs.

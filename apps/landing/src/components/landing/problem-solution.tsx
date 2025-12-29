@@ -4,7 +4,7 @@ const categories = [
   {
     label: "PII STORAGE",
     problem: "Stores full names, addresses, birthdays",
-    solution: "Stores only hash commitments",
+    solution: "Stores hashed commitments + encrypted data",
   },
   {
     label: "IMAGES",
@@ -17,9 +17,9 @@ const categories = [
     solution: "Face embeddings never persisted",
   },
   {
-    label: "BREACH RISK",
-    problem: "Database breach = Identity theft",
-    solution: "Database breach = Useless encrypted blobs",
+    label: "AUDITABILITY",
+    problem: "Opaque checks, no verifiable trail",
+    solution: "Verifiable proof bundles",
   },
 ];
 
@@ -88,9 +88,9 @@ export function ProblemSolution() {
         {/* Bottom Statement */}
         <div className="mt-12 text-center">
           <p className="text-lg font-medium">
-            Database breaches expose only{" "}
-            <span className="text-emerald-400">ciphertexts and proofs</span>—not
-            readable documents or personal data.
+            Breaches expose only{" "}
+            <span className="text-emerald-400">encrypted data and proofs</span>
+            —not readable documents or personal data.
           </p>
         </div>
       </div>
