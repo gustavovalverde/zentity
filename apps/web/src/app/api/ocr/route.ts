@@ -20,7 +20,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
-    const data = await ocrDocumentOcr({ image: body.image });
+    const requestId =
+      request.headers.get("x-request-id") ||
+      request.headers.get("x-correlation-id") ||
+      undefined;
+    const data = await ocrDocumentOcr({
+      image: body.image,
+      requestId,
+    });
     return NextResponse.json(data);
   } catch (error) {
     if (error instanceof HttpError) {

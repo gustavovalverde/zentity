@@ -67,6 +67,7 @@ async function createCaller(session: Session | null) {
   return attestationRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
     session,
+    requestId: "test-request-id",
   });
 }
 

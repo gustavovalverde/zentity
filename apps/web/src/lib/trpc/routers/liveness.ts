@@ -70,7 +70,6 @@ const verifySchema = z.object({
       turnStartYaw: z.number().optional(),
     }),
   ),
-  debug: z.boolean().optional(),
 });
 
 const faceMatchSchema = z.object({
@@ -142,12 +141,6 @@ export const livenessRouter = router({
         });
       }
 
-      const debugEnabled =
-        input.debug === true ||
-        ctx.req.headers.get("x-liveness-debug") === "1" ||
-        process.env.LIVENESS_DEBUG === "1" ||
-        process.env.NEXT_PUBLIC_LIVENESS_DEBUG === "1";
-
       const livenessSession = getLivenessSession(input.sessionId);
       if (!livenessSession) {
         throw new TRPCError({
@@ -185,16 +178,16 @@ export const livenessRouter = router({
       const baselineLive = getLiveScore(baselineFace);
       const baselineYaw = getYawDegrees(baselineFace);
 
-      // Debug: log raw emotion data to diagnose happy score extraction
-      if (debugEnabled) {
-        // biome-ignore lint/suspicious/noConsole: debug logging
-        console.log("[liveness.verify] baseline detection:", {
-          emotion: baselineFace.emotion,
-          happy: baselineHappy,
-          real: baselineReal,
-          live: baselineLive,
-          yaw: baselineYaw,
-        });
+      // Debug: log non-PII metadata only (no biometric values)
+      if (ctx.debug) {
+        ctx.log.debug(
+          {
+            stage: "baseline",
+            faceDetected: true,
+            challengeCount: input.challenges.length,
+          },
+          "Liveness baseline processed",
+        );
       }
 
       const results: Array<{
@@ -209,7 +202,7 @@ export const livenessRouter = router({
       let allPassed = true;
       const failureReasons: string[] = [];
 
-      for (const challenge of input.challenges) {
+      for (const [index, challenge] of input.challenges.entries()) {
         const res = await detectFromBase64(challenge.image);
         const face = getPrimaryFace(res);
         if (!face) {
@@ -223,18 +216,16 @@ export const livenessRouter = router({
           continue;
         }
 
-        // Debug: log each challenge detection
-        if (debugEnabled) {
-          const challengeHappy = getHappyScore(face);
-          const challengeYaw = getYawDegrees(face);
-          // biome-ignore lint/suspicious/noConsole: debug logging
-          console.log(
-            `[liveness.verify] ${challenge.challengeType} detection:`,
+        // Debug: log non-PII metadata only (no biometric values)
+        if (ctx.debug) {
+          ctx.log.debug(
             {
-              emotion: face.emotion,
-              happy: challengeHappy,
-              yaw: challengeYaw,
+              stage: "challenge",
+              challengeType: challenge.challengeType,
+              index,
+              faceDetected: true,
             },
+            "Liveness challenge processed",
           );
         }
 
@@ -333,7 +324,7 @@ export const livenessRouter = router({
         processingTimeMs: Date.now() - start,
       };
 
-      if (debugEnabled) {
+      if (ctx.debug) {
         response.debug = {
           baseline: {
             realScore: baselineReal,

@@ -22,13 +22,15 @@ import { STABILITY_FRAMES, useSelfieLivenessFlow } from "@/hooks/liveness";
 import { useHumanLiveness } from "@/hooks/use-human-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 import {
-  getLivenessDebugEnabled,
   SMILE_DELTA_THRESHOLD,
   SMILE_HIGH_THRESHOLD,
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/liveness";
+
+/** Debug mode - shows detection overlay and metrics */
+const debugEnabled = process.env.NEXT_PUBLIC_DEBUG === "1";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
@@ -52,7 +54,6 @@ export function StepSelfie() {
     idealWidth: 640,
     idealHeight: 480,
   });
-  const livenessDebugEnabled = getLivenessDebugEnabled();
 
   const {
     human,
@@ -111,7 +112,7 @@ export function StepSelfie() {
     getSquareDetectionCanvas,
     human,
     humanReady,
-    livenessDebugEnabled,
+    debugEnabled,
     initialSelfieImage: state.data.selfieImage || null,
     onVerified: handleVerified,
     onReset: handleReset,
@@ -211,7 +212,7 @@ export function StepSelfie() {
                 isStreaming ? "" : "hidden"
               }`}
             />
-            {livenessDebugEnabled && (
+            {debugEnabled && (
               <canvas
                 ref={debugCanvasRef}
                 className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
@@ -219,7 +220,7 @@ export function StepSelfie() {
                 }`}
               />
             )}
-            {livenessDebugEnabled && debugFrame && (
+            {debugEnabled && debugFrame && (
               <div className="absolute left-2 top-2 z-10 max-w-[95%] rounded-md bg-black/70 px-2 py-1 text-[10px] leading-snug text-white">
                 <div className="font-mono">
                   <div>state: {debugFrame.state}</div>

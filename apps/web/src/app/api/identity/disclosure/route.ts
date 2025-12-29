@@ -322,10 +322,16 @@ export async function POST(
       documentOrigin?: string;
     } | null = null;
 
+    const requestId =
+      request.headers.get("x-request-id") ||
+      request.headers.get("x-correlation-id") ||
+      undefined;
+
     try {
       documentResult = await processDocumentOcr({
         image: body.documentImage,
         userSalt: decryptedSalt,
+        requestId,
       });
     } catch (error) {
       const { status } = toServiceErrorPayload(

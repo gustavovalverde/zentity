@@ -50,6 +50,9 @@ const nextConfig: NextConfig = {
     "node-tkms",
     // Optional dependencies for wallet SDKs (avoid bundler resolution issues)
     "pino-pretty",
+    // Pino pulls in thread-stream which ships test files that break Next bundling
+    "pino",
+    "thread-stream",
     "lokijs",
     "encoding",
   ],
