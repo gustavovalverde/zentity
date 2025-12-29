@@ -3,10 +3,8 @@ import { redirect } from "next/navigation";
 
 import { DefiDemoClient } from "@/components/defi-demo/defi-demo-client";
 import { auth } from "@/lib/auth/auth";
-import {
-  getBlockchainAttestationsByUserId,
-  getVerificationStatus,
-} from "@/lib/db";
+import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
+import { getVerificationStatus } from "@/lib/db/queries/identity";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
 export default async function DefiDemoPage() {

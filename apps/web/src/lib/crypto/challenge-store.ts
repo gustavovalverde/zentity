@@ -11,11 +11,10 @@ import type { CircuitType } from "@/lib/zk";
 
 import { randomBytes } from "node:crypto";
 
-import {
-  getDefaultDatabasePath,
-  getSqliteDb,
-  isSqliteBuildTime,
-} from "@/lib/db";
+import { eq, lt, sql } from "drizzle-orm";
+
+import { db } from "@/lib/db/connection";
+import { zkChallenges } from "@/lib/db/schema";
 
 interface Challenge {
   nonce: string; // 128-bit hex string
@@ -28,34 +27,12 @@ interface Challenge {
 // 15 minute TTL for challenges (covers slower client-side proving on low-end devices)
 const CHALLENGE_TTL_MS = 15 * 60 * 1000;
 
-const db = getSqliteDb(getDefaultDatabasePath());
-
-function initializeChallengeTable(): void {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS zk_challenges (
-      nonce TEXT PRIMARY KEY,
-      circuit_type TEXT NOT NULL,
-      user_id TEXT,
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_zk_challenges_expires_at
-      ON zk_challenges (expires_at);
-  `);
-}
-
-// Skip during `next build` to avoid SQLite lock contention across build workers.
-if (!isSqliteBuildTime()) {
-  initializeChallengeTable();
-}
-
 /**
  * Remove expired challenges
  */
 function cleanupExpiredChallenges(): void {
   const now = Date.now();
-  db.prepare("DELETE FROM zk_challenges WHERE expires_at < ?").run(now);
+  db.delete(zkChallenges).where(lt(zkChallenges.expiresAt, now)).run();
 }
 
 /**
@@ -81,16 +58,20 @@ export function createChallenge(
   const now = Date.now();
   const expiresAt = now + CHALLENGE_TTL_MS;
 
-  const insert = db.prepare(`
-    INSERT INTO zk_challenges (nonce, circuit_type, user_id, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?)
-  `);
-
   // Extremely unlikely collision, but handle deterministically.
   for (let i = 0; i < 3; i++) {
     const nonce = generateNonce();
     try {
-      insert.run(nonce, circuitType, userId ?? null, now, expiresAt);
+      db.insert(zkChallenges)
+        .values({
+          nonce,
+          circuitType,
+          userId: userId ?? null,
+          createdAt: now,
+          expiresAt,
+        })
+        .run();
+
       return { nonce, circuitType, userId, createdAt: now, expiresAt };
     } catch {
       // Retry on collision
@@ -117,49 +98,38 @@ export function consumeChallenge(
 ): Challenge | null {
   cleanupExpiredChallenges();
 
-  const tx = db.transaction((): Challenge | null => {
-    const row = db
-      .prepare(
-        `
-          SELECT nonce, circuit_type, user_id, created_at, expires_at
-          FROM zk_challenges
-          WHERE nonce = ?
-          LIMIT 1
-        `,
-      )
-      .get(nonce) as
-      | {
-          nonce: string;
-          circuit_type: string;
-          user_id: string | null;
-          created_at: number;
-          expires_at: number;
-        }
-      | undefined;
+  return db.transaction((tx) => {
+    const row = tx
+      .select({
+        nonce: zkChallenges.nonce,
+        circuitType: zkChallenges.circuitType,
+        userId: zkChallenges.userId,
+        createdAt: zkChallenges.createdAt,
+        expiresAt: zkChallenges.expiresAt,
+      })
+      .from(zkChallenges)
+      .where(eq(zkChallenges.nonce, nonce))
+      .limit(1)
+      .get();
 
     if (!row) return null;
-    if (row.circuit_type !== circuitType) return null;
-    if (row.user_id && row.user_id !== userId) return null;
-    if (row.expires_at < Date.now()) {
-      db.prepare("DELETE FROM zk_challenges WHERE nonce = ?").run(nonce);
+    if (row.circuitType !== circuitType) return null;
+    if (row.userId && row.userId !== userId) return null;
+    if (row.expiresAt < Date.now()) {
+      tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
       return null;
     }
 
-    const result = db
-      .prepare("DELETE FROM zk_challenges WHERE nonce = ?")
-      .run(nonce);
-    if (result.changes !== 1) return null;
+    tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
 
     return {
       nonce: row.nonce,
-      circuitType: row.circuit_type as CircuitType,
-      userId: row.user_id ?? undefined,
-      createdAt: row.created_at,
-      expiresAt: row.expires_at,
+      circuitType: row.circuitType as CircuitType,
+      userId: row.userId ?? undefined,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
     };
   });
-
-  return tx();
 }
 
 /**
@@ -168,36 +138,30 @@ export function consumeChallenge(
 function _getChallenge(nonce: string): Challenge | null {
   cleanupExpiredChallenges();
   const row = db
-    .prepare(
-      `
-        SELECT nonce, circuit_type, user_id, created_at, expires_at
-        FROM zk_challenges
-        WHERE nonce = ?
-        LIMIT 1
-      `,
-    )
-    .get(nonce) as
-    | {
-        nonce: string;
-        circuit_type: string;
-        user_id: string | null;
-        created_at: number;
-        expires_at: number;
-      }
-    | undefined;
+    .select({
+      nonce: zkChallenges.nonce,
+      circuitType: zkChallenges.circuitType,
+      userId: zkChallenges.userId,
+      createdAt: zkChallenges.createdAt,
+      expiresAt: zkChallenges.expiresAt,
+    })
+    .from(zkChallenges)
+    .where(eq(zkChallenges.nonce, nonce))
+    .limit(1)
+    .get();
 
   if (!row) return null;
-  if (row.expires_at < Date.now()) {
-    db.prepare("DELETE FROM zk_challenges WHERE nonce = ?").run(nonce);
+  if (row.expiresAt < Date.now()) {
+    db.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
     return null;
   }
 
   return {
     nonce: row.nonce,
-    circuitType: row.circuit_type as CircuitType,
-    userId: row.user_id ?? undefined,
-    createdAt: row.created_at,
-    expiresAt: row.expires_at,
+    circuitType: row.circuitType as CircuitType,
+    userId: row.userId ?? undefined,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
   };
 }
 
@@ -207,7 +171,8 @@ function _getChallenge(nonce: string): Challenge | null {
 export function getActiveChallengeCount(): number {
   cleanupExpiredChallenges();
   const row = db
-    .prepare("SELECT COUNT(1) as count FROM zk_challenges")
-    .get() as { count: number };
-  return row.count ?? 0;
+    .select({ count: sql<number>`count(*)` })
+    .from(zkChallenges)
+    .get();
+  return row?.count ?? 0;
 }

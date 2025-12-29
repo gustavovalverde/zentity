@@ -10,8 +10,9 @@ import { describe, expect, it, vi } from "vitest";
 const mockGetSessionFromCookie = vi.fn();
 const mockValidateStepAccess = vi.fn();
 
-vi.mock("@/lib/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/db")>();
+vi.mock("@/lib/db/onboarding-session", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/onboarding-session")>();
   return {
     ...actual,
     getSessionFromCookie: (...args: unknown[]) =>
@@ -110,8 +111,10 @@ describe("identity.verify (FHE)", () => {
     mockValidateStepAccess.mockReturnValue({ valid: true });
     mockProcessDocumentOcr.mockResolvedValue(baseOcrResult);
 
-    const { deleteIdentityData, getLatestEncryptedAttributeByUserAndType } =
-      await import("@/lib/db");
+    const { deleteIdentityData } = await import("@/lib/db/queries/identity");
+    const { getLatestEncryptedAttributeByUserAndType } = await import(
+      "@/lib/db/queries/crypto"
+    );
 
     deleteIdentityData(authedSession.user.id);
 

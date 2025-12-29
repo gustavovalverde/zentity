@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { haveIBeenPwned, magicLink } from "better-auth/plugins";
 
-import { getDefaultDatabasePath, getSqliteDb } from "@/lib/db";
+import { getDefaultDatabasePath, getSqliteDb } from "@/lib/db/connection";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 const db = getSqliteDb(getDefaultDatabasePath());

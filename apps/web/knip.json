@@ -9,7 +9,9 @@
     "src/lib/wagmi/empty-module.js",
     "src/lib/wagmi/empty-module/index.js",
     "src/lib/wagmi/empty-module/internal/index.js",
-    "src/lib/zk/noir-worker-manager.ts"
+    "src/lib/zk/noir-worker-manager.ts",
+    "src/lib/db/index.ts",
+    "src/lib/db/queries/index.ts"
   ],
   "ignoreDependencies": [
     "buffer",
@@ -23,12 +25,10 @@
   ],
   "ignoreBinaries": ["nargo"],
   "entry": [
-    "next.config.ts",
     "src/app/**/page.{ts,tsx}",
     "src/app/**/layout.{ts,tsx}",
     "src/app/**/route.{ts,tsx}",
     "e2e/automation/start-web3-dev.ts",
-    "e2e/automation/build-synpress-cache.ts",
     "e2e/wallet-setup/hardhat.setup.ts"
   ],
   "ignoreExportsUsedInFile": true

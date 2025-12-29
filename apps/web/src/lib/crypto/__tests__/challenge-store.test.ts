@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock server-only (no-op in test environment)
 vi.mock("server-only", () => ({}));
 
+import { resetDatabase } from "@/test/db-test-utils";
+
 import {
   consumeChallenge,
   createChallenge,
@@ -11,6 +13,7 @@ import {
 
 describe("challenge-store", () => {
   beforeEach(() => {
+    resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-15T12:00:00Z"));
   });

@@ -9,20 +9,17 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
+import { deleteUserById, getUserCreatedAt } from "@/lib/db/queries/auth";
 import {
-  deleteBlockchainAttestationsByUserId,
   deleteIdentityData,
-  deleteOnboardingSession,
-  getDefaultDatabasePath,
   getSelectedIdentityDocumentByUserId,
-  getSqliteDb,
   getUserFirstName,
   getVerificationStatus,
-} from "@/lib/db";
+} from "@/lib/db/queries/identity";
+import { deleteOnboardingSession } from "@/lib/db/queries/onboarding";
 
 import { protectedProcedure, router } from "../server";
-
-const db = getSqliteDb(getDefaultDatabasePath());
 
 export const accountRouter = router({
   /**
@@ -41,14 +38,12 @@ export const accountRouter = router({
     const document = getSelectedIdentityDocumentByUserId(userId);
 
     // Get user creation date from better-auth user table
-    const userRow = db
-      .prepare(`SELECT "createdAt" FROM "user" WHERE id = ?`)
-      .get(userId) as { createdAt: string } | undefined;
+    const createdAt = getUserCreatedAt(userId);
 
     return {
       email: session.user.email,
       firstName,
-      createdAt: userRow?.createdAt ?? null,
+      createdAt,
       verification: {
         level: verification.level,
         checks: verification.checks,
@@ -98,8 +93,7 @@ export const accountRouter = router({
 
       // 4. Delete user from better-auth (cascades to sessions, accounts)
       // This also invalidates the current session
-      const deleteUser = db.prepare(`DELETE FROM "user" WHERE id = ?`);
-      deleteUser.run(userId);
+      deleteUserById(userId);
 
       return { success: true };
     }),

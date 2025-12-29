@@ -45,19 +45,21 @@ import {
   type OcrClaimData,
   verifyAttestationClaim,
 } from "@/lib/crypto/signed-claims";
+import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
-  getIdentityBundleByUserId,
   getLatestSignedClaimByUserTypeAndDocument,
   getProofHashesByUserAndDocument,
-  getSelectedIdentityDocumentByUserId,
   getUserAgeProof,
   getUserAgeProofFull,
-  getVerificationStatus,
   insertEncryptedAttribute,
   insertZkProofRecord,
+} from "@/lib/db/queries/crypto";
+import {
+  getIdentityBundleByUserId,
+  getSelectedIdentityDocumentByUserId,
+  getVerificationStatus,
   updateIdentityBundleStatus,
-  upsertAttestationEvidence,
-} from "@/lib/db";
+} from "@/lib/db/queries/identity";
 import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";

@@ -32,6 +32,9 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
+// Mock Next.js server-only module (no-op in tests)
+vi.mock("server-only", () => ({}));
+
 // Mock Next.js headers
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => Promise.resolve(new Headers())),

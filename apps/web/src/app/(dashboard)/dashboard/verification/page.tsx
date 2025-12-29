@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth/auth";
-import { getUserAgeProof } from "@/lib/db";
+import { getUserAgeProof } from "@/lib/db/queries/crypto";
 
 export default async function VerificationPage() {
   const session = await auth.api.getSession({

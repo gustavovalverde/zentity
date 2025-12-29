@@ -34,23 +34,29 @@ import {
   encryptLivenessScoreFhe,
   FheServiceError,
 } from "@/lib/crypto/fhe-client";
-import { signAttestationClaim } from "@/lib/crypto/signed-claims";
 import {
-  createIdentityDocument,
   decryptUserSalt,
-  documentHashExists,
   encryptFirstName,
   encryptUserSalt,
-  getLatestIdentityDocumentByUserId,
-  getSelectedIdentityDocumentByUserId,
+} from "@/lib/crypto/pii-encryption";
+import { signAttestationClaim } from "@/lib/crypto/signed-claims";
+import {
   getSessionFromCookie,
-  getVerificationStatus,
+  validateStepAccess,
+} from "@/lib/db/onboarding-session";
+import { updateUserName } from "@/lib/db/queries/auth";
+import {
   insertEncryptedAttribute,
   insertSignedClaim,
-  updateUserName,
+} from "@/lib/db/queries/crypto";
+import {
+  createIdentityDocument,
+  documentHashExists,
+  getLatestIdentityDocumentByUserId,
+  getSelectedIdentityDocumentByUserId,
+  getVerificationStatus,
   upsertIdentityBundle,
-  validateStepAccess,
-} from "@/lib/db";
+} from "@/lib/db/queries/identity";
 import { processDocument } from "@/lib/document";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";

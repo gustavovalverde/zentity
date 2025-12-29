@@ -26,14 +26,16 @@ import {
 import { auth } from "@/lib/auth/auth";
 import {
   getEncryptedAttributeTypesByUserId,
-  getIdentityBundleByUserId,
   getLatestEncryptedAttributeByUserAndType,
-  getSelectedIdentityDocumentByUserId,
   getSignedClaimTypesByUserAndDocument,
+  getZkProofTypesByUserAndDocument,
+} from "@/lib/db/queries/crypto";
+import {
+  getIdentityBundleByUserId,
+  getSelectedIdentityDocumentByUserId,
   getUserFirstName,
   getVerificationStatus,
-  getZkProofTypesByUserAndDocument,
-} from "@/lib/db";
+} from "@/lib/db/queries/identity";
 import { getFirstPart } from "@/lib/utils";
 
 // Fallback country names used when the backend doesn't provide a display name.

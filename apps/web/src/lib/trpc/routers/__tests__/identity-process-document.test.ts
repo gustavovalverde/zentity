@@ -10,8 +10,9 @@ const mockGetSessionFromCookie = vi.fn();
 const mockValidateStepAccess = vi.fn();
 const mockProcessDocument = vi.fn();
 
-vi.mock("@/lib/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/db")>();
+vi.mock("@/lib/db/onboarding-session", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/onboarding-session")>();
   return {
     ...actual,
     getSessionFromCookie: (...args: unknown[]) =>
