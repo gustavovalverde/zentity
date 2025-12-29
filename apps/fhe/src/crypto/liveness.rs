@@ -3,9 +3,11 @@
 //! Provides FHE-based liveness score encryption and threshold verification.
 //! Scores are floats from 0.0 to 1.0, stored as u16 (0-10000) for 4 decimal precision.
 
-use super::{decode_compressed_public_key, setup_for_verification};
+use super::{
+    decode_bincode_base64, decode_compressed_public_key, encode_bincode_base64,
+    setup_for_verification,
+};
 use crate::error::FheError;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use tfhe::prelude::*;
 use tfhe::FheUint16;
 
@@ -57,10 +59,7 @@ pub fn encrypt_liveness_score(score: f64, public_key_b64: &str) -> Result<String
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     // Serialize to bytes using bincode
-    let bytes = bincode::serialize(&encrypted)?;
-
-    // Encode as base64
-    Ok(BASE64.encode(&bytes))
+    encode_bincode_base64(&encrypted)
 }
 
 /// Verify if encrypted liveness score meets a threshold.
@@ -76,17 +75,12 @@ pub fn verify_liveness_threshold(
     let threshold_scaled = threshold_to_u16(threshold)?;
     setup_for_verification(key_id)?;
 
-    // Decode base64
-    let bytes = BASE64.decode(ciphertext_b64)?;
-
-    // Deserialize to FheUint16 using bincode
-    let encrypted_score: FheUint16 = bincode::deserialize(&bytes)?;
+    let encrypted_score: FheUint16 = decode_bincode_base64(ciphertext_b64)?;
 
     // Check if score >= threshold (homomorphic comparison)
     let encrypted_passes = encrypted_score.ge(threshold_scaled);
 
-    let bytes = bincode::serialize(&encrypted_passes)?;
-    Ok(BASE64.encode(&bytes))
+    encode_bincode_base64(&encrypted_passes)
 }
 
 #[cfg(test)]
@@ -212,15 +206,13 @@ mod tests {
     #[test]
     fn encrypt_and_verify_liveness_roundtrip() {
         use super::super::test_helpers::get_test_keys;
-        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
         use tfhe::FheBool;
 
         let (client_key, public_key_b64, key_id) = get_test_keys();
         let ciphertext = encrypt_liveness_score(0.85, &public_key_b64).unwrap();
         let result_ciphertext = verify_liveness_threshold(&ciphertext, 0.3, &key_id).unwrap();
 
-        let result_bytes = BASE64.decode(result_ciphertext).unwrap();
-        let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+        let encrypted: FheBool = decode_bincode_base64(&result_ciphertext).unwrap();
         let passes = encrypted.decrypt(&client_key);
 
         assert!(passes);

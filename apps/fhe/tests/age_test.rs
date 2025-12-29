@@ -118,6 +118,9 @@ fn encrypt_birth_year_offset_produces_valid_ciphertext() {
 
 #[test]
 fn verify_age_with_invalid_key_id_fails() {
+    // Must initialize key store before verification (even with invalid key)
+    fhe_service::crypto::init_keys();
+
     let public_key_b64 = common::get_public_key();
 
     let offset = 2000u16 - 1900;

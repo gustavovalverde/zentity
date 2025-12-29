@@ -1,0 +1,431 @@
+//! Error response format and status code tests.
+//!
+//! Validates that FheError variants map to correct HTTP status codes
+//! and that error responses have the expected JSON format.
+
+mod common;
+mod http;
+
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use tower::ServiceExt;
+
+// ============================================================================
+// Error Response Format Tests
+// ============================================================================
+
+/// KeyNotFound error returns 404 with correct format.
+#[tokio::test]
+async fn error_format_key_not_found() {
+    let app = http::test_app();
+    let (_, public_key, _) = common::get_test_keys();
+
+    // Encrypt first
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+
+    // Use non-existent key ID
+    let verify_body = http::fixtures::with_invalid_key_id(ciphertext);
+
+    let app = http::test_app();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/verify-age-offset")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let json = http::parse_json_body(response).await;
+    assert!(json["error"].is_string());
+    let error_msg = json["error"].as_str().unwrap();
+    assert!(
+        error_msg.contains("Key not found"),
+        "Error message should mention 'Key not found', got: {}",
+        error_msg
+    );
+}
+
+/// InvalidInput error returns 400 with correct format.
+#[tokio::test]
+async fn error_format_invalid_input() {
+    let app = http::test_app();
+    let public_key = common::get_public_key();
+
+    // Use out-of-range birth year offset
+    let body = http::fixtures::encrypt_birth_year_offset_request(256, &public_key);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let json = http::parse_json_body(response).await;
+    assert!(json["error"].is_string());
+    let error_msg = json["error"].as_str().unwrap();
+    assert!(
+        error_msg.contains("Invalid input"),
+        "Error message should mention 'Invalid input', got: {}",
+        error_msg
+    );
+}
+
+/// Base64 decode error returns 400 with correct format.
+#[tokio::test]
+async fn error_format_base64_error() {
+    let app = http::test_app();
+
+    let body = serde_json::json!({
+        "birthYearOffset": 100,
+        "publicKey": "not-valid-base64!!!"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let json = http::parse_json_body(response).await;
+    assert!(json["error"].is_string());
+    // Should mention base64 or decode error
+    let error_msg = json["error"].as_str().unwrap();
+    assert!(
+        error_msg.to_lowercase().contains("base64") || error_msg.to_lowercase().contains("decode"),
+        "Error message should mention base64/decode, got: {}",
+        error_msg
+    );
+}
+
+/// Bincode error returns 400 with correct format.
+#[tokio::test]
+async fn error_format_bincode_error() {
+    let app = http::test_app();
+
+    // Valid base64 but not a valid serialized key
+    let body = serde_json::json!({
+        "birthYearOffset": 100,
+        "publicKey": "SGVsbG8gV29ybGQh"  // "Hello World!"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let json = http::parse_json_body(response).await;
+    assert!(json["error"].is_string());
+}
+
+// ============================================================================
+// JSON Parse Error Tests
+// ============================================================================
+
+/// Malformed JSON returns 400.
+#[tokio::test]
+async fn json_parse_error() {
+    let app = http::test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "application/json")
+                .body(Body::from(http::fixtures::malformed_json()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Empty body returns 400.
+#[tokio::test]
+async fn empty_body_error() {
+    let app = http::test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ============================================================================
+// Content Type Error Tests
+// ============================================================================
+
+/// Missing content type returns 415.
+#[tokio::test]
+async fn missing_content_type() {
+    let app = http::test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .body(Body::from(
+                    r#"{"birthYearOffset": 100, "publicKey": "test"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+}
+
+/// Wrong content type returns 415.
+#[tokio::test]
+async fn wrong_content_type() {
+    let app = http::test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "text/plain")
+                .body(Body::from(
+                    r#"{"birthYearOffset": 100, "publicKey": "test"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+}
+
+/// text/html content type returns 415.
+#[tokio::test]
+async fn html_content_type() {
+    let app = http::test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-birth-year-offset")
+                .header("content-type", "text/html")
+                .body(Body::from(
+                    r#"{"birthYearOffset": 100, "publicKey": "test"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+}
+
+// ============================================================================
+// Status Code Mapping Tests
+// ============================================================================
+
+/// Verify each error type maps to expected status code.
+#[tokio::test]
+async fn status_codes_mapping() {
+    // KeyNotFound -> 404
+    {
+        let app = http::test_app();
+        let (_, _, key_id) = common::get_test_keys();
+
+        let body = http::fixtures::with_corrupted_ciphertext(&key_id);
+        // Replace key_id with non-existent one
+        let body = serde_json::json!({
+            "ciphertext": body["ciphertext"],
+            "currentYear": 2025,
+            "minAge": 18,
+            "keyId": "00000000-0000-0000-0000-000000000000"
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/verify-age-offset")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "KeyNotFound should map to 404"
+        );
+    }
+
+    // InvalidInput -> 400
+    {
+        let app = http::test_app();
+        let public_key = common::get_public_key();
+
+        let body = http::fixtures::encrypt_birth_year_offset_request(256, &public_key);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/encrypt-birth-year-offset")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "InvalidInput should map to 400"
+        );
+    }
+
+    // Base64Decode -> 400
+    {
+        let app = http::test_app();
+
+        let body = serde_json::json!({
+            "birthYearOffset": 100,
+            "publicKey": "!!invalid!!"
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/encrypt-birth-year-offset")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Base64Decode should map to 400"
+        );
+    }
+}
+
+// ============================================================================
+// Error Response Structure Tests
+// ============================================================================
+
+/// All error responses have consistent JSON structure.
+#[tokio::test]
+async fn error_response_structure() {
+    let error_cases = vec![
+        // Invalid base64
+        serde_json::json!({
+            "birthYearOffset": 100,
+            "publicKey": "invalid!!!"
+        }),
+        // Invalid bincode
+        serde_json::json!({
+            "birthYearOffset": 100,
+            "publicKey": "SGVsbG8="
+        }),
+        // Out of range
+        serde_json::json!({
+            "birthYearOffset": 1000,
+            "publicKey": "dGVzdA=="
+        }),
+    ];
+
+    for body in error_cases {
+        let app = http::test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/encrypt-birth-year-offset")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // All should be 400
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let json = http::parse_json_body(response).await;
+
+        // All should have "error" field
+        assert!(
+            json["error"].is_string(),
+            "Error response should have 'error' string field"
+        );
+
+        // Error message should not be empty
+        let error_msg = json["error"].as_str().unwrap();
+        assert!(!error_msg.is_empty(), "Error message should not be empty");
+    }
+}

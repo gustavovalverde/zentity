@@ -3,7 +3,6 @@
 //! Handles registration, storage, and retrieval of server keys derived from
 //! client-owned keypairs. Client keys never leave the browser.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -21,6 +20,16 @@ static KEYS: OnceCell<KeyStore> = OnceCell::new();
 const DEFAULT_KEYS_DIR: &str = "/var/lib/zentity/fhe";
 const KEYSTORE_FILE_NAME: &str = "keystore.bincode";
 
+fn is_truthy(value: &str) -> bool {
+    matches!(value.trim(), "1" | "true" | "yes")
+}
+
+fn persistence_enabled() -> bool {
+    std::env::var("FHE_PERSIST_KEYS")
+        .map(|value| is_truthy(&value.to_lowercase()))
+        .unwrap_or(false)
+}
+
 #[derive(Serialize, Deserialize)]
 struct PersistedKeyStore {
     server_keys: HashMap<String, ServerKey>,
@@ -32,20 +41,16 @@ struct PersistedKeyStore {
 /// - `server_keys`: Protected by RwLock for concurrent read access during verification
 /// - `keys_dir`: If Some, keys are persisted atomically to disk
 pub struct KeyStore {
-    server_keys: RwLock<HashMap<String, ServerKey>>,
-    keys_dir: Option<PathBuf>,
+    pub(crate) server_keys: RwLock<HashMap<String, ServerKey>>,
+    pub(crate) keys_dir: Option<PathBuf>,
 }
 
 pub fn decode_compressed_public_key(public_key_b64: &str) -> Result<CompressedPublicKey, FheError> {
-    let bytes = BASE64.decode(public_key_b64)?;
-    let key: CompressedPublicKey = bincode::deserialize(&bytes)?;
-    Ok(key)
+    super::decode_bincode_base64(public_key_b64)
 }
 
 pub fn decode_compressed_server_key(server_key_b64: &str) -> Result<CompressedServerKey, FheError> {
-    let bytes = BASE64.decode(server_key_b64)?;
-    let key: CompressedServerKey = bincode::deserialize(&bytes)?;
-    Ok(key)
+    super::decode_bincode_base64(server_key_b64)
 }
 
 pub fn decode_server_key(server_key_b64: &str) -> Result<ServerKey, FheError> {
@@ -63,12 +68,17 @@ impl KeyStore {
             return Some(path);
         }
 
-        let default_path = PathBuf::from(DEFAULT_KEYS_DIR);
-        if default_path.is_dir() {
-            Some(default_path)
-        } else {
-            None
+        if !persistence_enabled() {
+            return None;
         }
+
+        let default_path = PathBuf::from(DEFAULT_KEYS_DIR);
+        if let Err(error) = std::fs::create_dir_all(&default_path) {
+            warn!("FHE_PERSIST_KEYS is set but could not create keys dir: {error}");
+            return None;
+        }
+
+        Some(default_path)
     }
 
     fn keystore_path(keys_dir: &Path) -> PathBuf {
@@ -142,6 +152,31 @@ impl KeyStore {
         store.try_persist_to_disk();
 
         store
+    }
+
+    pub(crate) fn new_for_tests(keys_dir: Option<PathBuf>) -> Self {
+        KeyStore {
+            server_keys: RwLock::new(HashMap::new()),
+            keys_dir,
+        }
+    }
+
+    pub(crate) fn load_for_tests(keys_dir: PathBuf) -> Self {
+        if let Some(persisted) = Self::try_load_from_disk(&keys_dir) {
+            KeyStore {
+                server_keys: RwLock::new(persisted.server_keys),
+                keys_dir: Some(keys_dir),
+            }
+        } else {
+            KeyStore {
+                server_keys: RwLock::new(HashMap::new()),
+                keys_dir: Some(keys_dir),
+            }
+        }
+    }
+
+    pub(crate) fn keystore_path_for_tests(keys_dir: &Path) -> PathBuf {
+        Self::keystore_path(keys_dir)
     }
 
     /// Register a server key derived from a client-provided keypair.
