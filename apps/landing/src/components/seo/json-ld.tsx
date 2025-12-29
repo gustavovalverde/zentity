@@ -34,7 +34,7 @@ export function SoftwareApplicationSchema() {
       priceCurrency: "USD",
     },
     description:
-      "Privacy-first KYC platform using zero-knowledge proofs and homomorphic encryption. Verify identity without storing personal data.",
+      "Privacy-first compliance/KYC platform using zero-knowledge proofs and homomorphic encryption. Verify identity without storing personal data.",
     featureList: [
       "Age verification with zero-knowledge proofs",
       "Document verification with OCR",
@@ -64,7 +64,7 @@ export function FAQSchema() {
     {
       question: "How does zero-knowledge proof work for age verification?",
       answer:
-        "Zero-knowledge proofs allow you to prove you're over a certain age (like 18 or 21) without revealing your actual birthday. The proof is generated client-side, so your birth date never leaves your device.",
+        "Zero-knowledge proofs allow you to prove you're over a certain age (like 18 or 21) without revealing your actual birthday. Proofs are generated client-side and only proofs and hashes are stored.",
     },
     {
       question: "What happens to my documents after verification?",

@@ -1,5 +1,6 @@
 // Import documentation files as raw strings
 import architecture from "../../../../docs/architecture.md?raw";
+import attestationPrivacy from "../../../../docs/attestation-privacy-architecture.md?raw";
 import passwordSecurity from "../../../../docs/password-security.md?raw";
 import rpRedirectFlow from "../../../../docs/rp-redirect-flow.md?raw";
 import zkArchitecture from "../../../../docs/zk-architecture.md?raw";
@@ -17,6 +18,12 @@ export const docs: Record<string, DocMeta> = {
     description:
       "Overview of how Zentity's services connect and how data flows through the system",
     content: architecture,
+  },
+  "attestation-privacy": {
+    title: "Attestation & Privacy",
+    description:
+      "Attestation schema, data classification, and privacy boundaries",
+    content: attestationPrivacy,
   },
   "zk-architecture": {
     title: "ZK Architecture",
@@ -49,6 +56,7 @@ export const docsNav = [
     title: "Architecture",
     items: [
       { title: "System Overview", slug: "architecture" },
+      { title: "Attestation & Privacy", slug: "attestation-privacy" },
       { title: "ZK Architecture", slug: "zk-architecture" },
     ],
   },

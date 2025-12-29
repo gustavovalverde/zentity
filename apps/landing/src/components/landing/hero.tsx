@@ -33,12 +33,13 @@ export function Hero() {
         </h1>
 
         <p className="mt-6 text-lg sm:text-xl leading-8 text-muted-foreground max-w-2xl mx-auto">
-          Identity verification that proves what you need—like your age or
-          nationality—without exposing your personal data to anyone.
+          Privacy-first identity verification for banks, exchanges, and
+          Web3—prove age, nationality, and liveness without exposing personal
+          data.
         </p>
 
         <p className="mt-4 text-sm text-muted-foreground">
-          Powered by zero-knowledge cryptography. 100% open source.
+          Zero-knowledge proofs + homomorphic encryption. 100% open source.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">

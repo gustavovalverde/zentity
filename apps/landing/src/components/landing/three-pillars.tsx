@@ -9,9 +9,9 @@ const pillars = [
     title: "Zero-Knowledge Proofs",
     subtitle: "Prove claims without revealing data",
     description:
-      'Prove "I\'m over 18" without showing your birthday. Prove "I\'m an EU citizen" without revealing which country. Your sensitive data never leaves your device.',
+      'Prove "I\'m over 18" or "I\'m in the EU" without revealing the underlying values. Proofs are cryptographically tied to verified documents.',
     tech: "Noir circuits + UltraHonk",
-    example: 'Service learns: "Age verified: Yes" — Nothing else.',
+    example: 'Service learns: "Age verified: Yes" — nothing else.',
   },
   {
     icon: IconLock,
@@ -19,10 +19,10 @@ const pillars = [
     title: "Homomorphic Encryption",
     subtitle: "Compute on encrypted data",
     description:
-      "Age comparisons happen on encrypted data. The server performs calculations without ever decrypting your birth date. Even we can't see your actual information.",
+      "Sensitive values stay encrypted. The server can compute, but only you can decrypt the result.",
     tech: "TFHE-rs (Rust)",
     example:
-      "Server computes: encrypted_year → result: true — Never sees 1990.",
+      "Server computes: encrypted value → result: true — never sees your data.",
   },
   {
     icon: IconFingerprint,
@@ -30,7 +30,7 @@ const pillars = [
     title: "Cryptographic Commitments",
     subtitle: "Verify without storing",
     description:
-      'Your name becomes a one-way hash. We can verify it matches, but can\'t reverse it to read it. Delete your salt, and we cryptographically "forget" you.',
+      'Names and document numbers become one-way hashes. Delete the salt, and we cryptographically "forget" you.',
     tech: "Salted SHA256",
     example: '"John Doe" → 8f14e45f... — Irreversible, GDPR-friendly.',
   },

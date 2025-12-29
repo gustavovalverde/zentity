@@ -86,8 +86,8 @@ export function TechnicalDeepDive() {
                               Web Client (Next.js)
                             </h4>
                             <p className="text-sm text-muted-foreground mt-1">
-                              Handles UI, key management, and client-side ZK
-                              proof generation (Noir/WASM).
+                              Handles UI, client key storage, and ZK proof
+                              generation (Noir/WASM) tied to verified docs.
                             </p>
                           </div>
                         </div>
@@ -114,8 +114,8 @@ export function TechnicalDeepDive() {
                               OCR Service (Python)
                             </h4>
                             <p className="text-sm text-muted-foreground mt-1">
-                              Transiently processes documents to extract
-                              attributes, then wipes memory.
+                              Transiently extracts document attributes, then
+                              discards raw images.
                             </p>
                           </div>
                         </div>
@@ -160,7 +160,7 @@ export function TechnicalDeepDive() {
 
                       {/* DB Box */}
                       <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 text-center text-xs text-blue-400 font-mono">
-                        Encrypted DB (Ciphertexts)
+                        Encrypted DB (Data + Proofs)
                       </div>
                     </div>
                   </div>
@@ -186,10 +186,10 @@ export function TechnicalDeepDive() {
                             Data Extraction
                           </h4>
                           <p className="text-sm text-muted-foreground mb-2">
-                            User uploads ID locally or to RAM-only OCR.
+                            OCR extracts fields (no storage).
                           </p>
                           <div className="bg-muted px-3 py-2 rounded text-xs font-mono text-foreground border border-border">
-                            Input: "ID_Card.jpg" → Output: DOB "1995-05-12"
+                            Input: "ID_Card.jpg" → Output: verified fields
                           </div>
                         </div>
                       </div>
@@ -203,10 +203,10 @@ export function TechnicalDeepDive() {
                             Proof Generation
                           </h4>
                           <p className="text-sm text-muted-foreground mb-2">
-                            Client inputs private DOB into Noir circuit.
+                            Client proves eligibility with ZK.
                           </p>
                           <div className="bg-muted px-3 py-2 rounded text-xs font-mono text-foreground border border-border">
-                            Generate(DOB, MinAge) → Proof_0x8f2...
+                            Generate(private inputs, nonce) → Proof_0x8f2...
                           </div>
                         </div>
                       </div>
@@ -258,7 +258,19 @@ export function TechnicalDeepDive() {
                             </h4>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            Proves document expiration date is in the future.
+                            Proves document expiration is valid.
+                          </p>
+                        </li>
+                        <li className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
+                          <div className="flex items-center gap-3 mb-2">
+                            <IconFileCode className="h-5 w-5 text-purple-400" />
+                            <h4 className="font-semibold text-foreground">
+                              face_match.nr
+                            </h4>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Proves face match meets a threshold without storing
+                            biometrics.
                           </p>
                         </li>
                         <li className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
@@ -285,17 +297,21 @@ export function TechnicalDeepDive() {
                           <span>Noir</span>
                         </div>
                         <pre className="overflow-x-auto text-xs">
-                          {`fn main(
-    dob_timestamp: pub u64,
-    min_age_seconds: pub u64,
-    current_timestamp: pub u64
-) {
-    // Calculate age difference
-    let age_seconds =
-        current_timestamp - dob_timestamp;
+                          {`use nodash::poseidon2;
 
-    // Verify constraint
-    assert(age_seconds >= min_age_seconds);
+fn main(
+  birth_year: Field,
+  document_hash: Field,
+  current_year: pub Field,
+  min_age: pub Field,
+  nonce: pub Field,
+  claim_hash: pub Field
+) -> pub bool {
+  let _ = nonce;
+  let computed = poseidon2([birth_year, document_hash]);
+  assert(computed == claim_hash);
+  let age = current_year as u32 - birth_year as u32;
+  age >= min_age as u32
 }`}
                         </pre>
                       </div>
