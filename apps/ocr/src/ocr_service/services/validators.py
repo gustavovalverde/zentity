@@ -33,7 +33,7 @@ from stdnum.exceptions import (
 # Priority order for stdnum validator discovery.
 # Personal ID modules are tried first (most specific), then tax IDs (fallback).
 # Order matters: first match wins when multiple validators exist for a country.
-VALIDATOR_MODULE_PRIORITY = [
+_VALIDATOR_MODULE_PRIORITY = [
     # --- Primary personal identification documents ---
     "personalid",  # Generic (few countries use this exact name)
     "cedula",  # Dominican Republic, Ecuador
@@ -186,7 +186,7 @@ def discover_validator(alpha3_code: str) -> ValidatorInfo | None:
         return None
 
     # Step 2: Try each module name in priority order
-    for module_name in VALIDATOR_MODULE_PRIORITY:
+    for module_name in _VALIDATOR_MODULE_PRIORITY:
         try:
             module = get_cc_module(alpha2_code, module_name)
             if module is not None and hasattr(module, "validate"):
@@ -210,6 +210,32 @@ def discover_validator(alpha3_code: str) -> ValidatorInfo | None:
 # =============================================================================
 # Rich Validation with User-Friendly Errors
 # =============================================================================
+
+
+# Error mapping for validation exceptions - reduces repetitive exception handlers
+_VALIDATION_ERROR_MAP: dict[type, tuple[str, str]] = {
+    InvalidLength: (
+        "invalid_document_length",
+        "The document number has an incorrect length for {country}. "
+        "A valid {format} should have the correct number of digits.",
+    ),
+    InvalidChecksum: (
+        "invalid_document_checksum",
+        "The document number appears to be invalid for {country}. "
+        "The check digit doesn't match what's expected for a {format}. "
+        "Please verify it's correct.",
+    ),
+    InvalidFormat: (
+        "invalid_document_format",
+        "The document number format is incorrect for {country}. "
+        "A {format} should contain only valid characters in the expected format.",
+    ),
+    InvalidComponent: (
+        "invalid_document_component",
+        "Part of the document number is invalid for {country}. "
+        "This could indicate an invalid date, region code, or other embedded value.",
+    ),
+}
 
 
 def validate_document_number(number: str, country_code: str | None) -> ValidationResult:
@@ -258,7 +284,7 @@ def validate_document_number(number: str, country_code: str | None) -> Validatio
             ),
         )
 
-    # Attempt validation with specific error handling
+    # Attempt validation with error mapping
     try:
         validator_info.module.validate(number)
         return ValidationResult(
@@ -267,51 +293,15 @@ def validate_document_number(number: str, country_code: str | None) -> Validatio
             format_name=validator_info.display_name,
         )
 
-    except InvalidLength:
+    except (InvalidLength, InvalidChecksum, InvalidFormat, InvalidComponent) as e:
+        # Use error mapping for specific exception types
+        error_code, message_template = _VALIDATION_ERROR_MAP[type(e)]
         return ValidationResult(
             is_valid=False,
-            error_code="invalid_document_length",
-            error_message=(
-                f"The document number has an incorrect length for {country_name}. "
-                f"A valid {validator_info.display_name} should have the correct number of digits."
-            ),
-            validator_used=validator_info.full_path,
-            format_name=validator_info.display_name,
-        )
-
-    except InvalidChecksum:
-        return ValidationResult(
-            is_valid=False,
-            error_code="invalid_document_checksum",
-            error_message=(
-                f"The document number appears to be invalid for {country_name}. "
-                f"The check digit doesn't match what's expected for a "
-                f"{validator_info.display_name}. Please verify it's correct."
-            ),
-            validator_used=validator_info.full_path,
-            format_name=validator_info.display_name,
-        )
-
-    except InvalidFormat:
-        return ValidationResult(
-            is_valid=False,
-            error_code="invalid_document_format",
-            error_message=(
-                f"The document number format is incorrect for {country_name}. "
-                f"A {validator_info.display_name} should contain only valid characters "
-                f"in the expected format."
-            ),
-            validator_used=validator_info.full_path,
-            format_name=validator_info.display_name,
-        )
-
-    except InvalidComponent:
-        return ValidationResult(
-            is_valid=False,
-            error_code="invalid_document_component",
-            error_message=(
-                f"Part of the document number is invalid for {country_name}. "
-                f"This could indicate an invalid date, region code, or other embedded value."
+            error_code=error_code,
+            error_message=message_template.format(
+                country=country_name,
+                format=validator_info.display_name,
             ),
             validator_used=validator_info.full_path,
             format_name=validator_info.display_name,

@@ -9,7 +9,7 @@ Tests the privacy-preserving cryptographic commitment generation:
 
 import pytest
 
-from app.commitments import (
+from ocr_service.services.commitments import (
     IdentityCommitments,
     generate_identity_commitments,
     generate_issuing_country_commitment,

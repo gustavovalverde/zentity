@@ -38,8 +38,12 @@ class ExtractedData:
     gender: str | None = None
 
 
+# ICAO 9303 century threshold for 2-digit years: years < 50 = 20xx, >= 50 = 19xx
+_CENTURY_THRESHOLD = 50
+
+
 # Common OCR character confusions in MRZ
-OCR_SUBSTITUTIONS = [
+_OCR_SUBSTITUTIONS = [
     ("0", "O"),  # Zero ↔ Letter O (most common)
     ("1", "I"),  # One ↔ Letter I
     ("5", "S"),  # Five ↔ Letter S
@@ -59,7 +63,7 @@ def correct_country_code(code: str) -> tuple[str, bool]:
         return code, False  # Already valid
 
     # Try single character substitutions
-    for wrong, right in OCR_SUBSTITUTIONS:
+    for wrong, right in _OCR_SUBSTITUTIONS:
         # Try replacing wrong with right
         corrected = code.replace(wrong, right)
         if corrected != code and is_code(corrected):
@@ -80,13 +84,13 @@ def correct_country_code(code: str) -> tuple[str, bool]:
 # Stop words regex - marks the end of name fields in OCR text.
 # Used to split extracted names from subsequent label text that may appear
 # on the same line due to OCR layout detection.
-FIRST_NAME_STOP_WORDS = r"\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
-LAST_NAME_STOP_WORDS = r"\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
+_FIRST_NAME_STOP_WORDS = r"\s+(?:APELLIDO|SURNAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
+_LAST_NAME_STOP_WORDS = r"\s+(?:NOMBRE|NAME|FECHA|DATE|SEXO|SEX|NACIMIENTO|BIRTH|VENCE|EXPIR)"
 
 # Patterns for extracting fields from national ID documents.
 # Order matters: country-specific patterns are tried first (fewer false positives),
 # then generic fallback patterns. First match wins.
-NATIONAL_ID_PATTERNS = {
+_NATIONAL_ID_PATTERNS = {
     # Document number patterns - ordered by specificity (most specific first)
     "document_number": [
         r"\b(\d{3}[-\s]?\d{7}[-\s]?\d{1})\b",  # Dominican cedula: XXX-XXXXXXX-X
@@ -129,7 +133,7 @@ NATIONAL_ID_PATTERNS = {
 }
 
 # Country detection patterns
-COUNTRY_MARKERS = {
+_COUNTRY_MARKERS = {
     "DOM": [r"REPÚBLICA\s+DOMINICANA", r"REPUBLICA\s+DOMINICANA", r"REP\.?\s*DOM", r"DOMINICAN"],
     "ESP": [r"ESPAÑA", r"SPAIN", r"REINO\s+DE\s+ESPAÑA"],
     "MEX": [r"MÉXICO", r"MEXICO", r"ESTADOS\s+UNIDOS\s+MEXICANOS"],
@@ -140,7 +144,7 @@ COUNTRY_MARKERS = {
 
 # Passport MRZ patterns (TD3 format - 2 lines of 44 chars)
 # Note: OCR may separate lines with space, newline, or nothing - use \s* to match any whitespace
-MRZ_PATTERN = r"P<[A-Z]{3}[A-Z<]+<<[A-Z<]+<*\s*[A-Z0-9<]{44}"
+_MRZ_PATTERN = r"P<[A-Z]{3}[A-Z<]+<<[A-Z<]+<*\s*[A-Z0-9<]{44}"
 
 
 def normalize_cedula_number(raw: str) -> str:
@@ -154,6 +158,20 @@ def normalize_cedula_number(raw: str) -> str:
         if len(digits) == 11:
             return f"{digits[:3]}-{digits[3:10]}-{digits[10]}"
         return raw
+
+
+def _maybe_normalize_cedula(doc_num: str, country_code: str | None) -> str:
+    """Normalize Dominican cedula if applicable, otherwise return as-is."""
+    if country_code == "DOM" and len(re.sub(r"[^\d]", "", doc_num)) == 11:
+        return normalize_cedula_number(doc_num)
+    return doc_num
+
+
+def _build_full_name(first_name: str | None, last_name: str | None) -> str | None:
+    """Construct full name from first and last name components."""
+    if first_name and last_name:
+        return f"{first_name} {last_name}"
+    return first_name or last_name
 
 
 def get_country_name(code: str) -> str | None:
@@ -200,8 +218,8 @@ def parse_date_to_iso(date_str: str) -> str | None:
     match = re.match(r"(\d{2})(\d{2})(\d{2})", date_str)
     if match:
         yy, mm, dd = match.groups()
-        # Assume 20xx for years < 50, 19xx for >= 50
-        century = "20" if int(yy) < 50 else "19"
+        # ICAO 9303: years < _CENTURY_THRESHOLD = 20xx, >= _CENTURY_THRESHOLD = 19xx
+        century = "20" if int(yy) < _CENTURY_THRESHOLD else "19"
         return f"{century}{yy}-{mm}-{dd}"
 
     return None
@@ -212,7 +230,7 @@ def detect_country_from_text(text: str) -> str | None:
     Detect country code from document text.
 
     Searches for country-specific markers (text patterns) in the OCR output.
-    Detection priority follows COUNTRY_MARKERS dict iteration order.
+    Detection priority follows _COUNTRY_MARKERS dict iteration order.
     Earlier entries take precedence when multiple patterns match.
 
     Args:
@@ -222,7 +240,7 @@ def detect_country_from_text(text: str) -> str | None:
         ISO 3166-1 alpha-3 country code (e.g., "DOM", "ESP") or None
     """
     text_upper = text.upper()
-    for country_code, patterns in COUNTRY_MARKERS.items():
+    for country_code, patterns in _COUNTRY_MARKERS.items():
         for pattern in patterns:
             if re.search(pattern, text_upper, re.IGNORECASE):
                 return country_code
@@ -241,42 +259,32 @@ def extract_national_id_fields(text: str) -> ExtractedData:
         data.nationality = get_country_name(detected_country) or detected_country
 
     # Document number - try each pattern
-    for pattern in NATIONAL_ID_PATTERNS["document_number"]:
+    for pattern in _NATIONAL_ID_PATTERNS["document_number"]:
         match = re.search(pattern, text_upper)
         if match:
-            doc_num = match.group(1)
-            # Normalize Dominican cedula format if applicable
-            if detected_country == "DOM" and len(re.sub(r"[^\d]", "", doc_num)) == 11:
-                data.document_number = normalize_cedula_number(doc_num)
-            else:
-                data.document_number = doc_num
+            data.document_number = _maybe_normalize_cedula(match.group(1), detected_country)
             break
 
     # Extract first name - try each pattern
-    for pattern in NATIONAL_ID_PATTERNS["first_name"]:
+    for pattern in _NATIONAL_ID_PATTERNS["first_name"]:
         first_match = re.search(pattern, text_upper)
         if first_match:
             first_raw = first_match.group(1).strip()
-            first_clean = re.split(FIRST_NAME_STOP_WORDS, first_raw)[0].strip()
+            first_clean = re.split(_FIRST_NAME_STOP_WORDS, first_raw)[0].strip()
             data.first_name = first_clean.title()
             break
 
     # Extract last name - try each pattern
-    for pattern in NATIONAL_ID_PATTERNS["last_name"]:
+    for pattern in _NATIONAL_ID_PATTERNS["last_name"]:
         last_match = re.search(pattern, text_upper)
         if last_match:
             last_raw = last_match.group(1).strip()
-            last_clean = re.split(LAST_NAME_STOP_WORDS, last_raw)[0].strip()
+            last_clean = re.split(_LAST_NAME_STOP_WORDS, last_raw)[0].strip()
             data.last_name = last_clean.title()
             break
 
     # Combine for full_name
-    if data.first_name and data.last_name:
-        data.full_name = f"{data.first_name} {data.last_name}"
-    elif data.first_name:
-        data.full_name = data.first_name
-    elif data.last_name:
-        data.full_name = data.last_name
+    data.full_name = _build_full_name(data.first_name, data.last_name)
 
     # Fallback: try to find name without labels
     if not data.full_name:
@@ -306,7 +314,7 @@ def extract_national_id_fields(text: str) -> ExtractedData:
                 data.full_name = potential_name.title()
 
     # Date of birth - try each pattern
-    for pattern in NATIONAL_ID_PATTERNS["date_of_birth"]:
+    for pattern in _NATIONAL_ID_PATTERNS["date_of_birth"]:
         dob_match = re.search(pattern, text_upper)
         if dob_match:
             data.date_of_birth = parse_date_to_iso(dob_match.group(1))
@@ -319,14 +327,14 @@ def extract_national_id_fields(text: str) -> ExtractedData:
             data.date_of_birth = parse_date_to_iso(date_matches[0])
 
     # Expiration date - try each pattern
-    for pattern in NATIONAL_ID_PATTERNS["expiration_date"]:
+    for pattern in _NATIONAL_ID_PATTERNS["expiration_date"]:
         exp_match = re.search(pattern, text_upper)
         if exp_match:
             data.expiration_date = parse_date_to_iso(exp_match.group(1))
             break
 
     # Gender - try each pattern
-    for pattern in NATIONAL_ID_PATTERNS["gender"]:
+    for pattern in _NATIONAL_ID_PATTERNS["gender"]:
         gender_match = re.search(pattern, text_upper)
         if gender_match:
             data.gender = gender_match.group(1)
@@ -400,12 +408,7 @@ def parse_mrz(mrz_text: str) -> tuple[ExtractedData, bool]:
             data.issuing_country = issuing_name or corrected_issuing
 
         # Build full name (Given Names + Surname)
-        if data.first_name and data.last_name:
-            data.full_name = f"{data.first_name} {data.last_name}"
-        elif data.first_name:
-            data.full_name = data.first_name
-        elif data.last_name:
-            data.full_name = data.last_name
+        data.full_name = _build_full_name(data.first_name, data.last_name)
 
     except (ValueError, AttributeError, IndexError, TypeError):
         # MRZ library failed to parse - expected when OCR doesn't detect valid MRZ.
@@ -423,7 +426,7 @@ def extract_passport_fields(text: str) -> tuple[ExtractedData, bool]:
         tuple: (ExtractedData, is_valid) where is_valid indicates MRZ checksum passed
     """
     # First try to find and parse MRZ
-    mrz_match = re.search(MRZ_PATTERN, text, re.MULTILINE)
+    mrz_match = re.search(_MRZ_PATTERN, text, re.MULTILINE)
     if mrz_match:
         return parse_mrz(mrz_match.group(0))
 
@@ -472,14 +475,10 @@ def extract_drivers_license_fields(text: str) -> ExtractedData:
 
     # Try national ID number as document number (common in some countries)
     if not data.document_number:
-        for pattern in NATIONAL_ID_PATTERNS["document_number"]:
+        for pattern in _NATIONAL_ID_PATTERNS["document_number"]:
             match = re.search(pattern, text_upper)
             if match:
-                doc_num = match.group(1)
-                if detected_country == "DOM" and len(re.sub(r"[^\d]", "", doc_num)) == 11:
-                    data.document_number = normalize_cedula_number(doc_num)
-                else:
-                    data.document_number = doc_num
+                data.document_number = _maybe_normalize_cedula(match.group(1), detected_country)
                 break
 
     # Name - try multiple patterns
@@ -494,14 +493,14 @@ def extract_drivers_license_fields(text: str) -> ExtractedData:
             break
 
     # Date of birth - reuse national ID patterns
-    for pattern in NATIONAL_ID_PATTERNS["date_of_birth"]:
+    for pattern in _NATIONAL_ID_PATTERNS["date_of_birth"]:
         dob_match = re.search(pattern, text_upper)
         if dob_match:
             data.date_of_birth = parse_date_to_iso(dob_match.group(1))
             break
 
     # Expiration date - reuse national ID patterns
-    for pattern in NATIONAL_ID_PATTERNS["expiration_date"]:
+    for pattern in _NATIONAL_ID_PATTERNS["expiration_date"]:
         exp_match = re.search(pattern, text_upper)
         if exp_match:
             data.expiration_date = parse_date_to_iso(exp_match.group(1))

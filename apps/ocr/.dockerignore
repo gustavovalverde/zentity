@@ -7,10 +7,10 @@
 *
 
 # Include Python requirements
-!requirements.txt
+!requirements.lock
 
 # Include application code
-!app/
+!src/
 
 # Include startup script
 !start.sh

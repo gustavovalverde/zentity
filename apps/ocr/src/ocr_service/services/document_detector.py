@@ -54,6 +54,15 @@ DOCUMENT_MARKERS = {
     ],
 }
 
+# Pre-compile patterns at module load for O(1) matching
+_COMPILED_PATTERNS: dict[DocumentType, list[re.Pattern]] = {
+    doc_type: [re.compile(p, re.IGNORECASE) for p in patterns]
+    for doc_type, patterns in DOCUMENT_MARKERS.items()
+}
+
+# Pre-compile fast-path MRZ pattern
+_MRZ_PASSPORT_PATTERN = re.compile(r"P<[A-Z]{3}", re.IGNORECASE)
+
 
 def detect_document_type(text: str) -> tuple[DocumentType, float]:
     """
@@ -69,7 +78,7 @@ def detect_document_type(text: str) -> tuple[DocumentType, float]:
 
     # Fast path: a TD3 MRZ line starting with "P<" is a strong passport signal.
     # This avoids tie-break issues when only the MRZ region is OCR'd.
-    if re.search(r"P<[A-Z]{3}", text_upper, re.IGNORECASE):
+    if _MRZ_PASSPORT_PATTERN.search(text_upper):
         return DocumentType.PASSPORT, 1.0
 
     scores = {
@@ -78,10 +87,10 @@ def detect_document_type(text: str) -> tuple[DocumentType, float]:
         DocumentType.DRIVERS_LICENSE: 0,
     }
 
-    # Count matches for each document type
-    for doc_type, patterns in DOCUMENT_MARKERS.items():
-        for pattern in patterns:
-            if re.search(pattern, text_upper, re.IGNORECASE):
+    # Count matches for each document type using pre-compiled patterns
+    for doc_type, compiled_patterns in _COMPILED_PATTERNS.items():
+        for pattern in compiled_patterns:
+            if pattern.search(text_upper):
                 scores[doc_type] += 1
 
     # Find highest scoring type
@@ -91,8 +100,7 @@ def detect_document_type(text: str) -> tuple[DocumentType, float]:
     if max_score == 0:
         return DocumentType.UNKNOWN, 0.0
 
-    # Calculate confidence based on number of matches
-    total_patterns = len(DOCUMENT_MARKERS[max_type])
-    confidence = min(1.0, max_score / max(1, total_patterns - 1))
+    # Calculate confidence: ratio of matched patterns to total patterns
+    confidence = max_score / len(DOCUMENT_MARKERS[max_type])
 
     return max_type, confidence

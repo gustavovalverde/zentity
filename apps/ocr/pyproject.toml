@@ -7,25 +7,44 @@ name = "ocr-service"
 version = "0.1.0"
 description = "Privacy-preserving OCR service for document processing"
 requires-python = ">=3.10"
+dependencies = [
+    "fastapi==0.128.0",
+    "iso3166==2.1.1",
+    "mrz==0.6.2",
+    "numpy==2.2.6",
+    "onnxruntime==1.23.2",
+    "opencv-python-headless==4.12.0.88",
+    "pillow==12.0.0",
+    "pydantic==2.12.5",
+    "python-stdnum==2.1",
+    "rapidocr==3.4.5",
+    "uvicorn==0.40.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "httpx>=0.26.0",
+    "pytest==9.0.2",
+    "pytest-asyncio==1.3.0",
+    "pytest-cov==7.0.0",
+    "httpx==0.28.1",
 ]
 dev = [
-    "ruff>=0.8.4",
-    "pre-commit>=4.0.1",
+    "ruff==0.14.10",
+    "pre-commit==4.5.1",
     # Security auditing
-    "pip-audit>=2.7.3",
-    "bandit>=1.8.3",
+    "pip-audit==2.10.0",
+    "bandit==1.9.2",
     # Include test deps in dev
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "httpx>=0.26.0",
+    "pytest==9.0.2",
+    "pytest-asyncio==1.3.0",
+    "pytest-cov==7.0.0",
+    "httpx==0.28.1",
 ]
 
 [tool.pytest.ini_options]
@@ -35,7 +54,7 @@ asyncio_mode = "auto"
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["ocr_service"]
 branch = true
 omit = ["tests/*", "*/__pycache__/*"]
 
