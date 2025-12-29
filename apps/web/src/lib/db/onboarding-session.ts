@@ -12,6 +12,8 @@
  * - Sensitive data (documents, selfies) never stored - processed in real-time
  */
 
+import type { OnboardingSession } from "./schema";
+
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
 
@@ -20,9 +22,8 @@ import { getBetterAuthSecret } from "@/lib/utils/env";
 import {
   deleteOnboardingSession,
   getOnboardingSessionByEmail,
-  type OnboardingSession,
   upsertOnboardingSession,
-} from "./db";
+} from "./queries/onboarding";
 
 /**
  * Get encryption secret from environment (same as better-auth)

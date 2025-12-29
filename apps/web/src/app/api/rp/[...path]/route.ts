@@ -12,11 +12,11 @@ import {
   RP_FLOW_TTL_SECONDS,
   serializeRpFlowCookieValue,
 } from "@/lib/auth/rp-flow";
+import { getVerificationStatus } from "@/lib/db/queries/identity";
 import {
   consumeRpAuthorizationCode,
   createRpAuthorizationCode,
-  getVerificationStatus,
-} from "@/lib/db";
+} from "@/lib/db/queries/rp";
 
 export const runtime = "nodejs";
 

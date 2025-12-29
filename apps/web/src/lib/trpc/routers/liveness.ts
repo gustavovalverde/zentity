@@ -19,7 +19,10 @@ import type { ChallengeType } from "@/lib/liveness";
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
-import { getSessionFromCookie, validateStepAccess } from "@/lib/db";
+import {
+  getSessionFromCookie,
+  validateStepAccess,
+} from "@/lib/db/onboarding-session";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import {
   ANTISPOOF_LIVE_THRESHOLD,

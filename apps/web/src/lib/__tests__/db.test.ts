@@ -3,28 +3,37 @@
  */
 import crypto from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  createIdentityDocument,
-  deleteIdentityData,
-  documentHashExists,
   getAttestationEvidenceByUserAndDocument,
+  upsertAttestationEvidence,
+} from "@/lib/db/queries/attestation";
+import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
-  getSelectedIdentityDocumentByUserId,
-  getVerificationStatus,
   getZkProofsByUserId,
   insertEncryptedAttribute,
   insertSignedClaim,
   insertZkProofRecord,
-  upsertAttestationEvidence,
-} from "../db";
+} from "@/lib/db/queries/crypto";
+import {
+  createIdentityDocument,
+  documentHashExists,
+  getSelectedIdentityDocumentByUserId,
+  getVerificationStatus,
+} from "@/lib/db/queries/identity";
+import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("Database Module", () => {
+  beforeEach(() => {
+    resetDatabase();
+  });
+
   describe("getVerificationStatus", () => {
     it("returns level none for unverified user", () => {
-      const status = getVerificationStatus("non-existent-user");
+      const userId = createTestUser();
+      const status = getVerificationStatus(userId);
 
       expect(status.level).toBe("none");
       expect(status.verified).toBe(false);
@@ -38,37 +47,36 @@ describe("Database Module", () => {
   });
 
   describe("documentHashExists", () => {
-    it("returns false for non-existing hash", () => {
-      expect(documentHashExists("non-existent-hash")).toBe(false);
+    it("returns true for existing hash", () => {
+      const userId = createTestUser();
+      createIdentityDocument({
+        id: crypto.randomUUID(),
+        userId,
+        documentType: "passport",
+        issuerCountry: "USA",
+        documentHash: "existing-hash",
+        nameCommitment: "name-commit",
+        userSalt: null,
+        birthYearOffset: null,
+        firstNameEncrypted: null,
+        verifiedAt: "2025-01-01T00:00:00Z",
+        confidenceScore: 0.9,
+        status: "verified",
+      });
+
+      expect(documentHashExists("existing-hash")).toBe(true);
+      expect(documentHashExists("missing-hash")).toBe(false);
     });
   });
 });
 
-describe("IdentityProof Interface", () => {
-  it("should have all required fields", () => {
-    // Type checking test - if this compiles, the interface is correct
-    const mockProof = {
-      id: "test-id",
-      userId: "user-123",
-      documentHash: "abc123",
-      nameCommitment: "def456",
-      userSalt: "salt789",
-      isDocumentVerified: false,
-      isLivenessPassed: false,
-      isFaceMatched: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    expect(mockProof.id).toBe("test-id");
-    expect(mockProof.documentHash).toBe("abc123");
-  });
-});
-
 describe("ZK proofs and encrypted attributes", () => {
+  beforeEach(() => {
+    resetDatabase();
+  });
+
   it("persists zk proof records", () => {
-    const userId = `test-user-${crypto.randomUUID()}`;
-    deleteIdentityData(userId);
+    const userId = createTestUser();
 
     insertZkProofRecord({
       id: crypto.randomUUID(),
@@ -82,13 +90,10 @@ describe("ZK proofs and encrypted attributes", () => {
     expect(proofs).toHaveLength(1);
     expect(proofs[0]?.proofType).toBe("age_verification");
     expect(Boolean(proofs[0]?.verified)).toBe(true);
-
-    deleteIdentityData(userId);
   });
 
   it("persists encrypted attributes", () => {
-    const userId = `test-user-${crypto.randomUUID()}`;
-    deleteIdentityData(userId);
+    const userId = createTestUser();
 
     insertEncryptedAttribute({
       id: crypto.randomUUID(),
@@ -110,15 +115,16 @@ describe("ZK proofs and encrypted attributes", () => {
     expect(latest?.ciphertext).toBe("ciphertext");
     expect(latest?.keyId).toBe("key-1");
     expect(latest?.encryptionTimeMs).toBe(123);
-
-    deleteIdentityData(userId);
   });
 });
 
 describe("Document selection", () => {
+  beforeEach(() => {
+    resetDatabase();
+  });
+
   it("prefers a fully proven document over a newer incomplete one", () => {
-    const userId = `test-user-${crypto.randomUUID()}`;
-    deleteIdentityData(userId);
+    const userId = createTestUser();
 
     const docFull = crypto.randomUUID();
     const docIncomplete = crypto.randomUUID();
@@ -133,7 +139,7 @@ describe("Document selection", () => {
       userSalt: null,
       birthYearOffset: null,
       firstNameEncrypted: null,
-      verifiedAt: new Date("2024-01-01").toISOString(),
+      verifiedAt: "2024-01-01T00:00:00Z",
       confidenceScore: 0.9,
       status: "verified",
     });
@@ -148,7 +154,7 @@ describe("Document selection", () => {
       userSalt: null,
       birthYearOffset: null,
       firstNameEncrypted: null,
-      verifiedAt: new Date("2025-01-01").toISOString(),
+      verifiedAt: "2025-01-01T00:00:00Z",
       confidenceScore: 0.9,
       status: "verified",
     });
@@ -188,16 +194,17 @@ describe("Document selection", () => {
 
     const selected = getSelectedIdentityDocumentByUserId(userId);
     expect(selected?.id).toBe(docFull);
-
-    deleteIdentityData(userId);
   });
 });
 
 describe("Attestation evidence", () => {
+  beforeEach(() => {
+    resetDatabase();
+  });
+
   it("persists evidence pack metadata", () => {
-    const userId = `test-user-${crypto.randomUUID()}`;
+    const userId = createTestUser();
     const documentId = crypto.randomUUID();
-    deleteIdentityData(userId);
 
     upsertAttestationEvidence({
       userId,
@@ -214,7 +221,5 @@ describe("Attestation evidence", () => {
     expect(evidence?.policyVersion).toBe("policy-v1");
     expect(evidence?.policyHash).toBe("policy-hash");
     expect(evidence?.proofSetHash).toBe("proof-set-hash");
-
-    deleteIdentityData(userId);
   });
 });

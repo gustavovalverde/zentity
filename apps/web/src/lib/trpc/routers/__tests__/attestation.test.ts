@@ -32,14 +32,25 @@ const mockUpdateBlockchainAttestationSubmitted = vi.fn();
 const mockUpdateBlockchainAttestationFailed = vi.fn();
 const mockUpdateBlockchainAttestationConfirmed = vi.fn();
 
-vi.mock("@/lib/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/db")>();
+vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/queries/identity")>();
   return {
     ...actual,
     getVerificationStatus: (...args: unknown[]) =>
       mockGetVerificationStatus(...args),
     getSelectedIdentityDocumentByUserId: (...args: unknown[]) =>
       mockGetSelectedIdentityDocumentByUserId(...args),
+  };
+});
+
+const mockUpdateBlockchainAttestationWallet = vi.fn();
+
+vi.mock("@/lib/db/queries/attestation", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/queries/attestation")>();
+  return {
+    ...actual,
     getBlockchainAttestationsByUserId: (...args: unknown[]) =>
       mockGetBlockchainAttestationsByUserId(...args),
     getBlockchainAttestationByUserAndNetwork: (...args: unknown[]) =>
@@ -54,6 +65,8 @@ vi.mock("@/lib/db", async (importOriginal) => {
       mockUpdateBlockchainAttestationFailed(...args),
     updateBlockchainAttestationConfirmed: (...args: unknown[]) =>
       mockUpdateBlockchainAttestationConfirmed(...args),
+    updateBlockchainAttestationWallet: (...args: unknown[]) =>
+      mockUpdateBlockchainAttestationWallet(...args),
   };
 });
 

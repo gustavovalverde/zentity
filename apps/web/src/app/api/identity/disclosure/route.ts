@@ -23,14 +23,16 @@ import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 
 import { requireSession } from "@/lib/auth/api-auth";
+import { decryptUserSalt } from "@/lib/crypto/pii-encryption";
+import { getAttestationEvidenceByUserAndDocument } from "@/lib/db/queries/attestation";
 import {
-  decryptUserSalt,
-  getAttestationEvidenceByUserAndDocument,
   getLatestSignedClaimByUserTypeAndDocument,
   getLatestZkProofPayloadByUserAndType,
+} from "@/lib/db/queries/crypto";
+import {
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
-} from "@/lib/db";
+} from "@/lib/db/queries/identity";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";

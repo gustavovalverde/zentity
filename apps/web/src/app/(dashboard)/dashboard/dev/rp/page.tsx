@@ -15,7 +15,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { auth } from "@/lib/auth/auth";
-import { getUserAgeProofFull, getVerificationStatus } from "@/lib/db";
+import { getUserAgeProofFull } from "@/lib/db/queries/crypto";
+import { getVerificationStatus } from "@/lib/db/queries/identity";
 
 export default async function RPIntegrationPage() {
   const session = await auth.api.getSession({

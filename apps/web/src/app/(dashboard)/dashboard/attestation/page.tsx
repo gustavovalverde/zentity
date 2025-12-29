@@ -14,12 +14,14 @@ import {
 import { auth } from "@/lib/auth/auth";
 import {
   getEncryptedAttributeTypesByUserId,
+  getSignedClaimTypesByUserAndDocument,
+  getZkProofTypesByUserAndDocument,
+} from "@/lib/db/queries/crypto";
+import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
-  getSignedClaimTypesByUserAndDocument,
   getVerificationStatus,
-  getZkProofTypesByUserAndDocument,
-} from "@/lib/db";
+} from "@/lib/db/queries/identity";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
 export default async function AttestationPage() {

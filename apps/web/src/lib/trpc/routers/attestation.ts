@@ -31,14 +31,16 @@ import {
   createBlockchainAttestation,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
-  getSelectedIdentityDocumentByUserId,
-  getVerificationStatus,
   resetBlockchainAttestationForRetry,
   updateBlockchainAttestationConfirmed,
   updateBlockchainAttestationFailed,
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
-} from "@/lib/db";
+} from "@/lib/db/queries/attestation";
+import {
+  getSelectedIdentityDocumentByUserId,
+  getVerificationStatus,
+} from "@/lib/db/queries/identity";
 import {
   countryCodeToNumeric,
   getComplianceLevel,

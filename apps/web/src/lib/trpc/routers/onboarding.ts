@@ -16,10 +16,8 @@ import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
-  cleanupExpiredOnboardingSessions,
   clearWizardCookie,
   completeOnboarding,
-  deleteOnboardingSession,
   type EncryptedPiiData,
   getSessionFromCookie,
   loadWizardState,
@@ -29,7 +27,11 @@ import {
   skipLiveness,
   updateWizardProgress,
   validateStepAccess,
-} from "@/lib/db";
+} from "@/lib/db/onboarding-session";
+import {
+  cleanupExpiredOnboardingSessions,
+  deleteOnboardingSession,
+} from "@/lib/db/queries/onboarding";
 
 import { publicProcedure, router } from "../server";
 

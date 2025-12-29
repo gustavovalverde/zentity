@@ -26,10 +26,8 @@ import {
   isDemoMode,
 } from "@/lib/blockchain";
 import { CompliantERC20ABI } from "@/lib/contracts";
-import {
-  getBlockchainAttestationByUserAndNetwork,
-  getVerificationStatus,
-} from "@/lib/db";
+import { getBlockchainAttestationByUserAndNetwork } from "@/lib/db/queries/attestation";
+import { getVerificationStatus } from "@/lib/db/queries/identity";
 
 import { protectedProcedure, router } from "../server";
 
