@@ -1,6 +1,11 @@
 # cargo-deny configuration for FHE service
 # Run with: cargo deny check bans sources
 
+[advisories]
+# Deny by default (cargo-deny v2 behavior)
+# Ignore specific advisories if needed
+ignore = []
+
 [bans]
 # Warn on multiple versions of the same crate (don't block CI)
 multiple-versions = "warn"
