@@ -45,7 +45,7 @@ RUN --mount=type=cache,id=s/6bb539e1-aad1-4b72-baf0-6e9253435464-/usr/local/carg
     rm -rf src
 
 COPY --link src ./src
-RUN touch src/main.rs
+RUN touch src/main.rs src/lib.rs
 
 # Build with build info (option_env! reads these at compile time)
 ENV GIT_SHA=${GIT_SHA}
