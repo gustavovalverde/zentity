@@ -16,7 +16,7 @@ interface WizardNavigationProps {
 export function WizardNavigation({
   onNext,
   onSkip,
-  nextLabel = "Continue",
+  nextLabel,
   skipLabel = "Skip for now",
   showSkip = false,
   disableNext = false,
@@ -61,9 +61,7 @@ export function WizardNavigation({
         >
           {state.isSubmitting
             ? "Processing..."
-            : isLastStep
-              ? "Complete"
-              : nextLabel}
+            : (nextLabel ?? (isLastStep ? "Complete" : "Continue"))}
         </Button>
       </div>
       {showSkip && (

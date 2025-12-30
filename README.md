@@ -149,7 +149,7 @@ The PoC stores a mix of auth data and cryptographic artifacts; it does **not** s
 - Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claims, evidence pack hashes
 - On-chain (optional): encrypted identity attestation via FHEVM—only user can decrypt
 
-**User-controlled privacy:** FHE keys are generated and stored client-side (browser IndexedDB). The server registers only the public + server keys (evaluation keys) for computation and encrypts with the public key—it cannot decrypt user data. Only the user can decrypt their own encrypted attributes.
+**User-controlled privacy:** FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets. The server registers only the public + server keys (evaluation keys) for computation and encrypts with the public key—it cannot decrypt user data. Only the user can decrypt their own encrypted attributes.
 
 Details: `docs/architecture.md` | `docs/attestation-privacy-architecture.md`
 
@@ -210,10 +210,10 @@ Zentity is a privacy-preserving compliance platform that enables identity verifi
 - **Verify liveness scores** without revealing biometric data (FHE threshold comparisons)
 - **Match faces** to ID documents without storing biometrics (DeepFace/ArcFace)
 - **Verify document validity** without exposing expiration date (ZK proofs)
+- **Passkey-wrapped FHE keys** (WebAuthn PRF + envelope encryption, multi-device)
 
 ### Planned Features
 
-- **Passkey-wrapped FHE keys** - Protect client keys with WebAuthn
 - **AML/Sanctions screening** - Privacy-preserving sanctions list checking
 - **Accredited investor verification** - Prove income thresholds without revealing amounts
 - **Source of funds verification** - ZK proofs for financial compliance

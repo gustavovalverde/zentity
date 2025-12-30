@@ -5,10 +5,11 @@
  * Syncs state with server-side onboarding session for persistence.
  *
  * Steps:
- * 1. Account creation (email/password collected in step 4)
+ * 1. Email entry
  * 2. Document upload + OCR verification
  * 3. Liveness detection (optional, can be skipped)
- * 4. Review & complete (password, account creation, ZK proof generation)
+ * 4. Review & create account
+ * 5. Secure keys (passkey-protected FHE keys + privacy proofs)
  *
  * Features:
  * - Server-side state persistence via encrypted cookies
@@ -39,8 +40,8 @@ import {
 } from "@/features/auth/schemas/sign-up.schema";
 import { trpc } from "@/lib/trpc/client";
 
-const TOTAL_STEPS = 4;
-type WizardStep = 1 | 2 | 3 | 4;
+const TOTAL_STEPS = 5;
+type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 /** Clamps step number to valid range [1, TOTAL_STEPS]. */
 function toWizardStep(step: number): WizardStep {
@@ -59,6 +60,7 @@ interface ServerSessionState {
   documentProcessed?: boolean;
   livenessPassed?: boolean;
   faceMatchPassed?: boolean;
+  keysSecured?: boolean;
   hasPii?: boolean;
   hasExtractedName?: boolean;
   hasExtractedDOB?: boolean;
@@ -73,6 +75,7 @@ type WizardState = {
     documentProcessed: boolean;
     livenessPassed: boolean;
     faceMatchPassed: boolean;
+    keysSecured: boolean;
   };
 };
 
@@ -104,6 +107,7 @@ const initialState: WizardState = {
     documentProcessed: false,
     livenessPassed: false,
     faceMatchPassed: false,
+    keysSecured: false,
   },
 };
 
@@ -191,6 +195,7 @@ type WizardContextType = {
     documentProcessed?: boolean;
     livenessPassed?: boolean;
     faceMatchPassed?: boolean;
+    keysSecured?: boolean;
   }) => Promise<void>;
   canGoBack: boolean;
   canGoNext: boolean;
@@ -277,6 +282,7 @@ export function WizardProvider({
                 documentProcessed: serverState.documentProcessed ?? false,
                 livenessPassed: serverState.livenessPassed ?? false,
                 faceMatchPassed: serverState.faceMatchPassed ?? false,
+                keysSecured: serverState.keysSecured ?? false,
               },
             },
           });
@@ -347,12 +353,14 @@ export function WizardProvider({
       documentProcessed?: boolean;
       livenessPassed?: boolean;
       faceMatchPassed?: boolean;
+      keysSecured?: boolean;
     }) => {
       if (!state.data.email) return;
 
       try {
         await trpc.onboarding.saveSession.mutate({
           email: state.data.email,
+          step: updates.step ?? state.currentStep,
           ...updates,
         });
 
@@ -363,11 +371,12 @@ export function WizardProvider({
             documentProcessed: updates.documentProcessed,
             livenessPassed: updates.livenessPassed,
             faceMatchPassed: updates.faceMatchPassed,
+            keysSecured: updates.keysSecured,
           },
         });
       } catch {}
     },
-    [state.data.email],
+    [state.data.email, state.currentStep],
   );
 
   const nextStep = useCallback(() => dispatch({ type: "NEXT_STEP" }), []);
@@ -413,6 +422,7 @@ export function WizardProvider({
           documentProcessed: false,
           livenessPassed: false,
           faceMatchPassed: false,
+          keysSecured: false,
         },
       },
     });
@@ -500,9 +510,13 @@ export function WizardProvider({
         resetServerState.documentProcessed = false;
         resetServerState.livenessPassed = false;
         resetServerState.faceMatchPassed = false;
+        resetServerState.keysSecured = false;
       } else if (targetStep <= 2) {
         resetServerState.livenessPassed = false;
         resetServerState.faceMatchPassed = false;
+        resetServerState.keysSecured = false;
+      } else if (targetStep <= 4) {
+        resetServerState.keysSecured = false;
       }
 
       dispatch({

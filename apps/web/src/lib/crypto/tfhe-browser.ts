@@ -8,12 +8,15 @@
  * the npm package by scripts/setup-coep-assets.ts.
  */
 
-import type { StoredFheKeys } from "@/lib/crypto/fhe-key-store";
+import type {
+  PasskeyEnrollmentContext,
+  StoredFheKeys,
+} from "@/lib/crypto/fhe-key-store";
 
 import {
   getStoredFheKeys,
   persistFheKeyId as persistFheKeyIdInStore,
-  persistFheKeys,
+  storeFheKeys,
 } from "@/lib/crypto/fhe-key-store";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils";
 
@@ -130,6 +133,27 @@ export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
     };
   }
 
+  throw new Error(
+    "FHE keys are not initialized. Secure your encryption keys with a passkey first.",
+  );
+}
+
+export async function getOrCreateFheKeyMaterialWithPasskey(
+  enrollment: PasskeyEnrollmentContext,
+): Promise<FheKeyMaterial> {
+  const tfhe = await loadTfhe();
+  const existing = await getStoredFheKeys();
+  if (existing) {
+    return {
+      clientKey: tfhe.TfheClientKey.deserialize(existing.clientKey),
+      publicKey: tfhe.TfheCompressedPublicKey.deserialize(existing.publicKey),
+      serverKey: tfhe.TfheCompressedServerKey.deserialize(existing.serverKey),
+      publicKeyB64: bytesToBase64(existing.publicKey),
+      serverKeyB64: bytesToBase64(existing.serverKey),
+      keyId: existing.keyId,
+    };
+  }
+
   const config = tfhe.TfheConfigBuilder.default().build();
   const clientKey = tfhe.TfheClientKey.generate(config);
   const publicKey = tfhe.TfheCompressedPublicKey.new(clientKey);
@@ -142,7 +166,7 @@ export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
     createdAt: new Date().toISOString(),
   };
 
-  await persistFheKeys(stored);
+  await storeFheKeys({ keys: stored, enrollment });
 
   return {
     clientKey,

@@ -72,6 +72,7 @@ interface FullWizardState {
   documentProcessed: boolean;
   livenessPassed: boolean;
   faceMatchPassed: boolean;
+  keysSecured: boolean;
 }
 
 /**
@@ -239,6 +240,7 @@ export async function loadWizardState(): Promise<WizardStateResult> {
       documentProcessed: session.documentProcessed,
       livenessPassed: session.livenessPassed,
       faceMatchPassed: session.faceMatchPassed,
+      keysSecured: session.keysSecured,
     },
     wasCleared: false,
   };
@@ -254,18 +256,23 @@ export async function updateWizardProgress(
     documentProcessed?: boolean;
     livenessPassed?: boolean;
     faceMatchPassed?: boolean;
+    keysSecured?: boolean;
     documentHash?: string;
   },
 ): Promise<void> {
+  const inferredStep = updates.step ?? (updates.keysSecured ? 5 : null);
+  const step = inferredStep ?? undefined;
+
   // Update database
   upsertOnboardingSession({
     email,
     ...updates,
+    step,
   });
 
   // Update cookie if step changed
-  if (updates.step !== undefined) {
-    await setWizardCookie({ email, step: updates.step });
+  if (step !== undefined) {
+    await setWizardCookie({ email, step });
   }
 }
 
@@ -291,7 +298,7 @@ function _getOnboardingSession(email: string): OnboardingSession | null {
 /**
  * Valid onboarding step numbers
  */
-export type OnboardingStep = 1 | 2 | 3 | 4;
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5;
 
 /**
  * Requirements for accessing a specific API endpoint
@@ -299,7 +306,7 @@ export type OnboardingStep = 1 | 2 | 3 | 4;
 interface StepRequirements {
   minStep: OnboardingStep;
   requiredFields?: Array<
-    "documentProcessed" | "livenessPassed" | "faceMatchPassed"
+    "documentProcessed" | "livenessPassed" | "faceMatchPassed" | "keysSecured"
   >;
 }
 
@@ -310,7 +317,8 @@ interface StepRequirements {
  * 1. Email entry (creates session)
  * 2. Document upload (requires step 1)
  * 3. Liveness check (requires step 2, can be skipped)
- * 4. Complete (requires steps 1-2, step 3 complete OR skipped)
+ * 4. Create account (requires steps 1-2, step 3 complete OR skipped)
+ * 5. Secure keys (requires step 4)
  */
 const STEP_REQUIREMENTS: Record<string, StepRequirements> = {
   "process-document": { minStep: 1 },
@@ -319,8 +327,14 @@ const STEP_REQUIREMENTS: Record<string, StepRequirements> = {
   "skip-liveness": { minStep: 2, requiredFields: ["documentProcessed"] },
   "face-match": { minStep: 2, requiredFields: ["documentProcessed"] },
   // Complete requires document, liveness can be verified OR skipped
-  complete: { minStep: 3, requiredFields: ["documentProcessed"] },
-  "identity-verify": { minStep: 3, requiredFields: ["documentProcessed"] },
+  complete: {
+    minStep: 5,
+    requiredFields: ["documentProcessed", "keysSecured"],
+  },
+  "identity-verify": {
+    minStep: 4,
+    requiredFields: ["documentProcessed", "keysSecured"],
+  },
 };
 
 /**
@@ -405,7 +419,7 @@ export async function getSessionFromCookie(): Promise<OnboardingSession | null> 
  * Clears all verification flags from the target step forward
  *
  * @param email - Session email
- * @param targetStep - Step to reset to (1-4)
+ * @param targetStep - Step to reset to (1-5)
  */
 export async function resetToStep(
   email: string,
@@ -416,6 +430,7 @@ export async function resetToStep(
     documentProcessed?: boolean;
     livenessPassed?: boolean;
     faceMatchPassed?: boolean;
+    keysSecured?: boolean;
   } = { step: targetStep };
 
   // Reset verification flags based on target step
@@ -429,7 +444,10 @@ export async function resetToStep(
     updates.livenessPassed = false;
     updates.faceMatchPassed = false;
   }
-  // Step 3 or 4 doesn't reset anything (liveness is the last verification)
+  if (targetStep <= 4) {
+    updates.keysSecured = false;
+  }
+  // Step 3+ doesn't reset anything else (liveness is the last verification)
 
   await updateWizardProgress(email, updates);
 }

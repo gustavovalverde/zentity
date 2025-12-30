@@ -12,8 +12,10 @@ import { db } from "../connection";
 import {
   attestationEvidence,
   encryptedAttributes,
+  encryptedSecrets,
   identityBundles,
   identityDocuments,
+  secretWrappers,
   signedClaims,
   zkProofs,
 } from "../schema";
@@ -40,6 +42,10 @@ export function deleteIdentityData(userId: string): void {
     tx.delete(signedClaims).where(eq(signedClaims.userId, userId)).run();
     tx.delete(encryptedAttributes)
       .where(eq(encryptedAttributes.userId, userId))
+      .run();
+    tx.delete(secretWrappers).where(eq(secretWrappers.userId, userId)).run();
+    tx.delete(encryptedSecrets)
+      .where(eq(encryptedSecrets.userId, userId))
       .run();
     tx.delete(zkProofs).where(eq(zkProofs.userId, userId)).run();
     tx.delete(identityDocuments)

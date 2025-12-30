@@ -4,19 +4,13 @@
 
 import { useForm } from "@tanstack/react-form";
 import {
-  AlertTriangle,
   ArrowLeftRight,
   Check,
-  Database,
   Edit2,
-  Key,
   Loader2,
-  Lock,
-  Shield,
   UserCheck,
   XCircle,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -34,7 +28,6 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { passwordSchema } from "@/features/auth/schemas/sign-up.schema";
-import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import {
   getBetterAuthErrorMessage,
   getPasswordLengthError,
@@ -43,96 +36,28 @@ import {
   signUp,
 } from "@/lib/auth";
 import {
-  ensureFheKeyRegistration,
-  generateAgeProof,
-  generateDocValidityProof,
-  generateFaceMatchProof,
-  generateNationalityProof,
-  getProofChallenge,
-  getSignedClaims,
-  storeProof,
-} from "@/lib/crypto";
-import {
   type FaceMatchResult,
   matchFaces,
 } from "@/lib/liveness/face-detection";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
-import { trpc } from "@/lib/trpc/client";
 import { cn, makeFieldValidator } from "@/lib/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
 
-type ProofStatus =
-  | "idle"
-  | "creating-account"
-  | "encrypting"
-  | "generating"
-  | "verifying-identity"
-  | "storing"
-  | "complete"
-  | "error";
-
-interface StepIndicatorProps {
-  label: string;
-  status: "pending" | "active" | "complete" | "skipped";
-  icon: React.ReactNode;
-}
-
-function StepIndicator({ label, status, icon }: StepIndicatorProps) {
-  if (status === "skipped") {
-    return null;
-  }
-
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full transition-all",
-          status === "complete" && "bg-success text-success-foreground",
-          status === "active" && "bg-info text-info-foreground animate-pulse",
-          status === "pending" && "bg-muted text-muted-foreground",
-        )}
-      >
-        {status === "complete" ? (
-          <Check className="h-4 w-4" />
-        ) : status === "active" ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          icon
-        )}
-      </div>
-      <span
-        className={cn(
-          "text-sm transition-colors",
-          status === "complete" && "text-success font-medium",
-          status === "active" && "text-info font-medium",
-          status === "pending" && "text-muted-foreground",
-        )}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
 /**
- * Step 4: Review & Complete
+ * Step 4: Review & Create Account
  *
  * - Display extracted data from document for review
  * - Allow editing if OCR was wrong
- * - Collect password
- * - Create account after all verification is complete
+ * - Collect password and create account
+ * - Secure keys and verification happen in the next step
  */
 export function StepReviewComplete() {
-  const searchParams = useSearchParams();
-  const { state, updateData, setSubmitting, reset } = useWizard();
+  const { state, updateData, setSubmitting, nextStep } = useWizard();
   const { data } = state;
   const [error, setError] = useState<string | null>(null);
-  const [fheWarning, setFheWarning] = useState<string | null>(null);
-  const [proofStatus, setProofStatus] = useState<ProofStatus>("idle");
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.extractedName || "");
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
@@ -305,27 +230,7 @@ export function StepReviewComplete() {
       const accountName =
         editedName || data.extractedName || data.email.split("@")[0];
 
-      const hasIdentityDocs = Boolean(
-        data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
-      );
-
-      // Variables to hold crypto results (generated AFTER account creation)
-      let fheKeyInfo: { keyId: string; publicKey: string } | null = null;
-      const proofResults: Array<{
-        circuitType:
-          | "age_verification"
-          | "doc_validity"
-          | "nationality_membership"
-          | "face_match";
-        proof: string;
-        publicSignals: string[];
-        generationTimeMs: number;
-      }> = [];
-      let identityVerified = !hasIdentityDocs;
-      let activeDocumentId: string | null = data.identityDocumentId ?? null;
-
       // Create the account before generating server-bound proofs.
-      setProofStatus("creating-account");
       const result = await signUp.email({
         email: data.email,
         password: formData.password,
@@ -340,296 +245,17 @@ export function StepReviewComplete() {
         const policyMessage = getPasswordPolicyErrorMessage(result.error);
         setError(policyMessage || rawMessage);
         if (policyMessage) passwordInputRef.current?.focus();
-        setProofStatus("error");
         setSubmitting(false);
         return;
       }
-
-      if (hasIdentityDocs) {
-        // Register client-owned FHE keys for server-side encryption/computation.
-        setProofStatus("encrypting");
-        try {
-          fheKeyInfo = await ensureFheKeyRegistration();
-        } catch (fheError) {
-          const message =
-            fheError instanceof Error
-              ? fheError.message
-              : "FHE key registration failed";
-          setFheWarning(
-            "FHE encryption is unavailable right now. Your account will still be created, but homomorphic encryption will be marked as failed.",
-          );
-          // biome-ignore lint/suspicious/noConsole: needed for debugging FHE failures
-          console.warn("[step-review] FHE key registration failed:", message);
-        }
-      }
-
-      // Full identity verification (document + liveness + face matching)
-      // Use the same selfie that was used for local face matching (bestSelfieFrame or fallback to selfieImage)
-      const selfieToVerify = data.bestSelfieFrame || data.selfieImage;
-      if (hasIdentityDocs && data.idDocumentBase64 && selfieToVerify) {
-        setProofStatus("verifying-identity");
-        try {
-          const identityResult = await trpc.identity.verify.mutate({
-            documentImage: data.idDocumentBase64,
-            selfieImage: selfieToVerify,
-            ...(fheKeyInfo && {
-              fheKeyId: fheKeyInfo.keyId,
-              fhePublicKey: fheKeyInfo.publicKey,
-            }),
-          });
-
-          if (!identityResult.verified) {
-            const issue =
-              identityResult.issues?.length && identityResult.issues[0]
-                ? identityResult.issues[0]
-                : null;
-            throw new Error(
-              issue ||
-                "Identity verification did not pass. Please retake your ID photo and selfie and try again.",
-            );
-          }
-          if (identityResult.documentId) {
-            activeDocumentId = identityResult.documentId;
-            updateData({ identityDocumentId: identityResult.documentId });
-          }
-          identityVerified = true;
-        } catch (identityError) {
-          const message =
-            identityError instanceof Error
-              ? identityError.message
-              : "Identity verification failed. Please try again.";
-          toast.error("Identity verification incomplete", {
-            description: message,
-          });
-          setProofStatus("error");
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      if (identityVerified) {
-        setProofStatus("generating");
-        try {
-          if (!activeDocumentId) {
-            throw new Error(
-              "Missing document context for proof generation. Please retry verification.",
-            );
-          }
-          const claims = await getSignedClaims(activeDocumentId);
-          if (!claims.ocr || !claims.faceMatch) {
-            throw new Error("Signed claims unavailable for proof generation");
-          }
-
-          const ocrClaim = claims.ocr;
-          const faceClaim = claims.faceMatch;
-          const ocrData = ocrClaim.data as {
-            birthYear?: number | null;
-            expiryDate?: number | null;
-            nationalityCode?: string | null;
-            claimHashes?: {
-              age?: string | null;
-              docValidity?: string | null;
-              nationality?: string | null;
-            };
-          };
-          const faceData = faceClaim.data as {
-            confidence?: number;
-            confidenceFixed?: number;
-            thresholdFixed?: number;
-            claimHash?: string | null;
-          };
-
-          const documentHashField = ocrClaim.documentHashField;
-          if (!documentHashField) {
-            throw new Error("Missing document hash field");
-          }
-
-          const ageClaimHash = ocrData.claimHashes?.age;
-          const docValidityClaimHash = ocrData.claimHashes?.docValidity;
-          const nationalityClaimHash = ocrData.claimHashes?.nationality;
-
-          if (
-            ocrData.birthYear === null ||
-            ocrData.birthYear === undefined ||
-            !ageClaimHash
-          ) {
-            throw new Error("Missing birth year claim for age proof");
-          }
-          if (
-            ocrData.expiryDate === null ||
-            ocrData.expiryDate === undefined ||
-            !docValidityClaimHash
-          ) {
-            throw new Error("Missing expiry date claim for document proof");
-          }
-          if (!ocrData.nationalityCode || !nationalityClaimHash) {
-            throw new Error("Missing nationality claim for membership proof");
-          }
-          if (!faceData.claimHash) {
-            throw new Error("Missing face match claim hash");
-          }
-
-          const ageChallenge = await getProofChallenge("age_verification");
-          const ageProof = await generateAgeProof(
-            ocrData.birthYear,
-            new Date().getFullYear(),
-            18,
-            {
-              nonce: ageChallenge.nonce,
-              documentHashField,
-              claimHash: ageClaimHash,
-            },
-          );
-          proofResults.push({
-            circuitType: "age_verification",
-            ...ageProof,
-          });
-
-          const docChallenge = await getProofChallenge("doc_validity");
-          const now = new Date();
-          const currentDateInt =
-            now.getFullYear() * 10000 +
-            (now.getMonth() + 1) * 100 +
-            now.getDate();
-          const docProof = await generateDocValidityProof(
-            ocrData.expiryDate,
-            currentDateInt,
-            {
-              nonce: docChallenge.nonce,
-              documentHashField,
-              claimHash: docValidityClaimHash,
-            },
-          );
-          proofResults.push({
-            circuitType: "doc_validity",
-            ...docProof,
-          });
-
-          const nationalityChallenge = await getProofChallenge(
-            "nationality_membership",
-          );
-          const nationalityProof = await generateNationalityProof(
-            ocrData.nationalityCode,
-            NATIONALITY_GROUP,
-            {
-              nonce: nationalityChallenge.nonce,
-              documentHashField,
-              claimHash: nationalityClaimHash,
-            },
-          );
-          proofResults.push({
-            circuitType: "nationality_membership",
-            ...nationalityProof,
-          });
-
-          const similarityFixed =
-            typeof faceData.confidenceFixed === "number"
-              ? faceData.confidenceFixed
-              : typeof faceData.confidence === "number"
-                ? Math.round(faceData.confidence * 10000)
-                : null;
-          if (similarityFixed === null) {
-            throw new Error("Missing face match confidence for proof");
-          }
-
-          const thresholdFixed =
-            typeof faceData.thresholdFixed === "number"
-              ? faceData.thresholdFixed
-              : Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
-          if (
-            faceClaim.documentHashField &&
-            faceClaim.documentHashField !== documentHashField
-          ) {
-            throw new Error("Face match document hash mismatch");
-          }
-          const faceDocumentHashField =
-            faceClaim.documentHashField || documentHashField;
-
-          const faceChallenge = await getProofChallenge("face_match");
-          const faceProof = await generateFaceMatchProof(
-            similarityFixed,
-            thresholdFixed,
-            {
-              nonce: faceChallenge.nonce,
-              documentHashField: faceDocumentHashField,
-              claimHash: faceData.claimHash,
-            },
-          );
-          proofResults.push({
-            circuitType: "face_match",
-            ...faceProof,
-          });
-        } catch (zkError) {
-          const errorMessage =
-            zkError instanceof Error ? zkError.message : "Unknown error";
-          const isTimeout = errorMessage.includes("timed out");
-          const isWasmError =
-            errorMessage.toLowerCase().includes("wasm") ||
-            errorMessage.toLowerCase().includes("module");
-
-          // Log for diagnostics
-          // biome-ignore lint/suspicious/noConsole: Error logging for production debugging
-          console.error("[step-review] ZK proof generation failed:", {
-            error: errorMessage,
-            isTimeout,
-            isWasmError,
-          });
-
-          if (isTimeout) {
-            setError(
-              "Privacy verification is taking too long. This may be due to " +
-                "network issues loading cryptographic libraries. Please refresh " +
-                "the page and try again.",
-            );
-          } else if (isWasmError) {
-            setError(
-              "Unable to load cryptographic libraries. Please try refreshing " +
-                "the page. If using a VPN or content blocker, it may be blocking " +
-                "required resources.",
-            );
-          } else {
-            setError(
-              "Privacy verification services are temporarily unavailable. " +
-                "Your information has not been stored. Please try again in a few minutes.",
-            );
-          }
-          setProofStatus("error");
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      if (identityVerified && proofResults.length > 0) {
-        setProofStatus("storing");
-        for (const proof of proofResults) {
-          await storeProof(
-            proof.circuitType,
-            proof.proof,
-            proof.publicSignals,
-            proof.generationTimeMs,
-            activeDocumentId,
-          );
-        }
-      }
-
-      setProofStatus("complete");
-      reset();
-      const rpFlow = searchParams.get("rp_flow");
-      if (rpFlow) {
-        window.location.assign(
-          `/api/rp/complete?flow=${encodeURIComponent(rpFlow)}`,
-        );
-        return;
-      }
-
-      window.location.assign("/dashboard");
+      setSubmitting(false);
+      nextStep();
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "An unexpected error occurred. Please try again.",
       );
-      setProofStatus("error");
       setSubmitting(false);
     }
   };
@@ -639,47 +265,6 @@ export function StepReviewComplete() {
   );
   const hasDob = Boolean(data.extractedDOB);
 
-  const getStepStatus = (
-    step: "account" | "encrypt" | "proof" | "identity" | "store",
-  ): "pending" | "active" | "complete" | "skipped" => {
-    const statusOrder: ProofStatus[] = [
-      "idle",
-      "creating-account",
-      "encrypting",
-      "generating",
-      "verifying-identity",
-      "storing",
-      "complete",
-    ];
-    const currentIndex = statusOrder.indexOf(proofStatus);
-
-    const stepIndices = {
-      account: 1,
-      encrypt: 2,
-      proof: 3,
-      identity: 4,
-      store: 5,
-    };
-
-    // Skip identity step if no documents provided
-    if (step === "identity" && !hasIdentityDocs) {
-      return "skipped";
-    }
-
-    // Skip crypto steps if no identity documents
-    if (
-      (step === "encrypt" || step === "proof" || step === "store") &&
-      !hasIdentityDocs
-    ) {
-      return "skipped";
-    }
-
-    if (proofStatus === "error") return "pending";
-    if (currentIndex > stepIndices[step]) return "complete";
-    if (currentIndex === stepIndices[step]) return "active";
-    return "pending";
-  };
-
   const handleSaveName = () => {
     updateData({ extractedName: editedName || null });
     setIsEditingName(false);
@@ -688,10 +273,10 @@ export function StepReviewComplete() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Review & Complete</h3>
+        <h3 className="text-lg font-medium">Review & Create Account</h3>
         <p className="text-sm text-muted-foreground">
-          Review your information and create your password to complete
-          registration.
+          Confirm your details and set a password. Next, you’ll secure your
+          encryption keys with a passkey.
         </p>
       </div>
 
@@ -709,13 +294,6 @@ export function StepReviewComplete() {
               Try again
             </Button>
           </AlertDescription>
-        </Alert>
-      )}
-
-      {fheWarning && (
-        <Alert variant="info">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{fheWarning}</AlertDescription>
         </Alert>
       )}
 
@@ -971,145 +549,104 @@ export function StepReviewComplete() {
           aria-hidden="true"
         />
 
-        {/* Form fields - only visible when idle */}
-        {proofStatus === "idle" && (
-          <>
-            <div className="rounded-lg border p-4 space-y-4">
-              <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-                Create Password
-              </h4>
+        <div className="rounded-lg border p-4 space-y-4">
+          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+            Create Password
+          </h4>
 
-              <form.Field
-                name="password"
-                validators={{
-                  onBlur: ({ value }) => validatePassword(value),
-                  onSubmit: ({ value }) => validatePassword(value),
-                }}
+          <form.Field
+            name="password"
+            validators={{
+              onBlur: ({ value }) => validatePassword(value),
+              onSubmit: ({ value }) => validatePassword(value),
+            }}
+          >
+            {(field) => (
+              <Field
+                name={field.name}
+                errors={field.state.meta.errors as string[]}
+                isTouched={field.state.meta.isTouched}
+                isValidating={field.state.meta.isValidating}
               >
-                {(field) => (
-                  <Field
-                    name={field.name}
-                    errors={field.state.meta.errors as string[]}
-                    isTouched={field.state.meta.isTouched}
-                    isValidating={field.state.meta.isValidating}
-                  >
-                    <FieldLabel>Password</FieldLabel>
-                    <FieldControl>
-                      <Input
-                        type="password"
-                        placeholder="Create a password"
-                        autoComplete="new-password"
-                        ref={passwordInputRef}
-                        value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        onBlur={field.handleBlur}
-                      />
-                    </FieldControl>
-                    <FieldMessage />
-                    <PasswordRequirements
-                      password={field.state.value}
-                      email={data.email}
-                      documentNumber={data.extractedDocNumber}
-                      breachCheckKey={breachCheckKey}
-                      onBreachStatusChange={(status, checkedPassword) => {
-                        setBreachStatus(status);
-                        setBreachCheckedPassword(checkedPassword);
-                      }}
-                    />
-                  </Field>
-                )}
-              </form.Field>
+                <FieldLabel>Password</FieldLabel>
+                <FieldControl>
+                  <Input
+                    type="password"
+                    placeholder="Create a password"
+                    autoComplete="new-password"
+                    ref={passwordInputRef}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                  />
+                </FieldControl>
+                <FieldMessage />
+                <PasswordRequirements
+                  password={field.state.value}
+                  email={data.email}
+                  documentNumber={data.extractedDocNumber}
+                  breachCheckKey={breachCheckKey}
+                  onBreachStatusChange={(status, checkedPassword) => {
+                    setBreachStatus(status);
+                    setBreachCheckedPassword(checkedPassword);
+                  }}
+                />
+              </Field>
+            )}
+          </form.Field>
 
-              <form.Field
-                name="confirmPassword"
-                validators={{
-                  onBlur: ({ value }) => validateConfirmPassword(value),
-                  onSubmit: ({ value }) => validateConfirmPassword(value),
-                }}
+          <form.Field
+            name="confirmPassword"
+            validators={{
+              onBlur: ({ value }) => validateConfirmPassword(value),
+              onSubmit: ({ value }) => validateConfirmPassword(value),
+            }}
+          >
+            {(field) => (
+              <Field
+                name={field.name}
+                errors={field.state.meta.errors as string[]}
+                isTouched={field.state.meta.isTouched}
+                isValidating={field.state.meta.isValidating}
               >
-                {(field) => (
-                  <Field
-                    name={field.name}
-                    errors={field.state.meta.errors as string[]}
-                    isTouched={field.state.meta.isTouched}
-                    isValidating={field.state.meta.isValidating}
-                  >
-                    <FieldLabel>Confirm Password</FieldLabel>
-                    <FieldControl>
-                      <Input
-                        type="password"
-                        placeholder="Confirm your password"
-                        autoComplete="new-password"
-                        value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        onBlur={() => {
-                          field.handleBlur();
-                          triggerBreachCheckIfConfirmed();
-                        }}
-                      />
-                    </FieldControl>
-                    <FieldMessage />
-                  </Field>
-                )}
-              </form.Field>
-            </div>
+                <FieldLabel>Confirm Password</FieldLabel>
+                <FieldControl>
+                  <Input
+                    type="password"
+                    placeholder="Confirm your password"
+                    autoComplete="new-password"
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={() => {
+                      field.handleBlur();
+                      triggerBreachCheckIfConfirmed();
+                    }}
+                  />
+                </FieldControl>
+                <FieldMessage />
+              </Field>
+            )}
+          </form.Field>
+        </div>
 
-            <WizardNavigation
-              onNext={() => form.handleSubmit()}
-              nextLabel="Complete Registration"
-              disableNext={
-                breachStatus === "checking" || breachStatus === "compromised"
-              }
-            />
-          </>
-        )}
-
-        {/* Processing Status - shown during submission */}
-        {proofStatus !== "idle" && proofStatus !== "error" && (
-          <div className="space-y-4 rounded-lg border border-info/30 bg-info/10 p-5 text-info animate-in fade-in duration-300">
-            <div className="flex items-center gap-2 mb-4">
-              <Shield className="h-5 w-5" />
-              <span className="font-medium">Securing your account</span>
-            </div>
-
-            <div className="space-y-3">
-              <StepIndicator
-                label="Creating account"
-                status={getStepStatus("account")}
-                icon={<Lock className="h-4 w-4" />}
-              />
-              <StepIndicator
-                label="Encrypting data (FHE)"
-                status={getStepStatus("encrypt")}
-                icon={<Key className="h-4 w-4" />}
-              />
-              <StepIndicator
-                label="Generating privacy proof (ZK)"
-                status={getStepStatus("proof")}
-                icon={<Shield className="h-4 w-4" />}
-              />
-              <StepIndicator
-                label="Verifying identity (document + face)"
-                status={getStepStatus("identity")}
-                icon={<UserCheck className="h-4 w-4" />}
-              />
-              <StepIndicator
-                label="Storing verification"
-                status={getStepStatus("store")}
-                icon={<Database className="h-4 w-4" />}
-              />
-            </div>
-
-            <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-info/30">
-              Your personal data is processed transiently. Only cryptographic
-              proofs are stored.
-            </p>
+        {state.isSubmitting && (
+          <div className="flex items-center gap-2 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Creating your account…
           </div>
         )}
+
+        <WizardNavigation
+          onNext={() => form.handleSubmit()}
+          nextLabel="Continue to Secure Keys"
+          disableNext={
+            breachStatus === "checking" || breachStatus === "compromised"
+          }
+        />
       </form>
 
       {/* Privacy Info */}
-      {proofStatus === "idle" && (
+      {!state.isSubmitting && (
         <Alert>
           <AlertDescription>
             <strong>Privacy-First Verification:</strong>
@@ -1147,7 +684,7 @@ export function StepReviewComplete() {
         </Alert>
       )}
 
-      {proofStatus === "idle" && (
+      {!state.isSubmitting && (
         <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
           <div>
             <p className="text-sm font-medium">What we keep</p>

@@ -17,6 +17,10 @@ const HARDHAT_NETWORK_SYMBOL = process.env.SYNPRESS_NETWORK_SYMBOL ?? "ETH";
 const HARDHAT_NETWORK_EXPLORER_URL =
   process.env.SYNPRESS_NETWORK_EXPLORER_URL ?? "";
 
+type ExtensionContext = Parameters<typeof getExtensionId>[0];
+type MetaMaskContext = ConstructorParameters<typeof MetaMask>[0];
+type MetaMaskPage = ConstructorParameters<typeof MetaMask>[1];
+
 export default defineWalletSetup(
   WALLET_PASSWORD,
   async (context, walletPage) => {
@@ -28,12 +32,15 @@ export default defineWalletSetup(
       networkName: HARDHAT_NETWORK_NAME,
     });
 
-    const extensionId = await getExtensionId(context, "MetaMask");
+    const extensionId = await getExtensionId(
+      context as unknown as ExtensionContext,
+      "MetaMask",
+    );
     // biome-ignore lint/suspicious/noConsole: debug-only log for Synpress setup
     console.log("[synpress] extension id", extensionId);
     const metaMask = new MetaMask(
-      context,
-      walletPage,
+      context as unknown as MetaMaskContext,
+      walletPage as unknown as MetaMaskPage,
       WALLET_PASSWORD,
       extensionId,
     );

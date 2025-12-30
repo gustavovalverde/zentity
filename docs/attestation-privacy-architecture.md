@@ -198,6 +198,6 @@ This enables a bank or exchange to:
 
 ## Implementation Notes
 
-- **FHE keys** are generated in the browser and stored in IndexedDB. Only public + server keys are registered to the FHE service.
-- **Passkey-wrapped key storage** is planned (see `docs/rfcs/0001-passkey-wrapped-fhe-keys.md`).
+- **FHE keys** are generated in the browser and stored server-side as passkey-wrapped encrypted secrets (no plaintext at rest).
+- **Passkey-wrapped key storage** is implemented (see `docs/rfcs/0001-passkey-wrapped-fhe-keys.md`).
 - **INTERNAL_SERVICE_TOKEN** should be required in production for OCR/FHE endpoints.

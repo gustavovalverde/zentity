@@ -73,6 +73,7 @@ sequenceDiagram
     BE-->>UI: Verification complete
 
     Note over UI,IR: ── Phase 2: Web3 Attestation ──
+    Note over UI: User unlocks passkey (PRF) to access FHE keys
     UI->>SDK: Encrypt identity attributes
     Note over SDK: birthYearOffset, countryCode,<br/>complianceLevel, blacklist status
     SDK-->>UI: Ciphertext handles + proof
@@ -110,6 +111,7 @@ The Web2 layer handles all **sensitive data collection and verification**:
 - **Attribute extraction**: Birth year offset, nationality, document expiry
 - **ZK proof generation**: Client-side proofs for age, nationality membership
 - **FHE encryption**: Prepare encrypted inputs for on-chain storage
+- **Key custody**: Passkey PRF unlocks FHE keys locally; encrypted key blobs + wrappers stored server-side
 
 ### What Web2 Stores (Privacy-First)
 
@@ -118,6 +120,7 @@ SQLite Database
 ├── User accounts (email, auth tokens)
 ├── Verification status (verified/pending/failed)
 ├── ZK proofs (age >= 18, nationality in EU, etc.)
+├── Encrypted secrets (passkey-wrapped FHE keys, no plaintext)
 ├── Cryptographic commitments (SHA-256 of attributes)
 ├── Signed claims (OCR, liveness, face match)
 ├── Encrypted attributes (birth_year_offset, country_code, compliance_level, liveness_score)
