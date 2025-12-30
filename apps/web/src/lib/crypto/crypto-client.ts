@@ -12,11 +12,13 @@ import type {
   AgeProofFull,
   AgeProofSummary,
 } from "@/lib/crypto/age-proof-types";
+import type { PasskeyEnrollmentContext } from "@/lib/crypto/fhe-key-store";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
 import {
   decryptFheBool,
   getOrCreateFheKeyMaterial,
+  getOrCreateFheKeyMaterialWithPasskey,
   persistFheKeyId,
 } from "@/lib/crypto/tfhe-browser";
 import { trpc } from "@/lib/trpc/client";
@@ -316,11 +318,15 @@ export async function getUserProof(
 // FHE (Fully Homomorphic Encryption) Functions
 // ============================================================================
 
-export async function ensureFheKeyRegistration(): Promise<{
+export async function ensureFheKeyRegistration(params?: {
+  enrollment?: PasskeyEnrollmentContext;
+}): Promise<{
   keyId: string;
   publicKey: string;
 }> {
-  const keyMaterial = await getOrCreateFheKeyMaterial();
+  const keyMaterial = params?.enrollment
+    ? await getOrCreateFheKeyMaterialWithPasskey(params.enrollment)
+    : await getOrCreateFheKeyMaterial();
   if (keyMaterial.keyId) {
     return { keyId: keyMaterial.keyId, publicKey: keyMaterial.publicKeyB64 };
   }

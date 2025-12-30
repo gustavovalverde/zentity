@@ -114,29 +114,24 @@ FHE allows computations on encrypted data without decryption.
 
 **Library:** [TFHE-rs](https://github.com/zama-ai/tfhe-rs) (Rust)
 
-### Client-Side Key Ownership (Current Implementation)
+### Passkey-Wrapped Client Key Ownership
 
-The FHE architecture uses client-side key ownership for user-controlled privacy:
+The FHE architecture uses passkey-wrapped client-side key ownership for user-controlled privacy and multi-device access:
 
 | Aspect | Implementation |
 |--------|----------------|
 | Key generation | Browser (TFHE-rs WASM via `tfhe-browser.ts`) |
-| Key storage | IndexedDB (plaintext, per-device) |
-| Encryption | FHE service encrypts with client public key |
-| Who can decrypt | Only user (client key never leaves browser) |
-| Server receives | Public key + server key (registered as `key_id` for computation) |
+| Key storage | Server DB stores encrypted secrets + passkey wrappers (no plaintext keys) |
+| Key protection | PRF-derived KEK wraps a random DEK (WebAuthn PRF + HKDF + AES-GCM) |
+| Who can decrypt | Only user (passkey presence + PRF unlocks DEK) |
+| Server receives | Encrypted key blob + wrappers, public + server keys for computation |
 
-**Key files:**
+**Privacy guarantee:** The server can compute on encrypted data but cannot decrypt results—only the user can. Plaintext client keys exist only in memory during an active session.
 
-- `apps/web/src/lib/crypto/tfhe-browser.ts` — TFHE-rs WASM loading and key generation
-- `apps/web/src/lib/crypto/fhe-key-store.ts` — IndexedDB persistence for client keys
+**Planned enhancements**:
 
-**Privacy guarantee:** The server can compute on encrypted data but cannot decrypt results—only the user can. The client key (`clientKey`) never leaves the browser.
-
-**Planned enhancements** (not yet implemented):
-
-- WebAuthn/Passkey-wrapped key storage (keys currently stored plaintext in IndexedDB)
-- Multi-device key sync via server-stored encrypted backups
+- Passkey rotation UX (add/remove passkeys, revoke wrappers)
+- Optional recovery key escrow for enterprise deployments (opt-in only)
 - See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for roadmap details.
 
 ---
@@ -157,6 +152,7 @@ The FHE architecture uses client-side key ownership for user-controlled privacy:
 | FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext | Policy checks without decrypting |
 | First name (display only) | JWE encrypted | UX convenience |
 | Onboarding PII | JWE encrypted + TTL | Wizard continuity (short-lived) |
+| Encrypted secrets + wrappers | AES-GCM + PRF-wrapped DEK | Passkey-protected FHE key storage |
 
 ### What We NEVER Store
 
@@ -169,7 +165,7 @@ The FHE architecture uses client-side key ownership for user-controlled privacy:
 | Plaintext name | Only as SHA256 commitment |
 | Plaintext nationality | Only as SHA256 commitment |
 | Document number | Only as SHA256 commitment |
-| Client FHE keys | Stored only in browser IndexedDB |
+| Plaintext client FHE keys | Decrypted only in memory; encrypted at rest with passkey PRF |
 
 **Key guarantee:** Application-level persistence never includes raw PII or biometric data.
 

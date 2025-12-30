@@ -156,9 +156,22 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   document_processed INTEGER DEFAULT 0,
   liveness_passed INTEGER DEFAULT 0,
   face_match_passed INTEGER DEFAULT 0,
+  keys_secured INTEGER DEFAULT 0,
   created_at INTEGER DEFAULT (unixepoch()),
   updated_at INTEGER DEFAULT (unixepoch()),
   expires_at INTEGER                  -- Unix timestamp for auto-expiration (enforced by app)
+);
+
+-- RP authorization codes (privacy-preserving disclosure flow)
+CREATE TABLE IF NOT EXISTS rp_authorization_codes (
+  code TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  state TEXT,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  created_at INTEGER DEFAULT (unixepoch()),
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
 );
 
 -- Indexes for application tables
@@ -177,6 +190,40 @@ CREATE INDEX IF NOT EXISTS idx_attestation_evidence_user_id
 CREATE INDEX IF NOT EXISTS idx_attestation_evidence_document_id
   ON attestation_evidence (document_id);
 CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at ON onboarding_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_encrypted_secrets_user_id ON encrypted_secrets (user_id);
+CREATE INDEX IF NOT EXISTS idx_encrypted_secrets_type ON encrypted_secrets (secret_type);
+CREATE INDEX IF NOT EXISTS idx_secret_wrappers_user_id ON secret_wrappers (user_id);
+CREATE INDEX IF NOT EXISTS idx_secret_wrappers_credential_id ON secret_wrappers (credential_id);
+CREATE INDEX IF NOT EXISTS idx_rp_authorization_codes_expires_at
+  ON rp_authorization_codes (expires_at);
+CREATE INDEX IF NOT EXISTS idx_rp_authorization_codes_user_id
+  ON rp_authorization_codes (user_id);
+
+-- Passkey-wrapped encrypted secrets (client-side envelope encryption)
+CREATE TABLE IF NOT EXISTS encrypted_secrets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  secret_type TEXT NOT NULL,        -- 'fhe_keys', 'wallet_key', etc.
+  encrypted_blob TEXT NOT NULL,     -- base64 JSON ciphertext (DEK-encrypted)
+  metadata TEXT,                    -- JSON for type-specific data
+  version TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, secret_type)
+);
+
+CREATE TABLE IF NOT EXISTS secret_wrappers (
+  id TEXT PRIMARY KEY,
+  secret_id TEXT NOT NULL REFERENCES encrypted_secrets ("id") ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  credential_id TEXT NOT NULL,
+  wrapped_dek TEXT NOT NULL,
+  prf_salt TEXT NOT NULL,
+  kek_version TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(secret_id, credential_id)
+);
 
 -- Blockchain attestations (multi-network)
 CREATE TABLE IF NOT EXISTS blockchain_attestations (

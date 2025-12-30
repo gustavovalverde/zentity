@@ -37,6 +37,11 @@ const REDACT_KEYS = new Set([
   "baselineImage",
   "frameData",
   "idImage",
+  // Passkey-wrapped secret payloads
+  "encryptedBlob",
+  "wrappedDek",
+  "prfSalt",
+  "credentialId",
 ]);
 
 function sanitizeForLog(

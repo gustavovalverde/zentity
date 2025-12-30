@@ -57,12 +57,12 @@ type DocumentResultData = z.infer<typeof documentResultSchema>;
 /**
  * Wizard Data - Redesigned flow
  *
- * New flow: Email → ID Upload → Selfie/Liveness → Review & Complete
+ * New flow: Email → ID Upload → Selfie/Liveness → Review & Create Account → Secure Keys
  *
  * - Email collected upfront (minimal friction)
  * - Name, DOB, etc. extracted from document (no manual input)
- * - Password collected at the end (after verification)
- * - Account created only after liveness verification (security)
+ * - Password collected before securing keys
+ * - Passkey-secured keys required for privacy proofs and FHE storage
  */
 export interface WizardData {
   // Step 1: Email only

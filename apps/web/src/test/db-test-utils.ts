@@ -6,10 +6,12 @@ import {
   attestationEvidence,
   blockchainAttestations,
   encryptedAttributes,
+  encryptedSecrets,
   identityBundles,
   identityDocuments,
   onboardingSessions,
   rpAuthorizationCodes,
+  secretWrappers,
   sessions,
   signedClaims,
   users,
@@ -34,6 +36,8 @@ export function resetDatabase(): void {
     tx.delete(blockchainAttestations).run();
     tx.delete(signedClaims).run();
     tx.delete(encryptedAttributes).run();
+    tx.delete(secretWrappers).run();
+    tx.delete(encryptedSecrets).run();
     tx.delete(zkProofs).run();
     tx.delete(identityDocuments).run();
     tx.delete(identityBundles).run();

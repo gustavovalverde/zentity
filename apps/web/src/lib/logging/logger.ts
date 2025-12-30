@@ -2,9 +2,14 @@
  * Pino Logger Configuration
  *
  * Single source of truth for structured logging configuration.
- * - JSON output in production, pretty-print in development
+ * - JSON output in production and development (Turbopack incompatible with pino transports)
  * - Built-in PII redaction via Pino's redact option
  * - Child loggers for request correlation
+ *
+ * NOTE: pino-pretty transport is NOT used because Next.js Turbopack cannot resolve
+ * pino's dynamically-generated worker modules. Structured JSON is used in all environments.
+ * For human-readable dev logs, pipe output through pino-pretty CLI:
+ *   bun run dev | pino-pretty
  */
 import "server-only";
 
@@ -31,18 +36,6 @@ const redactPaths = [
 
 export const logger: Logger = pino({
   level: logLevel,
-
-  // Pretty-print in dev, structured JSON in production
-  ...(isDev && {
-    transport: {
-      target: "pino-pretty",
-      options: {
-        colorize: true,
-        translateTime: "HH:MM:ss.l",
-        ignore: "pid,hostname",
-      },
-    },
-  }),
 
   // Base context for all logs
   base: {

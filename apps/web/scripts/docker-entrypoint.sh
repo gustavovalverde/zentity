@@ -18,12 +18,6 @@ if [ -n "${BB_CRS_PATH:-}" ]; then
   fi
 fi
 
-# Fix volume permissions if running as root
-if [ "$(id -u)" = "0" ]; then
-  echo "[entrypoint] Running as root, fixing volume permissions..."
-  chown -R nextjs:nodejs "$DB_DIR" 2>/dev/null || true
-fi
-
 # Ensure the database directory exists and is writable
 if [ ! -d "$DB_DIR" ]; then
   echo "[entrypoint] Creating database directory: $DB_DIR"
@@ -36,8 +30,17 @@ if [ ! -f "$DB_PATH" ]; then
   touch "$DB_PATH" || echo "[entrypoint] Warning: Could not create $DB_PATH"
 fi
 
-# Initialize database if tables don't exist
-if [ -f /app/scripts/init-db.sql ]; then
+# Fix volume permissions if running as root (after files exist)
+if [ "$(id -u)" = "0" ]; then
+  echo "[entrypoint] Running as root, fixing volume permissions..."
+  chown -R nextjs:nodejs "$DB_DIR" 2>/dev/null || true
+  chown nextjs:nodejs "$DB_PATH" 2>/dev/null || true
+fi
+
+# Initialize database if tables don't exist (skip when using Drizzle auto-migrations)
+if [ "${DATABASE_AUTO_MIGRATE}" = "true" ]; then
+  echo "[entrypoint] DATABASE_AUTO_MIGRATE=true; skipping init-db.sql bootstrap."
+elif [ -f /app/scripts/init-db.sql ]; then
   echo "[entrypoint] Initializing database schema..."
   sqlite3 "$DB_PATH" < /app/scripts/init-db.sql 2>&1 || echo "[entrypoint] Warning: Schema init had issues (tables may already exist)"
   echo "[entrypoint] Database initialized."

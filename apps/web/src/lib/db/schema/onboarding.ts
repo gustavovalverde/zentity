@@ -18,6 +18,9 @@ export const onboardingSessions = sqliteTable(
     faceMatchPassed: integer("face_match_passed", { mode: "boolean" })
       .notNull()
       .default(false),
+    keysSecured: integer("keys_secured", { mode: "boolean" })
+      .notNull()
+      .default(false),
     createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
     updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
     expiresAt: integer("expires_at").notNull(),

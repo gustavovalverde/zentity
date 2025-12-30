@@ -8,10 +8,14 @@ import {
 } from "@/lib/db/queries/attestation";
 import {
   getEncryptedAttributeTypesByUserId,
+  getEncryptedSecretByUserAndType,
+  getSecretWrappersBySecretId,
   getZkProofsByUserId,
   insertEncryptedAttribute,
   insertSignedClaim,
   insertZkProofRecord,
+  upsertEncryptedSecret,
+  upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
 import {
   createIdentityDocument,
@@ -158,6 +162,25 @@ describe("identity queries", () => {
       proofSetHash: "proof-set",
     });
 
+    const secret = upsertEncryptedSecret({
+      id: crypto.randomUUID(),
+      userId,
+      secretType: "fhe_keys",
+      encryptedBlob: "blob",
+      metadata: { keyId: "key-1" },
+      version: "v1",
+    });
+
+    upsertSecretWrapper({
+      id: crypto.randomUUID(),
+      secretId: secret.id,
+      userId,
+      credentialId: "cred-1",
+      wrappedDek: "wrapped",
+      prfSalt: "salt",
+      kekVersion: "v1",
+    });
+
     deleteIdentityData(userId);
 
     expect(getIdentityBundleByUserId(userId)).toBeNull();
@@ -167,5 +190,7 @@ describe("identity queries", () => {
     expect(
       getAttestationEvidenceByUserAndDocument(userId, documentId),
     ).toBeNull();
+    expect(getEncryptedSecretByUserAndType(userId, "fhe_keys")).toBeNull();
+    expect(getSecretWrappersBySecretId(secret.id)).toHaveLength(0);
   });
 });

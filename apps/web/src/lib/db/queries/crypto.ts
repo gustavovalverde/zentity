@@ -3,15 +3,23 @@ import type {
   AgeProofSummary,
 } from "../../crypto/age-proof-types";
 import type {
+  EncryptedSecretRecord,
   NewEncryptedAttribute,
+  SecretWrapperRecord,
   SignedClaimRecord,
   ZkProofRecord,
 } from "../schema";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "../connection";
-import { encryptedAttributes, signedClaims, zkProofs } from "../schema";
+import {
+  encryptedAttributes,
+  encryptedSecrets,
+  secretWrappers,
+  signedClaims,
+  zkProofs,
+} from "../schema";
 
 export type ZkProofInsert = {
   id: string;
@@ -31,6 +39,21 @@ export type ZkProofInsert = {
   circuitHash?: string | null;
   bbVersion?: string | null;
 };
+
+export type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
+  metadata: Record<string, unknown> | null;
+};
+
+function parseSecretMetadata(
+  raw: string | null,
+): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 export function getUserAgeProof(userId: string): AgeProofSummary | null {
   const proof = db
@@ -129,6 +152,154 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
     circuitHash: row.circuitHash ?? null,
     bbVersion: row.bbVersion ?? null,
   };
+}
+
+export function getEncryptedSecretByUserAndType(
+  userId: string,
+  secretType: string,
+): EncryptedSecret | null {
+  const row = db
+    .select()
+    .from(encryptedSecrets)
+    .where(
+      and(
+        eq(encryptedSecrets.userId, userId),
+        eq(encryptedSecrets.secretType, secretType),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  if (!row) return null;
+
+  return {
+    ...row,
+    metadata: parseSecretMetadata(row.metadata),
+  };
+}
+
+export function getSecretWrappersBySecretId(
+  secretId: string,
+): SecretWrapperRecord[] {
+  return db
+    .select()
+    .from(secretWrappers)
+    .where(eq(secretWrappers.secretId, secretId))
+    .all();
+}
+
+export function upsertEncryptedSecret(data: {
+  id: string;
+  userId: string;
+  secretType: string;
+  encryptedBlob: string;
+  metadata: Record<string, unknown> | null;
+  version: string;
+}): EncryptedSecret {
+  const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
+
+  db.insert(encryptedSecrets)
+    .values({
+      id: data.id,
+      userId: data.userId,
+      secretType: data.secretType,
+      encryptedBlob: data.encryptedBlob,
+      metadata,
+      version: data.version,
+    })
+    .onConflictDoUpdate({
+      target: [encryptedSecrets.userId, encryptedSecrets.secretType],
+      set: {
+        encryptedBlob: data.encryptedBlob,
+        metadata,
+        version: data.version,
+        updatedAt: sql`datetime('now')`,
+      },
+    })
+    .run();
+
+  const updated = getEncryptedSecretByUserAndType(data.userId, data.secretType);
+  if (!updated) {
+    throw new Error("Failed to upsert encrypted secret");
+  }
+  return updated;
+}
+
+export function updateEncryptedSecretMetadata(data: {
+  userId: string;
+  secretType: string;
+  metadata: Record<string, unknown> | null;
+}): EncryptedSecret | null {
+  const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
+
+  db.update(encryptedSecrets)
+    .set({
+      metadata,
+      updatedAt: sql`datetime('now')`,
+    })
+    .where(
+      and(
+        eq(encryptedSecrets.userId, data.userId),
+        eq(encryptedSecrets.secretType, data.secretType),
+      ),
+    )
+    .run();
+
+  return getEncryptedSecretByUserAndType(data.userId, data.secretType);
+}
+
+export function upsertSecretWrapper(data: {
+  id: string;
+  secretId: string;
+  userId: string;
+  credentialId: string;
+  wrappedDek: string;
+  prfSalt: string;
+  kekVersion: string;
+}): SecretWrapperRecord {
+  db.insert(secretWrappers)
+    .values({
+      id: data.id,
+      secretId: data.secretId,
+      userId: data.userId,
+      credentialId: data.credentialId,
+      wrappedDek: data.wrappedDek,
+      prfSalt: data.prfSalt,
+      kekVersion: data.kekVersion,
+    })
+    .onConflictDoUpdate({
+      target: [secretWrappers.secretId, secretWrappers.credentialId],
+      set: {
+        wrappedDek: data.wrappedDek,
+        prfSalt: data.prfSalt,
+        kekVersion: data.kekVersion,
+        updatedAt: sql`datetime('now')`,
+      },
+    })
+    .run();
+
+  const wrappers = getSecretWrappersBySecretId(data.secretId);
+  const match = wrappers.find(
+    (wrapper) => wrapper.credentialId === data.credentialId,
+  );
+  if (!match) {
+    throw new Error("Failed to upsert secret wrapper");
+  }
+  return match;
+}
+
+export function deleteEncryptedSecretByUserAndType(
+  userId: string,
+  secretType: string,
+): void {
+  db.delete(encryptedSecrets)
+    .where(
+      and(
+        eq(encryptedSecrets.userId, userId),
+        eq(encryptedSecrets.secretType, secretType),
+      ),
+    )
+    .run();
 }
 
 export function getLatestZkProofPayloadByUserAndType(

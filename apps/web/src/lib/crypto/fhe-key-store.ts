@@ -1,88 +1,188 @@
 "use client";
 
-const DB_NAME = "zentity-fhe";
-const STORE_NAME = "keypairs";
-const RECORD_KEY = "default";
+import { trpc } from "@/lib/trpc/client";
+import { base64ToBytes, bytesToBase64 } from "@/lib/utils";
 
-export const FHE_KEY_DB_NAME = DB_NAME;
-
-// TODO(passkey): Replace IndexedDB persistence with WebAuthn/Passkey-wrapped key storage.
+import {
+  createSecretEnvelope,
+  decryptSecretEnvelope,
+  PASSKEY_VAULT_VERSION,
+  WRAP_VERSION,
+} from "./passkey-vault";
+import { evaluatePrf } from "./webauthn-prf";
 
 export interface StoredFheKeys {
   clientKey: Uint8Array;
   publicKey: Uint8Array;
   serverKey: Uint8Array;
-  keyId?: string;
   createdAt: string;
+  keyId?: string;
 }
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function ensureIndexedDbAvailable() {
-  if (typeof indexedDB === "undefined") {
-    throw new Error("IndexedDB is required for FHE key storage");
-  }
+export interface PasskeyEnrollmentContext {
+  credentialId: string;
+  prfOutput: Uint8Array;
+  prfSalt: Uint8Array;
 }
 
-function openDb(): Promise<IDBDatabase> {
-  ensureIndexedDbAvailable();
-  if (!dbPromise) {
-    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onerror = () => reject(request.error);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-    });
-  }
-  return dbPromise;
-}
+const SECRET_TYPE = "fhe_keys";
+const CACHE_TTL_MS = 15 * 60 * 1000;
 
-function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+let cached:
+  | {
+      keys: StoredFheKeys;
+      secretId: string;
+      cachedAt: number;
+    }
+  | undefined;
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+function serializeKeys(keys: StoredFheKeys): Uint8Array {
+  const payload = JSON.stringify({
+    clientKey: bytesToBase64(keys.clientKey),
+    publicKey: bytesToBase64(keys.publicKey),
+    serverKey: bytesToBase64(keys.serverKey),
+    createdAt: keys.createdAt,
   });
+  return textEncoder.encode(payload);
 }
 
-async function readFromIndexedDb(): Promise<StoredFheKeys | null> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, "readonly");
-  const store = tx.objectStore(STORE_NAME);
-  const record = await requestToPromise<StoredFheKeys | undefined>(
-    store.get(RECORD_KEY),
-  );
-  return record ?? null;
+function deserializeKeys(
+  payload: Uint8Array,
+  metadata?: Record<string, unknown> | null,
+): StoredFheKeys {
+  const parsed = JSON.parse(textDecoder.decode(payload)) as {
+    clientKey: string;
+    publicKey: string;
+    serverKey: string;
+    createdAt: string;
+  };
+  return {
+    clientKey: base64ToBytes(parsed.clientKey),
+    publicKey: base64ToBytes(parsed.publicKey),
+    serverKey: base64ToBytes(parsed.serverKey),
+    createdAt: parsed.createdAt,
+    keyId: typeof metadata?.keyId === "string" ? metadata.keyId : undefined,
+  };
 }
 
-async function writeToIndexedDb(payload: StoredFheKeys): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  const store = tx.objectStore(STORE_NAME);
-  await requestToPromise(store.put(payload, RECORD_KEY));
+function cacheKeys(secretId: string, keys: StoredFheKeys) {
+  cached = { keys, secretId, cachedAt: Date.now() };
+}
+
+function getCachedKeys(): StoredFheKeys | null {
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > CACHE_TTL_MS) {
+    cached = undefined;
+    return null;
+  }
+  return cached.keys;
+}
+
+export async function storeFheKeys(params: {
+  keys: StoredFheKeys;
+  enrollment: PasskeyEnrollmentContext;
+}): Promise<{ secretId: string }> {
+  const secretPayload = serializeKeys(params.keys);
+  const envelope = await createSecretEnvelope({
+    secretType: SECRET_TYPE,
+    plaintext: secretPayload,
+    prfOutput: params.enrollment.prfOutput,
+    credentialId: params.enrollment.credentialId,
+    prfSalt: params.enrollment.prfSalt,
+  });
+
+  await trpc.secrets.storeSecret.mutate({
+    secretId: envelope.secretId,
+    secretType: SECRET_TYPE,
+    encryptedBlob: envelope.encryptedBlob,
+    wrappedDek: envelope.wrappedDek,
+    prfSalt: bytesToBase64(params.enrollment.prfSalt),
+    credentialId: params.enrollment.credentialId,
+    metadata: null,
+    version: PASSKEY_VAULT_VERSION,
+    kekVersion: WRAP_VERSION,
+  });
+
+  cacheKeys(envelope.secretId, params.keys);
+
+  return { secretId: envelope.secretId };
 }
 
 export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
-  return await readFromIndexedDb();
-}
+  const cachedKeys = getCachedKeys();
+  if (cachedKeys) return cachedKeys;
 
-export async function persistFheKeys(payload: StoredFheKeys): Promise<void> {
-  await writeToIndexedDb(payload);
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: SECRET_TYPE,
+  });
+
+  if (!bundle?.secret) {
+    return null;
+  }
+
+  if (bundle.secret.version !== PASSKEY_VAULT_VERSION) {
+    throw new Error(
+      "Unsupported secret version. Please re-secure your encryption keys.",
+    );
+  }
+
+  if (!bundle.wrappers?.length) {
+    throw new Error("No passkeys are registered for this secret.");
+  }
+
+  const saltByCredential: Record<string, Uint8Array> = {};
+  for (const wrapper of bundle.wrappers) {
+    saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
+  }
+
+  const { prfOutputs, selectedCredentialId } = await evaluatePrf({
+    credentialIdToSalt: saltByCredential,
+  });
+
+  const selectedWrapper =
+    bundle.wrappers.find((w) => w.credentialId === selectedCredentialId) ??
+    bundle.wrappers[0];
+  if (selectedWrapper.kekVersion !== WRAP_VERSION) {
+    throw new Error(
+      "Unsupported key wrapper version. Please re-add your passkey.",
+    );
+  }
+  const prfOutput =
+    prfOutputs.get(selectedWrapper.credentialId) ??
+    prfOutputs.values().next().value;
+
+  if (!prfOutput) {
+    throw new Error("PRF output missing for selected passkey.");
+  }
+
+  const plaintext = await decryptSecretEnvelope({
+    secretId: bundle.secret.id,
+    secretType: SECRET_TYPE,
+    encryptedBlob: bundle.secret.encryptedBlob,
+    wrappedDek: selectedWrapper.wrappedDek,
+    credentialId: selectedWrapper.credentialId,
+    prfOutput,
+  });
+
+  const keys = deserializeKeys(plaintext, bundle.secret.metadata);
+  cacheKeys(bundle.secret.id, keys);
+  return keys;
 }
 
 export async function persistFheKeyId(keyId: string): Promise<void> {
-  const existing = await getStoredFheKeys();
-  if (!existing) return;
-  await writeToIndexedDb({ ...existing, keyId });
+  await trpc.secrets.updateSecretMetadata.mutate({
+    secretType: SECRET_TYPE,
+    metadata: { keyId },
+  });
+
+  if (cached) {
+    cached.keys.keyId = keyId;
+  }
 }
 
 export function resetFheKeyStoreForTests() {
-  if (dbPromise) {
-    dbPromise.then((db) => db.close()).catch(() => undefined);
-  }
-  dbPromise = null;
+  cached = undefined;
 }

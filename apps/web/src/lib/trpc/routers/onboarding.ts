@@ -2,10 +2,11 @@
  * Onboarding Router
  *
  * Manages the multi-step onboarding wizard state:
- * - Step 1: Email/password signup
+ * - Step 1: Email entry
  * - Step 2: Document upload + OCR
  * - Step 3: Liveness detection
- * - Step 4: Review + completion
+ * - Step 4: Review + create account
+ * - Step 5: Secure keys (passkey-protected FHE keys)
  *
  * State is persisted in an encrypted cookie and backed by SQLite.
  * Supports forward/backward navigation with prerequisite validation.
@@ -40,6 +41,7 @@ const stepSchema = z.union([
   z.literal(2),
   z.literal(3),
   z.literal(4),
+  z.literal(5),
 ]);
 
 const piiSchema = z
@@ -75,6 +77,7 @@ export const onboardingRouter = router({
       documentProcessed: state.documentProcessed,
       livenessPassed: state.livenessPassed,
       faceMatchPassed: state.faceMatchPassed,
+      keysSecured: state.keysSecured,
       hasPii: Boolean(state.pii),
       hasExtractedName: Boolean(state.pii?.extractedName),
       hasExtractedDOB: Boolean(state.pii?.extractedDOB),
@@ -96,6 +99,7 @@ export const onboardingRouter = router({
         documentProcessed: z.boolean().optional(),
         livenessPassed: z.boolean().optional(),
         faceMatchPassed: z.boolean().optional(),
+        keysSecured: z.boolean().optional(),
         documentHash: z.string().optional(),
       }),
     )
@@ -112,6 +116,7 @@ export const onboardingRouter = router({
         documentProcessed: input.documentProcessed,
         livenessPassed: input.livenessPassed,
         faceMatchPassed: input.faceMatchPassed,
+        keysSecured: input.keysSecured,
         documentHash: input.documentHash,
       };
 
@@ -119,6 +124,7 @@ export const onboardingRouter = router({
         updates.documentProcessed !== undefined ||
         updates.livenessPassed !== undefined ||
         updates.faceMatchPassed !== undefined ||
+        updates.keysSecured !== undefined ||
         updates.documentHash !== undefined
       ) {
         await updateWizardProgress(input.email, {
@@ -203,6 +209,16 @@ export const onboardingRouter = router({
         }
 
         if (targetStep === 4 && !session.documentProcessed) {
+          return {
+            valid: false,
+            currentStep: session.step,
+            error: "Complete document verification first",
+            warning: null,
+            requiresConfirmation: false,
+          };
+        }
+
+        if (targetStep === 5 && !session.documentProcessed) {
           return {
             valid: false,
             currentStep: session.step,

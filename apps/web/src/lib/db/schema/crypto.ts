@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 import { users } from "./auth";
 
@@ -88,6 +94,58 @@ export const zkChallenges = sqliteTable(
   }),
 );
 
+export const encryptedSecrets = sqliteTable(
+  "encrypted_secrets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    secretType: text("secret_type").notNull(),
+    encryptedBlob: text("encrypted_blob").notNull(),
+    metadata: text("metadata"),
+    version: text("version").notNull(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    userIdIdx: index("idx_encrypted_secrets_user_id").on(table.userId),
+    typeIdx: index("idx_encrypted_secrets_type").on(table.secretType),
+    userTypeUnique: uniqueIndex("encrypted_secrets_user_secret_type_unique").on(
+      table.userId,
+      table.secretType,
+    ),
+  }),
+);
+
+export const secretWrappers = sqliteTable(
+  "secret_wrappers",
+  {
+    id: text("id").primaryKey(),
+    secretId: text("secret_id")
+      .notNull()
+      .references(() => encryptedSecrets.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credentialId: text("credential_id").notNull(),
+    wrappedDek: text("wrapped_dek").notNull(),
+    prfSalt: text("prf_salt").notNull(),
+    kekVersion: text("kek_version").notNull(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    userIdIdx: index("idx_secret_wrappers_user_id").on(table.userId),
+    credentialIdx: index("idx_secret_wrappers_credential_id").on(
+      table.credentialId,
+    ),
+    secretCredentialUnique: uniqueIndex(
+      "secret_wrappers_secret_credential_unique",
+    ).on(table.secretId, table.credentialId),
+  }),
+);
+
 export type ZkProofRecord = typeof zkProofs.$inferSelect;
 export type NewZkProofRecord = typeof zkProofs.$inferInsert;
 
@@ -99,3 +157,9 @@ export type NewSignedClaim = typeof signedClaims.$inferInsert;
 
 export type ZkChallenge = typeof zkChallenges.$inferSelect;
 export type NewZkChallenge = typeof zkChallenges.$inferInsert;
+
+export type EncryptedSecretRecord = typeof encryptedSecrets.$inferSelect;
+export type NewEncryptedSecret = typeof encryptedSecrets.$inferInsert;
+
+export type SecretWrapperRecord = typeof secretWrappers.$inferSelect;
+export type NewSecretWrapper = typeof secretWrappers.$inferInsert;

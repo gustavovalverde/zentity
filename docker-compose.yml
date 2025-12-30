@@ -35,6 +35,7 @@ services:
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - DATABASE_AUTO_MIGRATE=true
       - DATABASE_PATH=/var/lib/zentity/web/dev.db
       - BB_CRS_PATH=/var/lib/zentity/bb-crs
       # Blockchain attestation (server-side)

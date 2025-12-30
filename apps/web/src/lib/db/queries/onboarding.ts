@@ -38,6 +38,9 @@ export function upsertOnboardingSession(
   if (data.faceMatchPassed !== undefined) {
     updateSet.faceMatchPassed = data.faceMatchPassed;
   }
+  if (data.keysSecured !== undefined) {
+    updateSet.keysSecured = data.keysSecured;
+  }
 
   db.insert(onboardingSessions)
     .values({
@@ -49,6 +52,7 @@ export function upsertOnboardingSession(
       documentProcessed: data.documentProcessed ?? false,
       livenessPassed: data.livenessPassed ?? false,
       faceMatchPassed: data.faceMatchPassed ?? false,
+      keysSecured: data.keysSecured ?? false,
       createdAt: now,
       updatedAt: now,
       expiresAt,
