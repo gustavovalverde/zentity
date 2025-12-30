@@ -18,6 +18,8 @@ describe("db connection", () => {
         "user",
         "identity_documents",
         "identity_bundles",
+        "identity_verification_drafts",
+        "identity_verification_jobs",
         "zk_proofs",
         "encrypted_attributes",
         "signed_claims",

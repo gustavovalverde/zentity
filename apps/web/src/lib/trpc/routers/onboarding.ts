@@ -74,6 +74,7 @@ export const onboardingRouter = router({
       wasCleared: false,
       email: state.email,
       step: state.step,
+      identityDraftId: state.identityDraftId ?? null,
       documentProcessed: state.documentProcessed,
       livenessPassed: state.livenessPassed,
       faceMatchPassed: state.faceMatchPassed,
@@ -101,6 +102,7 @@ export const onboardingRouter = router({
         faceMatchPassed: z.boolean().optional(),
         keysSecured: z.boolean().optional(),
         documentHash: z.string().optional(),
+        identityDraftId: z.string().optional().nullable(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -118,6 +120,7 @@ export const onboardingRouter = router({
         faceMatchPassed: input.faceMatchPassed,
         keysSecured: input.keysSecured,
         documentHash: input.documentHash,
+        identityDraftId: input.identityDraftId ?? undefined,
       };
 
       if (
@@ -125,7 +128,8 @@ export const onboardingRouter = router({
         updates.livenessPassed !== undefined ||
         updates.faceMatchPassed !== undefined ||
         updates.keysSecured !== undefined ||
-        updates.documentHash !== undefined
+        updates.documentHash !== undefined ||
+        updates.identityDraftId !== undefined
       ) {
         await updateWizardProgress(input.email, {
           step: input.step,

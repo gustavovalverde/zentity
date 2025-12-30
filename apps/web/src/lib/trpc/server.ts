@@ -72,6 +72,10 @@ const DEBUG_ONLY_PATHS = new Set([
  */
 const CRITICAL_PATHS = new Set([
   "identity.verify",
+  "identity.prepareDocument",
+  "identity.prepareLiveness",
+  "identity.finalizeAsync",
+  "identity.finalizeStatus",
   "identity.processDocument",
   "attestation.submit",
   "crypto.storeProof",

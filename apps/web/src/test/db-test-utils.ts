@@ -9,6 +9,8 @@ import {
   encryptedSecrets,
   identityBundles,
   identityDocuments,
+  identityVerificationDrafts,
+  identityVerificationJobs,
   onboardingSessions,
   rpAuthorizationCodes,
   secretWrappers,
@@ -39,6 +41,8 @@ export function resetDatabase(): void {
     tx.delete(secretWrappers).run();
     tx.delete(encryptedSecrets).run();
     tx.delete(zkProofs).run();
+    tx.delete(identityVerificationJobs).run();
+    tx.delete(identityVerificationDrafts).run();
     tx.delete(identityDocuments).run();
     tx.delete(identityBundles).run();
     tx.delete(rpAuthorizationCodes).run();

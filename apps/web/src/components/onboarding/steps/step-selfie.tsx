@@ -28,6 +28,7 @@ import {
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/liveness";
+import { trpc } from "@/lib/trpc/client";
 
 /** Debug mode - shows detection overlay and metrics */
 const debugEnabled = process.env.NEXT_PUBLIC_DEBUG === "1";
@@ -39,7 +40,15 @@ const HEAD_TURN_YAW_THRESHOLD = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
 const HEAD_TURN_DELTA_THRESHOLD = TURN_YAW_SIGNIFICANT_DELTA_DEG;
 
 export function StepSelfie() {
-  const { state, updateData, nextStep, skipLiveness, reset } = useWizard();
+  const {
+    state,
+    updateData,
+    nextStep,
+    skipLiveness,
+    reset,
+    setSubmitting,
+    updateServerProgress,
+  } = useWizard();
   const {
     videoRef,
     isStreaming,
@@ -118,9 +127,48 @@ export function StepSelfie() {
     onReset: handleReset,
     onSessionError: reset,
   });
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     stopCamera();
-    nextStep();
+
+    const selfieToVerify = state.data.bestSelfieFrame || state.data.selfieImage;
+    if (!selfieToVerify) {
+      toast.error("Missing selfie", {
+        description: "Please complete the selfie step before continuing.",
+      });
+      return;
+    }
+    if (!state.data.idDocumentBase64 || !state.data.identityDraftId) {
+      toast.error("Missing document context", {
+        description:
+          "Please re-upload your ID so we can complete verification.",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await trpc.identity.prepareLiveness.mutate({
+        draftId: state.data.identityDraftId,
+        documentImage: state.data.idDocumentBase64,
+        selfieImage: selfieToVerify,
+      });
+
+      await updateServerProgress({
+        livenessPassed: response.livenessPassed,
+        faceMatchPassed: response.faceMatchPassed,
+        step: 3,
+      });
+
+      nextStep();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare liveness verification.";
+      toast.error("Verification failed", { description: message });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSkipChallenges = async () => {
@@ -153,12 +201,33 @@ export function StepSelfie() {
         blinkCount: null,
       });
       stopCamera();
+      if (!state.data.idDocumentBase64 || !state.data.identityDraftId) {
+        toast.error("Missing document context", {
+          description:
+            "Please re-upload your ID so we can complete verification.",
+        });
+        return;
+      }
+
+      setSubmitting(true);
+      const response = await trpc.identity.prepareLiveness.mutate({
+        draftId: state.data.identityDraftId,
+        documentImage: state.data.idDocumentBase64,
+        selfieImage: frame,
+      });
+      await updateServerProgress({
+        livenessPassed: response.livenessPassed,
+        faceMatchPassed: response.faceMatchPassed,
+        step: 3,
+      });
       await skipLiveness();
     } catch {
       toast.error("Camera unavailable", {
         description:
           "Please allow camera access to continue, or try again in a different browser.",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 

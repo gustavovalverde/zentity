@@ -69,6 +69,7 @@ interface FullWizardState {
   email: string;
   step: number;
   pii?: EncryptedPiiData;
+  identityDraftId?: string | null;
   documentProcessed: boolean;
   livenessPassed: boolean;
   faceMatchPassed: boolean;
@@ -237,6 +238,7 @@ export async function loadWizardState(): Promise<WizardStateResult> {
       email: session.email,
       step: session.step,
       pii,
+      identityDraftId: session.identityDraftId ?? null,
       documentProcessed: session.documentProcessed,
       livenessPassed: session.livenessPassed,
       faceMatchPassed: session.faceMatchPassed,
@@ -258,6 +260,7 @@ export async function updateWizardProgress(
     faceMatchPassed?: boolean;
     keysSecured?: boolean;
     documentHash?: string;
+    identityDraftId?: string | null;
   },
 ): Promise<void> {
   const inferredStep = updates.step ?? (updates.keysSecured ? 5 : null);
@@ -332,6 +335,10 @@ const STEP_REQUIREMENTS: Record<string, StepRequirements> = {
     requiredFields: ["documentProcessed", "keysSecured"],
   },
   "identity-verify": {
+    minStep: 4,
+    requiredFields: ["documentProcessed", "keysSecured"],
+  },
+  "identity-finalize": {
     minStep: 4,
     requiredFields: ["documentProcessed", "keysSecured"],
   },
@@ -431,6 +438,7 @@ export async function resetToStep(
     livenessPassed?: boolean;
     faceMatchPassed?: boolean;
     keysSecured?: boolean;
+    identityDraftId?: string | null;
   } = { step: targetStep };
 
   // Reset verification flags based on target step
@@ -439,10 +447,12 @@ export async function resetToStep(
     updates.documentProcessed = false;
     updates.livenessPassed = false;
     updates.faceMatchPassed = false;
+    updates.identityDraftId = null;
   } else if (targetStep <= 2) {
     // Going back to step 2 resets liveness and face match
     updates.livenessPassed = false;
     updates.faceMatchPassed = false;
+    updates.identityDraftId = null;
   }
   if (targetStep <= 4) {
     updates.keysSecured = false;
@@ -461,6 +471,5 @@ export async function skipLiveness(email: string): Promise<void> {
   await updateWizardProgress(email, {
     // Skip step 3 (liveness challenges) and proceed to the final review step.
     step: 4,
-    livenessPassed: false, // Not passed, but step advances
   });
 }

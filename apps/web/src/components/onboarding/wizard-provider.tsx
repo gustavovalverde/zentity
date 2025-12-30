@@ -57,6 +57,7 @@ interface ServerSessionState {
   wasCleared?: boolean;
   email?: string;
   step?: WizardStep;
+  identityDraftId?: string | null;
   documentProcessed?: boolean;
   livenessPassed?: boolean;
   faceMatchPassed?: boolean;
@@ -196,6 +197,7 @@ type WizardContextType = {
     livenessPassed?: boolean;
     faceMatchPassed?: boolean;
     keysSecured?: boolean;
+    identityDraftId?: string | null;
   }) => Promise<void>;
   canGoBack: boolean;
   canGoNext: boolean;
@@ -277,6 +279,7 @@ export function WizardProvider({
               currentStep: serverState.step ?? 1,
               data: {
                 email: serverState.email,
+                identityDraftId: serverState.identityDraftId ?? null,
               },
               serverState: {
                 documentProcessed: serverState.documentProcessed ?? false,
@@ -354,6 +357,7 @@ export function WizardProvider({
       livenessPassed?: boolean;
       faceMatchPassed?: boolean;
       keysSecured?: boolean;
+      identityDraftId?: string | null;
     }) => {
       if (!state.data.email) return;
 
@@ -374,6 +378,13 @@ export function WizardProvider({
             keysSecured: updates.keysSecured,
           },
         });
+
+        if (updates.identityDraftId !== undefined) {
+          dispatch({
+            type: "UPDATE_DATA",
+            data: { identityDraftId: updates.identityDraftId },
+          });
+        }
       } catch {}
     },
     [state.data.email, state.currentStep],

@@ -72,6 +72,7 @@ export interface WizardData {
   idDocument: File | null;
   idDocumentBase64: string | null;
   documentResult: DocumentResultData | null;
+  identityDraftId: string | null;
   // Extracted from document (no manual input)
   extractedName: string | null;
   extractedDOB: string | null;
@@ -98,6 +99,7 @@ export const defaultWizardData: WizardData = {
   idDocument: null,
   idDocumentBase64: null,
   documentResult: null,
+  identityDraftId: null,
   extractedName: null,
   extractedDOB: null,
   extractedDocNumber: null,

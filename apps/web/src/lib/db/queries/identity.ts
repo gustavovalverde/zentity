@@ -3,6 +3,9 @@ import type {
   IdentityBundle,
   IdentityBundleStatus,
   IdentityDocument,
+  IdentityJobStatus,
+  IdentityVerificationDraft,
+  IdentityVerificationJob,
 } from "../schema";
 
 import { desc, eq, sql } from "drizzle-orm";
@@ -15,6 +18,8 @@ import {
   encryptedSecrets,
   identityBundles,
   identityDocuments,
+  identityVerificationDrafts,
+  identityVerificationJobs,
   secretWrappers,
   signedClaims,
   zkProofs,
@@ -48,6 +53,12 @@ export function deleteIdentityData(userId: string): void {
       .where(eq(encryptedSecrets.userId, userId))
       .run();
     tx.delete(zkProofs).where(eq(zkProofs.userId, userId)).run();
+    tx.delete(identityVerificationJobs)
+      .where(eq(identityVerificationJobs.userId, userId))
+      .run();
+    tx.delete(identityVerificationDrafts)
+      .where(eq(identityVerificationDrafts.userId, userId))
+      .run();
     tx.delete(identityDocuments)
       .where(eq(identityDocuments.userId, userId))
       .run();
@@ -218,6 +229,200 @@ export function getSelectedIdentityDocumentByUserId(
   }
 
   return documents[0] ?? null;
+}
+
+export function getIdentityDraftById(
+  draftId: string,
+): IdentityVerificationDraft | null {
+  const row = db
+    .select()
+    .from(identityVerificationDrafts)
+    .where(eq(identityVerificationDrafts.id, draftId))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+export function getIdentityDraftBySessionId(
+  sessionId: string,
+): IdentityVerificationDraft | null {
+  const row = db
+    .select()
+    .from(identityVerificationDrafts)
+    .where(eq(identityVerificationDrafts.onboardingSessionId, sessionId))
+    .orderBy(desc(identityVerificationDrafts.updatedAt))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+export function upsertIdentityDraft(
+  data: Partial<IdentityVerificationDraft> & {
+    id: string;
+    onboardingSessionId: string;
+    documentId: string;
+  },
+): IdentityVerificationDraft {
+  const now = new Date().toISOString();
+  db.insert(identityVerificationDrafts)
+    .values({
+      id: data.id,
+      onboardingSessionId: data.onboardingSessionId,
+      userId: data.userId ?? null,
+      documentId: data.documentId,
+      documentProcessed: data.documentProcessed ?? false,
+      isDocumentValid: data.isDocumentValid ?? false,
+      isDuplicateDocument: data.isDuplicateDocument ?? false,
+      documentType: data.documentType ?? null,
+      issuerCountry: data.issuerCountry ?? null,
+      documentHash: data.documentHash ?? null,
+      documentHashField: data.documentHashField ?? null,
+      nameCommitment: data.nameCommitment ?? null,
+      userSalt: data.userSalt ?? null,
+      birthYear: data.birthYear ?? null,
+      birthYearOffset: data.birthYearOffset ?? null,
+      expiryDateInt: data.expiryDateInt ?? null,
+      nationalityCode: data.nationalityCode ?? null,
+      nationalityCodeNumeric: data.nationalityCodeNumeric ?? null,
+      countryCodeNumeric: data.countryCodeNumeric ?? null,
+      confidenceScore: data.confidenceScore ?? null,
+      firstNameEncrypted: data.firstNameEncrypted ?? null,
+      ocrIssues: data.ocrIssues ?? null,
+      antispoofScore: data.antispoofScore ?? null,
+      liveScore: data.liveScore ?? null,
+      livenessPassed: data.livenessPassed ?? null,
+      faceMatchConfidence: data.faceMatchConfidence ?? null,
+      faceMatchPassed: data.faceMatchPassed ?? null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: identityVerificationDrafts.id,
+      set: {
+        userId: data.userId ?? null,
+        documentId: data.documentId,
+        documentProcessed: data.documentProcessed ?? false,
+        isDocumentValid: data.isDocumentValid ?? false,
+        isDuplicateDocument: data.isDuplicateDocument ?? false,
+        documentType: data.documentType ?? null,
+        issuerCountry: data.issuerCountry ?? null,
+        documentHash: data.documentHash ?? null,
+        documentHashField: data.documentHashField ?? null,
+        nameCommitment: data.nameCommitment ?? null,
+        userSalt: data.userSalt ?? null,
+        birthYear: data.birthYear ?? null,
+        birthYearOffset: data.birthYearOffset ?? null,
+        expiryDateInt: data.expiryDateInt ?? null,
+        nationalityCode: data.nationalityCode ?? null,
+        nationalityCodeNumeric: data.nationalityCodeNumeric ?? null,
+        countryCodeNumeric: data.countryCodeNumeric ?? null,
+        confidenceScore: data.confidenceScore ?? null,
+        firstNameEncrypted: data.firstNameEncrypted ?? null,
+        ocrIssues: data.ocrIssues ?? null,
+        antispoofScore: data.antispoofScore ?? null,
+        liveScore: data.liveScore ?? null,
+        livenessPassed: data.livenessPassed ?? null,
+        faceMatchConfidence: data.faceMatchConfidence ?? null,
+        faceMatchPassed: data.faceMatchPassed ?? null,
+        updatedAt: sql`datetime('now')`,
+      },
+    })
+    .run();
+
+  const updated = getIdentityDraftById(data.id);
+  if (!updated) {
+    throw new Error("Failed to upsert identity draft");
+  }
+  return updated;
+}
+
+export function updateIdentityDraft(
+  draftId: string,
+  updates: Partial<IdentityVerificationDraft>,
+): void {
+  db.update(identityVerificationDrafts)
+    .set({
+      ...updates,
+      updatedAt: sql`datetime('now')`,
+    })
+    .where(eq(identityVerificationDrafts.id, draftId))
+    .run();
+}
+
+export function getIdentityVerificationJobById(
+  jobId: string,
+): IdentityVerificationJob | null {
+  const row = db
+    .select()
+    .from(identityVerificationJobs)
+    .where(eq(identityVerificationJobs.id, jobId))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+export function getLatestIdentityVerificationJobForDraft(
+  draftId: string,
+): IdentityVerificationJob | null {
+  const row = db
+    .select()
+    .from(identityVerificationJobs)
+    .where(eq(identityVerificationJobs.draftId, draftId))
+    .orderBy(desc(identityVerificationJobs.createdAt))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+export function createIdentityVerificationJob(args: {
+  id: string;
+  draftId: string;
+  userId: string;
+  fheKeyId?: string | null;
+  fhePublicKey?: string | null;
+}): void {
+  db.insert(identityVerificationJobs)
+    .values({
+      id: args.id,
+      draftId: args.draftId,
+      userId: args.userId,
+      status: "queued",
+      fheKeyId: args.fheKeyId ?? null,
+      fhePublicKey: args.fhePublicKey ?? null,
+      attempts: 0,
+    })
+    .run();
+}
+
+export function updateIdentityVerificationJobStatus(args: {
+  jobId: string;
+  status: IdentityJobStatus;
+  error?: string | null;
+  result?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  attempts?: number;
+}): void {
+  const updates: Partial<typeof identityVerificationJobs.$inferInsert> = {
+    status: args.status,
+    error: args.error ?? null,
+    result: args.result ?? null,
+    startedAt: args.startedAt ?? null,
+    finishedAt: args.finishedAt ?? null,
+  };
+
+  if (args.attempts !== undefined) {
+    updates.attempts = args.attempts;
+  }
+
+  db.update(identityVerificationJobs)
+    .set({ ...updates, updatedAt: sql`datetime('now')` })
+    .where(eq(identityVerificationJobs.id, args.jobId))
+    .run();
 }
 
 export function upsertIdentityBundle(data: {

@@ -15,6 +15,20 @@
       "when": 1767087468406,
       "tag": "0001_passkey_secrets",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1767115745736,
+      "tag": "0002_identity_async_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1767117574357,
+      "tag": "0003_identity_drafts_jobs_patch",
+      "breakpoints": true
     }
   ]
 }

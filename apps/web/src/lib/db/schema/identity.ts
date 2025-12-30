@@ -30,6 +30,15 @@ export const fheStatusEnum = ["pending", "complete", "error"] as const;
 
 export type FheStatus = (typeof fheStatusEnum)[number];
 
+export const identityJobStatusEnum = [
+  "queued",
+  "running",
+  "complete",
+  "error",
+] as const;
+
+export type IdentityJobStatus = (typeof identityJobStatusEnum)[number];
+
 export const identityBundles = sqliteTable(
   "identity_bundles",
   {
@@ -89,8 +98,98 @@ export const identityDocuments = sqliteTable(
   }),
 );
 
+export const identityVerificationDrafts = sqliteTable(
+  "identity_verification_drafts",
+  {
+    id: text("id").primaryKey(),
+    onboardingSessionId: text("onboarding_session_id").notNull(),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    documentId: text("document_id").notNull(),
+    documentProcessed: integer("document_processed", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    isDocumentValid: integer("is_document_valid", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    isDuplicateDocument: integer("is_duplicate_document", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    documentType: text("document_type"),
+    issuerCountry: text("issuer_country"),
+    documentHash: text("document_hash"),
+    documentHashField: text("document_hash_field"),
+    nameCommitment: text("name_commitment"),
+    userSalt: text("user_salt"),
+    birthYear: integer("birth_year"),
+    birthYearOffset: integer("birth_year_offset"),
+    expiryDateInt: integer("expiry_date_int"),
+    nationalityCode: text("nationality_code"),
+    nationalityCodeNumeric: integer("nationality_code_numeric"),
+    countryCodeNumeric: integer("country_code_numeric"),
+    confidenceScore: real("confidence_score"),
+    firstNameEncrypted: text("first_name_encrypted"),
+    ocrIssues: text("ocr_issues"),
+    antispoofScore: real("antispoof_score"),
+    liveScore: real("live_score"),
+    livenessPassed: integer("liveness_passed", { mode: "boolean" }),
+    faceMatchConfidence: real("face_match_confidence"),
+    faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    sessionIdx: index("idx_identity_drafts_session").on(
+      table.onboardingSessionId,
+    ),
+    userIdx: index("idx_identity_drafts_user").on(table.userId),
+    documentIdx: index("idx_identity_drafts_document").on(table.documentId),
+  }),
+);
+
+export const identityVerificationJobs = sqliteTable(
+  "identity_verification_jobs",
+  {
+    id: text("id").primaryKey(),
+    draftId: text("draft_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status", { enum: identityJobStatusEnum })
+      .notNull()
+      .default("queued"),
+    fheKeyId: text("fhe_key_id"),
+    fhePublicKey: text("fhe_public_key"),
+    result: text("result"),
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    startedAt: text("started_at"),
+    finishedAt: text("finished_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    draftIdx: index("idx_identity_jobs_draft").on(table.draftId),
+    statusIdx: index("idx_identity_jobs_status").on(table.status),
+    userIdx: index("idx_identity_jobs_user").on(table.userId),
+  }),
+);
+
 export type IdentityBundle = typeof identityBundles.$inferSelect;
 export type NewIdentityBundle = typeof identityBundles.$inferInsert;
 
 export type IdentityDocument = typeof identityDocuments.$inferSelect;
 export type NewIdentityDocument = typeof identityDocuments.$inferInsert;
+
+export type IdentityVerificationDraft =
+  typeof identityVerificationDrafts.$inferSelect;
+export type NewIdentityVerificationDraft =
+  typeof identityVerificationDrafts.$inferInsert;
+
+export type IdentityVerificationJob =
+  typeof identityVerificationJobs.$inferSelect;
+export type NewIdentityVerificationJob =
+  typeof identityVerificationJobs.$inferInsert;

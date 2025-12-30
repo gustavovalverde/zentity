@@ -19,6 +19,7 @@ import type { OcrProcessResult } from "@/lib/document";
 import crypto from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
+import { and, eq, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import z from "zod";
 
@@ -40,8 +41,10 @@ import {
   encryptUserSalt,
 } from "@/lib/crypto/pii-encryption";
 import { signAttestationClaim } from "@/lib/crypto/signed-claims";
+import { db } from "@/lib/db/connection";
 import {
   getSessionFromCookie,
+  updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
 import { updateUserName } from "@/lib/db/queries/auth";
@@ -51,12 +54,21 @@ import {
 } from "@/lib/db/queries/crypto";
 import {
   createIdentityDocument,
+  createIdentityVerificationJob,
   documentHashExists,
+  getIdentityDraftById,
+  getIdentityDraftBySessionId,
+  getIdentityVerificationJobById,
   getLatestIdentityDocumentByUserId,
+  getLatestIdentityVerificationJobForDraft,
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
+  updateIdentityDraft,
+  updateIdentityVerificationJobStatus,
   upsertIdentityBundle,
+  upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
+import { identityVerificationJobs } from "@/lib/db/schema";
 import { processDocument } from "@/lib/document";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
@@ -251,6 +263,501 @@ function parseDateToInt(dateValue?: string | null): number | null {
   return null;
 }
 
+const activeIdentityJobs = new Set<string>();
+
+function scheduleIdentityJob(jobId: string): void {
+  if (activeIdentityJobs.has(jobId)) return;
+  activeIdentityJobs.add(jobId);
+  setTimeout(() => {
+    void processIdentityVerificationJob(jobId).finally(() => {
+      activeIdentityJobs.delete(jobId);
+    });
+  }, 0);
+}
+
+async function processIdentityVerificationJob(jobId: string): Promise<void> {
+  const claimTime = new Date().toISOString();
+  db.update(identityVerificationJobs)
+    .set({
+      status: "running",
+      startedAt: claimTime,
+      attempts: sql`${identityVerificationJobs.attempts} + 1`,
+      updatedAt: sql`datetime('now')`,
+    })
+    .where(
+      and(
+        eq(identityVerificationJobs.id, jobId),
+        eq(identityVerificationJobs.status, "queued"),
+      ),
+    )
+    .run();
+
+  const job = getIdentityVerificationJobById(jobId);
+  if (!job || job.status !== "running" || job.startedAt !== claimTime) {
+    return;
+  }
+
+  const startTime = Date.now();
+  const issues: string[] = [];
+
+  try {
+    const draft = getIdentityDraftById(job.draftId);
+    if (!draft) {
+      updateIdentityVerificationJobStatus({
+        jobId,
+        status: "error",
+        error: "Identity draft not found",
+        finishedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (!draft.userId) {
+      updateIdentityDraft(draft.id, { userId: job.userId });
+    }
+
+    const documentProcessed = Boolean(draft.documentProcessed);
+    const isDocumentValid = Boolean(draft.isDocumentValid);
+    const isDuplicateDocument = Boolean(draft.isDuplicateDocument);
+    const livenessPassed = Boolean(draft.livenessPassed);
+    const faceMatchPassed = Boolean(draft.faceMatchPassed);
+
+    if (!documentProcessed) issues.push("document_processing_failed");
+    if (documentProcessed && !isDocumentValid) issues.push("document_invalid");
+    if (isDuplicateDocument) issues.push("duplicate_document");
+    if (!livenessPassed) issues.push("liveness_failed");
+    if (!faceMatchPassed) issues.push("face_match_failed");
+
+    const documentHash = draft.documentHash ?? null;
+    let documentHashField = draft.documentHashField ?? null;
+    if (!documentHashField && documentHash) {
+      try {
+        documentHashField = await getDocumentHashField(documentHash);
+        updateIdentityDraft(draft.id, { documentHashField });
+      } catch {
+        issues.push("document_hash_field_failed");
+      }
+    }
+
+    const issuedAt = new Date().toISOString();
+    const claimHashes: {
+      age?: string | null;
+      docValidity?: string | null;
+      nationality?: string | null;
+    } = {
+      age: null,
+      docValidity: null,
+      nationality: null,
+    };
+
+    if (documentProcessed && documentHash && documentHashField) {
+      try {
+        const birthYear = draft.birthYear ?? null;
+        const expiryDate = draft.expiryDateInt ?? null;
+        const nationalityCode = draft.nationalityCode ?? null;
+        const nationalityCodeNumeric = draft.nationalityCodeNumeric ?? null;
+
+        if (birthYear !== null) {
+          claimHashes.age = await computeClaimHash({
+            value: birthYear,
+            documentHashField,
+          });
+        }
+        if (expiryDate !== null) {
+          claimHashes.docValidity = await computeClaimHash({
+            value: expiryDate,
+            documentHashField,
+          });
+        }
+        if (nationalityCodeNumeric) {
+          claimHashes.nationality = await computeClaimHash({
+            value: nationalityCodeNumeric,
+            documentHashField,
+          });
+        }
+
+        const ocrClaimPayload = {
+          type: "ocr_result" as const,
+          userId: job.userId,
+          issuedAt,
+          version: 1,
+          policyVersion: POLICY_VERSION,
+          documentHash,
+          documentHashField,
+          data: {
+            documentType: draft.documentType ?? null,
+            issuerCountry: draft.issuerCountry ?? null,
+            nationalityCode,
+            nationalityCodeNumeric,
+            expiryDate,
+            birthYear,
+            confidence: draft.confidenceScore ?? null,
+            claimHashes,
+          },
+        };
+
+        const ocrSignature = await signAttestationClaim(ocrClaimPayload);
+        insertSignedClaim({
+          id: uuidv4(),
+          userId: job.userId,
+          documentId: draft.documentId,
+          claimType: ocrClaimPayload.type,
+          claimPayload: JSON.stringify(ocrClaimPayload),
+          signature: ocrSignature,
+          issuedAt,
+        });
+      } catch {
+        issues.push("signed_ocr_claim_failed");
+      }
+    }
+
+    if (
+      typeof draft.antispoofScore === "number" &&
+      typeof draft.liveScore === "number"
+    ) {
+      try {
+        const antispoofScoreFixed = Math.round(draft.antispoofScore * 10000);
+        const liveScoreFixed = Math.round(draft.liveScore * 10000);
+
+        const livenessClaimPayload = {
+          type: "liveness_score" as const,
+          userId: job.userId,
+          issuedAt,
+          version: 1,
+          policyVersion: POLICY_VERSION,
+          documentHash,
+          documentHashField,
+          data: {
+            antispoofScore: draft.antispoofScore,
+            liveScore: draft.liveScore,
+            passed: livenessPassed,
+            antispoofScoreFixed,
+            liveScoreFixed,
+          },
+        };
+
+        const livenessSignature =
+          await signAttestationClaim(livenessClaimPayload);
+        insertSignedClaim({
+          id: uuidv4(),
+          userId: job.userId,
+          documentId: draft.documentId,
+          claimType: livenessClaimPayload.type,
+          claimPayload: JSON.stringify(livenessClaimPayload),
+          signature: livenessSignature,
+          issuedAt,
+        });
+      } catch {
+        issues.push("signed_liveness_claim_failed");
+      }
+    }
+
+    if (typeof draft.faceMatchConfidence === "number" && documentHashField) {
+      try {
+        const confidenceFixed = Math.round(draft.faceMatchConfidence * 10000);
+        const thresholdFixed = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
+        const claimHash = await computeClaimHash({
+          value: confidenceFixed,
+          documentHashField,
+        });
+
+        const faceMatchClaimPayload = {
+          type: "face_match_score" as const,
+          userId: job.userId,
+          issuedAt,
+          version: 1,
+          policyVersion: POLICY_VERSION,
+          documentHash,
+          documentHashField,
+          data: {
+            confidence: draft.faceMatchConfidence,
+            confidenceFixed,
+            thresholdFixed,
+            passed: faceMatchPassed,
+            claimHash,
+          },
+        };
+
+        const faceMatchSignature = await signAttestationClaim(
+          faceMatchClaimPayload,
+        );
+        insertSignedClaim({
+          id: uuidv4(),
+          userId: job.userId,
+          documentId: draft.documentId,
+          claimType: faceMatchClaimPayload.type,
+          claimPayload: JSON.stringify(faceMatchClaimPayload),
+          signature: faceMatchSignature,
+          issuedAt,
+        });
+      } catch {
+        issues.push("signed_face_match_claim_failed");
+      }
+    }
+
+    let birthYearOffsetFheResult: { ciphertext: string } | null = null;
+    let countryCodeFheResult: {
+      ciphertext: string;
+      countryCode: number;
+    } | null = null;
+    let livenessScoreFheResult: {
+      ciphertext: string;
+      score: number;
+    } | null = null;
+    const fheErrors: Array<{
+      operation: string;
+      issue: string;
+      kind: string;
+      status?: number;
+      message?: string;
+      bodyText?: string;
+    }> = [];
+    let fheKeyMissingReported = false;
+
+    const recordFheFailure = (
+      issue: string,
+      operation: string,
+      error: unknown,
+    ) => {
+      issues.push(issue);
+      if (error instanceof FheServiceError) {
+        fheErrors.push({
+          operation: error.operation,
+          issue,
+          kind: error.kind,
+          status: error.status,
+          message: error.message,
+          bodyText: error.bodyText,
+        });
+        return;
+      }
+
+      fheErrors.push({
+        operation,
+        issue,
+        kind: "unknown",
+        message:
+          error instanceof Error
+            ? error.message
+            : error
+              ? String(error)
+              : "Missing FHE key material",
+      });
+    };
+
+    const reportMissingFheKey = () => {
+      if (fheKeyMissingReported) return;
+      fheKeyMissingReported = true;
+      recordFheFailure("fhe_key_missing", "key_registration", null);
+    };
+
+    const hasFheKeyMaterial = Boolean(job.fheKeyId && job.fhePublicKey);
+    const birthYearOffset = draft.birthYearOffset;
+    if (birthYearOffset !== null && birthYearOffset !== undefined) {
+      if (!hasFheKeyMaterial || !job.fhePublicKey) {
+        reportMissingFheKey();
+      } else {
+        try {
+          birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
+            birthYearOffset,
+            publicKey: job.fhePublicKey,
+            requestId: job.id,
+          });
+        } catch (error) {
+          const issue =
+            error instanceof FheServiceError && error.kind === "http"
+              ? "fhe_encryption_failed"
+              : "fhe_service_unavailable";
+          recordFheFailure(issue, "encrypt_birth_year_offset", error);
+        }
+      }
+    }
+
+    const countryCodeNumeric = draft.countryCodeNumeric ?? 0;
+    if (countryCodeNumeric > 0) {
+      if (!hasFheKeyMaterial || !job.fhePublicKey) {
+        reportMissingFheKey();
+      } else {
+        try {
+          countryCodeFheResult = {
+            ...(await encryptCountryCodeFhe({
+              countryCode: countryCodeNumeric,
+              publicKey: job.fhePublicKey,
+              requestId: job.id,
+            })),
+            countryCode: countryCodeNumeric,
+          };
+        } catch (error) {
+          const issue =
+            error instanceof FheServiceError && error.kind === "http"
+              ? "fhe_encryption_failed"
+              : "fhe_service_unavailable";
+          recordFheFailure(issue, "encrypt_country_code", error);
+        }
+      }
+    }
+
+    const livenessScore = draft.antispoofScore;
+    if (typeof livenessScore === "number") {
+      if (!hasFheKeyMaterial || !job.fhePublicKey) {
+        reportMissingFheKey();
+      } else {
+        try {
+          livenessScoreFheResult = await encryptLivenessScoreFhe({
+            score: livenessScore,
+            publicKey: job.fhePublicKey,
+            requestId: job.id,
+          });
+        } catch (error) {
+          const issue =
+            error instanceof FheServiceError && error.kind === "http"
+              ? "liveness_score_fhe_encryption_failed"
+              : "liveness_score_fhe_service_unavailable";
+          recordFheFailure(issue, "encrypt_liveness", error);
+        }
+      }
+    }
+
+    const birthYearOffsetEncrypted = Boolean(
+      birthYearOffsetFheResult?.ciphertext,
+    );
+    const countryCodeEncrypted = Boolean(countryCodeFheResult?.ciphertext);
+    const livenessScoreEncrypted = Boolean(livenessScoreFheResult?.ciphertext);
+    const fheSucceeded =
+      birthYearOffsetEncrypted ||
+      countryCodeEncrypted ||
+      livenessScoreEncrypted;
+    const fheStatus: "pending" | "complete" | "error" = fheSucceeded
+      ? "complete"
+      : fheErrors.length > 0
+        ? "error"
+        : "pending";
+
+    const verified =
+      documentProcessed &&
+      isDocumentValid &&
+      livenessPassed &&
+      faceMatchPassed &&
+      !isDuplicateDocument;
+
+    const bundleStatus = verified
+      ? "pending"
+      : documentProcessed
+        ? "failed"
+        : "pending";
+    const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
+      userId: job.userId,
+      status: bundleStatus,
+      issuerId: ISSUER_ID,
+      policyVersion: POLICY_VERSION,
+      fheStatus,
+      fheError: fheStatus === "error" ? (fheErrors[0]?.issue ?? null) : null,
+    };
+    if (job.fheKeyId && job.fhePublicKey) {
+      bundleUpdate.fheKeyId = job.fheKeyId;
+      bundleUpdate.fhePublicKey = job.fhePublicKey;
+    }
+
+    upsertIdentityBundle(bundleUpdate);
+
+    if (documentProcessed && draft.documentId) {
+      try {
+        createIdentityDocument({
+          id: draft.documentId,
+          userId: job.userId,
+          documentType: draft.documentType ?? null,
+          issuerCountry: draft.issuerCountry ?? null,
+          documentHash: isDuplicateDocument
+            ? null
+            : (draft.documentHash ?? null),
+          nameCommitment: draft.nameCommitment ?? null,
+          userSalt: draft.userSalt ?? null,
+          birthYearOffset: draft.birthYearOffset ?? null,
+          firstNameEncrypted: draft.firstNameEncrypted ?? null,
+          verifiedAt: verified ? new Date().toISOString() : null,
+          confidenceScore: draft.confidenceScore ?? null,
+          status: verified ? "verified" : "failed",
+        });
+      } catch {
+        issues.push("failed_to_create_identity_document");
+      }
+    }
+
+    if (birthYearOffsetFheResult?.ciphertext) {
+      insertEncryptedAttribute({
+        id: uuidv4(),
+        userId: job.userId,
+        source: "web2_tfhe",
+        attributeType: "birth_year_offset",
+        ciphertext: birthYearOffsetFheResult.ciphertext,
+        keyId: job.fheKeyId ?? null,
+      });
+    }
+
+    if (countryCodeFheResult?.ciphertext) {
+      insertEncryptedAttribute({
+        id: uuidv4(),
+        userId: job.userId,
+        source: "web2_tfhe",
+        attributeType: "country_code",
+        ciphertext: countryCodeFheResult.ciphertext,
+        keyId: job.fheKeyId ?? null,
+      });
+    }
+
+    if (livenessScoreFheResult?.ciphertext) {
+      insertEncryptedAttribute({
+        id: uuidv4(),
+        userId: job.userId,
+        source: "web2_tfhe",
+        attributeType: "liveness_score",
+        ciphertext: livenessScoreFheResult.ciphertext,
+        keyId: job.fheKeyId ?? null,
+      });
+    }
+
+    const resultPayload = {
+      success: true,
+      verified,
+      documentId: draft.documentId,
+      results: {
+        documentProcessed,
+        documentType: draft.documentType ?? undefined,
+        documentOrigin: draft.issuerCountry ?? undefined,
+        isDocumentValid,
+        livenessPassed,
+        faceMatched: faceMatchPassed,
+        isDuplicateDocument,
+        ageProofGenerated: false,
+        birthYearOffsetEncrypted,
+        docValidityProofGenerated: false,
+        nationalityCommitmentGenerated:
+          (draft.nationalityCode ?? null) !== null,
+        countryCodeEncrypted,
+        livenessScoreEncrypted,
+      },
+      fheStatus,
+      fheErrors: fheErrors.length > 0 ? fheErrors : undefined,
+      processingTimeMs: Date.now() - startTime,
+      issues,
+    };
+
+    updateIdentityVerificationJobStatus({
+      jobId,
+      status: "complete",
+      result: JSON.stringify(resultPayload),
+      finishedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    updateIdentityVerificationJobStatus({
+      jobId,
+      status: "error",
+      error: error instanceof Error ? error.message : "Job failed",
+      finishedAt: new Date().toISOString(),
+    });
+  }
+}
+
 export const identityRouter = router({
   /**
    * OCR-only document processing used by onboarding.
@@ -302,10 +809,412 @@ export const identityRouter = router({
         });
       }
     }),
+  /**
+   * OCR + draft creation for onboarding.
+   *
+   * Performs document OCR, computes commitments, and persists a draft that can be
+   * finalized later once the user account exists.
+   */
+  prepareDocument: publicProcedure
+    .input(z.object({ image: z.string().min(1, "Image is required") }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await getSessionFromCookie();
+      const validation = validateStepAccess(session, "process-document");
+      if (!validation.valid || !validation.session) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: validation.error || "Session required",
+        });
+      }
+
+      let documentResult: OcrProcessResult | null = null;
+      const issues: string[] = [];
+
+      try {
+        documentResult = await processDocumentOcr({
+          image: input.image,
+          requestId: ctx.requestId,
+        });
+        issues.push(...(documentResult?.validationIssues || []));
+      } catch {
+        issues.push("document_processing_failed");
+      }
+
+      const sessionId = validation.session.id;
+      const existingDraft =
+        validation.session.identityDraftId !== null &&
+        validation.session.identityDraftId !== undefined
+          ? getIdentityDraftById(validation.session.identityDraftId)
+          : getIdentityDraftBySessionId(sessionId);
+
+      const draftId = existingDraft?.id ?? uuidv4();
+      const documentId = existingDraft?.documentId ?? uuidv4();
+
+      const documentProcessed = Boolean(documentResult?.commitments);
+      const documentHash = documentResult?.commitments?.documentHash ?? null;
+      let documentHashField: string | null = null;
+      if (documentHash) {
+        try {
+          documentHashField = await getDocumentHashField(documentHash);
+        } catch {
+          issues.push("document_hash_field_failed");
+        }
+      }
+
+      let isDuplicateDocument = false;
+      if (documentHash) {
+        const hashExists = documentHashExists(documentHash);
+        if (hashExists) {
+          isDuplicateDocument = true;
+          issues.push("duplicate_document");
+        }
+      }
+
+      const birthYear = parseBirthYear(
+        documentResult?.extractedData?.dateOfBirth,
+      );
+      const expiryDateInt = parseDateToInt(
+        documentResult?.extractedData?.expirationDate,
+      );
+      const birthYearOffset = calculateBirthYearOffset(
+        documentResult?.extractedData?.dateOfBirth,
+      );
+
+      const nationalityCode =
+        documentResult?.extractedData?.nationalityCode ?? null;
+      const nationalityCodeNumeric = nationalityCode
+        ? (getNationalityCode(nationalityCode) ?? null)
+        : null;
+      const issuerCountry =
+        documentResult?.documentOrigin ||
+        documentResult?.extractedData?.nationalityCode ||
+        null;
+      const countryCodeNumeric = issuerCountry
+        ? countryCodeToNumeric(issuerCountry)
+        : 0;
+
+      let firstNameEncrypted: string | null = null;
+      const firstName = documentResult?.extractedData?.firstName;
+      if (firstName) {
+        try {
+          firstNameEncrypted = await encryptFirstName(firstName);
+        } catch {
+          issues.push("first_name_encryption_failed");
+        }
+      }
+
+      const encryptedUserSalt = documentResult?.commitments?.userSalt
+        ? await encryptUserSalt(documentResult.commitments.userSalt)
+        : null;
+
+      const isDocumentValid =
+        documentProcessed &&
+        (documentResult?.confidence ?? 0) > 0.3 &&
+        Boolean(documentResult?.extractedData?.documentNumber);
+
+      upsertIdentityDraft({
+        id: draftId,
+        onboardingSessionId: sessionId,
+        documentId,
+        documentProcessed,
+        isDocumentValid,
+        isDuplicateDocument,
+        documentType: documentResult?.documentType ?? null,
+        issuerCountry,
+        documentHash,
+        documentHashField,
+        nameCommitment: documentResult?.commitments?.nameCommitment ?? null,
+        userSalt: encryptedUserSalt,
+        birthYear,
+        birthYearOffset:
+          birthYearOffset === undefined ? null : (birthYearOffset ?? null),
+        expiryDateInt,
+        nationalityCode,
+        nationalityCodeNumeric,
+        countryCodeNumeric: countryCodeNumeric > 0 ? countryCodeNumeric : null,
+        confidenceScore: documentResult?.confidence ?? null,
+        firstNameEncrypted,
+        ocrIssues: issues.length ? JSON.stringify(issues) : null,
+      });
+
+      await updateWizardProgress(validation.session.email, {
+        documentProcessed: isDocumentValid,
+        documentHash: documentHash ?? undefined,
+        identityDraftId: draftId,
+        step: Math.max(validation.session.step ?? 1, 2),
+      });
+
+      return {
+        success: true,
+        draftId,
+        documentId,
+        documentProcessed,
+        isDocumentValid,
+        isDuplicateDocument,
+        issues,
+        documentResult: documentResult
+          ? {
+              documentType: documentResult.documentType,
+              documentOrigin: documentResult.documentOrigin,
+              confidence: documentResult.confidence,
+              extractedData: documentResult.extractedData,
+              validationIssues: documentResult.validationIssues,
+            }
+          : {
+              documentType: "unknown",
+              confidence: 0,
+              validationIssues: ["document_processing_failed"],
+            },
+      };
+    }),
   /** Returns the current verification status for the authenticated user. */
   status: protectedProcedure.query(({ ctx }) => {
     return getVerificationStatus(ctx.userId);
   }),
+
+  /**
+   * Precompute liveness + face match and persist to the identity draft.
+   * Runs after liveness challenges are complete (or skipped).
+   */
+  prepareLiveness: publicProcedure
+    .input(
+      z.object({
+        draftId: z.string().min(1),
+        documentImage: z.string().min(1),
+        selfieImage: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const startTime = Date.now();
+      const issues: string[] = [];
+
+      const onboardingSession = await getSessionFromCookie();
+      const stepValidation = validateStepAccess(
+        onboardingSession,
+        "face-match",
+      );
+      if (!stepValidation.valid || !stepValidation.session) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: stepValidation.error || "Complete previous steps first",
+        });
+      }
+
+      if (
+        stepValidation.session.identityDraftId &&
+        stepValidation.session.identityDraftId !== input.draftId
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Identity draft mismatch. Please restart verification.",
+        });
+      }
+
+      const draft = getIdentityDraftById(input.draftId);
+      if (!draft) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Identity draft not found",
+        });
+      }
+
+      let antispoofScore = 0;
+      let liveScore = 0;
+      let livenessPassedLocal = false;
+      let facesMatchLocal = false;
+      let faceMatchConfidence = 0;
+
+      try {
+        const human = await getHumanServer();
+
+        const selfieResult = await detectFromBase64(input.selfieImage);
+        const docResultInitial = await detectFromBase64(input.documentImage);
+        const docFaceInitial = getLargestFace(docResultInitial);
+
+        let docResult = docResultInitial;
+
+        if (docFaceInitial?.box) {
+          try {
+            const box = Array.isArray(docFaceInitial.box)
+              ? {
+                  x: docFaceInitial.box[0],
+                  y: docFaceInitial.box[1],
+                  width: docFaceInitial.box[2],
+                  height: docFaceInitial.box[3],
+                }
+              : docFaceInitial.box;
+
+            const croppedFaceDataUrl = await cropFaceRegion(
+              input.documentImage,
+              box,
+            );
+            docResult = await detectFromBase64(croppedFaceDataUrl);
+          } catch {}
+        }
+
+        const selfieFace = getLargestFace(selfieResult);
+        const docFace = getLargestFace(docResult);
+        const localIssues: string[] = [];
+
+        if (selfieFace) {
+          antispoofScore = getRealScore(selfieFace);
+          liveScore = getLiveScore(selfieFace);
+          livenessPassedLocal =
+            antispoofScore >= ANTISPOOF_REAL_THRESHOLD &&
+            liveScore >= ANTISPOOF_LIVE_THRESHOLD;
+        } else {
+          localIssues.push("no_selfie_face");
+        }
+
+        if (selfieFace && docFace) {
+          const selfieEmb = getEmbeddingVector(selfieFace);
+          const docEmb = getEmbeddingVector(docFace);
+          if (selfieEmb && docEmb) {
+            faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
+            facesMatchLocal = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
+          } else {
+            localIssues.push("embedding_failed");
+          }
+        } else {
+          localIssues.push("no_document_face");
+        }
+
+        issues.push(...localIssues);
+      } catch {
+        issues.push("verification_service_failed");
+      }
+
+      const livenessPassed = livenessPassedLocal;
+      const faceMatchPassed = facesMatchLocal;
+
+      updateIdentityDraft(draft.id, {
+        antispoofScore,
+        liveScore,
+        livenessPassed,
+        faceMatchConfidence,
+        faceMatchPassed,
+      });
+
+      await updateWizardProgress(stepValidation.session.email, {
+        livenessPassed,
+        faceMatchPassed,
+        step: Math.max(stepValidation.session.step ?? 1, 3),
+      });
+
+      return {
+        success: true,
+        livenessPassed,
+        faceMatchPassed,
+        faceMatchConfidence,
+        processingTimeMs: Date.now() - startTime,
+        issues,
+      };
+    }),
+
+  /**
+   * Enqueue identity finalization (FHE + signed claims) as a DB-backed job.
+   */
+  finalizeAsync: protectedProcedure
+    .input(
+      z.object({
+        draftId: z.string().min(1),
+        fhePublicKey: z.string().min(1),
+        fheKeyId: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const onboardingSession = await getSessionFromCookie();
+      const stepValidation = validateStepAccess(
+        onboardingSession,
+        "identity-finalize",
+      );
+      if (!stepValidation.valid || !stepValidation.session) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: stepValidation.error || "Complete previous steps first",
+        });
+      }
+
+      if (
+        stepValidation.session.identityDraftId &&
+        stepValidation.session.identityDraftId !== input.draftId
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Identity draft mismatch. Please restart verification.",
+        });
+      }
+
+      const draft = getIdentityDraftById(input.draftId);
+      if (!draft) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Identity draft not found",
+        });
+      }
+
+      const existingJob = getLatestIdentityVerificationJobForDraft(
+        input.draftId,
+      );
+      if (
+        existingJob &&
+        existingJob.status !== "error" &&
+        existingJob.status !== "complete"
+      ) {
+        scheduleIdentityJob(existingJob.id);
+        return { jobId: existingJob.id, status: existingJob.status };
+      }
+
+      const jobId = uuidv4();
+      createIdentityVerificationJob({
+        id: jobId,
+        draftId: input.draftId,
+        userId: ctx.userId,
+        fheKeyId: input.fheKeyId,
+        fhePublicKey: input.fhePublicKey,
+      });
+
+      scheduleIdentityJob(jobId);
+
+      return { jobId, status: "queued" };
+    }),
+
+  /**
+   * Check status for an identity finalization job.
+   */
+  finalizeStatus: protectedProcedure
+    .input(z.object({ jobId: z.string().min(1) }))
+    .query(({ input }) => {
+      const job = getIdentityVerificationJobById(input.jobId);
+      if (!job) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
+      if (job.status === "queued") {
+        scheduleIdentityJob(job.id);
+      }
+
+      let result: VerifyIdentityResponse | null = null;
+      if (job.result) {
+        try {
+          result = JSON.parse(job.result) as VerifyIdentityResponse;
+        } catch {
+          result = null;
+        }
+      }
+
+      return {
+        jobId: job.id,
+        status: job.status,
+        result,
+        error: job.error ?? undefined,
+        startedAt: job.startedAt ?? undefined,
+        finishedAt: job.finishedAt ?? undefined,
+      };
+    }),
 
   /**
    * Main identity verification endpoint.
@@ -366,7 +1275,6 @@ export const identityRouter = router({
         documentResult = await processDocumentOcr({
           image: input.documentImage,
           userSalt,
-          requestId: ctx.requestId,
         });
         issues.push(...(documentResult?.validationIssues || []));
       } catch {

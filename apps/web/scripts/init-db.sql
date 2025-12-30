@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   -- PRIVACY: encrypted wizard state only (JWE / AES-256-GCM), short-lived via expires_at TTL.
   encrypted_pii TEXT,
   document_hash TEXT,                 -- SHA256 of uploaded document (for dedup)
+  identity_draft_id TEXT,
   document_processed INTEGER DEFAULT 0,
   liveness_passed INTEGER DEFAULT 0,
   face_match_passed INTEGER DEFAULT 0,
@@ -160,6 +161,56 @@ CREATE TABLE IF NOT EXISTS onboarding_sessions (
   created_at INTEGER DEFAULT (unixepoch()),
   updated_at INTEGER DEFAULT (unixepoch()),
   expires_at INTEGER                  -- Unix timestamp for auto-expiration (enforced by app)
+);
+
+-- Identity verification drafts (precompute OCR + liveness before account creation)
+CREATE TABLE IF NOT EXISTS identity_verification_drafts (
+  id TEXT PRIMARY KEY,
+  onboarding_session_id TEXT NOT NULL,
+  user_id TEXT REFERENCES "user" ("id") ON DELETE SET NULL,
+  document_id TEXT NOT NULL,
+  document_processed INTEGER DEFAULT 0,
+  is_document_valid INTEGER DEFAULT 0,
+  is_duplicate_document INTEGER DEFAULT 0,
+  document_type TEXT,
+  issuer_country TEXT,
+  document_hash TEXT,
+  document_hash_field TEXT,
+  name_commitment TEXT,
+  user_salt TEXT,
+  birth_year INTEGER,
+  birth_year_offset INTEGER,
+  expiry_date_int INTEGER,
+  nationality_code TEXT,
+  nationality_code_numeric INTEGER,
+  country_code_numeric INTEGER,
+  confidence_score REAL,
+  first_name_encrypted TEXT,
+  ocr_issues TEXT,
+  antispoof_score REAL,
+  live_score REAL,
+  liveness_passed INTEGER,
+  face_match_confidence REAL,
+  face_match_passed INTEGER,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Identity verification jobs (DB-backed async queue)
+CREATE TABLE IF NOT EXISTS identity_verification_jobs (
+  id TEXT PRIMARY KEY,
+  draft_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'queued',
+  fhe_key_id TEXT,
+  fhe_public_key TEXT,
+  result TEXT,
+  error TEXT,
+  attempts INTEGER DEFAULT 0,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 -- RP authorization codes (privacy-preserving disclosure flow)
@@ -179,6 +230,12 @@ CREATE INDEX IF NOT EXISTS idx_zk_challenges_expires_at ON zk_challenges(expires
 CREATE INDEX IF NOT EXISTS idx_identity_bundles_status ON identity_bundles (status);
 CREATE INDEX IF NOT EXISTS idx_identity_documents_user_id ON identity_documents (user_id);
 CREATE INDEX IF NOT EXISTS idx_identity_documents_doc_hash ON identity_documents (document_hash);
+CREATE INDEX IF NOT EXISTS idx_identity_drafts_session ON identity_verification_drafts (onboarding_session_id);
+CREATE INDEX IF NOT EXISTS idx_identity_drafts_user ON identity_verification_drafts (user_id);
+CREATE INDEX IF NOT EXISTS idx_identity_drafts_document ON identity_verification_drafts (document_id);
+CREATE INDEX IF NOT EXISTS idx_identity_jobs_draft ON identity_verification_jobs (draft_id);
+CREATE INDEX IF NOT EXISTS idx_identity_jobs_status ON identity_verification_jobs (status);
+CREATE INDEX IF NOT EXISTS idx_identity_jobs_user ON identity_verification_jobs (user_id);
 CREATE INDEX IF NOT EXISTS idx_zk_proofs_user_id ON zk_proofs (user_id);
 CREATE INDEX IF NOT EXISTS idx_zk_proofs_type ON zk_proofs (proof_type);
 CREATE INDEX IF NOT EXISTS idx_encrypted_attributes_user_id ON encrypted_attributes (user_id);

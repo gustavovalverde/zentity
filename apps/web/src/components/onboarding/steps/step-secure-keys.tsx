@@ -41,7 +41,7 @@ type SecureStatus =
   | "registering-passkey"
   | "unlocking-prf"
   | "registering-fhe"
-  | "verifying-identity"
+  | "finalizing-identity"
   | "generating-proofs"
   | "storing-proofs"
   | "complete"
@@ -100,9 +100,7 @@ export function StepSecureKeys() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<SecureStatus>("idle");
 
-  const hasIdentityDocs = Boolean(
-    data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
-  );
+  const hasIdentityDocs = Boolean(data.identityDraftId);
   const hasDob = Boolean(data.extractedDOB);
 
   useEffect(() => {
@@ -127,7 +125,7 @@ export function StepSecureKeys() {
       "registering-passkey",
       "unlocking-prf",
       "registering-fhe",
-      "verifying-identity",
+      "finalizing-identity",
       "generating-proofs",
       "storing-proofs",
       "complete",
@@ -142,7 +140,7 @@ export function StepSecureKeys() {
       passkey: stepStatus(0, "registering-passkey"),
       prf: stepStatus(1, "unlocking-prf"),
       fhe: stepStatus(2, "registering-fhe"),
-      verify: stepStatus(3, "verifying-identity"),
+      verify: stepStatus(3, "finalizing-identity"),
       proofs: stepStatus(4, "generating-proofs"),
       store: stepStatus(5, "storing-proofs"),
     };
@@ -234,18 +232,48 @@ export function StepSecureKeys() {
       await updateServerProgress({ keysSecured: true });
 
       if (hasIdentityDocs) {
-        setStatus("verifying-identity");
-        const selfieToVerify = data.bestSelfieFrame || data.selfieImage;
-        if (!data.idDocumentBase64 || !selfieToVerify) {
-          throw new Error("Missing identity images for verification.");
+        if (!data.identityDraftId) {
+          throw new Error(
+            "Missing identity draft. Please restart verification.",
+          );
         }
 
-        const identityResult = await trpc.identity.verify.mutate({
-          documentImage: data.idDocumentBase64,
-          selfieImage: selfieToVerify,
+        setStatus("finalizing-identity");
+        const job = await trpc.identity.finalizeAsync.mutate({
+          draftId: data.identityDraftId,
           fheKeyId: fheKeyInfo.keyId,
           fhePublicKey: fheKeyInfo.publicKey,
         });
+
+        const waitForFinalization = async () => {
+          const start = Date.now();
+          let attempt = 0;
+          while (Date.now() - start < 5 * 60 * 1000) {
+            const status = await trpc.identity.finalizeStatus.query({
+              jobId: job.jobId,
+            });
+
+            if (status.status === "complete") {
+              if (!status.result) {
+                throw new Error("Finalization completed without a result.");
+              }
+              return status.result;
+            }
+            if (status.status === "error") {
+              throw new Error(status.error || "Identity finalization failed.");
+            }
+
+            const delay = Math.min(1000 + attempt * 500, 4000);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            attempt += 1;
+          }
+
+          throw new Error(
+            "Finalization is taking longer than expected. Please try again shortly.",
+          );
+        };
+
+        const identityResult = await waitForFinalization();
 
         if (!identityResult.verified) {
           const issue =
@@ -559,7 +587,7 @@ export function StepSecureKeys() {
             {hasIdentityDocs && (
               <>
                 <StepIndicator
-                  label="Verify identity"
+                  label="Finalize identity"
                   status={progressStatus.verify}
                   icon={<ShieldCheck className="h-4 w-4" />}
                 />

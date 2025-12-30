@@ -228,14 +228,25 @@ sequenceDiagram
   participant DB as SQLite
   participant FHE as FHE Service
 
-  U->>UI: Upload ID + capture selfie/liveness
-  UI->>API: tRPC identity.verify (doc + selfie)
+  U->>UI: Upload ID
+  UI->>API: tRPC identity.prepareDocument
   API->>OCR: OCR + parse doc (transient)
   OCR-->>API: extracted fields + commitment inputs
+  API->>DB: UPSERT identity_verification_drafts (OCR + commitments)
+  API-->>UI: document verified + draftId
+
+  U->>UI: Complete liveness + selfie
+  UI->>API: tRPC identity.prepareLiveness
+  API->>DB: UPDATE identity_verification_drafts (liveness + face match)
+  API-->>UI: liveness + face match flags
+
+  UI->>API: tRPC identity.finalizeAsync (draftId + FHE keys)
+  API->>DB: INSERT identity_verification_jobs (queued)
   API->>FHE: encrypt birth_year_offset / country_code / liveness
   FHE-->>API: ciphertexts
   API->>DB: INSERT identity_documents + encrypted_attributes + signed_claims
-  API-->>UI: verification flags + commitments
+  UI->>API: tRPC identity.finalizeStatus (poll)
+  API-->>UI: verified + documentId
 
   Note over UI: ZK proofs bound to claim_hash + document_hash
   UI->>API: tRPC crypto.createChallenge (age_verification)
@@ -319,6 +330,8 @@ Tables (via `better-auth` + custom):
 
 - `identity_bundles` — User-level bundle metadata (status, policy version)
 - `identity_documents` — Per-document commitments + verification metadata
+- `identity_verification_drafts` — Precomputed OCR + liveness results (pre-account)
+- `identity_verification_jobs` — DB-backed async finalization queue
 - `zk_proofs` — Proof payloads + public signals + metadata
 - `encrypted_attributes` — TFHE ciphertexts + metadata
 - `signed_claims` — Server-signed scores and structured claims

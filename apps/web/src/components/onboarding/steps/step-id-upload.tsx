@@ -115,12 +115,9 @@ export function StepIdUpload() {
     return () => clearTimeout(timeout);
   }, [processingState]);
 
-  const processDocument = useCallback(
-    async (base64: string): Promise<DocumentResult> => {
-      return trpc.identity.processDocument.mutate({ image: base64 });
-    },
-    [],
-  );
+  const processDocument = useCallback(async (base64: string) => {
+    return trpc.identity.prepareDocument.mutate({ image: base64 });
+  }, []);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -160,27 +157,52 @@ export function StepIdUpload() {
         updateData({ idDocumentBase64: dataUrl });
         setProcessingState("processing");
 
-        // Process with AI
-        const result = await processDocument(dataUrl);
-        updateData({ documentResult: result });
+        // Process with OCR + draft creation
+        const response = await processDocument(dataUrl);
+        const result = response.documentResult as DocumentResult;
+        updateData({
+          documentResult: result,
+          identityDraftId: response.draftId,
+          identityDocumentId: response.documentId ?? null,
+        });
 
         const hasExpiredDocument =
           result.validationIssues.includes("document_expired");
+        if (response.isDuplicateDocument) {
+          setProcessingState("rejected");
+          const errorMsg =
+            "This document appears to be already in use. Please contact support if you believe this is a mistake.";
+          setUploadError(errorMsg);
+          toast.error("Duplicate document detected", {
+            description: errorMsg,
+          });
+          await updateServerProgress({
+            documentProcessed: false,
+            step: 2,
+            identityDraftId: response.draftId,
+          });
+          return;
+        }
         if (hasExpiredDocument) {
           setProcessingState("rejected");
           setUploadError(ERROR_RECOVERY_TIPS.document_expired);
           toast.error("Document expired", {
             description: ERROR_RECOVERY_TIPS.document_expired,
           });
-          await updateServerProgress({ documentProcessed: false, step: 2 });
+          await updateServerProgress({
+            documentProcessed: false,
+            step: 2,
+            identityDraftId: response.draftId,
+          });
           return;
         }
 
         // Check if document is valid (recognized type with extracted data)
         const isValid =
-          result.documentType !== "unknown" &&
-          result.confidence > 0.3 &&
-          result.extractedData?.documentNumber;
+          response.isDocumentValid ??
+          (result.documentType !== "unknown" &&
+            result.confidence > 0.3 &&
+            result.extractedData?.documentNumber);
 
         if (isValid) {
           setProcessingState("verified");
@@ -188,7 +210,11 @@ export function StepIdUpload() {
             description: `${DOCUMENT_TYPE_LABELS[result.documentType]} detected successfully.`,
           });
           // Mark document as processed on server (required for step validation)
-          await updateServerProgress({ documentProcessed: true, step: 2 });
+          await updateServerProgress({
+            documentProcessed: true,
+            step: 2,
+            identityDraftId: response.draftId,
+          });
           // Store extracted data in wizard state for later use
           if (result.extractedData) {
             updateData({

@@ -9,6 +9,7 @@ export const onboardingSessions = sqliteTable(
     step: integer("step").notNull().default(1),
     encryptedPii: text("encrypted_pii"),
     documentHash: text("document_hash"),
+    identityDraftId: text("identity_draft_id"),
     documentProcessed: integer("document_processed", { mode: "boolean" })
       .notNull()
       .default(false),

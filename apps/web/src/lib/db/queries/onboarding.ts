@@ -29,6 +29,9 @@ export function upsertOnboardingSession(
   if (data.documentHash !== undefined) {
     updateSet.documentHash = data.documentHash;
   }
+  if (data.identityDraftId !== undefined) {
+    updateSet.identityDraftId = data.identityDraftId;
+  }
   if (data.documentProcessed !== undefined) {
     updateSet.documentProcessed = data.documentProcessed;
   }
@@ -49,6 +52,7 @@ export function upsertOnboardingSession(
       step: data.step ?? 1,
       encryptedPii: data.encryptedPii ?? null,
       documentHash: data.documentHash ?? null,
+      identityDraftId: data.identityDraftId ?? null,
       documentProcessed: data.documentProcessed ?? false,
       livenessPassed: data.livenessPassed ?? false,
       faceMatchPassed: data.faceMatchPassed ?? false,
