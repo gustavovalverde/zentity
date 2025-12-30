@@ -47,6 +47,7 @@ import {
 } from "@/lib/crypto/signed-claims";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
+  getEncryptedSecretByUserAndType,
   getLatestSignedClaimByUserTypeAndDocument,
   getProofHashesByUserAndDocument,
   getUserAgeProof,
@@ -62,6 +63,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
+import { hashIdentifier } from "@/lib/observability";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import {
   CIRCUIT_SPECS,
@@ -491,6 +493,26 @@ export const cryptoRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const serverKeyBytes = Buffer.byteLength(input.serverKey);
+      ctx.span?.setAttribute("fhe.server_key_bytes", serverKeyBytes);
+
+      const existingSecret = getEncryptedSecretByUserAndType(
+        ctx.userId,
+        "fhe_keys",
+      );
+      const existingKeyId =
+        existingSecret?.metadata &&
+        typeof existingSecret.metadata.keyId === "string"
+          ? existingSecret.metadata.keyId
+          : null;
+      ctx.span?.setAttribute("fhe.key_already_present", Boolean(existingKeyId));
+      if (existingKeyId) {
+        ctx.span?.setAttribute(
+          "fhe.key_id_hash",
+          hashIdentifier(existingKeyId),
+        );
+      }
+
       return await registerFheKey({
         serverKey: input.serverKey,
         requestId: ctx.requestId,

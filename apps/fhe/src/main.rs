@@ -3,21 +3,31 @@
 //! Provides endpoints for encrypting data and performing age verification
 //! using Fully Homomorphic Encryption (TFHE-rs).
 
-use axum::{body::Body, http::Request};
-use fhe_service::{app::build_router, crypto, settings::Settings};
+use axum::{
+    body::Body,
+    http::{HeaderMap, Request},
+};
+use fhe_service::{app::build_router, crypto, settings::Settings, telemetry};
+use opentelemetry::{global, propagation::Extractor};
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+struct HeaderExtractor<'a>(&'a HeaderMap);
+
+impl<'a> Extractor for HeaderExtractor<'a> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|key| key.as_str()).collect()
+    }
+}
 
 #[tokio::main]
 async fn main() {
     // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "fhe_service=info,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    telemetry::init_tracing();
 
     tracing::info!("Starting FHE Service...");
 
@@ -46,12 +56,16 @@ async fn main() {
             .get("x-request-id")
             .and_then(|value| value.to_str().ok())
             .unwrap_or("-");
-        tracing::info_span!(
+        let parent_context =
+            global::get_text_map_propagator(|prop| prop.extract(&HeaderExtractor(req.headers())));
+        let span = tracing::info_span!(
             "http.request",
             method = %req.method(),
             path = %req.uri().path(),
             request_id = %request_id
-        )
+        );
+        let _ = span.set_parent(parent_context);
+        span
     });
 
     let app = build_router(&settings).layer(trace_layer);
@@ -61,4 +75,5 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+    telemetry::shutdown_tracing();
 }

@@ -9,6 +9,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 
 import { auth, type Session } from "@/lib/auth/auth";
@@ -20,12 +21,16 @@ import {
   logError,
   logWarn,
 } from "@/lib/logging";
+import { getTracer, hashIdentifier } from "@/lib/observability";
 
 /** Base context available to all procedures (public and protected). */
 type TrpcContext = {
   req: Request;
   session: Session | null;
   requestId: string;
+  traceId?: string;
+  spanId?: string;
+  span?: Span;
 };
 
 export type { Logger };
@@ -52,6 +57,61 @@ export async function createTrpcContext(args: {
 }
 
 const trpc = initTRPC.context<TrpcContext>().create();
+
+const withTracing = trpc.middleware(
+  async ({ path, type, input, ctx, next }) => {
+    const tracer = getTracer();
+    const inputMeta = extractInputMeta(input);
+
+    const attributes: Record<string, string | number | boolean> = {
+      "rpc.system": "trpc",
+      "rpc.method": path,
+      "rpc.type": type,
+      "request.id": ctx.requestId,
+    };
+
+    if (typeof inputMeta.inputSize === "number") {
+      attributes["input.size"] = inputMeta.inputSize;
+    }
+    if (typeof inputMeta.hasImage === "boolean") {
+      attributes["input.has_image"] = inputMeta.hasImage;
+    }
+    if (ctx.session?.session?.id) {
+      attributes["session.id"] = hashIdentifier(ctx.session.session.id);
+    }
+
+    return tracer.startActiveSpan(
+      `trpc.${path}`,
+      { attributes },
+      async (span) => {
+        try {
+          const spanContext = span.spanContext();
+          const result = await next({
+            ctx: {
+              ...ctx,
+              span,
+              traceId: spanContext.traceId,
+              spanId: spanContext.spanId,
+            },
+          });
+          span.setStatus({ code: SpanStatusCode.OK });
+          return result;
+        } catch (error) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : "tRPC failed",
+          });
+          if (error instanceof Error) {
+            span.recordException(error);
+          }
+          throw error;
+        } finally {
+          span.end();
+        }
+      },
+    );
+  },
+);
 
 /**
  * Paths that should log at debug level only (high frequency, low value).
@@ -93,7 +153,10 @@ const CRITICAL_PATHS = new Set([
 const withLogging = trpc.middleware(
   async ({ ctx, next, path, type, input }) => {
     const requestId = ctx.requestId || randomUUID();
-    const log = createRequestLogger(requestId);
+    const logBindings: Record<string, unknown> = {};
+    if (ctx.traceId) logBindings.traceId = ctx.traceId;
+    if (ctx.spanId) logBindings.spanId = ctx.spanId;
+    const log = createRequestLogger(requestId, logBindings);
     const debug = isDebugEnabled();
     const start = performance.now();
 
@@ -171,6 +234,10 @@ const enforceAuth = trpc.middleware(({ ctx, next }) => {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
+  if (ctx.span) {
+    ctx.span.setAttribute("user.id", hashIdentifier(userId));
+  }
+
   return next({
     ctx: { ...ctx, session, userId },
   });
@@ -179,9 +246,10 @@ const enforceAuth = trpc.middleware(({ ctx, next }) => {
 export const router = trpc.router;
 
 /** Procedure for unauthenticated endpoints. Includes logging context. */
-export const publicProcedure = trpc.procedure.use(withLogging);
+export const publicProcedure = trpc.procedure.use(withTracing).use(withLogging);
 
 /** Procedure requiring authentication. Includes logging context and userId. */
 export const protectedProcedure = trpc.procedure
+  .use(withTracing)
   .use(withLogging)
   .use(enforceAuth);

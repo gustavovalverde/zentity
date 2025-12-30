@@ -30,6 +30,10 @@ services:
       - NODE_ENV=production
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
+      - OTEL_SERVICE_NAME=zentity-web
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
       - BETTER_AUTH_URL=http://localhost:3000
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -56,6 +60,8 @@ services:
         condition: service_healthy
       ocr-service:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     volumes:
       # Persist SQLite database across container restarts
       - frontend-data:/var/lib/zentity/web
@@ -77,6 +83,10 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - FHE_BODY_LIMIT_MB=${FHE_BODY_LIMIT_MB:-64}
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
+      - OTEL_SERVICE_NAME=zentity-fhe
     volumes:
       - fhe-keys:/var/lib/zentity/fhe
     restart: unless-stopped
@@ -92,6 +102,23 @@ services:
     environment:
       - PORT=5004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
+      - OTEL_SERVICE_NAME=zentity-ocr
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  jaeger:
+    image: jaegertracing/jaeger:2.13.0
+    command:
+      - --set=receivers.otlp.protocols.http.endpoint=0.0.0.0:4318
+      - --set=receivers.otlp.protocols.grpc.endpoint=0.0.0.0:4317
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+      - "4317:4317"
     restart: unless-stopped
     networks:
       - zentity-network

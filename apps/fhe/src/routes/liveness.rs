@@ -22,6 +22,7 @@ pub struct EncryptLivenessResponse {
     score: f64,
 }
 
+#[tracing::instrument(skip(payload), fields(public_key_bytes = payload.public_key.len()))]
 pub async fn encrypt_liveness(
     Json(payload): Json<EncryptLivenessRequest>,
 ) -> Result<Json<EncryptLivenessResponse>, FheError> {
@@ -49,6 +50,7 @@ pub struct VerifyLivenessThresholdResponse {
     threshold: f64,
 }
 
+#[tracing::instrument(skip(payload), fields(ciphertext_bytes = payload.ciphertext.len(), key_id_bytes = payload.key_id.len()))]
 pub async fn verify_liveness_threshold(
     Json(payload): Json<VerifyLivenessThresholdRequest>,
 ) -> Result<Json<VerifyLivenessThresholdResponse>, FheError> {

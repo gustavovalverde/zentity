@@ -11,4 +11,5 @@ pub mod crypto;
 pub mod error;
 pub mod routes;
 pub mod settings;
+pub mod telemetry;
 pub mod test_support;

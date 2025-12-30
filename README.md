@@ -88,6 +88,13 @@ docker build -t zentity-ocr apps/ocr
 - FHE service: `http://localhost:5001`
 - OCR service: `http://localhost:5004`
 
+Optional observability:
+
+```bash
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+```
+
 Quick manual test (happy path):
 
 - Go to `/sign-up` → complete the 4-step wizard (email → upload → liveness → complete)

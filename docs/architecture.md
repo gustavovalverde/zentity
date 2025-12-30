@@ -63,6 +63,17 @@ flowchart LR
 
 ---
 
+## Observability (2025+)
+
+- **Distributed tracing** via OpenTelemetry OTLP across Web, FHE, and OCR services
+- **Onboarding spans** capture step transitions, async finalization timing, and duplicate work signals
+- **Payload sizing** attributes on FHE/OCR calls highlight large transfers (e.g., server key uploads)
+- **Privacy-safe** telemetry: hashed identifiers only, no PII in span attributes
+
+Enable with `OTEL_ENABLED=true` and `OTEL_EXPORTER_OTLP_ENDPOINT` (collector recommended).
+
+---
+
 ## Cryptographic Techniques
 
 Zentity uses three complementary techniques:

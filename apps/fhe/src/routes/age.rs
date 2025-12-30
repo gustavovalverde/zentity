@@ -21,6 +21,7 @@ pub struct EncryptBirthYearOffsetResponse {
     ciphertext: String,
 }
 
+#[tracing::instrument(skip(payload), fields(public_key_bytes = payload.public_key.len()))]
 pub async fn encrypt_birth_year_offset(
     Json(payload): Json<EncryptBirthYearOffsetRequest>,
 ) -> Result<Json<EncryptBirthYearOffsetResponse>, FheError> {
@@ -50,6 +51,7 @@ pub struct VerifyAgeOffsetResponse {
     result_ciphertext: String,
 }
 
+#[tracing::instrument(skip(payload), fields(ciphertext_bytes = payload.ciphertext.len(), key_id_bytes = payload.key_id.len()))]
 pub async fn verify_age_offset(
     Json(payload): Json<VerifyAgeOffsetRequest>,
 ) -> Result<Json<VerifyAgeOffsetResponse>, FheError> {

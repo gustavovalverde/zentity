@@ -21,6 +21,7 @@ pub struct EncryptComplianceLevelResponse {
     compliance_level: u8,
 }
 
+#[tracing::instrument(skip(payload), fields(public_key_bytes = payload.public_key.len()))]
 pub async fn encrypt_compliance_level(
     Json(payload): Json<EncryptComplianceLevelRequest>,
 ) -> Result<Json<EncryptComplianceLevelResponse>, FheError> {

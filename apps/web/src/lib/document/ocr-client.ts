@@ -1,5 +1,6 @@
 import "server-only";
 
+import { withSpan } from "@/lib/observability";
 import { fetchJson } from "@/lib/utils";
 import { getOcrServiceUrl } from "@/lib/utils/service-urls";
 
@@ -49,18 +50,30 @@ export async function processDocumentOcr(args: {
   requestId?: string;
 }): Promise<OcrProcessResult> {
   const url = `${getOcrServiceUrl()}/process`;
-  return fetchJson<OcrProcessResult>(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getInternalServiceAuthHeaders(args.requestId),
-    },
-    body: JSON.stringify({
-      image: args.image,
-      userSalt: args.userSalt,
-    }),
-    timeoutMs: OCR_TIMEOUT_MS,
+  const payload = JSON.stringify({
+    image: args.image,
+    userSalt: args.userSalt,
   });
+  const payloadBytes = Buffer.byteLength(payload);
+  const imageBytes = Buffer.byteLength(args.image);
+  return withSpan(
+    "ocr.process_document",
+    {
+      "ocr.operation": "process_document",
+      "ocr.request_bytes": payloadBytes,
+      "ocr.image_bytes": imageBytes,
+    },
+    () =>
+      fetchJson<OcrProcessResult>(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getInternalServiceAuthHeaders(args.requestId),
+        },
+        body: payload,
+        timeoutMs: OCR_TIMEOUT_MS,
+      }),
+  );
 }
 
 export async function ocrDocumentOcr(args: {
@@ -68,26 +81,38 @@ export async function ocrDocumentOcr(args: {
   requestId?: string;
 }): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/ocr`;
-  return fetchJson<unknown>(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getInternalServiceAuthHeaders(args.requestId),
+  const payload = JSON.stringify({ image: args.image });
+  const payloadBytes = Buffer.byteLength(payload);
+  const imageBytes = Buffer.byteLength(args.image);
+  return withSpan(
+    "ocr.ocr_document",
+    {
+      "ocr.operation": "ocr_document",
+      "ocr.request_bytes": payloadBytes,
+      "ocr.image_bytes": imageBytes,
     },
-    body: JSON.stringify({
-      image: args.image,
-    }),
-    timeoutMs: OCR_TIMEOUT_MS,
-  });
+    () =>
+      fetchJson<unknown>(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getInternalServiceAuthHeaders(args.requestId),
+        },
+        body: payload,
+        timeoutMs: OCR_TIMEOUT_MS,
+      }),
+  );
 }
 
 export async function getOcrHealth(args?: {
   requestId?: string;
 }): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/health`;
-  return fetchJson<unknown>(url, {
-    headers: {
-      ...getInternalServiceAuthHeaders(args?.requestId),
-    },
-  });
+  return withSpan("ocr.health", { "ocr.operation": "health" }, () =>
+    fetchJson<unknown>(url, {
+      headers: {
+        ...getInternalServiceAuthHeaders(args?.requestId),
+      },
+    }),
+  );
 }

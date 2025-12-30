@@ -21,6 +21,7 @@ pub struct EncryptCountryCodeResponse {
     country_code: u16,
 }
 
+#[tracing::instrument(skip(payload), fields(public_key_bytes = payload.public_key.len()))]
 pub async fn encrypt_country_code(
     Json(payload): Json<EncryptCountryCodeRequest>,
 ) -> Result<Json<EncryptCountryCodeResponse>, FheError> {

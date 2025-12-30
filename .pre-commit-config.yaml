@@ -105,6 +105,15 @@ repos:
       - id: ruff-format
         files: ^apps/ocr/
 
+  - repo: local
+    hooks:
+      - id: ocr-requirements-lock
+        name: pip-compile lock (ocr)
+        entry: bash scripts/check-ocr-requirements-lock.sh
+        language: system
+        files: ^apps/ocr/(pyproject\.toml|requirements\.lock)$
+        pass_filenames: false
+
   # ===========================================
   # Rust (apps/fhe)
   # ===========================================

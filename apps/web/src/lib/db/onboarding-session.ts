@@ -17,6 +17,7 @@ import type { OnboardingSession } from "./schema";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
 
+import { addSpanEvent, hashIdentifier } from "@/lib/observability";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 import {
@@ -263,6 +264,8 @@ export async function updateWizardProgress(
     identityDraftId?: string | null;
   },
 ): Promise<void> {
+  const previousSession = getOnboardingSessionByEmail(email);
+  const previousStep = previousSession?.step ?? null;
   const inferredStep = updates.step ?? (updates.keysSecured ? 5 : null);
   const step = inferredStep ?? undefined;
 
@@ -271,6 +274,26 @@ export async function updateWizardProgress(
     email,
     ...updates,
     step,
+  });
+
+  addSpanEvent("onboarding.progress", {
+    onboarding_step_previous: previousStep ?? undefined,
+    onboarding_step: step ?? previousStep ?? undefined,
+    onboarding_regression:
+      typeof previousStep === "number" && typeof step === "number"
+        ? step < previousStep
+        : undefined,
+    onboarding_replay:
+      typeof previousStep === "number" && typeof step === "number"
+        ? step === previousStep
+        : undefined,
+    onboarding_document_processed: updates.documentProcessed ?? undefined,
+    onboarding_liveness_passed: updates.livenessPassed ?? undefined,
+    onboarding_face_match_passed: updates.faceMatchPassed ?? undefined,
+    onboarding_keys_secured: updates.keysSecured ?? undefined,
+    onboarding_draft_id_hash: updates.identityDraftId
+      ? hashIdentifier(updates.identityDraftId)
+      : undefined,
   });
 
   // Update cookie if step changed
@@ -284,6 +307,7 @@ export async function updateWizardProgress(
  */
 export async function completeOnboarding(email: string): Promise<void> {
   deleteOnboardingSession(email);
+  addSpanEvent("onboarding.complete", {});
   await clearWizardCookie();
 }
 

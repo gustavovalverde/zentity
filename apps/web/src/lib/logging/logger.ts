@@ -66,8 +66,11 @@ export const logger: Logger = pino({
  *
  * @param requestId - Unique ID for the request (UUID)
  */
-export function createRequestLogger(requestId: string): Logger {
-  return logger.child({ requestId });
+export function createRequestLogger(
+  requestId: string,
+  bindings?: Record<string, unknown>,
+): Logger {
+  return logger.child({ requestId, ...bindings });
 }
 
 /**

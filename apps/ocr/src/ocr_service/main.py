@@ -20,6 +20,7 @@ from .core.auth import add_internal_auth_middleware
 from .core.logging import configure_logging, get_request_id, set_request_id
 from .services.ocr_engine import warmup_engine
 from .settings import Settings
+from .telemetry import instrument_app
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=settings.version,
         lifespan=lifespan,
     )
+
+    instrument_app(app)
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):

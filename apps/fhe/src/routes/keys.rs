@@ -19,6 +19,7 @@ pub struct RegisterKeyResponse {
     key_id: String,
 }
 
+#[tracing::instrument(skip(payload), fields(server_key_bytes = payload.server_key.len()))]
 pub async fn register_key(
     Json(payload): Json<RegisterKeyRequest>,
 ) -> Result<Json<RegisterKeyResponse>, FheError> {

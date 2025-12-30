@@ -2,13 +2,14 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Implemented |
 | **Created** | 2024-12-29 |
+| **Updated** | 2025-12-30 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
 
-Add distributed tracing across Zentity services (Web, FHE, OCR) using OpenTelemetry with self-hosted Jaeger for trace visualization, enabling performance debugging and request flow analysis.
+Add distributed tracing across Zentity services (Web, FHE, OCR) using OpenTelemetry OTLP exporters (collector-first), with auto-instrumentation plus domain spans for onboarding, FHE payload sizing, and async identity finalization to make performance bottlenecks and duplicate work visible.
 
 ## Problem Statement
 
@@ -42,18 +43,17 @@ Currently, there is no observability infrastructure:
   - Works with any backend (Jaeger, Zipkin, Datadog, etc.)
   - SDKs for JavaScript/TypeScript and Rust
 
-- **Trace Backend**: Jaeger (self-hosted)
-  - CNCF graduated project
-  - Self-hosted on Docker/Railway
-  - No external data sharing (privacy-first)
-  - Web UI for trace visualization
-  - Supports sampling strategies
+- **Trace Backend**: OTLP-first (collector recommended)
+  - Use OpenTelemetry Collector in production (vendor-neutral fan-out)
+  - Local dev can point directly to Jaeger/Tempo via OTLP HTTP
+  - No external data sharing required (self-hosted)
+  - Backend is swappable (Jaeger, Tempo, Honeycomb, Datadog, etc.)
 
 - **Instrumentation Scope**:
-  - tRPC procedures (automatic spans)
-  - HTTP client calls (fetch to FHE/OCR)
-  - Database queries (Drizzle instrumentation)
-  - Background jobs (BullMQ workers)
+- tRPC procedures (automatic spans)
+- HTTP client calls (fetch to FHE/OCR)
+- Database queries (future: Drizzle/SQLite instrumentation)
+- Background jobs (DB-backed identity_verification_jobs)
 
 ## Architecture Overview
 
@@ -90,72 +90,56 @@ Currently, there is no observability infrastructure:
 │  └──────────────────────────┘  └───────────────────────────────┘   │
 │                                                                      │
 │  All spans share trace-id: abc123                                   │
-│  Visualized in Jaeger UI                                            │
+│  Visualized in trace backend UI                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### New Structure
 
 ```text
-src/lib/telemetry/
-├── tracing.ts              # OpenTelemetry SDK setup
-├── middleware.ts           # tRPC tracing middleware
-├── http.ts                 # Instrumented fetch wrapper
+src/lib/observability/
+├── telemetry.ts            # OpenTelemetry SDK setup
 └── index.ts                # Public API
 ```
 
 ### OpenTelemetry Setup
 
 ```typescript
-// src/lib/telemetry/tracing.ts
+// src/lib/observability/telemetry.ts
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
+import { defaultResource, resourceFromAttributes } from "@opentelemetry/resources";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import {
+  ATTR_DEPLOYMENT_ENVIRONMENT,
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
-import { SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 
-const JAEGER_ENDPOINT = process.env.JAEGER_ENDPOINT || "http://localhost:4318/v1/traces";
-const SERVICE_NAME = "zentity-web";
-const SERVICE_VERSION = process.env.npm_package_version || "0.0.0";
+const endpoint =
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318/v1/traces";
 
-let sdk: NodeSDK | null = null;
+export function initTelemetry(): void {
+  if (
+    process.env.OTEL_ENABLED !== "true" &&
+    !process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+  ) {
+    return;
+  }
 
-export function initTracing(): void {
-  if (sdk) return; // Already initialized
-
-  const exporter = new OTLPTraceExporter({
-    url: JAEGER_ENDPOINT,
-  });
-
-  sdk = new NodeSDK({
-    resource: new Resource({
-      [ATTR_SERVICE_NAME]: SERVICE_NAME,
-      [ATTR_SERVICE_VERSION]: SERVICE_VERSION,
-    }),
-    spanProcessor: new SimpleSpanProcessor(exporter),
-    instrumentations: [
-      new HttpInstrumentation({
-        // Don't trace internal requests
-        ignoreIncomingRequestHook: (req) => {
-          const url = req.url || "";
-          return url.includes("/_next") || url.includes("/health");
-        },
+  const sdk = new NodeSDK({
+    traceExporter: new OTLPTraceExporter({ url: endpoint }),
+    resource: defaultResource().merge(
+      resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "zentity-web",
+        [ATTR_SERVICE_VERSION]: process.env.npm_package_version ?? "0.0.0",
+        [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV ?? "development",
       }),
-    ],
+    ),
+    instrumentations: [getNodeAutoInstrumentations()],
   });
 
   sdk.start();
-
-  // Graceful shutdown
-  process.on("SIGTERM", () => sdk?.shutdown());
-}
-
-export function getTracer() {
-  return require("@opentelemetry/api").trace.getTracer(SERVICE_NAME);
 }
 ```
 
@@ -165,8 +149,8 @@ export function getTracer() {
 // src/instrumentation.ts
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { initTracing } = await import("@/lib/telemetry/tracing");
-    initTracing();
+    const { initTelemetry } = await import("@/lib/observability");
+    initTelemetry();
   }
 }
 ```
@@ -174,21 +158,22 @@ export async function register() {
 ### tRPC Tracing Middleware
 
 ```typescript
-// src/lib/telemetry/middleware.ts
+// src/lib/trpc/server.ts
 import { middleware } from "@trpc/server";
-import { trace, SpanStatusCode, context } from "@opentelemetry/api";
-import { getTracer } from "./tracing";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { getTracer } from "./telemetry";
 
-export const tracingMiddleware = middleware(async ({ path, type, next, ctx }) => {
+export const withTracing = middleware(async ({ path, type, input, ctx, next }) => {
   const tracer = getTracer();
 
   return tracer.startActiveSpan(
     `trpc.${path}`,
     {
       attributes: {
-        "trpc.path": path,
-        "trpc.type": type,
-        "user.id": ctx.userId || "anonymous",
+        "rpc.system": "trpc",
+        "rpc.method": path,
+        "rpc.type": type,
+        "request.id": ctx.requestId,
       },
     },
     async (span) => {
@@ -196,101 +181,46 @@ export const tracingMiddleware = middleware(async ({ path, type, next, ctx }) =>
         const result = await next({
           ctx: {
             ...ctx,
-            span, // Make span available to procedure
+            span, // Make span available to procedures
           },
         });
-
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
-      } catch (error) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : "Unknown error",
-        });
-        span.recordException(error instanceof Error ? error : new Error(String(error)));
-        throw error;
       } finally {
         span.end();
       }
-    }
+    },
   );
 });
 ```
 
-### Instrumented Fetch Wrapper
+### Instrumented Service Calls
 
 ```typescript
-// src/lib/telemetry/http.ts
-import { trace, context, propagation, SpanStatusCode } from "@opentelemetry/api";
-import { getTracer } from "./tracing";
+// src/lib/crypto/fhe-client.ts
+import { withSpan } from "@/lib/observability";
 
-/**
- * Fetch wrapper that propagates trace context to downstream services
- */
-export async function tracedFetch(
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const tracer = getTracer();
-  const parsedUrl = new URL(url);
-
-  return tracer.startActiveSpan(
-    `http.${options.method || "GET"} ${parsedUrl.pathname}`,
-    {
-      attributes: {
-        "http.url": url,
-        "http.method": options.method || "GET",
-        "http.host": parsedUrl.host,
-      },
-    },
-    async (span) => {
-      // Inject trace context into headers
-      const headers = new Headers(options.headers);
-      propagation.inject(context.active(), headers, {
-        set: (carrier, key, value) => carrier.set(key, value),
-      });
-
-      try {
-        const response = await fetch(url, {
-          ...options,
-          headers,
-        });
-
-        span.setAttributes({
-          "http.status_code": response.status,
-        });
-
-        if (response.ok) {
-          span.setStatus({ code: SpanStatusCode.OK });
-        } else {
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: `HTTP ${response.status}`,
-          });
-        }
-
-        return response;
-      } catch (error) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : "Fetch failed",
-        });
-        span.recordException(error instanceof Error ? error : new Error(String(error)));
-        throw error;
-      } finally {
-        span.end();
-      }
-    }
-  );
-}
+const payload = JSON.stringify({ serverKey });
+return withSpan(
+  "fhe.register_key",
+  { "fhe.operation": "register_key", "fhe.request_bytes": payload.length },
+  () =>
+    fetchJson(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    }),
+);
 ```
+
+Node auto-instrumentation handles HTTP client spans and trace propagation; domain spans add payload sizing and operation labels.
 
 ### Database Tracing
 
 ```typescript
 // src/lib/db/connection.ts (updated)
 import { trace } from "@opentelemetry/api";
-import { getTracer } from "@/lib/telemetry";
+import { getTracer } from "@/lib/observability";
 
 // Wrap Drizzle queries with tracing
 function wrapWithTracing<T>(
@@ -330,7 +260,7 @@ function wrapWithTracing<T>(
 
 ```typescript
 // src/lib/fhe-client.ts (updated)
-import { tracedFetch } from "@/lib/telemetry";
+import { tracedFetch } from "@/lib/observability";
 
 async function callFheService(endpoint: string, data: unknown) {
   const url = `${FHE_SERVICE_URL}${endpoint}`;
@@ -352,13 +282,14 @@ async function callFheService(endpoint: string, data: unknown) {
 # docker-compose.yml
 services:
   jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: zentity-jaeger
+    image: jaegertracing/jaeger:2.13.0
+    command:
+      - --set=receivers.otlp.protocols.http.endpoint=0.0.0.0:4318
+      - --set=receivers.otlp.protocols.grpc.endpoint=0.0.0.0:4317
     ports:
       - "16686:16686"  # UI
       - "4318:4318"    # OTLP HTTP
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
+      - "4317:4317"    # OTLP gRPC
     networks:
       - zentity-network
 ```
@@ -424,16 +355,16 @@ span.addEvent("age_proof_generated");
 ```bash
 cd apps/web
 bun add @opentelemetry/sdk-node \
+        @opentelemetry/auto-instrumentations-node \
         @opentelemetry/api \
         @opentelemetry/exporter-trace-otlp-http \
-        @opentelemetry/instrumentation-http \
         @opentelemetry/resources \
         @opentelemetry/semantic-conventions
 ```
 
 ### Step 2: Create Tracing Module
 
-Create `src/lib/telemetry/tracing.ts` with SDK setup.
+Create `src/lib/observability/telemetry.ts` with SDK setup.
 
 ### Step 3: Add Next.js Instrumentation
 
@@ -441,62 +372,72 @@ Create `src/instrumentation.ts` to initialize tracing at startup.
 
 ### Step 4: Create tRPC Middleware
 
-Create `src/lib/telemetry/middleware.ts` for procedure tracing.
+Add tracing middleware in `src/lib/trpc/server.ts` for procedure tracing.
 
-### Step 5: Create Traced Fetch
-
-Create `src/lib/telemetry/http.ts` for outbound HTTP tracing.
-
-### Step 6: Update tRPC Base
+### Step 5: Update tRPC Base
 
 Add tracing middleware to procedure chain:
 
 ```typescript
 export const publicProcedure = t.procedure
-  .use(loggingMiddleware)
-  .use(tracingMiddleware);
+  .use(withTracing)
+  .use(withLogging);
 ```
+
+### Step 6: Add FHE + OCR Instrumentation
+
+- **FHE (Rust)**: `opentelemetry-otlp` + `tracing-opentelemetry` with OTLP HTTP exporter
+- **OCR (Python)**: `opentelemetry-instrumentation-fastapi` + OTLP HTTP exporter
+
+### Auto-Instrumentation Notes
+
+- **Node.js**: Prefer `@opentelemetry/auto-instrumentations-node` for baseline HTTP/fetch spans.
+- **Python**: `opentelemetry-instrument` can auto-instrument, but programmatic setup is more deterministic for containerized deployments.
 
 ### Step 7: Update FHE/OCR Clients
 
 Replace `fetch` with `tracedFetch` in service clients.
 
-### Step 8: Add Jaeger to Docker Compose
+### Step 8: Add an OTLP Backend (Optional)
 
-Add Jaeger service for local development.
+Add a local OTLP backend (Jaeger/Tempo/Collector) for development.
 
 ### Step 9: Add Environment Variables
 
 ```bash
 # .env.example
-JAEGER_ENDPOINT=http://localhost:4318/v1/traces
+OTEL_ENABLED=false
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
-
-### Step 10: (Future) Add Rust/Python Instrumentation
-
-Add OpenTelemetry to FHE (Rust) and OCR (Python) services for end-to-end tracing.
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/lib/telemetry/tracing.ts` | Create | OTel SDK setup |
-| `src/lib/telemetry/middleware.ts` | Create | tRPC middleware |
-| `src/lib/telemetry/http.ts` | Create | Traced fetch |
-| `src/lib/telemetry/index.ts` | Create | Public API |
-| `src/instrumentation.ts` | Create | Next.js instrumentation |
-| `src/lib/trpc/trpc.ts` | Modify | Add tracing middleware |
-| `src/lib/fhe-client.ts` | Modify | Use traced fetch |
-| `docker-compose.yml` | Modify | Add Jaeger service |
-| `.env.example` | Modify | Add JAEGER_ENDPOINT |
+| `apps/web/src/lib/observability/telemetry.ts` | Create | OTel SDK setup |
+| `apps/web/src/lib/observability/index.ts` | Create | Public API |
+| `apps/web/src/instrumentation.ts` | Create | Next.js instrumentation |
+| `apps/web/src/lib/trpc/server.ts` | Modify | Attach tracing middleware + user hash |
+| `apps/web/src/lib/crypto/fhe-client.ts` | Modify | FHE spans + payload sizing |
+| `apps/web/src/lib/document/ocr-client.ts` | Modify | OCR spans + payload sizing |
+| `apps/web/src/lib/db/onboarding-session.ts` | Modify | Onboarding progress events |
+| `apps/fhe/src/telemetry.rs` | Create | OTLP exporter + resource tags |
+| `apps/fhe/src/main.rs` | Modify | Trace propagation + shutdown |
+| `apps/ocr/src/ocr_service/telemetry.py` | Create | OTEL provider + FastAPI instrumentation |
+| `apps/ocr/src/ocr_service/main.py` | Modify | Hook telemetry |
+| `apps/ocr/src/ocr_service/api/process.py` | Modify | Manual OCR span |
+| `apps/ocr/pyproject.toml` | Modify | OTel dependencies |
+| `apps/fhe/Cargo.toml` | Modify | OTel crates |
+| `docker-compose.yml` | Modify | OTEL envs |
+| `apps/web/.env.example` | Modify | OTEL envs |
 
 ## Security/Privacy Considerations
 
 1. **No PII in Spans**: User IDs are hashed, no emails/names/documents
-2. **Self-Hosted Only**: Jaeger runs on your infrastructure
+2. **Self-Hosted Only**: OTLP collector/backends stay on your infrastructure
 3. **Sampling**: Can reduce trace volume to minimize stored data
-4. **Trace Retention**: Configure Jaeger to auto-delete old traces
-5. **Internal Network**: Jaeger UI should not be publicly exposed
+4. **Trace Retention**: Configure backend to auto-delete old traces
+5. **Internal Network**: Collector/UI endpoints should not be publicly exposed
 
 ## Technical Notes
 
@@ -509,8 +450,8 @@ Add OpenTelemetry to FHE (Rust) and OCR (Python) services for end-to-end tracing
 ## Future Enhancements
 
 1. **Metrics**: Add Prometheus metrics alongside traces
-2. **Rust Instrumentation**: Add tracing to FHE service
-3. **Python Instrumentation**: Add tracing to OCR service
+2. **DB Instrumentation**: Add Drizzle/SQLite spans and query metrics
+3. **Client RUM**: Optional browser spans for step timing and UX latency
 4. **Dashboards**: Grafana dashboards for service health
 5. **Alerting**: Alert on high error rates or latency
 
@@ -519,14 +460,33 @@ Add OpenTelemetry to FHE (Rust) and OCR (Python) services for end-to-end tracing
 ```json
 {
   "dependencies": {
-    "@opentelemetry/sdk-node": "^0.57.x",
-    "@opentelemetry/api": "^1.9.x",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.57.x",
-    "@opentelemetry/instrumentation-http": "^0.57.x",
-    "@opentelemetry/resources": "^1.29.x",
-    "@opentelemetry/semantic-conventions": "^1.29.x"
+    "@opentelemetry/sdk-node": "^0.208.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.67.3",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.208.0",
+    "@opentelemetry/resources": "^2.2.0",
+    "@opentelemetry/semantic-conventions": "^1.38.0"
   }
 }
+```
+
+```toml
+# apps/ocr/pyproject.toml
+opentelemetry-api = "1.39.1"
+opentelemetry-sdk = "1.39.1"
+opentelemetry-exporter-otlp = "1.39.1"
+opentelemetry-instrumentation-fastapi = "0.60b1"
+opentelemetry-instrumentation-requests = "0.60b1"
+opentelemetry-instrumentation-httpx = "0.60b1"
+```
+
+```toml
+# apps/fhe/Cargo.toml
+opentelemetry = "0.31.0"
+opentelemetry-otlp = "0.31.0"
+opentelemetry_sdk = "0.31.0"
+tracing-opentelemetry = "0.32.0"
+opentelemetry-semantic-conventions = "0.31.0"
 ```
 
 ## References
@@ -534,5 +494,5 @@ Add OpenTelemetry to FHE (Rust) and OCR (Python) services for end-to-end tracing
 - [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
 - [OpenTelemetry JavaScript](https://opentelemetry.io/docs/languages/js/)
 - [Next.js Instrumentation](https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation)
-- [Jaeger Documentation](https://www.jaegertracing.io/docs/)
+- [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/)
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/)

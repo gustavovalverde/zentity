@@ -86,6 +86,7 @@ import {
   getRealScore,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
+import { hashIdentifier, withSpan } from "@/lib/observability";
 import { buildDisplayName } from "@/lib/utils";
 import { getNationalityCode } from "@/lib/zk/nationality-data";
 
@@ -276,486 +277,529 @@ function scheduleIdentityJob(jobId: string): void {
 }
 
 async function processIdentityVerificationJob(jobId: string): Promise<void> {
-  const claimTime = new Date().toISOString();
-  db.update(identityVerificationJobs)
-    .set({
-      status: "running",
-      startedAt: claimTime,
-      attempts: sql`${identityVerificationJobs.attempts} + 1`,
-      updatedAt: sql`datetime('now')`,
-    })
-    .where(
-      and(
-        eq(identityVerificationJobs.id, jobId),
-        eq(identityVerificationJobs.status, "queued"),
-      ),
-    )
-    .run();
+  return withSpan(
+    "identity.finalize_job",
+    {
+      "identity.job_id_hash": hashIdentifier(jobId),
+    },
+    async (span) => {
+      const claimTime = new Date().toISOString();
+      db.update(identityVerificationJobs)
+        .set({
+          status: "running",
+          startedAt: claimTime,
+          attempts: sql`${identityVerificationJobs.attempts} + 1`,
+          updatedAt: sql`datetime('now')`,
+        })
+        .where(
+          and(
+            eq(identityVerificationJobs.id, jobId),
+            eq(identityVerificationJobs.status, "queued"),
+          ),
+        )
+        .run();
 
-  const job = getIdentityVerificationJobById(jobId);
-  if (!job || job.status !== "running" || job.startedAt !== claimTime) {
-    return;
-  }
-
-  const startTime = Date.now();
-  const issues: string[] = [];
-
-  try {
-    const draft = getIdentityDraftById(job.draftId);
-    if (!draft) {
-      updateIdentityVerificationJobStatus({
-        jobId,
-        status: "error",
-        error: "Identity draft not found",
-        finishedAt: new Date().toISOString(),
-      });
-      return;
-    }
-
-    if (!draft.userId) {
-      updateIdentityDraft(draft.id, { userId: job.userId });
-    }
-
-    const documentProcessed = Boolean(draft.documentProcessed);
-    const isDocumentValid = Boolean(draft.isDocumentValid);
-    const isDuplicateDocument = Boolean(draft.isDuplicateDocument);
-    const livenessPassed = Boolean(draft.livenessPassed);
-    const faceMatchPassed = Boolean(draft.faceMatchPassed);
-
-    if (!documentProcessed) issues.push("document_processing_failed");
-    if (documentProcessed && !isDocumentValid) issues.push("document_invalid");
-    if (isDuplicateDocument) issues.push("duplicate_document");
-    if (!livenessPassed) issues.push("liveness_failed");
-    if (!faceMatchPassed) issues.push("face_match_failed");
-
-    const documentHash = draft.documentHash ?? null;
-    let documentHashField = draft.documentHashField ?? null;
-    if (!documentHashField && documentHash) {
-      try {
-        documentHashField = await getDocumentHashField(documentHash);
-        updateIdentityDraft(draft.id, { documentHashField });
-      } catch {
-        issues.push("document_hash_field_failed");
-      }
-    }
-
-    const issuedAt = new Date().toISOString();
-    const claimHashes: {
-      age?: string | null;
-      docValidity?: string | null;
-      nationality?: string | null;
-    } = {
-      age: null,
-      docValidity: null,
-      nationality: null,
-    };
-
-    if (documentProcessed && documentHash && documentHashField) {
-      try {
-        const birthYear = draft.birthYear ?? null;
-        const expiryDate = draft.expiryDateInt ?? null;
-        const nationalityCode = draft.nationalityCode ?? null;
-        const nationalityCodeNumeric = draft.nationalityCodeNumeric ?? null;
-
-        if (birthYear !== null) {
-          claimHashes.age = await computeClaimHash({
-            value: birthYear,
-            documentHashField,
-          });
-        }
-        if (expiryDate !== null) {
-          claimHashes.docValidity = await computeClaimHash({
-            value: expiryDate,
-            documentHashField,
-          });
-        }
-        if (nationalityCodeNumeric) {
-          claimHashes.nationality = await computeClaimHash({
-            value: nationalityCodeNumeric,
-            documentHashField,
-          });
-        }
-
-        const ocrClaimPayload = {
-          type: "ocr_result" as const,
-          userId: job.userId,
-          issuedAt,
-          version: 1,
-          policyVersion: POLICY_VERSION,
-          documentHash,
-          documentHashField,
-          data: {
-            documentType: draft.documentType ?? null,
-            issuerCountry: draft.issuerCountry ?? null,
-            nationalityCode,
-            nationalityCodeNumeric,
-            expiryDate,
-            birthYear,
-            confidence: draft.confidenceScore ?? null,
-            claimHashes,
-          },
-        };
-
-        const ocrSignature = await signAttestationClaim(ocrClaimPayload);
-        insertSignedClaim({
-          id: uuidv4(),
-          userId: job.userId,
-          documentId: draft.documentId,
-          claimType: ocrClaimPayload.type,
-          claimPayload: JSON.stringify(ocrClaimPayload),
-          signature: ocrSignature,
-          issuedAt,
-        });
-      } catch {
-        issues.push("signed_ocr_claim_failed");
-      }
-    }
-
-    if (
-      typeof draft.antispoofScore === "number" &&
-      typeof draft.liveScore === "number"
-    ) {
-      try {
-        const antispoofScoreFixed = Math.round(draft.antispoofScore * 10000);
-        const liveScoreFixed = Math.round(draft.liveScore * 10000);
-
-        const livenessClaimPayload = {
-          type: "liveness_score" as const,
-          userId: job.userId,
-          issuedAt,
-          version: 1,
-          policyVersion: POLICY_VERSION,
-          documentHash,
-          documentHashField,
-          data: {
-            antispoofScore: draft.antispoofScore,
-            liveScore: draft.liveScore,
-            passed: livenessPassed,
-            antispoofScoreFixed,
-            liveScoreFixed,
-          },
-        };
-
-        const livenessSignature =
-          await signAttestationClaim(livenessClaimPayload);
-        insertSignedClaim({
-          id: uuidv4(),
-          userId: job.userId,
-          documentId: draft.documentId,
-          claimType: livenessClaimPayload.type,
-          claimPayload: JSON.stringify(livenessClaimPayload),
-          signature: livenessSignature,
-          issuedAt,
-        });
-      } catch {
-        issues.push("signed_liveness_claim_failed");
-      }
-    }
-
-    if (typeof draft.faceMatchConfidence === "number" && documentHashField) {
-      try {
-        const confidenceFixed = Math.round(draft.faceMatchConfidence * 10000);
-        const thresholdFixed = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
-        const claimHash = await computeClaimHash({
-          value: confidenceFixed,
-          documentHashField,
-        });
-
-        const faceMatchClaimPayload = {
-          type: "face_match_score" as const,
-          userId: job.userId,
-          issuedAt,
-          version: 1,
-          policyVersion: POLICY_VERSION,
-          documentHash,
-          documentHashField,
-          data: {
-            confidence: draft.faceMatchConfidence,
-            confidenceFixed,
-            thresholdFixed,
-            passed: faceMatchPassed,
-            claimHash,
-          },
-        };
-
-        const faceMatchSignature = await signAttestationClaim(
-          faceMatchClaimPayload,
-        );
-        insertSignedClaim({
-          id: uuidv4(),
-          userId: job.userId,
-          documentId: draft.documentId,
-          claimType: faceMatchClaimPayload.type,
-          claimPayload: JSON.stringify(faceMatchClaimPayload),
-          signature: faceMatchSignature,
-          issuedAt,
-        });
-      } catch {
-        issues.push("signed_face_match_claim_failed");
-      }
-    }
-
-    let birthYearOffsetFheResult: { ciphertext: string } | null = null;
-    let countryCodeFheResult: {
-      ciphertext: string;
-      countryCode: number;
-    } | null = null;
-    let livenessScoreFheResult: {
-      ciphertext: string;
-      score: number;
-    } | null = null;
-    const fheErrors: Array<{
-      operation: string;
-      issue: string;
-      kind: string;
-      status?: number;
-      message?: string;
-      bodyText?: string;
-    }> = [];
-    let fheKeyMissingReported = false;
-
-    const recordFheFailure = (
-      issue: string,
-      operation: string,
-      error: unknown,
-    ) => {
-      issues.push(issue);
-      if (error instanceof FheServiceError) {
-        fheErrors.push({
-          operation: error.operation,
-          issue,
-          kind: error.kind,
-          status: error.status,
-          message: error.message,
-          bodyText: error.bodyText,
-        });
+      const job = getIdentityVerificationJobById(jobId);
+      if (!job || job.status !== "running" || job.startedAt !== claimTime) {
+        span.setAttribute("identity.job_skipped", true);
         return;
       }
 
-      fheErrors.push({
-        operation,
-        issue,
-        kind: "unknown",
-        message:
-          error instanceof Error
-            ? error.message
-            : error
-              ? String(error)
-              : "Missing FHE key material",
-      });
-    };
+      span.setAttribute("identity.job_id", job.id);
+      span.setAttribute("identity.user_id_hash", hashIdentifier(job.userId));
+      span.setAttribute("identity.draft_id_hash", hashIdentifier(job.draftId));
+      span.setAttribute(
+        "identity.fhe_key_present",
+        Boolean(job.fheKeyId && job.fhePublicKey),
+      );
 
-    const reportMissingFheKey = () => {
-      if (fheKeyMissingReported) return;
-      fheKeyMissingReported = true;
-      recordFheFailure("fhe_key_missing", "key_registration", null);
-    };
+      const startTime = Date.now();
+      const issues: string[] = [];
 
-    const hasFheKeyMaterial = Boolean(job.fheKeyId && job.fhePublicKey);
-    const birthYearOffset = draft.birthYearOffset;
-    if (birthYearOffset !== null && birthYearOffset !== undefined) {
-      if (!hasFheKeyMaterial || !job.fhePublicKey) {
-        reportMissingFheKey();
-      } else {
-        try {
-          birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
-            birthYearOffset,
-            publicKey: job.fhePublicKey,
-            requestId: job.id,
-          });
-        } catch (error) {
-          const issue =
-            error instanceof FheServiceError && error.kind === "http"
-              ? "fhe_encryption_failed"
-              : "fhe_service_unavailable";
-          recordFheFailure(issue, "encrypt_birth_year_offset", error);
-        }
-      }
-    }
-
-    const countryCodeNumeric = draft.countryCodeNumeric ?? 0;
-    if (countryCodeNumeric > 0) {
-      if (!hasFheKeyMaterial || !job.fhePublicKey) {
-        reportMissingFheKey();
-      } else {
-        try {
-          countryCodeFheResult = {
-            ...(await encryptCountryCodeFhe({
-              countryCode: countryCodeNumeric,
-              publicKey: job.fhePublicKey,
-              requestId: job.id,
-            })),
-            countryCode: countryCodeNumeric,
-          };
-        } catch (error) {
-          const issue =
-            error instanceof FheServiceError && error.kind === "http"
-              ? "fhe_encryption_failed"
-              : "fhe_service_unavailable";
-          recordFheFailure(issue, "encrypt_country_code", error);
-        }
-      }
-    }
-
-    const livenessScore = draft.antispoofScore;
-    if (typeof livenessScore === "number") {
-      if (!hasFheKeyMaterial || !job.fhePublicKey) {
-        reportMissingFheKey();
-      } else {
-        try {
-          livenessScoreFheResult = await encryptLivenessScoreFhe({
-            score: livenessScore,
-            publicKey: job.fhePublicKey,
-            requestId: job.id,
-          });
-        } catch (error) {
-          const issue =
-            error instanceof FheServiceError && error.kind === "http"
-              ? "liveness_score_fhe_encryption_failed"
-              : "liveness_score_fhe_service_unavailable";
-          recordFheFailure(issue, "encrypt_liveness", error);
-        }
-      }
-    }
-
-    const birthYearOffsetEncrypted = Boolean(
-      birthYearOffsetFheResult?.ciphertext,
-    );
-    const countryCodeEncrypted = Boolean(countryCodeFheResult?.ciphertext);
-    const livenessScoreEncrypted = Boolean(livenessScoreFheResult?.ciphertext);
-    const fheSucceeded =
-      birthYearOffsetEncrypted ||
-      countryCodeEncrypted ||
-      livenessScoreEncrypted;
-    const fheStatus: "pending" | "complete" | "error" = fheSucceeded
-      ? "complete"
-      : fheErrors.length > 0
-        ? "error"
-        : "pending";
-
-    const verified =
-      documentProcessed &&
-      isDocumentValid &&
-      livenessPassed &&
-      faceMatchPassed &&
-      !isDuplicateDocument;
-
-    const bundleStatus = verified
-      ? "pending"
-      : documentProcessed
-        ? "failed"
-        : "pending";
-    const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
-      userId: job.userId,
-      status: bundleStatus,
-      issuerId: ISSUER_ID,
-      policyVersion: POLICY_VERSION,
-      fheStatus,
-      fheError: fheStatus === "error" ? (fheErrors[0]?.issue ?? null) : null,
-    };
-    if (job.fheKeyId && job.fhePublicKey) {
-      bundleUpdate.fheKeyId = job.fheKeyId;
-      bundleUpdate.fhePublicKey = job.fhePublicKey;
-    }
-
-    upsertIdentityBundle(bundleUpdate);
-
-    if (documentProcessed && draft.documentId) {
       try {
-        createIdentityDocument({
-          id: draft.documentId,
+        const draft = getIdentityDraftById(job.draftId);
+        if (!draft) {
+          updateIdentityVerificationJobStatus({
+            jobId,
+            status: "error",
+            error: "Identity draft not found",
+            finishedAt: new Date().toISOString(),
+          });
+          span.setAttribute("identity.draft_missing", true);
+          return;
+        }
+
+        if (!draft.userId) {
+          updateIdentityDraft(draft.id, { userId: job.userId });
+        }
+
+        const documentProcessed = Boolean(draft.documentProcessed);
+        const isDocumentValid = Boolean(draft.isDocumentValid);
+        const isDuplicateDocument = Boolean(draft.isDuplicateDocument);
+        const livenessPassed = Boolean(draft.livenessPassed);
+        const faceMatchPassed = Boolean(draft.faceMatchPassed);
+
+        span.setAttribute("identity.document_processed", documentProcessed);
+        span.setAttribute("identity.document_valid", isDocumentValid);
+        span.setAttribute("identity.document_duplicate", isDuplicateDocument);
+        span.setAttribute("identity.liveness_passed", livenessPassed);
+        span.setAttribute("identity.face_match_passed", faceMatchPassed);
+
+        if (!documentProcessed) issues.push("document_processing_failed");
+        if (documentProcessed && !isDocumentValid)
+          issues.push("document_invalid");
+        if (isDuplicateDocument) issues.push("duplicate_document");
+        if (!livenessPassed) issues.push("liveness_failed");
+        if (!faceMatchPassed) issues.push("face_match_failed");
+
+        const documentHash = draft.documentHash ?? null;
+        let documentHashField = draft.documentHashField ?? null;
+        if (!documentHashField && documentHash) {
+          try {
+            documentHashField = await getDocumentHashField(documentHash);
+            updateIdentityDraft(draft.id, { documentHashField });
+          } catch {
+            issues.push("document_hash_field_failed");
+          }
+        }
+
+        const issuedAt = new Date().toISOString();
+        const claimHashes: {
+          age?: string | null;
+          docValidity?: string | null;
+          nationality?: string | null;
+        } = {
+          age: null,
+          docValidity: null,
+          nationality: null,
+        };
+
+        if (documentProcessed && documentHash && documentHashField) {
+          try {
+            const birthYear = draft.birthYear ?? null;
+            const expiryDate = draft.expiryDateInt ?? null;
+            const nationalityCode = draft.nationalityCode ?? null;
+            const nationalityCodeNumeric = draft.nationalityCodeNumeric ?? null;
+
+            if (birthYear !== null) {
+              claimHashes.age = await computeClaimHash({
+                value: birthYear,
+                documentHashField,
+              });
+            }
+            if (expiryDate !== null) {
+              claimHashes.docValidity = await computeClaimHash({
+                value: expiryDate,
+                documentHashField,
+              });
+            }
+            if (nationalityCodeNumeric) {
+              claimHashes.nationality = await computeClaimHash({
+                value: nationalityCodeNumeric,
+                documentHashField,
+              });
+            }
+
+            const ocrClaimPayload = {
+              type: "ocr_result" as const,
+              userId: job.userId,
+              issuedAt,
+              version: 1,
+              policyVersion: POLICY_VERSION,
+              documentHash,
+              documentHashField,
+              data: {
+                documentType: draft.documentType ?? null,
+                issuerCountry: draft.issuerCountry ?? null,
+                nationalityCode,
+                nationalityCodeNumeric,
+                expiryDate,
+                birthYear,
+                confidence: draft.confidenceScore ?? null,
+                claimHashes,
+              },
+            };
+
+            const ocrSignature = await signAttestationClaim(ocrClaimPayload);
+            insertSignedClaim({
+              id: uuidv4(),
+              userId: job.userId,
+              documentId: draft.documentId,
+              claimType: ocrClaimPayload.type,
+              claimPayload: JSON.stringify(ocrClaimPayload),
+              signature: ocrSignature,
+              issuedAt,
+            });
+          } catch {
+            issues.push("signed_ocr_claim_failed");
+          }
+        }
+
+        if (
+          typeof draft.antispoofScore === "number" &&
+          typeof draft.liveScore === "number"
+        ) {
+          try {
+            const antispoofScoreFixed = Math.round(
+              draft.antispoofScore * 10000,
+            );
+            const liveScoreFixed = Math.round(draft.liveScore * 10000);
+
+            const livenessClaimPayload = {
+              type: "liveness_score" as const,
+              userId: job.userId,
+              issuedAt,
+              version: 1,
+              policyVersion: POLICY_VERSION,
+              documentHash,
+              documentHashField,
+              data: {
+                antispoofScore: draft.antispoofScore,
+                liveScore: draft.liveScore,
+                passed: livenessPassed,
+                antispoofScoreFixed,
+                liveScoreFixed,
+              },
+            };
+
+            const livenessSignature =
+              await signAttestationClaim(livenessClaimPayload);
+            insertSignedClaim({
+              id: uuidv4(),
+              userId: job.userId,
+              documentId: draft.documentId,
+              claimType: livenessClaimPayload.type,
+              claimPayload: JSON.stringify(livenessClaimPayload),
+              signature: livenessSignature,
+              issuedAt,
+            });
+          } catch {
+            issues.push("signed_liveness_claim_failed");
+          }
+        }
+
+        if (
+          typeof draft.faceMatchConfidence === "number" &&
+          documentHashField
+        ) {
+          try {
+            const confidenceFixed = Math.round(
+              draft.faceMatchConfidence * 10000,
+            );
+            const thresholdFixed = Math.round(
+              FACE_MATCH_MIN_CONFIDENCE * 10000,
+            );
+            const claimHash = await computeClaimHash({
+              value: confidenceFixed,
+              documentHashField,
+            });
+
+            const faceMatchClaimPayload = {
+              type: "face_match_score" as const,
+              userId: job.userId,
+              issuedAt,
+              version: 1,
+              policyVersion: POLICY_VERSION,
+              documentHash,
+              documentHashField,
+              data: {
+                confidence: draft.faceMatchConfidence,
+                confidenceFixed,
+                thresholdFixed,
+                passed: faceMatchPassed,
+                claimHash,
+              },
+            };
+
+            const faceMatchSignature = await signAttestationClaim(
+              faceMatchClaimPayload,
+            );
+            insertSignedClaim({
+              id: uuidv4(),
+              userId: job.userId,
+              documentId: draft.documentId,
+              claimType: faceMatchClaimPayload.type,
+              claimPayload: JSON.stringify(faceMatchClaimPayload),
+              signature: faceMatchSignature,
+              issuedAt,
+            });
+          } catch {
+            issues.push("signed_face_match_claim_failed");
+          }
+        }
+
+        let birthYearOffsetFheResult: { ciphertext: string } | null = null;
+        let countryCodeFheResult: {
+          ciphertext: string;
+          countryCode: number;
+        } | null = null;
+        let livenessScoreFheResult: {
+          ciphertext: string;
+          score: number;
+        } | null = null;
+        const fheErrors: Array<{
+          operation: string;
+          issue: string;
+          kind: string;
+          status?: number;
+          message?: string;
+          bodyText?: string;
+        }> = [];
+        let fheKeyMissingReported = false;
+
+        const recordFheFailure = (
+          issue: string,
+          operation: string,
+          error: unknown,
+        ) => {
+          issues.push(issue);
+          if (error instanceof FheServiceError) {
+            fheErrors.push({
+              operation: error.operation,
+              issue,
+              kind: error.kind,
+              status: error.status,
+              message: error.message,
+              bodyText: error.bodyText,
+            });
+            return;
+          }
+
+          fheErrors.push({
+            operation,
+            issue,
+            kind: "unknown",
+            message:
+              error instanceof Error
+                ? error.message
+                : error
+                  ? String(error)
+                  : "Missing FHE key material",
+          });
+        };
+
+        const reportMissingFheKey = () => {
+          if (fheKeyMissingReported) return;
+          fheKeyMissingReported = true;
+          recordFheFailure("fhe_key_missing", "key_registration", null);
+        };
+
+        const hasFheKeyMaterial = Boolean(job.fheKeyId && job.fhePublicKey);
+        const birthYearOffset = draft.birthYearOffset;
+        if (birthYearOffset !== null && birthYearOffset !== undefined) {
+          if (!hasFheKeyMaterial || !job.fhePublicKey) {
+            reportMissingFheKey();
+          } else {
+            try {
+              birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
+                birthYearOffset,
+                publicKey: job.fhePublicKey,
+                requestId: job.id,
+              });
+            } catch (error) {
+              const issue =
+                error instanceof FheServiceError && error.kind === "http"
+                  ? "fhe_encryption_failed"
+                  : "fhe_service_unavailable";
+              recordFheFailure(issue, "encrypt_birth_year_offset", error);
+            }
+          }
+        }
+
+        const countryCodeNumeric = draft.countryCodeNumeric ?? 0;
+        if (countryCodeNumeric > 0) {
+          if (!hasFheKeyMaterial || !job.fhePublicKey) {
+            reportMissingFheKey();
+          } else {
+            try {
+              countryCodeFheResult = {
+                ...(await encryptCountryCodeFhe({
+                  countryCode: countryCodeNumeric,
+                  publicKey: job.fhePublicKey,
+                  requestId: job.id,
+                })),
+                countryCode: countryCodeNumeric,
+              };
+            } catch (error) {
+              const issue =
+                error instanceof FheServiceError && error.kind === "http"
+                  ? "fhe_encryption_failed"
+                  : "fhe_service_unavailable";
+              recordFheFailure(issue, "encrypt_country_code", error);
+            }
+          }
+        }
+
+        const livenessScore = draft.antispoofScore;
+        if (typeof livenessScore === "number") {
+          if (!hasFheKeyMaterial || !job.fhePublicKey) {
+            reportMissingFheKey();
+          } else {
+            try {
+              livenessScoreFheResult = await encryptLivenessScoreFhe({
+                score: livenessScore,
+                publicKey: job.fhePublicKey,
+                requestId: job.id,
+              });
+            } catch (error) {
+              const issue =
+                error instanceof FheServiceError && error.kind === "http"
+                  ? "liveness_score_fhe_encryption_failed"
+                  : "liveness_score_fhe_service_unavailable";
+              recordFheFailure(issue, "encrypt_liveness", error);
+            }
+          }
+        }
+
+        const birthYearOffsetEncrypted = Boolean(
+          birthYearOffsetFheResult?.ciphertext,
+        );
+        const countryCodeEncrypted = Boolean(countryCodeFheResult?.ciphertext);
+        const livenessScoreEncrypted = Boolean(
+          livenessScoreFheResult?.ciphertext,
+        );
+        const fheSucceeded =
+          birthYearOffsetEncrypted ||
+          countryCodeEncrypted ||
+          livenessScoreEncrypted;
+        const fheStatus: "pending" | "complete" | "error" = fheSucceeded
+          ? "complete"
+          : fheErrors.length > 0
+            ? "error"
+            : "pending";
+
+        const verified =
+          documentProcessed &&
+          isDocumentValid &&
+          livenessPassed &&
+          faceMatchPassed &&
+          !isDuplicateDocument;
+
+        const bundleStatus = verified
+          ? "pending"
+          : documentProcessed
+            ? "failed"
+            : "pending";
+        const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
           userId: job.userId,
-          documentType: draft.documentType ?? null,
-          issuerCountry: draft.issuerCountry ?? null,
-          documentHash: isDuplicateDocument
-            ? null
-            : (draft.documentHash ?? null),
-          nameCommitment: draft.nameCommitment ?? null,
-          userSalt: draft.userSalt ?? null,
-          birthYearOffset: draft.birthYearOffset ?? null,
-          firstNameEncrypted: draft.firstNameEncrypted ?? null,
-          verifiedAt: verified ? new Date().toISOString() : null,
-          confidenceScore: draft.confidenceScore ?? null,
-          status: verified ? "verified" : "failed",
+          status: bundleStatus,
+          issuerId: ISSUER_ID,
+          policyVersion: POLICY_VERSION,
+          fheStatus,
+          fheError:
+            fheStatus === "error" ? (fheErrors[0]?.issue ?? null) : null,
+        };
+        if (job.fheKeyId && job.fhePublicKey) {
+          bundleUpdate.fheKeyId = job.fheKeyId;
+          bundleUpdate.fhePublicKey = job.fhePublicKey;
+        }
+
+        upsertIdentityBundle(bundleUpdate);
+
+        if (documentProcessed && draft.documentId) {
+          try {
+            createIdentityDocument({
+              id: draft.documentId,
+              userId: job.userId,
+              documentType: draft.documentType ?? null,
+              issuerCountry: draft.issuerCountry ?? null,
+              documentHash: isDuplicateDocument
+                ? null
+                : (draft.documentHash ?? null),
+              nameCommitment: draft.nameCommitment ?? null,
+              userSalt: draft.userSalt ?? null,
+              birthYearOffset: draft.birthYearOffset ?? null,
+              firstNameEncrypted: draft.firstNameEncrypted ?? null,
+              verifiedAt: verified ? new Date().toISOString() : null,
+              confidenceScore: draft.confidenceScore ?? null,
+              status: verified ? "verified" : "failed",
+            });
+          } catch {
+            issues.push("failed_to_create_identity_document");
+          }
+        }
+
+        if (birthYearOffsetFheResult?.ciphertext) {
+          insertEncryptedAttribute({
+            id: uuidv4(),
+            userId: job.userId,
+            source: "web2_tfhe",
+            attributeType: "birth_year_offset",
+            ciphertext: birthYearOffsetFheResult.ciphertext,
+            keyId: job.fheKeyId ?? null,
+          });
+        }
+
+        if (countryCodeFheResult?.ciphertext) {
+          insertEncryptedAttribute({
+            id: uuidv4(),
+            userId: job.userId,
+            source: "web2_tfhe",
+            attributeType: "country_code",
+            ciphertext: countryCodeFheResult.ciphertext,
+            keyId: job.fheKeyId ?? null,
+          });
+        }
+
+        if (livenessScoreFheResult?.ciphertext) {
+          insertEncryptedAttribute({
+            id: uuidv4(),
+            userId: job.userId,
+            source: "web2_tfhe",
+            attributeType: "liveness_score",
+            ciphertext: livenessScoreFheResult.ciphertext,
+            keyId: job.fheKeyId ?? null,
+          });
+        }
+
+        const resultPayload = {
+          success: true,
+          verified,
+          documentId: draft.documentId,
+          results: {
+            documentProcessed,
+            documentType: draft.documentType ?? undefined,
+            documentOrigin: draft.issuerCountry ?? undefined,
+            isDocumentValid,
+            livenessPassed,
+            faceMatched: faceMatchPassed,
+            isDuplicateDocument,
+            ageProofGenerated: false,
+            birthYearOffsetEncrypted,
+            docValidityProofGenerated: false,
+            nationalityCommitmentGenerated:
+              (draft.nationalityCode ?? null) !== null,
+            countryCodeEncrypted,
+            livenessScoreEncrypted,
+          },
+          fheStatus,
+          fheErrors: fheErrors.length > 0 ? fheErrors : undefined,
+          processingTimeMs: Date.now() - startTime,
+          issues,
+        };
+
+        updateIdentityVerificationJobStatus({
+          jobId,
+          status: "complete",
+          result: JSON.stringify(resultPayload),
+          finishedAt: new Date().toISOString(),
         });
-      } catch {
-        issues.push("failed_to_create_identity_document");
+
+        span.setAttribute("identity.verified", verified);
+        span.setAttribute("identity.fhe_status", fheStatus);
+        span.setAttribute("identity.issue_count", issues.length);
+        span.setAttribute("identity.processing_ms", Date.now() - startTime);
+      } catch (error) {
+        updateIdentityVerificationJobStatus({
+          jobId,
+          status: "error",
+          error: error instanceof Error ? error.message : "Job failed",
+          finishedAt: new Date().toISOString(),
+        });
+        span.setAttribute("identity.job_error", true);
       }
-    }
-
-    if (birthYearOffsetFheResult?.ciphertext) {
-      insertEncryptedAttribute({
-        id: uuidv4(),
-        userId: job.userId,
-        source: "web2_tfhe",
-        attributeType: "birth_year_offset",
-        ciphertext: birthYearOffsetFheResult.ciphertext,
-        keyId: job.fheKeyId ?? null,
-      });
-    }
-
-    if (countryCodeFheResult?.ciphertext) {
-      insertEncryptedAttribute({
-        id: uuidv4(),
-        userId: job.userId,
-        source: "web2_tfhe",
-        attributeType: "country_code",
-        ciphertext: countryCodeFheResult.ciphertext,
-        keyId: job.fheKeyId ?? null,
-      });
-    }
-
-    if (livenessScoreFheResult?.ciphertext) {
-      insertEncryptedAttribute({
-        id: uuidv4(),
-        userId: job.userId,
-        source: "web2_tfhe",
-        attributeType: "liveness_score",
-        ciphertext: livenessScoreFheResult.ciphertext,
-        keyId: job.fheKeyId ?? null,
-      });
-    }
-
-    const resultPayload = {
-      success: true,
-      verified,
-      documentId: draft.documentId,
-      results: {
-        documentProcessed,
-        documentType: draft.documentType ?? undefined,
-        documentOrigin: draft.issuerCountry ?? undefined,
-        isDocumentValid,
-        livenessPassed,
-        faceMatched: faceMatchPassed,
-        isDuplicateDocument,
-        ageProofGenerated: false,
-        birthYearOffsetEncrypted,
-        docValidityProofGenerated: false,
-        nationalityCommitmentGenerated:
-          (draft.nationalityCode ?? null) !== null,
-        countryCodeEncrypted,
-        livenessScoreEncrypted,
-      },
-      fheStatus,
-      fheErrors: fheErrors.length > 0 ? fheErrors : undefined,
-      processingTimeMs: Date.now() - startTime,
-      issues,
-    };
-
-    updateIdentityVerificationJobStatus({
-      jobId,
-      status: "complete",
-      result: JSON.stringify(resultPayload),
-      finishedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    updateIdentityVerificationJobStatus({
-      jobId,
-      status: "error",
-      error: error instanceof Error ? error.message : "Job failed",
-      finishedAt: new Date().toISOString(),
-    });
-  }
+    },
+  );
 }
 
 export const identityRouter = router({
@@ -786,6 +830,11 @@ export const identityRouter = router({
           message: "Too many requests. Please wait a moment and try again.",
         });
       }
+
+      ctx.span?.setAttribute(
+        "onboarding.document_image_bytes",
+        Buffer.byteLength(input.image),
+      );
 
       try {
         return await processDocument(input.image, ctx.requestId);
@@ -826,6 +875,11 @@ export const identityRouter = router({
           message: validation.error || "Session required",
         });
       }
+
+      ctx.span?.setAttribute(
+        "onboarding.document_image_bytes",
+        Buffer.byteLength(input.image),
+      );
 
       let documentResult: OcrProcessResult | null = null;
       const issues: string[] = [];
@@ -911,6 +965,17 @@ export const identityRouter = router({
         documentProcessed &&
         (documentResult?.confidence ?? 0) > 0.3 &&
         Boolean(documentResult?.extractedData?.documentNumber);
+
+      ctx.span?.setAttribute(
+        "onboarding.document_processed",
+        documentProcessed,
+      );
+      ctx.span?.setAttribute("onboarding.document_valid", isDocumentValid);
+      ctx.span?.setAttribute(
+        "onboarding.document_duplicate",
+        isDuplicateDocument,
+      );
+      ctx.span?.setAttribute("onboarding.issues_count", issues.length);
 
       upsertIdentityDraft({
         id: draftId,
@@ -999,6 +1064,19 @@ export const identityRouter = router({
           message: stepValidation.error || "Complete previous steps first",
         });
       }
+
+      ctx.span?.setAttribute(
+        "onboarding.document_image_bytes",
+        Buffer.byteLength(input.documentImage),
+      );
+      ctx.span?.setAttribute(
+        "onboarding.selfie_image_bytes",
+        Buffer.byteLength(input.selfieImage),
+      );
+      ctx.span?.setAttribute(
+        "onboarding.draft_id_hash",
+        hashIdentifier(input.draftId),
+      );
 
       if (
         stepValidation.session.identityDraftId &&
@@ -1101,6 +1179,18 @@ export const identityRouter = router({
         step: Math.max(stepValidation.session.step ?? 1, 3),
       });
 
+      ctx.span?.setAttribute("onboarding.liveness_passed", livenessPassed);
+      ctx.span?.setAttribute("onboarding.face_match_passed", faceMatchPassed);
+      ctx.span?.setAttribute(
+        "onboarding.face_match_confidence",
+        faceMatchConfidence,
+      );
+      ctx.span?.setAttribute("onboarding.issues_count", issues.length);
+      ctx.span?.setAttribute(
+        "onboarding.processing_ms",
+        Date.now() - startTime,
+      );
+
       return {
         success: true,
         livenessPassed,
@@ -1134,6 +1224,16 @@ export const identityRouter = router({
           message: stepValidation.error || "Complete previous steps first",
         });
       }
+
+      ctx.span?.setAttribute(
+        "onboarding.draft_id_hash",
+        hashIdentifier(input.draftId),
+      );
+      ctx.span?.setAttribute("fhe.key_id_hash", hashIdentifier(input.fheKeyId));
+      ctx.span?.setAttribute(
+        "fhe.public_key_bytes",
+        Buffer.byteLength(input.fhePublicKey),
+      );
 
       if (
         stepValidation.session.identityDraftId &&
