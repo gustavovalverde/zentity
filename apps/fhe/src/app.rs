@@ -14,6 +14,7 @@ pub fn build_router(settings: &Settings) -> Router {
         .route("/health", get(routes::health))
         .route("/build-info", get(routes::build_info))
         .route("/keys/register", post(routes::register_key))
+        .route("/keys/debug", get(routes::debug_keys))
         .route(
             "/encrypt-birth-year-offset",
             post(routes::encrypt_birth_year_offset),

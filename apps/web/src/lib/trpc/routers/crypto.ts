@@ -63,7 +63,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
-import { hashIdentifier } from "@/lib/observability";
+import { hashIdentifier, injectTraceHeaders } from "@/lib/observability";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import {
   CIRCUIT_SPECS,
@@ -74,6 +74,7 @@ import {
 import {
   getBbJsVersion,
   getCircuitMetadata,
+  prewarmVerificationKeys,
   verifyNoirProof,
 } from "@/lib/zk/noir-verifier";
 
@@ -101,6 +102,7 @@ async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
   try {
     const response = await fetch(`${url}/health`, {
       signal: controller.signal,
+      headers: injectTraceHeaders({}),
     });
     clearTimeout(timeoutId);
 
@@ -479,6 +481,12 @@ export const cryptoRouter = router({
       (fheHealth as { status?: unknown } | null)?.status === "ok" &&
       Boolean(zk.bbVersion);
 
+    if (allHealthy) {
+      void prewarmVerificationKeys().catch(() => {
+        // Best-effort: warm cache without impacting health response.
+      });
+    }
+
     return {
       fhe: fheHealth,
       zk,
@@ -490,11 +498,14 @@ export const cryptoRouter = router({
     .input(
       z.object({
         serverKey: z.string().min(1, "serverKey is required"),
+        publicKey: z.string().min(1, "publicKey is required"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const serverKeyBytes = Buffer.byteLength(input.serverKey);
+      const publicKeyBytes = Buffer.byteLength(input.publicKey);
       ctx.span?.setAttribute("fhe.server_key_bytes", serverKeyBytes);
+      ctx.span?.setAttribute("fhe.public_key_bytes", publicKeyBytes);
 
       const existingSecret = getEncryptedSecretByUserAndType(
         ctx.userId,
@@ -515,6 +526,7 @@ export const cryptoRouter = router({
 
       return await registerFheKey({
         serverKey: input.serverKey,
+        publicKey: input.publicKey,
         requestId: ctx.requestId,
       });
     }),
@@ -552,13 +564,13 @@ export const cryptoRouter = router({
     .input(
       z.object({
         score: z.number().min(0).max(1),
-        publicKey: z.string().min(1, "publicKey is required"),
+        keyId: z.string().min(1, "keyId is required"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const result = await encryptLivenessScoreFhe({
         score: input.score,
-        publicKey: input.publicKey,
+        keyId: input.keyId,
         requestId: ctx.requestId,
       });
 
@@ -827,14 +839,14 @@ export const cryptoRouter = router({
       });
 
       const bundle = getIdentityBundleByUserId(ctx.userId);
-      if (bundle?.fhePublicKey) {
+      if (bundle?.fheKeyId) {
         try {
           const verificationStatus = getVerificationStatus(ctx.userId);
           const complianceLevel = getComplianceLevel(verificationStatus);
           const startTime = Date.now();
           const encrypted = await encryptComplianceLevelFhe({
             complianceLevel,
-            publicKey: bundle.fhePublicKey,
+            keyId: bundle.fheKeyId,
             requestId: ctx.requestId,
           });
           insertEncryptedAttribute({

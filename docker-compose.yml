@@ -28,6 +28,8 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+      - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
@@ -83,6 +85,7 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - FHE_BODY_LIMIT_MB=${FHE_BODY_LIMIT_MB:-64}
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
+      - FHE_DEBUG_KEYS=${FHE_DEBUG_KEYS:-true}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}

@@ -11,5 +11,5 @@ pub use age::{encrypt_birth_year_offset, verify_age_offset};
 pub use compliance::encrypt_compliance_level;
 pub use country::encrypt_country_code;
 pub use health::{build_info, health};
-pub use keys::register_key;
+pub use keys::{debug_keys, register_key};
 pub use liveness::{encrypt_liveness, verify_liveness_threshold};

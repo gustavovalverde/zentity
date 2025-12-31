@@ -1,6 +1,6 @@
 import "server-only";
 
-import { withSpan } from "@/lib/observability";
+import { injectTraceHeaders, withSpan } from "@/lib/observability";
 import { fetchJson } from "@/lib/utils";
 import { getOcrServiceUrl } from "@/lib/utils/service-urls";
 
@@ -66,10 +66,10 @@ export async function processDocumentOcr(args: {
     () =>
       fetchJson<OcrProcessResult>(url, {
         method: "POST",
-        headers: {
+        headers: injectTraceHeaders({
           "Content-Type": "application/json",
           ...getInternalServiceAuthHeaders(args.requestId),
-        },
+        }),
         body: payload,
         timeoutMs: OCR_TIMEOUT_MS,
       }),
@@ -94,10 +94,10 @@ export async function ocrDocumentOcr(args: {
     () =>
       fetchJson<unknown>(url, {
         method: "POST",
-        headers: {
+        headers: injectTraceHeaders({
           "Content-Type": "application/json",
           ...getInternalServiceAuthHeaders(args.requestId),
-        },
+        }),
         body: payload,
         timeoutMs: OCR_TIMEOUT_MS,
       }),
@@ -110,9 +110,9 @@ export async function getOcrHealth(args?: {
   const url = `${getOcrServiceUrl()}/health`;
   return withSpan("ocr.health", { "ocr.operation": "health" }, () =>
     fetchJson<unknown>(url, {
-      headers: {
+      headers: injectTraceHeaders({
         ...getInternalServiceAuthHeaders(args?.requestId),
-      },
+      }),
     }),
   );
 }

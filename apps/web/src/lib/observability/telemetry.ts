@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import {
   context,
+  propagation,
   type Span,
   type SpanAttributes,
   SpanStatusCode,
@@ -143,6 +144,18 @@ export function addSpanEvent(name: string, attributes?: SpanAttributes): void {
     Object.entries(attributes).filter(([, value]) => value !== undefined),
   ) as SpanAttributes;
   span.addEvent(name, filtered);
+}
+
+export function injectTraceHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const carrier: Record<string, string> = { ...headers };
+  propagation.inject(context.active(), carrier, {
+    set: (target, key, value) => {
+      target[key] = String(value);
+    },
+  });
+  return carrier;
 }
 
 export async function withSpan<T>(

@@ -6,6 +6,7 @@ export {
   getTracer,
   hashIdentifier,
   initTelemetry,
+  injectTraceHeaders,
   telemetryEnabled,
   withSpan,
 } from "./telemetry";
