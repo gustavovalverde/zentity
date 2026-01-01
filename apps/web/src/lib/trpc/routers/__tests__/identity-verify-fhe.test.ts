@@ -5,7 +5,9 @@
 import type { Session } from "@/lib/auth/auth";
 import type { OcrProcessResult } from "@/lib/document";
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 const mockGetSessionFromCookie = vi.fn();
 const mockValidateStepAccess = vi.fn();
@@ -49,15 +51,11 @@ vi.mock("@/lib/crypto/fhe-client", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/crypto/fhe-client")>();
   return {
     ...actual,
-    encryptBirthYearOffsetFhe: vi
-      .fn()
-      .mockResolvedValue({ ciphertext: "birth-cipher" }),
-    encryptCountryCodeFhe: vi
-      .fn()
-      .mockResolvedValue({ ciphertext: "country-cipher" }),
-    encryptLivenessScoreFhe: vi
-      .fn()
-      .mockResolvedValue({ ciphertext: "live-cipher", score: 0.9 }),
+    encryptBatchFhe: vi.fn().mockResolvedValue({
+      birthYearOffsetCiphertext: "birth-cipher",
+      countryCodeCiphertext: "country-cipher",
+      livenessScoreCiphertext: "live-cipher",
+    }),
   };
 });
 
@@ -79,10 +77,16 @@ async function createCaller(session: Session | null) {
   });
 }
 
-const authedSession = {
-  user: { id: "user-fhe-test" },
-  session: { id: "session-fhe" },
-} as Session;
+let authedSession: Session;
+
+beforeEach(() => {
+  resetDatabase();
+  const userId = createTestUser({ id: "user-fhe-test" });
+  authedSession = {
+    user: { id: userId },
+    session: { id: "session-fhe" },
+  } as Session;
+});
 
 const baseOcrResult: OcrProcessResult = {
   commitments: {
@@ -122,7 +126,6 @@ describe("identity.verify (FHE)", () => {
     const response = await caller.verify({
       documentImage: "doc",
       selfieImage: "selfie",
-      fhePublicKey: "public-key",
       fheKeyId: "key-123",
     });
 

@@ -35,7 +35,7 @@ describe("crypto-client FHE", () => {
 
     const result = await ensureFheKeyRegistration();
 
-    expect(result).toEqual({ keyId: "existing-key", publicKey: "public-key" });
+    expect(result).toEqual({ keyId: "existing-key" });
     expect(trpcMocks.registerFheKey.mutate).not.toHaveBeenCalled();
     expect(tfheMocks.persistFheKeyId).not.toHaveBeenCalled();
   });
@@ -51,9 +51,10 @@ describe("crypto-client FHE", () => {
 
     expect(trpcMocks.registerFheKey.mutate).toHaveBeenCalledWith({
       serverKey: "server-key",
+      publicKey: "public-key",
     });
     expect(tfheMocks.persistFheKeyId).toHaveBeenCalledWith("new-key");
-    expect(result).toEqual({ keyId: "new-key", publicKey: "public-key" });
+    expect(result).toEqual({ keyId: "new-key" });
   });
 
   it("decrypts FHE verification result", async () => {

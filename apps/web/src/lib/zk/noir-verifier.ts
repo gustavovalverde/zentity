@@ -50,6 +50,7 @@ interface NoirVerifyResult {
 }
 
 let cachedBbJsVersion: string | null | undefined;
+let prewarmPromise: Promise<void> | null = null;
 
 export function getCircuitMetadata(circuitType: CircuitType): {
   noirVersion: string | null;
@@ -332,6 +333,34 @@ export async function getCircuitVerificationKey(
 
   vkeyCache.set(circuitType, promise);
   return promise;
+}
+
+export function prewarmVerificationKeys(): Promise<void> {
+  if (prewarmPromise) return prewarmPromise;
+
+  prewarmPromise = (async () => {
+    const circuitTypes = Object.keys(CIRCUITS) as CircuitType[];
+    const results = await Promise.allSettled(
+      circuitTypes.map(async (circuitType) => {
+        await getCircuitVerificationKey(circuitType);
+      }),
+    );
+
+    const failures = results.filter((result) => result.status === "rejected");
+    if (failures.length) {
+      const message = failures
+        .map((failure) => (failure.status === "rejected" ? failure.reason : ""))
+        .filter(Boolean)
+        .join(", ");
+      throw new Error(
+        message
+          ? `Failed to prewarm verification keys: ${message}`
+          : "Failed to prewarm verification keys",
+      );
+    }
+  })();
+
+  return prewarmPromise;
 }
 
 export async function getCircuitIdentity(

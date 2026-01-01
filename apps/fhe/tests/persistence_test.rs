@@ -13,26 +13,31 @@ use fhe_service::test_support::keystore;
 use std::fs;
 use std::sync::OnceLock;
 use tempfile::TempDir;
-use tfhe::{generate_keys, CompressedServerKey, ConfigBuilder, ServerKey};
+use tfhe::{generate_keys, CompressedPublicKey, CompressedServerKey, ConfigBuilder, ServerKey};
 
 const KEYSTORE_FILE_NAME: &str = "keystore.bincode";
 
 /// Cached serialized server key bytes - generated once per test session.
-static CACHED_SERVER_KEY_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+static CACHED_KEYPAIR_BYTES: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
 
-/// Get a test server key. The key is generated once and cached as serialized bytes.
+/// Get a test keypair. The keys are generated once and cached as serialized bytes.
 /// Each call deserializes a fresh copy to avoid ownership issues.
-fn get_test_server_key() -> ServerKey {
-    let bytes = CACHED_SERVER_KEY_BYTES.get_or_init(|| {
+fn get_test_keypair() -> (CompressedPublicKey, ServerKey) {
+    let (public_bytes, server_bytes) = CACHED_KEYPAIR_BYTES.get_or_init(|| {
         let config = ConfigBuilder::default().build();
         let (client_key, _) = generate_keys(config);
         let compressed = CompressedServerKey::new(&client_key);
-        bincode::serialize(&compressed).expect("Failed to serialize server key")
+        let public_key = CompressedPublicKey::new(&client_key);
+        let public_bytes = bincode::serialize(&public_key).expect("Failed to serialize public key");
+        let server_bytes = bincode::serialize(&compressed).expect("Failed to serialize server key");
+        (public_bytes, server_bytes)
     });
 
+    let public_key: CompressedPublicKey =
+        bincode::deserialize(public_bytes).expect("Failed to deserialize cached public key");
     let compressed: CompressedServerKey =
-        bincode::deserialize(bytes).expect("Failed to deserialize cached server key");
-    compressed.decompress()
+        bincode::deserialize(server_bytes).expect("Failed to deserialize cached server key");
+    (public_key, compressed.decompress())
 }
 
 // ============================================================================
@@ -49,8 +54,8 @@ fn keystore_file_created_on_registration() {
     let key_store = keystore::create_test_keystore(Some(keys_dir.clone()));
 
     // Register a key
-    let server_key = get_test_server_key();
-    let _key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let _key_id = key_store.register_key(public_key, server_key);
 
     // Verify file exists
     let keystore_path = keystore::get_keystore_path(&keys_dir);
@@ -73,8 +78,8 @@ fn keystore_file_can_be_reloaded() {
 
     // Create keystore and register a key
     let key_store = keystore::create_test_keystore(Some(keys_dir.clone()));
-    let server_key = get_test_server_key();
-    let key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let key_id = key_store.register_key(public_key, server_key);
 
     // Verify key exists in original store
     assert!(
@@ -103,8 +108,8 @@ fn multiple_keys_persisted() {
     // Register multiple keys
     let mut key_ids = Vec::new();
     for _ in 0..3 {
-        let server_key = get_test_server_key();
-        let key_id = key_store.register_server_key(server_key);
+        let (public_key, server_key) = get_test_keypair();
+        let key_id = key_store.register_key(public_key, server_key);
         key_ids.push(key_id);
     }
 
@@ -142,8 +147,8 @@ fn atomic_write_no_orphan_files() {
 
     // Register multiple keys
     for _ in 0..3 {
-        let server_key = get_test_server_key();
-        let _key_id = key_store.register_server_key(server_key);
+        let (public_key, server_key) = get_test_keypair();
+        let _key_id = key_store.register_key(public_key, server_key);
     }
 
     // List all files in directory
@@ -183,8 +188,8 @@ fn corrupted_keystore_recovery() {
     let key_store = keystore::create_test_keystore_with_load(keys_dir);
 
     // Should be able to register and retrieve keys
-    let server_key = get_test_server_key();
-    let key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let key_id = key_store.register_key(public_key, server_key);
 
     let retrieved = key_store.get_server_key(&key_id);
     assert!(
@@ -225,8 +230,8 @@ fn truncated_keystore_recovery() {
     let key_store = keystore::create_test_keystore_with_load(keys_dir);
 
     // Should be able to register keys
-    let server_key = get_test_server_key();
-    let key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let key_id = key_store.register_key(public_key, server_key);
 
     let retrieved = key_store.get_server_key(&key_id);
     assert!(retrieved.is_some());
@@ -243,8 +248,8 @@ fn in_memory_keystore_works() {
     let key_store = keystore::create_test_keystore(None);
 
     // Register and retrieve key
-    let server_key = get_test_server_key();
-    let key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let key_id = key_store.register_key(public_key, server_key);
 
     let retrieved = key_store.get_server_key(&key_id);
     assert!(retrieved.is_some(), "Key should be retrievable from memory");
@@ -266,8 +271,8 @@ fn key_ids_are_unique() {
 
     let mut key_ids = Vec::new();
     for _ in 0..5 {
-        let server_key = get_test_server_key();
-        let key_id = key_store.register_server_key(server_key);
+        let (public_key, server_key) = get_test_keypair();
+        let key_id = key_store.register_key(public_key, server_key);
         key_ids.push(key_id);
     }
 
@@ -302,8 +307,8 @@ fn keystore_file_permissions() {
     let keys_dir = temp_dir.path().to_path_buf();
 
     let key_store = keystore::create_test_keystore(Some(keys_dir.clone()));
-    let server_key = get_test_server_key();
-    let _key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let _key_id = key_store.register_key(public_key, server_key);
 
     // Check file permissions
     let keystore_path = keystore::get_keystore_path(&keys_dir);
@@ -334,8 +339,8 @@ fn keystore_file_exists_utility() {
 
     // Create keystore and register key
     let key_store = keystore::create_test_keystore(Some(keys_dir.clone()));
-    let server_key = get_test_server_key();
-    let _key_id = key_store.register_server_key(server_key);
+    let (public_key, server_key) = get_test_keypair();
+    let _key_id = key_store.register_key(public_key, server_key);
 
     // File should exist now
     assert!(

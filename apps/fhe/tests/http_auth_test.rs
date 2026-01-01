@@ -23,8 +23,8 @@ async fn protected_endpoint_requires_auth() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .header("content-type", "application/msgpack")
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -43,9 +43,9 @@ async fn protected_endpoint_accepts_valid_token() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .header("x-zentity-internal-token", TEST_TOKEN)
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -65,9 +65,9 @@ async fn protected_endpoint_rejects_wrong_token() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .header("x-zentity-internal-token", "wrong-token")
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -86,9 +86,9 @@ async fn protected_endpoint_rejects_empty_token() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .header("x-zentity-internal-token", "")
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -107,8 +107,8 @@ async fn auth_skipped_when_not_configured() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .header("content-type", "application/msgpack")
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -185,9 +185,9 @@ async fn partial_token_match_rejected() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .header("x-zentity-internal-token", partial_token)
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -208,9 +208,9 @@ async fn token_with_extra_chars_rejected() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .header("x-zentity-internal-token", extended_token)
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -229,9 +229,9 @@ async fn missing_auth_header_rejected() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 // No x-zentity-internal-token header
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -250,8 +250,8 @@ async fn auth_error_response_format() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .header("content-type", "application/msgpack")
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
@@ -268,6 +268,7 @@ async fn auth_error_response_format() {
 async fn all_protected_endpoints_require_auth() {
     let protected_endpoints = [
         ("/keys/register", "POST"),
+        ("/encrypt-batch", "POST"),
         ("/encrypt-birth-year-offset", "POST"),
         ("/verify-age-offset", "POST"),
         ("/encrypt-country-code", "POST"),
@@ -284,7 +285,7 @@ async fn all_protected_endpoints_require_auth() {
                 Request::builder()
                     .method(method)
                     .uri(path)
-                    .header("content-type", "application/json")
+                    .header("content-type", "application/msgpack")
                     .body(Body::from("{}"))
                     .unwrap(),
             )
@@ -311,10 +312,10 @@ async fn wrong_header_name_rejected() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 // Wrong header name (uppercase first letter)
                 .header("X-Zentity-Internal-Token", TEST_TOKEN)
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await

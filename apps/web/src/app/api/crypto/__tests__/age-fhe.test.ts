@@ -4,6 +4,9 @@
 
 import type { Session } from "@/lib/auth/auth";
 
+import { gzipSync } from "node:zlib";
+
+import { encode } from "@msgpack/msgpack";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cryptoRouter } from "@/lib/trpc/routers/crypto";
@@ -30,6 +33,33 @@ function setFetchMock(fetchMock: unknown) {
   return fetchMock as ReturnType<typeof vi.fn>;
 }
 
+function buildMsgpackResponse(
+  payload: unknown,
+  init: { status?: number; statusText?: string } = {},
+  options: { gzip?: boolean; gzipHeaderOnly?: boolean } = {},
+) {
+  const encoded = encode(payload);
+  const raw = Buffer.from(encoded);
+  const useGzip = options.gzip ?? true;
+  const body = options.gzipHeaderOnly ? raw : useGzip ? gzipSync(raw) : raw;
+  const contentEncoding = options.gzipHeaderOnly || useGzip ? "gzip" : null;
+  const arrayBuffer = body.buffer.slice(
+    body.byteOffset,
+    body.byteOffset + body.byteLength,
+  );
+  return {
+    ok: (init.status ?? 200) >= 200 && (init.status ?? 200) < 300,
+    status: init.status ?? 200,
+    statusText: init.statusText ?? "OK",
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "content-encoding" ? contentEncoding : null,
+    },
+    arrayBuffer: () => Promise.resolve(arrayBuffer),
+    text: () => Promise.resolve(""),
+  };
+}
+
 describe("Age FHE (tRPC)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,26 +73,44 @@ describe("Age FHE (tRPC)", () => {
     it("should throw UNAUTHORIZED when not authenticated", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.registerFheKey({ serverKey: "server-key" }),
+        caller.registerFheKey({ serverKey: "server-key", publicKey: "pk" }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("registers server key when authenticated", async () => {
       setFetchMock(
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () => Promise.resolve({ keyId: "key-123" }),
-        }),
+        vi.fn().mockResolvedValue(buildMsgpackResponse({ keyId: "key-123" })),
       );
 
       const caller = createCaller(authedSession);
       const response = await caller.registerFheKey({
         serverKey: "server-key",
+        publicKey: "pk",
       });
 
       expect(response.keyId).toBe("key-123");
+    });
+
+    it("handles auto-decompressed gzip responses", async () => {
+      setFetchMock(
+        vi
+          .fn()
+          .mockResolvedValue(
+            buildMsgpackResponse(
+              { keyId: "key-456" },
+              {},
+              { gzipHeaderOnly: true },
+            ),
+          ),
+      );
+
+      const caller = createCaller(authedSession);
+      const response = await caller.registerFheKey({
+        serverKey: "server-key",
+        publicKey: "pk",
+      });
+
+      expect(response.keyId).toBe("key-456");
     });
   });
 
@@ -76,15 +124,11 @@ describe("Age FHE (tRPC)", () => {
 
     it("returns encrypted result ciphertext", async () => {
       setFetchMock(
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () =>
-            Promise.resolve({
-              resultCiphertext: "encrypted-result",
-            }),
-        }),
+        vi
+          .fn()
+          .mockResolvedValue(
+            buildMsgpackResponse({ resultCiphertext: "encrypted-result" }),
+          ),
       );
 
       const caller = createCaller(null);

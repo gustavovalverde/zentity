@@ -1,17 +1,20 @@
 //! Compliance level encryption endpoint.
 
-use axum::Json;
+use axum::body::Bytes;
+use axum::http::HeaderMap;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 
 use crate::crypto;
 use crate::error::FheError;
+use crate::transport;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptComplianceLevelRequest {
     /// Compliance tier (0-10)
     compliance_level: u8,
-    public_key: String,
+    key_id: String,
 }
 
 #[derive(Serialize)]
@@ -21,15 +24,20 @@ pub struct EncryptComplianceLevelResponse {
     compliance_level: u8,
 }
 
-#[tracing::instrument(skip(payload), fields(public_key_bytes = payload.public_key.len()))]
+#[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
 pub async fn encrypt_compliance_level(
-    Json(payload): Json<EncryptComplianceLevelRequest>,
-) -> Result<Json<EncryptComplianceLevelResponse>, FheError> {
-    let ciphertext =
-        crypto::encrypt_compliance_level(payload.compliance_level, &payload.public_key)?;
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, FheError> {
+    let payload: EncryptComplianceLevelRequest = transport::decode_msgpack(&headers, body)?;
+    let public_key = crypto::get_public_key_for_encryption(&payload.key_id)?;
+    let ciphertext = crypto::encrypt_compliance_level(payload.compliance_level, &public_key)?;
 
-    Ok(Json(EncryptComplianceLevelResponse {
-        ciphertext,
-        compliance_level: payload.compliance_level,
-    }))
+    transport::encode_msgpack(
+        &headers,
+        &EncryptComplianceLevelResponse {
+            ciphertext,
+            compliance_level: payload.compliance_level,
+        },
+    )
 }

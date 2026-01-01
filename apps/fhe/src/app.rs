@@ -19,6 +19,7 @@ pub fn build_router(settings: &Settings) -> Router {
             "/encrypt-birth-year-offset",
             post(routes::encrypt_birth_year_offset),
         )
+        .route("/encrypt-batch", post(routes::encrypt_batch))
         .route("/verify-age-offset", post(routes::verify_age_offset))
         .route("/encrypt-country-code", post(routes::encrypt_country_code))
         .route(

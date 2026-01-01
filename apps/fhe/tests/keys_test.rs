@@ -107,14 +107,15 @@ fn decode_server_key_decompresses() {
 fn key_store_register_and_retrieve() {
     init_keys();
 
-    // Generate a server key
+    // Generate a keypair
     let config = ConfigBuilder::default().build();
     let (client_key, _) = generate_keys(config);
+    let public_key = CompressedPublicKey::new(&client_key);
     let server_key = CompressedServerKey::new(&client_key).decompress();
 
     // Register it
     let key_store = get_key_store();
-    let key_id = key_store.register_server_key(server_key);
+    let key_id = key_store.register_key(public_key, server_key);
 
     // Key ID should be a valid UUID
     assert!(!key_id.is_empty());
@@ -139,18 +140,20 @@ fn key_store_get_nonexistent_key() {
 fn key_store_unique_key_ids() {
     init_keys();
 
-    // Generate two server keys
+    // Generate two keypairs
     let config = ConfigBuilder::default().build();
     let (client_key1, _) = generate_keys(config.clone());
     let (client_key2, _) = generate_keys(config);
 
+    let public_key1 = CompressedPublicKey::new(&client_key1);
+    let public_key2 = CompressedPublicKey::new(&client_key2);
     let server_key1 = CompressedServerKey::new(&client_key1).decompress();
     let server_key2 = CompressedServerKey::new(&client_key2).decompress();
 
     // Register both
     let key_store = get_key_store();
-    let id1 = key_store.register_server_key(server_key1);
-    let id2 = key_store.register_server_key(server_key2);
+    let id1 = key_store.register_key(public_key1, server_key1);
+    let id2 = key_store.register_key(public_key2, server_key2);
 
     // IDs should be unique
     assert_ne!(id1, id2, "Each registration should get unique ID");

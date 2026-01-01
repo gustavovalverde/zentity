@@ -11,11 +11,11 @@ use tfhe::FheBool;
 
 #[test]
 fn encrypt_and_verify_age_adult() {
-    let (client_key, public_key_b64, key_id) = common::get_test_keys();
+    let (client_key, public_key, key_id) = common::get_test_keys();
 
     // Person born in 2000 is 25 in 2025
     let offset = 2000u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
     let result_bytes = BASE64.decode(result_ciphertext).unwrap();
@@ -27,11 +27,11 @@ fn encrypt_and_verify_age_adult() {
 
 #[test]
 fn encrypt_and_verify_age_underage() {
-    let (client_key, public_key_b64, key_id) = common::get_test_keys();
+    let (client_key, public_key, key_id) = common::get_test_keys();
 
     // Person born in 2010 is 15 in 2025
     let offset = 2010u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
     let result_bytes = BASE64.decode(result_ciphertext).unwrap();
@@ -43,11 +43,11 @@ fn encrypt_and_verify_age_underage() {
 
 #[test]
 fn encrypt_and_verify_age_exactly_18() {
-    let (client_key, public_key_b64, key_id) = common::get_test_keys();
+    let (client_key, public_key, key_id) = common::get_test_keys();
 
     // Person born in 2007 is exactly 18 in 2025
     let offset = 2007u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
     let result_bytes = BASE64.decode(result_ciphertext).unwrap();
@@ -59,11 +59,11 @@ fn encrypt_and_verify_age_exactly_18() {
 
 #[test]
 fn encrypt_and_verify_age_just_under_18() {
-    let (client_key, public_key_b64, key_id) = common::get_test_keys();
+    let (client_key, public_key, key_id) = common::get_test_keys();
 
     // Person born in 2008 is only 17 in 2025
     let offset = 2008u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
     let result_bytes = BASE64.decode(result_ciphertext).unwrap();
@@ -78,11 +78,11 @@ fn encrypt_and_verify_age_just_under_18() {
 
 #[test]
 fn encrypt_and_verify_age_different_min_ages() {
-    let (client_key, public_key_b64, key_id) = common::get_test_keys();
+    let (client_key, public_key, key_id) = common::get_test_keys();
 
     // Person born in 2004 is 21 in 2025
     let offset = 2004u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
 
     // Should pass age 18 check
     let result_18 = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
@@ -105,9 +105,9 @@ fn encrypt_and_verify_age_different_min_ages() {
 
 #[test]
 fn encrypt_birth_year_offset_produces_valid_ciphertext() {
-    let public_key_b64 = common::get_public_key();
+    let public_key = common::get_public_key();
     let offset = 1990u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
 
     // Ciphertext should be valid base64
     assert!(BASE64.decode(&ciphertext).is_ok());
@@ -121,10 +121,10 @@ fn verify_age_with_invalid_key_id_fails() {
     // Must initialize key store before verification (even with invalid key)
     fhe_service::crypto::init_keys();
 
-    let public_key_b64 = common::get_public_key();
+    let public_key = common::get_public_key();
 
     let offset = 2000u16 - 1900;
-    let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+    let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
 
     // Use a fake key ID
     let result = verify_age_offset(&ciphertext, 2025, 18, "non-existent-key-id");
@@ -151,10 +151,9 @@ fn verify_age_with_invalid_ciphertext_fails() {
 }
 
 #[test]
-fn encrypt_birth_year_offset_with_invalid_public_key_fails() {
+fn decode_invalid_public_key_fails() {
     let invalid_public_key = BASE64.encode(b"not a valid public key");
-    let offset = 2000u16 - 1900;
-    let result = encrypt_birth_year_offset(offset, &invalid_public_key);
+    let result = fhe_service::crypto::decode_compressed_public_key(&invalid_public_key);
 
     assert!(result.is_err(), "Should fail with invalid public key");
 }

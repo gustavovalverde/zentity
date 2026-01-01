@@ -60,7 +60,10 @@ async function getBackend(circuitType, bytecode) {
   if (cached) return cached;
 
   const crsExists =
-    existsSync(`${crsPath}/g1.dat`) || existsSync(`${crsPath}/g1.dat.gz`);
+    existsSync(`${crsPath}/bn254_g1.dat`) ||
+    existsSync(`${crsPath}/bn254_g1.dat.gz`) ||
+    existsSync(`${crsPath}/g1.dat`) ||
+    existsSync(`${crsPath}/g1.dat.gz`);
 
   if (!crsExists) {
     process.stderr.write(

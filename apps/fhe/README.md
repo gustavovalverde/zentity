@@ -15,11 +15,20 @@ This service encrypts sensitive attributes with **client-owned keys** and perfor
 | Compliance level | Integer (0-10) | Tiered verification policies |
 | Liveness score | Float (0.0-1.0, scaled to 0-10000) | Anti-spoof threshold checks |
 
+## Transport (2025+)
+
+All POST endpoints accept **MessagePack** payloads (`application/msgpack`), optionally **gzipped**
+(`Content-Encoding: gzip`). Responses are MessagePack as well and will be gzipped when clients send
+`Accept-Encoding: gzip`.
+
+This keeps payloads compact (especially public/server keys and ciphertexts) and reduces time spent
+serializing JSON.
+
 ## Key Model (Client-Owned)
 
 1. **Browser generates TFHE keys** via `apps/web/src/lib/crypto/tfhe-browser.ts`
 2. **Client key** stays in IndexedDB (never sent to server)
-3. **Public + server keys** are sent to the FHE service
+3. **Public + server keys** are sent to the FHE service (`/keys/register`)
 4. FHE service returns a **`key_id`** for server-side computations
 
 **Result:** server can compute on ciphertext but cannot decrypt.
@@ -36,12 +45,12 @@ Build metadata for deployment verification.
 
 ### `POST /keys/register`
 
-Register a client-generated server key.
+Register a client-generated server key + public key.
 
 **Request:**
 
 ```json
-{ "serverKey": "base64-encoded-key" }
+{ "serverKey": "base64-encoded-key", "publicKey": "base64-encoded-key" }
 ```
 
 **Response:**
@@ -57,7 +66,7 @@ Encrypt birth year offset (years since 1900).
 **Request:**
 
 ```json
-{ "birthYearOffset": 90, "publicKey": "base64-encoded-key" }
+{ "birthYearOffset": 90, "keyId": "uuid" }
 ```
 
 **Response:**
@@ -89,7 +98,7 @@ Encrypt ISO 3166-1 numeric country code.
 **Request:**
 
 ```json
-{ "countryCode": 840, "publicKey": "base64-encoded-key" }
+{ "countryCode": 840, "keyId": "uuid" }
 ```
 
 **Response:**
@@ -105,7 +114,7 @@ Encrypt a compliance tier (0-10).
 **Request:**
 
 ```json
-{ "complianceLevel": 3, "publicKey": "base64-encoded-key" }
+{ "complianceLevel": 3, "keyId": "uuid" }
 ```
 
 **Response:**
@@ -121,7 +130,7 @@ Encrypt a liveness score (0.0-1.0).
 **Request:**
 
 ```json
-{ "score": 0.85, "publicKey": "base64-encoded-key" }
+{ "score": 0.85, "keyId": "uuid" }
 ```
 
 **Response:**
@@ -144,6 +153,33 @@ Verify a liveness threshold on encrypted score.
 
 ```json
 { "passesCiphertext": "base64-encoded-ciphertext", "threshold": 0.35 }
+```
+
+### `POST /encrypt-batch`
+
+Batch-encrypt multiple attributes in one request to reduce overhead.
+
+**Request:**
+
+```json
+{
+  "keyId": "uuid",
+  "birthYearOffset": 90,
+  "countryCode": 840,
+  "complianceLevel": 3,
+  "livenessScore": 0.85
+}
+```
+
+**Response:**
+
+```json
+{
+  "birthYearOffsetCiphertext": "...",
+  "countryCodeCiphertext": "...",
+  "complianceLevelCiphertext": "...",
+  "livenessScoreCiphertext": "..."
+}
 ```
 
 ## Environment Variables

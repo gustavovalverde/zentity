@@ -24,16 +24,17 @@ async fn register_key_returns_uuid() {
     // Get a valid server key from test utilities
     let (_, _, _) = common::get_test_keys(); // This registers a key internally
     let server_key_b64 = get_server_key_b64();
+    let public_key_b64 = common::get_public_key_b64();
 
-    let body = http::fixtures::register_key_request(&server_key_b64);
+    let body = http::fixtures::register_key_request(&server_key_b64, &public_key_b64);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -41,7 +42,7 @@ async fn register_key_returns_uuid() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(response).await;
+    let json = http::parse_msgpack_body(response).await;
     assert!(json["keyId"].is_string());
 
     // Verify it's a valid UUID
@@ -56,19 +57,20 @@ async fn register_key_returns_uuid() {
 #[tokio::test]
 async fn register_key_unique_ids() {
     let server_key_b64 = get_server_key_b64();
+    let public_key_b64 = common::get_public_key_b64();
     let mut key_ids = Vec::new();
 
     for _ in 0..3 {
         let app = http::test_app();
-        let body = http::fixtures::register_key_request(&server_key_b64);
+        let body = http::fixtures::register_key_request(&server_key_b64, &public_key_b64);
 
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/keys/register")
-                    .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .header("content-type", "application/msgpack")
+                    .body(Body::from(http::msgpack_body(&body)))
                     .unwrap(),
             )
             .await
@@ -76,7 +78,7 @@ async fn register_key_unique_ids() {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let json = http::parse_json_body(response).await;
+        let json = http::parse_msgpack_body(response).await;
         key_ids.push(json["keyId"].as_str().unwrap().to_string());
     }
 
@@ -98,7 +100,8 @@ async fn register_key_invalid_base64() {
     let app = http::test_app();
 
     let body = serde_json::json!({
-        "serverKey": "not-valid-base64!!!"
+        "serverKey": "not-valid-base64!!!",
+        "publicKey": common::get_public_key_b64()
     });
 
     let response = app
@@ -106,8 +109,8 @@ async fn register_key_invalid_base64() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -123,7 +126,8 @@ async fn register_key_invalid_bincode() {
 
     // "Hello World!" in base64 - valid base64 but not a server key
     let body = serde_json::json!({
-        "serverKey": "SGVsbG8gV29ybGQh"
+        "serverKey": "SGVsbG8gV29ybGQh",
+        "publicKey": common::get_public_key_b64()
     });
 
     let response = app
@@ -131,8 +135,8 @@ async fn register_key_invalid_bincode() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -147,7 +151,8 @@ async fn register_key_empty_string() {
     let app = http::test_app();
 
     let body = serde_json::json!({
-        "serverKey": ""
+        "serverKey": "",
+        "publicKey": common::get_public_key_b64()
     });
 
     let response = app
@@ -155,8 +160,8 @@ async fn register_key_empty_string() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -174,15 +179,17 @@ async fn register_key_empty_string() {
 async fn register_key_missing_field() {
     let app = http::test_app();
 
-    let body = http::fixtures::empty_object();
+    let body = serde_json::json!({
+        "publicKey": common::get_public_key_b64()
+    });
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -202,15 +209,18 @@ async fn register_key_missing_field() {
 async fn register_key_null_field() {
     let app = http::test_app();
 
-    let body = http::fixtures::with_null_field("serverKey");
+    let body = serde_json::json!({
+        "serverKey": null,
+        "publicKey": common::get_public_key_b64()
+    });
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -229,15 +239,18 @@ async fn register_key_null_field() {
 async fn register_key_wrong_type() {
     let app = http::test_app();
 
-    let body = http::fixtures::with_number_instead_of_string("serverKey");
+    let body = serde_json::json!({
+        "serverKey": 12345,
+        "publicKey": common::get_public_key_b64()
+    });
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -261,7 +274,7 @@ async fn register_key_malformed_json() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .body(Body::from(http::fixtures::malformed_json()))
                 .unwrap(),
         )
@@ -281,7 +294,7 @@ async fn register_key_empty_body() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
+                .header("content-type", "application/msgpack")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -291,9 +304,9 @@ async fn register_key_empty_body() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Wrong content type returns 415.
+/// Invalid msgpack payload returns 400.
 #[tokio::test]
-async fn register_key_wrong_content_type() {
+async fn register_key_invalid_msgpack() {
     let app = http::test_app();
 
     let response = app
@@ -302,16 +315,16 @@ async fn register_key_wrong_content_type() {
                 .method("POST")
                 .uri("/keys/register")
                 .header("content-type", "text/plain")
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Missing content type header returns 415.
+/// Missing content type header with invalid payload returns 400.
 #[tokio::test]
 async fn register_key_missing_content_type() {
     let app = http::test_app();
@@ -322,13 +335,13 @@ async fn register_key_missing_content_type() {
                 .method("POST")
                 .uri("/keys/register")
                 // No content-type header
-                .body(Body::from(r#"{"serverKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 /// GET method returns 405.
@@ -360,7 +373,8 @@ async fn register_key_error_format() {
     let app = http::test_app();
 
     let body = serde_json::json!({
-        "serverKey": "invalid-base64!!!"
+        "serverKey": "invalid-base64!!!",
+        "publicKey": common::get_public_key_b64()
     });
 
     let response = app
@@ -368,8 +382,8 @@ async fn register_key_error_format() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await

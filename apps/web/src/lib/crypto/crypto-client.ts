@@ -322,21 +322,21 @@ export async function ensureFheKeyRegistration(params?: {
   enrollment?: PasskeyEnrollmentContext;
 }): Promise<{
   keyId: string;
-  publicKey: string;
 }> {
   const keyMaterial = params?.enrollment
     ? await getOrCreateFheKeyMaterialWithPasskey(params.enrollment)
     : await getOrCreateFheKeyMaterial();
   if (keyMaterial.keyId) {
-    return { keyId: keyMaterial.keyId, publicKey: keyMaterial.publicKeyB64 };
+    return { keyId: keyMaterial.keyId };
   }
 
   const response = await trpc.crypto.registerFheKey.mutate({
     serverKey: keyMaterial.serverKeyB64,
+    publicKey: keyMaterial.publicKeyB64,
   });
   await persistFheKeyId(response.keyId);
 
-  return { keyId: response.keyId, publicKey: keyMaterial.publicKeyB64 };
+  return { keyId: response.keyId };
 }
 
 /**

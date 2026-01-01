@@ -1,10 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
+import { gzipSync, gunzipSync } from "node:zlib";
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
 const FHE_URL = process.env.FHE_URL ?? "http://localhost:5001";
 const JAEGER_URL = process.env.JAEGER_URL ?? "http://localhost:16686";
 const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN ?? "";
+
+const require = createRequire(new URL("../apps/web/package.json", import.meta.url));
+const { encode, decode } = require("@msgpack/msgpack") as typeof import("@msgpack/msgpack");
 
 const traceId = process.env.OTEL_TRACE_ID ?? randomBytes(16).toString("hex");
 const parentSpanId = randomBytes(8).toString("hex");
@@ -34,14 +39,66 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function getDebugKey(): Promise<{ publicKey: string }> {
+async function fetchMsgpack<T>(
+  url: string,
+  payload: unknown,
+  headers: Record<string, string>,
+): Promise<T> {
+  const encoded = encode(payload);
+  const compressed = gzipSync(encoded);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/msgpack",
+      "Content-Encoding": "gzip",
+      Accept: "application/msgpack",
+      "Accept-Encoding": "gzip",
+      ...headers,
+    },
+    body: compressed,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Request failed ${res.status} ${res.statusText}: ${body}`);
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const isGzipped = res.headers
+    .get("content-encoding")
+    ?.toLowerCase()
+    .includes("gzip");
+  const decoded = isGzipped ? gunzipSync(buffer) : buffer;
+  return decode(decoded) as T;
+}
+
+async function getDebugKey(): Promise<{ keyId: string; publicKey: string }> {
   const headers: Record<string, string> = {};
   if (INTERNAL_TOKEN) {
     headers["X-Zentity-Internal-Token"] = INTERNAL_TOKEN;
   }
-  return fetchJson<{ publicKey: string }>(`${FHE_URL}/keys/debug`, {
+  return fetchJson<{ keyId: string; publicKey: string }>(`${FHE_URL}/keys/debug`, {
     headers: withTraceHeaders(headers),
   });
+}
+
+async function getKeyId(): Promise<string> {
+  if (process.env.FHE_KEY_ID) return process.env.FHE_KEY_ID;
+
+  const serverKey = process.env.FHE_SERVER_KEY;
+  const publicKey = process.env.FHE_PUBLIC_KEY;
+  if (serverKey && publicKey) {
+    const headers: Record<string, string> = {};
+    if (INTERNAL_TOKEN) headers["X-Zentity-Internal-Token"] = INTERNAL_TOKEN;
+    const response = await fetchMsgpack<{ keyId: string }>(
+      `${FHE_URL}/keys/register`,
+      { serverKey, publicKey },
+      withTraceHeaders(headers),
+    );
+    return response.keyId;
+  }
+
+  const debugKey = await getDebugKey();
+  return debugKey.keyId;
 }
 
 async function run() {
@@ -62,50 +119,25 @@ async function run() {
     }),
   );
 
-  let publicKey = process.env.FHE_PUBLIC_KEY;
-  if (!publicKey) {
-    const debugKey = await timed("Fetch FHE debug public key", getDebugKey);
-    publicKey = debugKey.publicKey;
-  }
+  const keyId = await timed("Resolve FHE key id", getKeyId);
 
-  const commonHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const commonHeaders: Record<string, string> = {};
   if (INTERNAL_TOKEN) {
     commonHeaders["X-Zentity-Internal-Token"] = INTERNAL_TOKEN;
   }
 
-  await timed("FHE encrypt birth year offset", () =>
-    fetchJson(`${FHE_URL}/encrypt-birth-year-offset`, {
-      method: "POST",
-      headers: withTraceHeaders(commonHeaders),
-      body: JSON.stringify({
+  await timed("FHE encrypt batch", () =>
+    fetchMsgpack(
+      `${FHE_URL}/encrypt-batch`,
+      {
+        keyId,
         birthYearOffset: 90,
-        publicKey,
-      }),
-    }),
-  );
-
-  await timed("FHE encrypt country code", () =>
-    fetchJson(`${FHE_URL}/encrypt-country-code`, {
-      method: "POST",
-      headers: withTraceHeaders(commonHeaders),
-      body: JSON.stringify({
         countryCode: 840,
-        publicKey,
-      }),
-    }),
-  );
-
-  await timed("FHE encrypt liveness score", () =>
-    fetchJson(`${FHE_URL}/encrypt-liveness`, {
-      method: "POST",
-      headers: withTraceHeaders(commonHeaders),
-      body: JSON.stringify({
-        score: 0.87,
-        publicKey,
-      }),
-    }),
+        complianceLevel: 3,
+        livenessScore: 0.87,
+      },
+      withTraceHeaders(commonHeaders),
+    ),
   );
 
   console.log("Waiting for Jaeger export...");

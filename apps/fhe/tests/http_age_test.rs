@@ -20,17 +20,17 @@ use tower::ServiceExt;
 #[tokio::test]
 async fn encrypt_birth_year_offset_success() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(TYPICAL_OFFSET, &public_key);
+    let body = http::fixtures::encrypt_birth_year_offset_request(TYPICAL_OFFSET, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -38,7 +38,7 @@ async fn encrypt_birth_year_offset_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(response).await;
+    let json = http::parse_msgpack_body(response).await;
     assert!(json["ciphertext"].is_string());
     assert!(!json["ciphertext"].as_str().unwrap().is_empty());
 }
@@ -47,17 +47,17 @@ async fn encrypt_birth_year_offset_success() {
 #[tokio::test]
 async fn encrypt_birth_year_offset_boundary_zero() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(MIN_OFFSET, &public_key);
+    let body = http::fixtures::encrypt_birth_year_offset_request(MIN_OFFSET, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -70,17 +70,17 @@ async fn encrypt_birth_year_offset_boundary_zero() {
 #[tokio::test]
 async fn encrypt_birth_year_offset_boundary_max() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(MAX_OFFSET, &public_key);
+    let body = http::fixtures::encrypt_birth_year_offset_request(MAX_OFFSET, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -97,17 +97,17 @@ async fn encrypt_birth_year_offset_boundary_max() {
 #[tokio::test]
 async fn encrypt_birth_year_offset_over_max() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(OVER_MAX_OFFSET, &public_key);
+    let body = http::fixtures::encrypt_birth_year_offset_request(OVER_MAX_OFFSET, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -116,9 +116,9 @@ async fn encrypt_birth_year_offset_over_max() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Invalid public key returns 400.
+/// Invalid key id returns 400.
 #[tokio::test]
-async fn encrypt_birth_year_offset_invalid_public_key() {
+async fn encrypt_birth_year_offset_invalid_key_id() {
     let app = http::test_app();
 
     let body = http::fixtures::with_invalid_base64_key();
@@ -128,14 +128,14 @@ async fn encrypt_birth_year_offset_invalid_public_key() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 /// Valid base64 but invalid key content returns 400.
@@ -150,14 +150,14 @@ async fn encrypt_birth_year_offset_invalid_key_content() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 /// Missing fields returns 400/422.
@@ -172,8 +172,8 @@ async fn encrypt_birth_year_offset_missing_fields() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -189,11 +189,11 @@ async fn encrypt_birth_year_offset_missing_fields() {
 #[tokio::test]
 async fn encrypt_birth_year_offset_wrong_type() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
     let body = serde_json::json!({
         "birthYearOffset": "not-a-number",
-        "publicKey": public_key
+        "keyId": key_id
     });
 
     let response = app
@@ -201,8 +201,8 @@ async fn encrypt_birth_year_offset_wrong_type() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -222,12 +222,12 @@ async fn encrypt_birth_year_offset_wrong_type() {
 #[tokio::test]
 async fn verify_age_offset_success() {
     let app = http::test_app();
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // First encrypt a birth year offset
     let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(
         100, // Year 2000
-        &public_key,
+        &key_id,
     );
 
     let encrypt_response = app
@@ -236,15 +236,15 @@ async fn verify_age_offset_success() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
     assert_eq!(encrypt_response.status(), StatusCode::OK);
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
 
     // Now verify age
@@ -260,8 +260,8 @@ async fn verify_age_offset_success() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -269,7 +269,7 @@ async fn verify_age_offset_success() {
 
     assert_eq!(verify_response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(verify_response).await;
+    let json = http::parse_msgpack_body(verify_response).await;
     assert!(json["resultCiphertext"].is_string());
     assert!(!json["resultCiphertext"].as_str().unwrap().is_empty());
 }
@@ -278,10 +278,10 @@ async fn verify_age_offset_success() {
 #[tokio::test]
 async fn verify_age_offset_default_min_age() {
     let app = http::test_app();
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Encrypt birth year offset
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
 
     let encrypt_response = app
         .clone()
@@ -289,14 +289,14 @@ async fn verify_age_offset_default_min_age() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
 
     // Verify without minAge field (should use default 18)
@@ -309,8 +309,8 @@ async fn verify_age_offset_default_min_age() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -323,10 +323,10 @@ async fn verify_age_offset_default_min_age() {
 #[tokio::test]
 async fn verify_age_offset_custom_min_age() {
     let app = http::test_app();
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Encrypt birth year offset
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
 
     let encrypt_response = app
         .clone()
@@ -334,14 +334,14 @@ async fn verify_age_offset_custom_min_age() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
 
     // Verify with minAge = 21
@@ -356,8 +356,8 @@ async fn verify_age_offset_custom_min_age() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -374,10 +374,10 @@ async fn verify_age_offset_custom_min_age() {
 #[tokio::test]
 async fn verify_age_offset_invalid_key_id() {
     let app = http::test_app();
-    let (_, public_key, _) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
 
     let encrypt_response = app
         .clone()
@@ -385,14 +385,14 @@ async fn verify_age_offset_invalid_key_id() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
 
     // Try to verify with invalid key ID
@@ -404,8 +404,8 @@ async fn verify_age_offset_invalid_key_id() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -418,7 +418,7 @@ async fn verify_age_offset_invalid_key_id() {
 #[tokio::test]
 async fn verify_age_offset_invalid_ciphertext() {
     let app = http::test_app();
-    let (_, _, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     let verify_body = http::fixtures::with_corrupted_ciphertext(&key_id);
 
@@ -427,8 +427,8 @@ async fn verify_age_offset_invalid_ciphertext() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -441,10 +441,10 @@ async fn verify_age_offset_invalid_ciphertext() {
 #[tokio::test]
 async fn verify_age_offset_year_before_1900() {
     let app = http::test_app();
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
 
     let encrypt_response = app
         .clone()
@@ -452,14 +452,14 @@ async fn verify_age_offset_year_before_1900() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
 
     // Try to verify with year before base year
@@ -476,8 +476,8 @@ async fn verify_age_offset_year_before_1900() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -490,10 +490,10 @@ async fn verify_age_offset_year_before_1900() {
 #[tokio::test]
 async fn verify_age_offset_min_age_exceeds_offset() {
     let app = http::test_app();
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
 
     let encrypt_response = app
         .clone()
@@ -501,14 +501,14 @@ async fn verify_age_offset_min_age_exceeds_offset() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
 
     // Try to verify with min age greater than possible offset
@@ -526,8 +526,8 @@ async fn verify_age_offset_min_age_exceeds_offset() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await
@@ -548,8 +548,8 @@ async fn verify_age_offset_missing_fields() {
             Request::builder()
                 .method("POST")
                 .uri("/verify-age-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&verify_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
         )
         .await

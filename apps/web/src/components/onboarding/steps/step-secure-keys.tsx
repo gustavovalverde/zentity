@@ -242,7 +242,6 @@ export function StepSecureKeys() {
         const job = await trpc.identity.finalizeAsync.mutate({
           draftId: data.identityDraftId,
           fheKeyId: fheKeyInfo.keyId,
-          fhePublicKey: fheKeyInfo.publicKey,
         });
 
         const waitForFinalization = async () => {

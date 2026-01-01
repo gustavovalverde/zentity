@@ -29,12 +29,7 @@ import {
 } from "@/lib/attestation/claim-hash";
 import { ISSUER_ID, POLICY_VERSION } from "@/lib/attestation/policy";
 import { sha256CommitmentHex } from "@/lib/crypto";
-import {
-  encryptBirthYearOffsetFhe,
-  encryptCountryCodeFhe,
-  encryptLivenessScoreFhe,
-  FheServiceError,
-} from "@/lib/crypto/fhe-client";
+import { encryptBatchFhe, FheServiceError } from "@/lib/crypto/fhe-client";
 import {
   decryptUserSalt,
   encryptFirstName,
@@ -308,10 +303,7 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
       span.setAttribute("identity.job_id", job.id);
       span.setAttribute("identity.user_id_hash", hashIdentifier(job.userId));
       span.setAttribute("identity.draft_id_hash", hashIdentifier(job.draftId));
-      span.setAttribute(
-        "identity.fhe_key_present",
-        Boolean(job.fheKeyId && job.fhePublicKey),
-      );
+      span.setAttribute("identity.fhe_key_present", Boolean(job.fheKeyId));
 
       const startTime = Date.now();
       const issues: string[] = [];
@@ -584,69 +576,81 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
           recordFheFailure("fhe_key_missing", "key_registration", null);
         };
 
-        const hasFheKeyMaterial = Boolean(job.fheKeyId && job.fhePublicKey);
+        const hasFheKeyMaterial = Boolean(job.fheKeyId);
         const birthYearOffset = draft.birthYearOffset;
-        if (birthYearOffset !== null && birthYearOffset !== undefined) {
-          if (!hasFheKeyMaterial || !job.fhePublicKey) {
-            reportMissingFheKey();
-          } else {
-            try {
-              birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
-                birthYearOffset,
-                publicKey: job.fhePublicKey,
-                requestId: job.id,
-              });
-            } catch (error) {
-              const issue =
-                error instanceof FheServiceError && error.kind === "http"
-                  ? "fhe_encryption_failed"
-                  : "fhe_service_unavailable";
-              recordFheFailure(issue, "encrypt_birth_year_offset", error);
-            }
-          }
-        }
-
         const countryCodeNumeric = draft.countryCodeNumeric ?? 0;
-        if (countryCodeNumeric > 0) {
-          if (!hasFheKeyMaterial || !job.fhePublicKey) {
-            reportMissingFheKey();
-          } else {
-            try {
-              countryCodeFheResult = {
-                ...(await encryptCountryCodeFhe({
-                  countryCode: countryCodeNumeric,
-                  publicKey: job.fhePublicKey,
-                  requestId: job.id,
-                })),
-                countryCode: countryCodeNumeric,
-              };
-            } catch (error) {
-              const issue =
-                error instanceof FheServiceError && error.kind === "http"
-                  ? "fhe_encryption_failed"
-                  : "fhe_service_unavailable";
-              recordFheFailure(issue, "encrypt_country_code", error);
-            }
-          }
-        }
-
         const livenessScore = draft.antispoofScore;
-        if (typeof livenessScore === "number") {
-          if (!hasFheKeyMaterial || !job.fhePublicKey) {
+        const needsEncryption =
+          (birthYearOffset !== null && birthYearOffset !== undefined) ||
+          countryCodeNumeric > 0 ||
+          typeof livenessScore === "number";
+
+        if (needsEncryption) {
+          if (!hasFheKeyMaterial || !job.fheKeyId) {
             reportMissingFheKey();
           } else {
             try {
-              livenessScoreFheResult = await encryptLivenessScoreFhe({
-                score: livenessScore,
-                publicKey: job.fhePublicKey,
+              const batchResult = await encryptBatchFhe({
+                keyId: job.fheKeyId,
+                birthYearOffset:
+                  birthYearOffset !== null && birthYearOffset !== undefined
+                    ? birthYearOffset
+                    : undefined,
+                countryCode:
+                  countryCodeNumeric > 0 ? countryCodeNumeric : undefined,
+                livenessScore:
+                  typeof livenessScore === "number" ? livenessScore : undefined,
                 requestId: job.id,
               });
+
+              if (batchResult.birthYearOffsetCiphertext) {
+                birthYearOffsetFheResult = {
+                  ciphertext: batchResult.birthYearOffsetCiphertext,
+                };
+              }
+
+              if (batchResult.countryCodeCiphertext) {
+                countryCodeFheResult = {
+                  ciphertext: batchResult.countryCodeCiphertext,
+                  countryCode: countryCodeNumeric,
+                };
+              }
+
+              if (
+                batchResult.livenessScoreCiphertext &&
+                typeof livenessScore === "number"
+              ) {
+                livenessScoreFheResult = {
+                  ciphertext: batchResult.livenessScoreCiphertext,
+                  score: livenessScore,
+                };
+              }
             } catch (error) {
-              const issue =
-                error instanceof FheServiceError && error.kind === "http"
-                  ? "liveness_score_fhe_encryption_failed"
-                  : "liveness_score_fhe_service_unavailable";
-              recordFheFailure(issue, "encrypt_liveness", error);
+              const isHttp =
+                error instanceof FheServiceError && error.kind === "http";
+              if (birthYearOffset !== null && birthYearOffset !== undefined) {
+                recordFheFailure(
+                  isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
+                  "encrypt_birth_year_offset",
+                  error,
+                );
+              }
+              if (countryCodeNumeric > 0) {
+                recordFheFailure(
+                  isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
+                  "encrypt_country_code",
+                  error,
+                );
+              }
+              if (typeof livenessScore === "number") {
+                recordFheFailure(
+                  isHttp
+                    ? "liveness_score_fhe_encryption_failed"
+                    : "liveness_score_fhe_service_unavailable",
+                  "encrypt_liveness",
+                  error,
+                );
+              }
             }
           }
         }
@@ -689,9 +693,8 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
           fheError:
             fheStatus === "error" ? (fheErrors[0]?.issue ?? null) : null,
         };
-        if (job.fheKeyId && job.fhePublicKey) {
+        if (job.fheKeyId) {
           bundleUpdate.fheKeyId = job.fheKeyId;
-          bundleUpdate.fhePublicKey = job.fhePublicKey;
         }
 
         upsertIdentityBundle(bundleUpdate);
@@ -1208,7 +1211,6 @@ export const identityRouter = router({
     .input(
       z.object({
         draftId: z.string().min(1),
-        fhePublicKey: z.string().min(1),
         fheKeyId: z.string().min(1),
       }),
     )
@@ -1230,10 +1232,6 @@ export const identityRouter = router({
         hashIdentifier(input.draftId),
       );
       ctx.span?.setAttribute("fhe.key_id_hash", hashIdentifier(input.fheKeyId));
-      ctx.span?.setAttribute(
-        "fhe.public_key_bytes",
-        Buffer.byteLength(input.fhePublicKey),
-      );
 
       if (
         stepValidation.session.identityDraftId &&
@@ -1271,7 +1269,6 @@ export const identityRouter = router({
         draftId: input.draftId,
         userId: ctx.userId,
         fheKeyId: input.fheKeyId,
-        fhePublicKey: input.fhePublicKey,
       });
 
       scheduleIdentityJob(jobId);
@@ -1335,7 +1332,6 @@ export const identityRouter = router({
         documentImage: z.string().min(1),
         selfieImage: z.string().min(1),
         userSalt: z.string().optional(),
-        fhePublicKey: z.string().optional(),
         fheKeyId: z.string().optional(),
       }),
     )
@@ -1366,9 +1362,8 @@ export const identityRouter = router({
           issues.push("user_salt_decrypt_failed");
         }
       }
-      const fhePublicKey = input.fhePublicKey;
       const fheKeyId = input.fheKeyId;
-      const hasFheKeyMaterial = Boolean(fhePublicKey && fheKeyId);
+      const hasFheKeyMaterial = Boolean(fheKeyId);
 
       let documentResult: OcrProcessResult | null = null;
       try {
@@ -1711,25 +1706,6 @@ export const identityRouter = router({
 
       const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
       const birthYearOffset = calculateBirthYearOffset(dateOfBirth);
-      if (birthYearOffset !== undefined) {
-        if (!hasFheKeyMaterial || !fhePublicKey) {
-          reportMissingFheKey();
-        } else {
-          try {
-            birthYearOffsetFheResult = await encryptBirthYearOffsetFhe({
-              birthYearOffset,
-              publicKey: fhePublicKey,
-              requestId: ctx.requestId,
-            });
-          } catch (error) {
-            const issue =
-              error instanceof FheServiceError && error.kind === "http"
-                ? "fhe_encryption_failed"
-                : "fhe_service_unavailable";
-            recordFheFailure(issue, "encrypt_birth_year_offset", error);
-          }
-        }
-      }
 
       const nationalityCode = documentResult?.extractedData?.nationalityCode;
       if (nationalityCode && documentResult?.commitments?.userSalt) {
@@ -1749,46 +1725,78 @@ export const identityRouter = router({
       const countryCodeNumeric = issuerCountry
         ? countryCodeToNumeric(issuerCountry)
         : 0;
-      if (countryCodeNumeric > 0) {
-        if (!hasFheKeyMaterial || !fhePublicKey) {
-          reportMissingFheKey();
-        } else {
-          try {
-            countryCodeFheResult = {
-              ...(await encryptCountryCodeFhe({
-                countryCode: countryCodeNumeric,
-                publicKey: fhePublicKey,
-                requestId: ctx.requestId,
-              })),
-              countryCode: countryCodeNumeric,
-            };
-          } catch (error) {
-            const issue =
-              error instanceof FheServiceError && error.kind === "http"
-                ? "fhe_encryption_failed"
-                : "fhe_service_unavailable";
-            recordFheFailure(issue, "encrypt_country_code", error);
-          }
-        }
-      }
-
       const livenessScore = verificationResult?.antispoof_score;
-      if (livenessScore !== undefined && livenessScore !== null) {
-        if (!hasFheKeyMaterial || !fhePublicKey) {
+      const needsEncryption =
+        birthYearOffset !== undefined ||
+        countryCodeNumeric > 0 ||
+        (livenessScore !== undefined && livenessScore !== null);
+
+      if (needsEncryption) {
+        if (!hasFheKeyMaterial || !fheKeyId) {
           reportMissingFheKey();
         } else {
           try {
-            livenessScoreFheResult = await encryptLivenessScoreFhe({
-              score: livenessScore,
-              publicKey: fhePublicKey,
+            const batchResult = await encryptBatchFhe({
+              keyId: fheKeyId,
+              birthYearOffset,
+              countryCode:
+                countryCodeNumeric > 0 ? countryCodeNumeric : undefined,
+              livenessScore:
+                livenessScore !== undefined && livenessScore !== null
+                  ? livenessScore
+                  : undefined,
               requestId: ctx.requestId,
             });
+
+            if (batchResult.birthYearOffsetCiphertext) {
+              birthYearOffsetFheResult = {
+                ciphertext: batchResult.birthYearOffsetCiphertext,
+              };
+            }
+
+            if (batchResult.countryCodeCiphertext) {
+              countryCodeFheResult = {
+                ciphertext: batchResult.countryCodeCiphertext,
+                countryCode: countryCodeNumeric,
+              };
+            }
+
+            if (
+              batchResult.livenessScoreCiphertext &&
+              livenessScore !== undefined &&
+              livenessScore !== null
+            ) {
+              livenessScoreFheResult = {
+                ciphertext: batchResult.livenessScoreCiphertext,
+                score: livenessScore,
+              };
+            }
           } catch (error) {
-            const issue =
-              error instanceof FheServiceError && error.kind === "http"
-                ? "liveness_score_fhe_encryption_failed"
-                : "liveness_score_fhe_service_unavailable";
-            recordFheFailure(issue, "encrypt_liveness", error);
+            const isHttp =
+              error instanceof FheServiceError && error.kind === "http";
+            if (birthYearOffset !== undefined) {
+              recordFheFailure(
+                isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
+                "encrypt_birth_year_offset",
+                error,
+              );
+            }
+            if (countryCodeNumeric > 0) {
+              recordFheFailure(
+                isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
+                "encrypt_country_code",
+                error,
+              );
+            }
+            if (livenessScore !== undefined && livenessScore !== null) {
+              recordFheFailure(
+                isHttp
+                  ? "liveness_score_fhe_encryption_failed"
+                  : "liveness_score_fhe_service_unavailable",
+                "encrypt_liveness",
+                error,
+              );
+            }
           }
         }
       }
@@ -1851,9 +1859,8 @@ export const identityRouter = router({
         fheStatus,
         fheError: fheStatus === "error" ? (fheErrors[0]?.issue ?? null) : null,
       };
-      if (fheKeyId && fhePublicKey) {
+      if (fheKeyId) {
         bundleUpdate.fheKeyId = fheKeyId;
-        bundleUpdate.fhePublicKey = fhePublicKey;
       }
 
       upsertIdentityBundle(bundleUpdate);

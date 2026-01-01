@@ -4,7 +4,10 @@
 
 import type { Session } from "@/lib/auth/auth";
 
+import { gunzipSync } from "node:zlib";
+
 /* eslint @typescript-eslint/no-explicit-any: off */
+import { decode, encode } from "@msgpack/msgpack";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cryptoRouter } from "@/lib/trpc/routers/crypto";
@@ -32,6 +35,17 @@ function setFetchMock(fetchMock: unknown) {
   return fetchMock as ReturnType<typeof vi.fn>;
 }
 
+function msgpackResponse(data: unknown, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    statusText: ok ? "OK" : "Internal Server Error",
+    headers: new Headers(),
+    arrayBuffer: async () => encode(data),
+    text: async () => JSON.stringify(data),
+  };
+}
+
 describe("Liveness FHE (tRPC)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,49 +59,44 @@ describe("Liveness FHE (tRPC)", () => {
     it("should throw UNAUTHORIZED when not authenticated", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.encryptLiveness({ score: 0.85, publicKey: "public-key" }),
+        caller.encryptLiveness({ score: 0.85, keyId: "key-id" }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("should throw BAD_REQUEST when score is missing", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ publicKey: "public-key" } as any),
+        caller.encryptLiveness({ keyId: "key-id" } as any),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should throw BAD_REQUEST when score is out of range (> 1.0)", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: 1.5, publicKey: "public-key" }),
+        caller.encryptLiveness({ score: 1.5, keyId: "key-id" }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should throw BAD_REQUEST when score is negative", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: -0.1, publicKey: "public-key" }),
+        caller.encryptLiveness({ score: -0.1, keyId: "key-id" }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should encrypt valid liveness score", async () => {
       setFetchMock(
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () =>
-            Promise.resolve({
-              ciphertext: "encrypted-ciphertext-base64",
-              score: 0.85,
-            }),
-        }),
+        vi.fn().mockResolvedValue(
+          msgpackResponse({
+            livenessScoreCiphertext: "encrypted-ciphertext-base64",
+          }),
+        ),
       );
 
       const caller = createCaller(authedSession);
       const data = await caller.encryptLiveness({
         score: 0.85,
-        publicKey: "public-key",
+        keyId: "key-id",
       });
       expect(data.ciphertext).toBe("encrypted-ciphertext-base64");
       expect(data.score).toBe(0.85);
@@ -100,53 +109,42 @@ describe("Liveness FHE (tRPC)", () => {
           status: 500,
           statusText: "Internal Server Error",
           text: () => Promise.resolve("FHE service unavailable"),
-          json: () => Promise.resolve({ error: "FHE service unavailable" }),
         }),
       );
 
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: 0.85, publicKey: "public-key" }),
+        caller.encryptLiveness({ score: 0.85, keyId: "key-id" }),
       ).rejects.toBeInstanceOf(Error);
     });
 
     it("should accept boundary values (0.0 and 1.0)", async () => {
       const fetchMock = setFetchMock(
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () =>
-            Promise.resolve({
-              ciphertext: "encrypted",
-              score: 0.0,
-            }),
-        }),
+        vi.fn().mockResolvedValue(
+          msgpackResponse({
+            livenessScoreCiphertext: "encrypted",
+          }),
+        ),
       );
 
       // Test score = 0.0
       const caller = createCaller(authedSession);
       const response0 = await caller.encryptLiveness({
         score: 0.0,
-        publicKey: "public-key",
+        keyId: "key-id",
       });
       expect(response0.score).toBe(0.0);
 
       // Test score = 1.0
       fetchMock.mockResolvedValue({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        json: () =>
-          Promise.resolve({
-            ciphertext: "encrypted",
-            score: 1.0,
-          }),
+        ...msgpackResponse({
+          livenessScoreCiphertext: "encrypted",
+        }),
       });
 
       const response1 = await caller.encryptLiveness({
         score: 1.0,
-        publicKey: "public-key",
+        keyId: "key-id",
       });
       expect(response1.score).toBe(1.0);
     });
@@ -186,17 +184,14 @@ describe("Liveness FHE (tRPC)", () => {
       let capturedBody: any;
       setFetchMock(
         vi.fn().mockImplementation((_url, options) => {
-          capturedBody = JSON.parse(options?.body as string);
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            statusText: "OK",
-            json: () =>
-              Promise.resolve({
-                passesCiphertext: "encrypted-result",
-                threshold: 0.3,
-              }),
-          });
+          const bodyBytes = options?.body as Uint8Array;
+          capturedBody = decode(gunzipSync(Buffer.from(bodyBytes)));
+          return Promise.resolve(
+            msgpackResponse({
+              passesCiphertext: "encrypted-result",
+              threshold: 0.3,
+            }),
+          );
         }),
       );
 
@@ -210,16 +205,12 @@ describe("Liveness FHE (tRPC)", () => {
 
     it("should verify threshold successfully", async () => {
       setFetchMock(
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () =>
-            Promise.resolve({
-              passesCiphertext: "encrypted-result",
-              threshold: 0.5,
-            }),
-        }),
+        vi.fn().mockResolvedValue(
+          msgpackResponse({
+            passesCiphertext: "encrypted-result",
+            threshold: 0.5,
+          }),
+        ),
       );
 
       const caller = createCaller(authedSession);
@@ -235,16 +226,12 @@ describe("Liveness FHE (tRPC)", () => {
 
     it("should return false when threshold not met", async () => {
       setFetchMock(
-        vi.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          json: () =>
-            Promise.resolve({
-              passesCiphertext: "encrypted-result",
-              threshold: 0.9,
-            }),
-        }),
+        vi.fn().mockResolvedValue(
+          msgpackResponse({
+            passesCiphertext: "encrypted-result",
+            threshold: 0.9,
+          }),
+        ),
       );
 
       const caller = createCaller(authedSession);

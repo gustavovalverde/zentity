@@ -1,18 +1,21 @@
 //! Age verification endpoints (birth year offset).
 
-use axum::Json;
+use axum::body::Bytes;
+use axum::http::HeaderMap;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 
 use crate::crypto;
 use crate::error::FheError;
+use crate::transport;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptBirthYearOffsetRequest {
     /// Years since 1900 (0-255)
     birth_year_offset: u16,
-    /// Base64-encoded compressed public key (bincode serialized).
-    public_key: String,
+    /// Registered key ID for public key lookup.
+    key_id: String,
 }
 
 #[derive(Serialize)]
@@ -21,14 +24,16 @@ pub struct EncryptBirthYearOffsetResponse {
     ciphertext: String,
 }
 
-#[tracing::instrument(skip(payload), fields(public_key_bytes = payload.public_key.len()))]
+#[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
 pub async fn encrypt_birth_year_offset(
-    Json(payload): Json<EncryptBirthYearOffsetRequest>,
-) -> Result<Json<EncryptBirthYearOffsetResponse>, FheError> {
-    let ciphertext =
-        crypto::encrypt_birth_year_offset(payload.birth_year_offset, &payload.public_key)?;
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, FheError> {
+    let payload: EncryptBirthYearOffsetRequest = transport::decode_msgpack(&headers, body)?;
+    let public_key = crypto::get_public_key_for_encryption(&payload.key_id)?;
+    let ciphertext = crypto::encrypt_birth_year_offset(payload.birth_year_offset, &public_key)?;
 
-    Ok(Json(EncryptBirthYearOffsetResponse { ciphertext }))
+    transport::encode_msgpack(&headers, &EncryptBirthYearOffsetResponse { ciphertext })
 }
 
 #[derive(Deserialize)]
@@ -51,10 +56,9 @@ pub struct VerifyAgeOffsetResponse {
     result_ciphertext: String,
 }
 
-#[tracing::instrument(skip(payload), fields(ciphertext_bytes = payload.ciphertext.len(), key_id_bytes = payload.key_id.len()))]
-pub async fn verify_age_offset(
-    Json(payload): Json<VerifyAgeOffsetRequest>,
-) -> Result<Json<VerifyAgeOffsetResponse>, FheError> {
+#[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
+pub async fn verify_age_offset(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
+    let payload: VerifyAgeOffsetRequest = transport::decode_msgpack(&headers, body)?;
     let result_ciphertext = crypto::verify_age_offset(
         &payload.ciphertext,
         payload.current_year,
@@ -62,5 +66,5 @@ pub async fn verify_age_offset(
         &payload.key_id,
     )?;
 
-    Ok(Json(VerifyAgeOffsetResponse { result_ciphertext }))
+    transport::encode_msgpack(&headers, &VerifyAgeOffsetResponse { result_ciphertext })
 }

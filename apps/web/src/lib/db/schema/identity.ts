@@ -53,7 +53,6 @@ export const identityBundles = sqliteTable(
     issuerId: text("issuer_id"),
     attestationExpiresAt: text("attestation_expires_at"),
     fheKeyId: text("fhe_key_id"),
-    fhePublicKey: text("fhe_public_key"),
     fheStatus: text("fhe_status", {
       enum: fheStatusEnum,
     }),
@@ -162,7 +161,6 @@ export const identityVerificationJobs = sqliteTable(
       .notNull()
       .default("queued"),
     fheKeyId: text("fhe_key_id"),
-    fhePublicKey: text("fhe_public_key"),
     result: text("result"),
     error: text("error"),
     attempts: integer("attempts").notNull().default(0),

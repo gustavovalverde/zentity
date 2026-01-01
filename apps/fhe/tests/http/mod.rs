@@ -5,6 +5,9 @@
 #![allow(dead_code)]
 
 use axum::{http::StatusCode, response::Response, Router};
+use flate2::read::GzDecoder;
+use serde::Serialize;
+use std::io::Read;
 
 use fhe_service::{app::build_router, crypto, settings::Settings};
 
@@ -54,12 +57,40 @@ pub fn test_app_with_auth(token: &str) -> Router {
     TestAppBuilder::new().with_auth(token).build()
 }
 
+/// Helper to encode a msgpack request body.
+pub fn msgpack_body<T: Serialize>(value: &T) -> Vec<u8> {
+    rmp_serde::to_vec_named(value).expect("Failed to encode msgpack body")
+}
+
 /// Helper to parse JSON response body.
 pub async fn parse_json_body(response: Response) -> serde_json::Value {
     use http_body_util::BodyExt;
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body).unwrap()
+}
+
+/// Helper to parse msgpack response body.
+pub async fn parse_msgpack_body(response: Response) -> serde_json::Value {
+    use http_body_util::BodyExt;
+
+    let headers = response.headers().clone();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let mut bytes = body.to_vec();
+
+    if headers
+        .get("content-encoding")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_ascii_lowercase().contains("gzip"))
+        .unwrap_or(false)
+    {
+        let mut decoder = GzDecoder::new(bytes.as_slice());
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded).unwrap();
+        bytes = decoded;
+    }
+
+    rmp_serde::from_slice(&bytes).expect("Failed to decode msgpack response")
 }
 
 /// Helper to get response status and body as string (for debugging).

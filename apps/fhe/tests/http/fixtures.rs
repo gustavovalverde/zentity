@@ -11,9 +11,10 @@ use serde_json::{json, Value};
 // ============================================================================
 
 /// Build a valid key registration request body.
-pub fn register_key_request(server_key_b64: &str) -> Value {
+pub fn register_key_request(server_key_b64: &str, public_key_b64: &str) -> Value {
     json!({
-        "serverKey": server_key_b64
+        "serverKey": server_key_b64,
+        "publicKey": public_key_b64
     })
 }
 
@@ -22,10 +23,10 @@ pub fn register_key_request(server_key_b64: &str) -> Value {
 // ============================================================================
 
 /// Build a valid birth year offset encryption request.
-pub fn encrypt_birth_year_offset_request(offset: u16, public_key_b64: &str) -> Value {
+pub fn encrypt_birth_year_offset_request(offset: u16, key_id: &str) -> Value {
     json!({
         "birthYearOffset": offset,
-        "publicKey": public_key_b64
+        "keyId": key_id
     })
 }
 
@@ -62,10 +63,10 @@ pub fn verify_age_offset_request_default_min_age(
 // ============================================================================
 
 /// Build a valid country code encryption request.
-pub fn encrypt_country_code_request(country_code: u16, public_key_b64: &str) -> Value {
+pub fn encrypt_country_code_request(country_code: u16, key_id: &str) -> Value {
     json!({
         "countryCode": country_code,
-        "publicKey": public_key_b64
+        "keyId": key_id
     })
 }
 
@@ -74,10 +75,10 @@ pub fn encrypt_country_code_request(country_code: u16, public_key_b64: &str) -> 
 // ============================================================================
 
 /// Build a valid compliance level encryption request.
-pub fn encrypt_compliance_level_request(level: u8, public_key_b64: &str) -> Value {
+pub fn encrypt_compliance_level_request(level: u8, key_id: &str) -> Value {
     json!({
         "complianceLevel": level,
-        "publicKey": public_key_b64
+        "keyId": key_id
     })
 }
 
@@ -86,10 +87,10 @@ pub fn encrypt_compliance_level_request(level: u8, public_key_b64: &str) -> Valu
 // ============================================================================
 
 /// Build a valid liveness score encryption request.
-pub fn encrypt_liveness_request(score: f64, public_key_b64: &str) -> Value {
+pub fn encrypt_liveness_request(score: f64, key_id: &str) -> Value {
     json!({
         "score": score,
-        "publicKey": public_key_b64
+        "keyId": key_id
     })
 }
 
@@ -134,16 +135,16 @@ pub fn malformed_json() -> &'static str {
 pub fn with_invalid_base64_key() -> Value {
     json!({
         "birthYearOffset": 100,
-        "publicKey": "not-valid-base64!!!"
+        "keyId": "not-valid-key-id"
     })
 }
 
 /// Build an encrypt request with valid base64 but invalid key content.
 pub fn with_invalid_key_content() -> Value {
-    // Valid base64, but not a valid serialized key
+    // Valid key id format but not registered
     json!({
         "birthYearOffset": 100,
-        "publicKey": "SGVsbG8gV29ybGQh" // "Hello World!" in base64
+        "keyId": "00000000-0000-0000-0000-000000000001"
     })
 }
 

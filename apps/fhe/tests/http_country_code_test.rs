@@ -20,17 +20,17 @@ use tower::ServiceExt;
 #[tokio::test]
 async fn encrypt_country_code_success() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_country_code_request(USA, &public_key);
+    let body = http::fixtures::encrypt_country_code_request(USA, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -38,7 +38,7 @@ async fn encrypt_country_code_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(response).await;
+    let json = http::parse_msgpack_body(response).await;
     assert!(json["ciphertext"].is_string());
     assert!(!json["ciphertext"].as_str().unwrap().is_empty());
     // Country code is echoed back for confirmation
@@ -49,17 +49,17 @@ async fn encrypt_country_code_success() {
 #[tokio::test]
 async fn encrypt_country_code_boundary_zero() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_country_code_request(MIN_CODE, &public_key);
+    let body = http::fixtures::encrypt_country_code_request(MIN_CODE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -67,7 +67,7 @@ async fn encrypt_country_code_boundary_zero() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(response).await;
+    let json = http::parse_msgpack_body(response).await;
     assert_eq!(json["countryCode"], MIN_CODE);
 }
 
@@ -75,17 +75,17 @@ async fn encrypt_country_code_boundary_zero() {
 #[tokio::test]
 async fn encrypt_country_code_boundary_max() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_country_code_request(MAX_CODE, &public_key);
+    let body = http::fixtures::encrypt_country_code_request(MAX_CODE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -93,7 +93,7 @@ async fn encrypt_country_code_boundary_max() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(response).await;
+    let json = http::parse_msgpack_body(response).await;
     assert_eq!(json["countryCode"], MAX_CODE);
 }
 
@@ -101,17 +101,17 @@ async fn encrypt_country_code_boundary_max() {
 #[tokio::test]
 async fn encrypt_country_code_germany() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_country_code_request(GERMANY, &public_key);
+    let body = http::fixtures::encrypt_country_code_request(GERMANY, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -119,7 +119,7 @@ async fn encrypt_country_code_germany() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_json_body(response).await;
+    let json = http::parse_msgpack_body(response).await;
     assert_eq!(json["countryCode"], GERMANY);
 }
 
@@ -131,17 +131,17 @@ async fn encrypt_country_code_germany() {
 #[tokio::test]
 async fn encrypt_country_code_over_max() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_country_code_request(OVER_MAX_CODE, &public_key);
+    let body = http::fixtures::encrypt_country_code_request(OVER_MAX_CODE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -150,14 +150,14 @@ async fn encrypt_country_code_over_max() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Invalid public key returns 400.
+/// Invalid key id returns 400.
 #[tokio::test]
-async fn encrypt_country_code_invalid_public_key() {
+async fn encrypt_country_code_invalid_key_id() {
     let app = http::test_app();
 
     let body = serde_json::json!({
         "countryCode": 840,
-        "publicKey": "not-valid-base64!!!"
+        "keyId": "not-valid-key-id"
     });
 
     let response = app
@@ -165,24 +165,24 @@ async fn encrypt_country_code_invalid_public_key() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-/// Valid base64 but invalid key content returns 400.
+/// Non-existent key id returns 400.
 #[tokio::test]
 async fn encrypt_country_code_invalid_key_content() {
     let app = http::test_app();
 
     let body = serde_json::json!({
         "countryCode": 840,
-        "publicKey": "SGVsbG8gV29ybGQh"  // "Hello World!" in base64
+        "keyId": "00000000-0000-0000-0000-000000000001"
     });
 
     let response = app
@@ -190,14 +190,14 @@ async fn encrypt_country_code_invalid_key_content() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 /// Missing fields returns 400/422.
@@ -212,8 +212,8 @@ async fn encrypt_country_code_missing_fields() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -229,11 +229,11 @@ async fn encrypt_country_code_missing_fields() {
 #[tokio::test]
 async fn encrypt_country_code_wrong_type() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
     let body = serde_json::json!({
         "countryCode": "not-a-number",
-        "publicKey": public_key
+        "keyId": key_id
     });
 
     let response = app
@@ -241,8 +241,8 @@ async fn encrypt_country_code_wrong_type() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -258,11 +258,11 @@ async fn encrypt_country_code_wrong_type() {
 #[tokio::test]
 async fn encrypt_country_code_null_value() {
     let app = http::test_app();
-    let public_key = common::get_public_key();
+    let key_id = common::get_registered_key_id();
 
     let body = serde_json::json!({
         "countryCode": null,
-        "publicKey": public_key
+        "keyId": key_id
     });
 
     let response = app
@@ -270,8 +270,8 @@ async fn encrypt_country_code_null_value() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
         )
         .await
@@ -306,9 +306,9 @@ async fn encrypt_country_code_rejects_get() {
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
-/// Missing content type returns 415.
+/// Invalid msgpack payload returns 400.
 #[tokio::test]
-async fn encrypt_country_code_missing_content_type() {
+async fn encrypt_country_code_invalid_msgpack() {
     let app = http::test_app();
 
     let response = app
@@ -316,11 +316,11 @@ async fn encrypt_country_code_missing_content_type() {
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-country-code")
-                .body(Body::from(r#"{"countryCode": 840, "publicKey": "test"}"#))
+                .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

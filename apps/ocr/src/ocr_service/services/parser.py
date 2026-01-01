@@ -462,9 +462,17 @@ def extract_drivers_license_fields(text: str) -> ExtractedData:
 
     # License number patterns (multilingual)
     license_patterns = [
-        r"(?:LICENCIA|LIC\.?\s*(?:NO|NUM)?\.?\s*[:.]?\s*)([A-Z0-9-]+)",  # Spanish
-        r"(?:LICENSE\s*(?:NO|NUM|NUMBER)?\.?\s*[:.]?\s*)([A-Z0-9-]+)",  # English
-        r"(?:PERMIS\s*(?:NO|NUM)?\.?\s*[:.]?\s*)([A-Z0-9-]+)",  # French
+        # Spanish
+        (
+            r"(?:\bLICENCIA\b|\bLIC\.?\b)\s*(?:NO|NUM|NRO)?\.?\s*[:.]?\s*"
+            r"([A-Z0-9-]*\d[A-Z0-9-]*)"
+        ),
+        # English
+        (
+            r"(?:\bLICENSE\b|\bLIC\.?\b)\s*(?:NO|NUM|NUMBER)?\.?\s*[:.]?\s*"
+            r"([A-Z0-9-]*\d[A-Z0-9-]*)"
+        ),
+        r"(?:\bPERMIS\b)\s*(?:NO|NUM)?\.?\s*[:.]?\s*([A-Z0-9-]*\d[A-Z0-9-]*)",  # French
     ]
 
     for pattern in license_patterns:

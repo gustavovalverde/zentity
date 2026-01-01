@@ -12,9 +12,13 @@ echo "[entrypoint] Database path: $DB_PATH"
 # Optional CRS pre-warm for bb.js (best-effort)
 if [ -n "${BB_CRS_PATH:-}" ]; then
   mkdir -p "$BB_CRS_PATH" 2>/dev/null || true
-  if [ -z "$(ls -A "$BB_CRS_PATH" 2>/dev/null)" ]; then
+  CRS_G1="$BB_CRS_PATH/bn254_g1.dat"
+  CRS_G1_GZ="$BB_CRS_PATH/bn254_g1.dat.gz"
+  CRS_G1_LEGACY="$BB_CRS_PATH/g1.dat"
+  CRS_G1_LEGACY_GZ="$BB_CRS_PATH/g1.dat.gz"
+  if [ ! -f "$CRS_G1" ] && [ ! -f "$CRS_G1_GZ" ] && [ ! -f "$CRS_G1_LEGACY" ] && [ ! -f "$CRS_G1_LEGACY_GZ" ]; then
     echo "[entrypoint] Pre-warming CRS cache in ${BB_CRS_PATH}..."
-    node -e "import { Crs } from '@aztec/bb.js'; const crs = await Crs.new(2**14+1, process.env.BB_CRS_PATH || process.env.CRS_PATH); await crs.init(); console.log('[entrypoint] CRS cache ready');" || true
+    node /app/scripts/prewarm-crs.mjs || true
   fi
 fi
 

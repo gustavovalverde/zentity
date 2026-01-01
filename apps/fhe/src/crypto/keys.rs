@@ -33,6 +33,8 @@ fn persistence_enabled() -> bool {
 #[derive(Serialize, Deserialize)]
 struct PersistedKeyStore {
     server_keys: HashMap<String, ServerKey>,
+    #[serde(default)]
+    public_keys: HashMap<String, CompressedPublicKey>,
 }
 
 /// Global FHE server key storage with thread-safe access.
@@ -42,6 +44,7 @@ struct PersistedKeyStore {
 /// - `keys_dir`: If Some, keys are persisted atomically to disk
 pub struct KeyStore {
     pub(crate) server_keys: RwLock<HashMap<String, ServerKey>>,
+    pub(crate) public_keys: RwLock<HashMap<String, CompressedPublicKey>>,
     pub(crate) keys_dir: Option<PathBuf>,
 }
 
@@ -103,6 +106,11 @@ impl KeyStore {
                 .read()
                 .expect("RwLock poisoned - concurrent panic occurred")
                 .clone(),
+            public_keys: self
+                .public_keys
+                .read()
+                .expect("RwLock poisoned - concurrent panic occurred")
+                .clone(),
         };
 
         let bytes = match bincode::serialize(&payload) {
@@ -135,6 +143,7 @@ impl KeyStore {
                 info!("Loaded TFHE keys from disk: {}", keys_dir.display());
                 return Self {
                     server_keys: RwLock::new(persisted.server_keys),
+                    public_keys: RwLock::new(persisted.public_keys),
                     keys_dir: Some(keys_dir.clone()),
                 };
             }
@@ -146,6 +155,7 @@ impl KeyStore {
 
         let store = Self {
             server_keys: RwLock::new(HashMap::new()),
+            public_keys: RwLock::new(HashMap::new()),
             keys_dir,
         };
 
@@ -157,6 +167,7 @@ impl KeyStore {
     pub(crate) fn new_for_tests(keys_dir: Option<PathBuf>) -> Self {
         KeyStore {
             server_keys: RwLock::new(HashMap::new()),
+            public_keys: RwLock::new(HashMap::new()),
             keys_dir,
         }
     }
@@ -165,11 +176,13 @@ impl KeyStore {
         if let Some(persisted) = Self::try_load_from_disk(&keys_dir) {
             KeyStore {
                 server_keys: RwLock::new(persisted.server_keys),
+                public_keys: RwLock::new(persisted.public_keys),
                 keys_dir: Some(keys_dir),
             }
         } else {
             KeyStore {
                 server_keys: RwLock::new(HashMap::new()),
+                public_keys: RwLock::new(HashMap::new()),
                 keys_dir: Some(keys_dir),
             }
         }
@@ -179,13 +192,17 @@ impl KeyStore {
         Self::keystore_path(keys_dir)
     }
 
-    /// Register a server key derived from a client-provided keypair.
-    pub fn register_server_key(&self, server_key: ServerKey) -> String {
+    /// Register public + server keys derived from a client-provided keypair.
+    pub fn register_key(&self, public_key: CompressedPublicKey, server_key: ServerKey) -> String {
         let key_id = Uuid::new_v4().to_string();
         self.server_keys
             .write()
             .expect("RwLock poisoned - concurrent panic occurred")
             .insert(key_id.clone(), server_key);
+        self.public_keys
+            .write()
+            .expect("RwLock poisoned - concurrent panic occurred")
+            .insert(key_id.clone(), public_key);
 
         self.try_persist_to_disk();
         key_id
@@ -194,6 +211,15 @@ impl KeyStore {
     /// Get a server key by ID
     pub fn get_server_key(&self, key_id: &str) -> Option<ServerKey> {
         self.server_keys
+            .read()
+            .expect("RwLock poisoned - concurrent panic occurred")
+            .get(key_id)
+            .cloned()
+    }
+
+    /// Get a public key by ID
+    pub fn get_public_key(&self, key_id: &str) -> Option<CompressedPublicKey> {
+        self.public_keys
             .read()
             .expect("RwLock poisoned - concurrent panic occurred")
             .get(key_id)
@@ -224,4 +250,14 @@ pub fn setup_for_verification(key_id: &str) -> Result<(), crate::error::FheError
         .ok_or_else(|| crate::error::FheError::KeyNotFound(key_id.to_string()))?;
     set_server_key(server_key);
     Ok(())
+}
+
+/// Fetch the public key used for encryption.
+pub fn get_public_key_for_encryption(
+    key_id: &str,
+) -> Result<CompressedPublicKey, crate::error::FheError> {
+    let key_store = get_key_store();
+    key_store
+        .get_public_key(key_id)
+        .ok_or_else(|| crate::error::FheError::KeyNotFound(key_id.to_string()))
 }

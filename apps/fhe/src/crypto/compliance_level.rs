@@ -2,10 +2,10 @@
 //!
 //! Provides FHE-based encryption for compliance level values.
 
-use super::{decode_compressed_public_key, encode_bincode_base64};
+use super::encode_bincode_base64;
 use crate::error::FheError;
 use tfhe::prelude::*;
-use tfhe::FheUint8;
+use tfhe::{CompressedPublicKey, FheUint8};
 
 const MAX_COMPLIANCE_LEVEL: u8 = 10;
 
@@ -14,7 +14,7 @@ const MAX_COMPLIANCE_LEVEL: u8 = 10;
 /// Levels are expected to be small integers (0-10).
 pub fn encrypt_compliance_level(
     compliance_level: u8,
-    public_key_b64: &str,
+    public_key: &CompressedPublicKey,
 ) -> Result<String, FheError> {
     if compliance_level > MAX_COMPLIANCE_LEVEL {
         return Err(FheError::InvalidInput(format!(
@@ -23,8 +23,7 @@ pub fn encrypt_compliance_level(
         )));
     }
 
-    let public_key = decode_compressed_public_key(public_key_b64)?;
-    let encrypted = FheUint8::try_encrypt(compliance_level, &public_key)
+    let encrypted = FheUint8::try_encrypt(compliance_level, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     encode_bincode_base64(&encrypted)
@@ -38,16 +37,16 @@ mod tests {
 
     #[test]
     fn encrypt_compliance_level_roundtrip_base64() {
-        let (_client_key, public_key_b64, _key_id) = get_test_keys();
-        let ciphertext = encrypt_compliance_level(3, &public_key_b64).unwrap();
+        let (_client_key, public_key, _key_id) = get_test_keys();
+        let ciphertext = encrypt_compliance_level(3, &public_key).unwrap();
         let decoded: Result<FheUint8, _> = decode_bincode_base64(&ciphertext);
         assert!(decoded.is_ok());
     }
 
     #[test]
     fn encrypt_compliance_level_rejects_out_of_range() {
-        let (_client_key, public_key_b64, _key_id) = get_test_keys();
-        let err = encrypt_compliance_level(99, &public_key_b64).unwrap_err();
+        let (_client_key, public_key, _key_id) = get_test_keys();
+        let err = encrypt_compliance_level(99, &public_key).unwrap_err();
         assert!(err.to_string().contains("Compliance level"));
     }
 }

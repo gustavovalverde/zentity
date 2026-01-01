@@ -23,23 +23,25 @@ async fn concurrent_key_registrations() {
 
     // Use cached server key for performance
     let server_key_b64 = Arc::new(common::get_server_key_b64());
+    let public_key_b64 = Arc::new(common::get_public_key_b64());
 
     // Spawn concurrent registration tasks
     let mut handles = Vec::new();
 
     for _ in 0..5 {
         let key = server_key_b64.clone();
+        let public_key = public_key_b64.clone();
         let handle = tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::register_key_request(&key);
+            let body = http::fixtures::register_key_request(&key, &public_key);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/keys/register")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -47,7 +49,7 @@ async fn concurrent_key_registrations() {
 
             assert_eq!(response.status(), StatusCode::OK);
 
-            let json = http::parse_json_body(response).await;
+            let json = http::parse_msgpack_body(response).await;
             json["keyId"].as_str().unwrap().to_string()
         });
         handles.push(handle);
@@ -76,12 +78,12 @@ async fn concurrent_reads_during_write() {
     use std::sync::Arc;
 
     // Set up test keys (uses cached keys for performance)
-    let (_, public_key, key_id) = common::get_test_keys();
-    let public_key = Arc::new(public_key);
-    let _key_id = Arc::new(key_id);
+    let key_id = common::get_registered_key_id();
+    let key_id = Arc::new(key_id);
 
     // Use cached server key for registration
     let server_key_b64 = Arc::new(common::get_server_key_b64());
+    let public_key_b64 = Arc::new(common::get_public_key_b64());
 
     // Spawn read and write tasks concurrently
     let mut handles = Vec::new();
@@ -89,17 +91,18 @@ async fn concurrent_reads_during_write() {
     // Write task (register new key)
     {
         let key = server_key_b64.clone();
+        let public_key = public_key_b64.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::register_key_request(&key);
+            let body = http::fixtures::register_key_request(&key, &public_key);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/keys/register")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -112,18 +115,18 @@ async fn concurrent_reads_during_write() {
 
     // Read tasks (encrypt with existing key)
     for _ in 0..3 {
-        let pk = public_key.clone();
+        let kid = key_id.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::encrypt_birth_year_offset_request(100, &pk);
+            let body = http::fixtures::encrypt_birth_year_offset_request(100, &kid);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/encrypt-birth-year-offset")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -146,25 +149,25 @@ async fn concurrent_reads_during_write() {
 async fn concurrent_verifications() {
     use std::sync::Arc;
 
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Encrypt once
     let app = http::test_app();
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
 
     let encrypt_response = app
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&encrypt_body).unwrap()))
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_json_body(encrypt_response).await;
+    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = Arc::new(encrypt_json["ciphertext"].as_str().unwrap().to_string());
     let key_id = Arc::new(key_id);
 
@@ -185,8 +188,8 @@ async fn concurrent_verifications() {
                     Request::builder()
                         .method("POST")
                         .uri("/verify-age-offset")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -211,24 +214,24 @@ async fn concurrent_verifications() {
 async fn many_concurrent_reads() {
     use std::sync::Arc;
 
-    let public_key = Arc::new(common::get_public_key());
+    let key_id = Arc::new(common::get_registered_key_id());
 
     // Spawn concurrent read tasks (limited to avoid timeout)
     let mut handles = Vec::new();
 
     for _ in 0..4 {
-        let pk = public_key.clone();
+        let kid = key_id.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::encrypt_birth_year_offset_request(100, &pk);
+            let body = http::fixtures::encrypt_birth_year_offset_request(100, &kid);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/encrypt-birth-year-offset")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -250,24 +253,24 @@ async fn many_concurrent_reads() {
 async fn concurrent_mixed_operations() {
     use std::sync::Arc;
 
-    let public_key = Arc::new(common::get_public_key());
+    let key_id = Arc::new(common::get_registered_key_id());
 
     let mut handles = Vec::new();
 
     // Age encryption
     {
-        let pk = public_key.clone();
+        let kid = key_id.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::encrypt_birth_year_offset_request(100, &pk);
+            let body = http::fixtures::encrypt_birth_year_offset_request(100, &kid);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/encrypt-birth-year-offset")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -279,18 +282,18 @@ async fn concurrent_mixed_operations() {
 
     // Liveness encryption
     {
-        let pk = public_key.clone();
+        let kid = key_id.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::encrypt_liveness_request(0.85, &pk);
+            let body = http::fixtures::encrypt_liveness_request(0.85, &kid);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/encrypt-liveness")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -302,18 +305,18 @@ async fn concurrent_mixed_operations() {
 
     // Country code encryption
     {
-        let pk = public_key.clone();
+        let kid = key_id.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::encrypt_country_code_request(840, &pk);
+            let body = http::fixtures::encrypt_country_code_request(840, &kid);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/encrypt-country-code")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -325,18 +328,18 @@ async fn concurrent_mixed_operations() {
 
     // Compliance level encryption
     {
-        let pk = public_key.clone();
+        let kid = key_id.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
-            let body = http::fixtures::encrypt_compliance_level_request(5, &pk);
+            let body = http::fixtures::encrypt_compliance_level_request(5, &kid);
 
             let response = app
                 .oneshot(
                     Request::builder()
                         .method("POST")
                         .uri("/encrypt-compliance-level")
-                        .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_string(&body).unwrap()))
+                        .header("content-type", "application/msgpack")
+                        .body(Body::from(http::msgpack_body(&body)))
                         .unwrap(),
                 )
                 .await
@@ -363,21 +366,21 @@ async fn key_store_no_panic() {
     // This test verifies that the RwLock doesn't get poisoned
     // under normal operation (no panics during lock hold)
 
-    let (_, public_key, key_id) = common::get_test_keys();
+    let key_id = common::get_registered_key_id();
 
     // Perform many operations
     for _ in 0..5 {
         let app = http::test_app();
 
         // Encrypt
-        let body = http::fixtures::encrypt_birth_year_offset_request(100, &public_key);
+        let body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/encrypt-birth-year-offset")
-                    .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .header("content-type", "application/msgpack")
+                    .body(Body::from(http::msgpack_body(&body)))
                     .unwrap(),
             )
             .await
@@ -385,7 +388,7 @@ async fn key_store_no_panic() {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let json = http::parse_json_body(response).await;
+        let json = http::parse_msgpack_body(response).await;
         let ciphertext = json["ciphertext"].as_str().unwrap();
 
         // Verify
@@ -396,8 +399,8 @@ async fn key_store_no_panic() {
                 Request::builder()
                     .method("POST")
                     .uri("/verify-age-offset")
-                    .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .header("content-type", "application/msgpack")
+                    .body(Body::from(http::msgpack_body(&body)))
                     .unwrap(),
             )
             .await

@@ -119,13 +119,14 @@ async function fetchMsgpack<T>(
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
-  const isGzipped = response.headers.get("content-encoding")?.includes("gzip");
-  const decodedBytes = isGzipped ? gunzipSync(buffer) : buffer;
+  const hasGzipMagic =
+    buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+  const decodedBytes = hasGzipMagic ? gunzipSync(buffer) : buffer;
 
   try {
     return decode(decodedBytes) as T;
   } catch {
-    const bodyText = await safeReadBodyText(response);
+    const bodyText = buffer.toString("utf8");
     throw new HttpError({
       message: "Invalid msgpack response",
       status: response.status,

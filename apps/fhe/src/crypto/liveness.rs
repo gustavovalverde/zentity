@@ -3,13 +3,10 @@
 //! Provides FHE-based liveness score encryption and threshold verification.
 //! Scores are floats from 0.0 to 1.0, stored as u16 (0-10000) for 4 decimal precision.
 
-use super::{
-    decode_bincode_base64, decode_compressed_public_key, encode_bincode_base64,
-    setup_for_verification,
-};
+use super::{decode_bincode_base64, encode_bincode_base64, setup_for_verification};
 use crate::error::FheError;
 use tfhe::prelude::*;
-use tfhe::FheUint16;
+use tfhe::{CompressedPublicKey, FheUint16};
 
 /// Scale factor for converting float to u16 (4 decimal precision)
 const SCORE_SCALE: f64 = 10000.0;
@@ -48,14 +45,16 @@ pub fn threshold_to_u16(threshold: f64) -> Result<u16, FheError> {
 ///
 /// Args:
 ///   score: Float from 0.0 to 1.0
-///   public_key_b64: Base64-encoded compressed public key
+///   public_key: Compressed public key
 ///
 /// Returns:
 ///   Base64-encoded ciphertext of the score (stored as u16 0-10000)
-pub fn encrypt_liveness_score(score: f64, public_key_b64: &str) -> Result<String, FheError> {
+pub fn encrypt_liveness_score(
+    score: f64,
+    public_key: &CompressedPublicKey,
+) -> Result<String, FheError> {
     let scaled_score = score_to_u16(score)?;
-    let public_key = decode_compressed_public_key(public_key_b64)?;
-    let encrypted = FheUint16::try_encrypt(scaled_score, &public_key)
+    let encrypted = FheUint16::try_encrypt(scaled_score, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     // Serialize to bytes using bincode
@@ -208,8 +207,8 @@ mod tests {
         use super::super::test_helpers::get_test_keys;
         use tfhe::FheBool;
 
-        let (client_key, public_key_b64, key_id) = get_test_keys();
-        let ciphertext = encrypt_liveness_score(0.85, &public_key_b64).unwrap();
+        let (client_key, public_key, key_id) = get_test_keys();
+        let ciphertext = encrypt_liveness_score(0.85, &public_key).unwrap();
         let result_ciphertext = verify_liveness_threshold(&ciphertext, 0.3, &key_id).unwrap();
 
         let encrypted: FheBool = decode_bincode_base64(&result_ciphertext).unwrap();

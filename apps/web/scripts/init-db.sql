@@ -247,10 +247,6 @@ CREATE INDEX IF NOT EXISTS idx_attestation_evidence_user_id
 CREATE INDEX IF NOT EXISTS idx_attestation_evidence_document_id
   ON attestation_evidence (document_id);
 CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_expires_at ON onboarding_sessions(expires_at);
-CREATE INDEX IF NOT EXISTS idx_encrypted_secrets_user_id ON encrypted_secrets (user_id);
-CREATE INDEX IF NOT EXISTS idx_encrypted_secrets_type ON encrypted_secrets (secret_type);
-CREATE INDEX IF NOT EXISTS idx_secret_wrappers_user_id ON secret_wrappers (user_id);
-CREATE INDEX IF NOT EXISTS idx_secret_wrappers_credential_id ON secret_wrappers (credential_id);
 CREATE INDEX IF NOT EXISTS idx_rp_authorization_codes_expires_at
   ON rp_authorization_codes (expires_at);
 CREATE INDEX IF NOT EXISTS idx_rp_authorization_codes_user_id
@@ -281,6 +277,11 @@ CREATE TABLE IF NOT EXISTS secret_wrappers (
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(secret_id, credential_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_encrypted_secrets_user_id ON encrypted_secrets (user_id);
+CREATE INDEX IF NOT EXISTS idx_encrypted_secrets_type ON encrypted_secrets (secret_type);
+CREATE INDEX IF NOT EXISTS idx_secret_wrappers_user_id ON secret_wrappers (user_id);
+CREATE INDEX IF NOT EXISTS idx_secret_wrappers_credential_id ON secret_wrappers (credential_id);
 
 -- Blockchain attestations (multi-network)
 CREATE TABLE IF NOT EXISTS blockchain_attestations (

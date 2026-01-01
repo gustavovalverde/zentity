@@ -383,7 +383,6 @@ export function createIdentityVerificationJob(args: {
   draftId: string;
   userId: string;
   fheKeyId?: string | null;
-  fhePublicKey?: string | null;
 }): void {
   db.insert(identityVerificationJobs)
     .values({
@@ -392,7 +391,6 @@ export function createIdentityVerificationJob(args: {
       userId: args.userId,
       status: "queued",
       fheKeyId: args.fheKeyId ?? null,
-      fhePublicKey: args.fhePublicKey ?? null,
       attempts: 0,
     })
     .run();
@@ -433,7 +431,6 @@ export function upsertIdentityBundle(data: {
   issuerId?: string | null;
   attestationExpiresAt?: string | null;
   fheKeyId?: string | null;
-  fhePublicKey?: string | null;
   fheStatus?: FheStatus | null;
   fheError?: string | null;
 }): void {
@@ -446,7 +443,6 @@ export function upsertIdentityBundle(data: {
       issuerId: data.issuerId ?? null,
       attestationExpiresAt: data.attestationExpiresAt ?? null,
       fheKeyId: data.fheKeyId ?? null,
-      fhePublicKey: data.fhePublicKey ?? null,
       fheStatus: data.fheStatus ?? null,
       fheError: data.fheError ?? null,
     })
@@ -459,7 +455,6 @@ export function upsertIdentityBundle(data: {
         issuerId: data.issuerId ?? null,
         attestationExpiresAt: data.attestationExpiresAt ?? null,
         fheKeyId: data.fheKeyId ?? null,
-        fhePublicKey: data.fhePublicKey ?? null,
         fheStatus: data.fheStatus ?? null,
         fheError: data.fheError ?? null,
         updatedAt: sql`datetime('now')`,

@@ -4,13 +4,10 @@
 //! (years since 1900). This avoids storing full DOB while still supporting
 //! age threshold checks.
 
-use super::{
-    decode_bincode_base64, decode_compressed_public_key, encode_bincode_base64,
-    setup_for_verification,
-};
+use super::{decode_bincode_base64, encode_bincode_base64, setup_for_verification};
 use crate::error::FheError;
 use tfhe::prelude::*;
-use tfhe::FheUint16;
+use tfhe::{CompressedPublicKey, FheUint16};
 
 const BASE_YEAR: u16 = 1900;
 const MAX_OFFSET: u16 = 255;
@@ -28,12 +25,11 @@ fn validate_offset(offset: u16) -> Result<(), FheError> {
 /// Encrypt a birth year offset (years since 1900) using the provided public key
 pub fn encrypt_birth_year_offset(
     birth_year_offset: u16,
-    public_key_b64: &str,
+    public_key: &CompressedPublicKey,
 ) -> Result<String, FheError> {
     validate_offset(birth_year_offset)?;
 
-    let public_key = decode_compressed_public_key(public_key_b64)?;
-    let encrypted = FheUint16::try_encrypt(birth_year_offset, &public_key)
+    let encrypted = FheUint16::try_encrypt(birth_year_offset, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     // Serialize to bytes using bincode
@@ -86,9 +82,9 @@ mod tests {
 
     #[test]
     fn encrypt_and_verify_age_roundtrip() {
-        let (client_key, public_key_b64, key_id) = get_test_keys();
+        let (client_key, public_key, key_id) = get_test_keys();
         let offset = 2000u16 - BASE_YEAR;
-        let ciphertext = encrypt_birth_year_offset(offset, &public_key_b64).unwrap();
+        let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
         let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
         let encrypted: FheBool = decode_bincode_base64(&result_ciphertext).unwrap();
