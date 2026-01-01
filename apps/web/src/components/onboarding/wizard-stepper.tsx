@@ -18,13 +18,7 @@ import { cn, motion, reducedMotion } from "@/lib/utils";
 
 import { useWizard } from "./wizard-provider";
 
-const STEP_TITLES = [
-  "Email",
-  "Upload ID",
-  "Liveness",
-  "Create Account",
-  "Secure Keys",
-];
+const STEP_TITLES = ["Email", "Upload ID", "Liveness", "Create Account"];
 
 export function WizardStepper() {
   const {

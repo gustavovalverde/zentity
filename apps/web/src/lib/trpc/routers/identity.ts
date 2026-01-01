@@ -1005,7 +1005,7 @@ export const identityRouter = router({
         ocrIssues: issues.length ? JSON.stringify(issues) : null,
       });
 
-      await updateWizardProgress(validation.session.email, {
+      await updateWizardProgress(validation.session.id, {
         documentProcessed: isDocumentValid,
         documentHash: documentHash ?? undefined,
         identityDraftId: draftId,
@@ -1176,7 +1176,7 @@ export const identityRouter = router({
         faceMatchPassed,
       });
 
-      await updateWizardProgress(stepValidation.session.email, {
+      await updateWizardProgress(stepValidation.session.id, {
         livenessPassed,
         faceMatchPassed,
         step: Math.max(stepValidation.session.step ?? 1, 3),

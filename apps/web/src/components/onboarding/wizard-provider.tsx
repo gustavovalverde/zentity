@@ -8,14 +8,14 @@
  * 1. Email entry
  * 2. Document upload + OCR verification
  * 3. Liveness detection (optional, can be skipped)
- * 4. Review & create account
- * 5. Secure keys (passkey-protected FHE keys + privacy proofs)
+ * 4. Create account with passkey (review + passkey-protected FHE keys + privacy proofs)
  *
  * Features:
  * - Server-side state persistence via encrypted cookies
  * - Navigation validation (forward requires prerequisites, backward warns)
  * - PII stored encrypted in session, never in plain text
  * - beforeunload warning for unsaved progress
+ * - Passwordless-first authentication using passkeys
  */
 "use client";
 
@@ -40,8 +40,8 @@ import {
 } from "@/features/auth/schemas/sign-up.schema";
 import { trpc } from "@/lib/trpc/client";
 
-const TOTAL_STEPS = 5;
-type WizardStep = 1 | 2 | 3 | 4 | 5;
+const TOTAL_STEPS = 4;
+type WizardStep = 1 | 2 | 3 | 4;
 
 /** Clamps step number to valid range [1, TOTAL_STEPS]. */
 function toWizardStep(step: number): WizardStep {
@@ -55,6 +55,8 @@ interface ServerSessionState {
   hasSession: boolean;
   /** True if a stale session cookie was just cleared (session expired or DB mismatch) */
   wasCleared?: boolean;
+  /** Session ID from server (used for all session operations) */
+  sessionId?: string;
   email?: string;
   step?: WizardStep;
   identityDraftId?: string | null;
@@ -68,6 +70,8 @@ interface ServerSessionState {
 }
 
 type WizardState = {
+  /** Server session ID - the key for all session operations */
+  sessionId: string | null;
   currentStep: WizardStep;
   data: WizardData;
   isSubmitting: boolean;
@@ -86,10 +90,12 @@ type WizardAction =
   | { type: "GO_TO_STEP"; step: number }
   | { type: "UPDATE_DATA"; data: Partial<WizardData> }
   | { type: "SET_SUBMITTING"; isSubmitting: boolean }
+  | { type: "SET_SESSION_ID"; sessionId: string }
   | { type: "RESET" }
   | {
       type: "LOAD_STATE";
       state: {
+        sessionId?: string;
         currentStep?: WizardStep;
         data?: Partial<WizardData>;
         serverState?: Partial<WizardState["serverState"]>;
@@ -101,6 +107,7 @@ type WizardAction =
     };
 
 const initialState: WizardState = {
+  sessionId: null,
   currentStep: 1,
   data: defaultWizardData,
   isSubmitting: false,
@@ -140,11 +147,17 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         ...state,
         isSubmitting: action.isSubmitting,
       };
+    case "SET_SESSION_ID":
+      return {
+        ...state,
+        sessionId: action.sessionId,
+      };
     case "RESET":
       return initialState;
     case "LOAD_STATE":
       return {
         ...state,
+        sessionId: action.state.sessionId ?? state.sessionId,
         currentStep: action.state.currentStep ?? state.currentStep,
         data: { ...state.data, ...(action.state.data ?? {}) },
         serverState: {
@@ -243,8 +256,12 @@ export function WizardProvider({
         if (forceReset) {
           // Explicit start-over (e.g., from "Start Verification" CTA).
           // Clear any existing cookie+DB session, then start at step 1.
-          // Fire-and-forget so UI isn't blocked on API availability.
-          void trpc.onboarding.clearSession.mutate().catch(() => {});
+          // Await to ensure session is cleared before proceeding.
+          try {
+            await trpc.onboarding.clearSession.mutate();
+          } catch {
+            // Ignore clear errors - may not have a session to clear
+          }
 
           dispatch({ type: "RESET" });
           lastSavedStepRef.current = 1;
@@ -271,11 +288,16 @@ export function WizardProvider({
           return;
         }
 
-        if (serverState?.hasSession && serverState.email) {
-          // Restore state from server
+        if (
+          serverState?.hasSession &&
+          serverState.email &&
+          serverState.sessionId
+        ) {
+          // Restore state from server (including sessionId for future operations)
           dispatch({
             type: "LOAD_STATE",
             state: {
+              sessionId: serverState.sessionId,
               currentStep: serverState.step ?? 1,
               data: {
                 email: serverState.email,
@@ -424,30 +446,50 @@ export function WizardProvider({
     // Reset local state first
     dispatch({ type: "RESET" });
 
-    dispatch({
-      type: "LOAD_STATE",
-      state: {
-        currentStep: 1,
-        data: { email },
-        serverState: {
-          documentProcessed: false,
-          livenessPassed: false,
-          faceMatchPassed: false,
-          keysSecured: false,
-        },
-      },
-    });
-    lastSavedStepRef.current = 1;
-
     // Create new session with forceNew flag (clears any existing session).
-    // Fire-and-forget so UI can advance even if the network is slow.
-    void trpc.onboarding.saveSession
-      .mutate({
+    // MUST await to ensure server-side session is created before proceeding.
+    // This prevents session bleeding between users.
+    try {
+      const result = await trpc.onboarding.saveSession.mutate({
         email,
         step: 1,
         forceNew: true,
-      })
-      .catch(() => {});
+      });
+
+      // Update local state with the new sessionId from server
+      dispatch({
+        type: "LOAD_STATE",
+        state: {
+          sessionId: result.sessionId,
+          currentStep: 1,
+          data: { email },
+          serverState: {
+            documentProcessed: false,
+            livenessPassed: false,
+            faceMatchPassed: false,
+            keysSecured: false,
+          },
+        },
+      });
+      lastSavedStepRef.current = 1;
+    } catch (error) {
+      dispatch({
+        type: "LOAD_STATE",
+        state: {
+          currentStep: 1,
+          data: { email },
+          serverState: {
+            documentProcessed: false,
+            livenessPassed: false,
+            faceMatchPassed: false,
+            keysSecured: false,
+          },
+        },
+      });
+      lastSavedStepRef.current = 1;
+      // Re-throw so caller knows the session creation failed
+      throw error;
+    }
   }, []);
 
   // Skip liveness verification
@@ -595,7 +637,7 @@ export function WizardProvider({
 
     // Check if user has entered meaningful data (in-memory only)
     const hasUnsavedData = Boolean(
-      state.data.idDocument || state.data.selfieImage || state.data.password,
+      state.data.idDocument || state.data.selfieImage,
     );
 
     // Only warn if user is mid-process (not on first or last step with completion)

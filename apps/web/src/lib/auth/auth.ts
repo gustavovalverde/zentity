@@ -82,8 +82,10 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // Update session every 24 hours
-    // Enable cookie caching with JWE encryption for better performance
-    // Reduces database queries by caching session in encrypted cookies
+    // Cookie caching with JWE encryption for better performance.
+    // Reduces database queries by caching session in encrypted cookies.
+    // NOTE: Our passkey session creation now signs cookies correctly (HMAC-SHA256),
+    // so this cache works properly with manually created sessions.
     cookieCache: {
       enabled: true,
       maxAge: 5 * 60, // 5 minute cache

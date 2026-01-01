@@ -97,7 +97,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 
 Quick manual test (happy path):
 
-- Go to `/sign-up` → complete the 4-step wizard (email → upload → liveness → complete)
+- Go to `/sign-up` → complete the 4-step wizard (email → upload ID → liveness → create account)
 - After completion, open `/dashboard` and check verification + proof status
 
 ## Architecture (start here)
@@ -136,7 +136,7 @@ flowchart LR
 
 ## What’s Implemented (PoC)
 
-- 4-step onboarding wizard (email → upload ID → liveness → complete)
+- 4-step onboarding wizard (email → upload ID → liveness → create account)
 - Server-side OCR/liveness/face match with signed claims for tamper resistance
 - Client-side ZK proving (Web Worker) + server-side verification:
   - age, doc validity, nationality membership, face-match threshold proofs

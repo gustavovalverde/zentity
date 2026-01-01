@@ -1,0 +1,167 @@
+"use client";
+
+import { KeyRound, Loader2, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  authenticateWithPasskey,
+  checkPrfSupport,
+} from "@/lib/crypto/webauthn-prf";
+import { trpc } from "@/lib/trpc/client";
+import { base64UrlToBytes } from "@/lib/utils";
+
+type AuthStatus = "idle" | "checking" | "authenticating" | "verifying";
+
+export function PasskeySignInForm() {
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<AuthStatus>("idle");
+  const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
+
+  // Check PRF support on mount (informational only - not required for auth)
+  useEffect(() => {
+    let active = true;
+    void checkPrfSupport().then((result) => {
+      if (active) setPrfSupported(result.supported);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleSignIn = async () => {
+    setStatus("checking");
+    setError(null);
+
+    try {
+      // Step 1: Get authentication options from server
+      const options = await trpc.passkeyAuth.getAuthenticationOptions.query({});
+
+      // Step 2: Authenticate with passkey
+      setStatus("authenticating");
+      const { assertion } = await authenticateWithPasskey({
+        challenge: base64UrlToBytes(options.challenge),
+        allowCredentials: options.allowCredentials?.map((cred) => ({
+          id: cred.id,
+          transports: cred.transports as AuthenticatorTransport[],
+        })),
+        userVerification: "required",
+        timeoutMs: 60_000,
+      });
+
+      // Step 3: Verify assertion on server
+      setStatus("verifying");
+      const result = await trpc.passkeyAuth.verifyAuthentication.mutate({
+        challengeId: options.challengeId,
+        assertion,
+      });
+
+      if (!result.success) {
+        throw new Error("Authentication failed. Please try again.");
+      }
+
+      toast.success("Signed in successfully!");
+      window.location.assign("/dashboard");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Passkey authentication failed. Please try again.";
+
+      // Handle user cancellation gracefully
+      if (
+        message.includes("NotAllowedError") ||
+        message.includes("cancelled")
+      ) {
+        setError(null);
+        setStatus("idle");
+        return;
+      }
+
+      setError(message);
+      toast.error("Sign in failed", { description: message });
+      setStatus("idle");
+    }
+  };
+
+  const isLoading = status !== "idle";
+
+  return (
+    <div className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <KeyRound className="h-5 w-5 text-muted-foreground" />
+          <span className="font-medium">Sign in with Passkey</span>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Use your device's biometrics (Face ID, Touch ID, Windows Hello) or
+          security key to sign in securely without a password.
+        </p>
+      </div>
+
+      <Button
+        type="button"
+        className="w-full"
+        size="lg"
+        disabled={isLoading}
+        onClick={handleSignIn}
+      >
+        {status === "checking" && (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Getting options...
+          </>
+        )}
+        {status === "authenticating" && (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Waiting for passkey...
+          </>
+        )}
+        {status === "verifying" && (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Signing in...
+          </>
+        )}
+        {status === "idle" && (
+          <>
+            <KeyRound className="mr-2 h-4 w-4" />
+            Sign in with Passkey
+          </>
+        )}
+      </Button>
+
+      {prfSupported === false && (
+        <Alert>
+          <TriangleAlert className="h-4 w-4" />
+          <AlertDescription className="ml-2 text-xs">
+            Your device supports passkeys but not PRF. Some features like FHE
+            key auto-unlock may not be available.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="text-center text-sm text-muted-foreground space-y-2">
+        <p>
+          Lost your passkey?{" "}
+          <Link
+            href="/recover-passkey"
+            className="font-medium text-primary hover:underline"
+          >
+            Recover with magic link
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

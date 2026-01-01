@@ -1,25 +1,35 @@
 import type { OnboardingSession } from "../schema";
 
 import { and, eq, gt, sql } from "drizzle-orm";
+import { nanoid } from "nanoid";
 
 import { db } from "../connection";
 import { onboardingSessions } from "../schema";
 
 const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+/**
+ * Create or update an onboarding session by sessionId.
+ * If sessionId is not provided, generates a new one.
+ * Returns the session including the sessionId for cookie storage.
+ */
 export function upsertOnboardingSession(
-  data: Partial<OnboardingSession> & { email: string },
+  data: Partial<OnboardingSession> & { id?: string; email?: string | null },
 ): OnboardingSession {
-  const normalizedEmail = data.email.toLowerCase().trim();
+  const sessionId = data.id ?? nanoid();
+  const normalizedEmail = data.email?.toLowerCase().trim() ?? null;
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + Math.floor(ONBOARDING_SESSION_TTL_MS / 1000);
-  const id = crypto.randomUUID();
 
   const updateSet: Partial<typeof onboardingSessions.$inferInsert> = {
     updatedAt: now,
     expiresAt,
   };
 
+  // Only update fields that are explicitly provided
+  if (data.email !== undefined) {
+    updateSet.email = normalizedEmail;
+  }
   if (data.step !== undefined) {
     updateSet.step = data.step;
   }
@@ -47,7 +57,7 @@ export function upsertOnboardingSession(
 
   db.insert(onboardingSessions)
     .values({
-      id,
+      id: sessionId,
       email: normalizedEmail,
       step: data.step ?? 1,
       encryptedPii: data.encryptedPii ?? null,
@@ -62,22 +72,25 @@ export function upsertOnboardingSession(
       expiresAt,
     })
     .onConflictDoUpdate({
-      target: onboardingSessions.email,
+      target: onboardingSessions.id,
       set: updateSet,
     })
     .run();
 
-  const session = getOnboardingSessionByEmail(normalizedEmail);
+  const session = getOnboardingSessionById(sessionId);
   if (!session) {
     throw new Error("Failed to upsert onboarding session");
   }
   return session;
 }
 
-export function getOnboardingSessionByEmail(
-  email: string,
+/**
+ * Get an onboarding session by its sessionId.
+ * Returns null if not found or expired.
+ */
+export function getOnboardingSessionById(
+  sessionId: string,
 ): OnboardingSession | null {
-  const normalizedEmail = email.toLowerCase().trim();
   const now = Math.floor(Date.now() / 1000);
 
   const row = db
@@ -85,7 +98,7 @@ export function getOnboardingSessionByEmail(
     .from(onboardingSessions)
     .where(
       and(
-        eq(onboardingSessions.email, normalizedEmail),
+        eq(onboardingSessions.id, sessionId),
         gt(onboardingSessions.expiresAt, now),
       ),
     )
@@ -95,13 +108,30 @@ export function getOnboardingSessionByEmail(
   return row ?? null;
 }
 
-export function deleteOnboardingSession(email: string): void {
+/**
+ * Delete an onboarding session by its sessionId.
+ */
+export function deleteOnboardingSessionById(sessionId: string): void {
+  db.delete(onboardingSessions)
+    .where(eq(onboardingSessions.id, sessionId))
+    .run();
+}
+
+/**
+ * Delete all onboarding sessions for a given email.
+ * Used during account deletion to clean up orphaned sessions.
+ */
+export function deleteOnboardingSessionsByEmail(email: string): void {
   const normalizedEmail = email.toLowerCase().trim();
   db.delete(onboardingSessions)
     .where(eq(onboardingSessions.email, normalizedEmail))
     .run();
 }
 
+/**
+ * Cleanup expired sessions.
+ * Returns the number of sessions deleted.
+ */
 export function cleanupExpiredOnboardingSessions(): number {
   const now = Math.floor(Date.now() / 1000);
   const expiredRows = db

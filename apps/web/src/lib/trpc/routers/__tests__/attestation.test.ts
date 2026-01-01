@@ -79,6 +79,7 @@ async function createCaller(session: Session | null) {
   const { attestationRouter } = await import("@/lib/trpc/routers/attestation");
   return attestationRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
+    resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
   });

@@ -204,7 +204,7 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 
 **Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
 
-**User-controlled encryption**: FHE keys are generated and stored client-side in browser IndexedDB (see [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md)). The server receives only public/evaluation keys—it can compute on encrypted data but cannot decrypt. Only the user can decrypt their own data via `decryptFheBool()` in the browser.
+**User-controlled encryption**: FHE keys are generated client-side and stored server-side as passkey-wrapped encrypted secrets. The server cannot decrypt these keys—only the user with their passkey can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
 
 ## Code Conventions
 
@@ -228,6 +228,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `onboarding` | Wizard state management and step validation |
 | `attestation` | On-chain identity attestation (submit, refresh, networks) |
 | `account` | User account management |
+| `passkeyAuth` | Passkey credential management (register, authenticate, list, remove) |
 | `token` | Session/token operations |
 
 **Client usage:**

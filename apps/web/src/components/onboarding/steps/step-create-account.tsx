@@ -1,17 +1,27 @@
 "use client";
 
+/* eslint @next/next/no-img-element: off */
+
 import {
+  ArrowLeftRight,
   Check,
+  Edit2,
   KeyRound,
   Loader2,
   ShieldCheck,
   TriangleAlert,
+  UserCheck,
+  XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import {
   ensureFheKeyRegistration,
@@ -28,13 +38,20 @@ import {
   checkPrfSupport,
   createCredentialWithPrf,
   evaluatePrf,
+  extractCredentialRegistrationData,
 } from "@/lib/crypto/webauthn-prf";
+import {
+  type FaceMatchResult,
+  matchFaces,
+} from "@/lib/liveness/face-detection";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 import { base64UrlToBytes, cn } from "@/lib/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
+
+type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
 type SecureStatus =
   | "idle"
@@ -89,10 +106,33 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
   );
 }
 
-export function StepSecureKeys() {
+/**
+ * Step 4: Create Account with Passkey
+ *
+ * Merged step that combines:
+ * - Review extracted data from document
+ * - Face matching verification
+ * - Passwordless account creation via passkey
+ * - FHE key registration with PRF
+ * - Privacy proof generation
+ */
+export function StepCreateAccount() {
   const { state, updateData, setSubmitting, reset, updateServerProgress } =
     useWizard();
   const { data } = state;
+
+  // Review state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(data.extractedName || "");
+
+  // Face matching state
+  const [faceMatchStatus, setFaceMatchStatus] =
+    useState<FaceMatchStatus>("idle");
+  const [faceMatchResult, setFaceMatchResult] =
+    useState<FaceMatchResult | null>(null);
+  const faceMatchAttemptedRef = useRef(false);
+
+  // Passkey/secure keys state
   const [supportStatus, setSupportStatus] = useState<{
     supported: boolean;
     reason?: string;
@@ -103,6 +143,7 @@ export function StepSecureKeys() {
   const hasIdentityDocs = Boolean(data.identityDraftId);
   const hasDob = Boolean(data.extractedDOB);
 
+  // Check PRF support on mount
   useEffect(() => {
     let active = true;
     checkPrfSupport().then((result) => {
@@ -112,6 +153,68 @@ export function StepSecureKeys() {
       active = false;
     };
   }, []);
+
+  // Get the best selfie frame for face matching
+  const selfieForMatching = data.bestSelfieFrame || data.selfieImage;
+
+  // Auto-trigger face matching when both ID and selfie are available
+  useEffect(() => {
+    if (faceMatchAttemptedRef.current) return;
+    if (!data.idDocumentBase64 || !selfieForMatching) return;
+    if (faceMatchStatus !== "idle") return;
+
+    faceMatchAttemptedRef.current = true;
+
+    const performFaceMatch = async () => {
+      if (!data.idDocumentBase64 || !selfieForMatching) return;
+
+      setFaceMatchStatus("matching");
+      try {
+        const result = await matchFaces(
+          data.idDocumentBase64,
+          selfieForMatching,
+        );
+        setFaceMatchResult(result);
+
+        if (result.error) {
+          setFaceMatchStatus("error");
+        } else if (result.matched) {
+          setFaceMatchStatus("matched");
+        } else {
+          setFaceMatchStatus("no_match");
+        }
+      } catch (err) {
+        setFaceMatchStatus("error");
+        setFaceMatchResult({
+          matched: false,
+          confidence: 0,
+          distance: 1,
+          threshold: 0.6,
+          processingTimeMs: 0,
+          idFaceExtracted: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    };
+
+    performFaceMatch();
+  }, [data.idDocumentBase64, selfieForMatching, faceMatchStatus]);
+
+  const calculateAge = (dob: string | null): number | null => {
+    if (!dob) return null;
+    const birthDate = new Date(dob);
+    if (Number.isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+    return age;
+  };
 
   const progressStatus = useMemo<{
     passkey: StepIndicatorProps["status"];
@@ -146,68 +249,86 @@ export function StepSecureKeys() {
     };
   }, [status]);
 
-  const buildPasskeyOptions = async (prfSalt: Uint8Array) => {
-    const user = await trpc.secrets.getPasskeyUser.query();
-    const existingBundle = await trpc.secrets.getSecretBundle.query({
-      secretType: "fhe_keys",
-    });
-    const excludeCredentials =
-      existingBundle?.wrappers?.map((wrapper) => ({
-        type: "public-key" as const,
-        id: toArrayBuffer(base64UrlToBytes(wrapper.credentialId)),
-      })) ?? [];
-
-    return {
-      rp: {
-        id: window.location.hostname,
-        name: "Zentity",
-      },
-      user: {
-        id: new TextEncoder().encode(user.userId),
-        name: user.email,
-        displayName: user.displayName,
-      },
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      pubKeyCredParams: [
-        { type: "public-key" as const, alg: -8 },
-        { type: "public-key" as const, alg: -7 },
-        { type: "public-key" as const, alg: -257 },
-      ],
-      authenticatorSelection: {
-        residentKey: "required" as const,
-        userVerification: "required" as const,
-      },
-      timeout: 60_000,
-      attestation: "none" as const,
-      excludeCredentials,
-      extensions: {
-        prf: {
-          eval: {
-            first: toArrayBuffer(prfSalt),
-          },
-        },
-      },
-    } satisfies PublicKeyCredentialCreationOptions;
+  const handleSaveName = () => {
+    updateData({ extractedName: editedName || null });
+    setIsEditingName(false);
   };
 
-  const handleSecureKeys = async () => {
+  const handleCreateAccount = async () => {
     if (!supportStatus?.supported) return;
 
     setSubmitting(true);
     setError(null);
 
     try {
+      // Use extracted name or edited name, fallback to email prefix
+      const accountName =
+        editedName || data.extractedName || data.email.split("@")[0];
+
+      // Step 1: Register passkey and create user account
       setStatus("registering-passkey");
       const prfSalt = generatePrfSalt();
-      const options = await buildPasskeyOptions(prfSalt);
-      const { credentialId, prfOutput: initialPrfOutput } =
-        await createCredentialWithPrf(options);
 
+      // Get registration options from server
+      const registrationOptions =
+        await trpc.passkeyAuth.getRegistrationOptions.mutate({
+          email: data.email,
+          name: accountName,
+        });
+
+      // Build WebAuthn options with PRF
+      const options: PublicKeyCredentialCreationOptions = {
+        rp: {
+          id: registrationOptions.rp.id,
+          name: registrationOptions.rp.name,
+        },
+        user: {
+          id: Uint8Array.from(
+            new TextEncoder().encode(registrationOptions.user.id),
+          ),
+          name: registrationOptions.user.email,
+          displayName: registrationOptions.user.name,
+        },
+        challenge: Uint8Array.from(
+          base64UrlToBytes(registrationOptions.challenge),
+        ),
+        pubKeyCredParams: [
+          { type: "public-key" as const, alg: -8 },
+          { type: "public-key" as const, alg: -7 },
+          { type: "public-key" as const, alg: -257 },
+        ],
+        authenticatorSelection: {
+          residentKey: "required" as const,
+          userVerification: "required" as const,
+        },
+        timeout: 60_000,
+        attestation: "none" as const,
+        extensions: {
+          prf: {
+            eval: {
+              first: toArrayBuffer(prfSalt),
+            },
+          },
+        },
+      };
+
+      // Create passkey with PRF
+      const {
+        credential,
+        credentialId,
+        prfOutput: initialPrfOutput,
+      } = await createCredentialWithPrf(options);
+
+      // Extract credential data for server storage
+      const credentialData = extractCredentialRegistrationData(credential);
+
+      // Step 2: If PRF wasn't available during registration, evaluate it now
       let prfOutput = initialPrfOutput;
       if (!prfOutput) {
         setStatus("unlocking-prf");
         const { prfOutputs } = await evaluatePrf({
           credentialIdToSalt: { [credentialId]: prfSalt },
+          credentialTransports: { [credentialId]: credentialData.transports },
         });
         prfOutput =
           prfOutputs.get(credentialId) ??
@@ -220,6 +341,28 @@ export function StepSecureKeys() {
         );
       }
 
+      // Step 3: Complete registration on server (creates user + stores credential + session)
+      const registrationResult =
+        await trpc.passkeyAuth.verifyRegistration.mutate({
+          challengeId: registrationOptions.challengeId,
+          email: data.email,
+          name: accountName,
+          credential: {
+            credentialId: credentialData.credentialId,
+            publicKey: credentialData.publicKey,
+            counter: credentialData.counter,
+            deviceType: credentialData.deviceType,
+            backedUp: credentialData.backedUp,
+            transports: credentialData.transports,
+            name: "Primary Passkey",
+          },
+        });
+
+      if (!registrationResult.success) {
+        throw new Error("Failed to register passkey. Please try again.");
+      }
+
+      // Step 4: Register FHE keys
       setStatus("registering-fhe");
       const fheKeyInfo = await ensureFheKeyRegistration({
         enrollment: {
@@ -231,6 +374,7 @@ export function StepSecureKeys() {
 
       await updateServerProgress({ keysSecured: true });
 
+      // Step 5: Finalize identity and generate proofs if documents exist
       if (hasIdentityDocs) {
         if (!data.identityDraftId) {
           throw new Error(
@@ -248,18 +392,20 @@ export function StepSecureKeys() {
           const start = Date.now();
           let attempt = 0;
           while (Date.now() - start < 5 * 60 * 1000) {
-            const status = await trpc.identity.finalizeStatus.query({
+            const jobStatus = await trpc.identity.finalizeStatus.query({
               jobId: job.jobId,
             });
 
-            if (status.status === "complete") {
-              if (!status.result) {
+            if (jobStatus.status === "complete") {
+              if (!jobStatus.result) {
                 throw new Error("Finalization completed without a result.");
               }
-              return status.result;
+              return jobStatus.result;
             }
-            if (status.status === "error") {
-              throw new Error(status.error || "Identity finalization failed.");
+            if (jobStatus.status === "error") {
+              throw new Error(
+                jobStatus.error || "Identity finalization failed.",
+              );
             }
 
             const delay = Math.min(1000 + attempt * 500, 4000);
@@ -289,6 +435,7 @@ export function StepSecureKeys() {
           updateData({ identityDocumentId: identityResult.documentId });
         }
 
+        // Step 6: Generate proofs
         setStatus("generating-proofs");
         const activeDocumentId =
           identityResult.documentId ?? data.identityDocumentId;
@@ -471,6 +618,7 @@ export function StepSecureKeys() {
           throw new Error(friendlyMessage);
         }
 
+        // Step 7: Store proofs
         setStatus("storing-proofs");
         for (const proof of proofResults) {
           await storeProof(
@@ -483,8 +631,11 @@ export function StepSecureKeys() {
         }
       }
 
+      // Complete!
       setStatus("complete");
       reset();
+
+      // Check for RP flow redirect
       const rpFlow = new URLSearchParams(window.location.search).get("rp_flow");
       if (rpFlow) {
         window.location.assign(
@@ -497,10 +648,10 @@ export function StepSecureKeys() {
       const message =
         err instanceof Error
           ? err.message
-          : "An unexpected error occurred while securing keys.";
+          : "An unexpected error occurred while creating your account.";
       setError(message);
       setStatus("error");
-      toast.error("Secure keys failed", { description: message });
+      toast.error("Account creation failed", { description: message });
     } finally {
       setSubmitting(false);
     }
@@ -512,13 +663,18 @@ export function StepSecureKeys() {
         "PRF passkeys are not supported on this device or browser."
       : null;
 
+  const hasIdentityImages = Boolean(
+    data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
+  );
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Secure Your Encryption Keys</h3>
+        <h3 className="text-lg font-medium">Create Your Account</h3>
         <p className="text-sm text-muted-foreground">
-          A passkey protects your homomorphic encryption keys so only you can
-          unlock them. This is the foundation for private, multi-device access.
+          Review your information, then create your account with a passkey.
+          Passkeys are more secure than passwords and work across all your
+          devices.
         </p>
         {!supportStatus && (
           <p className="text-xs text-muted-foreground">
@@ -547,24 +703,262 @@ export function StepSecureKeys() {
         </Alert>
       )}
 
-      <div className="rounded-lg border p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <KeyRound className="h-5 w-5 text-muted-foreground" />
-          <span className="font-medium">Passkey-protected keys</span>
-          <Badge variant="secondary">Recommended</Badge>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          We generate FHE keys locally, encrypt them with a passkey-derived key,
-          and store only ciphertext on the server. Your passkey can later be
-          reused for authentication without exposing encryption material.
-        </p>
-      </div>
+      {/* Extracted Information Review - only show when idle */}
+      {status === "idle" && (
+        <div className="space-y-4 rounded-lg border p-4">
+          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+            Your Information
+          </h4>
 
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Email</span>
+            <span className="font-medium">{data.email}</span>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Name</span>
+            <div className="flex items-center gap-2">
+              {isEditingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="h-8 w-48"
+                    placeholder="Enter name"
+                  />
+                  <Button size="sm" variant="ghost" onClick={handleSaveName}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <span className="font-medium">
+                    {editedName || data.extractedName || "Not extracted"}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditedName(data.extractedName || "");
+                      setIsEditingName(true);
+                    }}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Date of Birth</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">
+                {data.extractedDOB || "Not extracted"}
+              </span>
+              {calculateAge(data.extractedDOB) !== null && (
+                <Badge variant="secondary">
+                  {calculateAge(data.extractedDOB)}+ years
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Nationality</span>
+            <span className="font-medium">
+              {data.extractedNationality || "Not extracted"}
+            </span>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Document</span>
+            <Badge variant={data.idDocument ? "default" : "outline"}>
+              {data.idDocument ? "Uploaded" : "Skipped"}
+            </Badge>
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Liveness</span>
+            <Badge variant={data.selfieImage ? "default" : "outline"}>
+              {data.selfieImage ? "Verified" : "Skipped"}
+            </Badge>
+          </div>
+        </div>
+      )}
+
+      {/* Face Matching UI - only show when idle and has docs */}
+      {status === "idle" && hasIdentityImages && (
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-muted-foreground" />
+            <span className="font-medium">Face Verification</span>
+          </div>
+
+          <div className="flex items-center justify-center gap-4">
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className={cn(
+                  "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                  faceMatchStatus === "matching" &&
+                    "ring-2 ring-info/40 ring-offset-2",
+                )}
+              >
+                {faceMatchStatus === "matching" &&
+                  !faceMatchResult?.idFaceImage && (
+                    <Skeleton className="h-full w-full" />
+                  )}
+                {faceMatchResult?.idFaceImage ? (
+                  <img
+                    src={faceMatchResult.idFaceImage}
+                    alt="Face extracted from your ID (preview)"
+                    className={cn(
+                      "h-full w-full object-cover transition-opacity duration-300",
+                      faceMatchStatus === "matching" && "opacity-70",
+                    )}
+                  />
+                ) : faceMatchStatus !== "matching" ? (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                    ID face
+                  </div>
+                ) : null}
+              </div>
+              <span className="text-xs text-muted-foreground">ID Photo</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-1">
+              {faceMatchStatus === "idle" && (
+                <ArrowLeftRight className="h-6 w-6 text-muted-foreground" />
+              )}
+              {faceMatchStatus === "matching" && (
+                <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
+                  <div className="relative">
+                    <Loader2 className="h-6 w-6 animate-spin text-info" />
+                    <div className="absolute inset-0 h-6 w-6 rounded-full bg-info/20 animate-ping" />
+                  </div>
+                  <Skeleton className="h-3 w-16 mt-1" />
+                </div>
+              )}
+              {faceMatchStatus === "matched" && (
+                <div className="animate-in zoom-in duration-300">
+                  <Check className="h-6 w-6 text-success" />
+                  <span className="text-xs font-medium text-success">
+                    {Math.round((faceMatchResult?.confidence || 0) * 100)}%
+                    match
+                  </span>
+                </div>
+              )}
+              {faceMatchStatus === "no_match" && (
+                <>
+                  <XCircle className="h-6 w-6 text-destructive" />
+                  <span className="text-xs font-medium text-destructive">
+                    No match
+                  </span>
+                </>
+              )}
+              {faceMatchStatus === "error" && (
+                <>
+                  <XCircle className="h-6 w-6 text-warning" />
+                  <span className="text-xs font-medium text-warning">
+                    Error
+                  </span>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className={cn(
+                  "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                  faceMatchStatus === "matching" &&
+                    "ring-2 ring-info/40 ring-offset-2",
+                )}
+              >
+                {faceMatchStatus === "matching" && !selfieForMatching && (
+                  <Skeleton className="h-full w-full" />
+                )}
+                {selfieForMatching && (
+                  <img
+                    src={selfieForMatching}
+                    alt="Selfie"
+                    className={cn(
+                      "h-full w-full object-cover transition-opacity duration-300",
+                      faceMatchStatus === "matching" && "opacity-70",
+                    )}
+                  />
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">Selfie</span>
+            </div>
+          </div>
+
+          {faceMatchStatus === "matching" && (
+            <p className="text-sm text-center text-muted-foreground">
+              Comparing faces...
+            </p>
+          )}
+          {faceMatchStatus === "matched" && (
+            <Alert variant="success">
+              <Check className="h-4 w-4" />
+              <AlertDescription className="ml-2">
+                Face verification successful. The selfie matches the ID
+                document.
+              </AlertDescription>
+            </Alert>
+          )}
+          {faceMatchStatus === "no_match" && (
+            <Alert variant="destructive">
+              <XCircle className="h-4 w-4" />
+              <AlertDescription className="ml-2">
+                The selfie does not match the ID document photo. You may
+                proceed, but additional verification may be required.
+              </AlertDescription>
+            </Alert>
+          )}
+          {faceMatchStatus === "error" && (
+            <Alert>
+              <AlertDescription>
+                Face verification could not be completed. You may proceed, but
+                please ensure your ID and selfie are clear.
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+      )}
+
+      {/* Passkey Info Card - only show when idle */}
+      {status === "idle" && (
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-muted-foreground" />
+            <span className="font-medium">Passkey-protected account</span>
+            <Badge variant="secondary">Recommended</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Your account is protected by a passkey instead of a password.
+            Passkeys are phishing-resistant and work with your device's
+            biometrics (Face ID, Touch ID, Windows Hello). You can optionally
+            add a recovery password later in settings.
+          </p>
+        </div>
+      )}
+
+      {/* Progress UI - show when creating account */}
       {status !== "idle" && status !== "error" && (
         <div className="space-y-4 rounded-lg border border-info/30 bg-info/10 p-5 text-info animate-in fade-in duration-300">
           <div className="flex items-center gap-2 mb-4">
             <ShieldCheck className="h-5 w-5" />
-            <span className="font-medium">Securing your keys</span>
+            <span className="font-medium">Creating your secure account</span>
           </div>
 
           <div className="space-y-3">
@@ -574,7 +968,7 @@ export function StepSecureKeys() {
               icon={<KeyRound className="h-4 w-4" />}
             />
             <StepIndicator
-              label="Derive PRF key"
+              label="Derive encryption key"
               status={progressStatus.prf}
               icon={<Loader2 className="h-4 w-4" />}
             />
@@ -606,15 +1000,17 @@ export function StepSecureKeys() {
         </div>
       )}
 
+      {/* Navigation */}
       {!state.isSubmitting && (
         <WizardNavigation
-          onNext={handleSecureKeys}
-          nextLabel="Create Passkey & Secure Keys"
+          onNext={handleCreateAccount}
+          nextLabel="Create Account with Passkey"
           disableNext={!supportStatus?.supported}
         />
       )}
 
-      {!state.isSubmitting && (
+      {/* Privacy Info - only show when idle */}
+      {!state.isSubmitting && status === "idle" && (
         <Alert>
           <AlertDescription>
             <strong>Privacy-First Verification:</strong>
@@ -631,7 +1027,7 @@ export function StepSecureKeys() {
                   </li>
                 </>
               )}
-              {hasIdentityDocs && (
+              {hasIdentityImages && (
                 <>
                   <li>
                     Your ID document is processed to generate cryptographic

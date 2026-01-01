@@ -1,29 +1,9 @@
 import z from "zod";
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth";
-
 // Step 1: Email only (minimal friction)
 export const emailSchema = z.object({
   email: z.email({ message: "Please enter a valid email address" }),
 });
-
-// Step 4: Password (collected at the end, with confirmation)
-export const passwordSchema = z
-  .object({
-    password: z
-      .string()
-      .min(PASSWORD_MIN_LENGTH, {
-        message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
-      })
-      .max(PASSWORD_MAX_LENGTH, {
-        message: `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
-      }),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
 
 // Document AI processing result
 const documentResultSchema = z
@@ -55,14 +35,15 @@ const documentResultSchema = z
 type DocumentResultData = z.infer<typeof documentResultSchema>;
 
 /**
- * Wizard Data - Redesigned flow
+ * Wizard Data - Passwordless-first flow
  *
- * New flow: Email → ID Upload → Selfie/Liveness → Review & Create Account → Secure Keys
+ * New flow: Email → ID Upload → Selfie/Liveness → Create Account with Passkey
  *
  * - Email collected upfront (minimal friction)
  * - Name, DOB, etc. extracted from document (no manual input)
- * - Password collected before securing keys
+ * - Account creation happens alongside passkey registration (passwordless)
  * - Passkey-secured keys required for privacy proofs and FHE storage
+ * - Optional password can be added later in settings
  */
 export interface WizardData {
   // Step 1: Email only
@@ -85,10 +66,8 @@ export interface WizardData {
   bestSelfieFrame: string | null;
   blinkCount: number | null;
 
-  // Step 4: Review & Complete
-  password: string;
-  confirmPassword: string;
-  preferredName: string | null; // Optional display name
+  // Step 4: Create Account with Passkey
+  preferredName: string | null; // Optional display name (editable from extracted name)
   identityDocumentId: string | null;
 }
 
@@ -110,8 +89,6 @@ export const defaultWizardData: WizardData = {
   bestSelfieFrame: null,
   blinkCount: null,
   // Step 4
-  password: "",
-  confirmPassword: "",
   preferredName: null,
   identityDocumentId: null,
 };

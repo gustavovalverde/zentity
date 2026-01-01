@@ -31,6 +31,8 @@ type TrpcContext = {
   traceId?: string;
   spanId?: string;
   span?: Span;
+  /** Response headers that will be merged with tRPC response. Use for Set-Cookie. */
+  resHeaders: Headers;
 };
 
 export type { Logger };
@@ -41,6 +43,7 @@ export type { Logger };
  */
 export async function createTrpcContext(args: {
   req: Request;
+  resHeaders?: Headers;
 }): Promise<TrpcContext> {
   const session = await auth.api.getSession({
     headers: args.req.headers,
@@ -53,6 +56,7 @@ export async function createTrpcContext(args: {
     req: args.req,
     session: session ?? null,
     requestId: headerRequestId || randomUUID(),
+    resHeaders: args.resHeaders ?? new Headers(),
   };
 }
 

@@ -16,6 +16,7 @@ const originalFetch = global.fetch;
 function createCaller(session: Session | null) {
   return cryptoRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
+    resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
   });

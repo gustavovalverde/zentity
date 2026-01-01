@@ -7,7 +7,7 @@
  */
 
 // Client-side auth hooks and methods
-export { authClient, signIn, signOut, signUp } from "./auth-client";
+export { authClient, signIn, signOut, useSession } from "./auth-client";
 // Error handling utilities (pure functions, client-safe)
 export {
   getBetterAuthErrorMessage,

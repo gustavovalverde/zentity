@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   cleanupExpiredOnboardingSessions,
-  deleteOnboardingSession,
-  getOnboardingSessionByEmail,
+  deleteOnboardingSessionById,
+  deleteOnboardingSessionsByEmail,
+  getOnboardingSessionById,
   upsertOnboardingSession,
 } from "@/lib/db/queries/onboarding";
 import { resetDatabase } from "@/test/db-test-utils";
@@ -19,20 +20,24 @@ describe("onboarding queries", () => {
     vi.useRealTimers();
   });
 
-  it("upserts sessions and normalizes email", () => {
+  it("upserts sessions with sessionId and normalizes email", () => {
     const session = upsertOnboardingSession({
       email: "USER@Example.COM",
       step: 2,
       documentHash: "doc-hash",
     });
 
+    expect(session.id).toBeDefined();
     expect(session.email).toBe("user@example.com");
     expect(session.step).toBe(2);
 
-    const fetched = getOnboardingSessionByEmail("USER@Example.COM");
+    // Fetch by sessionId
+    const fetched = getOnboardingSessionById(session.id);
     expect(fetched?.step).toBe(2);
 
+    // Update existing session by id
     const updated = upsertOnboardingSession({
+      id: session.id,
       email: "user@example.com",
       step: 3,
       livenessPassed: true,
@@ -41,20 +46,37 @@ describe("onboarding queries", () => {
     expect(updated.livenessPassed).toBe(true);
   });
 
-  it("deletes onboarding sessions by email", () => {
-    upsertOnboardingSession({ email: "delete@example.com" });
+  it("deletes onboarding sessions by sessionId", () => {
+    const session = upsertOnboardingSession({ email: "delete@example.com" });
 
-    deleteOnboardingSession("delete@example.com");
+    deleteOnboardingSessionById(session.id);
 
-    expect(getOnboardingSessionByEmail("delete@example.com")).toBeNull();
+    expect(getOnboardingSessionById(session.id)).toBeNull();
+  });
+
+  it("deletes onboarding sessions by email (for account cleanup)", () => {
+    const session1 = upsertOnboardingSession({ email: "cleanup@example.com" });
+    const session2 = upsertOnboardingSession({ email: "cleanup@example.com" });
+    const otherSession = upsertOnboardingSession({
+      email: "other@example.com",
+    });
+
+    deleteOnboardingSessionsByEmail("cleanup@example.com");
+
+    // Both sessions with the email should be deleted
+    expect(getOnboardingSessionById(session1.id)).toBeNull();
+    expect(getOnboardingSessionById(session2.id)).toBeNull();
+    // Other session should remain
+    expect(getOnboardingSessionById(otherSession.id)).not.toBeNull();
   });
 
   it("cleans up expired onboarding sessions", () => {
-    upsertOnboardingSession({ email: "expire@example.com" });
+    const session = upsertOnboardingSession({ email: "expire@example.com" });
 
     vi.advanceTimersByTime(31 * 60 * 1000);
 
-    expect(getOnboardingSessionByEmail("expire@example.com")).toBeNull();
+    // Session should be expired (not returned by get)
+    expect(getOnboardingSessionById(session.id)).toBeNull();
 
     const removed = cleanupExpiredOnboardingSessions();
     expect(removed).toBeGreaterThanOrEqual(1);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { Key, Loader2 } from "lucide-react";
+import { Key, Loader2, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -30,8 +30,17 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth";
+import { trpc } from "@/lib/trpc/client";
 
-export function ChangePasswordSection() {
+interface ChangePasswordSectionProps {
+  hasPassword: boolean;
+  onPasswordSet?: () => void;
+}
+
+export function ChangePasswordSection({
+  hasPassword,
+  onPasswordSet,
+}: ChangePasswordSectionProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [breachCheckKey, setBreachCheckKey] = useState(0);
@@ -55,30 +64,51 @@ export function ChangePasswordSection() {
       setError(null);
 
       try {
-        const result = await authClient.changePassword({
-          currentPassword: value.currentPassword,
-          newPassword: value.newPassword,
-          revokeOtherSessions: true,
-        });
-
-        if (result.error) {
-          const rawMessage = getBetterAuthErrorMessage(
-            result.error,
-            "Failed to change password",
-          );
-          const policyMessage = getPasswordPolicyErrorMessage(result.error);
-          setError(policyMessage || rawMessage);
-          toast.error("Password change failed", {
-            description: policyMessage || rawMessage,
+        if (hasPassword) {
+          // Change existing password
+          const result = await authClient.changePassword({
+            currentPassword: value.currentPassword,
+            newPassword: value.newPassword,
+            revokeOtherSessions: true,
           });
-          return;
+
+          if (result.error) {
+            const rawMessage = getBetterAuthErrorMessage(
+              result.error,
+              "Failed to change password",
+            );
+            const policyMessage = getPasswordPolicyErrorMessage(result.error);
+            setError(policyMessage || rawMessage);
+            toast.error("Password change failed", {
+              description: policyMessage || rawMessage,
+            });
+            return;
+          }
+
+          toast.success("Password changed successfully");
+        } else {
+          // Set new password for passwordless user
+          await trpc.account.setPassword.mutate({
+            newPassword: value.newPassword,
+          });
+
+          toast.success("Password set successfully", {
+            description: "You can now sign in with your email and password.",
+          });
+          onPasswordSet?.();
         }
 
-        toast.success("Password changed successfully");
         form.reset();
-      } catch {
-        setError("An unexpected error occurred. Please try again.");
-        toast.error("Password change failed");
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "An unexpected error occurred";
+        setError(message);
+        toast.error(
+          hasPassword ? "Password change failed" : "Failed to set password",
+          {
+            description: message,
+          },
+        );
       } finally {
         setIsLoading(false);
       }
@@ -101,7 +131,8 @@ export function ChangePasswordSection() {
   };
 
   const validateCurrentPassword = (value: string) => {
-    if (!value) return "Current password is required";
+    // Only required when changing an existing password
+    if (hasPassword && !value) return "Current password is required";
     return undefined;
   };
 
@@ -125,11 +156,17 @@ export function ChangePasswordSection() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Key className="h-5 w-5" />
-          Change Password
+          {hasPassword ? (
+            <Key className="h-5 w-5" />
+          ) : (
+            <Plus className="h-5 w-5" />
+          )}
+          {hasPassword ? "Change Password" : "Set Password"}
         </CardTitle>
         <CardDescription>
-          Update your password to keep your account secure
+          {hasPassword
+            ? "Update your password to keep your account secure"
+            : "Add a password to enable email/password sign-in as an alternative to passkeys"}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -149,36 +186,38 @@ export function ChangePasswordSection() {
             </Alert>
           )}
 
-          <form.Field
-            name="currentPassword"
-            validators={{
-              onBlur: ({ value }) => validateCurrentPassword(value),
-              onSubmit: ({ value }) => validateCurrentPassword(value),
-            }}
-          >
-            {(field) => (
-              <Field
-                name={field.name}
-                errors={field.state.meta.errors as string[]}
-                isTouched={field.state.meta.isTouched}
-                isValidating={field.state.meta.isValidating}
-              >
-                <FieldLabel>Current Password</FieldLabel>
-                <FieldControl>
-                  <Input
-                    type="password"
-                    placeholder="Enter current password"
-                    autoComplete="current-password"
-                    disabled={isLoading}
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    onBlur={field.handleBlur}
-                  />
-                </FieldControl>
-                <FieldMessage />
-              </Field>
-            )}
-          </form.Field>
+          {hasPassword && (
+            <form.Field
+              name="currentPassword"
+              validators={{
+                onBlur: ({ value }) => validateCurrentPassword(value),
+                onSubmit: ({ value }) => validateCurrentPassword(value),
+              }}
+            >
+              {(field) => (
+                <Field
+                  name={field.name}
+                  errors={field.state.meta.errors as string[]}
+                  isTouched={field.state.meta.isTouched}
+                  isValidating={field.state.meta.isValidating}
+                >
+                  <FieldLabel>Current Password</FieldLabel>
+                  <FieldControl>
+                    <Input
+                      type="password"
+                      placeholder="Enter current password"
+                      autoComplete="current-password"
+                      disabled={isLoading}
+                      value={field.state.value}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                    />
+                  </FieldControl>
+                  <FieldMessage />
+                </Field>
+              )}
+            </form.Field>
+          )}
 
           <form.Field
             name="newPassword"
@@ -194,11 +233,15 @@ export function ChangePasswordSection() {
                 isTouched={field.state.meta.isTouched}
                 isValidating={field.state.meta.isValidating}
               >
-                <FieldLabel>New Password</FieldLabel>
+                <FieldLabel>
+                  {hasPassword ? "New Password" : "Password"}
+                </FieldLabel>
                 <FieldControl>
                   <Input
                     type="password"
-                    placeholder="Enter new password"
+                    placeholder={
+                      hasPassword ? "Enter new password" : "Enter password"
+                    }
                     autoComplete="new-password"
                     disabled={isLoading}
                     value={field.state.value}
@@ -230,11 +273,15 @@ export function ChangePasswordSection() {
                 isTouched={field.state.meta.isTouched}
                 isValidating={field.state.meta.isValidating}
               >
-                <FieldLabel>Confirm New Password</FieldLabel>
+                <FieldLabel>
+                  {hasPassword ? "Confirm New Password" : "Confirm Password"}
+                </FieldLabel>
                 <FieldControl>
                   <Input
                     type="password"
-                    placeholder="Confirm new password"
+                    placeholder={
+                      hasPassword ? "Confirm new password" : "Confirm password"
+                    }
                     autoComplete="new-password"
                     disabled={isLoading}
                     value={field.state.value}
@@ -261,10 +308,12 @@ export function ChangePasswordSection() {
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Changing...
+                {hasPassword ? "Changing..." : "Setting..."}
               </>
-            ) : (
+            ) : hasPassword ? (
               "Change Password"
+            ) : (
+              "Set Password"
             )}
           </Button>
         </form>

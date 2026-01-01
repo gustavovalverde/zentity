@@ -8,8 +8,8 @@
  * - Step 4: Review + create account
  * - Step 5: Secure keys (passkey-protected FHE keys)
  *
- * State is persisted in an encrypted cookie and backed by SQLite.
- * Supports forward/backward navigation with prerequisite validation.
+ * State is persisted in an encrypted cookie (stores sessionId) and backed by SQLite.
+ * Sessions are keyed by sessionId, not email, to prevent state leakage between users.
  */
 import "server-only";
 
@@ -17,7 +17,6 @@ import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
-  clearWizardCookie,
   completeOnboarding,
   type EncryptedPiiData,
   getSessionFromCookie,
@@ -29,10 +28,7 @@ import {
   updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
-import {
-  cleanupExpiredOnboardingSessions,
-  deleteOnboardingSession,
-} from "@/lib/db/queries/onboarding";
+import { cleanupExpiredOnboardingSessions } from "@/lib/db/queries/onboarding";
 
 import { publicProcedure, router } from "../server";
 
@@ -72,6 +68,7 @@ export const onboardingRouter = router({
     return {
       hasSession: true,
       wasCleared: false,
+      sessionId: state.sessionId,
       email: state.email,
       step: state.step,
       identityDraftId: state.identityDraftId ?? null,
@@ -88,7 +85,9 @@ export const onboardingRouter = router({
   /**
    * Creates or updates an onboarding session.
    * If forceNew is true, clears any existing session first.
-   * PII is stored encrypted in the session cookie.
+   * PII is stored encrypted in the session.
+   *
+   * Returns the sessionId for client tracking.
    */
   saveSession: publicProcedure
     .input(
@@ -106,12 +105,16 @@ export const onboardingRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
+      // Get existing session from cookie (if any)
+      const { state: existingState } = await loadWizardState();
+      let sessionId = existingState?.sessionId;
+
+      // If forceNew, clear existing session and create new one
       if (input.forceNew) {
-        const { state: existingState } = await loadWizardState();
-        if (existingState) {
-          deleteOnboardingSession(existingState.email);
+        if (sessionId) {
+          await completeOnboarding(sessionId);
         }
-        await clearWizardCookie();
+        sessionId = undefined; // Will generate new sessionId
       }
 
       const updates = {
@@ -123,26 +126,32 @@ export const onboardingRouter = router({
         identityDraftId: input.identityDraftId ?? undefined,
       };
 
-      if (
+      const hasUpdates =
         updates.documentProcessed !== undefined ||
         updates.livenessPassed !== undefined ||
         updates.faceMatchPassed !== undefined ||
         updates.keysSecured !== undefined ||
         updates.documentHash !== undefined ||
-        updates.identityDraftId !== undefined
-      ) {
-        await updateWizardProgress(input.email, {
+        updates.identityDraftId !== undefined;
+
+      if (hasUpdates && sessionId) {
+        // Update existing session
+        await updateWizardProgress(sessionId, {
+          email: input.email,
           step: input.step,
           ...updates,
         });
-      } else {
-        await saveWizardState(
-          { email: input.email, step: input.step ?? 1 },
-          input.pii as EncryptedPiiData | undefined,
-        );
+        return { success: true, sessionId };
       }
 
-      return { success: true };
+      // Create new session or update basic fields
+      const session = await saveWizardState(
+        sessionId,
+        { email: input.email, step: input.step ?? 1 },
+        input.pii as EncryptedPiiData | undefined,
+      );
+
+      return { success: true, sessionId: session.id };
     }),
 
   /**
@@ -150,24 +159,29 @@ export const onboardingRouter = router({
    * Called when user finishes all verification steps.
    */
   clearSession: publicProcedure
-    .input(z.object({ email: z.string().trim().min(1).optional() }).optional())
+    .input(
+      z
+        .object({
+          sessionId: z.string().optional(),
+        })
+        .optional(),
+    )
     .mutation(async ({ input }) => {
-      const email = input?.email;
+      // Try to get sessionId from input or from cookie
+      let sessionId = input?.sessionId;
 
-      if (!email) {
+      if (!sessionId) {
         const { state } = await loadWizardState();
-        if (state?.email) {
-          await completeOnboarding(state.email);
-          return { success: true, cleared: true };
-        }
+        sessionId = state?.sessionId;
+      }
 
+      if (!sessionId) {
         // Idempotent no-op: the client may call this defensively during "start over"
-        // flows even when no session cookie exists. Avoid emitting errors (and noisy
-        // console logs via tRPC loggerLink) for this expected case.
+        // flows even when no session cookie exists.
         return { success: true, cleared: false };
       }
 
-      await completeOnboarding(email);
+      await completeOnboarding(sessionId);
       return { success: true, cleared: true };
     }),
 
@@ -285,7 +299,7 @@ export const onboardingRouter = router({
         });
       }
 
-      await resetToStep(session.email, step);
+      await resetToStep(session.id, step);
       return { success: true, newStep: step };
     }),
 
@@ -303,7 +317,7 @@ export const onboardingRouter = router({
       });
     }
 
-    await skipLiveness(validation.session.email);
+    await skipLiveness(validation.session.id);
     return { success: true, newStep: 4 };
   }),
 });

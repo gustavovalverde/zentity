@@ -18,12 +18,11 @@ function WizardStepLoading({ label }: { label: string }) {
 }
 
 /**
- * New 5-step wizard flow:
+ * Passwordless-first 4-step wizard flow:
  * 1. Email - minimal friction to start
  * 2. ID Upload - upload document, extract data (name, DOB, etc.)
  * 3. Selfie/Liveness - face match + challenge
- * 4. Review & Create Account - review extracted data, set password, create account
- * 5. Secure Keys - passkey-protect FHE keys and finish verification
+ * 4. Create Account - review data, passkey registration, FHE keys, privacy proofs
  */
 const StepIdUpload = dynamic(
   () => import("./steps/step-id-upload").then((mod) => mod.StepIdUpload),
@@ -41,22 +40,12 @@ const StepSelfie = dynamic(
   },
 );
 
-const StepReviewComplete = dynamic(
+const StepCreateAccount = dynamic(
   () =>
-    import("./steps/step-review-complete").then(
-      (mod) => mod.StepReviewComplete,
-    ),
+    import("./steps/step-create-account").then((mod) => mod.StepCreateAccount),
   {
     ssr: false,
     loading: () => <WizardStepLoading label="Loading account step..." />,
-  },
-);
-
-const StepSecureKeys = dynamic(
-  () => import("./steps/step-secure-keys").then((mod) => mod.StepSecureKeys),
-  {
-    ssr: false,
-    loading: () => <WizardStepLoading label="Loading security step..." />,
   },
 );
 
@@ -64,8 +53,7 @@ const STEPS = [
   StepEmail, // Step 1: Just email
   StepIdUpload, // Step 2: Upload + extract data
   StepSelfie, // Step 3: Liveness verification
-  StepReviewComplete, // Step 4: Review + password + create account
-  StepSecureKeys, // Step 5: Passkey-protect keys + verification
+  StepCreateAccount, // Step 4: Review + passkey + FHE keys + proofs
 ];
 
 export function Wizard() {

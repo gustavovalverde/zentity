@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { MagicLinkForm } from "@/components/auth/magic-link-form";
+import { PasskeySignInForm } from "@/components/auth/passkey-sign-in-form";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import {
   Card,
@@ -19,16 +20,20 @@ export default function SignInPage() {
         <CardDescription>Sign in to your Zentity account</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="password" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="password">Password</TabsTrigger>
+        <Tabs defaultValue="passkey" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="passkey">Passkey</TabsTrigger>
             <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
+            <TabsTrigger value="password">Password</TabsTrigger>
           </TabsList>
-          <TabsContent value="password" className="mt-4">
-            <SignInForm />
+          <TabsContent value="passkey" className="mt-4">
+            <PasskeySignInForm />
           </TabsContent>
           <TabsContent value="magic-link" className="mt-4">
             <MagicLinkForm />
+          </TabsContent>
+          <TabsContent value="password" className="mt-4">
+            <SignInForm />
           </TabsContent>
         </Tabs>
         <div className="mt-6 text-center text-sm text-muted-foreground">

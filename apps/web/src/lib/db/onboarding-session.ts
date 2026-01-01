@@ -4,11 +4,12 @@
  * Handles secure storage of wizard state using:
  * - jose JWE for encrypting sensitive PII before database storage
  * - SQLite for server-side session persistence
- * - Encrypted cookies for stateless wizard navigation
+ * - Encrypted cookies for stateless wizard navigation (stores sessionId)
  *
  * Security model:
+ * - Sessions are keyed by random sessionId, NOT email
  * - PII is encrypted with AES-256-GCM before storage
- * - Only email + step stored in navigation cookie
+ * - Only sessionId + step stored in navigation cookie
  * - Sensitive data (documents, selfies) never stored - processed in real-time
  */
 
@@ -21,8 +22,8 @@ import { addSpanEvent, hashIdentifier } from "@/lib/observability";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 import {
-  deleteOnboardingSession,
-  getOnboardingSessionByEmail,
+  deleteOnboardingSessionById,
+  getOnboardingSessionById,
   upsertOnboardingSession,
 } from "./queries/onboarding";
 
@@ -57,9 +58,10 @@ export interface EncryptedPiiData {
 
 /**
  * Wizard navigation state (stored in cookie)
+ * Now uses sessionId instead of email as the key
  */
 interface WizardNavState {
-  email: string;
+  sessionId: string;
   step: number;
 }
 
@@ -67,7 +69,8 @@ interface WizardNavState {
  * Full wizard state (combined from cookie + database)
  */
 interface FullWizardState {
-  email: string;
+  sessionId: string;
+  email: string | null;
   step: number;
   pii?: EncryptedPiiData;
   identityDraftId?: string | null;
@@ -116,15 +119,13 @@ async function decryptPii(token: string): Promise<EncryptedPiiData | null> {
 }
 
 /**
- * Set wizard navigation cookie (email + step only)
+ * Set wizard navigation cookie (sessionId + step only)
  */
 async function setWizardCookie(state: WizardNavState): Promise<void> {
   const secret = await getSecret();
-  // Normalize email for case-insensitive matching
-  const normalizedEmail = state.email.toLowerCase().trim();
 
   const token = await new EncryptJWT({
-    email: normalizedEmail,
+    sessionId: state.sessionId,
     step: state.step,
   })
     .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
@@ -161,7 +162,7 @@ async function getWizardCookie(): Promise<WizardNavState | null> {
     const { payload } = await jwtDecrypt(token, secret);
 
     return {
-      email: payload.email as string,
+      sessionId: payload.sessionId as string,
       step: payload.step as number,
     };
   } catch {
@@ -180,28 +181,34 @@ export async function clearWizardCookie(): Promise<void> {
 /**
  * Save wizard state (combines cookie + database storage)
  *
- * @param state - Wizard state to save
+ * @param sessionId - Session ID (generated if not provided)
+ * @param state - Wizard state to save (email, step)
  * @param pii - Optional PII data to encrypt and store
+ * @returns The session including its ID
  */
 export async function saveWizardState(
-  state: WizardNavState,
+  sessionId: string | undefined,
+  state: { email?: string; step: number },
   pii?: EncryptedPiiData,
-): Promise<void> {
-  // Set navigation cookie
-  await setWizardCookie(state);
-
+): Promise<OnboardingSession> {
   // Encrypt PII if provided
   let encryptedPii: string | null = null;
   if (pii && Object.keys(pii).length > 0) {
     encryptedPii = await encryptPii(pii);
   }
 
-  // Save to database
-  upsertOnboardingSession({
+  // Save to database (generates sessionId if not provided)
+  const session = upsertOnboardingSession({
+    id: sessionId,
     email: state.email,
     step: state.step,
     encryptedPii,
   });
+
+  // Set navigation cookie with sessionId
+  await setWizardCookie({ sessionId: session.id, step: state.step });
+
+  return session;
 }
 
 /**
@@ -217,8 +224,8 @@ export async function loadWizardState(): Promise<WizardStateResult> {
     return { state: null, wasCleared: false };
   }
 
-  // Get full session from database
-  const session = getOnboardingSessionByEmail(navState.email);
+  // Get full session from database by sessionId
+  const session = getOnboardingSessionById(navState.sessionId);
   if (!session) {
     // Cookie exists but session expired/missing in DB - clear stale cookie
     await clearWizardCookie();
@@ -236,6 +243,7 @@ export async function loadWizardState(): Promise<WizardStateResult> {
 
   return {
     state: {
+      sessionId: session.id,
       email: session.email,
       step: session.step,
       pii,
@@ -253,8 +261,9 @@ export async function loadWizardState(): Promise<WizardStateResult> {
  * Update wizard step and verification flags
  */
 export async function updateWizardProgress(
-  email: string,
+  sessionId: string,
   updates: {
+    email?: string;
     step?: number;
     documentProcessed?: boolean;
     livenessPassed?: boolean;
@@ -264,14 +273,14 @@ export async function updateWizardProgress(
     identityDraftId?: string | null;
   },
 ): Promise<void> {
-  const previousSession = getOnboardingSessionByEmail(email);
+  const previousSession = getOnboardingSessionById(sessionId);
   const previousStep = previousSession?.step ?? null;
   const inferredStep = updates.step ?? (updates.keysSecured ? 5 : null);
   const step = inferredStep ?? undefined;
 
   // Update database
   upsertOnboardingSession({
-    email,
+    id: sessionId,
     ...updates,
     step,
   });
@@ -298,24 +307,17 @@ export async function updateWizardProgress(
 
   // Update cookie if step changed
   if (step !== undefined) {
-    await setWizardCookie({ email, step });
+    await setWizardCookie({ sessionId, step });
   }
 }
 
 /**
  * Complete onboarding - delete session data
  */
-export async function completeOnboarding(email: string): Promise<void> {
-  deleteOnboardingSession(email);
+export async function completeOnboarding(sessionId: string): Promise<void> {
+  deleteOnboardingSessionById(sessionId);
   addSpanEvent("onboarding.complete", {});
   await clearWizardCookie();
-}
-
-/**
- * Get onboarding session for API use
- */
-function _getOnboardingSession(email: string): OnboardingSession | null {
-  return getOnboardingSessionByEmail(email);
 }
 
 // ============================================================================
@@ -435,7 +437,7 @@ export async function getSessionFromCookie(): Promise<OnboardingSession | null> 
   const navState = await getWizardCookie();
   if (!navState) return null;
 
-  const session = getOnboardingSessionByEmail(navState.email);
+  const session = getOnboardingSessionById(navState.sessionId);
   if (!session) {
     // Cookie exists but session expired/missing in DB
     await clearWizardCookie();
@@ -449,11 +451,11 @@ export async function getSessionFromCookie(): Promise<OnboardingSession | null> 
  * Reset session progress to a specific step
  * Clears all verification flags from the target step forward
  *
- * @param email - Session email
+ * @param sessionId - Session ID
  * @param targetStep - Step to reset to (1-5)
  */
 export async function resetToStep(
-  email: string,
+  sessionId: string,
   targetStep: OnboardingStep,
 ): Promise<void> {
   const updates: {
@@ -483,16 +485,16 @@ export async function resetToStep(
   }
   // Step 3+ doesn't reset anything else (liveness is the last verification)
 
-  await updateWizardProgress(email, updates);
+  await updateWizardProgress(sessionId, updates);
 }
 
 /**
  * Mark liveness as skipped (alternative to completing liveness verification)
  *
- * @param email - Session email
+ * @param sessionId - Session ID
  */
-export async function skipLiveness(email: string): Promise<void> {
-  await updateWizardProgress(email, {
+export async function skipLiveness(sessionId: string): Promise<void> {
+  await updateWizardProgress(sessionId, {
     // Skip step 3 (liveness challenges) and proceed to the final review step.
     step: 4,
   });

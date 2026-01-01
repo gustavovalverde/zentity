@@ -1,7 +1,7 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../connection";
-import { users } from "../schema";
+import { accounts, users } from "../schema";
 
 export function updateUserName(userId: string, displayName: string): void {
   db.update(users)
@@ -25,4 +25,24 @@ export function getUserCreatedAt(userId: string): string | null {
 
 export function deleteUserById(userId: string): void {
   db.delete(users).where(eq(users.id, userId)).run();
+}
+
+/**
+ * Check if a user has a credential account with a password set.
+ * Users who signed up with passkey-only or OAuth won't have a password.
+ */
+export function userHasPassword(userId: string): boolean {
+  const row = db
+    .select({ password: accounts.password })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, userId),
+        eq(accounts.providerId, "credential"),
+        isNotNull(accounts.password),
+      ),
+    )
+    .get();
+
+  return row?.password != null && row.password.length > 0;
 }

@@ -12,6 +12,7 @@ import {
   identityVerificationDrafts,
   identityVerificationJobs,
   onboardingSessions,
+  passkeyCredentials,
   rpAuthorizationCodes,
   secretWrappers,
   sessions,
@@ -51,6 +52,7 @@ export function resetDatabase(): void {
     tx.delete(sessions).run();
     tx.delete(verifications).run();
     tx.delete(onboardingSessions).run();
+    tx.delete(passkeyCredentials).run();
     tx.delete(users).run();
   });
 }

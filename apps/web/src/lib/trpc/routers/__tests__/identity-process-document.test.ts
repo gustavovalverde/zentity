@@ -31,6 +31,7 @@ async function createCaller(ip: string) {
     req: new Request("http://localhost/api/trpc", {
       headers: { "x-forwarded-for": ip },
     }),
+    resHeaders: new Headers(),
     session: null,
     requestId: "test-request-id",
   });

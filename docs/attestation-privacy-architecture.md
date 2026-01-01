@@ -12,7 +12,7 @@ Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, a
 - **FHE encryption**: birth year offset, country code, compliance level, liveness score.
 - **Commitments + hashes**: document number, name, nationality, proof hashes.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
-- **User-only decryption**: client keys never leave the browser.
+- **User-only decryption**: client keys are stored server-side as passkey-wrapped encrypted secrets—only the user with their passkey can unwrap them in the browser.
 
 This model supports **multi-document identities**, **revocable attestations**, and **auditable disclosures** across Web2 and Web3.
 
