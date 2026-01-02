@@ -19,6 +19,7 @@ import * as path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { logger } from "@/lib/logging";
 // Circuit artifacts (compiled from Noir)
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
@@ -71,7 +72,9 @@ export function getCircuitMetadata(circuitType: CircuitType): {
 }
 
 export function getBbJsVersion(): string | null {
-  if (cachedBbJsVersion !== undefined) return cachedBbJsVersion;
+  if (cachedBbJsVersion !== undefined) {
+    return cachedBbJsVersion;
+  }
 
   try {
     const require = createRequire(import.meta.url);
@@ -90,7 +93,9 @@ export function getBbJsVersion(): string | null {
       }
 
       const parent = path.dirname(currentDir);
-      if (parent === currentDir) break;
+      if (parent === currentDir) {
+        break;
+      }
       currentDir = parent;
     }
 
@@ -104,26 +109,34 @@ export function getBbJsVersion(): string | null {
 
 function normalizePublicInput(input: string): string {
   const trimmed = input.trim();
-  if (!trimmed) return trimmed;
-  if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) return trimmed;
-  if (/^[0-9]+$/.test(trimmed)) return trimmed;
-  if (/^[0-9a-fA-F]+$/.test(trimmed)) return `0x${trimmed}`;
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
+    return trimmed;
+  }
+  if (/^[0-9]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^[0-9a-fA-F]+$/.test(trimmed)) {
+    return `0x${trimmed}`;
+  }
   return trimmed;
 }
 
 type BbWorkerMethod = "getVerificationKey" | "verifyProof";
 
-type BbWorkerSuccess<T> = {
+interface BbWorkerSuccess<T> {
   id: string;
   result: T;
-};
+}
 
-type BbWorkerFailure = {
+interface BbWorkerFailure {
   id: string | null;
   error: {
     message: string;
   };
-};
+}
 
 type BbWorkerResponse<T> = BbWorkerSuccess<T> | BbWorkerFailure;
 
@@ -171,7 +184,9 @@ function resetBbWorker(error: Error) {
 }
 
 function ensureBbWorker(): ChildProcessWithoutNullStreams {
-  if (bbWorkerProcess) return bbWorkerProcess;
+  if (bbWorkerProcess) {
+    return bbWorkerProcess;
+  }
 
   const nodeBinary = getBbWorkerNodeBinary();
   const workerPath = getBbWorkerScriptPath();
@@ -198,16 +213,20 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
     const text =
       chunk instanceof Buffer ? chunk.toString("utf8") : String(chunk);
     const trimmed = text.trim();
-    if (trimmed) process.stderr.write(`[bb-worker] ${trimmed}\n`);
+    if (trimmed) {
+      process.stderr.write(`[bb-worker] ${trimmed}\n`);
+    }
   });
 
   bbWorkerReadline = createInterface({
     input: child.stdout,
-    crlfDelay: Infinity,
+    crlfDelay: Number.POSITIVE_INFINITY,
   });
 
   bbWorkerReadline.on("line", (line) => {
-    if (!line.trim()) return;
+    if (!line.trim()) {
+      return;
+    }
     let parsed: BbWorkerResponse<unknown>;
     try {
       parsed = JSON.parse(line) as BbWorkerResponse<unknown>;
@@ -216,10 +235,14 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
     }
 
     const id = typeof parsed.id === "string" ? parsed.id : null;
-    if (!id) return;
+    if (!id) {
+      return;
+    }
 
     const pending = bbWorkerPending.get(id);
-    if (!pending) return;
+    if (!pending) {
+      return;
+    }
     bbWorkerPending.delete(id);
 
     if ("error" in parsed) {
@@ -272,7 +295,9 @@ async function callBbWorker<TResult>(
     });
 
     worker.stdin.write(payload, (error) => {
-      if (!error) return;
+      if (!error) {
+        return;
+      }
       bbWorkerPending.delete(id);
       reject(error instanceof Error ? error : new Error(String(error)));
     });
@@ -298,7 +323,7 @@ const vkeyCache = new Map<
   }>
 >();
 
-type CircuitIdentity = {
+interface CircuitIdentity {
   circuitType: CircuitType;
   noirVersion: string | null;
   circuitHash: string | null;
@@ -306,7 +331,7 @@ type CircuitIdentity = {
   bytecodeHash: string | null;
   verificationKeyHash: string | null;
   circuitId: string | null;
-};
+}
 
 function sha256Hex(input: Uint8Array | string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -320,7 +345,9 @@ export async function getCircuitVerificationKey(
   size: number;
 }> {
   const existing = vkeyCache.get(circuitType);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   const promise = callBbWorker<{
     verificationKey: string;
@@ -336,7 +363,9 @@ export async function getCircuitVerificationKey(
 }
 
 export function prewarmVerificationKeys(): Promise<void> {
-  if (prewarmPromise) return prewarmPromise;
+  if (prewarmPromise) {
+    return prewarmPromise;
+  }
 
   prewarmPromise = (async () => {
     const circuitTypes = Object.keys(CIRCUITS) as CircuitType[];
@@ -363,11 +392,26 @@ export function prewarmVerificationKeys(): Promise<void> {
   return prewarmPromise;
 }
 
+/**
+ * Warm up CRS cache and verification keys on server startup.
+ * Called from instrumentation.ts to eliminate cold start latency.
+ */
+export async function warmupCRS(): Promise<void> {
+  const startTime = Date.now();
+  await prewarmVerificationKeys();
+  logger.info(
+    { durationMs: Date.now() - startTime, circuits: Object.keys(CIRCUITS) },
+    "ZK verification keys preloaded (CRS cached)",
+  );
+}
+
 export async function getCircuitIdentity(
   circuitType: CircuitType,
 ): Promise<CircuitIdentity> {
   const existing = identityCache.get(circuitType);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   const identityPromise = (async (): Promise<CircuitIdentity> => {
     const bbVersion = getBbJsVersion();
@@ -456,6 +500,8 @@ export async function verifyNoirProof(
 function _getTodayAsInt(): number {
   const today = new Date();
   return (
-    today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate()
+    today.getFullYear() * 10_000 +
+    (today.getMonth() + 1) * 100 +
+    today.getDate()
   );
 }

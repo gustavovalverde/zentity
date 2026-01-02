@@ -4,6 +4,8 @@ import type { Config, Human } from "@vladmandic/human";
 
 import util from "node:util";
 
+import { logger } from "@/lib/logging";
+
 import { HUMAN_MODELS_URL } from "./human-models-path";
 
 // Polyfill for util.isNullOrUndefined required by @tensorflow/tfjs-node
@@ -56,7 +58,9 @@ let initPromise: Promise<Human> | null = null;
 let detectionLock: Promise<void> = Promise.resolve();
 
 export async function getHumanServer(): Promise<Human> {
-  if (humanInstance) return humanInstance;
+  if (humanInstance) {
+    return humanInstance;
+  }
   if (!initPromise) {
     initPromise = (async () => {
       // Load TensorFlow native backend only on the server.
@@ -133,4 +137,17 @@ export async function detectFromBase64(dataUrl: string) {
     // Release lock for next detection
     releaseLock();
   }
+}
+
+/**
+ * Preload Human.js models on server startup.
+ * Called from instrumentation.ts to eliminate cold start latency.
+ */
+export async function warmupHumanServer(): Promise<void> {
+  const startTime = Date.now();
+  await getHumanServer();
+  logger.info(
+    { durationMs: Date.now() - startTime },
+    "Human.js models preloaded",
+  );
 }

@@ -9,17 +9,9 @@ DB_DIR=$(dirname "$DB_PATH")
 
 echo "[entrypoint] Database path: $DB_PATH"
 
-# Optional CRS pre-warm for bb.js (best-effort)
+# Ensure CRS cache directory exists (actual warming happens in instrumentation.ts)
 if [ -n "${BB_CRS_PATH:-}" ]; then
   mkdir -p "$BB_CRS_PATH" 2>/dev/null || true
-  CRS_G1="$BB_CRS_PATH/bn254_g1.dat"
-  CRS_G1_GZ="$BB_CRS_PATH/bn254_g1.dat.gz"
-  CRS_G1_LEGACY="$BB_CRS_PATH/g1.dat"
-  CRS_G1_LEGACY_GZ="$BB_CRS_PATH/g1.dat.gz"
-  if [ ! -f "$CRS_G1" ] && [ ! -f "$CRS_G1_GZ" ] && [ ! -f "$CRS_G1_LEGACY" ] && [ ! -f "$CRS_G1_LEGACY_GZ" ]; then
-    echo "[entrypoint] Pre-warming CRS cache in ${BB_CRS_PATH}..."
-    node /app/scripts/prewarm-crs.mjs || true
-  fi
 fi
 
 # Ensure the database directory exists and is writable
