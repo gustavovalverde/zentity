@@ -12,5 +12,15 @@ export async function register() {
     // Preload ZK verification keys and CRS cache for faster first proof verification
     const { warmupCRS } = await import("@/lib/zk/noir-verifier");
     await warmupCRS();
+
+    // Preload Barretenberg for server-side hashing (claim hashes, Merkle trees)
+    const { warmupBarretenberg } = await import("@/lib/crypto/barretenberg");
+    await warmupBarretenberg();
+
+    // Check backend services health and establish connections
+    const { warmupServices } = await import(
+      "@/lib/observability/service-warmup"
+    );
+    await warmupServices();
   }
 }

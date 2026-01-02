@@ -1,15 +1,8 @@
 import "server-only";
 
-import { BarretenbergSync, Fr } from "@aztec/bb.js";
+import { Fr } from "@aztec/bb.js";
 
-let bbInstance: BarretenbergSync | null = null;
-
-async function getBarretenberg(): Promise<BarretenbergSync> {
-  if (!bbInstance) {
-    bbInstance = await BarretenbergSync.initSingleton();
-  }
-  return bbInstance;
-}
+import { getBarretenberg } from "@/lib/crypto/barretenberg";
 
 function frToHex(fr: Fr): string {
   return fr.toString();

@@ -8,7 +8,9 @@
  * which computes Merkle paths in the browser without sending nationality to server.
  */
 
-import { BarretenbergSync, Fr } from "@aztec/bb.js";
+import { Fr } from "@aztec/bb.js";
+
+import { getBarretenberg } from "@/lib/crypto/barretenberg";
 
 import { COUNTRY_CODES, COUNTRY_GROUPS, TREE_DEPTH } from "./nationality-data";
 
@@ -19,16 +21,6 @@ export {
   isNationalityInGroup,
   listGroups,
 } from "./nationality-data";
-
-// Cached Barretenberg instance
-let bbInstance: BarretenbergSync | null = null;
-
-async function getBarretenberg(): Promise<BarretenbergSync> {
-  if (!bbInstance) {
-    bbInstance = await BarretenbergSync.initSingleton();
-  }
-  return bbInstance;
-}
 
 /**
  * Convert Fr field element to bigint
