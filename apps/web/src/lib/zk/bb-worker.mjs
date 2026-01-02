@@ -4,16 +4,29 @@ import { createInterface } from "node:readline";
 
 import { UltraHonkBackend } from "@aztec/bb.js";
 
+/** Matches decimal numbers only */
+const DECIMAL_NUMBER_PATTERN = /^[0-9]+$/;
+/** Matches hexadecimal characters */
+const HEX_CHARS_PATTERN = /^[0-9a-fA-F]+$/;
+
 function sha256Hex(input) {
   return createHash("sha256").update(input).digest("hex");
 }
 
 function normalizePublicInput(input) {
   const trimmed = String(input).trim();
-  if (!trimmed) return trimmed;
-  if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) return trimmed;
-  if (/^[0-9]+$/.test(trimmed)) return trimmed;
-  if (/^[0-9a-fA-F]+$/.test(trimmed)) return `0x${trimmed}`;
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
+    return trimmed;
+  }
+  if (DECIMAL_NUMBER_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+  if (HEX_CHARS_PATTERN.test(trimmed)) {
+    return `0x${trimmed}`;
+  }
   return trimmed;
 }
 
@@ -46,7 +59,7 @@ function getCacheKey(circuitType, bytecode) {
   return `${circuitType}:${sha256Hex(bytecode)}`;
 }
 
-async function getBackend(circuitType, bytecode) {
+function getBackend(circuitType, bytecode) {
   if (typeof circuitType !== "string" || !circuitType) {
     throw new Error("circuitType is required");
   }
@@ -57,7 +70,9 @@ async function getBackend(circuitType, bytecode) {
 
   const cacheKey = getCacheKey(circuitType, bytecode);
   const cached = backendCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const crsExists =
     existsSync(`${crsPath}/bn254_g1.dat`) ||
@@ -67,7 +82,7 @@ async function getBackend(circuitType, bytecode) {
 
   if (!crsExists) {
     process.stderr.write(
-      `bb-worker: CRS cache not found at ${crsPath}. Will attempt download.\n`,
+      `bb-worker: CRS cache not found at ${crsPath}. Will attempt download.\n`
     );
   }
 
@@ -83,7 +98,9 @@ async function getBackend(circuitType, bytecode) {
 async function getVerificationKeyResult(circuitType, bytecode) {
   const cacheKey = getCacheKey(circuitType, bytecode);
   const cached = vkeyCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const backend = await getBackend(circuitType, bytecode);
   const vkBytes = await backend.getVerificationKey();
@@ -120,9 +137,14 @@ async function handle(method, params) {
   throw new Error(`Unknown method: ${method}`);
 }
 
-const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+const rl = createInterface({
+  input: process.stdin,
+  crlfDelay: Number.POSITIVE_INFINITY,
+});
 rl.on("line", (line) => {
-  if (!line.trim()) return;
+  if (!line.trim()) {
+    return;
+  }
   let msg;
   try {
     msg = JSON.parse(line);
@@ -133,7 +155,7 @@ rl.on("line", (line) => {
         error: {
           message: `Invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
         },
-      })}\n`,
+      })}\n`
     );
     return;
   }
@@ -155,7 +177,7 @@ rl.on("line", (line) => {
           error: {
             message: error instanceof Error ? error.message : String(error),
           },
-        })}\n`,
+        })}\n`
       );
     });
 });

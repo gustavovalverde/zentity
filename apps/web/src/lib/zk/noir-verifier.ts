@@ -13,13 +13,13 @@ import type { CircuitType } from "./zk-circuit-spec";
 
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import * as fs from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import * as path from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { logger } from "@/lib/logging";
+import { logger } from "@/lib/logging/logger";
 // Circuit artifacts (compiled from Noir)
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
@@ -32,6 +32,11 @@ const CIRCUITS = {
   nationality_membership: nationalityCircuit,
   face_match: faceMatchCircuit,
 } as const;
+
+/** Matches one or more digits (for decimal number validation) */
+const DECIMAL_NUMBER_PATTERN = /^[0-9]+$/;
+/** Matches hexadecimal characters (0-9, a-f, A-F) */
+const HEX_CHARS_PATTERN = /^[0-9a-fA-F]+$/;
 
 interface NoirVerifyInput {
   proof: string; // Base64 encoded Uint8Array
@@ -81,18 +86,18 @@ export function getBbJsVersion(): string | null {
     const entryPath = require.resolve("@aztec/bb.js");
 
     // Walk up to find the nearest package.json (exports may block requiring it directly).
-    let currentDir = path.dirname(entryPath);
+    let currentDir = dirname(entryPath);
     for (let i = 0; i < 10; i++) {
-      const pkgPath = path.join(currentDir, "package.json");
-      if (fs.existsSync(pkgPath)) {
-        const raw = fs.readFileSync(pkgPath, "utf8");
+      const pkgPath = join(currentDir, "package.json");
+      if (existsSync(pkgPath)) {
+        const raw = readFileSync(pkgPath, "utf8");
         const parsed = JSON.parse(raw) as { version?: unknown };
         cachedBbJsVersion =
           typeof parsed.version === "string" ? parsed.version : null;
         return cachedBbJsVersion;
       }
 
-      const parent = path.dirname(currentDir);
+      const parent = dirname(currentDir);
       if (parent === currentDir) {
         break;
       }
@@ -115,10 +120,10 @@ function normalizePublicInput(input: string): string {
   if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
     return trimmed;
   }
-  if (/^[0-9]+$/.test(trimmed)) {
+  if (DECIMAL_NUMBER_PATTERN.test(trimmed)) {
     return trimmed;
   }
-  if (/^[0-9a-fA-F]+$/.test(trimmed)) {
+  if (HEX_CHARS_PATTERN.test(trimmed)) {
     return `0x${trimmed}`;
   }
   return trimmed;
@@ -156,7 +161,7 @@ const DEFAULT_BB_WORKER_PATH = (() => {
   try {
     return fileURLToPath(new URL("./bb-worker.mjs", import.meta.url));
   } catch {
-    return path.resolve(process.cwd(), "src/lib/zk/bb-worker.mjs");
+    return resolve(process.cwd(), "src/lib/zk/bb-worker.mjs");
   }
 })();
 
@@ -176,8 +181,8 @@ function resetBbWorker(error: Error) {
   for (const [id, pending] of bbWorkerPending) {
     pending.reject(
       new Error(
-        `bb-worker exited before responding (id=${id}): ${error.message}`,
-      ),
+        `bb-worker exited before responding (id=${id}): ${error.message}`
+      )
     );
   }
   bbWorkerPending.clear();
@@ -204,8 +209,8 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
   child.on("exit", (code, signal) => {
     resetBbWorker(
       new Error(
-        `bb-worker exited with code=${code ?? "null"} signal=${signal ?? "null"}`,
-      ),
+        `bb-worker exited with code=${code ?? "null"} signal=${signal ?? "null"}`
+      )
     );
   });
 
@@ -259,38 +264,38 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
 
 async function callBbWorker<TResult>(
   method: BbWorkerMethod,
-  params: unknown,
+  params: unknown
 ): Promise<TResult> {
   const worker = ensureBbWorker();
   const id = String(++bbWorkerNextId);
 
   const payload = `${JSON.stringify({ id, method, params })}\n`;
 
-  return await new Promise<TResult>((resolve, reject) => {
+  return await new Promise<TResult>((promiseResolve, promiseReject) => {
     const rawTimeoutMs = Number.parseInt(
       process.env.BB_WORKER_TIMEOUT_MS || "",
-      10,
+      10
     );
     const timeoutMs =
       Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30_000;
 
     const timeoutId = setTimeout(() => {
       bbWorkerPending.delete(id);
-      reject(
+      promiseReject(
         new Error(
-          `bb-worker request timed out after ${timeoutMs}ms (${method})`,
-        ),
+          `bb-worker request timed out after ${timeoutMs}ms (${method})`
+        )
       );
     }, timeoutMs);
 
     bbWorkerPending.set(id, {
       resolve: (value) => {
         clearTimeout(timeoutId);
-        resolve(value as TResult);
+        promiseResolve(value as TResult);
       },
       reject: (error) => {
         clearTimeout(timeoutId);
-        reject(error);
+        promiseReject(error);
       },
     });
 
@@ -299,7 +304,7 @@ async function callBbWorker<TResult>(
         return;
       }
       bbWorkerPending.delete(id);
-      reject(error instanceof Error ? error : new Error(String(error)));
+      promiseReject(error instanceof Error ? error : new Error(String(error)));
     });
   });
 }
@@ -337,9 +342,7 @@ function sha256Hex(input: Uint8Array | string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-export async function getCircuitVerificationKey(
-  circuitType: CircuitType,
-): Promise<{
+export function getCircuitVerificationKey(circuitType: CircuitType): Promise<{
   verificationKey: string;
   verificationKeyHash: string;
   size: number;
@@ -372,7 +375,7 @@ export function prewarmVerificationKeys(): Promise<void> {
     const results = await Promise.allSettled(
       circuitTypes.map(async (circuitType) => {
         await getCircuitVerificationKey(circuitType);
-      }),
+      })
     );
 
     const failures = results.filter((result) => result.status === "rejected");
@@ -384,7 +387,7 @@ export function prewarmVerificationKeys(): Promise<void> {
       throw new Error(
         message
           ? `Failed to prewarm verification keys: ${message}`
-          : "Failed to prewarm verification keys",
+          : "Failed to prewarm verification keys"
       );
     }
   })();
@@ -401,12 +404,12 @@ export async function warmupCRS(): Promise<void> {
   await prewarmVerificationKeys();
   logger.info(
     { durationMs: Date.now() - startTime, circuits: Object.keys(CIRCUITS) },
-    "ZK verification keys preloaded (CRS cached)",
+    "ZK verification keys preloaded (CRS cached)"
   );
 }
 
-export async function getCircuitIdentity(
-  circuitType: CircuitType,
+export function getCircuitIdentity(
+  circuitType: CircuitType
 ): Promise<CircuitIdentity> {
   const existing = identityCache.get(circuitType);
   if (existing) {
@@ -459,7 +462,7 @@ export async function getCircuitIdentity(
  * @returns Verification result with timing information
  */
 export async function verifyNoirProof(
-  input: NoirVerifyInput,
+  input: NoirVerifyInput
 ): Promise<NoirVerifyResult> {
   const identity = await getCircuitIdentity(input.circuitType);
   const bbVersion = getBbJsVersion();
@@ -489,7 +492,7 @@ export async function verifyNoirProof(
     };
   } catch (error) {
     throw new Error(
-      `Proof verification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Proof verification failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }

@@ -18,14 +18,14 @@ export function generatePrfSalt(): Uint8Array {
  */
 export async function deriveKekFromPrf(
   prfOutput: Uint8Array,
-  info: string = HKDF_INFO.PASSKEY_KEK,
+  info: string = HKDF_INFO.PASSKEY_KEK
 ): Promise<CryptoKey> {
   const masterKey = await crypto.subtle.importKey(
     "raw",
     toArrayBuffer(prfOutput),
     "HKDF",
     false,
-    ["deriveKey"],
+    ["deriveKey"]
   );
 
   return crypto.subtle.deriveKey(
@@ -38,6 +38,6 @@ export async function deriveKekFromPrf(
     masterKey,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt", "decrypt"],
+    ["encrypt", "decrypt"]
   );
 }

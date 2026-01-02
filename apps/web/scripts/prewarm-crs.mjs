@@ -23,7 +23,6 @@ const crsReady =
   existsSync(path.join(crsPath, "g1.dat.gz"));
 
 if (crsReady) {
-  // biome-ignore lint/suspicious/noConsole: CLI status output
   console.log(`[prewarm] CRS cache already present at ${crsPath}`);
   process.exit(0);
 }
@@ -46,7 +45,6 @@ for (const name of circuits) {
     throw new Error(`Missing bytecode for ${name}`);
   }
 
-  // biome-ignore lint/suspicious/noConsole: CLI status output
   console.log(`[prewarm] Loading CRS via ${name} circuit`);
   const backend = new UltraHonkBackend(bytecode, {
     threads: 1,
@@ -55,5 +53,4 @@ for (const name of circuits) {
   await backend.getVerificationKey();
 }
 
-// biome-ignore lint/suspicious/noConsole: CLI status output
 console.log(`[prewarm] CRS cache ready at ${crsPath}`);

@@ -1,13 +1,11 @@
 import "server-only";
 
-import * as crypto from "node:crypto";
-
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
-import { db } from "@/lib/db";
-import { passkeyCredentials, users } from "@/lib/db/schema";
-import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils";
+import { db } from "@/lib/db/connection";
+import { passkeyCredentials, users } from "@/lib/db/schema/auth";
+import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -160,7 +158,7 @@ export async function verifyPasskeyAssertion(params: {
   const expectedOrigin = getExpectedOrigin();
   if (clientData.origin !== expectedOrigin) {
     throw new Error(
-      `Origin mismatch: expected ${expectedOrigin}, got ${clientData.origin}`,
+      `Origin mismatch: expected ${expectedOrigin}, got ${clientData.origin}`
     );
   }
 
@@ -182,7 +180,7 @@ export async function verifyPasskeyAssertion(params: {
   const counterView = new DataView(
     authenticatorData.buffer,
     authenticatorData.byteOffset + 33,
-    4,
+    4
   );
   const newCounter = counterView.getUint32(0, false);
 
@@ -192,7 +190,7 @@ export async function verifyPasskeyAssertion(params: {
   // the authenticator does increment counters.
   if (credential.counter > 0 && newCounter <= credential.counter) {
     throw new Error(
-      "Credential counter did not increase. Possible replay attack.",
+      "Credential counter did not increase. Possible replay attack."
     );
   }
 
@@ -201,7 +199,7 @@ export async function verifyPasskeyAssertion(params: {
   const clientDataCopy = Uint8Array.from(clientDataJSON);
   const clientDataHashBuffer = await crypto.subtle.digest(
     "SHA-256",
-    toArrayBuffer(clientDataCopy),
+    toArrayBuffer(clientDataCopy)
   );
   const signedData = new Uint8Array([
     ...authenticatorData,
@@ -235,7 +233,7 @@ export async function verifyPasskeyAssertion(params: {
 async function verifySignature(
   publicKeyBytes: Uint8Array,
   signature: Uint8Array,
-  data: Uint8Array,
+  data: Uint8Array
 ): Promise<boolean> {
   try {
     // Parse the COSE public key
@@ -247,7 +245,7 @@ async function verifySignature(
       coseKey.jwk,
       coseKey.algorithm,
       false,
-      ["verify"],
+      ["verify"]
     );
 
     // For ECDSA, we need to convert the signature from ASN.1 DER to raw format
@@ -265,9 +263,9 @@ async function verifySignature(
       coseKey.verifyParams,
       cryptoKey,
       toArrayBuffer(sigCopy),
-      toArrayBuffer(dataCopy),
+      toArrayBuffer(dataCopy)
     );
-  } catch (_error) {
+  } catch {
     return false;
   }
 }
@@ -333,7 +331,8 @@ function parseCoseKey(coseKeyBytes: Uint8Array): ParsedCoseKey {
       verifyParams: { name: "ECDSA", hash: { name: "SHA-256" } },
       curveSize,
     };
-  } else if (kty === 3) {
+  }
+  if (kty === 3) {
     // RSA key
     const n = parsed.get(-1); // Modulus
     const e = parsed.get(-2); // Exponent
@@ -349,7 +348,8 @@ function parseCoseKey(coseKeyBytes: Uint8Array): ParsedCoseKey {
       verifyParams: { name: "RSASSA-PKCS1-v1_5" },
       curveSize: 0,
     };
-  } else if (kty === 1 && alg === -8) {
+  }
+  if (kty === 1 && alg === -8) {
     // OKP key (EdDSA / Ed25519)
     const x = parsed.get(-2); // Public key
 
@@ -375,10 +375,10 @@ function parseCoseKey(coseKeyBytes: Uint8Array): ParsedCoseKey {
  */
 function decodeCborMap(bytes: Uint8Array): Map<number, unknown> {
   const result = new Map<number, unknown>();
-  let offset = 0;
+  let currentOffset = 0;
 
   // Read major type and additional info
-  const first = bytes[offset++];
+  const first = bytes[currentOffset++];
   const majorType = first >> 5;
   const additionalInfo = first & 0x1f;
 
@@ -391,25 +391,29 @@ function decodeCborMap(bytes: Uint8Array): Map<number, unknown> {
   if (additionalInfo < 24) {
     mapLength = additionalInfo;
   } else if (additionalInfo === 24) {
-    mapLength = bytes[offset++];
+    mapLength = bytes[currentOffset++];
   } else {
     throw new Error("Unsupported map length encoding");
   }
 
   // Read key-value pairs
   for (let i = 0; i < mapLength; i++) {
-    const [key, keyOffset] = decodeCborValue(bytes, offset);
-    offset = keyOffset;
-    const [value, valueOffset] = decodeCborValue(bytes, offset);
-    offset = valueOffset;
+    const [key, keyOffset] = decodeCborValue(bytes, currentOffset);
+    currentOffset = keyOffset;
+    const [value, valueOffset] = decodeCborValue(bytes, currentOffset);
+    currentOffset = valueOffset;
     result.set(key as number, value);
   }
 
   return result;
 }
 
-function decodeCborValue(bytes: Uint8Array, offset: number): [unknown, number] {
-  const first = bytes[offset++];
+function decodeCborValue(
+  bytes: Uint8Array,
+  startOffset: number
+): [unknown, number] {
+  let currentOffset = startOffset;
+  const first = bytes[currentOffset++];
   const majorType = first >> 5;
   const additionalInfo = first & 0x1f;
 
@@ -417,30 +421,35 @@ function decodeCborValue(bytes: Uint8Array, offset: number): [unknown, number] {
   if (additionalInfo < 24) {
     value = additionalInfo;
   } else if (additionalInfo === 24) {
-    value = bytes[offset++];
+    value = bytes[currentOffset++];
   } else if (additionalInfo === 25) {
-    value = (bytes[offset++] << 8) | bytes[offset++];
+    value = (bytes[currentOffset++] << 8) | bytes[currentOffset++];
   } else if (additionalInfo === 26) {
     value =
-      (bytes[offset++] << 24) |
-      (bytes[offset++] << 16) |
-      (bytes[offset++] << 8) |
-      bytes[offset++];
+      (bytes[currentOffset++] << 24) |
+      (bytes[currentOffset++] << 16) |
+      (bytes[currentOffset++] << 8) |
+      bytes[currentOffset++];
   } else {
     throw new Error(`Unsupported additional info: ${additionalInfo}`);
   }
 
   switch (majorType) {
     case 0: // Unsigned integer
-      return [value, offset];
+      return [value, currentOffset];
     case 1: // Negative integer
-      return [-(value + 1), offset];
+      return [-(value + 1), currentOffset];
     case 2: // Byte string
-      return [bytes.slice(offset, offset + value), offset + value];
+      return [
+        bytes.slice(currentOffset, currentOffset + value),
+        currentOffset + value,
+      ];
     case 3: // Text string
       return [
-        new TextDecoder().decode(bytes.slice(offset, offset + value)),
-        offset + value,
+        new TextDecoder().decode(
+          bytes.slice(currentOffset, currentOffset + value)
+        ),
+        currentOffset + value,
       ];
     default:
       throw new Error(`Unsupported major type: ${majorType}`);
@@ -457,26 +466,32 @@ function derToRaw(der: Uint8Array, curveSize: number): Uint8Array {
     return der;
   }
 
-  let offset = 2; // Skip 0x30 and length byte
+  let currentOffset = 2; // Skip 0x30 and length byte
 
   // Read R
-  if (der[offset++] !== 0x02) throw new Error("Invalid DER signature");
-  const rLength = der[offset++];
-  let r = der.slice(offset, offset + rLength);
-  offset += rLength;
+  if (der[currentOffset++] !== 0x02) {
+    throw new Error("Invalid DER signature");
+  }
+  const rLength = der[currentOffset++];
+  const rRaw = der.slice(currentOffset, currentOffset + rLength);
+  currentOffset += rLength;
 
   // Read S
-  if (der[offset++] !== 0x02) throw new Error("Invalid DER signature");
-  const sLength = der[offset++];
-  let s = der.slice(offset, offset + sLength);
+  if (der[currentOffset++] !== 0x02) {
+    throw new Error("Invalid DER signature");
+  }
+  const sLength = der[currentOffset++];
+  const sRaw = der.slice(currentOffset, currentOffset + sLength);
 
   // Remove leading zeros and pad to curve size
-  if (r[0] === 0 && r.length > curveSize) r = r.slice(1);
-  if (s[0] === 0 && s.length > curveSize) s = s.slice(1);
+  const rValue =
+    rRaw[0] === 0 && rRaw.length > curveSize ? rRaw.slice(1) : rRaw;
+  const sValue =
+    sRaw[0] === 0 && sRaw.length > curveSize ? sRaw.slice(1) : sRaw;
 
   const raw = new Uint8Array(curveSize * 2);
-  raw.set(r, curveSize - r.length);
-  raw.set(s, curveSize * 2 - s.length);
+  raw.set(rValue, curveSize - rValue.length);
+  raw.set(sValue, curveSize * 2 - sValue.length);
 
   return raw;
 }
@@ -485,7 +500,9 @@ function derToRaw(der: Uint8Array, curveSize: number): Uint8Array {
  * Timing-safe comparison of two byte arrays.
  */
 function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) {
+    return false;
+  }
 
   let result = 0;
   for (let i = 0; i < a.length; i++) {
@@ -528,7 +545,7 @@ export async function registerPasskeyCredential(params: {
 /**
  * Get passkey credentials for a user.
  */
-export async function getPasskeyCredentials(userId: string) {
+export function getPasskeyCredentials(userId: string) {
   return db.query.passkeyCredentials.findMany({
     where: eq(passkeyCredentials.userId, userId),
   });
@@ -537,7 +554,7 @@ export async function getPasskeyCredentials(userId: string) {
 /**
  * Get passkey credential by credential ID.
  */
-export async function getPasskeyCredentialByCredentialId(credentialId: string) {
+export function getPasskeyCredentialByCredentialId(credentialId: string) {
   return db.query.passkeyCredentials.findFirst({
     where: eq(passkeyCredentials.credentialId, credentialId),
   });
@@ -601,7 +618,7 @@ export async function createPasswordlessUser(params: {
 /**
  * Get user by email.
  */
-export async function getUserByEmail(email: string) {
+export function getUserByEmail(email: string) {
   return db.query.users.findFirst({
     where: eq(users.email, email),
   });
@@ -618,18 +635,18 @@ async function signCookieValue(value: string, secret: string): Promise<string> {
     encoder.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"],
+    ["sign"]
   );
 
   const signature = await crypto.subtle.sign(
     "HMAC",
     secretKey,
-    encoder.encode(value),
+    encoder.encode(value)
   );
 
   // Convert signature to base64
   const base64Signature = btoa(
-    String.fromCharCode(...new Uint8Array(signature)),
+    String.fromCharCode(...new Uint8Array(signature))
   );
 
   // Format: <value>.<signature>, URL encoded
@@ -649,12 +666,12 @@ async function signCookieValue(value: string, secret: string): Promise<string> {
  */
 export async function createPasskeySession(
   userId: string,
-  resHeaders: Headers,
+  resHeaders: Headers
 ): Promise<{
   sessionToken: string;
   expiresAt: Date;
 }> {
-  const { sessions } = await import("@/lib/db/schema");
+  const { sessions } = await import("@/lib/db/schema/auth");
   const { getBetterAuthSecret } = await import("@/lib/utils/env");
 
   const sessionId = nanoid();

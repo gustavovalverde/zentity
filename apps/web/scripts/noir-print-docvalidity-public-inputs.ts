@@ -7,10 +7,10 @@ const circuit = JSON.parse(
   fs.readFileSync(
     new URL(
       "../noir-circuits/doc_validity/artifacts/doc_validity.json",
-      import.meta.url,
+      import.meta.url
     ),
-    "utf8",
-  ),
+    "utf8"
+  )
 );
 
 const noir = new Noir(circuit);

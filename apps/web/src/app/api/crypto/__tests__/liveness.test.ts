@@ -60,28 +60,28 @@ describe("Liveness FHE (tRPC)", () => {
     it("should throw UNAUTHORIZED when not authenticated", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.encryptLiveness({ score: 0.85, keyId: "key-id" }),
+        caller.encryptLiveness({ score: 0.85, keyId: "key-id" })
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("should throw BAD_REQUEST when score is missing", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ keyId: "key-id" } as any),
+        caller.encryptLiveness({ keyId: "key-id" } as any)
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should throw BAD_REQUEST when score is out of range (> 1.0)", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: 1.5, keyId: "key-id" }),
+        caller.encryptLiveness({ score: 1.5, keyId: "key-id" })
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
     it("should throw BAD_REQUEST when score is negative", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: -0.1, keyId: "key-id" }),
+        caller.encryptLiveness({ score: -0.1, keyId: "key-id" })
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -90,8 +90,8 @@ describe("Liveness FHE (tRPC)", () => {
         vi.fn().mockResolvedValue(
           msgpackResponse({
             livenessScoreCiphertext: "encrypted-ciphertext-base64",
-          }),
-        ),
+          })
+        )
       );
 
       const caller = createCaller(authedSession);
@@ -110,12 +110,12 @@ describe("Liveness FHE (tRPC)", () => {
           status: 500,
           statusText: "Internal Server Error",
           text: () => Promise.resolve("FHE service unavailable"),
-        }),
+        })
       );
 
       const caller = createCaller(authedSession);
       await expect(
-        caller.encryptLiveness({ score: 0.85, keyId: "key-id" }),
+        caller.encryptLiveness({ score: 0.85, keyId: "key-id" })
       ).rejects.toBeInstanceOf(Error);
     });
 
@@ -124,8 +124,8 @@ describe("Liveness FHE (tRPC)", () => {
         vi.fn().mockResolvedValue(
           msgpackResponse({
             livenessScoreCiphertext: "encrypted",
-          }),
-        ),
+          })
+        )
       );
 
       // Test score = 0.0
@@ -159,14 +159,14 @@ describe("Liveness FHE (tRPC)", () => {
           ciphertext: "test",
           threshold: 0.3,
           keyId: "key-id",
-        }),
+        })
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("should throw BAD_REQUEST when ciphertext is missing", async () => {
       const caller = createCaller(authedSession);
       await expect(
-        caller.verifyLivenessThreshold({ threshold: 0.3 } as any),
+        caller.verifyLivenessThreshold({ threshold: 0.3 } as any)
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -177,7 +177,7 @@ describe("Liveness FHE (tRPC)", () => {
           ciphertext: "test",
           threshold: 1.5,
           keyId: "key-id",
-        }),
+        })
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -191,9 +191,9 @@ describe("Liveness FHE (tRPC)", () => {
             msgpackResponse({
               passesCiphertext: "encrypted-result",
               threshold: 0.3,
-            }),
+            })
           );
-        }),
+        })
       );
 
       const caller = createCaller(authedSession);
@@ -210,8 +210,8 @@ describe("Liveness FHE (tRPC)", () => {
           msgpackResponse({
             passesCiphertext: "encrypted-result",
             threshold: 0.5,
-          }),
-        ),
+          })
+        )
       );
 
       const caller = createCaller(authedSession);
@@ -231,8 +231,8 @@ describe("Liveness FHE (tRPC)", () => {
           msgpackResponse({
             passesCiphertext: "encrypted-result",
             threshold: 0.9,
-          }),
-        ),
+          })
+        )
       );
 
       const caller = createCaller(authedSession);

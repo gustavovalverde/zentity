@@ -18,7 +18,8 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { STABILITY_FRAMES, useSelfieLivenessFlow } from "@/hooks/liveness";
+import { STABILITY_FRAMES } from "@/hooks/liveness/constants";
+import { useSelfieLivenessFlow } from "@/hooks/liveness/use-selfie-liveness-flow";
 import { useHumanLiveness } from "@/hooks/use-human-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 import {
@@ -27,7 +28,7 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness";
+} from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 
 /** Debug mode - shows detection overlay and metrics */
@@ -83,7 +84,7 @@ export function StepSelfie() {
     }) => {
       updateData({ selfieImage, bestSelfieFrame, blinkCount });
     },
-    [updateData],
+    [updateData]
   );
 
   const handleReset = useCallback(() => {
@@ -137,7 +138,7 @@ export function StepSelfie() {
       });
       return;
     }
-    if (!state.data.idDocumentBase64 || !state.data.identityDraftId) {
+    if (!(state.data.idDocumentBase64 && state.data.identityDraftId)) {
       toast.error("Missing document context", {
         description:
           "Please re-upload your ID so we can complete verification.",
@@ -201,7 +202,7 @@ export function StepSelfie() {
         blinkCount: null,
       });
       stopCamera();
-      if (!state.data.idDocumentBase64 || !state.data.identityDraftId) {
+      if (!(state.data.idDocumentBase64 && state.data.identityDraftId)) {
         toast.error("Missing document context", {
           description:
             "Please re-upload your ID so we can complete verification.",
@@ -234,25 +235,25 @@ export function StepSelfie() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Liveness Verification</h3>
-        <p className="text-sm text-muted-foreground">
+        <h3 className="font-medium text-lg">Liveness Verification</h3>
+        <p className="text-muted-foreground text-sm">
           We&apos;ll automatically verify you&apos;re a real person. Just start
           the camera and follow the prompts.
         </p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           We&apos;ll ask for camera access next. Photos are used only for
           verification and are not stored.
         </p>
         {isStreaming && !humanReady && !humanError && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Loading liveness models (first run may take up to a minute).
           </p>
         )}
-        {humanError && (
-          <p className="text-xs text-muted-foreground">
+        {humanError ? (
+          <p className="text-muted-foreground text-xs">
             Liveness models failed to load. Please retry.
           </p>
-        )}
+        ) : null}
       </div>
 
       {/* Camera/Image display */}
@@ -260,7 +261,6 @@ export function StepSelfie() {
         {(challengeState === "all_passed" || challengeState === "failed") &&
         challengeImage ? (
           <img
-            src={challengeImage}
             alt={
               challengeState === "all_passed"
                 ? "Verified selfie"
@@ -269,28 +269,31 @@ export function StepSelfie() {
             className={`h-full w-full object-cover ${
               challengeState === "failed" ? "opacity-50" : ""
             }`}
+            height={480}
+            src={challengeImage}
+            width={640}
           />
         ) : (
           <>
             <video
-              ref={videoRef}
               autoPlay
-              playsInline
-              muted
-              className={`h-full w-full object-cover transform -scale-x-100 ${
+              className={`h-full w-full -scale-x-100 transform object-cover ${
                 isStreaming ? "" : "hidden"
               }`}
+              muted
+              playsInline
+              ref={videoRef}
             />
-            {debugEnabled && (
+            {debugEnabled ? (
               <canvas
-                ref={debugCanvasRef}
                 className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
                   isStreaming ? "" : "hidden"
                 }`}
+                ref={debugCanvasRef}
               />
-            )}
-            {debugEnabled && debugFrame && (
-              <div className="absolute left-2 top-2 z-10 max-w-[95%] rounded-md bg-black/70 px-2 py-1 text-[10px] leading-snug text-white">
+            ) : null}
+            {debugEnabled && debugFrame ? (
+              <div className="absolute top-2 left-2 z-10 max-w-[95%] rounded-md bg-black/70 px-2 py-1 text-[10px] text-white leading-snug">
                 <div className="font-mono">
                   <div>state: {debugFrame.state}</div>
                   <div>
@@ -323,43 +326,43 @@ export function StepSelfie() {
                       gesture: {debugFrame.gesture.join(", ")}
                     </div>
                   )}
-                  {debugFrame.performance && (
+                  {debugFrame.performance ? (
                     <div className="opacity-80">
                       perf: detect {debugFrame.performance.detect?.toFixed(0)}ms
                       | total {debugFrame.performance.total?.toFixed(0)}ms
                     </div>
-                  )}
-                  {lastVerifyError && (
+                  ) : null}
+                  {lastVerifyError ? (
                     <div className="mt-1 text-destructive/80">
                       verify: {lastVerifyError}
                     </div>
-                  )}
+                  ) : null}
                   {Boolean(lastVerifyResponse) && (
                     <details className="mt-1 opacity-80">
                       <summary className="cursor-pointer">
                         verify payload
                       </summary>
-                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-words">
+                      <pre className="wrap-break-words mt-1 max-h-32 overflow-auto whitespace-pre-wrap">
                         {JSON.stringify(lastVerifyResponse, null, 2)}
                       </pre>
                     </details>
                   )}
                 </div>
               </div>
-            )}
+            ) : null}
             {!isStreaming && (
               <div className="absolute inset-0 flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
                 {permissionStatus === "denied" ? (
                   <>
                     <CameraOff className="h-12 w-12 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Camera access denied
                     </p>
                   </>
                 ) : (
                   <>
                     <Camera className="h-12 w-12 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Click &quot;Start Camera&quot; to begin automatic
                       verification
                     </p>
@@ -375,47 +378,47 @@ export function StepSelfie() {
           challengeState === "waiting_challenge") && (
           <div className="pointer-events-none absolute inset-0">
             <svg
+              aria-label="Face positioning guide"
               className="h-full w-full"
-              viewBox="0 0 640 480"
               preserveAspectRatio="xMidYMid slice"
               role="img"
-              aria-label="Face positioning guide"
+              viewBox="0 0 640 480"
             >
               <title>Face positioning guide</title>
               {/* Semi-transparent overlay with face cutout */}
               <defs>
                 <mask id="face-mask">
-                  <rect x="0" y="0" width="640" height="480" fill="white" />
-                  <ellipse cx="320" cy="200" rx="130" ry="170" fill="black" />
+                  <rect fill="white" height="480" width="640" x="0" y="0" />
+                  <ellipse cx="320" cy="200" fill="black" rx="130" ry="170" />
                 </mask>
               </defs>
               <rect
+                fill="rgba(0,0,0,0.3)"
+                height="480"
+                mask="url(#face-mask)"
+                width="640"
                 x="0"
                 y="0"
-                width="640"
-                height="480"
-                fill="rgba(0,0,0,0.3)"
-                mask="url(#face-mask)"
               />
               {/* Face oval guide */}
               <ellipse
+                className={
+                  challengeState === "detecting" ? "animate-pulse" : ""
+                }
                 cx="320"
                 cy="200"
+                fill="none"
                 rx="130"
                 ry="170"
-                fill="none"
                 stroke={
                   challengeState === "waiting_challenge"
                     ? "var(--warning)"
                     : "var(--foreground)"
                 }
-                strokeWidth="3"
                 strokeDasharray={
                   challengeState === "detecting" ? "12,6" : "none"
                 }
-                className={
-                  challengeState === "detecting" ? "animate-pulse" : ""
-                }
+                strokeWidth="3"
               />
               {/* Corner guides */}
               <g
@@ -424,8 +427,8 @@ export function StepSelfie() {
                     ? "var(--warning)"
                     : "var(--foreground)"
                 }
-                strokeWidth="3"
                 strokeLinecap="round"
+                strokeWidth="3"
               >
                 {/* Top-left */}
                 <path d="M 170 50 L 170 90 M 170 50 L 210 50" fill="none" />
@@ -442,28 +445,27 @@ export function StepSelfie() {
 
         {/* Detecting face overlay */}
         {challengeState === "detecting" && (
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-            <div
-              role="status"
-              aria-live="polite"
+          <div className="absolute right-0 bottom-4 left-0 flex justify-center">
+            <output
               aria-atomic="true"
-              className="rounded-lg bg-background/90 px-4 py-3 shadow-lg backdrop-blur"
+              aria-live="polite"
+              className="block rounded-lg bg-background/90 px-4 py-3 shadow-lg backdrop-blur"
             >
               <div className="flex items-center gap-3">
                 <Loader2
-                  className="h-5 w-5 animate-spin text-primary"
                   aria-hidden="true"
+                  className="h-5 w-5 animate-spin text-primary"
                 />
                 <div>
                   <p className="font-medium">{statusMessage}</p>
                   <Progress
-                    value={detectionProgress}
-                    className="mt-1 h-1 w-32"
                     aria-label={`Face detection progress: ${Math.round(detectionProgress)}%`}
+                    className="mt-1 h-1 w-32"
+                    value={detectionProgress}
                   />
                 </div>
               </div>
-            </div>
+            </output>
           </div>
         )}
 
@@ -471,19 +473,18 @@ export function StepSelfie() {
         {challengeState === "countdown" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <div
-              role="timer"
-              aria-live="assertive"
               aria-atomic="true"
+              aria-live="assertive"
               className="flex flex-col items-center gap-2"
+              role="timer"
             >
-              <div
-                className="flex h-24 w-24 items-center justify-center rounded-full bg-primary text-5xl font-bold text-primary-foreground"
-                role="status"
+              <output
                 aria-label={`${countdown} seconds remaining`}
+                className="flex h-24 w-24 items-center justify-center rounded-full bg-primary font-bold text-5xl text-primary-foreground"
               >
                 {countdown}
-              </div>
-              <p className="text-lg font-medium text-white drop-shadow-lg">
+              </output>
+              <p className="font-medium text-lg text-white drop-shadow-lg">
                 Hold still...
               </p>
             </div>
@@ -492,165 +493,160 @@ export function StepSelfie() {
 
         {/* Waiting for challenge overlay */}
         {challengeState === "waiting_challenge" && currentChallenge && (
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-            <div
-              role="status"
-              aria-live="polite"
+          <div className="absolute right-0 bottom-4 left-0 flex justify-center">
+            <output
               aria-atomic="true"
-              className="rounded-lg bg-warning/90 px-6 py-4 shadow-lg backdrop-blur"
+              aria-live="polite"
+              className="block rounded-lg bg-warning/90 px-6 py-4 shadow-lg backdrop-blur"
             >
               <div className="flex items-center gap-3 text-warning-foreground">
                 {/* Challenge-specific icon */}
                 {currentChallenge.challengeType === "smile" && (
-                  <Smile className="h-8 w-8" aria-hidden="true" />
+                  <Smile aria-hidden="true" className="h-8 w-8" />
                 )}
                 {currentChallenge.challengeType === "turn_left" && (
-                  <ArrowLeft className="h-8 w-8" aria-hidden="true" />
+                  <ArrowLeft aria-hidden="true" className="h-8 w-8" />
                 )}
                 {currentChallenge.challengeType === "turn_right" && (
-                  <ArrowRight className="h-8 w-8" aria-hidden="true" />
+                  <ArrowRight aria-hidden="true" className="h-8 w-8" />
                 )}
                 <div>
-                  <p className="text-xl font-bold">
+                  <p className="font-bold text-xl">
                     {currentChallenge.instruction}
                   </p>
                   {/* Dual progress bars */}
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs w-14">You:</span>
+                      <span className="w-14 text-xs">You:</span>
                       <Progress
-                        value={challengeProgress}
+                        aria-label={`Your progress: ${challengeProgress.toFixed(0)}%`}
                         className="h-2 w-32 bg-warning/20"
                         indicatorClassName="bg-warning"
-                        aria-label={`Your progress: ${challengeProgress.toFixed(0)}%`}
+                        value={challengeProgress}
                       />
-                      <span className="text-xs w-8">
+                      <span className="w-8 text-xs">
                         {challengeProgress.toFixed(0)}%
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs w-14">Server:</span>
+                      <span className="w-14 text-xs">Server:</span>
                       <Progress
-                        value={serverProgress?.progress ?? 0}
+                        aria-label={`Server progress: ${serverProgress?.progress ?? 0}%`}
                         className="h-2 w-32 bg-warning/20"
                         indicatorClassName="bg-warning"
-                        aria-label={`Server progress: ${serverProgress?.progress ?? 0}%`}
+                        value={serverProgress?.progress ?? 0}
                       />
-                      <span className="text-xs w-8">
+                      <span className="w-8 text-xs">
                         {serverProgress?.progress ?? 0}%
                       </span>
                     </div>
                   </div>
                   {/* Server hint */}
-                  {serverHint && (
-                    <p className="mt-2 text-xs text-warning-foreground font-medium">
+                  {serverHint ? (
+                    <p className="mt-2 font-medium text-warning-foreground text-xs">
                       {serverHint}
                     </p>
-                  )}
+                  ) : null}
                   {/* Fallback to status message for turn challenges */}
                   {!serverHint &&
                     statusMessage &&
                     (currentChallenge.challengeType === "turn_left" ||
                       currentChallenge.challengeType === "turn_right") && (
-                      <p className="mt-1 text-xs text-warning-foreground">
+                      <p className="mt-1 text-warning-foreground text-xs">
                         {statusMessage}
                       </p>
                     )}
-                  <p className="mt-1 text-xs" aria-hidden="true">
+                  <p aria-hidden="true" className="mt-1 text-xs">
                     {currentChallenge.index + 1} of {currentChallenge.total}
                   </p>
                 </div>
               </div>
-            </div>
+            </output>
           </div>
         )}
 
         {/* Capturing overlay */}
         {challengeState === "capturing" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div
-              role="status"
+            <output
               aria-live="polite"
-              className="rounded-lg bg-success/90 px-6 py-4"
+              className="block rounded-lg bg-success/90 px-6 py-4"
             >
               <div className="flex items-center gap-2 text-success-foreground">
-                <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
+                <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
                 <p className="font-medium">
                   {currentChallenge?.title || "Challenge"} detected!
                 </p>
               </div>
-            </div>
+            </output>
           </div>
         )}
 
         {/* Challenge passed overlay (brief, before next challenge) */}
         {challengeState === "challenge_passed" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div
-              role="status"
+            <output
               aria-live="polite"
-              className="rounded-lg bg-success/90 px-6 py-4"
+              className="block rounded-lg bg-success/90 px-6 py-4"
             >
               <div className="flex items-center gap-2 text-success-foreground">
-                <CheckCircle2 className="h-6 w-6" aria-hidden="true" />
+                <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
                 <p className="font-medium">Great! Next challenge...</p>
               </div>
-            </div>
+            </output>
           </div>
         )}
 
         {/* Preparing for next challenge overlay */}
         {challengeState === "preparing_challenge" && currentChallenge && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-            <div
-              role="status"
+            <output
               aria-live="polite"
-              className="rounded-lg bg-background/95 px-6 py-4 shadow-lg text-center"
+              className="block rounded-lg bg-background/95 px-6 py-4 text-center shadow-lg"
             >
               <div className="flex flex-col items-center gap-3">
                 {currentChallenge.challengeType === "smile" && (
                   <Smile
-                    className="h-12 w-12 text-primary"
                     aria-hidden="true"
+                    className="h-12 w-12 text-primary"
                   />
                 )}
                 {currentChallenge.challengeType === "turn_left" && (
                   <ArrowLeft
-                    className="h-12 w-12 text-primary"
                     aria-hidden="true"
+                    className="h-12 w-12 text-primary"
                   />
                 )}
                 {currentChallenge.challengeType === "turn_right" && (
                   <ArrowRight
-                    className="h-12 w-12 text-primary"
                     aria-hidden="true"
+                    className="h-12 w-12 text-primary"
                   />
                 )}
-                <p className="text-lg font-bold">Get Ready!</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="font-bold text-lg">Get Ready!</p>
+                <p className="text-muted-foreground text-sm">
                   Next: {currentChallenge.instruction}
                 </p>
               </div>
-            </div>
+            </output>
           </div>
         )}
 
         {/* Validating overlay */}
         {challengeState === "validating" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <div
-              role="status"
+            <output
               aria-live="polite"
-              className="rounded-lg bg-background/95 px-6 py-4 shadow-lg"
+              className="block rounded-lg bg-background/95 px-6 py-4 shadow-lg"
             >
               <div className="flex items-center gap-3">
                 <Loader2
-                  className="h-6 w-6 animate-spin text-primary"
                   aria-hidden="true"
+                  className="h-6 w-6 animate-spin text-primary"
                 />
                 <p className="font-medium">Verifying your identity...</p>
               </div>
-            </div>
+            </output>
           </div>
         )}
       </div>
@@ -685,10 +681,10 @@ export function StepSelfie() {
         {(challengeState === "idle" || challengeState === "loading_session") &&
           !isStreaming && (
             <Button
-              type="button"
-              onClick={beginCamera}
               className="flex-1"
               disabled={challengeState === "loading_session"}
+              onClick={beginCamera}
+              type="button"
             >
               <Camera className="mr-2 h-4 w-4" />
               {challengeState === "loading_session"
@@ -701,10 +697,10 @@ export function StepSelfie() {
           challengeState === "failed" ||
           challengeState === "timeout") && (
           <Button
+            className="flex-1"
+            onClick={retryChallenge}
             type="button"
             variant={challengeState === "all_passed" ? "outline" : "default"}
-            onClick={retryChallenge}
-            className="flex-1"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
             {challengeState === "all_passed" ? "Retake" : "Try Again"}
@@ -715,7 +711,7 @@ export function StepSelfie() {
           challengeState !== "all_passed" &&
           challengeState !== "failed" &&
           challengeState !== "timeout" && (
-            <div className="flex-1 text-center text-sm text-muted-foreground">
+            <div className="flex-1 text-center text-muted-foreground text-sm">
               {challengeState === "detecting" && "Looking for your face..."}
               {challengeState === "countdown" && "Get ready..."}
               {challengeState === "preparing_challenge" && "Get ready..."}
@@ -736,10 +732,6 @@ export function StepSelfie() {
       </Alert>
 
       <WizardNavigation
-        onNext={handleSubmit}
-        showSkip
-        skipLabel="Skip challenges"
-        onSkip={handleSkipChallenges}
         disableNext={
           challengeState === "validating" ||
           challengeState === "failed" ||
@@ -747,6 +739,10 @@ export function StepSelfie() {
           challengeState === "loading_session" ||
           (isStreaming && challengeState !== "all_passed")
         }
+        onNext={handleSubmit}
+        onSkip={handleSkipChallenges}
+        showSkip
+        skipLabel="Skip challenges"
       />
     </div>
   );

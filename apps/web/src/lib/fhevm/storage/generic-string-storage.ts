@@ -39,7 +39,7 @@ export interface GenericStringStorage {
  * Users will need to re-sign for decryption after refresh.
  */
 export class GenericStringInMemoryStorage implements GenericStringStorage {
-  #store = new Map<string, string>();
+  readonly #store = new Map<string, string>();
 
   getItem(key: string): string | Promise<string | null> | null {
     return this.#store.has(key) ? (this.#store.get(key) as string) : null;

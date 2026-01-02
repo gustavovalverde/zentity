@@ -14,23 +14,23 @@ export type AttestationClaimType =
   | "face_match_score"
   | "ocr_result";
 
-export type LivenessClaimData = {
+export interface LivenessClaimData {
   antispoofScore: number;
   liveScore: number;
   passed: boolean;
   antispoofScoreFixed: number;
   liveScoreFixed: number;
-};
+}
 
-export type FaceMatchClaimData = {
+export interface FaceMatchClaimData {
   confidence: number;
   confidenceFixed: number;
   thresholdFixed: number;
   passed: boolean;
   claimHash: string | null;
-};
+}
 
-export type OcrClaimData = {
+export interface OcrClaimData {
   documentType?: string | null;
   issuerCountry?: string | null;
   nationalityCode?: string | null;
@@ -43,9 +43,9 @@ export type OcrClaimData = {
     docValidity?: string | null;
     nationality?: string | null;
   };
-};
+}
 
-export type AttestationClaimPayload = {
+export interface AttestationClaimPayload {
   type: AttestationClaimType;
   userId: string;
   issuedAt: string;
@@ -54,7 +54,7 @@ export type AttestationClaimPayload = {
   documentHash?: string | null;
   documentHashField?: string | null;
   data: LivenessClaimData | FaceMatchClaimData | OcrClaimData;
-};
+}
 
 function getSigningKey(): Uint8Array {
   const secret = getBetterAuthSecret();
@@ -62,10 +62,10 @@ function getSigningKey(): Uint8Array {
 }
 
 export async function signAttestationClaim(
-  payload: AttestationClaimPayload,
+  payload: AttestationClaimPayload
 ): Promise<string> {
   const key = getSigningKey();
-  return new SignJWT(payload as JWTPayload)
+  return await new SignJWT(payload as unknown as JWTPayload)
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(CLAIMS_ISSUER)
     .setAudience(CLAIMS_AUDIENCE)
@@ -78,7 +78,7 @@ export async function signAttestationClaim(
 export async function verifyAttestationClaim(
   token: string,
   expectedType?: AttestationClaimType,
-  expectedUserId?: string,
+  expectedUserId?: string
 ): Promise<AttestationClaimPayload> {
   const key = getSigningKey();
   const { payload } = await jwtVerify(token, key, {
@@ -100,11 +100,13 @@ export async function verifyAttestationClaim(
   }
 
   if (
-    !claim.type ||
-    !claim.userId ||
-    !claim.issuedAt ||
-    !claim.policyVersion ||
-    !claim.data
+    !(
+      claim.type &&
+      claim.userId &&
+      claim.issuedAt &&
+      claim.policyVersion &&
+      claim.data
+    )
   ) {
     throw new Error("Claim payload missing required fields");
   }

@@ -26,7 +26,7 @@ export default async function VerificationPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Verification Details</h1>
+        <h1 className="font-bold text-2xl">Verification Details</h1>
         <p className="text-muted-foreground">
           View your age verification proof and status
         </p>
@@ -42,7 +42,7 @@ export default async function VerificationPage() {
                 </div>
                 <div>
                   <span className="text-lg">Age Verified</span>
-                  <Badge variant="success" className="ml-2">
+                  <Badge className="ml-2" variant="success">
                     18+
                   </Badge>
                 </div>
@@ -57,8 +57,8 @@ export default async function VerificationPage() {
                 <div className="flex items-start gap-3 rounded-lg border p-4">
                   <Hash className="mt-0.5 h-5 w-5 text-muted-foreground" />
                   <div className="space-y-1">
-                    <p className="text-sm font-medium">Proof ID</p>
-                    <code className="block rounded bg-muted px-2 py-1 text-xs break-all">
+                    <p className="font-medium text-sm">Proof ID</p>
+                    <code className="block break-all rounded bg-muted px-2 py-1 text-xs">
                       {proof.proofId}
                     </code>
                   </div>
@@ -67,8 +67,8 @@ export default async function VerificationPage() {
                 <div className="flex items-start gap-3 rounded-lg border p-4">
                   <Clock className="mt-0.5 h-5 w-5 text-muted-foreground" />
                   <div className="space-y-1">
-                    <p className="text-sm font-medium">Generated</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="font-medium text-sm">Generated</p>
+                    <p className="text-muted-foreground text-sm">
                       {new Date(proof.createdAt).toLocaleDateString()} at{" "}
                       {new Date(proof.createdAt).toLocaleTimeString()}
                     </p>
@@ -84,7 +84,7 @@ export default async function VerificationPage() {
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
                   <div>
                     <p className="text-muted-foreground">Generation Time</p>
-                    <p className="font-mono font-medium">
+                    <p className="font-medium font-mono">
                       {proof.generationTimeMs !== null
                         ? `${proof.generationTimeMs}ms`
                         : "N/A"}
@@ -137,7 +137,7 @@ export default async function VerificationPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Verification</span>
-                <span className="text-success font-medium">Valid</span>
+                <span className="font-medium text-success">Valid</span>
               </div>
             </CardContent>
           </Card>
@@ -147,9 +147,9 @@ export default async function VerificationPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Code className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-sm font-medium">Developer View</span>
+                  <span className="font-medium text-sm">Developer View</span>
                 </div>
-                <Button asChild variant="outline" size="sm">
+                <Button asChild size="sm" variant="outline">
                   <Link href="/dashboard/dev">View Raw Data</Link>
                 </Button>
               </div>
@@ -163,7 +163,7 @@ export default async function VerificationPage() {
               <Shield className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="font-medium">No Verification Found</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-muted-foreground text-sm">
               Complete the registration process to generate your age
               verification proof.
             </p>

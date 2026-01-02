@@ -38,7 +38,7 @@ export default async function ForgotPasswordSentPage({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+        <div className="rounded-lg bg-muted p-4 text-muted-foreground text-sm">
           <p>The link will expire in 1 hour.</p>
           <p className="mt-2">
             If you don&apos;t see the email, check your spam folder.
@@ -46,10 +46,10 @@ export default async function ForgotPasswordSentPage({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Button variant="outline" asChild className="w-full">
+          <Button asChild className="w-full" variant="outline">
             <Link href="/forgot-password">Try a different email</Link>
           </Button>
-          <Button variant="ghost" asChild className="w-full">
+          <Button asChild className="w-full" variant="ghost">
             <Link href="/sign-in">Back to Sign In</Link>
           </Button>
         </div>

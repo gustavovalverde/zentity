@@ -32,7 +32,7 @@ import {
   getProofChallenge,
   getSignedClaims,
   storeProof,
-} from "@/lib/crypto";
+} from "@/lib/crypto/crypto-client";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
 import {
   checkPrfSupport,
@@ -46,7 +46,8 @@ import {
 } from "@/lib/liveness/face-detection";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes, cn } from "@/lib/utils";
+import { base64UrlToBytes } from "@/lib/utils/base64url";
+import { cn } from "@/lib/utils/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
@@ -73,6 +74,22 @@ interface StepIndicatorProps {
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
   Uint8Array.from(bytes).buffer;
 
+function StepIndicatorIcon({
+  status,
+  icon,
+}: {
+  status: "pending" | "active" | "complete";
+  icon: React.ReactNode;
+}) {
+  if (status === "complete") {
+    return <Check className="h-4 w-4" />;
+  }
+  if (status === "active") {
+    return <Loader2 className="h-4 w-4 animate-spin" />;
+  }
+  return icon;
+}
+
 function StepIndicator({ label, status, icon }: StepIndicatorProps) {
   return (
     <div className="flex items-center gap-3">
@@ -80,24 +97,18 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
         className={cn(
           "flex h-8 w-8 items-center justify-center rounded-full transition-all",
           status === "complete" && "bg-success text-success-foreground",
-          status === "active" && "bg-info text-info-foreground animate-pulse",
-          status === "pending" && "bg-muted text-muted-foreground",
+          status === "active" && "animate-pulse bg-info text-info-foreground",
+          status === "pending" && "bg-muted text-muted-foreground"
         )}
       >
-        {status === "complete" ? (
-          <Check className="h-4 w-4" />
-        ) : status === "active" ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          icon
-        )}
+        <StepIndicatorIcon icon={icon} status={status} />
       </div>
       <span
         className={cn(
           "text-sm transition-colors",
-          status === "complete" && "text-success font-medium",
-          status === "active" && "text-info font-medium",
-          status === "pending" && "text-muted-foreground",
+          status === "complete" && "font-medium text-success",
+          status === "active" && "font-medium text-info",
+          status === "pending" && "text-muted-foreground"
         )}
       >
         {label}
@@ -147,7 +158,9 @@ export function StepCreateAccount() {
   useEffect(() => {
     let active = true;
     checkPrfSupport().then((result) => {
-      if (active) setSupportStatus(result);
+      if (active) {
+        setSupportStatus(result);
+      }
     });
     return () => {
       active = false;
@@ -159,20 +172,28 @@ export function StepCreateAccount() {
 
   // Auto-trigger face matching when both ID and selfie are available
   useEffect(() => {
-    if (faceMatchAttemptedRef.current) return;
-    if (!data.idDocumentBase64 || !selfieForMatching) return;
-    if (faceMatchStatus !== "idle") return;
+    if (faceMatchAttemptedRef.current) {
+      return;
+    }
+    if (!(data.idDocumentBase64 && selfieForMatching)) {
+      return;
+    }
+    if (faceMatchStatus !== "idle") {
+      return;
+    }
 
     faceMatchAttemptedRef.current = true;
 
     const performFaceMatch = async () => {
-      if (!data.idDocumentBase64 || !selfieForMatching) return;
+      if (!(data.idDocumentBase64 && selfieForMatching)) {
+        return;
+      }
 
       setFaceMatchStatus("matching");
       try {
         const result = await matchFaces(
           data.idDocumentBase64,
-          selfieForMatching,
+          selfieForMatching
         );
         setFaceMatchResult(result);
 
@@ -201,9 +222,13 @@ export function StepCreateAccount() {
   }, [data.idDocumentBase64, selfieForMatching, faceMatchStatus]);
 
   const calculateAge = (dob: string | null): number | null => {
-    if (!dob) return null;
+    if (!dob) {
+      return null;
+    }
     const birthDate = new Date(dob);
-    if (Number.isNaN(birthDate.getTime())) return null;
+    if (Number.isNaN(birthDate.getTime())) {
+      return null;
+    }
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -224,7 +249,7 @@ export function StepCreateAccount() {
     proofs: StepIndicatorProps["status"];
     store: StepIndicatorProps["status"];
   }>(() => {
-    const steps: Array<SecureStatus> = [
+    const steps: SecureStatus[] = [
       "registering-passkey",
       "unlocking-prf",
       "registering-fhe",
@@ -235,8 +260,12 @@ export function StepCreateAccount() {
     ];
     const currentIndex = steps.indexOf(status);
     const stepStatus = (index: number, active: SecureStatus) => {
-      if (currentIndex > index) return "complete";
-      if (status === active) return "active";
+      if (currentIndex > index) {
+        return "complete";
+      }
+      if (status === active) {
+        return "active";
+      }
       return "pending";
     };
     return {
@@ -255,7 +284,9 @@ export function StepCreateAccount() {
   };
 
   const handleCreateAccount = async () => {
-    if (!supportStatus?.supported) return;
+    if (!supportStatus?.supported) {
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -284,13 +315,13 @@ export function StepCreateAccount() {
         },
         user: {
           id: Uint8Array.from(
-            new TextEncoder().encode(registrationOptions.user.id),
+            new TextEncoder().encode(registrationOptions.user.id)
           ),
           name: registrationOptions.user.email,
           displayName: registrationOptions.user.name,
         },
         challenge: Uint8Array.from(
-          base64UrlToBytes(registrationOptions.challenge),
+          base64UrlToBytes(registrationOptions.challenge)
         ),
         pubKeyCredParams: [
           { type: "public-key" as const, alg: -8 },
@@ -337,7 +368,7 @@ export function StepCreateAccount() {
       }
       if (!prfOutput) {
         throw new Error(
-          "This passkey did not return PRF output. Please try a different authenticator.",
+          "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
 
@@ -378,7 +409,7 @@ export function StepCreateAccount() {
       if (hasIdentityDocs) {
         if (!data.identityDraftId) {
           throw new Error(
-            "Missing identity draft. Please restart verification.",
+            "Missing identity draft. Please restart verification."
           );
         }
 
@@ -404,7 +435,7 @@ export function StepCreateAccount() {
             }
             if (jobStatus.status === "error") {
               throw new Error(
-                jobStatus.error || "Identity finalization failed.",
+                jobStatus.error || "Identity finalization failed."
               );
             }
 
@@ -414,7 +445,7 @@ export function StepCreateAccount() {
           }
 
           throw new Error(
-            "Finalization is taking longer than expected. Please try again shortly.",
+            "Finalization is taking longer than expected. Please try again shortly."
           );
         };
 
@@ -427,7 +458,7 @@ export function StepCreateAccount() {
               : null;
           throw new Error(
             issue ||
-              "Identity verification did not pass. Please retake your ID photo and selfie and try again.",
+              "Identity verification did not pass. Please retake your ID photo and selfie and try again."
           );
         }
 
@@ -441,7 +472,7 @@ export function StepCreateAccount() {
           identityResult.documentId ?? data.identityDocumentId;
         if (!activeDocumentId) {
           throw new Error(
-            "Missing document context for proof generation. Please retry verification.",
+            "Missing document context for proof generation. Please retry verification."
           );
         }
 
@@ -458,7 +489,7 @@ export function StepCreateAccount() {
 
         try {
           const claims = await getSignedClaims(activeDocumentId);
-          if (!claims.ocr || !claims.faceMatch) {
+          if (!(claims.ocr && claims.faceMatch)) {
             throw new Error("Signed claims unavailable for proof generation");
           }
 
@@ -504,7 +535,7 @@ export function StepCreateAccount() {
           ) {
             throw new Error("Missing expiry date claim for document proof");
           }
-          if (!ocrData.nationalityCode || !nationalityClaimHash) {
+          if (!(ocrData.nationalityCode && nationalityClaimHash)) {
             throw new Error("Missing nationality claim for membership proof");
           }
           if (!faceData.claimHash) {
@@ -520,7 +551,7 @@ export function StepCreateAccount() {
               nonce: ageChallenge.nonce,
               documentHashField,
               claimHash: ageClaimHash,
-            },
+            }
           );
           proofResults.push({
             circuitType: "age_verification",
@@ -530,7 +561,7 @@ export function StepCreateAccount() {
           const docChallenge = await getProofChallenge("doc_validity");
           const now = new Date();
           const currentDateInt =
-            now.getFullYear() * 10000 +
+            now.getFullYear() * 10_000 +
             (now.getMonth() + 1) * 100 +
             now.getDate();
           const docProof = await generateDocValidityProof(
@@ -540,7 +571,7 @@ export function StepCreateAccount() {
               nonce: docChallenge.nonce,
               documentHashField,
               claimHash: docValidityClaimHash,
-            },
+            }
           );
           proofResults.push({
             circuitType: "doc_validity",
@@ -548,7 +579,7 @@ export function StepCreateAccount() {
           });
 
           const nationalityChallenge = await getProofChallenge(
-            "nationality_membership",
+            "nationality_membership"
           );
           const nationalityProof = await generateNationalityProof(
             ocrData.nationalityCode,
@@ -557,19 +588,22 @@ export function StepCreateAccount() {
               nonce: nationalityChallenge.nonce,
               documentHashField,
               claimHash: nationalityClaimHash,
-            },
+            }
           );
           proofResults.push({
             circuitType: "nationality_membership",
             ...nationalityProof,
           });
 
-          const similarityFixed =
-            typeof faceData.confidenceFixed === "number"
-              ? faceData.confidenceFixed
-              : typeof faceData.confidence === "number"
-                ? Math.round(faceData.confidence * 10000)
-                : null;
+          const similarityFixed = ((): number | null => {
+            if (typeof faceData.confidenceFixed === "number") {
+              return faceData.confidenceFixed;
+            }
+            if (typeof faceData.confidence === "number") {
+              return Math.round(faceData.confidence * 10_000);
+            }
+            return null;
+          })();
           if (similarityFixed === null) {
             throw new Error("Missing face match confidence for proof");
           }
@@ -577,7 +611,7 @@ export function StepCreateAccount() {
           const thresholdFixed =
             typeof faceData.thresholdFixed === "number"
               ? faceData.thresholdFixed
-              : Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
+              : Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
           if (
             faceClaim.documentHashField &&
             faceClaim.documentHashField !== documentHashField
@@ -595,7 +629,7 @@ export function StepCreateAccount() {
               nonce: faceChallenge.nonce,
               documentHashField: faceDocumentHashField,
               claimHash: faceData.claimHash,
-            },
+            }
           );
           proofResults.push({
             circuitType: "face_match",
@@ -609,11 +643,15 @@ export function StepCreateAccount() {
             errorMessage.toLowerCase().includes("wasm") ||
             errorMessage.toLowerCase().includes("module");
 
-          const friendlyMessage = isTimeout
-            ? "Privacy verification is taking too long. This may be due to network issues loading cryptographic libraries. Please refresh the page and try again."
-            : isWasmError
-              ? "Unable to load cryptographic libraries. Please try refreshing the page. If using a VPN or content blocker, it may be blocking required resources."
-              : "Privacy verification services are temporarily unavailable. Please try again in a few minutes.";
+          let friendlyMessage =
+            "Privacy verification services are temporarily unavailable. Please try again in a few minutes.";
+          if (isTimeout) {
+            friendlyMessage =
+              "Privacy verification is taking too long. This may be due to network issues loading cryptographic libraries. Please refresh the page and try again.";
+          } else if (isWasmError) {
+            friendlyMessage =
+              "Unable to load cryptographic libraries. Please try refreshing the page. If using a VPN or content blocker, it may be blocking required resources.";
+          }
 
           throw new Error(friendlyMessage);
         }
@@ -621,13 +659,13 @@ export function StepCreateAccount() {
         // Step 7: Store proofs
         setStatus("storing-proofs");
         for (const proof of proofResults) {
-          await storeProof(
-            proof.circuitType,
-            proof.proof,
-            proof.publicSignals,
-            proof.generationTimeMs,
-            activeDocumentId,
-          );
+          await storeProof({
+            circuitType: proof.circuitType,
+            proof: proof.proof,
+            publicSignals: proof.publicSignals,
+            generationTimeMs: proof.generationTimeMs,
+            documentId: activeDocumentId,
+          });
         }
       }
 
@@ -639,7 +677,7 @@ export function StepCreateAccount() {
       const rpFlow = new URLSearchParams(window.location.search).get("rp_flow");
       if (rpFlow) {
         window.location.assign(
-          `/api/rp/complete?flow=${encodeURIComponent(rpFlow)}`,
+          `/api/rp/complete?flow=${encodeURIComponent(rpFlow)}`
         );
         return;
       }
@@ -664,71 +702,71 @@ export function StepCreateAccount() {
       : null;
 
   const hasIdentityImages = Boolean(
-    data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage),
+    data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage)
   );
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Create Your Account</h3>
-        <p className="text-sm text-muted-foreground">
+        <h3 className="font-medium text-lg">Create Your Account</h3>
+        <p className="text-muted-foreground text-sm">
           Review your information, then create your account with a passkey.
           Passkeys are more secure than passwords and work across all your
           devices.
         </p>
         {!supportStatus && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Checking passkey support…
           </p>
         )}
       </div>
 
-      {unsupportedMessage && (
+      {unsupportedMessage ? (
         <Alert variant="destructive">
           <TriangleAlert className="h-4 w-4" />
           <AlertDescription>
             {unsupportedMessage}
-            <div className="mt-2 text-xs text-muted-foreground">
+            <div className="mt-2 text-muted-foreground text-xs">
               Supported: Chrome/Edge/Firefox with a PRF-capable passkey. Safari
               requires iCloud Keychain. Windows Hello and external keys on
               iOS/iPadOS are not supported.
             </div>
           </AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
-      {error && (
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       {/* Extracted Information Review - only show when idle */}
       {status === "idle" && (
         <div className="space-y-4 rounded-lg border p-4">
-          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+          <h4 className="font-medium text-muted-foreground text-sm uppercase tracking-wide">
             Your Information
           </h4>
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Email</span>
+            <span className="text-muted-foreground text-sm">Email</span>
             <span className="font-medium">{data.email}</span>
           </div>
 
           <Separator />
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Name</span>
+            <span className="text-muted-foreground text-sm">Name</span>
             <div className="flex items-center gap-2">
               {isEditingName ? (
                 <div className="flex items-center gap-2">
                   <Input
-                    value={editedName}
-                    onChange={(e) => setEditedName(e.target.value)}
                     className="h-8 w-48"
+                    onChange={(e) => setEditedName(e.target.value)}
                     placeholder="Enter name"
+                    value={editedName}
                   />
-                  <Button size="sm" variant="ghost" onClick={handleSaveName}>
+                  <Button onClick={handleSaveName} size="sm" variant="ghost">
                     <Check className="h-4 w-4" />
                   </Button>
                 </div>
@@ -738,12 +776,12 @@ export function StepCreateAccount() {
                     {editedName || data.extractedName || "Not extracted"}
                   </span>
                   <Button
-                    size="sm"
-                    variant="ghost"
                     onClick={() => {
                       setEditedName(data.extractedName || "");
                       setIsEditingName(true);
                     }}
+                    size="sm"
+                    variant="ghost"
                   >
                     <Edit2 className="h-3 w-3" />
                   </Button>
@@ -755,7 +793,7 @@ export function StepCreateAccount() {
           <Separator />
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Date of Birth</span>
+            <span className="text-muted-foreground text-sm">Date of Birth</span>
             <div className="flex items-center gap-2">
               <span className="font-medium">
                 {data.extractedDOB || "Not extracted"}
@@ -771,7 +809,7 @@ export function StepCreateAccount() {
           <Separator />
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Nationality</span>
+            <span className="text-muted-foreground text-sm">Nationality</span>
             <span className="font-medium">
               {data.extractedNationality || "Not extracted"}
             </span>
@@ -780,7 +818,7 @@ export function StepCreateAccount() {
           <Separator />
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Document</span>
+            <span className="text-muted-foreground text-sm">Document</span>
             <Badge variant={data.idDocument ? "default" : "outline"}>
               {data.idDocument ? "Uploaded" : "Skipped"}
             </Badge>
@@ -789,7 +827,7 @@ export function StepCreateAccount() {
           <Separator />
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Liveness</span>
+            <span className="text-muted-foreground text-sm">Liveness</span>
             <Badge variant={data.selfieImage ? "default" : "outline"}>
               {data.selfieImage ? "Verified" : "Skipped"}
             </Badge>
@@ -799,7 +837,7 @@ export function StepCreateAccount() {
 
       {/* Face Matching UI - only show when idle and has docs */}
       {status === "idle" && hasIdentityImages && (
-        <div className="rounded-lg border p-4 space-y-4">
+        <div className="space-y-4 rounded-lg border p-4">
           <div className="flex items-center gap-2">
             <UserCheck className="h-5 w-5 text-muted-foreground" />
             <span className="font-medium">Face Verification</span>
@@ -809,31 +847,35 @@ export function StepCreateAccount() {
             <div className="flex flex-col items-center gap-2">
               <div
                 className={cn(
-                  "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                  "relative h-20 w-20 overflow-hidden rounded-lg border bg-muted",
                   faceMatchStatus === "matching" &&
-                    "ring-2 ring-info/40 ring-offset-2",
+                    "ring-2 ring-info/40 ring-offset-2"
                 )}
               >
                 {faceMatchStatus === "matching" &&
-                  !faceMatchResult?.idFaceImage && (
-                    <Skeleton className="h-full w-full" />
-                  )}
+                !faceMatchResult?.idFaceImage ? (
+                  <Skeleton className="h-full w-full" />
+                ) : null}
                 {faceMatchResult?.idFaceImage ? (
                   <img
-                    src={faceMatchResult.idFaceImage}
                     alt="Face extracted from your ID (preview)"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
-                      faceMatchStatus === "matching" && "opacity-70",
+                      faceMatchStatus === "matching" && "opacity-70"
                     )}
+                    height={80}
+                    src={faceMatchResult.idFaceImage}
+                    width={80}
                   />
-                ) : faceMatchStatus !== "matching" ? (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-                    ID face
-                  </div>
                 ) : null}
+                {!faceMatchResult?.idFaceImage &&
+                  faceMatchStatus !== "matching" && (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground text-xs">
+                      ID face
+                    </div>
+                  )}
               </div>
-              <span className="text-xs text-muted-foreground">ID Photo</span>
+              <span className="text-muted-foreground text-xs">ID Photo</span>
             </div>
 
             <div className="flex flex-col items-center gap-1">
@@ -841,18 +883,18 @@ export function StepCreateAccount() {
                 <ArrowLeftRight className="h-6 w-6 text-muted-foreground" />
               )}
               {faceMatchStatus === "matching" && (
-                <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
+                <div className="fade-in flex animate-in flex-col items-center gap-1 duration-300">
                   <div className="relative">
                     <Loader2 className="h-6 w-6 animate-spin text-info" />
-                    <div className="absolute inset-0 h-6 w-6 rounded-full bg-info/20 animate-ping" />
+                    <div className="absolute inset-0 h-6 w-6 animate-ping rounded-full bg-info/20" />
                   </div>
-                  <Skeleton className="h-3 w-16 mt-1" />
+                  <Skeleton className="mt-1 h-3 w-16" />
                 </div>
               )}
               {faceMatchStatus === "matched" && (
-                <div className="animate-in zoom-in duration-300">
+                <div className="zoom-in animate-in duration-300">
                   <Check className="h-6 w-6 text-success" />
-                  <span className="text-xs font-medium text-success">
+                  <span className="font-medium text-success text-xs">
                     {Math.round((faceMatchResult?.confidence || 0) * 100)}%
                     match
                   </span>
@@ -861,7 +903,7 @@ export function StepCreateAccount() {
               {faceMatchStatus === "no_match" && (
                 <>
                   <XCircle className="h-6 w-6 text-destructive" />
-                  <span className="text-xs font-medium text-destructive">
+                  <span className="font-medium text-destructive text-xs">
                     No match
                   </span>
                 </>
@@ -869,7 +911,7 @@ export function StepCreateAccount() {
               {faceMatchStatus === "error" && (
                 <>
                   <XCircle className="h-6 w-6 text-warning" />
-                  <span className="text-xs font-medium text-warning">
+                  <span className="font-medium text-warning text-xs">
                     Error
                   </span>
                 </>
@@ -879,31 +921,33 @@ export function StepCreateAccount() {
             <div className="flex flex-col items-center gap-2">
               <div
                 className={cn(
-                  "w-20 h-20 rounded-lg overflow-hidden border bg-muted relative",
+                  "relative h-20 w-20 overflow-hidden rounded-lg border bg-muted",
                   faceMatchStatus === "matching" &&
-                    "ring-2 ring-info/40 ring-offset-2",
+                    "ring-2 ring-info/40 ring-offset-2"
                 )}
               >
                 {faceMatchStatus === "matching" && !selfieForMatching && (
                   <Skeleton className="h-full w-full" />
                 )}
-                {selfieForMatching && (
+                {selfieForMatching ? (
                   <img
-                    src={selfieForMatching}
                     alt="Selfie"
                     className={cn(
                       "h-full w-full object-cover transition-opacity duration-300",
-                      faceMatchStatus === "matching" && "opacity-70",
+                      faceMatchStatus === "matching" && "opacity-70"
                     )}
+                    height={80}
+                    src={selfieForMatching}
+                    width={80}
                   />
-                )}
+                ) : null}
               </div>
-              <span className="text-xs text-muted-foreground">Selfie</span>
+              <span className="text-muted-foreground text-xs">Selfie</span>
             </div>
           </div>
 
           {faceMatchStatus === "matching" && (
-            <p className="text-sm text-center text-muted-foreground">
+            <p className="text-center text-muted-foreground text-sm">
               Comparing faces...
             </p>
           )}
@@ -938,13 +982,13 @@ export function StepCreateAccount() {
 
       {/* Passkey Info Card - only show when idle */}
       {status === "idle" && (
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="space-y-3 rounded-lg border p-4">
           <div className="flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-muted-foreground" />
             <span className="font-medium">Passkey-protected account</span>
             <Badge variant="secondary">Recommended</Badge>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Your account is protected by a passkey instead of a password.
             Passkeys are phishing-resistant and work with your device's
             biometrics (Face ID, Touch ID, Windows Hello). You can optionally
@@ -955,47 +999,47 @@ export function StepCreateAccount() {
 
       {/* Progress UI - show when creating account */}
       {status !== "idle" && status !== "error" && (
-        <div className="space-y-4 rounded-lg border border-info/30 bg-info/10 p-5 text-info animate-in fade-in duration-300">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="fade-in animate-in space-y-4 rounded-lg border border-info/30 bg-info/10 p-5 text-info duration-300">
+          <div className="mb-4 flex items-center gap-2">
             <ShieldCheck className="h-5 w-5" />
             <span className="font-medium">Creating your secure account</span>
           </div>
 
           <div className="space-y-3">
             <StepIndicator
+              icon={<KeyRound className="h-4 w-4" />}
               label="Create passkey"
               status={progressStatus.passkey}
-              icon={<KeyRound className="h-4 w-4" />}
             />
             <StepIndicator
+              icon={<Loader2 className="h-4 w-4" />}
               label="Derive encryption key"
               status={progressStatus.prf}
-              icon={<Loader2 className="h-4 w-4" />}
             />
             <StepIndicator
+              icon={<ShieldCheck className="h-4 w-4" />}
               label="Register FHE keys"
               status={progressStatus.fhe}
-              icon={<ShieldCheck className="h-4 w-4" />}
             />
-            {hasIdentityDocs && (
+            {hasIdentityDocs ? (
               <>
                 <StepIndicator
+                  icon={<ShieldCheck className="h-4 w-4" />}
                   label="Finalize identity"
                   status={progressStatus.verify}
-                  icon={<ShieldCheck className="h-4 w-4" />}
                 />
                 <StepIndicator
+                  icon={<ShieldCheck className="h-4 w-4" />}
                   label="Generate privacy proofs"
                   status={progressStatus.proofs}
-                  icon={<ShieldCheck className="h-4 w-4" />}
                 />
                 <StepIndicator
+                  icon={<ShieldCheck className="h-4 w-4" />}
                   label="Store proofs"
                   status={progressStatus.store}
-                  icon={<ShieldCheck className="h-4 w-4" />}
                 />
               </>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -1003,9 +1047,9 @@ export function StepCreateAccount() {
       {/* Navigation */}
       {!state.isSubmitting && (
         <WizardNavigation
-          onNext={handleCreateAccount}
-          nextLabel="Create Account with Passkey"
           disableNext={!supportStatus?.supported}
+          nextLabel="Create Account with Passkey"
+          onNext={handleCreateAccount}
         />
       )}
 
@@ -1015,7 +1059,7 @@ export function StepCreateAccount() {
           <AlertDescription>
             <strong>Privacy-First Verification:</strong>
             <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-              {hasDob && (
+              {hasDob ? (
                 <>
                   <li>
                     Your birth year is encrypted using FHE (Fully Homomorphic
@@ -1026,8 +1070,8 @@ export function StepCreateAccount() {
                     revealing your age
                   </li>
                 </>
-              )}
-              {hasIdentityImages && (
+              ) : null}
+              {hasIdentityImages ? (
                 <>
                   <li>
                     Your ID document is processed to generate cryptographic
@@ -1038,7 +1082,7 @@ export function StepCreateAccount() {
                     both are deleted
                   </li>
                 </>
-              )}
+              ) : null}
               <li>
                 Only commitments, proofs, signed claims, and encrypted
                 attributes are stored - all PII is deleted immediately

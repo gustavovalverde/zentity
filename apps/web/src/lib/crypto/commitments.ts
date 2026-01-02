@@ -14,5 +14,5 @@ export async function sha256CommitmentHex(args: {
   value: string;
   salt: string;
 }): Promise<string> {
-  return sha256Hex(args.value + args.salt);
+  return await sha256Hex(args.value + args.salt);
 }

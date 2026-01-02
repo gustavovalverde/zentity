@@ -13,12 +13,14 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { describe, expect, it } from "vitest";
 
 // Create a minimal tRPC setup that sets a cookie
-type TestContext = { resHeaders: Headers };
+interface TestContext {
+  resHeaders: Headers;
+}
 
 const t = initTRPC.context<TestContext>().create();
 
 // Simulate middleware that spreads context (like withTracing and withLogging)
-const withMiddleware = t.middleware(async ({ ctx, next }) => {
+const withMiddleware = t.middleware(({ ctx, next }) => {
   // This is what our middleware does - spreads ctx
   return next({
     ctx: {
@@ -34,13 +36,13 @@ const testRouter = t.router({
     console.log("ctx.resHeaders type:", typeof ctx.resHeaders);
     console.log(
       "ctx.resHeaders is Headers:",
-      ctx.resHeaders instanceof Headers,
+      ctx.resHeaders instanceof Headers
     );
 
     // This simulates what createPasskeySession does
     ctx.resHeaders.append(
       "Set-Cookie",
-      "better-auth.session_token=test123; HttpOnly; SameSite=Lax; Path=/",
+      "better-auth.session_token=test123; HttpOnly; SameSite=Lax; Path=/"
     );
     return { success: true };
   }),
@@ -84,7 +86,7 @@ describe("tRPC route handler - Set-Cookie propagation", () => {
     const routeHandlerHeaders = new Headers();
 
     // Simulate what happens if createTrpcContext gets called with undefined resHeaders
-    const createContextBuggy = async () => {
+    const createContextBuggy = () => {
       const argsResHeaders = undefined; // This is the bug scenario
       return {
         resHeaders: argsResHeaders ?? new Headers(), // Creates a NEW disconnected Headers!
@@ -111,7 +113,7 @@ describe("tRPC route handler - Set-Cookie propagation", () => {
     const cookieInRouteHandlerHeaders = routeHandlerHeaders.get("Set-Cookie");
     console.log(
       "Cookie in routeHandlerHeaders (BUGGY):",
-      cookieInRouteHandlerHeaders,
+      cookieInRouteHandlerHeaders
     );
 
     // This SHOULD fail - showing the bug where cookie goes to wrong Headers object

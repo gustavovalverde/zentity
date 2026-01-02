@@ -30,10 +30,10 @@ export const onboardingSessions = sqliteTable(
   },
   (table) => ({
     expiresAtIdx: index("idx_onboarding_sessions_expires_at").on(
-      table.expiresAt,
+      table.expiresAt
     ),
     emailIdx: index("idx_onboarding_sessions_email").on(table.email),
-  }),
+  })
 );
 
 export type OnboardingSession = typeof onboardingSessions.$inferSelect;

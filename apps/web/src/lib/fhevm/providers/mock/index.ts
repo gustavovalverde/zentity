@@ -28,7 +28,7 @@ export const createMockInstance: FhevmProviderFactory = async ({
 
   const inputDomain = inputVerifier.inputVerifierProperties.eip712Domain;
   const kmsDomain = kmsVerifier.kmsVerifierProperties.eip712Domain;
-  if (!inputDomain || !kmsDomain) {
+  if (!(inputDomain && kmsDomain)) {
     throw new Error("Missing EIP-712 domain info for mock relayer");
   }
 
@@ -49,7 +49,7 @@ export const createMockInstance: FhevmProviderFactory = async ({
     {
       inputVerifierProperties: inputVerifier.inputVerifierProperties,
       kmsVerifierProperties: kmsVerifier.kmsVerifierProperties,
-    },
+    }
   );
 
   return instance;

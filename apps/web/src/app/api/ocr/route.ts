@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { ocrDocumentOcr } from "@/lib/document/ocr-client";
-import { HttpError } from "@/lib/utils";
+import { HttpError } from "@/lib/utils/http";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 interface OCRRequest {
@@ -33,11 +33,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof HttpError) {
       const { status, payload } = toServiceErrorPayload(
         error,
-        "OCR service error",
+        "OCR service error"
       );
       return NextResponse.json(
         { error: `OCR service error: ${payload.error}` },
-        { status },
+        { status }
       );
     }
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         validationIssues: ["ocr_service_unavailable"],
         processingTimeMs: 0,
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -35,7 +35,10 @@ import {
 } from "@/lib/db/queries/identity";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
+import {
+  CIRCUIT_SPECS,
+  parsePublicInputToNumber,
+} from "@/lib/zk/zk-circuit-spec";
 
 interface DisclosureRequest {
   // RP identification
@@ -132,7 +135,7 @@ interface DisclosureResponse {
  */
 async function encryptToPublicKey(
   data: string,
-  publicKeyBase64: string,
+  publicKeyBase64: string
 ): Promise<string> {
   // Decode the public key
   const publicKeyBuffer = Buffer.from(publicKeyBase64, "base64");
@@ -146,14 +149,14 @@ async function encryptToPublicKey(
       hash: "SHA-256",
     },
     false,
-    ["encrypt"],
+    ["encrypt"]
   );
 
   // For hybrid encryption: generate AES key, encrypt data with AES, encrypt AES key with RSA
   const aesKey = await crypto.subtle.generateKey(
     { name: "AES-GCM", length: 256 },
     true,
-    ["encrypt"],
+    ["encrypt"]
   );
 
   // Encrypt data with AES-GCM
@@ -162,7 +165,7 @@ async function encryptToPublicKey(
   const encryptedData = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     aesKey,
-    dataBuffer,
+    dataBuffer
   );
 
   // Export and encrypt AES key with RSA
@@ -170,25 +173,25 @@ async function encryptToPublicKey(
   const encryptedAesKey = await crypto.subtle.encrypt(
     { name: "RSA-OAEP" },
     publicKey,
-    aesKeyRaw,
+    aesKeyRaw
   );
 
   // Combine: encryptedAesKey (256 bytes for 2048-bit RSA) + iv (12 bytes) + encryptedData
   const result = new Uint8Array(
-    encryptedAesKey.byteLength + iv.byteLength + encryptedData.byteLength,
+    encryptedAesKey.byteLength + iv.byteLength + encryptedData.byteLength
   );
   result.set(new Uint8Array(encryptedAesKey), 0);
   result.set(iv, encryptedAesKey.byteLength);
   result.set(
     new Uint8Array(encryptedData),
-    encryptedAesKey.byteLength + iv.byteLength,
+    encryptedAesKey.byteLength + iv.byteLength
   );
 
   return Buffer.from(result).toString("base64");
 }
 
 export async function POST(
-  request: NextRequest,
+  request: NextRequest
 ): Promise<NextResponse<DisclosureResponse>> {
   const packageId = uuidv4();
   const createdAt = new Date().toISOString();
@@ -208,7 +211,7 @@ export async function POST(
           expiresAt,
           error: "Authentication required",
         },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -228,14 +231,14 @@ export async function POST(
           expiresAt,
           error: "User must complete identity verification before disclosure",
         },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
     const body = (await request.json()) as DisclosureRequest;
 
     // Validate required fields
-    if (!body.rpId || !body.rpPublicKey) {
+    if (!(body.rpId && body.rpPublicKey)) {
       return NextResponse.json(
         {
           success: false,
@@ -247,7 +250,7 @@ export async function POST(
           expiresAt,
           error: "RP ID and public key are required",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -263,7 +266,7 @@ export async function POST(
           expiresAt,
           error: "Document image is required for disclosure",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -282,7 +285,7 @@ export async function POST(
           error:
             "Identity document is missing required cryptographic metadata. Please re-run verification.",
         },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
@@ -300,7 +303,7 @@ export async function POST(
           error:
             "Unable to decrypt identity commitments. Please re-run verification.",
         },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
@@ -338,7 +341,7 @@ export async function POST(
     } catch (error) {
       const { status } = toServiceErrorPayload(
         error,
-        "Failed to process document",
+        "Failed to process document"
       );
       return NextResponse.json(
         {
@@ -351,12 +354,12 @@ export async function POST(
           expiresAt,
           error: "Failed to process document",
         },
-        { status },
+        { status }
       );
     }
 
     const documentHash = documentResult?.commitments?.documentHash ?? null;
-    if (!documentHash || !identityDocument.documentHash) {
+    if (!(documentHash && identityDocument.documentHash)) {
       return NextResponse.json(
         {
           success: false,
@@ -369,7 +372,7 @@ export async function POST(
           error:
             "Unable to validate document commitments. Please re-run verification.",
         },
-        { status: 409 },
+        { status: 409 }
       );
     }
 
@@ -386,7 +389,7 @@ export async function POST(
           error:
             "Provided document does not match the verified identity record.",
         },
-        { status: 403 },
+        { status: 403 }
       );
     }
 
@@ -399,18 +402,18 @@ export async function POST(
     const ageProofPayload = getLatestZkProofPayloadByUserAndType(
       userId,
       "age_verification",
-      documentId,
+      documentId
     );
     if (ageProofPayload) {
       const currentYear = parsePublicInputToNumber(
-        ageProofPayload.publicSignals[0],
+        ageProofPayload.publicSignals[0]
       );
       const minAge = parsePublicInputToNumber(ageProofPayload.publicSignals[1]);
       const isOver18 =
         parsePublicInputToNumber(
           ageProofPayload.publicSignals[
             CIRCUIT_SPECS.age_verification.resultIndex
-          ],
+          ]
         ) === 1;
       proofs.ageProof = {
         proof: ageProofPayload.proof,
@@ -424,17 +427,17 @@ export async function POST(
     const docValidityPayload = getLatestZkProofPayloadByUserAndType(
       userId,
       "doc_validity",
-      documentId,
+      documentId
     );
     if (docValidityPayload) {
       const currentDate = parsePublicInputToNumber(
-        docValidityPayload.publicSignals[0],
+        docValidityPayload.publicSignals[0]
       );
       const isValid =
         parsePublicInputToNumber(
           docValidityPayload.publicSignals[
             CIRCUIT_SPECS.doc_validity.resultIndex
-          ],
+          ]
         ) === 1;
       proofs.docValidityProof = {
         proof: docValidityPayload.proof,
@@ -447,7 +450,7 @@ export async function POST(
     const nationalityPayload = getLatestZkProofPayloadByUserAndType(
       userId,
       "nationality_membership",
-      documentId,
+      documentId
     );
     if (nationalityPayload) {
       const groupRoot = nationalityPayload.publicSignals[0];
@@ -455,7 +458,7 @@ export async function POST(
         parsePublicInputToNumber(
           nationalityPayload.publicSignals[
             CIRCUIT_SPECS.nationality_membership.resultIndex
-          ],
+          ]
         ) === 1;
       proofs.nationalityProof = {
         proof: nationalityPayload.proof,
@@ -468,22 +471,22 @@ export async function POST(
     const faceMatchPayload = getLatestZkProofPayloadByUserAndType(
       userId,
       "face_match",
-      documentId,
+      documentId
     );
     if (faceMatchPayload) {
       const thresholdScaled = parsePublicInputToNumber(
-        faceMatchPayload.publicSignals[0],
+        faceMatchPayload.publicSignals[0]
       );
       const isMatch =
         parsePublicInputToNumber(
-          faceMatchPayload.publicSignals[CIRCUIT_SPECS.face_match.resultIndex],
+          faceMatchPayload.publicSignals[CIRCUIT_SPECS.face_match.resultIndex]
         ) === 1;
       proofs.faceMatch = {
         proof: faceMatchPayload.proof,
         publicSignals: faceMatchPayload.publicSignals,
         isMatch,
         thresholdScaled,
-        threshold: thresholdScaled / 10000,
+        threshold: thresholdScaled / 10_000,
       };
     }
 
@@ -509,7 +512,9 @@ export async function POST(
         documentResult?.extractedData?.nationality ||
         documentResult?.extractedData?.nationalityCode ||
         documentResult?.documentOrigin;
-      if (piiPackage.nationality) encryptedFields.push("nationality");
+      if (piiPackage.nationality) {
+        encryptedFields.push("nationality");
+      }
     }
 
     if (body.fields.documentType && documentResult?.documentType) {
@@ -540,9 +545,9 @@ export async function POST(
     try {
       encryptedPackage = await encryptToPublicKey(
         JSON.stringify(fullPackage),
-        body.rpPublicKey,
+        body.rpPublicKey
       );
-    } catch (_error) {
+    } catch {
       return NextResponse.json(
         {
           success: false,
@@ -554,7 +559,7 @@ export async function POST(
           expiresAt,
           error: "Failed to encrypt disclosure package. Invalid RP public key?",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -566,7 +571,7 @@ export async function POST(
     const livenessClaim = getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "liveness_score",
-      documentId,
+      documentId
     );
     if (livenessClaim?.signature && livenessClaim.claimPayload) {
       signedClaims.liveness = {
@@ -583,7 +588,9 @@ export async function POST(
         if (payload?.data?.passed === false) {
           passed = false;
         }
-      } catch {}
+      } catch {
+        /* JSON parse failed, use default passed=true */
+      }
 
       if (passed) {
         proofs.livenessAttestation = {
@@ -597,7 +604,7 @@ export async function POST(
     const faceMatchClaim = getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "face_match_score",
-      documentId,
+      documentId
     );
     if (faceMatchClaim?.signature && faceMatchClaim.claimPayload) {
       signedClaims.faceMatch = {
@@ -610,7 +617,7 @@ export async function POST(
     const ocrClaim = getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "ocr_result",
-      documentId,
+      documentId
     );
     if (ocrClaim?.signature && ocrClaim.claimPayload) {
       signedClaims.ocr = {
@@ -665,7 +672,7 @@ export async function POST(
         error:
           error instanceof Error ? error.message : "Unknown error occurred",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

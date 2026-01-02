@@ -20,11 +20,11 @@ export default function ForgotPasswordPage() {
       </CardHeader>
       <CardContent>
         <ForgotPasswordForm />
-        <div className="mt-6 text-center text-sm text-muted-foreground">
+        <div className="mt-6 text-center text-muted-foreground text-sm">
           Remember your password?{" "}
           <Link
-            href="/sign-in"
             className="font-medium text-primary hover:underline"
+            href="/sign-in"
           >
             Sign In
           </Link>

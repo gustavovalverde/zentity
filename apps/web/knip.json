@@ -9,9 +9,7 @@
     "src/lib/wagmi/empty-module.js",
     "src/lib/wagmi/empty-module/index.js",
     "src/lib/wagmi/empty-module/internal/index.js",
-    "src/lib/zk/noir-worker-manager.ts",
-    "src/lib/db/index.ts",
-    "src/lib/db/queries/index.ts"
+    "src/lib/zk/noir-worker-manager.ts"
   ],
   "ignoreDependencies": [
     "buffer",
@@ -21,7 +19,8 @@
     "@safe-global/safe-apps-sdk",
     "tfhe",
     "@walletconnect/ethereum-provider",
-    "pino-pretty"
+    "pino-pretty",
+    "lint-staged"
   ],
   "ignoreBinaries": ["nargo"],
   "entry": [

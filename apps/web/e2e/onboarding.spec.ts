@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+// Top-level regex patterns for lint/performance/useTopLevelRegex compliance
+const DASHBOARD_URL_PATTERN = /dashboard/;
+
 test.describe("Onboarding Flow", () => {
   test("should show onboarding page with verification steps", async ({
     page,
@@ -14,7 +17,7 @@ test.describe("Onboarding Flow", () => {
         pageContent?.toLowerCase().includes("identity") ||
         pageContent?.toLowerCase().includes("document") ||
         pageContent?.toLowerCase().includes("upload") ||
-        pageContent?.toLowerCase().includes("onboarding"),
+        pageContent?.toLowerCase().includes("onboarding")
     ).toBeTruthy();
   });
 
@@ -27,7 +30,7 @@ test.describe("Onboarding Flow", () => {
     // Look for upload elements or verification-related content
     const hasUpload = await page
       .locator(
-        '[data-testid="document-upload"], input[type="file"], button:has-text("upload"), [class*="upload"], [class*="dropzone"]',
+        '[data-testid="document-upload"], input[type="file"], button:has-text("upload"), [class*="upload"], [class*="dropzone"]'
       )
       .first()
       .isVisible({ timeout: 5000 })
@@ -73,13 +76,13 @@ test.describe("Onboarding Flow", () => {
     // Try to find and click a dashboard link, or navigate directly
     const dashboardLink = page
       .locator(
-        'a[href*="dashboard"], button:has-text("skip"), button:has-text("back"), button:has-text("dashboard")',
+        'a[href*="dashboard"], button:has-text("skip"), button:has-text("back"), button:has-text("dashboard")'
       )
       .first();
 
     if (await dashboardLink.isVisible({ timeout: 3000 }).catch(() => false)) {
       await dashboardLink.click();
-      await page.waitForURL(/dashboard/, { timeout: 5000 });
+      await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 5000 });
     } else {
       // Direct navigation should work for authenticated users
       await page.goto("/dashboard");
@@ -90,7 +93,7 @@ test.describe("Onboarding Flow", () => {
 });
 
 test.describe("Onboarding - Document Upload Flow", () => {
-  test.skip("should process uploaded document", async ({ page }) => {
+  test("should process uploaded document", async ({ page }) => {
     // This test requires a test image fixture
     // Skip for now until we have test images
 

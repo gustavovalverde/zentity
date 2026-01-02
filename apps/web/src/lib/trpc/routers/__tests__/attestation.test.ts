@@ -100,7 +100,7 @@ describe("attestation router", () => {
       {
         id: "demo_fhevm",
         name: "fhEVM Demo",
-        chainId: 11155111,
+        chainId: 11_155_111,
         type: "fhevm",
         features: ["encrypted"],
         explorer: "https://sepolia.etherscan.io",
@@ -155,7 +155,7 @@ describe("attestation router", () => {
       caller.submit({
         networkId: "fhevm_sepolia",
         walletAddress: "0x0000000000000000000000000000000000000001",
-      }),
+      })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
@@ -187,7 +187,7 @@ describe("attestation router", () => {
       caller.submit({
         networkId: "fhevm_sepolia",
         walletAddress: "0x0000000000000000000000000000000000000001",
-      }),
+      })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

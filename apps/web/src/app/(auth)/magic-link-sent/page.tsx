@@ -32,38 +32,38 @@ export default async function MagicLinkSentPage({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+        <div className="space-y-3 rounded-lg border bg-muted/50 p-4">
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
             <div>
-              <p className="text-sm font-medium">
+              <p className="font-medium text-sm">
                 Click the link in your email
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 The link will sign you in automatically
               </p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
             <div>
-              <p className="text-sm font-medium">Link expires in 5 minutes</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="font-medium text-sm">Link expires in 5 minutes</p>
+              <p className="text-muted-foreground text-xs">
                 Request a new link if it expires
               </p>
             </div>
           </div>
         </div>
 
-        <div className="text-center space-y-4">
-          <p className="text-sm text-muted-foreground">
+        <div className="space-y-4 text-center">
+          <p className="text-muted-foreground text-sm">
             Didn't receive the email? Check your spam folder or{" "}
-            <Link href="/sign-in" className="text-primary hover:underline">
+            <Link className="text-primary hover:underline" href="/sign-in">
               try again
             </Link>
           </p>
 
-          <Button variant="outline" asChild className="w-full">
+          <Button asChild className="w-full" variant="outline">
             <Link href="/sign-in">Back to Sign In</Link>
           </Button>
         </div>

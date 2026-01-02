@@ -9,7 +9,9 @@ async function ensureZamaRelayerSdkLoaded(signal?: AbortSignal): Promise<void> {
     throw new Error("Zama relayer SDK can only be loaded in the browser");
   }
 
-  if (window.relayerSDK) return;
+  if (window.relayerSDK) {
+    return;
+  }
 
   if (!zamaSdkLoadPromise) {
     const sdkUrl =
@@ -30,7 +32,7 @@ async function ensureZamaRelayerSdkLoaded(signal?: AbortSignal): Promise<void> {
       }
 
       const existing = document.querySelector<HTMLScriptElement>(
-        'script[data-fhevm-sdk="zama"]',
+        'script[data-fhevm-sdk="zama"]'
       );
 
       const handleLoad = () => {
@@ -53,7 +55,7 @@ async function ensureZamaRelayerSdkLoaded(signal?: AbortSignal): Promise<void> {
         existing.addEventListener(
           "error",
           () => reject(new Error("Failed to load Zama relayer SDK")),
-          { once: true },
+          { once: true }
         );
         return;
       }
@@ -67,7 +69,7 @@ async function ensureZamaRelayerSdkLoaded(signal?: AbortSignal): Promise<void> {
       script.addEventListener(
         "error",
         () => reject(new Error("Failed to load Zama relayer SDK")),
-        { once: true },
+        { once: true }
       );
       document.head.appendChild(script);
     }).catch((error) => {
@@ -98,7 +100,7 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
   const relayerUrl = process.env.NEXT_PUBLIC_FHEVM_RELAYER_URL?.trim();
   const chainId = Number(process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || "");
   const gatewayChainId = Number(
-    process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID || "",
+    process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID || ""
   );
   const aclContractAddress = process.env.NEXT_PUBLIC_FHEVM_ACL_CONTRACT_ADDRESS;
   const kmsContractAddress = process.env.NEXT_PUBLIC_FHEVM_KMS_CONTRACT_ADDRESS;

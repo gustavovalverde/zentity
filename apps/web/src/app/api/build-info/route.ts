@@ -20,9 +20,12 @@ import { NextResponse } from "next/server";
 
 function getGitSha(): string {
   // CI/Docker/Vercel environments
-  if (process.env.VERCEL_GIT_COMMIT_SHA)
+  if (process.env.VERCEL_GIT_COMMIT_SHA) {
     return process.env.VERCEL_GIT_COMMIT_SHA;
-  if (process.env.GIT_SHA) return process.env.GIT_SHA;
+  }
+  if (process.env.GIT_SHA) {
+    return process.env.GIT_SHA;
+  }
 
   // Local development fallback
   try {
@@ -33,13 +36,15 @@ function getGitSha(): string {
 }
 
 function getBuildTime(): string {
-  if (process.env.BUILD_TIME) return process.env.BUILD_TIME;
+  if (process.env.BUILD_TIME) {
+    return process.env.BUILD_TIME;
+  }
 
   // Local development - return current time (changes on each request, but that's fine for dev)
   return new Date().toISOString();
 }
 
-export async function GET() {
+export function GET() {
   return NextResponse.json(
     {
       service: "web",
@@ -51,6 +56,6 @@ export async function GET() {
       headers: {
         "cache-control": "no-store",
       },
-    },
+    }
   );
 }

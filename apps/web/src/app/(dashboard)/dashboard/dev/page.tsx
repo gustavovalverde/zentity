@@ -33,7 +33,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
-import { getUserProof } from "@/lib/crypto";
+import { getUserProof } from "@/lib/crypto/crypto-client";
 
 export default function DevViewPage() {
   const [proofData, setProofData] = useState<AgeProofFull | null>(null);
@@ -51,7 +51,7 @@ export default function DevViewPage() {
         setProofData(data);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to load proof data",
+          err instanceof Error ? err.message : "Failed to load proof data"
         );
       } finally {
         setIsLoading(false);
@@ -68,8 +68,12 @@ export default function DevViewPage() {
 
   const formatBytes = (str: string): string => {
     const bytes = new Blob([str]).size;
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(2)} KB`;
+    }
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
@@ -88,7 +92,7 @@ export default function DevViewPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Developer View</h1>
+          <h1 className="font-bold text-2xl">Developer View</h1>
           <p className="text-muted-foreground">
             Technical details of your cryptographic proofs
           </p>
@@ -99,7 +103,7 @@ export default function DevViewPage() {
               <Code className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="font-medium">{error || "No Proof Found"}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-muted-foreground text-sm">
               Complete the registration process to generate proof data.
             </p>
             <Button asChild className="mt-4">
@@ -121,7 +125,7 @@ export default function DevViewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Developer View</h1>
+        <h1 className="font-bold text-2xl">Developer View</h1>
         <p className="text-muted-foreground">
           Technical details of your cryptographic proofs
         </p>
@@ -149,32 +153,32 @@ export default function DevViewPage() {
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 ZK Proof Generation
               </p>
-              <p className="text-2xl font-mono font-bold">
+              <p className="font-bold font-mono text-2xl">
                 {proofData.generationTimeMs !== null
                   ? `${proofData.generationTimeMs}ms`
                   : "N/A"}
               </p>
             </div>
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">FHE Encryption</p>
-              <p className="text-2xl font-mono font-bold">
+              <p className="text-muted-foreground text-sm">FHE Encryption</p>
+              <p className="font-bold font-mono text-2xl">
                 {proofData.fheEncryptionTimeMs
                   ? `${proofData.fheEncryptionTimeMs}ms`
                   : "N/A"}
               </p>
             </div>
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Proof Size</p>
-              <p className="text-2xl font-mono font-bold">
+              <p className="text-muted-foreground text-sm">Proof Size</p>
+              <p className="font-bold font-mono text-2xl">
                 {proofJson ? formatBytes(proofJson) : "N/A"}
               </p>
             </div>
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Ciphertext Size</p>
-              <p className="text-2xl font-mono font-bold">
+              <p className="text-muted-foreground text-sm">Ciphertext Size</p>
+              <p className="font-bold font-mono text-2xl">
                 {proofData.birthYearOffsetCiphertext
                   ? formatBytes(proofData.birthYearOffsetCiphertext)
                   : "N/A"}
@@ -200,15 +204,15 @@ export default function DevViewPage() {
             <Badge variant="secondary">UltraHonk</Badge>
             <Badge variant="secondary">BN254 Curve</Badge>
             <Badge variant="secondary">Noir.js</Badge>
-            <Badge variant="success" className="text-xs">
+            <Badge className="text-xs" variant="success">
               Verified
             </Badge>
           </div>
 
-          {proofJson && (
-            <Collapsible open={proofOpen} onOpenChange={setProofOpen}>
+          {proofJson ? (
+            <Collapsible onOpenChange={setProofOpen} open={proofOpen}>
               <CollapsibleTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
+                <Button className="w-full justify-between" variant="outline">
                   <span>View Raw Proof JSON</span>
                   <ChevronDown
                     className={`h-4 w-4 transition-transform ${proofOpen ? "rotate-180" : ""}`}
@@ -218,10 +222,10 @@ export default function DevViewPage() {
               <CollapsibleContent className="mt-2">
                 <div className="relative">
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-2 z-10"
+                    className="absolute top-2 right-2 z-10"
                     onClick={() => copyToClipboard(proofJson, "proof")}
+                    size="sm"
+                    variant="ghost"
                   >
                     {copiedField === "proof" ? (
                       <Check className="h-4 w-4 text-success" />
@@ -235,12 +239,12 @@ export default function DevViewPage() {
                 </div>
               </CollapsibleContent>
             </Collapsible>
-          )}
+          ) : null}
 
-          {signalsJson && (
-            <Collapsible open={signalsOpen} onOpenChange={setSignalsOpen}>
+          {signalsJson ? (
+            <Collapsible onOpenChange={setSignalsOpen} open={signalsOpen}>
               <CollapsibleTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
+                <Button className="w-full justify-between" variant="outline">
                   <span>View Public Signals</span>
                   <ChevronDown
                     className={`h-4 w-4 transition-transform ${signalsOpen ? "rotate-180" : ""}`}
@@ -250,10 +254,10 @@ export default function DevViewPage() {
               <CollapsibleContent className="mt-2">
                 <div className="relative">
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-2 z-10"
+                    className="absolute top-2 right-2 z-10"
                     onClick={() => copyToClipboard(signalsJson, "signals")}
+                    size="sm"
+                    variant="ghost"
                   >
                     {copiedField === "signals" ? (
                       <Check className="h-4 w-4 text-success" />
@@ -267,7 +271,7 @@ export default function DevViewPage() {
                 </div>
               </CollapsibleContent>
             </Collapsible>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -294,11 +298,11 @@ export default function DevViewPage() {
               </div>
 
               <Collapsible
-                open={ciphertextOpen}
                 onOpenChange={setCiphertextOpen}
+                open={ciphertextOpen}
               >
                 <CollapsibleTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between">
+                  <Button className="w-full justify-between" variant="outline">
                     <span>View Ciphertext (truncated)</span>
                     <ChevronDown
                       className={`h-4 w-4 transition-transform ${ciphertextOpen ? "rotate-180" : ""}`}
@@ -308,15 +312,15 @@ export default function DevViewPage() {
                 <CollapsibleContent className="mt-2">
                   <div className="relative">
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-2 top-2 z-10"
+                      className="absolute top-2 right-2 z-10"
                       onClick={() =>
                         copyToClipboard(
                           proofData.birthYearOffsetCiphertext || "",
-                          "ciphertext",
+                          "ciphertext"
                         )
                       }
+                      size="sm"
+                      variant="ghost"
                     >
                       {copiedField === "ciphertext" ? (
                         <Check className="h-4 w-4 text-success" />
@@ -324,7 +328,7 @@ export default function DevViewPage() {
                         <Copy className="h-4 w-4" />
                       )}
                     </Button>
-                    <pre className="max-h-32 overflow-auto rounded-lg bg-muted p-4 text-xs break-all">
+                    <pre className="max-h-32 overflow-auto break-all rounded-lg bg-muted p-4 text-xs">
                       {proofData.birthYearOffsetCiphertext.length > 500
                         ? `${proofData.birthYearOffsetCiphertext.slice(0, 500)}...`
                         : proofData.birthYearOffsetCiphertext}

@@ -18,8 +18,8 @@ import { useCallback, useMemo } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 import { useFhevmContext } from "@/components/providers/fhevm-provider";
+import { toHex, useFHEEncryption } from "@/hooks/fhevm/use-fhe-encryption";
 import { CompliantERC20ABI } from "@/lib/contracts";
-import { toHex, useFHEEncryption } from "@/lib/fhevm";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
 
 // CompliantERC20 ABI (kept in sync with contracts package)
@@ -72,7 +72,7 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
   const isReady = useMemo(
     () =>
       Boolean(isFhevmReady && canEncrypt && contractAddress && walletAddress),
-    [isFhevmReady, canEncrypt, contractAddress, walletAddress],
+    [isFhevmReady, canEncrypt, contractAddress, walletAddress]
   );
 
   // Debug info for troubleshooting initialization
@@ -94,7 +94,7 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
       ethersSigner,
       contractAddress,
       canEncrypt,
-    ],
+    ]
   );
 
   // Combined loading state
@@ -115,9 +115,9 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
    */
   const transfer = useCallback(
     async (to: `0x${string}`, amount: bigint): Promise<TransferResult> => {
-      if (!isReady || !contractAddress) {
+      if (!(isReady && contractAddress)) {
         throw new Error(
-          "FHE transfer not ready - check wallet connection and contract address",
+          "FHE transfer not ready - check wallet connection and contract address"
         );
       }
 
@@ -156,7 +156,7 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
       encryptWith,
       writeContractAsync,
       walletAddress,
-    ],
+    ]
   );
 
   /**

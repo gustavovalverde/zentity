@@ -132,7 +132,9 @@ export interface HumanDetectionResult {
  * Helper to normalize box format to object.
  */
 function _normalizeBox(box: FaceBox | undefined): FaceBoxObject | null {
-  if (!box) return null;
+  if (!box) {
+    return null;
+  }
   if (Array.isArray(box)) {
     return {
       x: box[0],
@@ -148,7 +150,9 @@ function _normalizeBox(box: FaceBox | undefined): FaceBoxObject | null {
  * Helper to get box area.
  */
 export function getBoxArea(box: FaceBox | undefined): number {
-  if (!box) return 0;
+  if (!box) {
+    return 0;
+  }
   if (Array.isArray(box)) {
     return (box[2] ?? 0) * (box[3] ?? 0);
   }
@@ -159,9 +163,15 @@ export function getBoxArea(box: FaceBox | undefined): number {
  * Helper to extract embedding as number array.
  */
 export function normalizeEmbedding(emb: EmbeddingData): number[] | null {
-  if (!emb) return null;
-  if (Array.isArray(emb)) return emb;
-  if (emb instanceof Float32Array) return Array.from(emb);
+  if (!emb) {
+    return null;
+  }
+  if (Array.isArray(emb)) {
+    return emb;
+  }
+  if (emb instanceof Float32Array) {
+    return Array.from(emb);
+  }
   if (typeof emb === "object" && "data" in emb && Array.isArray(emb.data)) {
     return emb.data.map((n) => Number(n));
   }

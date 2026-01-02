@@ -3,7 +3,9 @@ import { base64ToBytes, bytesToBase64 } from "./base64";
 function normalizeBase64(base64: string): string {
   const normalized = base64.replace(/-/g, "+").replace(/_/g, "/");
   const padLength = normalized.length % 4;
-  if (padLength === 0) return normalized;
+  if (padLength === 0) {
+    return normalized;
+  }
   return `${normalized}${"=".repeat(4 - padLength)}`;
 }
 

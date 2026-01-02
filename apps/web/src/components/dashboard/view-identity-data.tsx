@@ -10,6 +10,10 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * contract to read from.
  */
 import { Eye, EyeOff, KeyRound, Loader2, Lock, RefreshCw } from "lucide-react";
+
+/** Matches a valid hex string with 0x prefix */
+const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChainId, useReadContract } from "wagmi";
 
@@ -30,8 +34,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
+import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
 import { IdentityRegistryABI } from "@/lib/contracts";
-import { useFHEDecrypt, useInMemoryStorage } from "@/lib/fhevm";
 import { trpcReact } from "@/lib/trpc/client";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
 import { getCountryName } from "@/lib/zk/nationality-data";
@@ -40,10 +45,12 @@ import { getCountryName } from "@/lib/zk/nationality-data";
 const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
 
 function normalizeHandle(handle: unknown): `0x${string}` | undefined {
-  if (!handle) return undefined;
+  if (!handle) {
+    return;
+  }
   if (typeof handle === "string") {
     const hex = handle.startsWith("0x") ? handle : `0x${handle}`;
-    return /^0x[0-9a-fA-F]+$/.test(hex) ? (hex as `0x${string}`) : undefined;
+    return HEX_STRING_PATTERN.test(hex) ? (hex as `0x${string}`) : undefined;
   }
   if (handle instanceof Uint8Array) {
     const hex = Array.from(handle)
@@ -51,7 +58,7 @@ function normalizeHandle(handle: unknown): `0x${string}` | undefined {
       .join("");
     return `0x${hex}` as `0x${string}`;
   }
-  return undefined;
+  return;
 }
 
 /**
@@ -62,6 +69,67 @@ interface DecryptedIdentity {
   countryCode: number;
   complianceLevel: number;
   isBlacklisted: boolean;
+}
+
+function getBlacklistStatusLabel(
+  isBlacklisted: boolean | undefined
+): string | undefined {
+  if (isBlacklisted === undefined) {
+    return;
+  }
+  return isBlacklisted ? "Blacklisted" : "Clear";
+}
+
+function getTooltipMessage({
+  walletMismatch,
+  canDecrypt,
+  isVisible,
+}: {
+  walletMismatch: boolean;
+  canDecrypt: boolean;
+  isVisible: boolean;
+}): string {
+  if (walletMismatch) {
+    return "Connect the wallet that created the attestation";
+  }
+  if (!canDecrypt) {
+    return "Waiting for wallet and encrypted data";
+  }
+  if (isVisible) {
+    return "Hide your identity data";
+  }
+  return "Sign a message to decrypt your data";
+}
+
+function DecryptButtonContent({
+  isDecrypting,
+  isVisible,
+}: {
+  isDecrypting: boolean;
+  isVisible: boolean;
+}) {
+  if (isDecrypting) {
+    return (
+      <>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Decrypting...
+      </>
+    );
+  }
+  if (isVisible) {
+    return (
+      <>
+        <EyeOff className="mr-2 h-4 w-4" />
+        Hide Data
+      </>
+    );
+  }
+  return (
+    <>
+      <Eye className="mr-2 h-4 w-4" />
+      Decrypt & View
+    </>
+  );
 }
 
 export function ViewIdentityData() {
@@ -81,7 +149,7 @@ export function ViewIdentityData() {
 
   const [isVisible, setIsVisible] = useState(false);
   const [decryptedData, setDecryptedData] = useState<DecryptedIdentity | null>(
-    null,
+    null
   );
 
   // Fetch attestation status to find confirmed attestation and contract address
@@ -90,20 +158,24 @@ export function ViewIdentityData() {
 
   // Find first network with confirmed attestation
   const confirmedNetwork = useMemo(() => {
-    if (!networksData?.networks) return null;
+    if (!networksData?.networks) {
+      return null;
+    }
     if (chainId) {
       const matching = networksData.networks.find(
         (n) =>
           n.attestation?.status === "confirmed" &&
           n.identityRegistry &&
-          n.chainId === chainId,
+          n.chainId === chainId
       );
-      if (matching) return matching;
+      if (matching) {
+        return matching;
+      }
       return null;
     }
     return (
       networksData.networks.find(
-        (n) => n.attestation?.status === "confirmed" && n.identityRegistry,
+        (n) => n.attestation?.status === "confirmed" && n.identityRegistry
       ) ?? null
     );
   }, [networksData, chainId]);
@@ -119,7 +191,9 @@ export function ViewIdentityData() {
 
   // Check if connected wallet matches attested wallet
   const walletMismatch = useMemo(() => {
-    if (!address || !attestedWallet) return false;
+    if (!(address && attestedWallet)) {
+      return false;
+    }
     return address.toLowerCase() !== attestedWallet.toLowerCase();
   }, [address, attestedWallet]);
 
@@ -272,17 +346,22 @@ export function ViewIdentityData() {
 
   // Process decryption results when they change
   const handleDecrypt = useCallback(() => {
-    if (!canDecrypt) return;
+    if (!canDecrypt) {
+      return;
+    }
     decrypt();
   }, [canDecrypt, decrypt]);
 
   // Update decrypted data when results change
   const processedResults = useMemo(() => {
-    if (!decryptResults || Object.keys(decryptResults).length === 0)
+    if (!decryptResults || Object.keys(decryptResults).length === 0) {
       return null;
+    }
 
     const handles = decryptRequests.map((r) => r.handle);
-    if (handles.length < 4) return null;
+    if (handles.length < 4) {
+      return null;
+    }
 
     return {
       birthYearOffset: Number(decryptResults[handles[0]] ?? 0),
@@ -325,7 +404,7 @@ export function ViewIdentityData() {
     : undefined;
 
   // Not connected, no confirmed attestation, or no contract address
-  if (!address || !confirmedNetwork || !contractAddress) {
+  if (!(address && confirmedNetwork && contractAddress)) {
     return null;
   }
 
@@ -366,36 +445,38 @@ export function ViewIdentityData() {
           <Alert variant={fhevmStatus === "error" ? "destructive" : "warning"}>
             <Lock className="h-4 w-4" />
             <AlertDescription>
-              {fhevmStatus === "loading" ? (
+              {fhevmStatus === "loading" && (
                 <span className="flex items-center gap-2">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Initializing FHEVM SDK...
                 </span>
-              ) : fhevmStatus === "error" ? (
+              )}
+              {fhevmStatus === "error" && (
                 <div className="flex items-center justify-between gap-2">
                   <span>
                     SDK initialization failed.{" "}
                     {fhevmError?.message || "Please try again."}
                   </span>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={refreshFhevm}
                     className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    onClick={refreshFhevm}
+                    size="sm"
+                    variant="outline"
                   >
-                    <RefreshCw className="h-3 w-3 mr-1" />
+                    <RefreshCw className="mr-1 h-3 w-3" />
                     Retry
                   </Button>
                 </div>
-              ) : (
-                "FHEVM SDK not ready. Connect your wallet to enable decryption."
               )}
+              {fhevmStatus !== "loading" &&
+                fhevmStatus !== "error" &&
+                "FHEVM SDK not ready. Connect your wallet to enable decryption."}
             </AlertDescription>
           </Alert>
         )}
 
         {/* Wallet Mismatch Warning */}
-        {walletMismatch && attestedWallet && (
+        {walletMismatch && attestedWallet ? (
           <Alert variant="warning">
             <Lock className="h-4 w-4" />
             <AlertDescription className="text-sm">
@@ -404,7 +485,7 @@ export function ViewIdentityData() {
                 This identity data can only be decrypted by the wallet that
                 created the attestation.
               </div>
-              <div className="mt-2 text-xs font-mono">
+              <div className="mt-2 font-mono text-xs">
                 Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
                 <br />
                 Required: {attestedWallet.slice(0, 6)}...
@@ -412,61 +493,55 @@ export function ViewIdentityData() {
               </div>
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         {/* Decrypt Error */}
-        {decryptError && (
+        {decryptError ? (
           <Alert variant="destructive">
             <AlertDescription className="flex items-center justify-between gap-2">
               <span className="text-sm">{decryptError}</span>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={refreshFhevm}
                 className="shrink-0"
+                onClick={refreshFhevm}
+                size="sm"
+                variant="outline"
               >
-                <RefreshCw className="h-3 w-3 mr-1" />
+                <RefreshCw className="mr-1 h-3 w-3" />
                 Refresh SDK
               </Button>
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         {/* Identity Data Display */}
         <div className="space-y-3">
           <IdentityField
+            icon="calendar"
+            isVisible={isVisible}
             label="Birth Year"
             value={birthYear?.toString()}
-            isVisible={isVisible}
-            icon="calendar"
           />
           <IdentityField
+            icon="globe"
+            isVisible={isVisible}
             label="Country"
             value={countryName}
-            isVisible={isVisible}
-            icon="globe"
           />
           <IdentityField
+            icon="shield"
+            isVisible={isVisible}
             label="Compliance Level"
             value={
               decryptedData?.complianceLevel !== undefined
                 ? `Level ${decryptedData.complianceLevel}`
                 : undefined
             }
-            isVisible={isVisible}
-            icon="shield"
           />
           <IdentityField
-            label="Blacklist Status"
-            value={
-              decryptedData?.isBlacklisted !== undefined
-                ? decryptedData.isBlacklisted
-                  ? "Blacklisted"
-                  : "Clear"
-                : undefined
-            }
-            isVisible={isVisible}
             icon="flag"
+            isVisible={isVisible}
+            label="Blacklist Status"
+            value={getBlacklistStatusLabel(decryptedData?.isBlacklisted)}
             variant={decryptedData?.isBlacklisted ? "destructive" : "success"}
           />
         </div>
@@ -477,46 +552,32 @@ export function ViewIdentityData() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={isVisible ? "outline" : "default"}
-                  onClick={handleToggleVisibility}
-                  disabled={!canDecrypt || isDecrypting || walletMismatch}
                   className="flex-1"
+                  disabled={!canDecrypt || isDecrypting || walletMismatch}
+                  onClick={handleToggleVisibility}
+                  variant={isVisible ? "outline" : "default"}
                 >
-                  {isDecrypting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Decrypting...
-                    </>
-                  ) : isVisible ? (
-                    <>
-                      <EyeOff className="h-4 w-4 mr-2" />
-                      Hide Data
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="h-4 w-4 mr-2" />
-                      Decrypt & View
-                    </>
-                  )}
+                  <DecryptButtonContent
+                    isDecrypting={isDecrypting}
+                    isVisible={isVisible}
+                  />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                {walletMismatch
-                  ? "Connect the wallet that created the attestation"
-                  : !canDecrypt
-                    ? "Waiting for wallet and encrypted data"
-                    : isVisible
-                      ? "Hide your identity data"
-                      : "Sign a message to decrypt your data"}
+                {getTooltipMessage({
+                  walletMismatch,
+                  canDecrypt,
+                  isVisible,
+                })}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => refetch()}
             disabled={isLoadingContract}
+            onClick={() => refetch()}
+            size="icon"
+            variant="ghost"
           >
             <RefreshCw
               className={`h-4 w-4 ${isLoadingContract ? "animate-spin" : ""}`}
@@ -525,7 +586,7 @@ export function ViewIdentityData() {
         </div>
 
         {/* Info */}
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           Decryption requires signing an EIP-712 message to authorize access to
           your data. This signature is valid for 7 days.
         </p>
@@ -559,15 +620,15 @@ function IdentityField({
   };
 
   return (
-    <div className="flex items-center justify-between py-2 border-b last:border-0">
-      <span className="text-sm text-muted-foreground flex items-center gap-2">
+    <div className="flex items-center justify-between border-b py-2 last:border-0">
+      <span className="flex items-center gap-2 text-muted-foreground text-sm">
         {icon === "calendar" && <span className={iconClasses}>📅</span>}
         {icon === "globe" && <span className={iconClasses}>🌍</span>}
         {icon === "shield" && <span className={iconClasses}>🛡️</span>}
         {icon === "flag" && <span className={iconClasses}>🚩</span>}
         {label}
       </span>
-      <span className={`text-sm font-medium ${variantClasses[variant]}`}>
+      <span className={`font-medium text-sm ${variantClasses[variant]}`}>
         {isVisible && value ? (
           value
         ) : (

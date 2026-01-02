@@ -31,7 +31,7 @@ export class FhevmMockProvider
 
     if (config.type !== "fhevm") {
       throw new Error(
-        `FhevmMockProvider requires fhevm network type, got: ${config.type}`,
+        `FhevmMockProvider requires fhevm network type, got: ${config.type}`
       );
     }
   }
@@ -46,7 +46,7 @@ export class FhevmMockProvider
   private async createHardhatEncryptedInput(
     contractAddress: string,
     userAddress: string,
-    identityData: AttestationParams["identityData"],
+    identityData: AttestationParams["identityData"]
   ): Promise<{ handles: `0x${string}`[]; inputProof: `0x${string}` }> {
     const {
       JsonRpcProvider,
@@ -172,7 +172,7 @@ export class FhevmMockProvider
 
     // Add 0x prefix to handles for use as bytes32 in contract call
     const handlesWithPrefix = response.handles.map(
-      (h) => `0x${h}` as `0x${string}`,
+      (h) => `0x${h}` as `0x${string}`
     );
 
     return {
@@ -185,7 +185,7 @@ export class FhevmMockProvider
    * Submit an encrypted attestation using Hardhat's mock relayer.
    */
   async submitAttestation(
-    params: AttestationParams,
+    params: AttestationParams
   ): Promise<AttestationResult> {
     try {
       const client = this.getWalletClient();
@@ -196,14 +196,14 @@ export class FhevmMockProvider
       });
       if (registrarBalance === BigInt(0)) {
         throw new Error(
-          `Registrar wallet ${client.account.address} has no funds on ${this.networkName} (chainId ${this.config.chainId}).`,
+          `Registrar wallet ${client.account.address} has no funds on ${this.networkName} (chainId ${this.config.chainId}).`
         );
       }
 
       const encrypted = await this.createHardhatEncryptedInput(
         contractAddress,
         client.account.address,
-        params.identityData,
+        params.identityData
       );
 
       const txHash = await client.writeContract({

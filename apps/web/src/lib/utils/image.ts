@@ -2,20 +2,20 @@
  * Lightweight client-side image resizing/compression for uploads.
  * Avoids pulling an external dependency while keeping payloads small.
  */
-type ResizeOptions = {
+interface ResizeOptions {
   maxWidth?: number;
   maxHeight?: number;
   quality?: number; // 0-1 for JPEG/WebP
-};
+}
 
-type ResizeResult = {
+interface ResizeResult {
   file: File;
   dataUrl: string;
-};
+}
 
 export async function resizeImageFile(
   file: File,
-  { maxWidth = 1600, maxHeight = 1600, quality = 0.85 }: ResizeOptions = {},
+  { maxWidth = 1600, maxHeight = 1600, quality = 0.85 }: ResizeOptions = {}
 ): Promise<ResizeResult> {
   if (typeof window === "undefined") {
     throw new Error("resizeImageFile must run in the browser");
@@ -31,13 +31,15 @@ export async function resizeImageFile(
     bitmap.width,
     bitmap.height,
     maxWidth,
-    maxHeight,
+    maxHeight
   );
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Could not get canvas context");
+  if (!ctx) {
+    throw new Error("Could not get canvas context");
+  }
 
   ctx.drawImage(bitmap, 0, 0, width, height);
 
@@ -45,9 +47,11 @@ export async function resizeImageFile(
   const dataUrl = canvas.toDataURL(mimeType, quality);
 
   const resizedBlob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob((blob) => resolve(blob), mimeType, quality),
+    canvas.toBlob((blob) => resolve(blob), mimeType, quality)
   );
-  if (!resizedBlob) throw new Error("Failed to create blob from canvas");
+  if (!resizedBlob) {
+    throw new Error("Failed to create blob from canvas");
+  }
 
   const resizedFile = new File([resizedBlob], file.name, {
     type: mimeType,
@@ -61,7 +65,7 @@ function constrainSize(
   width: number,
   height: number,
   maxWidth: number,
-  maxHeight: number,
+  maxHeight: number
 ): { width: number; height: number } {
   const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
   return {

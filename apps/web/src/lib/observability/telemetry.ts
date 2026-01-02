@@ -27,15 +27,21 @@ const DEFAULT_OTLP_ENDPOINT = "http://localhost:4318/v1/traces";
 let sdk: NodeSDK | null = null;
 
 function parseHeaders(raw?: string): Record<string, string> | undefined {
-  if (!raw) return undefined;
+  if (!raw) {
+    return;
+  }
 
   const headers: Record<string, string> = {};
   for (const entry of raw.split(",")) {
     const [key, ...rest] = entry.split("=");
-    if (!key || rest.length === 0) continue;
+    if (!key || rest.length === 0) {
+      continue;
+    }
     const trimmedKey = key.trim();
     const value = rest.join("=").trim();
-    if (!trimmedKey || !value) continue;
+    if (!(trimmedKey && value)) {
+      continue;
+    }
     headers[trimmedKey] = value;
   }
 
@@ -72,8 +78,12 @@ export function telemetryEnabled(): boolean {
 }
 
 export function initTelemetry(): void {
-  if (sdk) return;
-  if (!telemetryEnabled()) return;
+  if (sdk) {
+    return;
+  }
+  if (!telemetryEnabled()) {
+    return;
+  }
 
   const endpoint =
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT || DEFAULT_OTLP_ENDPOINT;
@@ -89,7 +99,7 @@ export function initTelemetry(): void {
       [ATTR_SERVICE_NAME]: getServiceName(),
       [ATTR_SERVICE_VERSION]: getServiceVersion(),
       "deployment.environment": getEnvironmentName(),
-    }),
+    })
   );
 
   sdk = new NodeSDK({
@@ -116,7 +126,9 @@ export function initTelemetry(): void {
   sdk.start();
 
   const shutdown = () => {
-    void sdk?.shutdown();
+    sdk?.shutdown().catch(() => {
+      // Shutdown failure is non-critical; process exit is acceptable
+    });
     sdk = null;
   };
 
@@ -134,20 +146,22 @@ export function currentSpan(): Span | undefined {
 
 export function addSpanEvent(name: string, attributes?: SpanAttributes): void {
   const span = currentSpan();
-  if (!span) return;
+  if (!span) {
+    return;
+  }
   if (!attributes) {
     span.addEvent(name);
     return;
   }
 
   const filtered = Object.fromEntries(
-    Object.entries(attributes).filter(([, value]) => value !== undefined),
+    Object.entries(attributes).filter(([, value]) => value !== undefined)
   ) as SpanAttributes;
   span.addEvent(name, filtered);
 }
 
 export function injectTraceHeaders(
-  headers: Record<string, string>,
+  headers: Record<string, string>
 ): Record<string, string> {
   const carrier: Record<string, string> = { ...headers };
   propagation.inject(context.active(), carrier, {
@@ -158,14 +172,14 @@ export function injectTraceHeaders(
   return carrier;
 }
 
-export async function withSpan<T>(
+export function withSpan<T>(
   name: string,
   attributes: SpanAttributes,
-  run: (span: Span) => Promise<T> | T,
+  run: (span: Span) => Promise<T> | T
 ): Promise<T> {
   const tracer = getTracer();
   const filtered = Object.fromEntries(
-    Object.entries(attributes).filter(([, value]) => value !== undefined),
+    Object.entries(attributes).filter(([, value]) => value !== undefined)
   ) as SpanAttributes;
   return tracer.startActiveSpan(
     name,
@@ -187,7 +201,7 @@ export async function withSpan<T>(
       } finally {
         span.end();
       }
-    },
+    }
   );
 }
 

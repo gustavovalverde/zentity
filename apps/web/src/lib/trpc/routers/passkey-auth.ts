@@ -25,7 +25,7 @@ import {
   renamePasskeyCredential,
   verifyPasskeyAssertion,
 } from "@/lib/auth/passkey-auth";
-import { bytesToBase64Url } from "@/lib/utils";
+import { bytesToBase64Url } from "@/lib/utils/base64url";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
@@ -57,7 +57,7 @@ export const passkeyAuthRouter = router({
       z.object({
         email: z.string().email(),
         name: z.string().optional(),
-      }),
+      })
     )
     .mutation(async ({ input }) => {
       // Check if user already exists
@@ -98,12 +98,12 @@ export const passkeyAuthRouter = router({
         email: z.string().email(),
         name: z.string().optional(),
         credential: credentialRegistrationSchema,
-      }),
+      })
     )
     .mutation(async ({ input, ctx }) => {
       // Check if credential already exists
       const existingCredential = await getPasskeyCredentialByCredentialId(
-        input.credential.credentialId,
+        input.credential.credentialId
       );
       if (existingCredential) {
         throw new TRPCError({
@@ -143,7 +143,7 @@ export const passkeyAuthRouter = router({
       // Create session and set cookie via resHeaders
       const { sessionToken, expiresAt } = await createPasskeySession(
         user.id,
-        ctx.resHeaders,
+        ctx.resHeaders
       );
 
       return {
@@ -162,7 +162,7 @@ export const passkeyAuthRouter = router({
     .input(
       z.object({
         email: z.string().email().optional(),
-      }),
+      })
     )
     .query(async ({ input }) => {
       const { challengeId, challenge } = createPasskeyChallenge();
@@ -199,7 +199,7 @@ export const passkeyAuthRouter = router({
       z.object({
         challengeId: z.string().min(1),
         assertion: assertionSchema,
-      }),
+      })
     )
     .mutation(async ({ input, ctx }) => {
       try {
@@ -212,7 +212,7 @@ export const passkeyAuthRouter = router({
         // Create session and set cookie via resHeaders
         const { sessionToken, expiresAt } = await createPasskeySession(
           userId,
-          ctx.resHeaders,
+          ctx.resHeaders
         );
 
         return {
@@ -260,12 +260,12 @@ export const passkeyAuthRouter = router({
       z.object({
         challengeId: z.string().min(1),
         credential: credentialRegistrationSchema,
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       // Check if credential already exists
       const existingCredential = await getPasskeyCredentialByCredentialId(
-        input.credential.credentialId,
+        input.credential.credentialId
       );
       if (existingCredential) {
         throw new TRPCError({
@@ -296,7 +296,7 @@ export const passkeyAuthRouter = router({
     .input(
       z.object({
         credentialId: z.string().min(1),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       // Check if this is the last passkey
@@ -311,7 +311,7 @@ export const passkeyAuthRouter = router({
 
       // Verify the credential belongs to this user
       const credential = await getPasskeyCredentialByCredentialId(
-        input.credentialId,
+        input.credentialId
       );
       if (!credential || credential.userId !== ctx.userId) {
         throw new TRPCError({
@@ -336,12 +336,12 @@ export const passkeyAuthRouter = router({
       z.object({
         credentialId: z.string().min(1),
         name: z.string().min(1).max(100),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       // Verify the credential belongs to this user
       const credential = await getPasskeyCredentialByCredentialId(
-        input.credentialId,
+        input.credentialId
       );
       if (!credential || credential.userId !== ctx.userId) {
         throw new TRPCError({

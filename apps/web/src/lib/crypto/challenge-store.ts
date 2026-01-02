@@ -7,14 +7,14 @@
 
 import "server-only";
 
-import type { CircuitType } from "@/lib/zk";
+import type { CircuitType } from "@/lib/zk/zk-circuit-spec";
 
 import { randomBytes } from "node:crypto";
 
 import { eq, lt, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
-import { zkChallenges } from "@/lib/db/schema";
+import { zkChallenges } from "@/lib/db/schema/crypto";
 
 interface Challenge {
   nonce: string; // 128-bit hex string
@@ -51,7 +51,7 @@ function generateNonce(): string {
  */
 export function createChallenge(
   circuitType: CircuitType,
-  userId?: string,
+  userId?: string
 ): Challenge {
   cleanupExpiredChallenges();
 
@@ -94,7 +94,7 @@ export function createChallenge(
 export function consumeChallenge(
   nonce: string,
   circuitType: CircuitType,
-  userId?: string,
+  userId?: string
 ): Challenge | null {
   cleanupExpiredChallenges();
 
@@ -112,9 +112,15 @@ export function consumeChallenge(
       .limit(1)
       .get();
 
-    if (!row) return null;
-    if (row.circuitType !== circuitType) return null;
-    if (row.userId && row.userId !== userId) return null;
+    if (!row) {
+      return null;
+    }
+    if (row.circuitType !== circuitType) {
+      return null;
+    }
+    if (row.userId && row.userId !== userId) {
+      return null;
+    }
     if (row.expiresAt < Date.now()) {
       tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
       return null;
@@ -150,7 +156,9 @@ function _getChallenge(nonce: string): Challenge | null {
     .limit(1)
     .get();
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
   if (row.expiresAt < Date.now()) {
     db.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
     return null;

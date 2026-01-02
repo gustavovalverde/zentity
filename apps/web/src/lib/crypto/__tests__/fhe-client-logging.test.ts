@@ -47,7 +47,7 @@ describe("fhe-client request logging", () => {
         headers: expect.objectContaining({
           "X-Request-Id": "req-123",
         }),
-      }),
+      })
     );
   });
 });

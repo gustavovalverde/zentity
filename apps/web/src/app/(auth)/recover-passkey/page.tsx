@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { authClient, useSession } from "@/lib/auth";
+import { authClient, useSession } from "@/lib/auth/auth-client";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
 import {
   checkPrfSupport,
@@ -27,9 +27,22 @@ import {
   extractCredentialRegistrationData,
 } from "@/lib/crypto/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils";
+import { base64UrlToBytes } from "@/lib/utils/base64url";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
+
+function getPhaseDescription(phase: RecoveryPhase): string {
+  if (phase === "email" || phase === "sending") {
+    return "Lost your passkey? We'll help you set up a new one.";
+  }
+  if (phase === "sent") {
+    return "Check your email for the recovery link.";
+  }
+  if (phase === "registering") {
+    return "Create a new passkey to secure your account.";
+  }
+  return "Your new passkey is ready to use!";
+}
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
   Uint8Array.from(bytes).buffer;
@@ -55,9 +68,15 @@ export default function RecoverPasskeyPage() {
   // Check PRF support
   useEffect(() => {
     let active = true;
-    void checkPrfSupport().then((result) => {
-      if (active) setPrfSupported(result.supported);
-    });
+    checkPrfSupport()
+      .then((result) => {
+        if (active) {
+          setPrfSupported(result.supported);
+        }
+      })
+      .catch(() => {
+        // PRF check failed - will be handled by the form
+      });
     return () => {
       active = false;
     };
@@ -94,7 +113,7 @@ export default function RecoverPasskeyPage() {
       setPhase("sent");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "An unexpected error occurred",
+        err instanceof Error ? err.message : "An unexpected error occurred"
       );
       setPhase("email");
     }
@@ -170,7 +189,7 @@ export default function RecoverPasskeyPage() {
       }
       if (!prfOutput) {
         throw new Error(
-          "This passkey did not return PRF output. Please try a different authenticator.",
+          "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
 
@@ -232,33 +251,25 @@ export default function RecoverPasskeyPage() {
         <CardTitle className="text-2xl">
           {phase === "complete" ? "Passkey Recovered" : "Recover Passkey"}
         </CardTitle>
-        <CardDescription>
-          {phase === "email" || phase === "sending"
-            ? "Lost your passkey? We'll help you set up a new one."
-            : phase === "sent"
-              ? "Check your email for the recovery link."
-              : phase === "registering"
-                ? "Create a new passkey to secure your account."
-                : "Your new passkey is ready to use!"}
-        </CardDescription>
+        <CardDescription>{getPhaseDescription(phase)}</CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {error && (
+        {error ? (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         {/* Phase 1: Enter email */}
         {(phase === "email" || phase === "sending") && (
           <div className="space-y-4">
-            <div className="rounded-lg border p-4 space-y-3">
+            <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-center gap-2">
                 <Mail className="h-5 w-5 text-muted-foreground" />
                 <span className="font-medium">Recovery via Magic Link</span>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 We'll send you a magic link to verify your identity. After
                 clicking the link, you can register a new passkey.
               </p>
@@ -267,20 +278,20 @@ export default function RecoverPasskeyPage() {
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
                 autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 disabled={phase === "sending"}
+                id="email"
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                type="email"
+                value={email}
               />
             </div>
 
             <Button
               className="w-full"
-              onClick={handleSendMagicLink}
               disabled={phase === "sending" || !email}
+              onClick={handleSendMagicLink}
             >
               {phase === "sending" ? (
                 <>
@@ -300,24 +311,24 @@ export default function RecoverPasskeyPage() {
         {/* Phase 2: Magic link sent */}
         {phase === "sent" && (
           <div className="space-y-4 text-center">
-            <div className="mx-auto w-16 h-16 rounded-full bg-success/10 flex items-center justify-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
               <Mail className="h-8 w-8 text-success" />
             </div>
             <div className="space-y-2">
               <p className="font-medium">Check your email</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 We sent a recovery link to <strong>{email}</strong>
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Click the link in the email to continue setting up your new
                 passkey.
               </p>
             </div>
             <Separator />
             <Button
-              variant="ghost"
               className="text-sm"
               onClick={() => setPhase("email")}
+              variant="ghost"
             >
               Use a different email
             </Button>
@@ -327,12 +338,12 @@ export default function RecoverPasskeyPage() {
         {/* Phase 3: Register new passkey */}
         {phase === "registering" && (
           <div className="space-y-4">
-            <div className="rounded-lg border p-4 space-y-3">
+            <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-center gap-2">
                 <KeyRound className="h-5 w-5 text-muted-foreground" />
                 <span className="font-medium">Register New Passkey</span>
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Create a new passkey to replace your lost one. Your account data
                 remains intact.
               </p>
@@ -358,9 +369,9 @@ export default function RecoverPasskeyPage() {
 
             <Button
               className="w-full"
-              size="lg"
-              onClick={handleRegisterPasskey}
               disabled={prfSupported === false}
+              onClick={handleRegisterPasskey}
+              size="lg"
             >
               <KeyRound className="mr-2 h-4 w-4" />
               Create New Passkey
@@ -371,12 +382,12 @@ export default function RecoverPasskeyPage() {
         {/* Phase 4: Complete */}
         {phase === "complete" && (
           <div className="space-y-4 text-center">
-            <div className="mx-auto w-16 h-16 rounded-full bg-success/10 flex items-center justify-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
               <Check className="h-8 w-8 text-success" />
             </div>
             <div className="space-y-2">
               <p className="font-medium">All set!</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Your new passkey has been registered. You can now use it to sign
                 in to your account.
               </p>
@@ -392,10 +403,10 @@ export default function RecoverPasskeyPage() {
 
         {/* Back to sign in link */}
         {phase !== "complete" && (
-          <div className="text-center text-sm text-muted-foreground">
+          <div className="text-center text-muted-foreground text-sm">
             <Link
-              href="/sign-in"
               className="font-medium text-primary hover:underline"
+              href="/sign-in"
             >
               Back to Sign In
             </Link>

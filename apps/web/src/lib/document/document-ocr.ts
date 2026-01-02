@@ -66,7 +66,7 @@ function getBaseUrl(): string {
  */
 async function processDocumentOCR(
   imageBase64: string,
-  requestId?: string,
+  requestId?: string
 ): Promise<DocumentResult> {
   // Remove data URL prefix if present
   const cleanImage = imageBase64.includes(",")
@@ -121,11 +121,11 @@ async function processDocumentOCR(
  */
 export async function processDocument(
   imageBase64: string,
-  requestId?: string,
+  requestId?: string
 ): Promise<DocumentResult> {
   try {
     return await processDocumentOCR(imageBase64, requestId);
-  } catch (_error) {
+  } catch {
     // OCR service unavailable
     return {
       documentType: "unknown",

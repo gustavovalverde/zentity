@@ -47,9 +47,11 @@ const REDACT_KEYS = new Set([
 function sanitizeForLog(
   value: unknown,
   depth = 0,
-  seen?: WeakSet<object>,
+  seen?: WeakSet<object>
 ): unknown {
-  if (depth > 4) return "[depth]";
+  if (depth > 4) {
+    return "[depth]";
+  }
 
   if (typeof value === "string") {
     if (value.startsWith("data:image/")) {
@@ -65,14 +67,18 @@ function sanitizeForLog(
     const items: unknown[] = value
       .slice(0, 20)
       .map((v) => sanitizeForLog(v, depth + 1, seen));
-    if (value.length > 20) items.push(`<… +${value.length - 20} more>`);
+    if (value.length > 20) {
+      items.push(`<… +${value.length - 20} more>`);
+    }
     return items;
   }
 
   if (value && typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const set = seen ?? new WeakSet<object>();
-    if (set.has(obj)) return "[circular]";
+    if (set.has(obj)) {
+      return "[circular]";
+    }
     set.add(obj);
 
     const out: Record<string, unknown> = {};
@@ -91,15 +97,17 @@ function createTimeoutSignal(original: AbortSignal | null | undefined) {
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(),
-    TRPC_REQUEST_TIMEOUT_MS,
+    TRPC_REQUEST_TIMEOUT_MS
   );
 
   if (original) {
-    if (original.aborted) controller.abort();
-    else
+    if (original.aborted) {
+      controller.abort();
+    } else {
       original.addEventListener("abort", () => controller.abort(), {
         once: true,
       });
+    }
   }
 
   return {
@@ -121,20 +129,18 @@ const links = [
       const dir = opts.direction === "up" ? ">>" : "<<";
 
       if (opts.direction === "up") {
-        // biome-ignore lint/suspicious/noConsole: dev logging
         console.log(
           `[trpc] ${dir} ${opts.type} ${opts.path}`,
-          sanitizeForLog(opts.input),
+          sanitizeForLog(opts.input)
         );
         return;
       }
 
       const elapsed =
         typeof opts.elapsedMs === "number" ? ` (${opts.elapsedMs}ms)` : "";
-      // biome-ignore lint/suspicious/noConsole: dev logging
       console.log(
         `[trpc] ${dir} ${opts.type} ${opts.path}${elapsed}`,
-        sanitizeForLog(opts.result),
+        sanitizeForLog(opts.result)
       );
     },
   }),

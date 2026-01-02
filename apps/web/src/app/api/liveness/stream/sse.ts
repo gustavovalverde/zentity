@@ -5,11 +5,11 @@
  * imported without violating Next.js route export constraints.
  */
 
-type StreamEntry = {
+interface StreamEntry {
   writer: WritableStreamDefaultWriter<Uint8Array>;
   encoder: TextEncoder;
   lastActivity: number;
-};
+}
 
 // In-memory store for SSE writers by session ID
 // In production, this would need to be replaced with Redis or similar
@@ -46,7 +46,9 @@ export function deleteStreamWriter(sessionId: string) {
 
 export async function closeStreamWriter(sessionId: string) {
   const entry = streamWriters.get(sessionId);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
   try {
     await entry.writer.close();
   } catch {
@@ -55,13 +57,15 @@ export async function closeStreamWriter(sessionId: string) {
   streamWriters.delete(sessionId);
 }
 
-export async function sendSSEEvent(
+export async function sendSSEEvent<T extends Record<string, unknown>>(
   sessionId: string,
   eventType: string,
-  data: Record<string, unknown>,
+  data: T
 ) {
   const entry = streamWriters.get(sessionId);
-  if (!entry) return false;
+  if (!entry) {
+    return false;
+  }
 
   try {
     const eventData = JSON.stringify({ type: eventType, ...data });

@@ -36,7 +36,7 @@ export const sessions = sqliteTable(
   },
   (table) => ({
     userIdIdx: index("session_userId_idx").on(table.userId),
-  }),
+  })
 );
 
 export const accounts = sqliteTable(
@@ -60,7 +60,7 @@ export const accounts = sqliteTable(
   },
   (table) => ({
     userIdIdx: index("account_userId_idx").on(table.userId),
-  }),
+  })
 );
 
 export const verifications = sqliteTable(
@@ -75,7 +75,7 @@ export const verifications = sqliteTable(
   },
   (table) => ({
     identifierIdx: index("verification_identifier_idx").on(table.identifier),
-  }),
+  })
 );
 
 /**
@@ -112,9 +112,9 @@ export const passkeyCredentials = sqliteTable(
   (table) => ({
     userIdIdx: index("idx_passkey_credentials_user_id").on(table.userId),
     credentialIdUnique: uniqueIndex(
-      "passkey_credentials_credential_id_unique",
+      "passkey_credentials_credential_id_unique"
     ).on(table.credentialId),
-  }),
+  })
 );
 
 export type User = typeof users.$inferSelect;

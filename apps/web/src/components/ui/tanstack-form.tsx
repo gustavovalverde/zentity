@@ -5,7 +5,7 @@ import type * as LabelPrimitive from "@radix-ui/react-label";
 import * as React from "react";
 
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils/utils";
 
 /**
  * TanStack Form primitives for shadcn/ui integration
@@ -38,13 +38,13 @@ import { cn } from "@/lib/utils";
  */
 
 // Context for field state propagation
-type FieldContextValue = {
+interface FieldContextValue {
   id: string;
   name: string;
   errors: string[];
   isTouched: boolean;
   isValidating: boolean;
-};
+}
 
 const FieldContext = React.createContext<FieldContextValue | null>(null);
 
@@ -82,9 +82,9 @@ function Field({
       value={{ id, name, errors, isTouched, isValidating }}
     >
       <div
-        data-slot="field"
-        data-invalid={hasError}
         className={cn("grid gap-2", className)}
+        data-invalid={hasError}
+        data-slot="field"
       >
         {children}
       </div>
@@ -102,9 +102,9 @@ function FieldLabel({
 
   return (
     <Label
-      data-slot="field-label"
-      data-error={hasError}
       className={cn("data-[error=true]:text-destructive", className)}
+      data-error={hasError}
+      data-slot="field-label"
       htmlFor={`${id}-input`}
       {...props}
     />
@@ -142,9 +142,9 @@ function FieldDescription({ className, children }: FieldDescriptionProps) {
 
   return (
     <p
+      className={cn("text-muted-foreground text-sm", className)}
       data-slot="field-description"
       id={`${id}-description`}
-      className={cn("text-muted-foreground text-sm", className)}
     >
       {children}
     </p>
@@ -170,11 +170,11 @@ function FieldMessage({ className, message, children }: FieldMessageProps) {
 
   return (
     <p
+      aria-live="polite"
+      className={cn("text-destructive text-sm", className)}
       data-slot="field-message"
       id={`${id}-message`}
-      className={cn("text-destructive text-sm", className)}
       role="alert"
-      aria-live="polite"
     >
       {body}
     </p>

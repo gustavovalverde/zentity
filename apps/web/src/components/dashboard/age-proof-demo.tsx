@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getUserProof } from "@/lib/crypto";
+import { getUserProof } from "@/lib/crypto/crypto-client";
 
 export function AgeProofDemo() {
   const [storedProofSummary, setStoredProofSummary] = useState<{
@@ -30,7 +30,9 @@ export function AgeProofDemo() {
     async function loadStoredProof() {
       try {
         const data = await getUserProof();
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         if (data?.proofId) {
           setStoredProofSummary({
@@ -43,11 +45,15 @@ export function AgeProofDemo() {
       } catch {
         // Ignore load errors; the refresh button will surface errors when explicitly invoked.
       } finally {
-        if (!cancelled) setLoadingStoredProof(false);
+        if (!cancelled) {
+          setLoadingStoredProof(false);
+        }
       }
     }
 
-    void loadStoredProof();
+    loadStoredProof().catch(() => {
+      // Cache miss is expected; will generate fresh proof
+    });
     return () => {
       cancelled = true;
     };
@@ -80,7 +86,7 @@ export function AgeProofDemo() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
           <FileCheck className="h-5 w-5" />
           ZK Age Proof Status
         </CardTitle>
@@ -89,19 +95,11 @@ export function AgeProofDemo() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!hasAnyProof && !loadingStoredProof ? (
-          <Alert>
-            <Shield className="h-4 w-4" />
-            <AlertDescription>
-              No ZK proof stored yet. Complete verification to generate an age
-              proof.
-            </AlertDescription>
-          </Alert>
-        ) : (
+        {hasAnyProof || loadingStoredProof ? (
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Stored Proof</span>
+                <span className="font-medium text-sm">Stored Proof</span>
                 <Badge variant={displayVerified ? "default" : "secondary"}>
                   {displayVerified ? "Verified 18+" : "Not Verified"}
                 </Badge>
@@ -116,9 +114,9 @@ export function AgeProofDemo() {
             </div>
 
             <Button
-              onClick={handleRefreshProof}
-              disabled={refreshing}
               className="w-full"
+              disabled={refreshing}
+              onClick={handleRefreshProof}
               variant="outline"
             >
               {refreshing ? (
@@ -134,13 +132,13 @@ export function AgeProofDemo() {
               )}
             </Button>
 
-            {storedProofSummary && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
+            {storedProofSummary ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
                 {displayVerified ? (
                   <>
                     <CheckCircle className="h-5 w-5 text-success" />
                     <span className="font-medium">Proof Verified</span>
-                    <Badge variant="success" className="ml-auto">
+                    <Badge className="ml-auto" variant="success">
                       Age {"≥"} 18 Confirmed
                     </Badge>
                   </>
@@ -148,19 +146,19 @@ export function AgeProofDemo() {
                   <>
                     <XCircle className="h-5 w-5 text-destructive" />
                     <span className="font-medium">Not Verified</span>
-                    <Badge variant="destructive" className="ml-auto">
+                    <Badge className="ml-auto" variant="destructive">
                       Verification Missing
                     </Badge>
                   </>
                 )}
               </div>
-            )}
+            ) : null}
 
-            {error && (
+            {error ? (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
-            )}
+            ) : null}
 
             <Alert>
               <Shield className="h-4 w-4" />
@@ -171,6 +169,14 @@ export function AgeProofDemo() {
               </AlertDescription>
             </Alert>
           </>
+        ) : (
+          <Alert>
+            <Shield className="h-4 w-4" />
+            <AlertDescription>
+              No ZK proof stored yet. Complete verification to generate an age
+              proof.
+            </AlertDescription>
+          </Alert>
         )}
       </CardContent>
     </Card>

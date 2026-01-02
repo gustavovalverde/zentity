@@ -14,7 +14,7 @@ describe("symmetric-crypto", () => {
       keyMaterial,
       "AES-GCM",
       false,
-      ["encrypt", "decrypt"],
+      ["encrypt", "decrypt"]
     );
     const plaintext = new TextEncoder().encode("hello-passkey");
     const aad = new TextEncoder().encode("aad");

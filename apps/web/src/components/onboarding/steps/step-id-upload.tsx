@@ -33,9 +33,13 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DOCUMENT_TYPE_LABELS, type DocumentResult } from "@/lib/document";
+import {
+  DOCUMENT_TYPE_LABELS,
+  type DocumentResult,
+} from "@/lib/document/document-ocr";
 import { trpc } from "@/lib/trpc/client";
-import { cn, resizeImageFile } from "@/lib/utils";
+import { resizeImageFile } from "@/lib/utils/image";
+import { cn } from "@/lib/utils/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
@@ -48,7 +52,7 @@ type ProcessingState =
   | "rejected";
 
 /** Timeout for OCR processing before showing error (45 seconds). */
-const PROCESSING_TIMEOUT = 45000;
+const PROCESSING_TIMEOUT = 45_000;
 
 /** User-friendly recovery suggestions keyed by validation issue. */
 const ERROR_RECOVERY_TIPS: Record<string, string> = {
@@ -75,12 +79,12 @@ export function StepIdUpload() {
     useWizard();
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(
-    state.data.idDocument?.name || null,
+    state.data.idDocument?.name || null
   );
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>(
-    state.data.documentResult ? "verified" : "idle",
+    state.data.documentResult ? "verified" : "idle"
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -92,7 +96,7 @@ export function StepIdUpload() {
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
-    return undefined;
+    return;
   }, [state.data.idDocument]);
 
   // Timeout for long-running document processing
@@ -103,7 +107,7 @@ export function StepIdUpload() {
 
     const timeout = setTimeout(() => {
       setUploadError(
-        "Processing is taking longer than expected. Please try again with a clearer image.",
+        "Processing is taking longer than expected. Please try again with a clearer image."
       );
       setProcessingState("idle");
       toast.error("Processing timeout", {
@@ -115,9 +119,10 @@ export function StepIdUpload() {
     return () => clearTimeout(timeout);
   }, [processingState]);
 
-  const processDocument = useCallback(async (base64: string) => {
-    return trpc.identity.prepareDocument.mutate({ image: base64 });
-  }, []);
+  const processDocument = useCallback(
+    (base64: string) => trpc.identity.prepareDocument.mutate({ image: base64 }),
+    []
+  );
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -257,7 +262,7 @@ export function StepIdUpload() {
         setProcessingState("idle");
       }
     },
-    [updateData, processDocument, updateServerProgress, reset],
+    [updateData, processDocument, updateServerProgress, reset]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -278,15 +283,19 @@ export function StepIdUpload() {
 
       if (e.dataTransfer.files?.[0]) {
         const file = e.dataTransfer.files[0];
-        void handleFile(file);
+        handleFile(file).catch(() => {
+          // Error handled via setOcrError() internally
+        });
       }
     },
-    [handleFile],
+    [handleFile]
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      void handleFile(e.target.files[0]);
+      handleFile(e.target.files[0]).catch(() => {
+        // Error handled via setOcrError() internally
+      });
     }
   };
 
@@ -323,24 +332,24 @@ export function StepIdUpload() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Upload ID Document</h3>
-        <p className="text-sm text-muted-foreground">
+        <h3 className="font-medium text-lg">Upload ID Document</h3>
+        <p className="text-muted-foreground text-sm">
           Upload a government-issued ID document for verification. We accept
           passports, national ID cards, and driver&apos;s licenses.
         </p>
       </div>
 
-      {uploadError && (
+      {uploadError ? (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{uploadError}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       {/* Processing indicator with skeleton */}
       {(processingState === "converting" ||
         processingState === "processing") && (
-        <div className="space-y-4 animate-in fade-in duration-300">
+        <div className="fade-in animate-in space-y-4 duration-300">
           {/* Status header */}
           <div className="flex items-center gap-3 rounded-lg border border-info/30 bg-info/10 p-4 text-info">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -350,7 +359,7 @@ export function StepIdUpload() {
                   ? "Preparing document..."
                   : "Analyzing document..."}
               </p>
-              <p className="text-sm text-info/80">
+              <p className="text-info/80 text-sm">
                 {processingState === "processing" &&
                   "Verifying your document securely"}
               </p>
@@ -363,7 +372,7 @@ export function StepIdUpload() {
           </div>
 
           {/* Extracted data skeleton */}
-          <div className="rounded-lg border bg-card p-4 space-y-4">
+          <div className="space-y-4 rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2">
               <CreditCard className="h-4 w-4 text-muted-foreground" />
               <Skeleton className="h-4 w-32" />
@@ -394,10 +403,10 @@ export function StepIdUpload() {
               </p>
             </div>
             <Button
-              variant="ghost"
-              size="icon"
               className="ml-auto h-8 w-8"
               onClick={handleRemove}
+              size="icon"
+              variant="ghost"
             >
               <X className="h-4 w-4" />
               <span className="sr-only">Remove file</span>
@@ -405,70 +414,72 @@ export function StepIdUpload() {
           </div>
 
           {/* Preview */}
-          {previewUrl && (
+          {previewUrl ? (
             <div className="rounded-lg border bg-muted/30 p-4">
               <img
-                src={previewUrl}
                 alt="ID preview"
                 className="mx-auto max-h-48 rounded-lg object-contain"
+                height={192}
+                src={previewUrl}
+                width={288}
               />
             </div>
-          )}
+          ) : null}
 
           {/* Extracted data */}
-          {documentResult.extractedData && (
+          {documentResult.extractedData ? (
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-3 flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
                 <h4 className="font-medium">Extracted Information</h4>
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {documentResult.extractedData.fullName && (
+                {documentResult.extractedData.fullName ? (
                   <>
                     <dt className="text-muted-foreground">Full Name</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.fullName}
                     </dd>
                   </>
-                )}
-                {documentResult.extractedData.documentNumber && (
+                ) : null}
+                {documentResult.extractedData.documentNumber ? (
                   <>
                     <dt className="text-muted-foreground">Document Number</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.documentNumber}
                     </dd>
                   </>
-                )}
-                {documentResult.extractedData.dateOfBirth && (
+                ) : null}
+                {documentResult.extractedData.dateOfBirth ? (
                   <>
                     <dt className="text-muted-foreground">Date of Birth</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.dateOfBirth}
                     </dd>
                   </>
-                )}
-                {documentResult.extractedData.expirationDate && (
+                ) : null}
+                {documentResult.extractedData.expirationDate ? (
                   <>
                     <dt className="text-muted-foreground">Expiration Date</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.expirationDate}
                     </dd>
                   </>
-                )}
-                {documentResult.extractedData.nationality && (
+                ) : null}
+                {documentResult.extractedData.nationality ? (
                   <>
                     <dt className="text-muted-foreground">Nationality</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.nationality}
                     </dd>
                   </>
-                )}
+                ) : null}
               </dl>
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 text-muted-foreground text-xs">
                 Confidence: {Math.round(documentResult.confidence * 100)}%
               </p>
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
@@ -479,17 +490,17 @@ export function StepIdUpload() {
             <AlertCircle className="h-5 w-5" />
             <div className="flex-1">
               <p className="font-medium">Document Not Accepted</p>
-              <p className="text-sm text-destructive/80">
+              <p className="text-destructive/80 text-sm">
                 {documentResult.documentType === "unknown"
                   ? "Unable to identify document type"
                   : "Could not extract required information from document"}
               </p>
             </div>
             <Button
-              variant="ghost"
-              size="icon"
               className="h-8 w-8"
               onClick={handleRemove}
+              size="icon"
+              variant="ghost"
             >
               <X className="h-4 w-4" />
               <span className="sr-only">Remove file</span>
@@ -497,10 +508,10 @@ export function StepIdUpload() {
           </div>
 
           {documentResult.validationIssues.length > 0 && (
-            <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+            <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
               <div>
-                <h4 className="mb-2 text-sm font-medium">Issues Found:</h4>
-                <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                <h4 className="mb-2 font-medium text-sm">Issues Found:</h4>
+                <ul className="list-inside list-disc space-y-1 text-muted-foreground text-sm">
                   {documentResult.validationIssues.map((issue) => (
                     <li key={issue}>{issue}</li>
                   ))}
@@ -509,10 +520,10 @@ export function StepIdUpload() {
 
               {/* Error recovery suggestions */}
               <div className="border-t pt-3">
-                <h4 className="mb-2 text-sm font-medium text-primary">
+                <h4 className="mb-2 font-medium text-primary text-sm">
                   How to fix:
                 </h4>
-                <ul className="space-y-2 text-sm text-muted-foreground">
+                <ul className="space-y-2 text-muted-foreground text-sm">
                   {documentResult.validationIssues.map((issue) => {
                     // Convert issue to key format (e.g., "Document is blurry" -> "document_blurry")
                     const issueKey = issue
@@ -525,10 +536,10 @@ export function StepIdUpload() {
                       "Ensure your document is clear, well-lit, and fully visible.";
                     return (
                       <li
-                        key={`tip-${issue}`}
                         className="flex items-start gap-2"
+                        key={`tip-${issue}`}
                       >
-                        <span className="text-primary mt-0.5">•</span>
+                        <span className="mt-0.5 text-primary">•</span>
                         <span>{tip}</span>
                       </li>
                     );
@@ -538,17 +549,19 @@ export function StepIdUpload() {
             </div>
           )}
 
-          {previewUrl && (
+          {previewUrl ? (
             <div className="rounded-lg border bg-muted/30 p-4">
               <img
-                src={previewUrl}
                 alt="ID preview"
                 className="mx-auto max-h-32 rounded-lg object-contain opacity-50"
+                height={128}
+                src={previewUrl}
+                width={192}
               />
             </div>
-          )}
+          ) : null}
 
-          <Button variant="outline" onClick={handleRemove} className="w-full">
+          <Button className="w-full" onClick={handleRemove} variant="outline">
             Try a Different Document
           </Button>
         </div>
@@ -558,18 +571,18 @@ export function StepIdUpload() {
       {fileName && !previewUrl && processingState === "idle" && (
         <div className="relative rounded-lg border bg-muted/30 p-4">
           <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2 h-8 w-8"
+            className="absolute top-2 right-2 h-8 w-8"
             onClick={handleRemove}
+            size="icon"
+            variant="ghost"
           >
             <X className="h-4 w-4" />
             <span className="sr-only">Remove file</span>
           </Button>
           <div className="flex flex-col items-center gap-3 py-4">
             <FileText className="h-12 w-12 text-muted-foreground" />
-            <p className="text-sm font-medium">{fileName}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="font-medium text-sm">{fileName}</p>
+            <p className="text-muted-foreground text-xs">
               PDF document uploaded
             </p>
           </div>
@@ -579,32 +592,32 @@ export function StepIdUpload() {
       {/* Upload area - only show if no file selected or rejected */}
       {!fileName && processingState === "idle" && (
         <Button
-          type="button"
-          variant="outline"
+          aria-describedby="id-upload-help"
           className={cn(
             "relative flex min-h-[200px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
             dragActive
               ? "border-primary bg-primary/5"
-              : "border-muted-foreground/25",
+              : "border-muted-foreground/25"
           )}
+          onClick={() => fileInputRef.current?.click()}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          aria-describedby="id-upload-help"
+          type="button"
+          variant="outline"
         >
           <input
-            id="file-upload"
-            type="file"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
+            id="file-upload"
             onChange={handleChange}
             ref={fileInputRef}
+            type="file"
           />
           <Upload className="mb-4 h-10 w-10 text-muted-foreground" />
           <p className="font-medium">Drop your ID here or click to browse</p>
-          <p id="id-upload-help" className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-muted-foreground text-sm" id="id-upload-help">
             JPEG, PNG, or WebP (max 10MB)
           </p>
         </Button>
@@ -619,7 +632,7 @@ export function StepIdUpload() {
         </AlertDescription>
       </Alert>
 
-      <WizardNavigation onNext={handleSubmit} disableNext={!isVerified} />
+      <WizardNavigation disableNext={!isVerified} onNext={handleSubmit} />
     </div>
   );
 }

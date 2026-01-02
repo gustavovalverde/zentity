@@ -45,7 +45,7 @@ import {
   extractCredentialRegistrationData,
 } from "@/lib/crypto/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils";
+import { base64UrlToBytes } from "@/lib/utils/base64url";
 
 interface PasskeyCredential {
   id: string;
@@ -61,7 +61,9 @@ const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
   Uint8Array.from(bytes).buffer;
 
 function formatDate(dateString: string | null): string {
-  if (!dateString) return "Never";
+  if (!dateString) {
+    return "Never";
+  }
   const date = new Date(dateString);
   return date.toLocaleDateString(undefined, {
     year: "numeric",
@@ -104,8 +106,14 @@ export function PasskeyManagementSection() {
 
   // Load passkeys on mount
   useEffect(() => {
-    loadPasskeys();
-    void checkPrfSupport().then((result) => setPrfSupported(result.supported));
+    loadPasskeys().catch(() => {
+      // Error is already handled in loadPasskeys via setError
+    });
+    checkPrfSupport()
+      .then((result) => setPrfSupported(result.supported))
+      .catch(() => {
+        // PRF is optional; absence handled gracefully
+      });
   }, [loadPasskeys]);
 
   const handleAddPasskey = async () => {
@@ -179,7 +187,7 @@ export function PasskeyManagementSection() {
       }
       if (!prfOutput) {
         throw new Error(
-          "This passkey did not return PRF output. Please try a different authenticator.",
+          "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
 
@@ -251,7 +259,9 @@ export function PasskeyManagementSection() {
   };
 
   const handleSaveEdit = async () => {
-    if (!editingId || !editName.trim()) return;
+    if (!(editingId && editName.trim())) {
+      return;
+    }
 
     setIsSaving(true);
 
@@ -285,130 +295,146 @@ export function PasskeyManagementSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && (
+        {error ? (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : passkeys.length === 0 ? (
-          <div className="text-center py-6 text-muted-foreground">
-            <KeyRound className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No passkeys registered yet.</p>
-            <p className="text-sm mt-1">
-              Add a passkey for secure, passwordless sign-in.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {passkeys.map((passkey) => (
-              <div
-                key={passkey.id}
-                className="flex items-center justify-between p-3 rounded-lg border bg-card"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <DeviceIcon deviceType={passkey.deviceType} />
-                  </div>
-                  <div className="space-y-1">
-                    {editingId === passkey.credentialId ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          className="h-7 w-40"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") void handleSaveEdit();
-                            if (e.key === "Escape") handleCancelEdit();
-                          }}
-                        />
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleSaveEdit}
-                          disabled={isSaving || !editName.trim()}
-                        >
-                          {isSaving ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Check className="h-3 w-3" />
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={handleCancelEdit}
-                          disabled={isSaving}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">
-                          {passkey.name || "Unnamed Passkey"}
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0"
-                          onClick={() => handleStartEdit(passkey)}
-                        >
-                          <Edit2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>Added {formatDate(passkey.createdAt)}</span>
-                      {passkey.lastUsedAt && (
-                        <>
-                          <span>·</span>
-                          <span>
-                            Last used {formatDate(passkey.lastUsedAt)}
-                          </span>
-                        </>
+        {(() => {
+          if (isLoading) {
+            return (
+              <div className="space-y-3">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+            );
+          }
+
+          if (passkeys.length === 0) {
+            return (
+              <div className="py-6 text-center text-muted-foreground">
+                <KeyRound className="mx-auto mb-3 h-12 w-12 opacity-50" />
+                <p>No passkeys registered yet.</p>
+                <p className="mt-1 text-sm">
+                  Add a passkey for secure, passwordless sign-in.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="space-y-3">
+              {passkeys.map((passkey) => (
+                <div
+                  className="flex items-center justify-between rounded-lg border bg-card p-3"
+                  key={passkey.id}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                      <DeviceIcon deviceType={passkey.deviceType} />
+                    </div>
+                    <div className="space-y-1">
+                      {editingId === passkey.credentialId ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            autoFocus
+                            className="h-7 w-40"
+                            onChange={(e) => setEditName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handleSaveEdit().catch(() => {
+                                  // Error feedback provided by handleSaveEdit() internally
+                                });
+                              }
+                              if (e.key === "Escape") {
+                                handleCancelEdit();
+                              }
+                            }}
+                            value={editName}
+                          />
+                          <Button
+                            disabled={isSaving || !editName.trim()}
+                            onClick={handleSaveEdit}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            {isSaving ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Check className="h-3 w-3" />
+                            )}
+                          </Button>
+                          <Button
+                            disabled={isSaving}
+                            onClick={handleCancelEdit}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">
+                            {passkey.name || "Unnamed Passkey"}
+                          </p>
+                          <Button
+                            className="h-6 w-6 p-0"
+                            onClick={() => handleStartEdit(passkey)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       )}
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <span>Added {formatDate(passkey.createdAt)}</span>
+                        {passkey.lastUsedAt ? (
+                          <>
+                            <span>·</span>
+                            <span>
+                              Last used {formatDate(passkey.lastUsedAt)}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    {passkey.backedUp ? (
+                      <Badge className="text-xs" variant="secondary">
+                        Synced
+                      </Badge>
+                    ) : null}
+                    <Button
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={passkeys.length <= 1}
+                      onClick={() => setDeleteConfirm(passkey.credentialId)}
+                      size="sm"
+                      title={
+                        passkeys.length <= 1
+                          ? "Cannot remove your only passkey"
+                          : "Remove passkey"
+                      }
+                      variant="ghost"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {passkey.backedUp && (
-                    <Badge variant="secondary" className="text-xs">
-                      Synced
-                    </Badge>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => setDeleteConfirm(passkey.credentialId)}
-                    disabled={passkeys.length <= 1}
-                    title={
-                      passkeys.length <= 1
-                        ? "Cannot remove your only passkey"
-                        : "Remove passkey"
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Add passkey button */}
         <Button
           className="w-full"
-          variant="outline"
-          onClick={handleAddPasskey}
           disabled={isAdding || prfSupported === false}
+          onClick={handleAddPasskey}
+          variant="outline"
         >
           {isAdding ? (
             <>
@@ -435,8 +461,8 @@ export function PasskeyManagementSection() {
 
         {/* Delete confirmation dialog */}
         <AlertDialog
-          open={deleteConfirm !== null}
           onOpenChange={(open: boolean) => !open && setDeleteConfirm(null)}
+          open={deleteConfirm !== null}
         >
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -451,11 +477,11 @@ export function PasskeyManagementSection() {
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={isDeleting}
                 onClick={() =>
                   deleteConfirm && handleDeletePasskey(deleteConfirm)
                 }
-                disabled={isDeleting}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {isDeleting ? (
                   <>

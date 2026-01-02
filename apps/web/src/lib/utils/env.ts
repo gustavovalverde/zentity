@@ -20,12 +20,12 @@ export function getBetterAuthSecret(): string {
   if (process.env.NODE_ENV === "production") {
     if (secret.length < 32) {
       throw new Error(
-        "BETTER_AUTH_SECRET must be at least 32 characters in production",
+        "BETTER_AUTH_SECRET must be at least 32 characters in production"
       );
     }
     if (KNOWN_INSECURE_SECRETS.has(secret)) {
       throw new Error(
-        "BETTER_AUTH_SECRET is set to an insecure placeholder; generate a real secret (e.g., `openssl rand -base64 32`)",
+        "BETTER_AUTH_SECRET is set to an insecure placeholder; generate a real secret (e.g., `openssl rand -base64 32`)"
       );
     }
   }

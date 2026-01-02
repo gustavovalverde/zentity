@@ -1,11 +1,10 @@
-import * as path from "node:path";
+import { join } from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
-const authFile = path.join(__dirname, "e2e", ".auth", "user.json");
+const authFile = join(__dirname, "e2e", ".auth", "user.json");
 const e2eDbPath =
-  process.env.E2E_DATABASE_PATH ??
-  path.join(__dirname, "e2e", ".data", "e2e.db");
+  process.env.E2E_DATABASE_PATH ?? join(__dirname, "e2e", ".data", "e2e.db");
 const useWebServer =
   process.env.E2E_EXTERNAL_WEB_SERVER !== "true" &&
   process.env.E2E_SEPOLIA !== "true";

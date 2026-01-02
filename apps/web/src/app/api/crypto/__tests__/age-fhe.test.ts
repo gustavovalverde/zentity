@@ -37,16 +37,25 @@ function setFetchMock(fetchMock: unknown) {
 function buildMsgpackResponse(
   payload: unknown,
   init: { status?: number; statusText?: string } = {},
-  options: { gzip?: boolean; gzipHeaderOnly?: boolean } = {},
+  options: { gzip?: boolean; gzipHeaderOnly?: boolean } = {}
 ) {
   const encoded = encode(payload);
   const raw = Buffer.from(encoded);
   const useGzip = options.gzip ?? true;
-  const body = options.gzipHeaderOnly ? raw : useGzip ? gzipSync(raw) : raw;
+
+  let body: Buffer;
+  if (options.gzipHeaderOnly) {
+    body = raw;
+  } else if (useGzip) {
+    body = gzipSync(raw);
+  } else {
+    body = raw;
+  }
+
   const contentEncoding = options.gzipHeaderOnly || useGzip ? "gzip" : null;
   const arrayBuffer = body.buffer.slice(
     body.byteOffset,
-    body.byteOffset + body.byteLength,
+    body.byteOffset + body.byteLength
   );
   return {
     ok: (init.status ?? 200) >= 200 && (init.status ?? 200) < 300,
@@ -74,13 +83,13 @@ describe("Age FHE (tRPC)", () => {
     it("should throw UNAUTHORIZED when not authenticated", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.registerFheKey({ serverKey: "server-key", publicKey: "pk" }),
+        caller.registerFheKey({ serverKey: "server-key", publicKey: "pk" })
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("registers server key when authenticated", async () => {
       setFetchMock(
-        vi.fn().mockResolvedValue(buildMsgpackResponse({ keyId: "key-123" })),
+        vi.fn().mockResolvedValue(buildMsgpackResponse({ keyId: "key-123" }))
       );
 
       const caller = createCaller(authedSession);
@@ -100,9 +109,9 @@ describe("Age FHE (tRPC)", () => {
             buildMsgpackResponse(
               { keyId: "key-456" },
               {},
-              { gzipHeaderOnly: true },
-            ),
-          ),
+              { gzipHeaderOnly: true }
+            )
+          )
       );
 
       const caller = createCaller(authedSession);
@@ -119,7 +128,7 @@ describe("Age FHE (tRPC)", () => {
     it("should throw BAD_REQUEST when keyId is missing", async () => {
       const caller = createCaller(null);
       await expect(
-        caller.verifyAgeFhe({ ciphertext: "ciphertext" } as any),
+        caller.verifyAgeFhe({ ciphertext: "ciphertext" } as any)
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -128,8 +137,8 @@ describe("Age FHE (tRPC)", () => {
         vi
           .fn()
           .mockResolvedValue(
-            buildMsgpackResponse({ resultCiphertext: "encrypted-result" }),
-          ),
+            buildMsgpackResponse({ resultCiphertext: "encrypted-result" })
+          )
       );
 
       const caller = createCaller(null);

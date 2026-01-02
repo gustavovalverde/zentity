@@ -42,39 +42,39 @@ export function WizardNavigation({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-3">
-        {canGoBack && (
+        {canGoBack ? (
           <Button
+            className="flex-1"
+            disabled={state.isSubmitting}
+            onClick={prevStep}
             type="button"
             variant="outline"
-            onClick={prevStep}
-            disabled={state.isSubmitting}
-            className="flex-1"
           >
             Back
           </Button>
-        )}
+        ) : null}
         <Button
-          type="submit"
-          onClick={onNext ? handleNext : undefined}
-          disabled={disableNext || state.isSubmitting}
           className="flex-1"
+          disabled={disableNext || state.isSubmitting}
+          onClick={onNext ? handleNext : undefined}
+          type="submit"
         >
           {state.isSubmitting
             ? "Processing..."
             : (nextLabel ?? (isLastStep ? "Complete" : "Continue"))}
         </Button>
       </div>
-      {showSkip && (
+      {showSkip ? (
         <Button
+          className="text-muted-foreground"
+          disabled={state.isSubmitting}
+          onClick={handleSkip}
           type="button"
           variant="ghost"
-          onClick={handleSkip}
-          disabled={state.isSubmitting}
-          className="text-muted-foreground"
         >
           {skipLabel}
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -8,12 +8,12 @@ export default defineConfig({
     alias: {
       "@/noir-circuits": resolve(
         fileURLToPath(new URL(".", import.meta.url)),
-        "./noir-circuits",
+        "./noir-circuits"
       ),
       "@": resolve(fileURLToPath(new URL(".", import.meta.url)), "./src"),
       "server-only": resolve(
         fileURLToPath(new URL(".", import.meta.url)),
-        "./src/test/server-only.ts",
+        "./src/test/server-only.ts"
       ),
     },
   },

@@ -110,7 +110,7 @@ describe("ZK proofs and encrypted attributes", () => {
 
     const latest = getLatestEncryptedAttributeByUserAndType(
       userId,
-      "birth_year_offset",
+      "birth_year_offset"
     );
     expect(latest?.ciphertext).toBe("ciphertext");
     expect(latest?.keyId).toBe("key-1");
@@ -216,7 +216,7 @@ describe("Attestation evidence", () => {
 
     const evidence = getAttestationEvidenceByUserAndDocument(
       userId,
-      documentId,
+      documentId
     );
     expect(evidence?.policyVersion).toBe("policy-v1");
     expect(evidence?.policyHash).toBe("policy-hash");

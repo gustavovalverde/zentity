@@ -4,14 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type PermissionState = "checking" | "granted" | "denied" | "prompt";
 
-type UseLivenessCameraOptions = {
+interface UseLivenessCameraOptions {
   facingMode?: "user" | "environment";
   idealWidth?: number;
   idealHeight?: number;
   brightnessTarget?: number; // target average brightness for capture correction
-};
+}
 
-type UseLivenessCameraResult = {
+interface UseLivenessCameraResult {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isStreaming: boolean;
   permissionStatus: PermissionState;
@@ -22,14 +22,14 @@ type UseLivenessCameraResult = {
   captureStreamFrame: () => string | null;
   /** Get a square-padded canvas for improved face detection (centered video in square) */
   getSquareDetectionCanvas: () => HTMLCanvasElement | null;
-};
+}
 
 /**
  * Shared camera hook used by liveness/doc capture steps.
  * Manages permissions, stream lifecycle, and brightness-corrected frame capture.
  */
 export function useLivenessCamera(
-  options: UseLivenessCameraOptions = {},
+  options: UseLivenessCameraOptions = {}
 ): UseLivenessCameraResult {
   const {
     facingMode = "user",
@@ -52,13 +52,17 @@ export function useLivenessCamera(
     let cancelled = false;
     let permission: PermissionStatus | null = null;
     const handleChange = () => {
-      if (cancelled || !permission) return;
+      if (cancelled || !permission) {
+        return;
+      }
       setPermissionStatus(permission.state as PermissionState);
     };
     async function checkPermission() {
       try {
         if (!navigator.permissions) {
-          if (!cancelled) setPermissionStatus("prompt");
+          if (!cancelled) {
+            setPermissionStatus("prompt");
+          }
           return;
         }
         const result = await navigator.permissions.query({
@@ -70,7 +74,9 @@ export function useLivenessCamera(
           result.addEventListener("change", handleChange);
         }
       } catch {
-        if (!cancelled) setPermissionStatus("prompt");
+        if (!cancelled) {
+          setPermissionStatus("prompt");
+        }
       }
     }
     checkPermission();
@@ -113,7 +119,9 @@ export function useLivenessCamera(
 
       const video = videoRef.current;
       if (!video) {
-        for (const track of stream.getTracks()) track.stop();
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
         return;
       }
 
@@ -134,16 +142,24 @@ export function useLivenessCamera(
    */
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current;
-    if (!video) return null;
-    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
-    if (video.readyState < 2) return null;
+    if (!video) {
+      return null;
+    }
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      return null;
+    }
+    if (video.readyState < 2) {
+      return null;
+    }
 
     const canvas = captureCanvasRef.current ?? document.createElement("canvas");
     captureCanvasRef.current = canvas;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return null;
+    if (!ctx) {
+      return null;
+    }
 
     ctx.drawImage(video, 0, 0);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -163,7 +179,7 @@ export function useLivenessCamera(
     if (avgBrightness < brightnessTarget - 10) {
       const multiplier = Math.min(
         2.5,
-        brightnessTarget / Math.max(avgBrightness, 1),
+        brightnessTarget / Math.max(avgBrightness, 1)
       );
       for (let i = 0; i < data.length; i += 4) {
         data[i] = Math.min(255, data[i] * multiplier);
@@ -182,9 +198,15 @@ export function useLivenessCamera(
    */
   const captureStreamFrame = useCallback((): string | null => {
     const video = videoRef.current;
-    if (!video) return null;
-    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
-    if (video.readyState < 2) return null;
+    if (!video) {
+      return null;
+    }
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      return null;
+    }
+    if (video.readyState < 2) {
+      return null;
+    }
 
     // Target 640x480 max for streaming
     const MAX_WIDTH = 640;
@@ -196,7 +218,9 @@ export function useLivenessCamera(
     canvas.height = Math.round(video.videoHeight * scale);
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) {
+      return null;
+    }
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
@@ -211,9 +235,15 @@ export function useLivenessCamera(
    */
   const getSquareDetectionCanvas = useCallback((): HTMLCanvasElement | null => {
     const video = videoRef.current;
-    if (!video) return null;
-    if (video.videoWidth === 0 || video.videoHeight === 0) return null;
-    if (video.readyState < 2) return null;
+    if (!video) {
+      return null;
+    }
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      return null;
+    }
+    if (video.readyState < 2) {
+      return null;
+    }
 
     const { videoWidth, videoHeight } = video;
     const size = Math.max(videoWidth, videoHeight);
@@ -224,7 +254,9 @@ export function useLivenessCamera(
     canvas.height = size;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) {
+      return null;
+    }
 
     // Fill with black (padding color)
     ctx.fillStyle = "#000000";

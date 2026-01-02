@@ -103,25 +103,27 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
 
   // Deterministic key for the current requests - used for stale detection
   const requestsKey = useMemo(() => {
-    if (!requests || requests.length === 0) return "";
+    if (!requests || requests.length === 0) {
+      return "";
+    }
     const sorted = [...requests].sort((a, b) =>
-      (a.handle + a.contractAddress).localeCompare(
-        b.handle + b.contractAddress,
-      ),
+      (a.handle + a.contractAddress).localeCompare(b.handle + b.contractAddress)
     );
     return JSON.stringify(sorted);
   }, [requests]);
 
   /** True when all dependencies are ready and not already decrypting */
-  const canDecrypt = useMemo(() => {
-    return Boolean(
-      instance &&
-        ethersSigner &&
-        requests &&
-        requests.length > 0 &&
-        !isDecrypting,
-    );
-  }, [instance, ethersSigner, requests, isDecrypting]);
+  const canDecrypt = useMemo(
+    () =>
+      Boolean(
+        instance &&
+          ethersSigner &&
+          requests &&
+          requests.length > 0 &&
+          !isDecrypting
+      ),
+    [instance, ethersSigner, requests, isDecrypting]
+  );
 
   /**
    * Trigger decryption of all requested handles.
@@ -131,9 +133,12 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
    */
   const decrypt = useCallback(() => {
     // Prevent concurrent decryption
-    if (isDecryptingRef.current) return;
-    if (!instance || !ethersSigner || !requests || requests.length === 0)
+    if (isDecryptingRef.current) {
       return;
+    }
+    if (!(instance && ethersSigner && requests) || requests.length === 0) {
+      return;
+    }
 
     // Capture current context for stale detection
     const thisChainId = chainId;
@@ -159,18 +164,18 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
       try {
         // Collect unique contracts for signature scope
         const uniqueAddresses = Array.from(
-          new Set(thisRequests.map((r) => r.contractAddress)),
+          new Set(thisRequests.map((r) => r.contractAddress))
         );
 
         const buildSignature = async (
-          activeInstance: FhevmInstance,
+          activeInstance: FhevmInstance
         ): Promise<FhevmDecryptionSignature | null> =>
-          await FhevmDecryptionSignature.loadOrSign(
-            activeInstance,
-            uniqueAddresses as `0x${string}`[],
-            ethersSigner,
-            fhevmDecryptionSignatureStorage,
-          );
+          await FhevmDecryptionSignature.loadOrSign({
+            instance: activeInstance,
+            contractAddresses: uniqueAddresses as `0x${string}`[],
+            signer: ethersSigner,
+            storage: fhevmDecryptionSignatureStorage,
+          });
 
         // Load cached signature or prompt user to sign (may show wallet popup)
         let sig: FhevmDecryptionSignature | null =
@@ -206,7 +211,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
             sig.contractAddresses,
             sig.userAddress,
             sig.startTimestamp,
-            sig.durationDays,
+            sig.durationDays
           );
         } catch (e) {
           const err = e as { name?: string; message?: string };
@@ -224,24 +229,24 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
           if (isInvalidSig) {
             setMessage("Refreshing decryption signature...");
             // Clear stale signature from cache
-            await FhevmDecryptionSignature.clearFromGenericStringStorage(
-              fhevmDecryptionSignatureStorage,
+            await FhevmDecryptionSignature.clearFromGenericStringStorage({
+              storage: fhevmDecryptionSignatureStorage,
               instance,
-              uniqueAddresses,
-              sig.userAddress,
-            );
+              contractAddresses: uniqueAddresses,
+              userAddress: sig.userAddress,
+            });
 
             // Get fresh signature (will prompt user to sign again)
-            sig = await FhevmDecryptionSignature.loadOrSign(
+            sig = await FhevmDecryptionSignature.loadOrSign({
               instance,
-              uniqueAddresses as `0x${string}`[],
-              ethersSigner,
-              fhevmDecryptionSignatureStorage,
-            );
+              contractAddresses: uniqueAddresses as `0x${string}`[],
+              signer: ethersSigner,
+              storage: fhevmDecryptionSignatureStorage,
+            });
 
             if (!sig) {
               setError(
-                "SIGNATURE_ERROR: Failed to refresh decryption signature",
+                "SIGNATURE_ERROR: Failed to refresh decryption signature"
               );
               setMessage("FHEVM userDecrypt failed");
               return;
@@ -257,7 +262,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
                 sig.contractAddresses,
                 sig.userAddress,
                 sig.startTimestamp,
-                sig.durationDays,
+                sig.durationDays
               );
             } catch (retryError) {
               const retryMsg =
@@ -300,7 +305,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
                 sig = await buildSignature(refreshedInstance);
                 if (!sig) {
                   setError(
-                    "SIGNATURE_ERROR: Failed to create signature after refresh",
+                    "SIGNATURE_ERROR: Failed to create signature after refresh"
                   );
                   setMessage("FHEVM userDecrypt failed");
                   return;
@@ -315,7 +320,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
                     sig.contractAddresses,
                     sig.userAddress,
                     sig.startTimestamp,
-                    sig.durationDays,
+                    sig.durationDays
                   );
                 } catch (finalError) {
                   const finalMsg =
@@ -374,7 +379,9 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
       }
     };
 
-    void run();
+    run().catch(() => {
+      // Error handled via finally block state reset
+    });
   }, [
     instance,
     ethersSigner,

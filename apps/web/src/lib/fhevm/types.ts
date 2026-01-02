@@ -38,7 +38,7 @@ export interface FhevmInstance {
    */
   createEncryptedInput(
     contractAddress: string,
-    userAddress: string,
+    userAddress: string
   ): FhevmEncryptedInput;
 
   /**
@@ -52,7 +52,7 @@ export interface FhevmInstance {
     contractAddresses: string[],
     userAddress: string,
     startTimestamp: number | string,
-    durationDays: number | string,
+    durationDays: number | string
   ): Promise<Record<string, string | bigint | boolean>>;
 
   /**
@@ -67,7 +67,7 @@ export interface FhevmInstance {
     publicKey: string,
     contractAddresses: string[],
     startTimestamp: number | string,
-    durationDays: number | string,
+    durationDays: number | string
   ): EIP712Type;
   /**
    * Generate ephemeral keypair for re-encryption.
@@ -87,7 +87,7 @@ export interface FhevmInstance {
  * The signature authorizes the Gateway/KMS to re-encrypt data to the
  * user's ephemeral public key. Only the private key holder can then decrypt.
  */
-export type FhevmDecryptionSignatureType = {
+export interface FhevmDecryptionSignatureType {
   /** Ephemeral public key - KMS re-encrypts data to this key */
   publicKey: string;
   /** Ephemeral private key - used to decrypt re-encrypted data locally */
@@ -104,7 +104,7 @@ export type FhevmDecryptionSignatureType = {
   contractAddresses: `0x${string}`[];
   /** Full EIP-712 typed data that was signed */
   eip712: EIP712Type;
-};
+}
 
 /**
  * EIP-712 typed structured data for wallet signing.
@@ -116,7 +116,7 @@ export type FhevmDecryptionSignatureType = {
  *
  * @see https://eips.ethereum.org/EIPS/eip-712
  */
-export type EIP712Type = {
+export interface EIP712Type {
   /** Domain separator - prevents cross-dApp signature reuse */
   domain: {
     chainId: number;
@@ -136,7 +136,7 @@ export type EIP712Type = {
       type: string;
     }[];
   };
-};
+}
 
 /**
  * SDK initialization states.
@@ -157,7 +157,7 @@ export type FhevmGoState = "idle" | "loading" | "ready" | "error";
  * 2. Pass handle + contract address to userDecrypt()
  * 3. Gateway verifies user's signature and returns decrypted value
  */
-export type FHEDecryptRequest = {
+export interface FHEDecryptRequest {
   /**
    * 256-bit handle referencing the encrypted value.
    * This is what contracts store instead of actual ciphertext.
@@ -165,7 +165,7 @@ export type FHEDecryptRequest = {
   handle: string;
   /** Contract address where the encrypted value is stored */
   contractAddress: `0x${string}`;
-};
+}
 
 /**
  * Result from encrypting values for a smart contract.
@@ -176,7 +176,7 @@ export type FHEDecryptRequest = {
  * 3. Contract receives handle + proof, stores the handle
  * 4. InputVerifier contract validates the proof
  */
-export type EncryptResult = {
+export interface EncryptResult {
   /**
    * Handles (references) for each encrypted value.
    * These get stored on-chain, actual ciphertexts go to KMS.
@@ -187,4 +187,4 @@ export type EncryptResult = {
    * InputVerifier contract validates this before accepting the handle.
    */
   inputProof: Uint8Array;
-};
+}

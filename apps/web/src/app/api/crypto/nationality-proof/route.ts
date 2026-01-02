@@ -13,7 +13,7 @@ import {
   getCountriesInGroup,
   isNationalityInGroup,
   listGroups,
-} from "@/lib/zk";
+} from "@/lib/zk/nationality-data";
 import {
   generateNationalityProofInputs,
   getMerkleRoot,
@@ -31,7 +31,9 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const authResult = await requireSession();
-    if (!authResult.ok) return authResult.response;
+    if (!authResult.ok) {
+      return authResult.response;
+    }
 
     const body = await request.json();
     const { nationalityCode, groupName } = body;
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
           error:
             "nationalityCode is required (ISO 3166-1 alpha-3, e.g., 'DEU')",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
         {
           error: "groupName is required (EU, SCHENGEN, EEA, LATAM, FIVE_EYES)",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
     // Generate Merkle proof inputs for the Noir circuit
     const proofInputs = await generateNationalityProofInputs(
       nationalityCode,
-      groupName,
+      groupName
     );
 
     return NextResponse.json({
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const { status, payload } = toServiceErrorPayload(
       error,
-      "Failed to generate proof inputs",
+      "Failed to generate proof inputs"
     );
     return NextResponse.json(payload, { status });
   }
@@ -94,7 +96,9 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireSession();
-    if (!authResult.ok) return authResult.response;
+    if (!authResult.ok) {
+      return authResult.response;
+    }
 
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
@@ -118,7 +122,7 @@ export async function GET(request: NextRequest) {
       if (!countries) {
         return NextResponse.json(
           { error: `Unknown group: ${group}` },
-          { status: 404 },
+          { status: 404 }
         );
       }
       const merkleRoot = await getMerkleRoot(group);
@@ -141,13 +145,13 @@ export async function GET(request: NextRequest) {
           count: countries?.length ?? 0,
           merkleRoot: `0x${root.toString(16)}`,
         };
-      }),
+      })
     );
     return NextResponse.json({ groups: groupsWithRoots });
   } catch (error) {
     const { status, payload } = toServiceErrorPayload(
       error,
-      "Failed to fetch groups",
+      "Failed to fetch groups"
     );
     return NextResponse.json(payload, { status });
   }

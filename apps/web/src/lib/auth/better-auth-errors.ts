@@ -9,13 +9,15 @@ import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "./password-policy";
  *   password flows without duplicating switch/if ladders in multiple files.
  */
 
-type BetterAuthErrorLike = {
+interface BetterAuthErrorLike {
   code?: string;
   message?: string;
-};
+}
 
 function asBetterAuthErrorLike(error: unknown): BetterAuthErrorLike | null {
-  if (!error || typeof error !== "object") return null;
+  if (!error || typeof error !== "object") {
+    return null;
+  }
   return error as BetterAuthErrorLike;
 }
 
@@ -24,7 +26,7 @@ function asBetterAuthErrorLike(error: unknown): BetterAuthErrorLike | null {
  */
 export function getBetterAuthErrorMessage(
   error: unknown,
-  fallbackMessage: string,
+  fallbackMessage: string
 ) {
   const err = asBetterAuthErrorLike(error);
   return err?.message || fallbackMessage;
@@ -36,7 +38,7 @@ export function getBetterAuthErrorMessage(
  * This intentionally *does not* try to map every possible auth error.
  */
 export function getPasswordPolicyErrorMessage(
-  error: unknown,
+  error: unknown
 ): string | undefined {
   const err = asBetterAuthErrorLike(error);
 
@@ -52,5 +54,5 @@ export function getPasswordPolicyErrorMessage(
     return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
   }
 
-  return undefined;
+  return;
 }

@@ -18,6 +18,12 @@ import { HttpError } from "@/lib/utils/http";
 import { type Logger, logger } from "./logger";
 import { sanitizeLogMessage } from "./redact";
 
+/** Matches stack trace location: "at functionName (file:line:col)" or "at file:line:col" */
+const STACK_LOCATION_PATTERN = /at\s+(?:(.+?)\s+\()?(.+?):(\d+):\d+\)?/;
+
+/** Matches path prefix up to and including /src/ for normalization */
+const SRC_PATH_PREFIX_PATTERN = /^.*?\/src\//;
+
 interface ErrorContext {
   requestId?: string;
   path?: string;
@@ -65,15 +71,18 @@ function getStackLocation(err: Error): string {
   // Skip the first line (error message) and find first app frame
   for (const line of lines.slice(1)) {
     // Skip node internals and node_modules
-    if (line.includes("node_modules") || line.includes("node:")) continue;
+    if (line.includes("node_modules") || line.includes("node:")) {
+      continue;
+    }
 
     // Match: "at functionName (file:line:col)" or "at file:line:col"
-    const match = line.match(/at\s+(?:(.+?)\s+\()?(.+?):(\d+):\d+\)?/);
+    const match = line.match(STACK_LOCATION_PATTERN);
     if (match) {
       const file = match[2];
       const lineNum = match[3];
       // Normalize path to be relative from src/
-      const relativePath = file?.replace(/^.*?\/src\//, "src/") ?? "unknown";
+      const relativePath =
+        file?.replace(SRC_PATH_PREFIX_PATTERN, "src/") ?? "unknown";
       return `${relativePath}:${lineNum}`;
     }
   }
@@ -104,7 +113,7 @@ function createFingerprint(err: Error): string {
 export function logError(
   error: unknown,
   context: ErrorContext = {},
-  log: Logger = logger,
+  log: Logger = logger
 ): string {
   const err = error instanceof Error ? error : new Error(String(error));
   const safeMessage = sanitizeLogMessage(err.message);
@@ -125,7 +134,7 @@ export function logError(
         stack: safeStack,
       },
     },
-    `[${fingerprint}] ${safeMessage}`,
+    `[${fingerprint}] ${safeMessage}`
   );
 
   return fingerprint;
@@ -142,7 +151,7 @@ export function logError(
 export function logWarn(
   message: string,
   context: Record<string, unknown> = {},
-  log: Logger = logger,
+  log: Logger = logger
 ): void {
   log.warn(context, sanitizeLogMessage(message));
 }

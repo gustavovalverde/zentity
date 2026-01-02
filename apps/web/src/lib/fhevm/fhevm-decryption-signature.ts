@@ -52,14 +52,14 @@ function timestampNow(): number {
  * - Sorted alphabetically (deterministic ordering)
  */
 function normalizeContractAddresses(
-  contractAddresses: string[],
+  contractAddresses: string[]
 ): `0x${string}`[] {
   const unique = new Set<string>();
   for (const addr of contractAddresses) {
     unique.add(ethers.getAddress(addr));
   }
   return [...unique].sort((a, b) =>
-    a.toLowerCase().localeCompare(b.toLowerCase()),
+    a.toLowerCase().localeCompare(b.toLowerCase())
   ) as `0x${string}`[];
 }
 
@@ -72,7 +72,7 @@ function normalizeContractAddresses(
 function isSignatureValid(
   eip712: EIP712Type,
   signature: string,
-  userAddress: string,
+  userAddress: string
 ): boolean {
   try {
     const recovered = ethers.verifyTypedData(
@@ -82,7 +82,7 @@ function isSignatureValid(
           eip712.types.UserDecryptRequestVerification,
       },
       eip712.message,
-      signature,
+      signature
     );
     return (
       ethers.getAddress(recovered) === ethers.getAddress(userAddress as string)
@@ -136,7 +136,7 @@ class FhevmDecryptionSignatureStorageKey {
     instance: FhevmInstance,
     contractAddresses: string[],
     userAddress: string,
-    publicKey?: string,
+    publicKey?: string
   ) {
     if (!ethers.isAddress(userAddress)) {
       throw new TypeError(`Invalid address ${userAddress}`);
@@ -151,7 +151,7 @@ class FhevmDecryptionSignatureStorageKey {
       publicKey ?? ethers.ZeroAddress,
       sortedContractAddresses,
       0,
-      0,
+      0
     );
 
     // Hash the EIP-712 structure to create a compact, unique identifier
@@ -161,7 +161,7 @@ class FhevmDecryptionSignatureStorageKey {
         UserDecryptRequestVerification:
           emptyEIP712.types.UserDecryptRequestVerification,
       },
-      emptyEIP712.message,
+      emptyEIP712.message
     );
 
     this.#contractAddresses = sortedContractAddresses;
@@ -240,37 +240,37 @@ export class FhevmDecryptionSignature {
   }
 
   /** Ephemeral private key for decrypting re-encrypted data */
-  public get privateKey() {
+  get privateKey() {
     return this.#privateKey;
   }
 
   /** Ephemeral public key - KMS re-encrypts to this */
-  public get publicKey() {
+  get publicKey() {
     return this.#publicKey;
   }
 
   /** User's EIP-712 signature authorizing decryption */
-  public get signature() {
+  get signature() {
     return this.#signature;
   }
 
   /** Contracts this signature authorizes decryption for */
-  public get contractAddresses() {
+  get contractAddresses() {
     return this.#contractAddresses;
   }
 
   /** When this authorization became valid (Unix seconds) */
-  public get startTimestamp() {
+  get startTimestamp() {
     return this.#startTimestamp;
   }
 
   /** How long authorization lasts (days) */
-  public get durationDays() {
+  get durationDays() {
     return this.#durationDays;
   }
 
   /** User wallet address that signed */
-  public get userAddress() {
+  get userAddress() {
     return this.#userAddress;
   }
 
@@ -299,7 +299,9 @@ export class FhevmDecryptionSignature {
       return false;
     }
     for (const addr of obj.contractAddresses as unknown[]) {
-      if (typeof addr !== "string" || !addr.startsWith("0x")) return false;
+      if (typeof addr !== "string" || !addr.startsWith("0x")) {
+        return false;
+      }
     }
     if (
       !(
@@ -379,7 +381,7 @@ export class FhevmDecryptionSignature {
   async saveToGenericStringStorage(
     storage: GenericStringStorage,
     instance: FhevmInstance,
-    withPublicKey: boolean,
+    withPublicKey: boolean
   ) {
     try {
       const value = JSON.stringify(this);
@@ -387,7 +389,7 @@ export class FhevmDecryptionSignature {
         instance,
         this.#contractAddresses,
         this.#userAddress,
-        withPublicKey ? this.#publicKey : undefined,
+        withPublicKey ? this.#publicKey : undefined
       );
       await storage.setItem(storageKey.key, value);
     } catch {
@@ -403,19 +405,21 @@ export class FhevmDecryptionSignature {
    * - Cached signature is expired
    * - Cached data is corrupted
    */
-  static async loadFromGenericStringStorage(
-    storage: GenericStringStorage,
-    instance: FhevmInstance,
-    contractAddresses: string[],
-    userAddress: string,
-    publicKey?: string,
-  ): Promise<FhevmDecryptionSignature | null> {
+  static async loadFromGenericStringStorage(options: {
+    storage: GenericStringStorage;
+    instance: FhevmInstance;
+    contractAddresses: string[];
+    userAddress: string;
+    publicKey?: string;
+  }): Promise<FhevmDecryptionSignature | null> {
+    const { storage, instance, contractAddresses, userAddress, publicKey } =
+      options;
     try {
       const storageKey = new FhevmDecryptionSignatureStorageKey(
         instance,
         contractAddresses,
         userAddress,
-        publicKey,
+        publicKey
       );
       const result = await storage.getItem(storageKey.key);
 
@@ -443,19 +447,21 @@ export class FhevmDecryptionSignature {
    * Used when a signature becomes invalid (e.g., Gateway rejects it)
    * to force re-signing on next decryption attempt.
    */
-  static async clearFromGenericStringStorage(
-    storage: GenericStringStorage,
-    instance: FhevmInstance,
-    contractAddresses: string[],
-    userAddress: string,
-    publicKey?: string,
-  ): Promise<void> {
+  static async clearFromGenericStringStorage(options: {
+    storage: GenericStringStorage;
+    instance: FhevmInstance;
+    contractAddresses: string[];
+    userAddress: string;
+    publicKey?: string;
+  }): Promise<void> {
+    const { storage, instance, contractAddresses, userAddress, publicKey } =
+      options;
     try {
       const storageKey = new FhevmDecryptionSignatureStorageKey(
         instance,
         contractAddresses,
         userAddress,
-        publicKey,
+        publicKey
       );
       await storage.removeItem(storageKey.key);
     } catch {
@@ -471,20 +477,21 @@ export class FhevmDecryptionSignature {
    * 2. Request signature from wallet
    * 3. Verify signature locally
    * 4. Return signature if valid, null if user rejected or verification failed
-   *
-   * @param instance - FHEVM SDK instance
-   * @param contractAddresses - Contracts to authorize decryption for
-   * @param publicKey - Ephemeral public key for re-encryption
-   * @param privateKey - Ephemeral private key for local decryption
-   * @param signer - Wallet signer to request signature from
    */
-  static async new(
-    instance: FhevmInstance,
-    contractAddresses: string[],
-    publicKey: string,
-    privateKey: string,
-    signer: ethers.Signer,
-  ): Promise<FhevmDecryptionSignature | null> {
+  static async new(options: {
+    /** FHEVM SDK instance */
+    instance: FhevmInstance;
+    /** Contracts to authorize decryption for */
+    contractAddresses: string[];
+    /** Ephemeral public key for re-encryption */
+    publicKey: string;
+    /** Ephemeral private key for local decryption */
+    privateKey: string;
+    /** Wallet signer to request signature from */
+    signer: ethers.Signer;
+  }): Promise<FhevmDecryptionSignature | null> {
+    const { instance, contractAddresses, publicKey, privateKey, signer } =
+      options;
     try {
       const userAddress = (await signer.getAddress()) as `0x${string}`;
       const startTimestamp = timestampNow();
@@ -498,7 +505,7 @@ export class FhevmDecryptionSignature {
         publicKey,
         normalizedContractAddresses,
         startTimestamp,
-        durationDays,
+        durationDays
       );
 
       // Try standard ethers.js signTypedData first
@@ -508,7 +515,7 @@ export class FhevmDecryptionSignature {
           UserDecryptRequestVerification:
             eip712.types.UserDecryptRequestVerification,
         },
-        eip712.message,
+        eip712.message
       );
 
       // Some wallets need explicit v4 format - try fallback if verification fails
@@ -521,7 +528,7 @@ export class FhevmDecryptionSignature {
           const payload = buildTypedDataV4Payload(eip712);
           const maybeSignature = await rpcProvider.send(
             "eth_signTypedData_v4",
-            [userAddress, JSON.stringify(payload)],
+            [userAddress, JSON.stringify(payload)]
           );
           if (typeof maybeSignature === "string") {
             signature = maybeSignature;
@@ -557,31 +564,31 @@ export class FhevmDecryptionSignature {
    * 2. If found and valid, return it (no user interaction)
    * 3. If not found/expired, generate keypair and prompt user to sign
    * 4. Cache the new signature for future use
-   *
-   * @param instance - FHEVM SDK instance
-   * @param contractAddresses - Contracts to authorize decryption for
-   * @param signer - Wallet signer
-   * @param storage - Storage backend for caching
-   * @param keyPair - Optional pre-generated keypair (otherwise generated fresh)
    */
-  static async loadOrSign(
-    instance: FhevmInstance,
-    contractAddresses: string[],
-    signer: ethers.Signer,
-    storage: GenericStringStorage,
-    keyPair?: { publicKey: string; privateKey: string },
-  ): Promise<FhevmDecryptionSignature | null> {
+  static async loadOrSign(options: {
+    /** FHEVM SDK instance */
+    instance: FhevmInstance;
+    /** Contracts to authorize decryption for */
+    contractAddresses: string[];
+    /** Wallet signer */
+    signer: ethers.Signer;
+    /** Storage backend for caching */
+    storage: GenericStringStorage;
+    /** Optional pre-generated keypair (otherwise generated fresh) */
+    keyPair?: { publicKey: string; privateKey: string };
+  }): Promise<FhevmDecryptionSignature | null> {
+    const { instance, contractAddresses, signer, storage, keyPair } = options;
     const userAddress = (await signer.getAddress()) as `0x${string}`;
 
     // Try to load from cache first (no user interaction if found)
     const cached: FhevmDecryptionSignature | null =
-      await FhevmDecryptionSignature.loadFromGenericStringStorage(
+      await FhevmDecryptionSignature.loadFromGenericStringStorage({
         storage,
         instance,
         contractAddresses,
         userAddress,
-        keyPair?.publicKey,
-      );
+        publicKey: keyPair?.publicKey,
+      });
 
     if (cached) {
       return cached;
@@ -591,13 +598,13 @@ export class FhevmDecryptionSignature {
     const { publicKey, privateKey } = keyPair ?? instance.generateKeypair();
 
     // Prompt user to sign (wallet popup)
-    const sig = await FhevmDecryptionSignature.new(
+    const sig = await FhevmDecryptionSignature.new({
       instance,
       contractAddresses,
       publicKey,
       privateKey,
       signer,
-    );
+    });
 
     if (!sig) {
       return null;
@@ -607,7 +614,7 @@ export class FhevmDecryptionSignature {
     await sig.saveToGenericStringStorage(
       storage,
       instance,
-      Boolean(keyPair?.publicKey),
+      Boolean(keyPair?.publicKey)
     );
 
     return sig;

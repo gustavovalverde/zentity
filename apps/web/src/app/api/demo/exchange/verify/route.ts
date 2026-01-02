@@ -7,8 +7,11 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { CIRCUIT_SPECS, parsePublicInputToNumber } from "@/lib/zk";
 import { verifyNoirProof } from "@/lib/zk/noir-verifier";
+import {
+  CIRCUIT_SPECS,
+  parsePublicInputToNumber,
+} from "@/lib/zk/zk-circuit-spec";
 
 interface Proof {
   proof: string; // Base64 encoded UltraHonk ZK proof
@@ -28,7 +31,7 @@ export async function POST(request: NextRequest) {
     if (!proofs) {
       return NextResponse.json(
         { error: "proofs object is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest) {
         const isOldEnough = parsePublicInputToNumber(
           proofs.ageProof.publicSignals[
             CIRCUIT_SPECS.age_verification.resultIndex
-          ],
+          ]
         );
         results.ageProofValid = data.isValid && isOldEnough === 1;
       } catch {
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest) {
         const isMatch = parsePublicInputToNumber(
           proofs.faceMatchProof.publicSignals[
             CIRCUIT_SPECS.face_match.resultIndex
-          ],
+          ]
         );
         results.faceMatchValid = data.isValid && isMatch === 1;
       } catch {
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
         const isDocValid = parsePublicInputToNumber(
           proofs.docValidityProof.publicSignals[
             CIRCUIT_SPECS.doc_validity.resultIndex
-          ],
+          ]
         );
         results.docValidityValid = data.isValid && isDocValid === 1;
       } catch {
@@ -103,10 +106,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(results);
-  } catch (_error) {
+  } catch {
     return NextResponse.json(
       { error: "Failed to verify proofs" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

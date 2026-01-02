@@ -111,7 +111,9 @@ app.get("/complete", async (c) => {
     : new URL(flow.redirectUri);
 
   redirectUrl.searchParams.set("code", code);
-  if (flow.state) redirectUrl.searchParams.set("state", flow.state);
+  if (flow.state) {
+    redirectUrl.searchParams.set("state", flow.state);
+  }
 
   return c.redirect(redirectUrl.toString(), 302);
 });

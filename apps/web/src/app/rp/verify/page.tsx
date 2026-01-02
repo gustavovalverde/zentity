@@ -11,17 +11,21 @@ interface PageProps {
 
 export default async function RpVerifyPage({ searchParams }: PageProps) {
   const { flow } = await searchParams;
-  if (!flow) notFound();
+  if (!flow) {
+    notFound();
+  }
 
   const flowData = await getRpFlow(flow);
-  if (!flowData) notFound();
+  if (!flowData) {
+    notFound();
+  }
 
   return (
     <div className="mx-auto w-full max-w-xl">
       <Card>
         <CardHeader className="space-y-2">
           <CardTitle>Verify with Zentity</CardTitle>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             This verification request will be completed in Zentity and then
             you&apos;ll be returned to the requesting service.
           </p>
@@ -29,7 +33,7 @@ export default async function RpVerifyPage({ searchParams }: PageProps) {
         <CardContent className="space-y-4">
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
             <p className="text-muted-foreground">Client</p>
-            <p className="font-mono break-all">{flowData.clientId}</p>
+            <p className="break-all font-mono">{flowData.clientId}</p>
           </div>
 
           <div className="flex gap-3">
@@ -38,12 +42,12 @@ export default async function RpVerifyPage({ searchParams }: PageProps) {
                 Continue
               </Link>
             </Button>
-            <Button asChild variant="outline" className="flex-1">
+            <Button asChild className="flex-1" variant="outline">
               <Link href="/">Cancel</Link>
             </Button>
           </div>
 
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Tip: If you close this page, the request will expire in ~2 minutes.
           </p>
         </CardContent>

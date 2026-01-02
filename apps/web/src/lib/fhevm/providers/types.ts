@@ -10,5 +10,5 @@ export interface FhevmProviderInitParams {
 }
 
 export type FhevmProviderFactory = (
-  params: FhevmProviderInitParams,
+  params: FhevmProviderInitParams
 ) => Promise<FhevmInstance>;

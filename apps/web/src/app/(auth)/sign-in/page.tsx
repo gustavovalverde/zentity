@@ -20,27 +20,27 @@ export default function SignInPage() {
         <CardDescription>Sign in to your Zentity account</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="passkey" className="w-full">
+        <Tabs className="w-full" defaultValue="passkey">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="passkey">Passkey</TabsTrigger>
             <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
             <TabsTrigger value="password">Password</TabsTrigger>
           </TabsList>
-          <TabsContent value="passkey" className="mt-4">
+          <TabsContent className="mt-4" value="passkey">
             <PasskeySignInForm />
           </TabsContent>
-          <TabsContent value="magic-link" className="mt-4">
+          <TabsContent className="mt-4" value="magic-link">
             <MagicLinkForm />
           </TabsContent>
-          <TabsContent value="password" className="mt-4">
+          <TabsContent className="mt-4" value="password">
             <SignInForm />
           </TabsContent>
         </Tabs>
-        <div className="mt-6 text-center text-sm text-muted-foreground">
+        <div className="mt-6 text-center text-muted-foreground text-sm">
           Need an account?{" "}
           <Link
-            href="/sign-up?fresh=1"
             className="font-medium text-primary hover:underline"
+            href="/sign-up?fresh=1"
           >
             Sign Up
           </Link>

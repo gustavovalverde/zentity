@@ -2,23 +2,25 @@ import { randomUUID } from "node:crypto";
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { createRequestLogger } from "@/lib/logging";
+import { createRequestLogger } from "@/lib/logging/logger";
 import { sanitizeLogMessage } from "@/lib/logging/redact";
 
-type ClientErrorPayload = {
+interface ClientErrorPayload {
   name?: string;
   message?: string;
   digest?: string;
   path?: string;
   stack?: string;
-};
+}
 
 function sanitizePath(path: string | undefined): string | undefined {
-  if (!path) return undefined;
+  if (!path) {
+    return;
+  }
   try {
     return new URL(path, "http://localhost").pathname;
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       message: process.env.NODE_ENV === "production" ? undefined : safeMessage,
       stack: process.env.NODE_ENV === "production" ? undefined : safeStack,
     },
-    "Client error boundary",
+    "Client error boundary"
   );
 
   return NextResponse.json({ ok: true });

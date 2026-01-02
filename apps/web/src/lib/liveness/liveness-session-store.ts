@@ -39,8 +39,8 @@ function cleanupExpiredSessions() {
 }
 
 export function createLivenessSession(
-  numChallenges: number = 2,
-  requireHeadTurn: boolean = false,
+  numChallenges = 2,
+  requireHeadTurn = false
 ): LivenessSession {
   cleanupExpiredSessions();
 
@@ -78,7 +78,7 @@ export function createLivenessSession(
 }
 
 export function getLivenessSession(
-  sessionId: string,
+  sessionId: string
 ): LivenessSession | undefined {
   cleanupExpiredSessions();
   const session = sessions.get(sessionId);
@@ -86,9 +86,11 @@ export function getLivenessSession(
 }
 
 export function getChallengeInfo(
-  session: LivenessSession,
+  session: LivenessSession
 ): ChallengeInfo | null {
-  if (session.currentIndex >= session.challenges.length) return null;
+  if (session.currentIndex >= session.challenges.length) {
+    return null;
+  }
   const challengeType = session.challenges[session.currentIndex];
   const meta = CHALLENGE_INSTRUCTIONS[challengeType];
   return {

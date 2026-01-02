@@ -11,7 +11,7 @@ import path from "node:path";
 
 export const runtime = "nodejs";
 
-type DiagnosticResult = {
+interface DiagnosticResult {
   ok: boolean;
   error?: string;
   stack?: string;
@@ -19,13 +19,17 @@ type DiagnosticResult = {
   relayerKeyUrl?: string | null;
   relayerKeyUrlStatus?: number | null;
   publicKeyId?: string | null;
-};
+}
 
 const readEnv = (key: string) => process.env[key] || null;
 
 const safeString = (value: unknown) => {
-  if (value instanceof Error) return value.message;
-  if (typeof value === "string") return value;
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
   try {
     return JSON.stringify(value);
   } catch {
@@ -47,7 +51,7 @@ export async function GET() {
   const gatewayChainId = Number(
     process.env.FHEVM_GATEWAY_CHAIN_ID ||
       process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID ||
-      "",
+      ""
   );
   const aclContractAddress =
     process.env.FHEVM_ACL_CONTRACT_ADDRESS ||
@@ -65,7 +69,7 @@ export async function GET() {
     process.env.FHEVM_INPUT_VERIFICATION_ADDRESS ||
     process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS;
   const chainId = Number(
-    process.env.FHEVM_CHAIN_ID || process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || "",
+    process.env.FHEVM_CHAIN_ID || process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || ""
   );
   const rpcUrl =
     process.env.FHEVM_RPC_URL || process.env.NEXT_PUBLIC_FHEVM_RPC_URL;
@@ -113,7 +117,7 @@ export async function GET() {
   let crsDeserializeStack: string | null = null;
   let publicKeySize: number | null = null;
   let crsSize: number | null = null;
-  type TfheModuleShape = {
+  interface TfheModuleShape {
     __wasm?: unknown;
     TfheCompactPublicKey?: {
       safe_deserialize?: (bytes: Uint8Array, sizeLimit: bigint) => void;
@@ -121,7 +125,7 @@ export async function GET() {
     CompactPkeCrs?: {
       safe_deserialize?: (bytes: Uint8Array, sizeLimit: bigint) => void;
     };
-  };
+  }
   let publicKeyUrlStatus: number | null = null;
   let publicKeyContentType: string | null = null;
   let publicKeyBytesSupported: boolean | null = null;
@@ -149,7 +153,7 @@ export async function GET() {
     ) {
       const originalBytes = responseProto.bytes;
       const patchedBytes = async function bytesPatched(
-        this: Response,
+        this: Response
       ): Promise<Uint8Array> {
         const result = (await originalBytes.call(this)) as
           | Uint8Array
@@ -162,7 +166,7 @@ export async function GET() {
           return new Uint8Array(
             result.buffer,
             result.byteOffset,
-            result.byteLength,
+            result.byteLength
           );
         }
         return result as Uint8Array;
@@ -181,7 +185,7 @@ export async function GET() {
 
     // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
     const effectiveChainId =
-      Number.isFinite(chainId) && chainId > 0 ? chainId : 11155111;
+      Number.isFinite(chainId) && chainId > 0 ? chainId : 11_155_111;
     const baseConfig = effectiveChainId === 1 ? MainnetConfig : SepoliaConfig;
 
     const instance = await createInstance({
@@ -229,7 +233,7 @@ export async function GET() {
         if (publicKeyResp.ok) {
           publicKeyBytesSupported = typeof publicKeyResp.bytes === "function";
           const arrayBufferBytes = new Uint8Array(
-            await publicKeyResp.clone().arrayBuffer(),
+            await publicKeyResp.clone().arrayBuffer()
           );
           publicKeySize = arrayBufferBytes.length;
           try {
@@ -237,7 +241,7 @@ export async function GET() {
             const sizeLimit = BigInt(1024 * 1024 * 512);
             tfheModule.TfheCompactPublicKey?.safe_deserialize?.(
               arrayBufferBytes,
-              sizeLimit,
+              sizeLimit
             );
           } catch (error) {
             tfheDeserializeError = safeString(error);
@@ -253,7 +257,7 @@ export async function GET() {
               const sizeLimit = BigInt(1024 * 1024 * 512);
               tfheModule.TfheCompactPublicKey?.safe_deserialize?.(
                 bytes,
-                sizeLimit,
+                sizeLimit
               );
             } catch (error) {
               publicKeyBytesDeserializeError = safeString(error);
@@ -268,7 +272,7 @@ export async function GET() {
         if (crsResp.ok) {
           crsBytesSupported = typeof crsResp.bytes === "function";
           const arrayBufferBytes = new Uint8Array(
-            await crsResp.clone().arrayBuffer(),
+            await crsResp.clone().arrayBuffer()
           );
           crsSize = arrayBufferBytes.length;
           try {
@@ -276,7 +280,7 @@ export async function GET() {
             const sizeLimit = BigInt(1024 * 1024 * 512);
             tfheModule.CompactPkeCrs?.safe_deserialize?.(
               arrayBufferBytes,
-              sizeLimit,
+              sizeLimit
             );
           } catch (error) {
             crsDeserializeError = safeString(error);
@@ -308,7 +312,7 @@ export async function GET() {
       NEXT_PUBLIC_FHEVM_RELAYER_URL: readEnv("NEXT_PUBLIC_FHEVM_RELAYER_URL"),
       FHEVM_GATEWAY_CHAIN_ID: readEnv("FHEVM_GATEWAY_CHAIN_ID"),
       NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID: readEnv(
-        "NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID",
+        "NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID"
       ),
       FHEVM_CHAIN_ID: readEnv("FHEVM_CHAIN_ID"),
       NEXT_PUBLIC_FHEVM_CHAIN_ID: readEnv("NEXT_PUBLIC_FHEVM_CHAIN_ID"),
@@ -317,11 +321,11 @@ export async function GET() {
       FHEVM_ACL_CONTRACT_ADDRESS: readEnv("FHEVM_ACL_CONTRACT_ADDRESS"),
       FHEVM_KMS_CONTRACT_ADDRESS: readEnv("FHEVM_KMS_CONTRACT_ADDRESS"),
       FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS: readEnv(
-        "FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS",
+        "FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS"
       ),
       FHEVM_DECRYPTION_ADDRESS: readEnv("FHEVM_DECRYPTION_ADDRESS"),
       FHEVM_INPUT_VERIFICATION_ADDRESS: readEnv(
-        "FHEVM_INPUT_VERIFICATION_ADDRESS",
+        "FHEVM_INPUT_VERIFICATION_ADDRESS"
       ),
     },
     paths: {

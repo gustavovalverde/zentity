@@ -63,20 +63,23 @@ import {
 } from "@/lib/db/queries/identity";
 import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
-import { hashIdentifier, injectTraceHeaders } from "@/lib/observability";
-import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import {
-  CIRCUIT_SPECS,
-  getTodayAsInt,
-  normalizeChallengeNonce,
-  parsePublicInputToNumber,
-} from "@/lib/zk";
+  hashIdentifier,
+  injectTraceHeaders,
+} from "@/lib/observability/telemetry";
+import { getFheServiceUrl } from "@/lib/utils/service-urls";
+import { getTodayAsInt } from "@/lib/zk/noir-prover";
 import {
   getBbJsVersion,
   getCircuitMetadata,
   prewarmVerificationKeys,
   verifyNoirProof,
 } from "@/lib/zk/noir-verifier";
+import {
+  CIRCUIT_SPECS,
+  normalizeChallengeNonce,
+  parsePublicInputToNumber,
+} from "@/lib/zk/zk-circuit-spec";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
@@ -91,7 +94,7 @@ const circuitTypeSchema = z.enum([
 
 // Server-enforced policy minimums (cannot be bypassed by client).
 // TODO(zk/fhe): Raise FACE_MATCH_MIN_CONFIDENCE to 0.60 once model quality improves.
-const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000);
+const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 
 /** Checks if a backend service is reachable via its /health endpoint. */
@@ -106,7 +109,9 @@ async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return null;
+    }
     return await response.json();
   } catch {
     clearTimeout(timeoutId);
@@ -131,7 +136,7 @@ type ProofVerificationResult = NoirVerificationResult & { reason?: string };
 async function getVerifiedClaim(
   userId: string,
   claimType: "ocr_result" | "face_match_score" | "liveness_score",
-  documentId: string | null,
+  documentId: string | null
 ) {
   if (!documentId) {
     throw new TRPCError({
@@ -143,7 +148,7 @@ async function getVerifiedClaim(
   const signedClaim = getLatestSignedClaimByUserTypeAndDocument(
     userId,
     claimType,
-    documentId,
+    documentId
   );
   if (!signedClaim) {
     throw new TRPCError({
@@ -156,7 +161,7 @@ async function getVerifiedClaim(
     return await verifyAttestationClaim(
       signedClaim.signature,
       claimType,
-      userId,
+      userId
     );
   } catch (error) {
     throw new TRPCError({
@@ -171,7 +176,7 @@ async function getVerifiedClaim(
 
 function assertPolicyVersion(
   claim: { policyVersion?: string },
-  claimType: string,
+  claimType: string
 ): void {
   if (!claim.policyVersion || claim.policyVersion !== POLICY_VERSION) {
     throw new TRPCError({
@@ -224,7 +229,7 @@ async function verifyProofInternal(args: {
   }
 
   const nonceHex = normalizeChallengeNonce(
-    args.publicInputs[circuitSpec.nonceIndex],
+    args.publicInputs[circuitSpec.nonceIndex]
   );
 
   const failure = (reason: string, verificationTimeMs = 0) => ({
@@ -272,7 +277,7 @@ async function verifyProofInternal(args: {
     const ocrClaim = await getVerifiedClaim(
       args.userId,
       "ocr_result",
-      args.documentId,
+      args.documentId
     );
     assertPolicyVersion(ocrClaim, "ocr_result");
     const claimData = ocrClaim.data as OcrClaimData;
@@ -304,7 +309,7 @@ async function verifyProofInternal(args: {
     const ocrClaim = await getVerifiedClaim(
       args.userId,
       "ocr_result",
-      args.documentId,
+      args.documentId
     );
     assertPolicyVersion(ocrClaim, "ocr_result");
     const claimData = ocrClaim.data as OcrClaimData;
@@ -327,7 +332,7 @@ async function verifyProofInternal(args: {
     const ocrClaim = await getVerifiedClaim(
       args.userId,
       "ocr_result",
-      args.documentId,
+      args.documentId
     );
     assertPolicyVersion(ocrClaim, "ocr_result");
     const claimData = ocrClaim.data as OcrClaimData;
@@ -356,7 +361,7 @@ async function verifyProofInternal(args: {
       });
     }
 
-    if (providedThreshold > 10000) {
+    if (providedThreshold > 10_000) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: `threshold ${providedThreshold} exceeds maximum 10000 (100.00%)`,
@@ -366,7 +371,7 @@ async function verifyProofInternal(args: {
     const faceClaim = await getVerifiedClaim(
       args.userId,
       "face_match_score",
-      args.documentId,
+      args.documentId
     );
     assertPolicyVersion(faceClaim, "face_match_score");
     const claimData = faceClaim.data as FaceMatchClaimData;
@@ -383,12 +388,14 @@ async function verifyProofInternal(args: {
       });
     }
 
-    const confidenceFixed =
-      typeof claimData.confidenceFixed === "number"
-        ? claimData.confidenceFixed
-        : typeof claimData.confidence === "number"
-          ? Math.round(claimData.confidence * 10000)
-          : null;
+    let confidenceFixed: number | null;
+    if (typeof claimData.confidenceFixed === "number") {
+      confidenceFixed = claimData.confidenceFixed;
+    } else if (typeof claimData.confidence === "number") {
+      confidenceFixed = Math.round(claimData.confidence * 10_000);
+    } else {
+      confidenceFixed = null;
+    }
     if (confidenceFixed === null || Number.isNaN(confidenceFixed)) {
       throw new TRPCError({
         code: "BAD_REQUEST",
@@ -413,19 +420,19 @@ async function verifyProofInternal(args: {
 
   if (circuitType === "age_verification") {
     const isOldEnough = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex],
+      args.publicInputs[circuitSpec.resultIndex]
     );
     if (isOldEnough !== 1) {
       return failure(
         "Age requirement not met",
-        verificationResult.verificationTimeMs,
+        verificationResult.verificationTimeMs
       );
     }
   }
 
   if (circuitType === "doc_validity") {
     const isDocValid = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex],
+      args.publicInputs[circuitSpec.resultIndex]
     );
     if (isDocValid !== 1) {
       return failure("Document expired", verificationResult.verificationTimeMs);
@@ -434,24 +441,24 @@ async function verifyProofInternal(args: {
 
   if (circuitType === "nationality_membership") {
     const isMember = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex],
+      args.publicInputs[circuitSpec.resultIndex]
     );
     if (isMember !== 1) {
       return failure(
         "Nationality not in group",
-        verificationResult.verificationTimeMs,
+        verificationResult.verificationTimeMs
       );
     }
   }
 
   if (circuitType === "face_match") {
     const isMatch = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex],
+      args.publicInputs[circuitSpec.resultIndex]
     );
     if (isMatch !== 1) {
       return failure(
         "Face match threshold not met",
-        verificationResult.verificationTimeMs,
+        verificationResult.verificationTimeMs
       );
     }
   }
@@ -482,7 +489,7 @@ export const cryptoRouter = router({
       Boolean(zk.bbVersion);
 
     if (allHealthy) {
-      void prewarmVerificationKeys().catch(() => {
+      prewarmVerificationKeys().catch(() => {
         // Best-effort: warm cache without impacting health response.
       });
     }
@@ -499,7 +506,7 @@ export const cryptoRouter = router({
       z.object({
         serverKey: z.string().min(1, "serverKey is required"),
         publicKey: z.string().min(1, "publicKey is required"),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const serverKeyBytes = Buffer.byteLength(input.serverKey);
@@ -509,7 +516,7 @@ export const cryptoRouter = router({
 
       const existingSecret = getEncryptedSecretByUserAndType(
         ctx.userId,
-        "fhe_keys",
+        "fhe_keys"
       );
       const existingKeyId =
         existingSecret?.metadata &&
@@ -520,7 +527,7 @@ export const cryptoRouter = router({
       if (existingKeyId) {
         ctx.span?.setAttribute(
           "fhe.key_id_hash",
-          hashIdentifier(existingKeyId),
+          hashIdentifier(existingKeyId)
         );
       }
 
@@ -542,7 +549,7 @@ export const cryptoRouter = router({
         currentYear: z.number().optional(),
         minAge: z.number().optional(),
         keyId: z.string().min(1, "keyId is required"),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -565,7 +572,7 @@ export const cryptoRouter = router({
       z.object({
         score: z.number().min(0).max(1),
         keyId: z.string().min(1, "keyId is required"),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await encryptLivenessScoreFhe({
@@ -586,7 +593,7 @@ export const cryptoRouter = router({
         ciphertext: z.string().min(1, "ciphertext is required"),
         threshold: z.number().min(0).max(1).optional(),
         keyId: z.string().min(1, "keyId is required"),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const result = await verifyLivenessThresholdFhe({
@@ -618,7 +625,7 @@ export const cryptoRouter = router({
         publicInputs: z.array(z.string()),
         circuitType: circuitTypeSchema,
         documentId: z.string().optional(),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
@@ -631,12 +638,14 @@ export const cryptoRouter = router({
         documentId,
       });
 
-      if (!result.isValid) return result;
+      if (!result.isValid) {
+        return result;
+      }
 
       const challenge = consumeChallenge(
         nonceHex,
         input.circuitType,
-        ctx.userId,
+        ctx.userId
       );
       if (!challenge) {
         throw new TRPCError({
@@ -655,7 +664,7 @@ export const cryptoRouter = router({
    */
   createChallenge: protectedProcedure
     .input(z.object({ circuitType: circuitTypeSchema }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(({ ctx, input }) => {
       const challenge = createChallenge(input.circuitType, ctx.userId);
       return {
         nonce: challenge.nonce,
@@ -664,21 +673,19 @@ export const cryptoRouter = router({
       };
     }),
 
-  challengeStatus: protectedProcedure.query(() => {
-    return {
-      activeChallenges: getActiveChallengeCount(),
-      supportedCircuitTypes: circuitTypeSchema.options,
-      ttlMinutes: 15,
-    };
-  }),
+  challengeStatus: protectedProcedure.query(() => ({
+    activeChallenges: getActiveChallengeCount(),
+    supportedCircuitTypes: circuitTypeSchema.options,
+    ttlMinutes: 15,
+  })),
 
   getUserProof: protectedProcedure
     .input(z.object({ full: z.boolean().optional() }).optional())
-    .query(({ ctx, input }) => {
-      return input?.full === true
+    .query(({ ctx, input }) =>
+      input?.full === true
         ? getUserAgeProofFull(ctx.userId)
-        : getUserAgeProof(ctx.userId);
-    }),
+        : getUserAgeProof(ctx.userId)
+    ),
 
   /**
    * Fetch latest signed claims for proof generation (OCR + face match + liveness).
@@ -700,17 +707,17 @@ export const cryptoRouter = router({
       const ocr = getLatestSignedClaimByUserTypeAndDocument(
         ctx.userId,
         "ocr_result",
-        documentId,
+        documentId
       );
       const faceMatch = getLatestSignedClaimByUserTypeAndDocument(
         ctx.userId,
         "face_match_score",
-        documentId,
+        documentId
       );
       const liveness = getLatestSignedClaimByUserTypeAndDocument(
         ctx.userId,
         "liveness_score",
-        documentId,
+        documentId
       );
 
       return {
@@ -719,21 +726,21 @@ export const cryptoRouter = router({
           ? await verifyAttestationClaim(
               ocr.signature,
               "ocr_result",
-              ctx.userId,
+              ctx.userId
             )
           : null,
         faceMatch: faceMatch
           ? await verifyAttestationClaim(
               faceMatch.signature,
               "face_match_score",
-              ctx.userId,
+              ctx.userId
             )
           : null,
         liveness: liveness
           ? await verifyAttestationClaim(
               liveness.signature,
               "liveness_score",
-              ctx.userId,
+              ctx.userId
             )
           : null,
       };
@@ -757,7 +764,7 @@ export const cryptoRouter = router({
         publicSignals: z.array(z.string()),
         generationTimeMs: z.number().optional(),
         documentId: z.string().optional(),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
@@ -787,7 +794,7 @@ export const cryptoRouter = router({
       const challenge = consumeChallenge(
         nonceHex,
         input.circuitType,
-        ctx.userId,
+        ctx.userId
       );
       if (!challenge) {
         throw new TRPCError({
@@ -824,7 +831,7 @@ export const cryptoRouter = router({
 
       const proofHashes = getProofHashesByUserAndDocument(
         ctx.userId,
-        documentId,
+        documentId
       );
       const proofSetHash = computeProofSetHash({
         proofHashes,
@@ -862,7 +869,7 @@ export const cryptoRouter = router({
           // Compliance level encryption is best-effort; proof storage should still succeed.
           ctx.log.warn(
             { error: error instanceof Error ? error.message : String(error) },
-            "Compliance level encryption failed (non-blocking)",
+            "Compliance level encryption failed (non-blocking)"
           );
         }
       }

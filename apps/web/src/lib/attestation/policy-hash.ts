@@ -10,14 +10,14 @@ import {
 
 import { MIN_AGE_POLICY, NATIONALITY_GROUP, POLICY_VERSION } from "./policy";
 
-type PolicyConfig = {
+interface PolicyConfig {
   version: string;
   minAge: number;
   faceMatchMinConfidence: number;
   nationalityGroup: string;
   antispoofRealThreshold: number;
   antispoofLiveThreshold: number;
-};
+}
 
 const POLICY_CONFIG: PolicyConfig = {
   version: POLICY_VERSION,

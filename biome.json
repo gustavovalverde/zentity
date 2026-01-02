@@ -95,9 +95,7 @@
         "noAccumulatingSpread": "error",
         "noImgElement": "warn"
       },
-      "nursery": {
-        "noFloatingPromises": "warn"
-      },
+      "nursery": "on",
       "a11y": {
         "noSvgWithoutTitle": "warn",
         "useButtonType": "warn",
@@ -119,6 +117,50 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**"],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noFloatingPromises": "warn",
+            "noTernary": "off",
+            "useAwaitThenable": "off",
+            "noUnresolvedImports": "off",
+            "useExplicitType": "off",
+            "noIncrementDecrement": "off",
+            "noContinue": "off",
+            "useDestructuring": "off",
+            "noJsxLiterals": "off",
+            "noForIn": "off",
+            "noMultiStr": "off",
+            "noProto": "off",
+            "noSyncScripts": "off",
+            "useRegexpExec": "off",
+            "noUnnecessaryConditions": "off",
+            "useQwikValidLexicalScope": "off",
+            "useQwikMethodUsage": "off",
+            "noVueDataObjectDeclaration": "off",
+            "noVueDuplicateKeys": "off",
+            "noVueReservedKeys": "off",
+            "noVueReservedProps": "off",
+            "noVueSetupPropsReactivityLoss": "off",
+            "noVueVIfWithVFor": "off",
+            "useVueDefineMacrosOrder": "off",
+            "useVueHyphenatedAttributes": "off",
+            "useVueMultiWordComponentNames": "off",
+            "useVueValidVBind": "off",
+            "useVueValidVElse": "off",
+            "useVueValidVElseIf": "off",
+            "useVueValidVHtml": "off",
+            "useVueValidVIf": "off",
+            "useVueValidVOn": "off",
+            "useVueValidVText": "off",
+            "useConsistentGraphqlDescriptions": "off",
+            "useUniqueGraphqlOperationName": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "**/*.test.ts",
@@ -147,6 +189,16 @@
         "rules": {
           "nursery": {
             "noFloatingPromises": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/e2e/automation/**", "**/scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
           }
         }
       }

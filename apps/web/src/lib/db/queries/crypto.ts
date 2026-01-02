@@ -8,7 +8,7 @@ import type {
   SecretWrapperRecord,
   SignedClaimRecord,
   ZkProofRecord,
-} from "../schema";
+} from "../schema/crypto";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
@@ -19,9 +19,9 @@ import {
   secretWrappers,
   signedClaims,
   zkProofs,
-} from "../schema";
+} from "../schema/crypto";
 
-export type ZkProofInsert = {
+export interface ZkProofInsert {
   id: string;
   userId: string;
   documentId?: string | null;
@@ -38,16 +38,18 @@ export type ZkProofInsert = {
   noirVersion?: string | null;
   circuitHash?: string | null;
   bbVersion?: string | null;
-};
+}
 
 export type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
   metadata: Record<string, unknown> | null;
 };
 
 function parseSecretMetadata(
-  raw: string | null,
+  raw: string | null
 ): Record<string, unknown> | null {
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
@@ -68,18 +70,20 @@ export function getUserAgeProof(userId: string): AgeProofSummary | null {
       and(
         eq(zkProofs.userId, userId),
         eq(zkProofs.proofType, "age_verification"),
-        eq(zkProofs.verified, true),
-      ),
+        eq(zkProofs.verified, true)
+      )
     )
     .orderBy(desc(zkProofs.createdAt))
     .limit(1)
     .get();
 
-  if (!proof) return null;
+  if (!proof) {
+    return null;
+  }
 
   const encrypted = getLatestEncryptedAttributeByUserAndType(
     userId,
-    "birth_year_offset",
+    "birth_year_offset"
   );
 
   return {
@@ -111,18 +115,20 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
       and(
         eq(zkProofs.userId, userId),
         eq(zkProofs.proofType, "age_verification"),
-        eq(zkProofs.verified, true),
-      ),
+        eq(zkProofs.verified, true)
+      )
     )
     .orderBy(desc(zkProofs.createdAt))
     .limit(1)
     .get();
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   const encrypted = getLatestEncryptedAttributeByUserAndType(
     userId,
-    "birth_year_offset",
+    "birth_year_offset"
   );
 
   let publicSignals: string[] | null = null;
@@ -156,7 +162,7 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
 
 export function getEncryptedSecretByUserAndType(
   userId: string,
-  secretType: string,
+  secretType: string
 ): EncryptedSecret | null {
   const row = db
     .select()
@@ -164,13 +170,15 @@ export function getEncryptedSecretByUserAndType(
     .where(
       and(
         eq(encryptedSecrets.userId, userId),
-        eq(encryptedSecrets.secretType, secretType),
-      ),
+        eq(encryptedSecrets.secretType, secretType)
+      )
     )
     .limit(1)
     .get();
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   return {
     ...row,
@@ -179,7 +187,7 @@ export function getEncryptedSecretByUserAndType(
 }
 
 export function getSecretWrappersBySecretId(
-  secretId: string,
+  secretId: string
 ): SecretWrapperRecord[] {
   return db
     .select()
@@ -240,8 +248,8 @@ export function updateEncryptedSecretMetadata(data: {
     .where(
       and(
         eq(encryptedSecrets.userId, data.userId),
-        eq(encryptedSecrets.secretType, data.secretType),
-      ),
+        eq(encryptedSecrets.secretType, data.secretType)
+      )
     )
     .run();
 
@@ -280,7 +288,7 @@ export function upsertSecretWrapper(data: {
 
   const wrappers = getSecretWrappersBySecretId(data.secretId);
   const match = wrappers.find(
-    (wrapper) => wrapper.credentialId === data.credentialId,
+    (wrapper) => wrapper.credentialId === data.credentialId
   );
   if (!match) {
     throw new Error("Failed to upsert secret wrapper");
@@ -290,14 +298,14 @@ export function upsertSecretWrapper(data: {
 
 export function deleteEncryptedSecretByUserAndType(
   userId: string,
-  secretType: string,
+  secretType: string
 ): void {
   db.delete(encryptedSecrets)
     .where(
       and(
         eq(encryptedSecrets.userId, userId),
-        eq(encryptedSecrets.secretType, secretType),
-      ),
+        eq(encryptedSecrets.secretType, secretType)
+      )
     )
     .run();
 }
@@ -305,7 +313,7 @@ export function deleteEncryptedSecretByUserAndType(
 export function getLatestZkProofPayloadByUserAndType(
   userId: string,
   proofType: string,
-  documentId?: string,
+  documentId?: string
 ): { proof: string; publicSignals: string[] } | null {
   const baseConditions = [
     eq(zkProofs.userId, userId),
@@ -327,11 +335,15 @@ export function getLatestZkProofPayloadByUserAndType(
     .limit(1)
     .get();
 
-  if (!row?.proofPayload || !row.publicInputs) return null;
+  if (!(row?.proofPayload && row.publicInputs)) {
+    return null;
+  }
 
   try {
     const parsed = JSON.parse(row.publicInputs) as unknown;
-    if (!Array.isArray(parsed)) return null;
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
     return {
       proof: row.proofPayload,
       publicSignals: parsed.map(String),
@@ -352,7 +364,7 @@ export function getZkProofsByUserId(userId: string): ZkProofRecord[] {
 
 export function getZkProofTypesByUserAndDocument(
   userId: string,
-  documentId: string,
+  documentId: string
 ): string[] {
   const rows = db
     .select({ proofType: zkProofs.proofType })
@@ -361,8 +373,8 @@ export function getZkProofTypesByUserAndDocument(
       and(
         eq(zkProofs.userId, userId),
         eq(zkProofs.documentId, documentId),
-        eq(zkProofs.verified, true),
-      ),
+        eq(zkProofs.verified, true)
+      )
     )
     .groupBy(zkProofs.proofType)
     .orderBy(zkProofs.proofType)
@@ -385,7 +397,7 @@ export function getEncryptedAttributeTypesByUserId(userId: string): string[] {
 
 export function getLatestEncryptedAttributeByUserAndType(
   userId: string,
-  attributeType: string,
+  attributeType: string
 ): {
   ciphertext: string;
   keyId: string | null;
@@ -403,8 +415,8 @@ export function getLatestEncryptedAttributeByUserAndType(
     .where(
       and(
         eq(encryptedAttributes.userId, userId),
-        eq(encryptedAttributes.attributeType, attributeType),
-      ),
+        eq(encryptedAttributes.attributeType, attributeType)
+      )
     )
     .orderBy(desc(encryptedAttributes.createdAt))
     .limit(1)
@@ -415,7 +427,7 @@ export function getLatestEncryptedAttributeByUserAndType(
 
 export function getSignedClaimTypesByUserAndDocument(
   userId: string,
-  documentId: string,
+  documentId: string
 ): string[] {
   const rows = db
     .select({ claimType: signedClaims.claimType })
@@ -423,8 +435,8 @@ export function getSignedClaimTypesByUserAndDocument(
     .where(
       and(
         eq(signedClaims.userId, userId),
-        eq(signedClaims.documentId, documentId),
-      ),
+        eq(signedClaims.documentId, documentId)
+      )
     )
     .groupBy(signedClaims.claimType)
     .orderBy(signedClaims.claimType)
@@ -435,7 +447,7 @@ export function getSignedClaimTypesByUserAndDocument(
 
 export function getProofHashesByUserAndDocument(
   userId: string,
-  documentId: string,
+  documentId: string
 ): string[] {
   const rows = db
     .select({ proofHash: zkProofs.proofHash })
@@ -444,8 +456,8 @@ export function getProofHashesByUserAndDocument(
       and(
         eq(zkProofs.userId, userId),
         eq(zkProofs.documentId, documentId),
-        eq(zkProofs.verified, true),
-      ),
+        eq(zkProofs.verified, true)
+      )
     )
     .orderBy(zkProofs.proofHash)
     .all();
@@ -477,7 +489,7 @@ export function insertZkProofRecord(data: ZkProofInsert): void {
 }
 
 export function insertEncryptedAttribute(
-  data: Omit<NewEncryptedAttribute, "createdAt">,
+  data: Omit<NewEncryptedAttribute, "createdAt">
 ): void {
   db.insert(encryptedAttributes)
     .values({
@@ -493,7 +505,7 @@ export function insertEncryptedAttribute(
 }
 
 export function insertSignedClaim(
-  data: Omit<SignedClaimRecord, "createdAt">,
+  data: Omit<SignedClaimRecord, "createdAt">
 ): void {
   db.insert(signedClaims)
     .values({
@@ -511,7 +523,7 @@ export function insertSignedClaim(
 export function getLatestSignedClaimByUserTypeAndDocument(
   userId: string,
   claimType: string,
-  documentId: string,
+  documentId: string
 ): SignedClaimRecord | null {
   const row = db
     .select()
@@ -520,8 +532,8 @@ export function getLatestSignedClaimByUserTypeAndDocument(
       and(
         eq(signedClaims.userId, userId),
         eq(signedClaims.claimType, claimType),
-        eq(signedClaims.documentId, documentId),
-      ),
+        eq(signedClaims.documentId, documentId)
+      )
     )
     .orderBy(desc(signedClaims.issuedAt))
     .limit(1)

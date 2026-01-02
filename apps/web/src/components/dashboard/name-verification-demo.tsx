@@ -28,7 +28,9 @@ export function NameVerificationDemo() {
   const [error, setError] = useState<string | null>(null);
 
   const handleVerify = async () => {
-    if (!claimedName.trim()) return;
+    if (!claimedName.trim()) {
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -60,22 +62,22 @@ export function NameVerificationDemo() {
       <CardContent className="space-y-4">
         <div className="flex gap-2">
           <Input
-            placeholder="Enter name to verify (e.g., Juan Perez)"
-            value={claimedName}
             onChange={(e) => setClaimedName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleVerify()}
+            placeholder="Enter name to verify (e.g., Juan Perez)"
+            value={claimedName}
           />
           <Button
-            onClick={handleVerify}
             disabled={loading || !claimedName.trim()}
+            onClick={handleVerify}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
           </Button>
         </div>
 
-        {result && (
+        {result ? (
           <div
-            className={`flex items-center gap-3 p-3 rounded-lg border ${
+            className={`flex items-center gap-3 rounded-lg border p-3 ${
               result.matches
                 ? "border-success/30 bg-success/10 text-success"
                 : "border-destructive/30 bg-destructive/10 text-destructive"
@@ -94,18 +96,18 @@ export function NameVerificationDemo() {
             <Badge variant={result.matches ? "success" : "destructive"}>
               {result.matches ? "MATCH" : "NO MATCH"}
             </Badge>
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span className="flex items-center gap-1 text-muted-foreground text-xs">
               <Clock className="h-3 w-3" />
               {result.timeMs}ms
             </span>
           </div>
-        )}
+        ) : null}
 
-        {error && (
+        {error ? (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         <Alert variant="info">
           <Shield className="h-4 w-4" />

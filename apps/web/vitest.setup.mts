@@ -42,6 +42,6 @@ vi.mock("next/headers", () => ({
     Promise.resolve({
       get: vi.fn(),
       set: vi.fn(),
-    }),
+    })
   ),
 }));

@@ -15,8 +15,8 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
-import { authClient } from "@/lib/auth";
-import { makeFieldValidator } from "@/lib/utils";
+import { authClient } from "@/lib/auth/auth-client";
+import { makeFieldValidator } from "@/lib/utils/validation";
 
 export function MagicLinkForm() {
   const router = useRouter();
@@ -44,7 +44,7 @@ export function MagicLinkForm() {
             result.error.message?.includes("not found")
           ) {
             setError(
-              "No account found with this email. Please sign up first to complete identity verification.",
+              "No account found with this email. Please sign up first to complete identity verification."
             );
           } else {
             setError(result.error.message || "Failed to send magic link");
@@ -55,11 +55,11 @@ export function MagicLinkForm() {
 
         // Redirect to confirmation page
         router.push(
-          `/magic-link-sent?email=${encodeURIComponent(value.email)}`,
+          `/magic-link-sent?email=${encodeURIComponent(value.email)}`
         );
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "An unexpected error occurred",
+          err instanceof Error ? err.message : "An unexpected error occurred"
         );
         setIsSubmitting(false);
       }
@@ -69,23 +69,23 @@ export function MagicLinkForm() {
   const validateEmail = makeFieldValidator(
     signInSchema.pick({ email: true }),
     "email",
-    (value: string) => ({ email: value }),
+    (value: string) => ({ email: value })
   );
 
   return (
     <form
+      className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
         form.handleSubmit();
       }}
-      className="space-y-4"
     >
-      {error && (
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <form.Field
         name="email"
@@ -96,21 +96,21 @@ export function MagicLinkForm() {
       >
         {(field) => (
           <Field
-            name={field.name}
             errors={field.state.meta.errors as string[]}
             isTouched={field.state.meta.isTouched}
             isValidating={field.state.meta.isValidating}
+            name={field.name}
           >
             <FieldLabel>Email</FieldLabel>
             <FieldControl>
               <Input
-                type="email"
-                placeholder="you@example.com"
                 autoComplete="email"
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                onBlur={field.handleBlur}
                 disabled={isSubmitting}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder="you@example.com"
+                type="email"
+                value={field.state.value}
               />
             </FieldControl>
             <FieldMessage />
@@ -118,7 +118,7 @@ export function MagicLinkForm() {
         )}
       </form.Field>
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button className="w-full" disabled={isSubmitting} type="submit">
         {isSubmitting ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -132,7 +132,7 @@ export function MagicLinkForm() {
         )}
       </Button>
 
-      <p className="text-xs text-center text-muted-foreground">
+      <p className="text-center text-muted-foreground text-xs">
         We'll send you a link to sign in without a password
       </p>
     </form>

@@ -2,28 +2,34 @@ import crypto from "node:crypto";
 
 import { db } from "@/lib/db/connection";
 import {
-  accounts,
   attestationEvidence,
   blockchainAttestations,
+} from "@/lib/db/schema/attestation";
+import {
+  accounts,
+  passkeyCredentials,
+  sessions,
+  users,
+  verifications,
+} from "@/lib/db/schema/auth";
+import {
   encryptedAttributes,
   encryptedSecrets,
+  secretWrappers,
+  signedClaims,
+  zkChallenges,
+  zkProofs,
+} from "@/lib/db/schema/crypto";
+import {
   identityBundles,
   identityDocuments,
   identityVerificationDrafts,
   identityVerificationJobs,
-  onboardingSessions,
-  passkeyCredentials,
-  rpAuthorizationCodes,
-  secretWrappers,
-  sessions,
-  signedClaims,
-  users,
-  verifications,
-  zkChallenges,
-  zkProofs,
-} from "@/lib/db/schema";
+} from "@/lib/db/schema/identity";
+import { onboardingSessions } from "@/lib/db/schema/onboarding";
+import { rpAuthorizationCodes } from "@/lib/db/schema/rp";
 
-export type CreateUserInput = {
+export interface CreateUserInput {
   id?: string;
   name?: string;
   email?: string;
@@ -31,7 +37,7 @@ export type CreateUserInput = {
   image?: string | null;
   createdAt?: string;
   updatedAt?: string;
-};
+}
 
 export function resetDatabase(): void {
   db.transaction((tx) => {

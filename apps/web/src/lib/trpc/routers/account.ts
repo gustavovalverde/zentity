@@ -9,8 +9,11 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import { auth } from "@/lib/auth/auth";
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password-policy";
 import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import {
   deleteUserById,
@@ -76,9 +79,9 @@ export const accountRouter = router({
     .input(
       z.object({
         confirmEmail: z.string().email(),
-      }),
+      })
     )
-    .mutation(async ({ ctx, input }) => {
+    .mutation(({ ctx, input }) => {
       const { userId, session } = ctx;
 
       // Verify email matches to prevent accidental deletion
@@ -119,13 +122,13 @@ export const accountRouter = router({
           .string()
           .min(
             PASSWORD_MIN_LENGTH,
-            `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
+            `Password must be at least ${PASSWORD_MIN_LENGTH} characters`
           )
           .max(
             PASSWORD_MAX_LENGTH,
-            `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+            `Password must be at most ${PASSWORD_MAX_LENGTH} characters`
           ),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const { userId } = ctx;

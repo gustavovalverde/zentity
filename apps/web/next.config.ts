@@ -74,7 +74,7 @@ const nextConfig: NextConfig = {
     },
   },
 
-  async headers() {
+  headers() {
     // Security headers applied to all routes.
     // NOTE: COEP/COOP headers are NOT set here - they're handled by coi-serviceworker.js
     // This is intentional: server-side COEP headers conflict with service worker approach.

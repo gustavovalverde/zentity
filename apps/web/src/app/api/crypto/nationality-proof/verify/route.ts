@@ -9,12 +9,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/api-auth";
 import { consumeChallenge } from "@/lib/crypto/challenge-store";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
+import { verifyNoirProof } from "@/lib/zk/noir-verifier";
 import {
   CIRCUIT_SPECS,
   normalizeChallengeNonce,
   parsePublicInputToNumber,
-} from "@/lib/zk";
-import { verifyNoirProof } from "@/lib/zk/noir-verifier";
+} from "@/lib/zk/zk-circuit-spec";
 
 /**
  * POST - Verify nationality membership ZK proof
@@ -31,7 +31,9 @@ import { verifyNoirProof } from "@/lib/zk/noir-verifier";
 export async function POST(request: NextRequest) {
   try {
     const authResult = await requireSession();
-    if (!authResult.ok) return authResult.response;
+    if (!authResult.ok) {
+      return authResult.response;
+    }
 
     const body = await request.json();
     const { proof, publicInputs } = body;
@@ -40,14 +42,14 @@ export async function POST(request: NextRequest) {
     if (!proof) {
       return NextResponse.json(
         { error: "proof is required (base64 encoded)" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    if (!publicInputs || !Array.isArray(publicInputs)) {
+    if (!(publicInputs && Array.isArray(publicInputs))) {
       return NextResponse.json(
         { error: "publicInputs is required and must be an array" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -57,22 +59,22 @@ export async function POST(request: NextRequest) {
           error:
             "publicInputs must have at least 4 elements [merkle_root, nonce, claim_hash, is_member]",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     const nonceHex = normalizeChallengeNonce(
-      publicInputs[CIRCUIT_SPECS.nationality_membership.nonceIndex],
+      publicInputs[CIRCUIT_SPECS.nationality_membership.nonceIndex]
     );
     const challenge = consumeChallenge(
       nonceHex,
       "nationality_membership",
-      authResult.session.user.id,
+      authResult.session.user.id
     );
     if (!challenge) {
       return NextResponse.json(
         { error: "Invalid or expired challenge nonce" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest) {
     // Enforce circuit output: is_member must be 1
     // Index 3 is is_member (after merkle_root, nonce, claim_hash)
     const isMember = parsePublicInputToNumber(
-      publicInputs[CIRCUIT_SPECS.nationality_membership.resultIndex],
+      publicInputs[CIRCUIT_SPECS.nationality_membership.resultIndex]
     );
     if (isMember !== 1) {
       return NextResponse.json({
@@ -116,7 +118,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const { status, payload } = toServiceErrorPayload(
       error,
-      "Failed to verify proof",
+      "Failed to verify proof"
     );
     return NextResponse.json(payload, { status });
   }

@@ -3,6 +3,7 @@
  * AppKit provides global HTML custom elements for wallet connection.
  */
 
+// biome-ignore lint/style/noNamespace: JSX namespace required for declaring custom HTML elements in TypeScript
 declare namespace JSX {
   interface IntrinsicElements {
     "appkit-button": React.DetailedHTMLProps<

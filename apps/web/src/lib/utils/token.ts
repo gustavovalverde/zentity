@@ -20,7 +20,7 @@ const DEFAULT_DECIMALS = 18;
  */
 export function parseTokenAmount(
   amount: string,
-  decimals: number = DEFAULT_DECIMALS,
+  decimals: number = DEFAULT_DECIMALS
 ): bigint {
   const parsed = Number.parseFloat(amount);
   if (Number.isNaN(parsed) || parsed < 0) {
@@ -47,7 +47,7 @@ export function parseTokenAmount(
  */
 export function formatTokenAmount(
   wei: bigint | string,
-  decimals: number = DEFAULT_DECIMALS,
+  decimals: number = DEFAULT_DECIMALS
 ): string {
   const value = typeof wei === "string" ? BigInt(wei) : wei;
   const divisor = BigInt(10) ** BigInt(decimals);
@@ -69,7 +69,7 @@ export function formatTokenAmount(
 function _formatTokenAmountPrecise(
   wei: bigint | string,
   decimals: number = DEFAULT_DECIMALS,
-  displayDecimals: number = 2,
+  displayDecimals = 2
 ): string {
   const value = typeof wei === "string" ? BigInt(wei) : wei;
   const divisor = BigInt(10) ** BigInt(decimals);

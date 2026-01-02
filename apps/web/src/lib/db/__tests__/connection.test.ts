@@ -28,7 +28,7 @@ describe("db connection", () => {
         "blockchain_attestations",
         "onboarding_sessions",
         "rp_authorization_codes",
-      ]),
+      ])
     );
   });
 });

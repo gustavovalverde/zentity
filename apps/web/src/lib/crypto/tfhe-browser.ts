@@ -18,7 +18,7 @@ import {
   persistFheKeyId as persistFheKeyIdInStore,
   storeFheKeys,
 } from "@/lib/crypto/fhe-key-store";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils";
+import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 // Runtime types (matching the tfhe package's exported shapes).
 interface TfheClientKey {
@@ -82,7 +82,7 @@ let tfheInitPromise: Promise<TfheModule> | null = null;
 /**
  * Load TFHE from public folder instead of node_modules.
  */
-async function loadTfhe(): Promise<TfheModule> {
+function loadTfhe(): Promise<TfheModule> {
   if (!tfheInitPromise) {
     tfheInitPromise = (async () => {
       const tfheUrl = "/tfhe/tfhe.js";
@@ -134,12 +134,12 @@ export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
   }
 
   throw new Error(
-    "FHE keys are not initialized. Secure your encryption keys with a passkey first.",
+    "FHE keys are not initialized. Secure your encryption keys with a passkey first."
   );
 }
 
 export async function getOrCreateFheKeyMaterialWithPasskey(
-  enrollment: PasskeyEnrollmentContext,
+  enrollment: PasskeyEnrollmentContext
 ): Promise<FheKeyMaterial> {
   const tfhe = await loadTfhe();
   const existing = await getStoredFheKeys();

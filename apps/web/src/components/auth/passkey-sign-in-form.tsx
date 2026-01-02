@@ -12,7 +12,7 @@ import {
   checkPrfSupport,
 } from "@/lib/crypto/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils";
+import { base64UrlToBytes } from "@/lib/utils/base64url";
 
 type AuthStatus = "idle" | "checking" | "authenticating" | "verifying";
 
@@ -24,9 +24,15 @@ export function PasskeySignInForm() {
   // Check PRF support on mount (informational only - not required for auth)
   useEffect(() => {
     let active = true;
-    void checkPrfSupport().then((result) => {
-      if (active) setPrfSupported(result.supported);
-    });
+    checkPrfSupport()
+      .then((result) => {
+        if (active) {
+          setPrfSupported(result.supported);
+        }
+      })
+      .catch(() => {
+        // PRF is optional; fallback behavior defined
+      });
     return () => {
       active = false;
     };
@@ -91,29 +97,29 @@ export function PasskeySignInForm() {
 
   return (
     <div className="space-y-6">
-      {error && (
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
-      <div className="rounded-lg border p-4 space-y-3">
+      <div className="space-y-3 rounded-lg border p-4">
         <div className="flex items-center gap-2">
           <KeyRound className="h-5 w-5 text-muted-foreground" />
           <span className="font-medium">Sign in with Passkey</span>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           Use your device's biometrics (Face ID, Touch ID, Windows Hello) or
           security key to sign in securely without a password.
         </p>
       </div>
 
       <Button
-        type="button"
         className="w-full"
-        size="lg"
         disabled={isLoading}
         onClick={handleSignIn}
+        size="lg"
+        type="button"
       >
         {status === "checking" && (
           <>
@@ -151,12 +157,12 @@ export function PasskeySignInForm() {
         </Alert>
       )}
 
-      <div className="text-center text-sm text-muted-foreground space-y-2">
+      <div className="space-y-2 text-center text-muted-foreground text-sm">
         <p>
           Lost your passkey?{" "}
           <Link
-            href="/recover-passkey"
             className="font-medium text-primary hover:underline"
+            href="/recover-passkey"
           >
             Recover with magic link
           </Link>

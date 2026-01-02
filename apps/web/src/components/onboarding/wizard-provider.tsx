@@ -69,7 +69,7 @@ interface ServerSessionState {
   hasExtractedDOB?: boolean;
 }
 
-type WizardState = {
+interface WizardState {
   /** Server session ID - the key for all session operations */
   sessionId: string | null;
   currentStep: WizardStep;
@@ -82,7 +82,7 @@ type WizardState = {
     faceMatchPassed: boolean;
     keysSecured: boolean;
   };
-};
+}
 
 type WizardAction =
   | { type: "NEXT_STEP" }
@@ -175,7 +175,7 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   }
 }
 
-type WizardContextType = {
+interface WizardContextType {
   state: WizardState;
   totalSteps: number;
   nextStep: () => void;
@@ -217,7 +217,7 @@ type WizardContextType = {
   isFirstStep: boolean;
   isLastStep: boolean;
   progress: number;
-};
+}
 
 const WizardContext = createContext<WizardContextType | null>(null);
 
@@ -244,8 +244,12 @@ export function WizardProvider({
 
   // Load session state from server on mount
   useEffect(() => {
-    if (isHydrated) return;
-    if (hydrationStartedRef.current) return;
+    if (isHydrated) {
+      return;
+    }
+    if (hydrationStartedRef.current) {
+      return;
+    }
     hydrationStartedRef.current = true;
 
     const loadServerSession = async () => {
@@ -260,7 +264,7 @@ export function WizardProvider({
           try {
             await trpc.onboarding.clearSession.mutate();
           } catch {
-            // Ignore clear errors - may not have a session to clear
+            /* Ignore clear errors - may not have a session to clear */
           }
 
           dispatch({ type: "RESET" });
@@ -275,7 +279,7 @@ export function WizardProvider({
           window.history.replaceState(
             null,
             "",
-            nextSearch ? `${pathname}?${nextSearch}` : pathname,
+            nextSearch ? `${pathname}?${nextSearch}` : pathname
           );
           return;
         }
@@ -317,7 +321,7 @@ export function WizardProvider({
           toast.info("Session expired. Please start again.");
         }
       } catch {
-        // Server session not available, start fresh
+        /* Server session not available, start fresh */
       } finally {
         isInitializedRef.current = true;
         setIsHydrated(true);
@@ -329,9 +333,15 @@ export function WizardProvider({
 
   // Save step changes to server (debounced)
   useEffect(() => {
-    if (!isInitializedRef.current) return;
-    if (!state.data.email) return;
-    if (state.currentStep === lastSavedStepRef.current) return;
+    if (!isInitializedRef.current) {
+      return;
+    }
+    if (!state.data.email) {
+      return;
+    }
+    if (state.currentStep === lastSavedStepRef.current) {
+      return;
+    }
 
     const saveStep = async () => {
       try {
@@ -341,7 +351,7 @@ export function WizardProvider({
         });
         lastSavedStepRef.current = state.currentStep;
       } catch {
-        // Ignore save errors
+        /* Ignore save errors - step will be retried on next change */
       }
     };
 
@@ -358,7 +368,9 @@ export function WizardProvider({
       extractedDocNumber?: string;
       extractedNationality?: string;
     }) => {
-      if (!state.data.email) return;
+      if (!state.data.email) {
+        return;
+      }
 
       try {
         await trpc.onboarding.saveSession.mutate({
@@ -366,9 +378,11 @@ export function WizardProvider({
           step: state.currentStep,
           pii,
         });
-      } catch {}
+      } catch {
+        /* Ignore PII save errors - non-critical for wizard flow */
+      }
     },
-    [state.data.email, state.currentStep],
+    [state.data.email, state.currentStep]
   );
 
   // Update verification progress on server
@@ -381,7 +395,9 @@ export function WizardProvider({
       keysSecured?: boolean;
       identityDraftId?: string | null;
     }) => {
-      if (!state.data.email) return;
+      if (!state.data.email) {
+        return;
+      }
 
       try {
         await trpc.onboarding.saveSession.mutate({
@@ -407,25 +423,27 @@ export function WizardProvider({
             data: { identityDraftId: updates.identityDraftId },
           });
         }
-      } catch {}
+      } catch {
+        /* Ignore progress update errors - non-critical for wizard flow */
+      }
     },
-    [state.data.email, state.currentStep],
+    [state.data.email, state.currentStep]
   );
 
   const nextStep = useCallback(() => dispatch({ type: "NEXT_STEP" }), []);
   const prevStep = useCallback(() => dispatch({ type: "PREV_STEP" }), []);
   const goToStep = useCallback(
     (step: number) => dispatch({ type: "GO_TO_STEP", step }),
-    [],
+    []
   );
   const updateData = useCallback(
     (data: Partial<WizardData>) => dispatch({ type: "UPDATE_DATA", data }),
-    [],
+    []
   );
   const setSubmitting = useCallback(
     (isSubmitting: boolean) =>
       dispatch({ type: "SET_SUBMITTING", isSubmitting }),
-    [],
+    []
   );
 
   const reset = useCallback(async () => {
@@ -435,7 +453,7 @@ export function WizardProvider({
     try {
       await trpc.onboarding.clearSession.mutate();
     } catch {
-      // Ignore errors
+      /* Ignore clear errors - reset proceeds regardless */
     }
   }, []);
 
@@ -504,6 +522,7 @@ export function WizardProvider({
 
       return true;
     } catch {
+      /* Skip failed - notify user and return false */
       toast.error("Failed to skip liveness");
       return false;
     }
@@ -539,11 +558,12 @@ export function WizardProvider({
 
         return true;
       } catch {
+        /* Validation failed - notify user and return false */
         toast.error("Failed to validate step");
         return false;
       }
     },
-    [],
+    []
   );
 
   const cancelPendingNavigation = useCallback(() => {
@@ -551,7 +571,9 @@ export function WizardProvider({
   }, []);
 
   const confirmPendingNavigation = useCallback(async (): Promise<boolean> => {
-    if (!pendingNavigation) return false;
+    if (!pendingNavigation) {
+      return false;
+    }
 
     const targetStep = pendingNavigation.targetStep;
     try {
@@ -582,6 +604,7 @@ export function WizardProvider({
       setPendingNavigation(null);
       return true;
     } catch {
+      /* Reset failed - notify user and return false */
       toast.error("Failed to reset progress");
       return false;
     }
@@ -628,16 +651,18 @@ export function WizardProvider({
       skipLiveness,
       savePiiToServer,
       updateServerProgress,
-    ],
+    ]
   );
 
   // Warn before navigation with unsaved data to prevent accidental data loss
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated) {
+      return;
+    }
 
     // Check if user has entered meaningful data (in-memory only)
     const hasUnsavedData = Boolean(
-      state.data.idDocument || state.data.selfieImage,
+      state.data.idDocument || state.data.selfieImage
     );
 
     // Only warn if user is mid-process (not on first or last step with completion)

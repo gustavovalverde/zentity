@@ -13,12 +13,12 @@
  * - Sensitive data (documents, selfies) never stored - processed in real-time
  */
 
-import type { OnboardingSession } from "./schema";
+import type { OnboardingSession } from "./schema/onboarding";
 
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
 
-import { addSpanEvent, hashIdentifier } from "@/lib/observability";
+import { addSpanEvent, hashIdentifier } from "@/lib/observability/telemetry";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 import {
@@ -156,7 +156,9 @@ async function getWizardCookie(): Promise<WizardNavState | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(WIZARD_COOKIE_NAME)?.value;
-    if (!token) return null;
+    if (!token) {
+      return null;
+    }
 
     const secret = await getSecret();
     const { payload } = await jwtDecrypt(token, secret);
@@ -189,7 +191,7 @@ export async function clearWizardCookie(): Promise<void> {
 export async function saveWizardState(
   sessionId: string | undefined,
   state: { email?: string; step: number },
-  pii?: EncryptedPiiData,
+  pii?: EncryptedPiiData
 ): Promise<OnboardingSession> {
   // Encrypt PII if provided
   let encryptedPii: string | null = null;
@@ -271,7 +273,7 @@ export async function updateWizardProgress(
     keysSecured?: boolean;
     documentHash?: string;
     identityDraftId?: string | null;
-  },
+  }
 ): Promise<void> {
   const previousSession = getOnboardingSessionById(sessionId);
   const previousStep = previousSession?.step ?? null;
@@ -388,7 +390,7 @@ interface StepValidationResult {
  */
 export function validateStepAccess(
   session: OnboardingSession | null,
-  endpoint: string,
+  endpoint: string
 ): StepValidationResult {
   // Check session exists
   if (!session) {
@@ -435,7 +437,9 @@ export function validateStepAccess(
  */
 export async function getSessionFromCookie(): Promise<OnboardingSession | null> {
   const navState = await getWizardCookie();
-  if (!navState) return null;
+  if (!navState) {
+    return null;
+  }
 
   const session = getOnboardingSessionById(navState.sessionId);
   if (!session) {
@@ -456,7 +460,7 @@ export async function getSessionFromCookie(): Promise<OnboardingSession | null> 
  */
 export async function resetToStep(
   sessionId: string,
-  targetStep: OnboardingStep,
+  targetStep: OnboardingStep
 ): Promise<void> {
   const updates: {
     step: number;

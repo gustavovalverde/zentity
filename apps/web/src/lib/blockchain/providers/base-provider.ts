@@ -43,6 +43,7 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
       config.registrarPrivateKey || process.env.REGISTRAR_PRIVATE_KEY || "";
 
     if (!this.registrarPrivateKey) {
+      /* Warning: Registrar private key not configured - write operations will fail */
     }
   }
 
@@ -62,7 +63,7 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
     const account = privateKeyToAccount(
       (this.registrarPrivateKey.startsWith("0x")
         ? this.registrarPrivateKey
-        : `0x${this.registrarPrivateKey}`) as `0x${string}`,
+        : `0x${this.registrarPrivateKey}`) as `0x${string}`
     );
 
     return createWalletClient({
@@ -79,7 +80,7 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
     const address = this.config.contracts.identityRegistry;
     if (!address) {
       throw new Error(
-        `IdentityRegistry contract not configured for ${this.networkId}`,
+        `IdentityRegistry contract not configured for ${this.networkId}`
       );
     }
     return address as `0x${string}`;
@@ -144,7 +145,7 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
       return {
         isAttested: Boolean(isAttested),
       };
-    } catch (_error) {
+    } catch {
       return { isAttested: false };
     }
   }

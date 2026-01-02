@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils/utils";
 
 interface LogoProps {
   variant?: "full" | "icon";
@@ -27,13 +27,13 @@ export function Logo({ variant = "full", className, size = "md" }: LogoProps) {
 
   return (
     <Image
-      src={src}
       alt="Zentity"
-      width={dimensions.width}
+      className={cn("object-contain dark:invert", className)}
       height={dimensions.height}
-      className={cn("dark:invert object-contain", className)}
       priority
-      unoptimized // SVGs don't need Next.js optimization
+      src={src}
+      unoptimized
+      width={dimensions.width} // SVGs don't need Next.js optimization
     />
   );
 }

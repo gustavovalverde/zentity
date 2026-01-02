@@ -19,9 +19,7 @@ function normalizeToFr(value: bigint): Fr {
   return new Fr(value);
 }
 
-export async function getDocumentHashField(
-  documentHashHex: string,
-): Promise<string> {
+export function getDocumentHashField(documentHashHex: string): string {
   const normalized = documentHashHex.startsWith("0x")
     ? documentHashHex.slice(2)
     : documentHashHex;

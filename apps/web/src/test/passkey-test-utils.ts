@@ -6,8 +6,8 @@
 import crypto from "node:crypto";
 
 import { db } from "@/lib/db/connection";
-import { passkeyCredentials } from "@/lib/db/schema";
-import { bytesToBase64Url } from "@/lib/utils";
+import { passkeyCredentials } from "@/lib/db/schema/auth";
+import { bytesToBase64Url } from "@/lib/utils/base64url";
 
 /**
  * CBOR encoding helpers for COSE keys.
@@ -30,29 +30,29 @@ function encodeCborUint(value: number): Uint8Array {
   if (value < 256) {
     return new Uint8Array([0x18, value]);
   }
-  if (value < 65536) {
+  if (value < 65_536) {
     return new Uint8Array([0x19, (value >> 8) & 0xff, value & 0xff]);
   }
   throw new Error("Value too large");
 }
 
 function encodeCborBytes(bytes: Uint8Array): Uint8Array {
-  const header =
-    bytes.length < 24
-      ? new Uint8Array([0x40 | bytes.length])
-      : bytes.length < 256
-        ? new Uint8Array([0x58, bytes.length])
-        : new Uint8Array([
-            0x59,
-            (bytes.length >> 8) & 0xff,
-            bytes.length & 0xff,
-          ]);
+  let header: Uint8Array;
+  if (bytes.length < 24) {
+    header = new Uint8Array([0x40 | bytes.length]);
+  } else if (bytes.length < 256) {
+    header = new Uint8Array([0x58, bytes.length]);
+  } else {
+    header = new Uint8Array([
+      0x59,
+      (bytes.length >> 8) & 0xff,
+      bytes.length & 0xff,
+    ]);
+  }
   return new Uint8Array([...header, ...bytes]);
 }
 
-function encodeCborMap(
-  entries: Array<[number, Uint8Array | number]>,
-): Uint8Array {
+function encodeCborMap(entries: [number, Uint8Array | number][]): Uint8Array {
   const mapHeader =
     entries.length < 24
       ? new Uint8Array([0xa0 | entries.length])
@@ -90,18 +90,18 @@ export interface TestKeyPair {
  * Returns the CryptoKey pair and COSE-encoded public key.
  */
 export async function createTestKeyPair(
-  curve: "P-256" | "P-384" = "P-256",
+  curve: "P-256" | "P-384" = "P-256"
 ): Promise<TestKeyPair> {
   const keyPair = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: curve },
     true, // extractable for testing
-    ["sign", "verify"],
+    ["sign", "verify"]
   );
 
   // Export to JWK to get raw coordinates
   const jwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
 
-  if (!jwk.x || !jwk.y) {
+  if (!(jwk.x && jwk.y)) {
     throw new Error("Missing EC coordinates in JWK");
   }
 
@@ -145,16 +145,24 @@ export interface AuthenticatorDataParams {
  * Create authenticator data with configurable flags and counter.
  */
 export function createTestAuthenticatorData(
-  params: AuthenticatorDataParams,
+  params: AuthenticatorDataParams
 ): Uint8Array {
   const flags = params.flags ?? { up: true, uv: true };
 
   // Build flags byte
   let flagsByte = 0;
-  if (flags.up) flagsByte |= 0x01; // Bit 0: User Present
-  if (flags.uv) flagsByte |= 0x04; // Bit 2: User Verified
-  if (flags.be) flagsByte |= 0x08; // Bit 3: Backup Eligibility
-  if (flags.bs) flagsByte |= 0x10; // Bit 4: Backup State
+  if (flags.up) {
+    flagsByte |= 0x01; // Bit 0: User Present
+  }
+  if (flags.uv) {
+    flagsByte |= 0x04; // Bit 2: User Verified
+  }
+  if (flags.be) {
+    flagsByte |= 0x08; // Bit 3: Backup Eligibility
+  }
+  if (flags.bs) {
+    flagsByte |= 0x10; // Bit 4: Backup State
+  }
 
   // Authenticator data structure:
   // - 32 bytes: rpIdHash
@@ -196,14 +204,14 @@ export function createTestClientDataJSON(params: ClientDataParams): string {
  */
 export async function signTestData(
   privateKey: crypto.webcrypto.CryptoKey,
-  data: Uint8Array,
+  data: Uint8Array
 ): Promise<Uint8Array> {
   // Create a fresh ArrayBuffer to avoid SharedArrayBuffer issues
   const dataBuffer = Uint8Array.from(data).buffer as ArrayBuffer;
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: { name: "SHA-256" } },
     privateKey,
-    dataBuffer,
+    dataBuffer
   );
   return new Uint8Array(signature);
 }
@@ -261,12 +269,12 @@ export interface CreateAssertionParams {
  * Signs the authenticator data and client data hash with the private key.
  */
 export async function createTestAssertion(
-  params: CreateAssertionParams,
+  params: CreateAssertionParams
 ): Promise<AssertionData> {
   // 1. Compute RP ID hash
   const rpIdBytes = new TextEncoder().encode(params.rpId);
   const rpIdHash = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", rpIdBytes),
+    await crypto.subtle.digest("SHA-256", rpIdBytes)
   );
 
   // 2. Create authenticator data
@@ -287,7 +295,7 @@ export async function createTestAssertion(
 
   // 4. Compute client data hash
   const clientDataHash = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", clientDataBytes),
+    await crypto.subtle.digest("SHA-256", clientDataBytes)
   );
 
   // 5. Sign authenticatorData || clientDataHash
@@ -321,7 +329,7 @@ export interface CreateTestCredentialParams {
  * Returns the credential ID.
  */
 export function createTestPasskeyCredential(
-  params: CreateTestCredentialParams,
+  params: CreateTestCredentialParams
 ): string {
   const id = crypto.randomUUID();
   const credentialId =
@@ -351,7 +359,7 @@ export function createTestPasskeyCredential(
  * Returns everything needed for signing assertions.
  */
 export async function createTestPasskeyCredentialWithKeyPair(
-  params: Omit<CreateTestCredentialParams, "publicKey">,
+  params: Omit<CreateTestCredentialParams, "publicKey">
 ): Promise<{
   credentialId: string;
   keyPair: TestKeyPair;

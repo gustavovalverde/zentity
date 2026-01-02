@@ -42,8 +42,8 @@ export async function GET(req: NextRequest) {
   // Send initial connection event
   await writer.write(
     encoder.encode(
-      `data: ${JSON.stringify({ type: "connected", sessionId })}\n\n`,
-    ),
+      `data: ${JSON.stringify({ type: "connected", sessionId })}\n\n`
+    )
   );
 
   // Clean up when client disconnects

@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 import { db } from "../connection";
-import { accounts, users } from "../schema";
+import { accounts, users } from "../schema/auth";
 
 export function updateUserName(userId: string, displayName: string): void {
   db.update(users)
@@ -39,10 +39,10 @@ export function userHasPassword(userId: string): boolean {
       and(
         eq(accounts.userId, userId),
         eq(accounts.providerId, "credential"),
-        isNotNull(accounts.password),
-      ),
+        isNotNull(accounts.password)
+      )
     )
     .get();
 
-  return row?.password != null && row.password.length > 0;
+  return !!row?.password && row.password.length > 0;
 }

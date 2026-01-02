@@ -7,7 +7,7 @@ import {
   getUserCreatedAt,
   updateUserName,
 } from "@/lib/db/queries/auth";
-import { users } from "@/lib/db/schema";
+import { users } from "@/lib/db/schema/auth";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("auth queries", () => {

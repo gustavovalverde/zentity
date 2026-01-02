@@ -21,10 +21,13 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PwnedCheckResponse = {
+/** Matches a valid 40-character uppercase SHA-1 hash */
+const SHA1_HEX_PATTERN = /^[0-9A-F]{40}$/;
+
+interface PwnedCheckResponse {
   compromised: boolean;
   skipped: boolean;
-};
+}
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -33,7 +36,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 },
+      { status: 200 }
     );
   }
 
@@ -45,15 +48,15 @@ export async function POST(request: Request) {
   if (typeof sha1 !== "string") {
     return NextResponse.json(
       { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 },
+      { status: 200 }
     );
   }
 
   const normalizedSha1 = sha1.trim().toUpperCase();
-  if (!/^[0-9A-F]{40}$/.test(normalizedSha1)) {
+  if (!SHA1_HEX_PATTERN.test(normalizedSha1)) {
     return NextResponse.json(
       { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 },
+      { status: 200 }
     );
   }
 
@@ -70,13 +73,13 @@ export async function POST(request: Request) {
         "Add-Padding": "true",
         "User-Agent": "Zentity Password Checker",
       },
-    },
+    }
   );
 
   if (!response.ok) {
     return NextResponse.json(
       { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 },
+      { status: 200 }
     );
   }
 
@@ -87,6 +90,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     { compromised, skipped: false } satisfies PwnedCheckResponse,
-    { status: 200 },
+    { status: 200 }
   );
 }

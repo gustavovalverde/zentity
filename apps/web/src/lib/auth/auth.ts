@@ -26,7 +26,7 @@ const getTrustedOrigins = (): string[] => {
       ...additionalOrigins
         .split(",")
         .map((o) => o.trim())
-        .filter(Boolean),
+        .filter(Boolean)
     );
   }
 
@@ -36,7 +36,7 @@ const getTrustedOrigins = (): string[] => {
     origins.push(
       "http://localhost:3000",
       "http://127.0.0.1:3000",
-      "http://[::1]:3000",
+      "http://[::1]:3000"
     );
   }
 

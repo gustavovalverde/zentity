@@ -108,7 +108,7 @@ describe("crypto queries", () => {
 
     const invalid = getLatestZkProofPayloadByUserAndType(
       userIdInvalid,
-      "doc_validity",
+      "doc_validity"
     );
     expect(invalid).toBeNull();
   });
@@ -198,7 +198,7 @@ describe("crypto queries", () => {
     const latestClaim = getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "ocr_result",
-      documentId,
+      documentId
     );
     expect(latestClaim?.claimPayload).toBe('{"result":2}');
 
@@ -217,7 +217,7 @@ describe("crypto queries", () => {
 
     const latestEncrypted = getLatestEncryptedAttributeByUserAndType(
       userId,
-      "birth_year_offset",
+      "birth_year_offset"
     );
     expect(latestEncrypted?.ciphertext).toBe("cipher-2");
     expect(latestEncrypted?.keyId).toBe("key-2");

@@ -5,7 +5,7 @@
  */
 
 import type { Human } from "@vladmandic/human";
-import type { ChallengeType } from "@/lib/liveness";
+import type { ChallengeType } from "@/lib/liveness/liveness-challenges";
 
 /**
  * State machine states for the liveness challenge flow.
@@ -32,7 +32,7 @@ type FacingDirection = "left" | "right" | "center";
 /**
  * Debug frame data for development overlay.
  */
-export type LivenessDebugFrame = {
+export interface LivenessDebugFrame {
   ts: number;
   state: ChallengeState;
   faceDetected: boolean;
@@ -52,20 +52,20 @@ export type LivenessDebugFrame = {
     detect?: number;
     total?: number;
   };
-};
+}
 
 /**
  * Server-created liveness session.
  */
-export type LivenessSession = {
+export interface LivenessSession {
   sessionId: string;
   challenges: ChallengeType[];
-};
+}
 
 /**
  * Real-time progress from server via SSE.
  */
-export type ServerProgress = {
+export interface ServerProgress {
   faceDetected: boolean;
   progress: number;
   passed: boolean;
@@ -73,12 +73,12 @@ export type ServerProgress = {
   happy?: number;
   yaw?: number;
   direction?: string;
-};
+}
 
 /**
  * Arguments for the useSelfieLivenessFlow hook.
  */
-export type UseSelfieLivenessFlowArgs = {
+export interface UseSelfieLivenessFlowArgs {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isStreaming: boolean;
   startCamera: () => Promise<void>;
@@ -100,4 +100,4 @@ export type UseSelfieLivenessFlowArgs = {
   onReset: () => void;
   /** Called when session error occurs (expired session), allowing component to reset wizard */
   onSessionError?: () => void;
-};
+}

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock server-only before importing anything else
 vi.mock("server-only", () => ({}));
 
-import { bytesToBase64Url } from "@/lib/utils";
+import { bytesToBase64Url } from "@/lib/utils/base64url";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import {
   createTestAssertion,
@@ -57,7 +57,7 @@ describe("passkey-auth", () => {
       const result1 = createPasskeyChallenge();
       const result2 = createPasskeyChallenge();
       expect(bytesToBase64Url(result1.challenge)).not.toBe(
-        bytesToBase64Url(result2.challenge),
+        bytesToBase64Url(result2.challenge)
       );
     });
   });
@@ -77,13 +77,13 @@ describe("passkey-auth", () => {
 
       // Second use MUST fail
       expect(() => verifyAndConsumeChallenge(challengeId)).toThrow(
-        "Invalid or expired challenge",
+        "Invalid or expired challenge"
       );
     });
 
     it("REJECTS non-existent challenge ID", () => {
       expect(() => verifyAndConsumeChallenge("non-existent-id")).toThrow(
-        "Invalid or expired challenge",
+        "Invalid or expired challenge"
       );
     });
 
@@ -94,7 +94,7 @@ describe("passkey-auth", () => {
       vi.advanceTimersByTime(6 * 60 * 1000);
 
       expect(() => verifyAndConsumeChallenge(challengeId)).toThrow(
-        "Challenge expired",
+        "Challenge expired"
       );
     });
 
@@ -127,7 +127,7 @@ describe("passkey-auth", () => {
     });
 
     it("returns localhost as default", () => {
-      delete process.env.BETTER_AUTH_URL;
+      process.env.BETTER_AUTH_URL = undefined;
       expect(getRelyingPartyId()).toBe("localhost");
     });
   });
@@ -145,7 +145,7 @@ describe("passkey-auth", () => {
     });
 
     it("returns localhost:3000 as default", () => {
-      delete process.env.BETTER_AUTH_URL;
+      process.env.BETTER_AUTH_URL = undefined;
       expect(getExpectedOrigin()).toBe("http://localhost:3000");
     });
   });
@@ -217,7 +217,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("Unknown credential");
     });
   });
@@ -238,7 +238,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId: "invalid-challenge", assertion }),
+        verifyPasskeyAssertion({ challengeId: "invalid-challenge", assertion })
       ).rejects.toThrow("Invalid or expired challenge");
     });
 
@@ -262,7 +262,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("Challenge expired");
     });
   });
@@ -325,7 +325,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("Credential counter did not increase");
     });
 
@@ -346,7 +346,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("Credential counter did not increase");
     });
   });
@@ -369,7 +369,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("Origin mismatch");
     });
   });
@@ -393,7 +393,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("RP ID hash mismatch");
     });
   });
@@ -418,7 +418,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("User presence not verified");
     });
   });
@@ -445,7 +445,7 @@ describe("passkey-auth", () => {
       });
 
       await expect(
-        verifyPasskeyAssertion({ challengeId, assertion }),
+        verifyPasskeyAssertion({ challengeId, assertion })
       ).rejects.toThrow("Signature verification failed");
     });
   });

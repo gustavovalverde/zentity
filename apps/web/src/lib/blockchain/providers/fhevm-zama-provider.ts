@@ -35,7 +35,7 @@ export class FhevmZamaProvider
 
     if (config.type !== "fhevm") {
       throw new Error(
-        `FhevmZamaProvider requires fhevm network type, got: ${config.type}`,
+        `FhevmZamaProvider requires fhevm network type, got: ${config.type}`
       );
     }
   }
@@ -62,7 +62,7 @@ export class FhevmZamaProvider
     ) {
       const originalBytes = responseProto.bytes;
       const patchedBytes = async function bytesPatched(
-        this: Response,
+        this: Response
       ): Promise<Uint8Array> {
         const result = (await originalBytes.call(this)) as
           | Uint8Array
@@ -75,7 +75,7 @@ export class FhevmZamaProvider
           return new Uint8Array(
             result.buffer,
             result.byteOffset,
-            result.byteLength,
+            result.byteLength
           );
         }
         return result as Uint8Array;
@@ -94,7 +94,7 @@ export class FhevmZamaProvider
     const gatewayChainId = Number(
       process.env.FHEVM_GATEWAY_CHAIN_ID ||
         process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID ||
-        "",
+        ""
     );
     const aclContractAddress =
       process.env.FHEVM_ACL_CONTRACT_ADDRESS ||
@@ -145,7 +145,7 @@ export class FhevmZamaProvider
    * 3. Sign and submit transaction with registrar wallet
    */
   async submitAttestation(
-    params: AttestationParams,
+    params: AttestationParams
   ): Promise<AttestationResult> {
     try {
       const client = this.getWalletClient();
@@ -156,7 +156,7 @@ export class FhevmZamaProvider
       });
       if (registrarBalance === BigInt(0)) {
         throw new Error(
-          `Registrar wallet ${client.account.address} has no funds on ${this.networkName} (chainId ${this.config.chainId}).`,
+          `Registrar wallet ${client.account.address} has no funds on ${this.networkName} (chainId ${this.config.chainId}).`
         );
       }
 
@@ -166,7 +166,7 @@ export class FhevmZamaProvider
       // Create encrypted inputs
       const encryptedInput = fhevm.createEncryptedInput(
         contractAddress,
-        client.account.address,
+        client.account.address
       );
 
       // Add all identity fields as encrypted values

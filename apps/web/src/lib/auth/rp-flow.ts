@@ -5,6 +5,9 @@ import { headers } from "next/headers";
 
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
+/** Validates UUID format (36 chars with hyphens: 8-4-4-4-12) */
+const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
+
 /**
  * RP Redirect Flow (OAuth-style)
  *
@@ -20,12 +23,12 @@ import { getBetterAuthSecret } from "@/lib/utils/env";
  * - open-redirect protection via an allowlist
  * - a minimal server-to-server code exchange for non-PII verification flags
  */
-type RpFlowData = {
+interface RpFlowData {
   clientId: string;
   redirectUri: string;
   state?: string;
   createdAtMs: number;
-};
+}
 
 const RP_FLOW_COOKIE_PREFIX = "zentity-rp-flow-";
 /** Flow expires after 2 minutes - user must complete verification quickly. */
@@ -48,10 +51,14 @@ export function serializeRpFlowCookieValue(data: RpFlowData): string {
 function parseRpFlowCookieValue(value: string): RpFlowData | null {
   try {
     const data = JSON.parse(atob(value)) as RpFlowData;
-    if (!data?.createdAtMs || !data.clientId || !data.redirectUri) return null;
+    if (!(data?.createdAtMs && data.clientId && data.redirectUri)) {
+      return null;
+    }
 
     // Extra safety beyond cookie TTL.
-    if (Date.now() - data.createdAtMs > RP_FLOW_TTL_SECONDS * 1000) return null;
+    if (Date.now() - data.createdAtMs > RP_FLOW_TTL_SECONDS * 1000) {
+      return null;
+    }
 
     return data;
   } catch {
@@ -62,7 +69,9 @@ function parseRpFlowCookieValue(value: string): RpFlowData | null {
 /** Parses comma-separated allowlist from RP_ALLOWED_REDIRECT_URIS env var. */
 function parseAllowedRedirectUris(): string[] {
   const raw = process.env.RP_ALLOWED_REDIRECT_URIS;
-  if (!raw) return [];
+  if (!raw) {
+    return [];
+  }
   return raw
     .split(",")
     .map((s) => s.trim())
@@ -74,7 +83,9 @@ function parseAllowedRedirectUris(): string[] {
  * Internal paths (starting with "/") are always allowed.
  */
 export function isAllowedRedirectUri(redirectUri: string): boolean {
-  if (redirectUri.startsWith("/")) return true;
+  if (redirectUri.startsWith("/")) {
+    return true;
+  }
   const allowlist = parseAllowedRedirectUris();
   return allowlist.includes(redirectUri);
 }
@@ -89,19 +100,25 @@ export function createRpFlowCookieName(flowId: string): string {
  * Returns null if flow doesn't exist, is invalid, or has expired.
  */
 export async function getRpFlow(flowId: string): Promise<RpFlowData | null> {
-  if (!flowId || !/^[0-9a-f-]{36}$/i.test(flowId)) return null;
+  if (!(flowId && UUID_PATTERN.test(flowId))) {
+    return null;
+  }
 
   const cookieHeader = (await headers()).get("cookie");
-  if (!cookieHeader) return null;
+  if (!cookieHeader) {
+    return null;
+  }
 
   const cookieName = createRpFlowCookieName(flowId);
   const parsed = await parseSigned(
     cookieHeader,
     getRpFlowCookieSecret(),
-    cookieName,
+    cookieName
   );
   const signedValue = parsed[cookieName];
-  if (typeof signedValue !== "string" || !signedValue) return null;
+  if (typeof signedValue !== "string" || !signedValue) {
+    return null;
+  }
 
   return parseRpFlowCookieValue(signedValue);
 }

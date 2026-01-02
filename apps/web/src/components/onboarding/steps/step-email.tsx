@@ -11,7 +11,7 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
-import { makeFieldValidator } from "@/lib/utils";
+import { makeFieldValidator } from "@/lib/utils/validation";
 
 import { WizardNavigation } from "../wizard-navigation";
 import { useWizard } from "../wizard-provider";
@@ -31,7 +31,7 @@ export function StepEmail() {
   const validateEmail = makeFieldValidator(
     emailSchema,
     "email",
-    (value: string) => ({ email: value }),
+    (value: string) => ({ email: value })
   );
 
   // Focus input after mount to avoid autoFocus triggering blur during hydration
@@ -63,10 +63,10 @@ export function StepEmail() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="space-y-2">
-        <h3 className="text-lg font-medium">Get Started</h3>
-        <p className="text-sm text-muted-foreground">
+        <h3 className="font-medium text-lg">Get Started</h3>
+        <p className="text-muted-foreground text-sm">
           Enter your email to begin identity verification.
         </p>
       </div>
@@ -80,21 +80,21 @@ export function StepEmail() {
       >
         {(field) => (
           <Field
-            name={field.name}
             errors={field.state.meta.errors as string[]}
             isTouched={field.state.meta.isTouched}
             isValidating={field.state.meta.isValidating}
+            name={field.name}
           >
             <FieldLabel>Email Address</FieldLabel>
             <FieldControl>
               <Input
+                autoComplete="email"
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder="you@example.com"
                 ref={inputRef}
                 type="email"
-                placeholder="you@example.com"
-                autoComplete="email"
                 value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                onBlur={field.handleBlur}
               />
             </FieldControl>
             <FieldMessage />
@@ -102,7 +102,7 @@ export function StepEmail() {
         )}
       </form.Field>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         We&apos;ll use this email to contact you if needed and for account
         recovery.
       </p>

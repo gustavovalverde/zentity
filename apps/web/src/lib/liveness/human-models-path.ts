@@ -12,7 +12,7 @@ const nodeModulesModelsPath = path.join(
   "node_modules",
   "@vladmandic",
   "human-models",
-  "models",
+  "models"
 );
 
 const resolvedPath = fs.existsSync(standaloneModelsPath)

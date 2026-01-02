@@ -5,6 +5,9 @@
  * Converts technical error messages into actionable user guidance.
  */
 
+/** Matches "reason: <message>" pattern in viem/wagmi error messages */
+const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
+
 /**
  * Check if an error indicates user rejected the transaction.
  */
@@ -21,8 +24,12 @@ export function isUserRejectedError(error: unknown): boolean {
  * Extract message from various error types.
  */
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
   if (
     error &&
     typeof error === "object" &&
@@ -97,8 +104,10 @@ export function getUserFriendlyError(error: unknown): string {
   }
 
   // Extract the reason from viem/wagmi errors, or show first 3 lines
-  const reasonMatch = msg.match(/reason:\s*(.+)/);
-  if (reasonMatch) return reasonMatch[1];
+  const reasonMatch = msg.match(ERROR_REASON_PATTERN);
+  if (reasonMatch) {
+    return reasonMatch[1];
+  }
   return (
     msg.split("\n").slice(0, 3).join(" ").slice(0, 200) ||
     "An unexpected error occurred"
@@ -115,8 +124,10 @@ export function getUserFriendlyError(error: unknown): string {
 export function getAttestationError(error: unknown): string {
   const msg = getErrorMessage(error);
   // Extract the reason from viem/tRPC errors, or show more context
-  const reasonMatch = msg.match(/reason:\s*(.+)/);
-  if (reasonMatch) return reasonMatch[1];
+  const reasonMatch = msg.match(ERROR_REASON_PATTERN);
+  if (reasonMatch) {
+    return reasonMatch[1];
+  }
   return (
     msg.split("\n").slice(0, 3).join(" ").slice(0, 200) ||
     "An unexpected error occurred"

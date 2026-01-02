@@ -14,7 +14,7 @@
  */
 import "server-only";
 
-import type { ChallengeType } from "@/lib/liveness";
+import type { ChallengeType } from "@/lib/liveness/liveness-challenges";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
@@ -24,16 +24,6 @@ import {
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
 import { cropFaceRegion } from "@/lib/document/image-processing";
-import {
-  ANTISPOOF_LIVE_THRESHOLD,
-  ANTISPOOF_REAL_THRESHOLD,
-  BASELINE_CENTERED_THRESHOLD_DEG,
-  SMILE_DELTA_THRESHOLD,
-  SMILE_HIGH_THRESHOLD,
-  SMILE_SCORE_THRESHOLD,
-  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
-  TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness";
 import {
   getEmbeddingVector,
   getFacingDirection,
@@ -45,7 +35,17 @@ import {
   getYawDegrees,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+  BASELINE_CENTERED_THRESHOLD_DEG,
+  FACE_MATCH_MIN_CONFIDENCE,
+  SMILE_DELTA_THRESHOLD,
+  SMILE_HIGH_THRESHOLD,
+  SMILE_SCORE_THRESHOLD,
+  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
+  TURN_YAW_SIGNIFICANT_DELTA_DEG,
+} from "@/lib/liveness/liveness-policy";
 import {
   createLivenessSession,
   getChallengeInfo,
@@ -71,7 +71,7 @@ const verifySchema = z.object({
       // Client-provided turn start yaw for turn challenges
       // Server validates delta from this baseline instead of session baseline
       turnStartYaw: z.number().optional(),
-    }),
+    })
   ),
 });
 
@@ -92,7 +92,7 @@ export const livenessRouter = router({
       const onboardingSession = await getSessionFromCookie();
       const validation = validateStepAccess(
         onboardingSession,
-        "liveness-session",
+        "liveness-session"
       );
       if (!validation.valid) {
         throw new TRPCError({
@@ -103,7 +103,7 @@ export const livenessRouter = router({
 
       const session = createLivenessSession(
         input?.numChallenges ?? 2,
-        input?.requireHeadTurn ?? false,
+        input?.requireHeadTurn ?? false
       );
 
       const currentChallenge = getChallengeInfo(session);
@@ -135,7 +135,7 @@ export const livenessRouter = router({
       const onboardingSession = await getSessionFromCookie();
       const validation = validateStepAccess(
         onboardingSession,
-        "liveness-verify",
+        "liveness-verify"
       );
       if (!validation.valid) {
         throw new TRPCError({
@@ -154,7 +154,7 @@ export const livenessRouter = router({
 
       const expected = livenessSession.challenges;
       const received = input.challenges.map(
-        (c) => c.challengeType as ChallengeType,
+        (c) => c.challengeType as ChallengeType
       );
       const matches =
         expected.length === received.length &&
@@ -189,7 +189,7 @@ export const livenessRouter = router({
             faceDetected: true,
             challengeCount: input.challenges.length,
           },
-          "Liveness baseline processed",
+          "Liveness baseline processed"
         );
       }
 
@@ -228,7 +228,7 @@ export const livenessRouter = router({
               index,
               faceDetected: true,
             },
-            "Liveness challenge processed",
+            "Liveness challenge processed"
           );
         }
 
@@ -250,10 +250,10 @@ export const livenessRouter = router({
             allPassed = false;
             failureReasons.push(
               `smile: happy ${(happy * 100).toFixed(0)}% Δ${(delta * 100).toFixed(0)}% (req ≥${Math.round(
-                SMILE_SCORE_THRESHOLD * 100,
+                SMILE_SCORE_THRESHOLD * 100
               )}%+Δ≥${Math.round(SMILE_DELTA_THRESHOLD * 100)}% OR ≥${Math.round(
-                SMILE_HIGH_THRESHOLD * 100,
-              )}%)`,
+                SMILE_HIGH_THRESHOLD * 100
+              )}%)`
             );
           }
         } else if (
@@ -300,7 +300,7 @@ export const livenessRouter = router({
           if (!passed) {
             allPassed = false;
             failureReasons.push(
-              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° ref ${referenceYaw.toFixed(1)}° (baseCentered=${baselineWasCentered ? "yes" : "no"} abs=${yawPassesAbsolute ? "yes" : "no"} delta=${yawPassesDelta ? "yes" : "no"} dir=${turnedCorrectDirection ? "yes" : "no"})`,
+              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° ref ${referenceYaw.toFixed(1)}° (baseCentered=${baselineWasCentered ? "yes" : "no"} abs=${yawPassesAbsolute ? "yes" : "no"} delta=${yawPassesDelta ? "yes" : "no"} dir=${turnedCorrectDirection ? "yes" : "no"})`
             );
           }
         }
@@ -312,7 +312,7 @@ export const livenessRouter = router({
       if (!livenessPassed) {
         allPassed = false;
         failureReasons.push(
-          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}% (req ≥${Math.round(ANTISPOOF_REAL_THRESHOLD * 100)}%/${Math.round(ANTISPOOF_LIVE_THRESHOLD * 100)}%)`,
+          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}% (req ≥${Math.round(ANTISPOOF_REAL_THRESHOLD * 100)}%/${Math.round(ANTISPOOF_LIVE_THRESHOLD * 100)}%)`
         );
       }
 
@@ -377,7 +377,9 @@ export const livenessRouter = router({
 
           croppedFaceDataUrl = await cropFaceRegion(input.idImage, box);
           idResult = await detectFromBase64(croppedFaceDataUrl);
-        } catch {}
+        } catch {
+          /* Crop failed, fallback to initial detection result */
+        }
       }
 
       const selfieResult = await detectFromBase64(input.selfieImage);
@@ -385,7 +387,7 @@ export const livenessRouter = router({
       const idFace = getLargestFace(idResult);
       const selfieFace = getLargestFace(selfieResult);
 
-      if (!idFace || !selfieFace) {
+      if (!(idFace && selfieFace)) {
         return {
           matched: false,
           confidence: 0,
@@ -394,16 +396,16 @@ export const livenessRouter = router({
           processingTimeMs: Date.now() - startTime,
           idFaceExtracted: Boolean(idFace),
           idFaceImage: croppedFaceDataUrl ?? undefined,
-          error: !idFace
-            ? "No face detected in ID document"
-            : "No face detected in selfie",
+          error: idFace
+            ? "No face detected in selfie"
+            : "No face detected in ID document",
         };
       }
 
       const idEmb = getEmbeddingVector(idFace);
       const selfieEmb = getEmbeddingVector(selfieFace);
 
-      if (!idEmb || !selfieEmb) {
+      if (!(idEmb && selfieEmb)) {
         return {
           matched: false,
           confidence: 0,
@@ -412,9 +414,9 @@ export const livenessRouter = router({
           processingTimeMs: Date.now() - startTime,
           idFaceExtracted: true,
           idFaceImage: croppedFaceDataUrl ?? undefined,
-          error: !idEmb
-            ? "Failed to extract ID face embedding"
-            : "Failed to extract selfie face embedding",
+          error: idEmb
+            ? "Failed to extract selfie face embedding"
+            : "Failed to extract ID face embedding",
         };
       }
 

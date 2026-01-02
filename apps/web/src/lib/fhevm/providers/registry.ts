@@ -10,13 +10,13 @@ const registry = new Map<FhevmProviderId, FhevmProviderFactory>([
 
 export function registerFhevmProvider(
   id: FhevmProviderId,
-  factory: FhevmProviderFactory,
+  factory: FhevmProviderFactory
 ) {
   registry.set(id, factory);
 }
 
 export function resolveFhevmProviderFactory(
-  id: FhevmProviderId,
+  id: FhevmProviderId
 ): FhevmProviderFactory | undefined {
   return registry.get(id);
 }

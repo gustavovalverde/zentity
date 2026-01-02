@@ -8,6 +8,29 @@ import { expect, test } from "./fixtures/synpress";
 import { connectWalletIfNeeded } from "./helpers/connect-wallet";
 import { confirmSignature, confirmTransaction } from "./helpers/metamask";
 
+// Top-level regex patterns for lint/performance/useTopLevelRegex compliance
+const WELCOME_OR_SIGN_IN_PATTERN = /welcome back|sign in/i;
+const DASHBOARD_URL_PATTERN = /dashboard/;
+const ATTESTATION_URL_PATTERN = /dashboard\/attestation/;
+const WELCOME_HEADING_PATTERN = /welcome/i;
+const ON_CHAIN_ATTESTATION_HEADING = /On-Chain Attestation/i;
+const COMPLETE_VERIFICATION_TEXT = /Complete identity verification first/i;
+const REGISTER_ON_BUTTON = /Register on/i;
+const UPDATE_ATTESTATION_BUTTON = /Update Attestation/i;
+const ATTESTED_ON_TEXT = /Attested on/i;
+const TRANSACTION_PENDING_TEXT = /Transaction Pending/i;
+const CHECK_STATUS_BUTTON = /Check Status/i;
+const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
+const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
+const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
+const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
+const FHE_INITIALIZING_TEXT = /Initializing FHE encryption/i;
+const RECIPIENT_NOT_ATTESTED_TEXT = /Recipient not attested/i;
+const RECIPIENT_ATTESTED_TEXT = /Recipient is attested/i;
+const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
+const TRANSFER_SUCCESS_TEXT = /Transfer submitted!/i;
+const TRANSFER_REVERTED_TEXT = /transfer.*reverted/i;
+
 const sepoliaRpcUrl =
   process.env.E2E_SEPOLIA_RPC_URL ??
   process.env.NEXT_PUBLIC_FHEVM_RPC_URL ??
@@ -17,7 +40,7 @@ const sepoliaChainId = Number(
   process.env.E2E_SEPOLIA_CHAIN_ID ??
     process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID ??
     process.env.FHEVM_CHAIN_ID ??
-    11155111,
+    11_155_111
 );
 const sepoliaNetworkName =
   process.env.E2E_SEPOLIA_NETWORK_NAME ??
@@ -53,8 +76,7 @@ const sepoliaEnabled =
   process.env.E2E_SEPOLIA === "true" &&
   Boolean(sepoliaRpcUrl) &&
   Boolean(
-    process.env.FHEVM_REGISTRAR_PRIVATE_KEY ||
-      process.env.REGISTRAR_PRIVATE_KEY,
+    process.env.FHEVM_REGISTRAR_PRIVATE_KEY || process.env.REGISTRAR_PRIVATE_KEY
   ) &&
   Boolean(process.env.FHEVM_IDENTITY_REGISTRY) &&
   Boolean(process.env.FHEVM_COMPLIANCE_RULES) &&
@@ -73,7 +95,9 @@ function readAuthSeed() {
 }
 
 async function ensureSignedIn(page: Page) {
-  const signInHeading = page.locator("text=/welcome back|sign in/i").first();
+  const signInHeading = page
+    .locator(`text=${WELCOME_OR_SIGN_IN_PATTERN.source}`)
+    .first();
   if (!(await signInHeading.isVisible().catch(() => false))) {
     return;
   }
@@ -87,14 +111,14 @@ async function ensureSignedIn(page: Page) {
   await page.locator('input[type="email"]').fill(seed.email);
   await page.locator('input[type="password"]').fill(seed.password);
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL(/dashboard/, { timeout: 30_000 });
+  await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 30_000 });
 }
 
 test.describe("Web3 workflow (Sepolia)", () => {
   test.describe.configure({ timeout: 300_000 });
   test.skip(
     !sepoliaEnabled,
-    "Set E2E_SEPOLIA=true and configure FHEVM_* contract addresses + RPC URL to run Sepolia E2E.",
+    "Set E2E_SEPOLIA=true and configure FHEVM_* contract addresses + RPC URL to run Sepolia E2E."
   );
 
   test("attest, decrypt, grant compliance (and optionally mint + transfer)", async ({
@@ -125,8 +149,10 @@ test.describe("Web3 workflow (Sepolia)", () => {
     if (page.url().includes("/sign-in")) {
       await ensureSignedIn(page);
     }
-    await expect(page).toHaveURL(/dashboard/);
-    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible({
+    await expect(page).toHaveURL(DASHBOARD_URL_PATTERN);
+    await expect(
+      page.getByRole("heading", { name: WELCOME_HEADING_PATTERN })
+    ).toBeVisible({
       timeout: 60_000,
     });
 
@@ -139,12 +165,12 @@ test.describe("Web3 workflow (Sepolia)", () => {
     });
 
     await page.goto("/dashboard/attestation");
-    await expect(page).toHaveURL(/dashboard\/attestation/);
+    await expect(page).toHaveURL(ATTESTATION_URL_PATTERN);
     const attestationTitle = page.getByRole("heading", {
-      name: /On-Chain Attestation/i,
+      name: ON_CHAIN_ATTESTATION_HEADING,
     });
     await expect(attestationTitle).toBeVisible({ timeout: 60_000 });
-    const lockedText = page.getByText(/Complete identity verification first/i, {
+    const lockedText = page.getByText(COMPLETE_VERIFICATION_TEXT, {
       exact: false,
     });
     if (await lockedText.isVisible().catch(() => false)) {
@@ -152,7 +178,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
         "Attestation UI is locked because the identity verification data is missing. " +
           "Ensure the Next.js server is using the seeded E2E database " +
           "(set DATABASE_PATH=apps/web/e2e/.data/e2e.db or run Playwright with " +
-          "E2E_DATABASE_PATH pointing to the same file as the server).",
+          "E2E_DATABASE_PATH pointing to the same file as the server)."
       );
     }
 
@@ -163,12 +189,14 @@ test.describe("Web3 workflow (Sepolia)", () => {
       await networkButton.click();
     }
 
-    const registerButton = page.getByRole("button", { name: /Register on/i });
-    const updateAttestationButton = page.getByRole("button", {
-      name: /Update Attestation/i,
+    const registerButton = page.getByRole("button", {
+      name: REGISTER_ON_BUTTON,
     });
-    const attestedText = page.getByText(/Attested on/i, { exact: false });
-    const pendingText = page.getByText(/Transaction Pending/i, {
+    const updateAttestationButton = page.getByRole("button", {
+      name: UPDATE_ATTESTATION_BUTTON,
+    });
+    const attestedText = page.getByText(ATTESTED_ON_TEXT, { exact: false });
+    const pendingText = page.getByText(TRANSACTION_PENDING_TEXT, {
       exact: false,
     });
 
@@ -176,20 +204,20 @@ test.describe("Web3 workflow (Sepolia)", () => {
       registerButton
         .or(updateAttestationButton)
         .or(attestedText)
-        .or(pendingText),
+        .or(pendingText)
     ).toBeVisible({ timeout: 60_000 });
 
     if (await registerButton.isVisible()) {
       await registerButton.click();
       await confirmTransaction(metamask, {
         allowMissing: true,
-        timeoutMs: 4_000,
+        timeoutMs: 4000,
       });
     } else if (await updateAttestationButton.isVisible()) {
       await updateAttestationButton.click();
       await confirmTransaction(metamask, {
         allowMissing: true,
-        timeoutMs: 4_000,
+        timeoutMs: 4000,
       });
     }
 
@@ -198,7 +226,9 @@ test.describe("Web3 workflow (Sepolia)", () => {
     });
 
     if (await pendingText.isVisible()) {
-      const checkStatus = page.getByRole("button", { name: /Check Status/i });
+      const checkStatus = page.getByRole("button", {
+        name: CHECK_STATUS_BUTTON,
+      });
       for (let attempt = 0; attempt < 10; attempt += 1) {
         await checkStatus.click();
         try {
@@ -213,10 +243,12 @@ test.describe("Web3 workflow (Sepolia)", () => {
     await expect(attestedText).toBeVisible({ timeout: 120_000 });
 
     await expect(
-      page.getByText("Your On-Chain Identity", { exact: false }),
+      page.getByText("Your On-Chain Identity", { exact: false })
     ).toBeVisible({ timeout: 120_000 });
 
-    const decryptButton = page.getByRole("button", { name: /Decrypt & View/i });
+    const decryptButton = page.getByRole("button", {
+      name: DECRYPT_VIEW_BUTTON,
+    });
     await expect(decryptButton).toBeVisible();
     await expect(decryptButton).toBeEnabled({ timeout: 60_000 });
     await decryptButton.click();
@@ -225,22 +257,22 @@ test.describe("Web3 workflow (Sepolia)", () => {
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Level 3")).toBeVisible();
 
-    const complianceGrantedText = page.getByText(/Compliance access granted/i, {
+    const complianceGrantedText = page.getByText(COMPLIANCE_GRANTED_TEXT, {
       exact: false,
     });
     if (!(await complianceGrantedText.isVisible())) {
       const grantButton = page.getByRole("button", {
-        name: /Grant Compliance Access/i,
+        name: GRANT_COMPLIANCE_BUTTON,
       });
       await expect(grantButton).toBeVisible({ timeout: 30_000 });
       if (!(await grantButton.isEnabled().catch(() => false))) {
         test.skip(
           true,
-          "Grant Compliance Access is disabled (likely insufficient SepoliaETH). Fund the wallet and rerun.",
+          "Grant Compliance Access is disabled (likely insufficient SepoliaETH). Fund the wallet and rerun."
         );
       }
       await Promise.all([
-        confirmTransaction(metamask, { allowMissing: true, timeoutMs: 5_000 }),
+        confirmTransaction(metamask, { allowMissing: true, timeoutMs: 5000 }),
         grantButton.click(),
       ]);
     }
@@ -253,7 +285,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
 
     await page.goto("/dashboard/defi-demo");
     await expect(
-      page.getByRole("heading", { name: "DeFi Compliance Demo" }),
+      page.getByRole("heading", { name: "DeFi Compliance Demo" })
     ).toBeVisible();
 
     await expect(page.getByText("Mint Tokens", { exact: false })).toBeVisible();
@@ -264,13 +296,13 @@ test.describe("Web3 workflow (Sepolia)", () => {
     await mintButton.click();
 
     await expect(
-      page.getByText(/Tokens minted successfully/i, { exact: false }),
+      page.getByText(TOKENS_MINTED_TEXT, { exact: false })
     ).toBeVisible({ timeout: 120_000 });
 
     await expect(
-      page.getByText("Transfer", { exact: true }).first(),
+      page.getByText("Transfer", { exact: true }).first()
     ).toBeVisible();
-    await expect(page.getByText(/Initializing FHE encryption/i)).toBeHidden({
+    await expect(page.getByText(FHE_INITIALIZING_TEXT)).toBeHidden({
       timeout: 60_000,
     });
 
@@ -283,10 +315,10 @@ test.describe("Web3 workflow (Sepolia)", () => {
       await recipientInput.blur();
     }
 
-    const recipientWarning = page.getByText(/Recipient not attested/i, {
+    const recipientWarning = page.getByText(RECIPIENT_NOT_ATTESTED_TEXT, {
       exact: false,
     });
-    const recipientOk = page.getByText(/Recipient is attested/i, {
+    const recipientOk = page.getByText(RECIPIENT_ATTESTED_TEXT, {
       exact: false,
     });
 
@@ -305,14 +337,16 @@ test.describe("Web3 workflow (Sepolia)", () => {
     }
 
     await page.locator("#transfer-amount").fill("2");
-    const transferButton = page.getByRole("button", { name: /^Transfer$/ });
+    const transferButton = page.getByRole("button", {
+      name: TRANSFER_BUTTON_PATTERN,
+    });
     await expect(transferButton).toBeEnabled({ timeout: 60_000 });
     await Promise.all([confirmTransaction(metamask), transferButton.click()]);
 
-    const transferSuccess = page.getByText(/Transfer submitted!/i, {
+    const transferSuccess = page.getByText(TRANSFER_SUCCESS_TEXT, {
       exact: false,
     });
-    const transferError = page.getByText(/transfer.*reverted/i, {
+    const transferError = page.getByText(TRANSFER_REVERTED_TEXT, {
       exact: false,
     });
     await expect(transferSuccess.or(transferError)).toBeVisible({

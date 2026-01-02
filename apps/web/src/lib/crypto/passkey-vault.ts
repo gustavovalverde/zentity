@@ -1,6 +1,6 @@
 "use client";
 
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils";
+import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import { deriveKekFromPrf } from "./key-derivation";
 import { decryptAesGcm, encryptAesGcm } from "./symmetric-crypto";
@@ -83,7 +83,7 @@ export async function encryptSecretWithDek(params: {
     toArrayBuffer(params.dek),
     "AES-GCM",
     false,
-    ["encrypt", "decrypt"],
+    ["encrypt", "decrypt"]
   );
 
   const encrypted = await encryptAesGcm(dekKey, params.plaintext, aad);
@@ -118,7 +118,7 @@ export async function decryptSecretWithDek(params: {
     toArrayBuffer(params.dek),
     "AES-GCM",
     false,
-    ["decrypt"],
+    ["decrypt"]
   );
 
   return decryptAesGcm(
@@ -127,7 +127,7 @@ export async function decryptSecretWithDek(params: {
       iv: base64ToBytes(payload.iv),
       ciphertext: base64ToBytes(payload.ciphertext),
     },
-    aad,
+    aad
   );
 }
 
@@ -175,7 +175,7 @@ export async function unwrapDekWithPrf(params: {
       iv: base64ToBytes(payload.iv),
       ciphertext: base64ToBytes(payload.ciphertext),
     },
-    aad,
+    aad
   );
 }
 

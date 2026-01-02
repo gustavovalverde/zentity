@@ -1,11 +1,11 @@
-import type { FhevmProviderFactory } from "@/lib/fhevm/providers";
+import type { FhevmProviderFactory } from "@/lib/fhevm/providers/types";
 
 import { describe, expect, it } from "vitest";
 
 import {
   registerFhevmProvider,
   resolveFhevmProviderFactory,
-} from "@/lib/fhevm/providers";
+} from "@/lib/fhevm/providers/registry";
 
 describe("fhevm provider registry", () => {
   it("resolves built-in providers", () => {
@@ -22,7 +22,7 @@ describe("fhevm provider registry", () => {
   });
 
   it("registers custom providers", () => {
-    const factory: FhevmProviderFactory = async () => {
+    const factory: FhevmProviderFactory = () => {
       throw new Error("test provider should not be invoked");
     };
 

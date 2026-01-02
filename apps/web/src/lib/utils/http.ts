@@ -52,9 +52,9 @@ interface FetchJsonOptions extends RequestInit {
 
 export async function fetchJson<T>(
   url: string,
-  init?: FetchJsonOptions,
+  init?: FetchJsonOptions
 ): Promise<T> {
-  const { timeoutMs = 60000, ...fetchInit } = init ?? {};
+  const { timeoutMs = 60_000, ...fetchInit } = init ?? {};
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);

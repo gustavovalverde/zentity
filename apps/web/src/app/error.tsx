@@ -28,11 +28,13 @@ export default function Error({
       stack: error.stack,
     };
 
-    void fetch("/api/log-client-error", {
+    fetch("/api/log-client-error", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }).catch(() => {});
+    }).catch(() => {
+      // Logging failure shouldn't cascade to user
+    });
   }, [error]);
 
   return (
@@ -50,17 +52,17 @@ export default function Error({
         <CardContent className="flex flex-col gap-4">
           {process.env.NODE_ENV === "development" && error.message && (
             <div className="rounded-lg bg-muted p-3">
-              <p className="text-xs font-mono text-muted-foreground break-all">
+              <p className="break-all font-mono text-muted-foreground text-xs">
                 {error.message}
               </p>
-              {error.digest && (
-                <p className="text-xs text-muted-foreground mt-1">
+              {error.digest ? (
+                <p className="mt-1 text-muted-foreground text-xs">
                   Error ID: {error.digest}
                 </p>
-              )}
+              ) : null}
             </div>
           )}
-          <Button onClick={reset} className="w-full">
+          <Button className="w-full" onClick={reset}>
             Try again
           </Button>
         </CardContent>

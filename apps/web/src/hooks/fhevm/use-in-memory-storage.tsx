@@ -72,7 +72,7 @@ export const useInMemoryStorage = () => {
   const context = useContext(InMemoryStorageContext);
   if (!context) {
     throw new Error(
-      "useInMemoryStorage must be used within a InMemoryStorageProvider",
+      "useInMemoryStorage must be used within a InMemoryStorageProvider"
     );
   }
   return context;
@@ -89,7 +89,7 @@ export const InMemoryStorageProvider: React.FC<
 > = ({ children }) => {
   // useState with initializer function ensures storage is created only once
   const [storage] = useState<GenericStringStorage>(
-    () => new GenericStringInMemoryStorage(),
+    () => new GenericStringInMemoryStorage()
   );
 
   return (

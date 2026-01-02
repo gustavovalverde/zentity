@@ -52,7 +52,7 @@ describe("passkey-vault", () => {
         wrappedDek: envelope.wrappedDek,
         credentialId: "cred-2",
         prfOutput,
-      }),
+      })
     ).rejects.toThrow();
   });
 });

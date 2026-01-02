@@ -188,7 +188,7 @@ describe("identity queries", () => {
     expect(getZkProofsByUserId(userId)).toHaveLength(0);
     expect(getEncryptedAttributeTypesByUserId(userId)).toEqual([]);
     expect(
-      getAttestationEvidenceByUserAndDocument(userId, documentId),
+      getAttestationEvidenceByUserAndDocument(userId, documentId)
     ).toBeNull();
     expect(getEncryptedSecretByUserAndType(userId, "fhe_keys")).toBeNull();
     expect(getSecretWrappersBySecretId(secret.id)).toHaveLength(0);

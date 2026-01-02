@@ -5,7 +5,7 @@
  * results to the client via SSE stream.
  */
 
-import type { ChallengeType } from "@/lib/liveness";
+import type { ChallengeType } from "@/lib/liveness/liveness-challenges";
 
 import { randomUUID } from "node:crypto";
 
@@ -13,20 +13,21 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
-  SMILE_DELTA_THRESHOLD,
-  SMILE_HIGH_THRESHOLD,
-  SMILE_SCORE_THRESHOLD,
-  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
-  TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness";
-import {
   getFacingDirection,
   getHappyScore,
   getPrimaryFace,
   getYawDegrees,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64 } from "@/lib/liveness/human-server";
-import { createRequestLogger, sanitizeLogMessage } from "@/lib/logging";
+import {
+  SMILE_DELTA_THRESHOLD,
+  SMILE_HIGH_THRESHOLD,
+  SMILE_SCORE_THRESHOLD,
+  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
+  TURN_YAW_SIGNIFICANT_DELTA_DEG,
+} from "@/lib/liveness/liveness-policy";
+import { createRequestLogger } from "@/lib/logging/logger";
+import { sanitizeLogMessage } from "@/lib/logging/redact";
 
 import { sendSSEEvent } from "../stream/sse";
 
@@ -39,7 +40,7 @@ const frameSchema = z.object({
   turnStartYaw: z.number().optional(),
 });
 
-type ProgressResult = {
+interface ProgressResult extends Record<string, unknown> {
   challengeType: ChallengeType;
   faceDetected: boolean;
   progress: number; // 0-100
@@ -49,15 +50,18 @@ type ProgressResult = {
   happy?: number;
   yaw?: number;
   direction?: string;
-};
+}
 
-function calculateProgress(
-  challengeType: ChallengeType,
-  face: ReturnType<typeof getPrimaryFace>,
-  result: Awaited<ReturnType<typeof detectFromBase64>>,
-  baselineHappy?: number,
-  turnStartYaw?: number,
-): ProgressResult {
+interface CalculateProgressOptions {
+  challengeType: ChallengeType;
+  face: ReturnType<typeof getPrimaryFace>;
+  result: Awaited<ReturnType<typeof detectFromBase64>>;
+  baselineHappy?: number;
+  turnStartYaw?: number;
+}
+
+function calculateProgress(options: CalculateProgressOptions): ProgressResult {
+  const { challengeType, face, result, baselineHappy, turnStartYaw } = options;
   if (!face) {
     return {
       challengeType,
@@ -110,7 +114,7 @@ function calculateProgress(
   // Progress based on how close to threshold
   const progress = Math.min(
     (Math.abs(yaw) / TURN_YAW_ABSOLUTE_THRESHOLD_DEG) * 100,
-    100,
+    100
   );
 
   const yawPassesAbsolute = wantsLeft
@@ -122,23 +126,21 @@ function calculateProgress(
   const passed = correctDirection && (yawPassesAbsolute || yawPassesDelta);
 
   let hint: string | undefined;
-  if (!passed) {
-    if (dir === "center") {
-      hint = wantsLeft
-        ? "Turn your head to the left"
-        : "Turn your head to the right";
-    } else if (
-      (wantsLeft && yaw > referenceYaw) ||
-      (!wantsLeft && yaw < referenceYaw)
-    ) {
-      hint = `Turn the other way (${wantsLeft ? "left" : "right"})`;
-    } else if (progress < 50) {
-      hint = "Keep turning...";
-    } else {
-      hint = "Almost there, turn a bit more!";
-    }
-  } else {
+  if (passed) {
     hint = "Hold the turn...";
+  } else if (dir === "center") {
+    hint = wantsLeft
+      ? "Turn your head to the left"
+      : "Turn your head to the right";
+  } else if (
+    (wantsLeft && yaw > referenceYaw) ||
+    (!wantsLeft && yaw < referenceYaw)
+  ) {
+    hint = `Turn the other way (${wantsLeft ? "left" : "right"})`;
+  } else if (progress < 50) {
+    hint = "Keep turning...";
+  } else {
+    hint = "Almost there, turn a bit more!";
   }
 
   return {
@@ -167,7 +169,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.format() },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -186,13 +188,13 @@ export async function POST(req: NextRequest) {
     const face = getPrimaryFace(result);
 
     // Calculate progress
-    const progress = calculateProgress(
-      challengeType as ChallengeType,
+    const progress = calculateProgress({
+      challengeType: challengeType as ChallengeType,
       face,
       result,
       baselineHappy,
       turnStartYaw,
-    );
+    });
 
     // Push to SSE stream
     await sendSSEEvent(sessionId, "progress", progress);
@@ -206,14 +208,14 @@ export async function POST(req: NextRequest) {
         sessionId: sessionId ? `${sessionId.slice(0, 8)}...` : undefined,
         challengeType,
         error: sanitizeLogMessage(
-          error instanceof Error ? error.message : String(error),
+          error instanceof Error ? error.message : String(error)
         ),
       },
-      "Liveness frame processing failed",
+      "Liveness frame processing failed"
     );
     return NextResponse.json(
       { error: "Frame processing failed" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

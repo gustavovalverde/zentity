@@ -5,11 +5,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Progress } from "@/components/ui/progress";
 import {
-  checkPasswordPwned,
   getPasswordRequirementStatus,
   PASSWORD_MIN_LENGTH,
-} from "@/lib/auth";
-import { cn } from "@/lib/utils";
+} from "@/lib/auth/password-policy";
+import { checkPasswordPwned } from "@/lib/auth/password-pwned";
+import { cn } from "@/lib/utils/utils";
 
 /**
  * Live password requirements / strength UI.
@@ -36,6 +36,19 @@ type PwnedStatus =
   | { state: "compromised" }
   | { state: "error" };
 
+function getIndicatorClass(
+  ok: boolean,
+  tone: "neutral" | "danger" | "success"
+) {
+  if (!ok) {
+    return "border-muted-foreground/40 text-muted-foreground/60";
+  }
+  if (tone === "danger") {
+    return "border-destructive text-destructive";
+  }
+  return "border-success text-success";
+}
+
 function Requirement({
   ok,
   label,
@@ -48,22 +61,18 @@ function Requirement({
   return (
     <div className="flex items-center gap-2 text-xs">
       <span
+        aria-hidden
         className={cn(
           "inline-flex h-4 w-4 items-center justify-center rounded-full border",
-          ok
-            ? tone === "danger"
-              ? "border-destructive text-destructive"
-              : "border-success text-success"
-            : "border-muted-foreground/40 text-muted-foreground/60",
+          getIndicatorClass(ok, tone)
         )}
-        aria-hidden
       >
         {ok ? <Check className="h-3 w-3" /> : null}
       </span>
       <span
         className={cn(
           ok && tone === "danger" && "text-destructive",
-          ok && tone !== "danger" && "text-success",
+          ok && tone !== "danger" && "text-success"
         )}
       >
         {label}
@@ -93,7 +102,7 @@ export function PasswordRequirements({
    */
   onBreachStatusChange?: (
     status: PwnedStatus["state"],
-    checkedPassword: string | null,
+    checkedPassword: string | null
   ) => void;
 }) {
   const [pwned, setPwned] = useState<PwnedStatus>({ state: "idle" });
@@ -112,17 +121,19 @@ export function PasswordRequirements({
         email,
         documentNumber,
       }),
-    [password, email, documentNumber],
+    [password, email, documentNumber]
   );
 
-  const diversityMetCount = useMemo(() => {
-    return [
-      status.hasLower,
-      status.hasUpper,
-      status.hasNumber,
-      status.hasSymbol,
-    ].filter(Boolean).length;
-  }, [status.hasLower, status.hasUpper, status.hasNumber, status.hasSymbol]);
+  const diversityMetCount = useMemo(
+    () =>
+      [
+        status.hasLower,
+        status.hasUpper,
+        status.hasNumber,
+        status.hasSymbol,
+      ].filter(Boolean).length,
+    [status.hasLower, status.hasUpper, status.hasNumber, status.hasSymbol]
+  );
 
   const score = useMemo(() => {
     // Lightweight score purely for UX feedback (not used as a hard policy):
@@ -131,22 +142,30 @@ export function PasswordRequirements({
     // - similarity checks: up to 20 points
     const lengthPoints = Math.min(
       40,
-      Math.max(0, password.length - (PASSWORD_MIN_LENGTH - 1)) * 4,
+      Math.max(0, password.length - (PASSWORD_MIN_LENGTH - 1)) * 4
     );
     const diversityPoints = diversityMetCount * 10;
     const similarityPoints =
       (status.noEmail ? 10 : 0) + (status.noDocNumber ? 10 : 0);
     return Math.max(
       0,
-      Math.min(100, lengthPoints + diversityPoints + similarityPoints),
+      Math.min(100, lengthPoints + diversityPoints + similarityPoints)
     );
   }, [password.length, diversityMetCount, status.noEmail, status.noDocNumber]);
 
   const strengthLabel = useMemo(() => {
-    if (!password) return " ";
-    if (score >= 80) return "Strong";
-    if (score >= 55) return "Good";
-    if (score >= 30) return "Okay";
+    if (!password) {
+      return " ";
+    }
+    if (score >= 80) {
+      return "Strong";
+    }
+    if (score >= 55) {
+      return "Good";
+    }
+    if (score >= 30) {
+      return "Okay";
+    }
     return "Weak";
   }, [password, score]);
 
@@ -159,10 +178,16 @@ export function PasswordRequirements({
   }, [password]);
 
   useEffect(() => {
-    if (!breachCheckKey) return;
-    if (breachCheckKey === lastBreachCheckKeyRef.current) return;
+    if (!breachCheckKey) {
+      return;
+    }
+    if (breachCheckKey === lastBreachCheckKeyRef.current) {
+      return;
+    }
     lastBreachCheckKeyRef.current = breachCheckKey;
-    if (!password || password.length < PASSWORD_MIN_LENGTH) return;
+    if (!password || password.length < PASSWORD_MIN_LENGTH) {
+      return;
+    }
 
     const controller = new AbortController();
     abortRef.current?.abort();
@@ -173,13 +198,15 @@ export function PasswordRequirements({
     let isActive = true;
     const timeoutId = window.setTimeout(() => controller.abort(), 6000);
 
-    void (async () => {
+    (async () => {
       try {
         const data = await checkPasswordPwned(password, {
           signal: controller.signal,
         });
 
-        if (!isActive) return;
+        if (!isActive) {
+          return;
+        }
 
         if (data.skipped) {
           setPwned({ state: "error" });
@@ -193,12 +220,16 @@ export function PasswordRequirements({
         checkedPasswordRef.current = password;
         setPwned({ state: nextState });
         onBreachStatusChangeRef.current?.(nextState, password);
-      } catch (_err) {
-        if (!isActive) return;
+      } catch {
+        if (!isActive) {
+          return;
+        }
         setPwned({ state: "error" });
         onBreachStatusChangeRef.current?.("error", null);
       }
-    })();
+    })().catch(() => {
+      // Error handled via state updates
+    });
 
     return () => {
       isActive = false;
@@ -208,29 +239,31 @@ export function PasswordRequirements({
   }, [breachCheckKey, password]);
 
   const breachRow = useMemo(() => {
-    if (pwned.state === "idle") return null;
+    if (pwned.state === "idle") {
+      return null;
+    }
     if (pwned.state === "checking") {
       return (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+        <div className="flex items-center gap-2 text-muted-foreground text-xs">
+          <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
           <span>Checking known breaches…</span>
         </div>
       );
     }
     if (pwned.state === "safe") {
       return (
-        <div className="text-xs text-success">Not found in known breaches</div>
+        <div className="text-success text-xs">Not found in known breaches</div>
       );
     }
     if (pwned.state === "compromised") {
       return (
-        <div className="text-xs text-destructive">
+        <div className="text-destructive text-xs">
           Found in known breaches — choose a different password
         </div>
       );
     }
     return (
-      <div className="text-xs text-muted-foreground">
+      <div className="text-muted-foreground text-xs">
         Couldn’t check breaches right now — we’ll re-check when you submit.
       </div>
     );
@@ -239,49 +272,49 @@ export function PasswordRequirements({
   return (
     <div className="mt-2 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">Strength</span>
+        <span className="text-muted-foreground text-xs">Strength</span>
         <span
           className={cn(
-            "text-xs font-medium",
+            "font-medium text-xs",
             strengthLabel === "Strong" && "text-success",
             strengthLabel === "Good" && "text-success",
             strengthLabel === "Okay" && "text-muted-foreground",
-            strengthLabel === "Weak" && "text-destructive",
+            strengthLabel === "Weak" && "text-destructive"
           )}
         >
           {strengthLabel}
         </span>
       </div>
 
-      <Progress value={password ? score : 0} className="h-2" />
+      <Progress className="h-2" value={password ? score : 0} />
 
       <div className="space-y-1">
-        <div className="pt-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="pt-1 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
           Required
         </div>
         <Requirement
-          ok={status.lengthOk}
           label={`At least ${PASSWORD_MIN_LENGTH} characters`}
+          ok={status.lengthOk}
         />
-        {email?.split("@")[0] && (
-          <Requirement ok={status.noEmail} label="Doesn't contain your email" />
-        )}
-        {documentNumber && (
+        {email?.split("@")[0] ? (
+          <Requirement label="Doesn't contain your email" ok={status.noEmail} />
+        ) : null}
+        {documentNumber ? (
           <Requirement
-            ok={status.noDocNumber}
             label="Doesn't contain your document number"
+            ok={status.noDocNumber}
           />
-        )}
-        <div className="pt-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+        ) : null}
+        <div className="pt-2 font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
           Recommended
         </div>
-        <Requirement ok={status.hasLower} label="Includes a lowercase letter" />
+        <Requirement label="Includes a lowercase letter" ok={status.hasLower} />
         <Requirement
-          ok={status.hasUpper}
           label="Includes an uppercase letter"
+          ok={status.hasUpper}
         />
-        <Requirement ok={status.hasNumber} label="Includes a number" />
-        <Requirement ok={status.hasSymbol} label="Includes a symbol" />
+        <Requirement label="Includes a number" ok={status.hasNumber} />
+        <Requirement label="Includes a symbol" ok={status.hasSymbol} />
       </div>
 
       {breachRow ? <div aria-live="polite">{breachRow}</div> : null}

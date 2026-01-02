@@ -1,10 +1,10 @@
-import type { OnboardingSession } from "../schema";
+import type { OnboardingSession } from "../schema/onboarding";
 
 import { and, eq, gt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 import { db } from "../connection";
-import { onboardingSessions } from "../schema";
+import { onboardingSessions } from "../schema/onboarding";
 
 const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -14,7 +14,7 @@ const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
  * Returns the session including the sessionId for cookie storage.
  */
 export function upsertOnboardingSession(
-  data: Partial<OnboardingSession> & { id?: string; email?: string | null },
+  data: Partial<OnboardingSession> & { id?: string; email?: string | null }
 ): OnboardingSession {
   const sessionId = data.id ?? nanoid();
   const normalizedEmail = data.email?.toLowerCase().trim() ?? null;
@@ -89,7 +89,7 @@ export function upsertOnboardingSession(
  * Returns null if not found or expired.
  */
 export function getOnboardingSessionById(
-  sessionId: string,
+  sessionId: string
 ): OnboardingSession | null {
   const now = Math.floor(Date.now() / 1000);
 
@@ -99,8 +99,8 @@ export function getOnboardingSessionById(
     .where(
       and(
         eq(onboardingSessions.id, sessionId),
-        gt(onboardingSessions.expiresAt, now),
-      ),
+        gt(onboardingSessions.expiresAt, now)
+      )
     )
     .limit(1)
     .get();
@@ -140,7 +140,9 @@ export function cleanupExpiredOnboardingSessions(): number {
     .where(sql`${onboardingSessions.expiresAt} < ${now}`)
     .all();
 
-  if (expiredRows.length === 0) return 0;
+  if (expiredRows.length === 0) {
+    return 0;
+  }
 
   db.delete(onboardingSessions)
     .where(sql`${onboardingSessions.expiresAt} < ${now}`)

@@ -16,7 +16,7 @@ import { cookieStorage, createStorage, injected } from "@wagmi/core";
  * Uses the same chainId as Sepolia (11155111) with a public Sepolia RPC.
  */
 const FHEVM_CHAIN_ID = Number(
-  process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || 11155111,
+  process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || 11_155_111
 );
 const FHEVM_NETWORK_NAME =
   process.env.NEXT_PUBLIC_FHEVM_NETWORK_NAME || "fhEVM (Sepolia)";

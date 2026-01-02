@@ -40,7 +40,9 @@ interface VerificationProgressProps {
 
 export function VerificationProgress({ checks }: VerificationProgressProps) {
   const formatFheError = (issue?: string | null): string | null => {
-    if (!issue) return null;
+    if (!issue) {
+      return null;
+    }
     switch (issue) {
       case "fhe_key_missing":
         return "FHE key registration failed";
@@ -124,12 +126,12 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-lg">Verification Progress</CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           {completedCount}/7 verification checks complete
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Progress value={progress} className="h-2" />
+        <Progress className="h-2" value={progress} />
         <div className="space-y-3">
           {verificationChecks.map((check) => {
             const isFhe = check.id === "fheEncryption";
@@ -138,21 +140,23 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
               ? formatFheError(checks.fheError)
               : null;
             return (
-              <div key={check.id} className="flex items-center gap-3">
+              <div className="flex items-center gap-3" key={check.id}>
                 <div className="flex-shrink-0">
-                  {check.completed ? (
-                    <CheckCircle className="h-5 w-5 text-success" />
-                  ) : hasError ? (
-                    <XCircle className="h-5 w-5 text-destructive" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-muted-foreground" />
-                  )}
+                  {(() => {
+                    if (check.completed) {
+                      return <CheckCircle className="h-5 w-5 text-success" />;
+                    }
+                    if (hasError) {
+                      return <XCircle className="h-5 w-5 text-destructive" />;
+                    }
+                    return <Circle className="h-5 w-5 text-muted-foreground" />;
+                  })()}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">{check.icon}</span>
                     <span
-                      className={`text-sm font-medium ${
+                      className={`font-medium text-sm ${
                         check.completed
                           ? "text-foreground"
                           : "text-muted-foreground"
@@ -161,20 +165,30 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
                       {check.label}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">
+                  <p className="truncate text-muted-foreground text-xs">
                     {fheErrorLabel ?? check.description}
                   </p>
                 </div>
                 <Badge
-                  variant={
-                    check.completed
-                      ? "success"
-                      : hasError
-                        ? "destructive"
-                        : "outline"
-                  }
+                  variant={(() => {
+                    if (check.completed) {
+                      return "success";
+                    }
+                    if (hasError) {
+                      return "destructive";
+                    }
+                    return "outline";
+                  })()}
                 >
-                  {check.completed ? "Done" : hasError ? "Error" : "Pending"}
+                  {(() => {
+                    if (check.completed) {
+                      return "Done";
+                    }
+                    if (hasError) {
+                      return "Error";
+                    }
+                    return "Pending";
+                  })()}
                 </Badge>
               </div>
             );

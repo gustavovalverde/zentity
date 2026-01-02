@@ -5,6 +5,9 @@ vi.mock("server-only", () => ({}));
 
 import { logError, logWarn } from "../error-logger";
 
+/** Matches a 12-character lowercase hex fingerprint */
+const FINGERPRINT_PATTERN = /^[a-f0-9]{12}$/;
+
 describe("error logger", () => {
   const log = {
     error: vi.fn(),
@@ -23,7 +26,7 @@ describe("error logger", () => {
 
     const fingerprint = logError(err, { path: "identity.verify" }, log as any);
 
-    expect(fingerprint).toMatch(/^[a-f0-9]{12}$/);
+    expect(fingerprint).toMatch(FINGERPRINT_PATTERN);
     expect(log.error).toHaveBeenCalled();
 
     const payload = log.error.mock.calls[0][0] as Record<string, unknown>;

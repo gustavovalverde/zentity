@@ -21,7 +21,7 @@ export const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
  */
 function findViemError(
   error: unknown,
-  predicate: (err: unknown) => boolean,
+  predicate: (err: unknown) => boolean
 ): Error | null {
   if (error instanceof BaseError) {
     return (error.walk(predicate) as Error | null) ?? null;
@@ -57,7 +57,7 @@ export function categorizeError(error: unknown): AttestationErrorCode {
         err instanceof TimeoutError ||
         err instanceof HttpRequestError ||
         err instanceof WebSocketRequestError ||
-        err instanceof RpcRequestError,
+        err instanceof RpcRequestError
     )
   ) {
     return "NETWORK";
@@ -69,7 +69,7 @@ export function categorizeError(error: unknown): AttestationErrorCode {
       (err) =>
         err instanceof ExecutionRevertedError ||
         err instanceof ContractFunctionRevertedError ||
-        err instanceof InsufficientFundsError,
+        err instanceof InsufficientFundsError
     )
   ) {
     return "CONTRACT";

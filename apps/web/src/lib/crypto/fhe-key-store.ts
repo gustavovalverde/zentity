@@ -1,7 +1,7 @@
 "use client";
 
 import { trpc } from "@/lib/trpc/client";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils";
+import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import {
   createSecretEnvelope,
@@ -51,7 +51,7 @@ function serializeKeys(keys: StoredFheKeys): Uint8Array {
 
 function deserializeKeys(
   payload: Uint8Array,
-  metadata?: Record<string, unknown> | null,
+  metadata?: Record<string, unknown> | null
 ): StoredFheKeys {
   const parsed = JSON.parse(textDecoder.decode(payload)) as {
     clientKey: string;
@@ -73,7 +73,9 @@ function cacheKeys(secretId: string, keys: StoredFheKeys) {
 }
 
 function getCachedKeys(): StoredFheKeys | null {
-  if (!cached) return null;
+  if (!cached) {
+    return null;
+  }
   if (Date.now() - cached.cachedAt > CACHE_TTL_MS) {
     cached = undefined;
     return null;
@@ -113,7 +115,9 @@ export async function storeFheKeys(params: {
 
 export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
   const cachedKeys = getCachedKeys();
-  if (cachedKeys) return cachedKeys;
+  if (cachedKeys) {
+    return cachedKeys;
+  }
 
   const bundle = await trpc.secrets.getSecretBundle.query({
     secretType: SECRET_TYPE,
@@ -125,7 +129,7 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
 
   if (bundle.secret.version !== PASSKEY_VAULT_VERSION) {
     throw new Error(
-      "Unsupported secret version. Please re-secure your encryption keys.",
+      "Unsupported secret version. Please re-secure your encryption keys."
     );
   }
 
@@ -147,7 +151,7 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
     bundle.wrappers[0];
   if (selectedWrapper.kekVersion !== WRAP_VERSION) {
     throw new Error(
-      "Unsupported key wrapper version. Please re-add your passkey.",
+      "Unsupported key wrapper version. Please re-add your passkey."
     );
   }
   const prfOutput =

@@ -6,24 +6,26 @@ import type {
   IdentityJobStatus,
   IdentityVerificationDraft,
   IdentityVerificationJob,
-} from "../schema";
+} from "../schema/identity";
 
 import { desc, eq, sql } from "drizzle-orm";
 
 import { decryptFirstName } from "../../crypto/pii-encryption";
 import { db } from "../connection";
+import { attestationEvidence } from "../schema/attestation";
 import {
-  attestationEvidence,
   encryptedAttributes,
   encryptedSecrets,
+  secretWrappers,
+  signedClaims,
+  zkProofs,
+} from "../schema/crypto";
+import {
   identityBundles,
   identityDocuments,
   identityVerificationDrafts,
   identityVerificationJobs,
-  secretWrappers,
-  signedClaims,
-  zkProofs,
-} from "../schema";
+} from "../schema/identity";
 import {
   getSignedClaimTypesByUserAndDocument,
   getZkProofTypesByUserAndDocument,
@@ -114,7 +116,7 @@ export function getVerificationStatus(userId: string): {
 }
 
 export function getIdentityBundleByUserId(
-  userId: string,
+  userId: string
 ): IdentityBundle | null {
   const row = db
     .select()
@@ -127,7 +129,7 @@ export function getIdentityBundleByUserId(
 }
 
 export function getLatestIdentityDocumentByUserId(
-  userId: string,
+  userId: string
 ): IdentityDocument | null {
   const row = db
     .select()
@@ -136,7 +138,7 @@ export function getLatestIdentityDocumentByUserId(
     .orderBy(
       sql`CASE WHEN ${identityDocuments.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
       desc(identityDocuments.verifiedAt),
-      desc(identityDocuments.createdAt),
+      desc(identityDocuments.createdAt)
     )
     .limit(1)
     .get();
@@ -145,7 +147,7 @@ export function getLatestIdentityDocumentByUserId(
 }
 
 export function getIdentityDocumentsByUserId(
-  userId: string,
+  userId: string
 ): IdentityDocument[] {
   return db
     .select()
@@ -154,16 +156,18 @@ export function getIdentityDocumentsByUserId(
     .orderBy(
       sql`CASE WHEN ${identityDocuments.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
       desc(identityDocuments.verifiedAt),
-      desc(identityDocuments.createdAt),
+      desc(identityDocuments.createdAt)
     )
     .all();
 }
 
 export function getSelectedIdentityDocumentByUserId(
-  userId: string,
+  userId: string
 ): IdentityDocument | null {
   const documents = getIdentityDocumentsByUserId(userId);
-  if (documents.length === 0) return null;
+  if (documents.length === 0) {
+    return null;
+  }
 
   const proofRows = db
     .select({
@@ -186,7 +190,9 @@ export function getSelectedIdentityDocumentByUserId(
 
   const proofTypesByDocument = new Map<string, Set<string>>();
   for (const row of proofRows) {
-    if (!row.documentId || !row.verified) continue;
+    if (!(row.documentId && row.verified)) {
+      continue;
+    }
     if (!proofTypesByDocument.has(row.documentId)) {
       proofTypesByDocument.set(row.documentId, new Set());
     }
@@ -195,7 +201,9 @@ export function getSelectedIdentityDocumentByUserId(
 
   const claimTypesByDocument = new Map<string, Set<string>>();
   for (const row of claimRows) {
-    if (!row.documentId) continue;
+    if (!row.documentId) {
+      continue;
+    }
     if (!claimTypesByDocument.has(row.documentId)) {
       claimTypesByDocument.set(row.documentId, new Set());
     }
@@ -214,7 +222,9 @@ export function getSelectedIdentityDocumentByUserId(
     required.every((item) => set?.has(item));
 
   for (const doc of documents) {
-    if (doc.status !== "verified") continue;
+    if (doc.status !== "verified") {
+      continue;
+    }
     const proofs = proofTypesByDocument.get(doc.id);
     const claims = claimTypesByDocument.get(doc.id);
     if (hasAll(proofs, requiredProofs) && hasAll(claims, requiredClaims)) {
@@ -232,7 +242,7 @@ export function getSelectedIdentityDocumentByUserId(
 }
 
 export function getIdentityDraftById(
-  draftId: string,
+  draftId: string
 ): IdentityVerificationDraft | null {
   const row = db
     .select()
@@ -245,7 +255,7 @@ export function getIdentityDraftById(
 }
 
 export function getIdentityDraftBySessionId(
-  sessionId: string,
+  sessionId: string
 ): IdentityVerificationDraft | null {
   const row = db
     .select()
@@ -263,7 +273,7 @@ export function upsertIdentityDraft(
     id: string;
     onboardingSessionId: string;
     documentId: string;
-  },
+  }
 ): IdentityVerificationDraft {
   const now = new Date().toISOString();
   db.insert(identityVerificationDrafts)
@@ -340,7 +350,7 @@ export function upsertIdentityDraft(
 
 export function updateIdentityDraft(
   draftId: string,
-  updates: Partial<IdentityVerificationDraft>,
+  updates: Partial<IdentityVerificationDraft>
 ): void {
   db.update(identityVerificationDrafts)
     .set({
@@ -352,7 +362,7 @@ export function updateIdentityDraft(
 }
 
 export function getIdentityVerificationJobById(
-  jobId: string,
+  jobId: string
 ): IdentityVerificationJob | null {
   const row = db
     .select()
@@ -365,7 +375,7 @@ export function getIdentityVerificationJobById(
 }
 
 export function getLatestIdentityVerificationJobForDraft(
-  draftId: string,
+  draftId: string
 ): IdentityVerificationJob | null {
   const row = db
     .select()
@@ -474,13 +484,13 @@ export function updateIdentityBundleStatus(args: {
     status: args.status,
   };
 
-  if (args.policyVersion != null) {
+  if (args.policyVersion !== null) {
     updates.policyVersion = args.policyVersion;
   }
-  if (args.issuerId != null) {
+  if (args.issuerId !== null) {
     updates.issuerId = args.issuerId;
   }
-  if (args.attestationExpiresAt != null) {
+  if (args.attestationExpiresAt !== null) {
     updates.attestationExpiresAt = args.attestationExpiresAt;
   }
 
@@ -494,7 +504,7 @@ export function updateIdentityBundleStatus(args: {
 }
 
 export function createIdentityDocument(
-  data: Omit<IdentityDocument, "createdAt" | "updatedAt">,
+  data: Omit<IdentityDocument, "createdAt" | "updatedAt">
 ): void {
   db.insert(identityDocuments)
     .values({
@@ -503,9 +513,11 @@ export function createIdentityDocument(
     .run();
 }
 
-export async function getUserFirstName(userId: string): Promise<string | null> {
+export function getUserFirstName(userId: string): Promise<string | null> {
   const document = getSelectedIdentityDocumentByUserId(userId);
-  if (!document?.firstNameEncrypted) return null;
+  if (!document?.firstNameEncrypted) {
+    return Promise.resolve(null);
+  }
 
   return decryptFirstName(document.firstNameEncrypted);
 }

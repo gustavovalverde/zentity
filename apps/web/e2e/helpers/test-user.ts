@@ -11,11 +11,13 @@ export function readTestUserId(): string | null {
       cookies?: Array<{ name: string; value: string }>;
     };
     const sessionCookie = json.cookies?.find(
-      (cookie) => cookie.name === "better-auth.session_data",
+      (cookie) => cookie.name === "better-auth.session_data"
     );
-    if (!sessionCookie?.value) return null;
+    if (!sessionCookie?.value) {
+      return null;
+    }
     const decoded = JSON.parse(
-      Buffer.from(sessionCookie.value, "base64").toString("utf8"),
+      Buffer.from(sessionCookie.value, "base64").toString("utf8")
     ) as {
       session?: { user?: { id?: string } };
     };

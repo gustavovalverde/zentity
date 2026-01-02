@@ -34,7 +34,7 @@ describe("ocr-client request logging", () => {
         headers: expect.objectContaining({
           "X-Request-Id": "req-456",
         }),
-      }),
+      })
     );
   });
 });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import * as React from "react";
+import { Fragment } from "react";
 
 import {
   Breadcrumb,
@@ -79,7 +79,7 @@ export function DynamicBreadcrumb() {
     <Breadcrumb>
       <BreadcrumbList>
         {breadcrumbs.map((crumb, index) => (
-          <React.Fragment key={crumb.href}>
+          <Fragment key={crumb.href}>
             {index > 0 && <BreadcrumbSeparator />}
             <BreadcrumbItem>
               {crumb.isCurrent ? (
@@ -90,7 +90,7 @@ export function DynamicBreadcrumb() {
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>
-          </React.Fragment>
+          </Fragment>
         ))}
       </BreadcrumbList>
     </Breadcrumb>

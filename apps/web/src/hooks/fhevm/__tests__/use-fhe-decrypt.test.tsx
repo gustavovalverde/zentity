@@ -10,7 +10,7 @@ import { GenericStringInMemoryStorage } from "@/lib/fhevm/storage/generic-string
 
 type HookProps = Parameters<typeof useFHEDecrypt>[0];
 
-type TestEip712 = {
+interface TestEip712 {
   domain: {
     chainId: number;
     name: string;
@@ -29,9 +29,9 @@ type TestEip712 = {
   types: {
     [key: string]: { name: string; type: string }[];
   };
-};
+}
 
-const TEST_CHAIN_ID = 31337;
+const TEST_CHAIN_ID = 31_337;
 const VERIFYING_CONTRACT =
   "0x0000000000000000000000000000000000000001" as const;
 
@@ -40,13 +40,13 @@ function ensure0x(value: string): string {
 }
 
 function createTestInstance(
-  userDecryptImpl: FhevmInstance["userDecrypt"],
+  userDecryptImpl: FhevmInstance["userDecrypt"]
 ): FhevmInstance {
   const createEIP712 = (
     publicKey: string,
     contractAddresses: string[],
     startTimestamp: number | string,
-    durationDays: number | string,
+    durationDays: number | string
   ): TestEip712 => ({
     domain: {
       name: "Decryption",
@@ -93,11 +93,11 @@ describe("useFHEDecrypt", () => {
     const wallet = new Wallet(`0x${"11".repeat(32)}`);
     const storage = new GenericStringInMemoryStorage();
 
-    const instance = createTestInstance(async (handles) => {
+    const instance = createTestInstance((handles) => {
       const handleKey = handles[0]?.handle as string;
-      return {
+      return Promise.resolve({
         [handleKey]: BigInt(42),
-      };
+      });
     });
 
     const { result } = renderHook(() =>
@@ -107,14 +107,14 @@ describe("useFHEDecrypt", () => {
         fhevmDecryptionSignatureStorage: storage,
         chainId: TEST_CHAIN_ID,
         requests: [{ handle, contractAddress: VERIFYING_CONTRACT }],
-      }),
+      })
     );
 
     act(() => {
       result.current.decrypt();
     });
     await waitFor(() =>
-      expect(result.current.results[handle]).toBe(BigInt(42)),
+      expect(result.current.results[handle]).toBe(BigInt(42))
     );
 
     expect(result.current.error).toBeNull();
@@ -127,15 +127,15 @@ describe("useFHEDecrypt", () => {
     const storage = new GenericStringInMemoryStorage();
     let calls = 0;
 
-    const instance = createTestInstance(async (handles) => {
+    const instance = createTestInstance((handles) => {
       calls += 1;
       if (calls === 1) {
-        throw new Error("Invalid EIP-712 signature!");
+        return Promise.reject(new Error("Invalid EIP-712 signature!"));
       }
       const handleKey = handles[0]?.handle as string;
-      return {
+      return Promise.resolve({
         [handleKey]: BigInt(7),
-      };
+      });
     });
 
     const { result } = renderHook(() =>
@@ -145,7 +145,7 @@ describe("useFHEDecrypt", () => {
         fhevmDecryptionSignatureStorage: storage,
         chainId: TEST_CHAIN_ID,
         requests: [{ handle, contractAddress: VERIFYING_CONTRACT }],
-      }),
+      })
     );
 
     act(() => {
@@ -166,17 +166,17 @@ describe("useFHEDecrypt", () => {
     let secondCalls = 0;
     let refreshCalls = 0;
 
-    const instance1 = createTestInstance(async () => {
+    const instance1 = createTestInstance(() => {
       firstCalls += 1;
-      throw new Error("invalid eip-712 signature");
+      return Promise.reject(new Error("invalid eip-712 signature"));
     });
 
-    const instance2 = createTestInstance(async (handles) => {
+    const instance2 = createTestInstance((handles) => {
       secondCalls += 1;
       const handleKey = handles[0]?.handle as string;
-      return {
+      return Promise.resolve({
         [handleKey]: BigInt(9),
-      };
+      });
     });
 
     let currentInstance = instance1;
@@ -189,7 +189,7 @@ describe("useFHEDecrypt", () => {
       requests: [{ handle, contractAddress: VERIFYING_CONTRACT }],
     };
 
-    const refreshFhevmInstance = async () => {
+    const refreshFhevmInstance = () => {
       refreshCalls += 1;
       currentInstance = instance2;
       const doRerender = rerenderHook;

@@ -13,6 +13,9 @@ import {
   listGroups,
 } from "../zk/nationality-merkle";
 
+/** Matches a lowercase hex string with 0x prefix */
+const HEX_STRING_PATTERN = /^0x[0-9a-f]+$/;
+
 describe("nationality-merkle", () => {
   describe("listGroups", () => {
     it("should return all country groups", () => {
@@ -100,7 +103,7 @@ describe("nationality-merkle", () => {
 
     it("should throw for unknown group", async () => {
       await expect(getMerkleRoot("UNKNOWN")).rejects.toThrow(
-        "Unknown country group",
+        "Unknown country group"
       );
     });
   });
@@ -110,13 +113,13 @@ describe("nationality-merkle", () => {
       const inputs = await generateNationalityProofInputs("DEU", "EU");
 
       expect(inputs.nationalityCodeNumeric).toBe(276);
-      expect(inputs.merkleRoot).toMatch(/^0x[0-9a-f]+$/);
+      expect(inputs.merkleRoot).toMatch(HEX_STRING_PATTERN);
       expect(inputs.pathElements).toHaveLength(8); // TREE_DEPTH = 8
       expect(inputs.pathIndices).toHaveLength(8);
 
       // Each path element should be a hex string
       for (const elem of inputs.pathElements) {
-        expect(elem).toMatch(/^0x[0-9a-f]+$/);
+        expect(elem).toMatch(HEX_STRING_PATTERN);
       }
 
       // Each path index should be 0 or 1
@@ -127,19 +130,19 @@ describe("nationality-merkle", () => {
 
     it("should throw for non-member nationality", async () => {
       await expect(generateNationalityProofInputs("USA", "EU")).rejects.toThrow(
-        "USA is not a member of EU",
+        "USA is not a member of EU"
       );
     });
 
     it("should throw for unknown nationality", async () => {
       await expect(generateNationalityProofInputs("XYZ", "EU")).rejects.toThrow(
-        "Unknown nationality code",
+        "Unknown nationality code"
       );
     });
 
     it("should throw for unknown group", async () => {
       await expect(
-        generateNationalityProofInputs("DEU", "UNKNOWN"),
+        generateNationalityProofInputs("DEU", "UNKNOWN")
       ).rejects.toThrow("Unknown country group");
     });
 
@@ -152,7 +155,7 @@ describe("nationality-merkle", () => {
 
       // Different nationality codes
       expect(deuInputs.nationalityCodeNumeric).not.toBe(
-        fraInputs.nationalityCodeNumeric,
+        fraInputs.nationalityCodeNumeric
       );
 
       // Path elements or indices should differ (different leaf positions)

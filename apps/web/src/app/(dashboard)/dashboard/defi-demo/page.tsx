@@ -25,14 +25,14 @@ export default async function DefiDemoPage() {
 
   // Find confirmed attestation (prefer hardhat for local dev)
   const confirmedAttestation = attestations.find(
-    (a) => a.status === "confirmed",
+    (a) => a.status === "confirmed"
   );
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">DeFi Compliance Demo</h1>
+          <h1 className="font-bold text-3xl">DeFi Compliance Demo</h1>
           <p className="text-muted-foreground">
             Experience compliant token transfers with encrypted identity
           </p>
@@ -40,9 +40,9 @@ export default async function DefiDemoPage() {
       </div>
 
       <DefiDemoClient
-        isVerified={verificationStatus?.verified ?? false}
         attestedNetworkId={confirmedAttestation?.networkId ?? null}
         attestedWallet={confirmedAttestation?.walletAddress ?? null}
+        isVerified={verificationStatus?.verified ?? false}
       />
     </div>
   );

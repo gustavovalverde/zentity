@@ -70,7 +70,7 @@ export default async function AttestationPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">On-Chain Attestation</h1>
+          <h1 className="font-bold text-3xl">On-Chain Attestation</h1>
           <p className="text-muted-foreground">
             Register your verified identity on blockchain networks
           </p>
@@ -87,43 +87,43 @@ export default async function AttestationPage() {
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <p className="text-xs text-muted-foreground">Bundle Status</p>
+              <p className="text-muted-foreground text-xs">Bundle Status</p>
               <p className="font-medium capitalize">
                 {identityBundle?.status ?? "pending"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Policy Version</p>
+              <p className="text-muted-foreground text-xs">Policy Version</p>
               <p className="font-medium">
                 {identityBundle?.policyVersion ?? "unversioned"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Issuer</p>
+              <p className="text-muted-foreground text-xs">Issuer</p>
               <p className="font-medium">
                 {identityBundle?.issuerId ?? "zentity-attestation"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Document Type</p>
+              <p className="text-muted-foreground text-xs">Document Type</p>
               <p className="font-medium">
                 {latestDocument?.documentType ?? "not available"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Issuer Country</p>
+              <p className="text-muted-foreground text-xs">Issuer Country</p>
               <p className="font-medium">
                 {latestDocument?.issuerCountry ?? "not available"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Document Status</p>
+              <p className="text-muted-foreground text-xs">Document Status</p>
               <p className="font-medium capitalize">
                 {latestDocument?.status ?? "pending"}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Verified At</p>
+              <p className="text-muted-foreground text-xs">Verified At</p>
               <p className="font-medium">
                 {latestDocument?.verifiedAt
                   ? new Date(latestDocument.verifiedAt).toLocaleDateString()
@@ -133,15 +133,15 @@ export default async function AttestationPage() {
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">Proofs</p>
+            <p className="mb-2 font-medium text-sm">Proofs</p>
             <div className="flex flex-wrap gap-2">
               {proofTypes.length === 0 ? (
-                <Badge variant="outline" className="text-xs">
+                <Badge className="text-xs" variant="outline">
                   None stored yet
                 </Badge>
               ) : (
                 proofTypes.map((proof) => (
-                  <Badge key={proof} variant="secondary" className="text-xs">
+                  <Badge className="text-xs" key={proof} variant="secondary">
                     {proofLabels[proof] ?? proof}
                   </Badge>
                 ))
@@ -150,15 +150,15 @@ export default async function AttestationPage() {
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">Signed Claims</p>
+            <p className="mb-2 font-medium text-sm">Signed Claims</p>
             <div className="flex flex-wrap gap-2">
               {signedClaimTypes.length === 0 ? (
-                <Badge variant="outline" className="text-xs">
+                <Badge className="text-xs" variant="outline">
                   None stored yet
                 </Badge>
               ) : (
                 signedClaimTypes.map((claim) => (
-                  <Badge key={claim} variant="secondary" className="text-xs">
+                  <Badge className="text-xs" key={claim} variant="secondary">
                     {claimLabels[claim] ?? claim}
                   </Badge>
                 ))
@@ -167,15 +167,15 @@ export default async function AttestationPage() {
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">Encrypted Attributes</p>
+            <p className="mb-2 font-medium text-sm">Encrypted Attributes</p>
             <div className="flex flex-wrap gap-2">
               {encryptedAttributes.length === 0 ? (
-                <Badge variant="outline" className="text-xs">
+                <Badge className="text-xs" variant="outline">
                   None stored yet
                 </Badge>
               ) : (
                 encryptedAttributes.map((attr) => (
-                  <Badge key={attr} variant="secondary" className="text-xs">
+                  <Badge className="text-xs" key={attr} variant="secondary">
                     {attr}
                   </Badge>
                 ))

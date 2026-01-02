@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { usePublicClient } from "wagmi";
 
-const HARDHAT_CHAIN_ID = 31337;
+const HARDHAT_CHAIN_ID = 31_337;
 const DEV_FAUCET_WEI = "0x8AC7230489E80000"; // 10 ETH
 
 export function useDevFaucet(chainId?: number) {
@@ -15,7 +15,7 @@ export function useDevFaucet(chainId?: number) {
 
   const faucet = useCallback(
     async (address?: `0x${string}`) => {
-      if (!address || !publicClient || chainId !== HARDHAT_CHAIN_ID) {
+      if (!(address && publicClient) || chainId !== HARDHAT_CHAIN_ID) {
         return false;
       }
 
@@ -41,7 +41,7 @@ export function useDevFaucet(chainId?: number) {
         setIsFauceting(false);
       }
     },
-    [publicClient, chainId],
+    [publicClient, chainId]
   );
 
   return {

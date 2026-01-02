@@ -14,7 +14,7 @@
  */
 import "server-only";
 
-import type { OcrProcessResult } from "@/lib/document";
+import type { OcrProcessResult } from "@/lib/document/ocr-client";
 
 import crypto from "node:crypto";
 
@@ -28,7 +28,7 @@ import {
   getDocumentHashField,
 } from "@/lib/attestation/claim-hash";
 import { ISSUER_ID, POLICY_VERSION } from "@/lib/attestation/policy";
-import { sha256CommitmentHex } from "@/lib/crypto";
+import { sha256CommitmentHex } from "@/lib/crypto/commitments";
 import { encryptBatchFhe, FheServiceError } from "@/lib/crypto/fhe-client";
 import {
   decryptUserSalt,
@@ -63,17 +63,12 @@ import {
   upsertIdentityBundle,
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
-import { identityVerificationJobs } from "@/lib/db/schema";
-import { processDocument } from "@/lib/document";
+import { identityVerificationJobs } from "@/lib/db/schema/identity";
+import { processDocument } from "@/lib/document/document-ocr";
 import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { calculateBirthYearOffset } from "@/lib/identity/birth-year";
 import { countryCodeToNumeric } from "@/lib/identity/compliance";
-import {
-  ANTISPOOF_LIVE_THRESHOLD,
-  ANTISPOOF_REAL_THRESHOLD,
-  FACE_MATCH_MIN_CONFIDENCE,
-} from "@/lib/liveness";
 import {
   getEmbeddingVector,
   getLargestFace,
@@ -81,11 +76,25 @@ import {
   getRealScore,
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
-import { hashIdentifier, withSpan } from "@/lib/observability";
-import { buildDisplayName } from "@/lib/utils";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+  FACE_MATCH_MIN_CONFIDENCE,
+} from "@/lib/liveness/liveness-policy";
+import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
+import { buildDisplayName } from "@/lib/utils/name-utils";
 import { getNationalityCode } from "@/lib/zk/nationality-data";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
+
+/** Matches Unicode diacritical marks for name normalization */
+const DIACRITICS_PATTERN = /[\u0300-\u036f]/g;
+
+/** Matches a string containing only digits */
+const DIGITS_ONLY_PATTERN = /^\d+$/;
+
+/** Matches one or more whitespace characters for splitting names */
+const WHITESPACE_PATTERN = /\s+/;
 
 // Face match threshold aligned with policy (see liveness-policy).
 
@@ -97,7 +106,9 @@ const RATE_LIMIT_MAX_REQUESTS = 10;
 let lastRateLimitCleanupTimeMs = 0;
 
 function cleanupRateLimitMap(now: number): void {
-  if (now - lastRateLimitCleanupTimeMs < RATE_LIMIT_WINDOW_MS) return;
+  if (now - lastRateLimitCleanupTimeMs < RATE_LIMIT_WINDOW_MS) {
+    return;
+  }
   lastRateLimitCleanupTimeMs = now;
 
   for (const [ip, record] of rateLimitMap.entries()) {
@@ -117,7 +128,9 @@ function isRateLimited(ip: string): boolean {
     return false;
   }
 
-  if (record.count >= RATE_LIMIT_MAX_REQUESTS) return true;
+  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return true;
+  }
   record.count++;
   return false;
 }
@@ -172,9 +185,9 @@ interface VerifyIdentityResponse {
 function normalizeName(name: string): string {
   return name
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(DIACRITICS_PATTERN, "")
     .toUpperCase()
-    .split(/\s+/)
+    .split(WHITESPACE_PATTERN)
     .filter(Boolean)
     .join(" ");
 }
@@ -190,7 +203,9 @@ function generateNameCommitment(fullName: string, userSalt: string): string {
 }
 
 function parseBirthYear(dateValue?: string | null): number | null {
-  if (!dateValue) return null;
+  if (!dateValue) {
+    return null;
+  }
   if (dateValue.includes("/")) {
     const parts = dateValue.split("/");
     if (parts.length === 3) {
@@ -213,7 +228,9 @@ function parseBirthYear(dateValue?: string | null): number | null {
 }
 
 function parseDateToInt(dateValue?: string | null): number | null {
-  if (!dateValue) return null;
+  if (!dateValue) {
+    return null;
+  }
   if (dateValue.includes("/")) {
     const parts = dateValue.split("/");
     if (parts.length === 3) {
@@ -225,7 +242,7 @@ function parseDateToInt(dateValue?: string | null): number | null {
         Number.isFinite(month) &&
         Number.isFinite(day)
       ) {
-        return year * 10000 + month * 100 + day;
+        return year * 10_000 + month * 100 + day;
       }
     }
   }
@@ -240,11 +257,11 @@ function parseDateToInt(dateValue?: string | null): number | null {
         Number.isFinite(month) &&
         Number.isFinite(day)
       ) {
-        return year * 10000 + month * 100 + day;
+        return year * 10_000 + month * 100 + day;
       }
     }
   }
-  if (dateValue.length === 8 && /^\d+$/.test(dateValue)) {
+  if (dateValue.length === 8 && DIGITS_ONLY_PATTERN.test(dateValue)) {
     const year = Number.parseInt(dateValue.slice(0, 4), 10);
     const month = Number.parseInt(dateValue.slice(4, 6), 10);
     const day = Number.parseInt(dateValue.slice(6, 8), 10);
@@ -253,7 +270,7 @@ function parseDateToInt(dateValue?: string | null): number | null {
       Number.isFinite(month) &&
       Number.isFinite(day)
     ) {
-      return year * 10000 + month * 100 + day;
+      return year * 10_000 + month * 100 + day;
     }
   }
   return null;
@@ -262,16 +279,22 @@ function parseDateToInt(dateValue?: string | null): number | null {
 const activeIdentityJobs = new Set<string>();
 
 function scheduleIdentityJob(jobId: string): void {
-  if (activeIdentityJobs.has(jobId)) return;
+  if (activeIdentityJobs.has(jobId)) {
+    return;
+  }
   activeIdentityJobs.add(jobId);
   setTimeout(() => {
-    void processIdentityVerificationJob(jobId).finally(() => {
-      activeIdentityJobs.delete(jobId);
-    });
+    processIdentityVerificationJob(jobId)
+      .finally(() => {
+        activeIdentityJobs.delete(jobId);
+      })
+      .catch(() => {
+        // Error logged above; prevents unhandled rejection
+      });
   }, 0);
 }
 
-async function processIdentityVerificationJob(jobId: string): Promise<void> {
+function processIdentityVerificationJob(jobId: string): Promise<void> {
   return withSpan(
     "identity.finalize_job",
     {
@@ -289,8 +312,8 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
         .where(
           and(
             eq(identityVerificationJobs.id, jobId),
-            eq(identityVerificationJobs.status, "queued"),
-          ),
+            eq(identityVerificationJobs.status, "queued")
+          )
         )
         .run();
 
@@ -337,12 +360,21 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
         span.setAttribute("identity.liveness_passed", livenessPassed);
         span.setAttribute("identity.face_match_passed", faceMatchPassed);
 
-        if (!documentProcessed) issues.push("document_processing_failed");
-        if (documentProcessed && !isDocumentValid)
+        if (!documentProcessed) {
+          issues.push("document_processing_failed");
+        }
+        if (documentProcessed && !isDocumentValid) {
           issues.push("document_invalid");
-        if (isDuplicateDocument) issues.push("duplicate_document");
-        if (!livenessPassed) issues.push("liveness_failed");
-        if (!faceMatchPassed) issues.push("face_match_failed");
+        }
+        if (isDuplicateDocument) {
+          issues.push("duplicate_document");
+        }
+        if (!livenessPassed) {
+          issues.push("liveness_failed");
+        }
+        if (!faceMatchPassed) {
+          issues.push("face_match_failed");
+        }
 
         const documentHash = draft.documentHash ?? null;
         let documentHashField = draft.documentHashField ?? null;
@@ -433,9 +465,9 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
         ) {
           try {
             const antispoofScoreFixed = Math.round(
-              draft.antispoofScore * 10000,
+              draft.antispoofScore * 10_000
             );
-            const liveScoreFixed = Math.round(draft.liveScore * 10000);
+            const liveScoreFixed = Math.round(draft.liveScore * 10_000);
 
             const livenessClaimPayload = {
               type: "liveness_score" as const,
@@ -476,10 +508,10 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
         ) {
           try {
             const confidenceFixed = Math.round(
-              draft.faceMatchConfidence * 10000,
+              draft.faceMatchConfidence * 10_000
             );
             const thresholdFixed = Math.round(
-              FACE_MATCH_MIN_CONFIDENCE * 10000,
+              FACE_MATCH_MIN_CONFIDENCE * 10_000
             );
             const claimHash = await computeClaimHash({
               value: confidenceFixed,
@@ -504,7 +536,7 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
             };
 
             const faceMatchSignature = await signAttestationClaim(
-              faceMatchClaimPayload,
+              faceMatchClaimPayload
             );
             insertSignedClaim({
               id: uuidv4(),
@@ -542,7 +574,7 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
         const recordFheFailure = (
           issue: string,
           operation: string,
-          error: unknown,
+          error: unknown
         ) => {
           issues.push(issue);
           if (error instanceof FheServiceError) {
@@ -557,21 +589,24 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
             return;
           }
 
+          let errorMessage = "Missing FHE key material";
+          if (error instanceof Error) {
+            errorMessage = error.message;
+          } else if (error) {
+            errorMessage = String(error);
+          }
           fheErrors.push({
             operation,
             issue,
             kind: "unknown",
-            message:
-              error instanceof Error
-                ? error.message
-                : error
-                  ? String(error)
-                  : "Missing FHE key material",
+            message: errorMessage,
           });
         };
 
         const reportMissingFheKey = () => {
-          if (fheKeyMissingReported) return;
+          if (fheKeyMissingReported) {
+            return;
+          }
           fheKeyMissingReported = true;
           recordFheFailure("fhe_key_missing", "key_registration", null);
         };
@@ -586,9 +621,7 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
           typeof livenessScore === "number";
 
         if (needsEncryption) {
-          if (!hasFheKeyMaterial || !job.fheKeyId) {
-            reportMissingFheKey();
-          } else {
+          if (hasFheKeyMaterial && job.fheKeyId) {
             try {
               const batchResult = await encryptBatchFhe({
                 keyId: job.fheKeyId,
@@ -632,14 +665,14 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
                 recordFheFailure(
                   isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
                   "encrypt_birth_year_offset",
-                  error,
+                  error
                 );
               }
               if (countryCodeNumeric > 0) {
                 recordFheFailure(
                   isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
                   "encrypt_country_code",
-                  error,
+                  error
                 );
               }
               if (typeof livenessScore === "number") {
@@ -648,29 +681,35 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
                     ? "liveness_score_fhe_encryption_failed"
                     : "liveness_score_fhe_service_unavailable",
                   "encrypt_liveness",
-                  error,
+                  error
                 );
               }
             }
+          } else {
+            reportMissingFheKey();
           }
         }
 
         const birthYearOffsetEncrypted = Boolean(
-          birthYearOffsetFheResult?.ciphertext,
+          birthYearOffsetFheResult?.ciphertext
         );
         const countryCodeEncrypted = Boolean(countryCodeFheResult?.ciphertext);
         const livenessScoreEncrypted = Boolean(
-          livenessScoreFheResult?.ciphertext,
+          livenessScoreFheResult?.ciphertext
         );
         const fheSucceeded =
           birthYearOffsetEncrypted ||
           countryCodeEncrypted ||
           livenessScoreEncrypted;
-        const fheStatus: "pending" | "complete" | "error" = fheSucceeded
-          ? "complete"
-          : fheErrors.length > 0
-            ? "error"
-            : "pending";
+        const fheStatus = ((): "pending" | "complete" | "error" => {
+          if (fheSucceeded) {
+            return "complete";
+          }
+          if (fheErrors.length > 0) {
+            return "error";
+          }
+          return "pending";
+        })();
 
         const verified =
           documentProcessed &&
@@ -679,11 +718,15 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
           faceMatchPassed &&
           !isDuplicateDocument;
 
-        const bundleStatus = verified
-          ? "pending"
-          : documentProcessed
-            ? "failed"
-            : "pending";
+        const bundleStatus = ((): "pending" | "verified" | "failed" => {
+          if (verified) {
+            return "pending";
+          }
+          if (documentProcessed) {
+            return "failed";
+          }
+          return "pending";
+        })();
         const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
           userId: job.userId,
           status: bundleStatus,
@@ -801,7 +844,7 @@ async function processIdentityVerificationJob(jobId: string): Promise<void> {
         });
         span.setAttribute("identity.job_error", true);
       }
-    },
+    }
   );
 }
 
@@ -836,23 +879,22 @@ export const identityRouter = router({
 
       ctx.span?.setAttribute(
         "onboarding.document_image_bytes",
-        Buffer.byteLength(input.image),
+        Buffer.byteLength(input.image)
       );
 
       try {
         return await processDocument(input.image, ctx.requestId);
       } catch (error) {
-        if (error instanceof Error) {
-          if (
-            error.message.includes("ECONNREFUSED") ||
-            error.message.includes("fetch failed")
-          ) {
-            throw new TRPCError({
-              code: "SERVICE_UNAVAILABLE",
-              message:
-                "Document processing service unavailable. Please try again later.",
-            });
-          }
+        if (
+          error instanceof Error &&
+          (error.message.includes("ECONNREFUSED") ||
+            error.message.includes("fetch failed"))
+        ) {
+          throw new TRPCError({
+            code: "SERVICE_UNAVAILABLE",
+            message:
+              "Document processing service unavailable. Please try again later.",
+          });
         }
 
         throw new TRPCError({
@@ -872,7 +914,7 @@ export const identityRouter = router({
     .mutation(async ({ ctx, input }) => {
       const session = await getSessionFromCookie();
       const validation = validateStepAccess(session, "process-document");
-      if (!validation.valid || !validation.session) {
+      if (!(validation.valid && validation.session)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: validation.error || "Session required",
@@ -881,7 +923,7 @@ export const identityRouter = router({
 
       ctx.span?.setAttribute(
         "onboarding.document_image_bytes",
-        Buffer.byteLength(input.image),
+        Buffer.byteLength(input.image)
       );
 
       let documentResult: OcrProcessResult | null = null;
@@ -928,13 +970,13 @@ export const identityRouter = router({
       }
 
       const birthYear = parseBirthYear(
-        documentResult?.extractedData?.dateOfBirth,
+        documentResult?.extractedData?.dateOfBirth
       );
       const expiryDateInt = parseDateToInt(
-        documentResult?.extractedData?.expirationDate,
+        documentResult?.extractedData?.expirationDate
       );
       const birthYearOffset = calculateBirthYearOffset(
-        documentResult?.extractedData?.dateOfBirth,
+        documentResult?.extractedData?.dateOfBirth
       );
 
       const nationalityCode =
@@ -971,12 +1013,12 @@ export const identityRouter = router({
 
       ctx.span?.setAttribute(
         "onboarding.document_processed",
-        documentProcessed,
+        documentProcessed
       );
       ctx.span?.setAttribute("onboarding.document_valid", isDocumentValid);
       ctx.span?.setAttribute(
         "onboarding.document_duplicate",
-        isDuplicateDocument,
+        isDuplicateDocument
       );
       ctx.span?.setAttribute("onboarding.issues_count", issues.length);
 
@@ -1036,9 +1078,9 @@ export const identityRouter = router({
       };
     }),
   /** Returns the current verification status for the authenticated user. */
-  status: protectedProcedure.query(({ ctx }) => {
-    return getVerificationStatus(ctx.userId);
-  }),
+  status: protectedProcedure.query(({ ctx }) =>
+    getVerificationStatus(ctx.userId)
+  ),
 
   /**
    * Precompute liveness + face match and persist to the identity draft.
@@ -1050,7 +1092,7 @@ export const identityRouter = router({
         draftId: z.string().min(1),
         documentImage: z.string().min(1),
         selfieImage: z.string().min(1),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -1059,9 +1101,9 @@ export const identityRouter = router({
       const onboardingSession = await getSessionFromCookie();
       const stepValidation = validateStepAccess(
         onboardingSession,
-        "face-match",
+        "face-match"
       );
-      if (!stepValidation.valid || !stepValidation.session) {
+      if (!(stepValidation.valid && stepValidation.session)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: stepValidation.error || "Complete previous steps first",
@@ -1070,15 +1112,15 @@ export const identityRouter = router({
 
       ctx.span?.setAttribute(
         "onboarding.document_image_bytes",
-        Buffer.byteLength(input.documentImage),
+        Buffer.byteLength(input.documentImage)
       );
       ctx.span?.setAttribute(
         "onboarding.selfie_image_bytes",
-        Buffer.byteLength(input.selfieImage),
+        Buffer.byteLength(input.selfieImage)
       );
       ctx.span?.setAttribute(
         "onboarding.draft_id_hash",
-        hashIdentifier(input.draftId),
+        hashIdentifier(input.draftId)
       );
 
       if (
@@ -1127,10 +1169,12 @@ export const identityRouter = router({
 
             const croppedFaceDataUrl = await cropFaceRegion(
               input.documentImage,
-              box,
+              box
             );
             docResult = await detectFromBase64(croppedFaceDataUrl);
-          } catch {}
+          } catch {
+            /* Crop failed, fallback to initial detection result */
+          }
         }
 
         const selfieFace = getLargestFace(selfieResult);
@@ -1186,12 +1230,12 @@ export const identityRouter = router({
       ctx.span?.setAttribute("onboarding.face_match_passed", faceMatchPassed);
       ctx.span?.setAttribute(
         "onboarding.face_match_confidence",
-        faceMatchConfidence,
+        faceMatchConfidence
       );
       ctx.span?.setAttribute("onboarding.issues_count", issues.length);
       ctx.span?.setAttribute(
         "onboarding.processing_ms",
-        Date.now() - startTime,
+        Date.now() - startTime
       );
 
       return {
@@ -1212,15 +1256,15 @@ export const identityRouter = router({
       z.object({
         draftId: z.string().min(1),
         fheKeyId: z.string().min(1),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const onboardingSession = await getSessionFromCookie();
       const stepValidation = validateStepAccess(
         onboardingSession,
-        "identity-finalize",
+        "identity-finalize"
       );
-      if (!stepValidation.valid || !stepValidation.session) {
+      if (!(stepValidation.valid && stepValidation.session)) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: stepValidation.error || "Complete previous steps first",
@@ -1229,7 +1273,7 @@ export const identityRouter = router({
 
       ctx.span?.setAttribute(
         "onboarding.draft_id_hash",
-        hashIdentifier(input.draftId),
+        hashIdentifier(input.draftId)
       );
       ctx.span?.setAttribute("fhe.key_id_hash", hashIdentifier(input.fheKeyId));
 
@@ -1252,7 +1296,7 @@ export const identityRouter = router({
       }
 
       const existingJob = getLatestIdentityVerificationJobForDraft(
-        input.draftId,
+        input.draftId
       );
       if (
         existingJob &&
@@ -1333,7 +1377,7 @@ export const identityRouter = router({
         selfieImage: z.string().min(1),
         userSalt: z.string().optional(),
         fheKeyId: z.string().optional(),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -1342,7 +1386,7 @@ export const identityRouter = router({
       const onboardingSession = await getSessionFromCookie();
       const stepValidation = validateStepAccess(
         onboardingSession,
-        "identity-verify",
+        "identity-verify"
       );
       if (!stepValidation.valid) {
         throw new TRPCError({
@@ -1379,7 +1423,7 @@ export const identityRouter = router({
       let isDuplicateDocument = false;
       if (documentResult?.commitments?.documentHash) {
         const hashExists = documentHashExists(
-          documentResult.commitments.documentHash,
+          documentResult.commitments.documentHash
         );
         if (hashExists && !existingDocument) {
           isDuplicateDocument = true;
@@ -1425,10 +1469,12 @@ export const identityRouter = router({
 
             const croppedFaceDataUrl = await cropFaceRegion(
               input.documentImage,
-              box,
+              box
             );
             docResult = await detectFromBase64(croppedFaceDataUrl);
-          } catch {}
+          } catch {
+            /* Crop failed, fallback to initial detection result */
+          }
         }
 
         const selfieFace = getLargestFace(selfieResult);
@@ -1469,6 +1515,7 @@ export const identityRouter = router({
 
         issues.push(...localIssues);
       } catch {
+        /* Human.js detection failed, add to issues */
         issues.push("verification_service_failed");
       }
 
@@ -1490,10 +1537,10 @@ export const identityRouter = router({
       if (documentProcessed && documentHash && documentHashField) {
         try {
           const birthYear = parseBirthYear(
-            documentResult?.extractedData?.dateOfBirth,
+            documentResult?.extractedData?.dateOfBirth
           );
           const expiryDate = parseDateToInt(
-            documentResult?.extractedData?.expirationDate,
+            documentResult?.extractedData?.expirationDate
           );
           const nationalityCode =
             documentResult?.extractedData?.nationalityCode ?? null;
@@ -1571,9 +1618,9 @@ export const identityRouter = router({
       // Store signed claims for tamper-resistant verification (server measured)
       if (verificationResult) {
         const antispoofScoreFixed = Math.round(
-          verificationResult.antispoof_score * 10000,
+          verificationResult.antispoof_score * 10_000
         );
-        const liveScoreFixed = Math.round(liveScore * 10000);
+        const liveScoreFixed = Math.round(liveScore * 10_000);
 
         try {
           const livenessClaimPayload = {
@@ -1616,14 +1663,14 @@ export const identityRouter = router({
             data: {
               confidence: verificationResult.face_match_confidence,
               confidenceFixed: Math.round(
-                verificationResult.face_match_confidence * 10000,
+                verificationResult.face_match_confidence * 10_000
               ),
-              thresholdFixed: Math.round(FACE_MATCH_MIN_CONFIDENCE * 10000),
+              thresholdFixed: Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000),
               passed: verificationResult.faces_match,
               claimHash: documentHashField
                 ? await computeClaimHash({
                     value: Math.round(
-                      verificationResult.face_match_confidence * 10000,
+                      verificationResult.face_match_confidence * 10_000
                     ),
                     documentHashField,
                   })
@@ -1632,7 +1679,7 @@ export const identityRouter = router({
           };
 
           const faceMatchSignature = await signAttestationClaim(
-            faceMatchClaimPayload,
+            faceMatchClaimPayload
           );
           insertSignedClaim({
             id: uuidv4(),
@@ -1671,7 +1718,7 @@ export const identityRouter = router({
       const recordFheFailure = (
         issue: string,
         operation: string,
-        error: unknown,
+        error: unknown
       ) => {
         issues.push(issue);
         if (error instanceof FheServiceError) {
@@ -1686,20 +1733,23 @@ export const identityRouter = router({
           return;
         }
 
+        let errorMessage = "Missing FHE key material";
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        } else if (error) {
+          errorMessage = String(error);
+        }
         fheErrors.push({
           operation,
           issue,
           kind: "unknown",
-          message:
-            error instanceof Error
-              ? error.message
-              : error
-                ? String(error)
-                : "Missing FHE key material",
+          message: errorMessage,
         });
       };
       const reportMissingFheKey = () => {
-        if (fheKeyMissingReported) return;
+        if (fheKeyMissingReported) {
+          return;
+        }
         fheKeyMissingReported = true;
         recordFheFailure("fhe_key_missing", "key_registration", null);
       };
@@ -1732,9 +1782,7 @@ export const identityRouter = router({
         (livenessScore !== undefined && livenessScore !== null);
 
       if (needsEncryption) {
-        if (!hasFheKeyMaterial || !fheKeyId) {
-          reportMissingFheKey();
-        } else {
+        if (hasFheKeyMaterial && fheKeyId) {
           try {
             const batchResult = await encryptBatchFhe({
               keyId: fheKeyId,
@@ -1778,14 +1826,14 @@ export const identityRouter = router({
               recordFheFailure(
                 isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
                 "encrypt_birth_year_offset",
-                error,
+                error
               );
             }
             if (countryCodeNumeric > 0) {
               recordFheFailure(
                 isHttp ? "fhe_encryption_failed" : "fhe_service_unavailable",
                 "encrypt_country_code",
-                error,
+                error
               );
             }
             if (livenessScore !== undefined && livenessScore !== null) {
@@ -1794,10 +1842,12 @@ export const identityRouter = router({
                   ? "liveness_score_fhe_encryption_failed"
                   : "liveness_score_fhe_service_unavailable",
                 "encrypt_liveness",
-                error,
+                error
               );
             }
           }
+        } else {
+          reportMissingFheKey();
         }
       }
 
@@ -1818,23 +1868,27 @@ export const identityRouter = router({
       const facesMatch = verificationResult?.faces_match ?? facesMatchLocal;
       const ageProofGenerated = false;
       const birthYearOffsetEncrypted = Boolean(
-        birthYearOffsetFheResult?.ciphertext,
+        birthYearOffsetFheResult?.ciphertext
       );
       const docValidityProofGenerated = false;
       const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
       const countryCodeEncrypted = Boolean(countryCodeFheResult?.ciphertext);
       const livenessScoreEncrypted = Boolean(
-        livenessScoreFheResult?.ciphertext,
+        livenessScoreFheResult?.ciphertext
       );
       const fheSucceeded =
         birthYearOffsetEncrypted ||
         countryCodeEncrypted ||
         livenessScoreEncrypted;
-      const fheStatus: "pending" | "complete" | "error" = fheSucceeded
-        ? "complete"
-        : fheErrors.length > 0
-          ? "error"
-          : "pending";
+      const fheStatus = ((): "pending" | "complete" | "error" => {
+        if (fheSucceeded) {
+          return "complete";
+        }
+        if (fheErrors.length > 0) {
+          return "error";
+        }
+        return "pending";
+      })();
       const verified =
         documentProcessed &&
         isDocumentValid &&
@@ -1846,11 +1900,15 @@ export const identityRouter = router({
       const birthYearOffsetFinal =
         birthYearOffset === undefined ? null : birthYearOffset;
 
-      const bundleStatus = verified
-        ? "pending"
-        : documentProcessed
-          ? "failed"
-          : "pending";
+      const bundleStatus = ((): "pending" | "verified" | "failed" => {
+        if (verified) {
+          return "pending";
+        }
+        if (documentProcessed) {
+          return "failed";
+        }
+        return "pending";
+      })();
       const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
         userId,
         status: bundleStatus,
@@ -1936,12 +1994,14 @@ export const identityRouter = router({
         try {
           const displayName = buildDisplayName(
             documentResult.extractedData.firstName,
-            documentResult.extractedData.lastName,
+            documentResult.extractedData.lastName
           );
           if (displayName) {
             updateUserName(userId, displayName);
           }
-        } catch {}
+        } catch {
+          /* Name update failed, non-critical for verification */
+        }
       }
 
       return {
@@ -1990,11 +2050,11 @@ export const identityRouter = router({
     .input(
       z.object({
         claimedName: z.string().trim().min(1, "Claimed name is required"),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       const document = getSelectedIdentityDocumentByUserId(ctx.userId);
-      if (!document?.userSalt || !document.nameCommitment) {
+      if (!(document?.userSalt && document.nameCommitment)) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "User has not completed identity verification",
@@ -2011,12 +2071,12 @@ export const identityRouter = router({
 
       const claimedCommitment = generateNameCommitment(
         input.claimedName,
-        decryptedSalt,
+        decryptedSalt
       );
 
       const matches = crypto.timingSafeEqual(
         Buffer.from(claimedCommitment),
-        Buffer.from(document.nameCommitment),
+        Buffer.from(document.nameCommitment)
       );
 
       return { matches };

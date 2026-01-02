@@ -102,7 +102,7 @@ export const onboardingRouter = router({
         keysSecured: z.boolean().optional(),
         documentHash: z.string().optional(),
         identityDraftId: z.string().optional().nullable(),
-      }),
+      })
     )
     .mutation(async ({ input }) => {
       // Get existing session from cookie (if any)
@@ -148,7 +148,7 @@ export const onboardingRouter = router({
       const session = await saveWizardState(
         sessionId,
         { email: input.email, step: input.step ?? 1 },
-        input.pii as EncryptedPiiData | undefined,
+        input.pii as EncryptedPiiData | undefined
       );
 
       return { success: true, sessionId: session.id };
@@ -164,7 +164,7 @@ export const onboardingRouter = router({
         .object({
           sessionId: z.string().optional(),
         })
-        .optional(),
+        .optional()
     )
     .mutation(async ({ input }) => {
       // Try to get sessionId from input or from cookie
@@ -310,7 +310,7 @@ export const onboardingRouter = router({
   skipLiveness: publicProcedure.mutation(async () => {
     const session = await getSessionFromCookie();
     const validation = validateStepAccess(session, "skip-liveness");
-    if (!validation.valid || !validation.session) {
+    if (!(validation.valid && validation.session)) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: validation.error || "Cannot skip liveness at this time",

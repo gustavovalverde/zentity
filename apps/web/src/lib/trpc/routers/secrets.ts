@@ -15,7 +15,7 @@ import {
   updateEncryptedSecretMetadata,
   upsertEncryptedSecret,
   upsertSecretWrapper,
-} from "@/lib/db";
+} from "@/lib/db/queries/crypto";
 
 import { protectedProcedure, router } from "../server";
 
@@ -38,7 +38,7 @@ export const secretsRouter = router({
     .query(({ ctx, input }) => {
       const secret = getEncryptedSecretByUserAndType(
         ctx.userId,
-        input.secretType,
+        input.secretType
       );
       if (!secret) {
         return { secret: null, wrappers: [] };
@@ -60,12 +60,12 @@ export const secretsRouter = router({
         metadata: metadataSchema,
         version: z.string().min(1),
         kekVersion: z.string().min(1),
-      }),
+      })
     )
     .mutation(({ ctx, input }) => {
       const existing = getEncryptedSecretByUserAndType(
         ctx.userId,
-        input.secretType,
+        input.secretType
       );
 
       if (existing && existing.id !== input.secretId) {
@@ -103,12 +103,12 @@ export const secretsRouter = router({
         wrappedDek: z.string().min(1),
         prfSalt: z.string().min(1),
         kekVersion: z.string().min(1),
-      }),
+      })
     )
     .mutation(({ ctx, input }) => {
       const secret = getEncryptedSecretByUserAndType(
         ctx.userId,
-        input.secretType,
+        input.secretType
       );
       if (!secret || secret.id !== input.secretId) {
         throw new TRPCError({
@@ -135,12 +135,12 @@ export const secretsRouter = router({
       z.object({
         secretType: secretTypeSchema,
         metadata: metadataSchema,
-      }),
+      })
     )
     .mutation(({ ctx, input }) => {
       const existing = getEncryptedSecretByUserAndType(
         ctx.userId,
-        input.secretType,
+        input.secretType
       );
       if (!existing) {
         throw new TRPCError({

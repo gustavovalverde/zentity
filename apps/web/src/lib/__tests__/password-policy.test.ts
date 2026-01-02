@@ -16,19 +16,19 @@ describe("password-policy", () => {
 
     it("enforces minimum length", () => {
       expect(getPasswordLengthError("a".repeat(PASSWORD_MIN_LENGTH - 1))).toBe(
-        `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
+        `Password must be at least ${PASSWORD_MIN_LENGTH} characters`
       );
       expect(getPasswordLengthError("a".repeat(PASSWORD_MIN_LENGTH))).toBe(
-        undefined,
+        undefined
       );
     });
 
     it("enforces maximum length", () => {
       expect(getPasswordLengthError("a".repeat(PASSWORD_MAX_LENGTH + 1))).toBe(
-        `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+        `Password must be at most ${PASSWORD_MAX_LENGTH} characters`
       );
       expect(getPasswordLengthError("a".repeat(PASSWORD_MAX_LENGTH))).toBe(
-        undefined,
+        undefined
       );
     });
   });
@@ -38,7 +38,7 @@ describe("password-policy", () => {
       expect(
         getPasswordSimilarityError("MyUser123456", {
           email: "user@example.com",
-        }),
+        })
       ).toBe("Password can't contain your email");
     });
 
@@ -46,7 +46,7 @@ describe("password-policy", () => {
       expect(
         getPasswordSimilarityError("johnDOE-123456", {
           email: "john.doe@example.com",
-        }),
+        })
       ).toBe("Password can't contain your email");
     });
 
@@ -54,7 +54,7 @@ describe("password-policy", () => {
       expect(
         getPasswordSimilarityError("safe-ABC1234-password", {
           documentNumber: "ABC-1234",
-        }),
+        })
       ).toBe("Password can't contain your document number");
     });
 
@@ -63,7 +63,7 @@ describe("password-policy", () => {
         getPasswordSimilarityError("ab", {
           email: "ab@example.com",
           documentNumber: "123",
-        }),
+        })
       ).toBe(undefined);
     });
   });

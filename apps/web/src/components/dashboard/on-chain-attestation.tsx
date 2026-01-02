@@ -118,7 +118,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   const showComplianceAccess = Boolean(
     selectedNetworkData?.attestation?.status === "confirmed" &&
       selectedNetworkData?.identityRegistry &&
-      selectedNetworkData?.complianceRules,
+      selectedNetworkData?.complianceRules
   );
 
   // Verify on-chain attestation status (catches stale DB records after contract redeployment)
@@ -130,10 +130,10 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
       },
       {
         enabled: Boolean(
-          showComplianceAccess && selectedNetworkData?.id && address && !isDemo,
+          showComplianceAccess && selectedNetworkData?.id && address && !isDemo
         ),
-        staleTime: 30000,
-      },
+        staleTime: 30_000,
+      }
     );
 
   // If DB says attested but on-chain says not, user needs to re-attest
@@ -154,9 +154,9 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
     },
     {
       enabled: Boolean(
-        showComplianceCard && selectedNetworkData?.id && address && !isDemo,
+        showComplianceCard && selectedNetworkData?.id && address && !isDemo
       ),
-    },
+    }
   );
 
   const complianceGranted = isDemo ? true : Boolean(complianceAccess?.granted);
@@ -174,8 +174,12 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
   // Auto-refresh TX status when attestation is submitted (poll every 8 seconds)
   useEffect(() => {
-    if (selectedNetworkData?.attestation?.status !== "submitted") return;
-    if (!selectedNetwork) return;
+    if (selectedNetworkData?.attestation?.status !== "submitted") {
+      return;
+    }
+    if (!selectedNetwork) {
+      return;
+    }
 
     const interval = setInterval(() => {
       refreshMutation.mutate({ networkId: selectedNetwork });
@@ -189,7 +193,9 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   ]);
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedNetwork || !address) return;
+    if (!(selectedNetwork && address)) {
+      return;
+    }
 
     await submitMutation.mutateAsync({
       networkId: selectedNetwork,
@@ -198,7 +204,9 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   }, [selectedNetwork, address, submitMutation]);
 
   const handleRefresh = useCallback(async () => {
-    if (!selectedNetwork) return;
+    if (!selectedNetwork) {
+      return;
+    }
 
     await refreshMutation.mutateAsync({
       networkId: selectedNetwork,
@@ -213,7 +221,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
     return (
       <Card className="border-dashed">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <Shield className="h-5 w-5" />
             On-Chain Attestation
           </CardTitle>
@@ -236,25 +244,25 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
   return (
     <Card>
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">On-Chain Attestation</CardTitle>
-              {isDemo && (
-                <Badge variant="warning" className="ml-2">
+              {isDemo ? (
+                <Badge className="ml-2" variant="warning">
                   DEMO
                 </Badge>
-              )}
+              ) : null}
               {confirmedCount > 0 && (
-                <Badge variant="secondary" className="ml-2">
+                <Badge className="ml-2" variant="secondary">
                   {confirmedCount} network{confirmedCount !== 1 ? "s" : ""}
                 </Badge>
               )}
             </div>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <Button size="sm" variant="ghost">
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
                 />
@@ -270,154 +278,171 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
         <CollapsibleContent>
           <CardContent className="space-y-4">
             {/* Show loading until client hydration completes to avoid mismatch */}
-            {!isMounted ? (
-              <div className="flex items-center justify-center py-8">
-                <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : /* Wallet Connection */
-            !isConnected ? (
-              <div className="flex flex-col items-center gap-4 py-4">
-                <Wallet className="h-12 w-12 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground text-center">
-                  Connect your wallet to register your identity on-chain
-                </p>
-                {/* AppKit web component - globally available after createAppKit init */}
-                <appkit-button />
-              </div>
-            ) : networksLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : networks && networks.length > 0 ? (
-              <>
-                {/* Demo Mode Warning */}
-                {isDemo && (
-                  <Alert variant="warning">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Demo Mode</strong> - No real blockchain
-                      transactions. Configure contract addresses for production
-                      use.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Wallet Change Warning */}
-                {walletChanged && (
-                  <Alert variant="warning">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Wallet Changed</strong> - Attestation will be
-                      linked to:{" "}
-                      <code className="text-xs bg-warning/15 px-1 rounded">
-                        {address?.slice(0, 6)}...{address?.slice(-4)}
-                      </code>
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Network Selector */}
-                <div className="space-y-2">
-                  <span className="text-sm font-medium">Select Network</span>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {networks.map((network) => (
-                      <NetworkCard
-                        key={network.id}
-                        network={network as NetworkStatus}
-                        isSelected={selectedNetwork === network.id}
-                        onSelect={() => setSelectedNetwork(network.id)}
-                      />
-                    ))}
+            {(() => {
+              if (!isMounted) {
+                return (
+                  <div className="flex items-center justify-center py-8">
+                    <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
-                </div>
+                );
+              }
 
-                {/* Selected Network Actions */}
-                {selectedNetworkData && address && (
-                  <NetworkActions
-                    network={selectedNetworkData as NetworkStatus}
-                    walletAddress={address}
-                    attestedWalletAddress={
-                      selectedNetworkData.attestation?.walletAddress
-                    }
-                    onSubmit={handleSubmit}
-                    onRefresh={handleRefresh}
-                    isSubmitting={submitMutation.isPending}
-                    isRefreshing={refreshMutation.isPending}
-                    error={submitMutation.error?.message}
-                  />
-                )}
+              if (!isConnected) {
+                return (
+                  <div className="flex flex-col items-center gap-4 py-4">
+                    <Wallet className="h-12 w-12 text-muted-foreground" />
+                    <p className="text-center text-muted-foreground text-sm">
+                      Connect your wallet to register your identity on-chain
+                    </p>
+                    {/* AppKit web component - globally available after createAppKit init */}
+                    <appkit-button />
+                  </div>
+                );
+              }
 
-                {/* Re-attestation required warning (DB says confirmed but chain says not) */}
-                {needsReAttestation && (
-                  <Alert variant="warning">
+              if (networksLoading) {
+                return (
+                  <div className="flex items-center justify-center py-8">
+                    <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                );
+              }
+
+              if (!(networks && networks.length > 0)) {
+                return (
+                  <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      <strong>Re-attestation Required</strong> - The identity
-                      contracts have been updated. Click &quot;Update
-                      Attestation&quot; above to re-register your identity
-                      on-chain before granting compliance access.
+                      No blockchain networks are currently available. Check your
+                      configuration.
                     </AlertDescription>
                   </Alert>
-                )}
+                );
+              }
 
-                {/* Loading on-chain status */}
-                {showComplianceAccess && isCheckingOnChain && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Verifying on-chain attestation...
+              return (
+                <>
+                  {/* Demo Mode Warning */}
+                  {isDemo ? (
+                    <Alert variant="warning">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Demo Mode</strong> - No real blockchain
+                        transactions. Configure contract addresses for
+                        production use.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {/* Wallet Change Warning */}
+                  {walletChanged ? (
+                    <Alert variant="warning">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Wallet Changed</strong> - Attestation will be
+                        linked to:{" "}
+                        <code className="rounded bg-warning/15 px-1 text-xs">
+                          {address?.slice(0, 6)}...{address?.slice(-4)}
+                        </code>
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {/* Network Selector */}
+                  <div className="space-y-2">
+                    <span className="font-medium text-sm">Select Network</span>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {networks.map((network) => (
+                        <NetworkCard
+                          isSelected={selectedNetwork === network.id}
+                          key={network.id}
+                          network={network as NetworkStatus}
+                          onSelect={() => setSelectedNetwork(network.id)}
+                        />
+                      ))}
+                    </div>
                   </div>
-                )}
 
-                {showComplianceCard && (
-                  <ComplianceAccessCard
-                    identityRegistry={
-                      selectedNetworkData?.identityRegistry as
-                        | `0x${string}`
-                        | null
-                    }
-                    complianceRules={
-                      selectedNetworkData?.complianceRules as
-                        | `0x${string}`
-                        | null
-                    }
-                    expectedChainId={selectedNetworkData?.chainId}
-                    expectedNetworkName={selectedNetworkData?.name}
-                    isGranted={complianceGranted}
-                    grantedTxHash={complianceTxHash}
-                    grantedExplorerUrl={complianceExplorerUrl}
-                    onGranted={() => {
-                      if (selectedNetworkData?.id && address) {
-                        utils.token.complianceAccess.invalidate({
-                          networkId: selectedNetworkData.id,
-                          walletAddress: address,
-                        });
+                  {/* Selected Network Actions */}
+                  {selectedNetworkData && address ? (
+                    <NetworkActions
+                      attestedWalletAddress={
+                        selectedNetworkData.attestation?.walletAddress
                       }
-                    }}
-                  />
-                )}
+                      error={submitMutation.error?.message}
+                      isRefreshing={refreshMutation.isPending}
+                      isSubmitting={submitMutation.isPending}
+                      network={selectedNetworkData as NetworkStatus}
+                      onRefresh={handleRefresh}
+                      onSubmit={handleSubmit}
+                      walletAddress={address}
+                    />
+                  ) : null}
 
-                {/* Info about encryption */}
-                {selectedNetworkData?.type === "fhevm" && (
-                  <Alert variant="info">
-                    <Lock className="h-4 w-4" />
-                    <AlertDescription className="text-xs">
-                      <strong>Encrypted Attestation</strong> - Your identity
-                      data will be encrypted using Fully Homomorphic Encryption
-                      (FHE) before being stored on-chain. Only authorized smart
-                      contracts can verify claims.
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </>
-            ) : (
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  No blockchain networks are currently available. Check your
-                  configuration.
-                </AlertDescription>
-              </Alert>
-            )}
+                  {/* Re-attestation required warning (DB says confirmed but chain says not) */}
+                  {needsReAttestation ? (
+                    <Alert variant="warning">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Re-attestation Required</strong> - The identity
+                        contracts have been updated. Click &quot;Update
+                        Attestation&quot; above to re-register your identity
+                        on-chain before granting compliance access.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {/* Loading on-chain status */}
+                  {showComplianceAccess && isCheckingOnChain ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Verifying on-chain attestation...
+                    </div>
+                  ) : null}
+
+                  {showComplianceCard ? (
+                    <ComplianceAccessCard
+                      complianceRules={
+                        selectedNetworkData?.complianceRules as
+                          | `0x${string}`
+                          | null
+                      }
+                      expectedChainId={selectedNetworkData?.chainId}
+                      expectedNetworkName={selectedNetworkData?.name}
+                      grantedExplorerUrl={complianceExplorerUrl}
+                      grantedTxHash={complianceTxHash}
+                      identityRegistry={
+                        selectedNetworkData?.identityRegistry as
+                          | `0x${string}`
+                          | null
+                      }
+                      isGranted={complianceGranted}
+                      onGranted={() => {
+                        if (selectedNetworkData?.id && address) {
+                          utils.token.complianceAccess.invalidate({
+                            networkId: selectedNetworkData.id,
+                            walletAddress: address,
+                          });
+                        }
+                      }}
+                    />
+                  ) : null}
+
+                  {/* Info about encryption */}
+                  {selectedNetworkData?.type === "fhevm" && (
+                    <Alert variant="info">
+                      <Lock className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
+                        <strong>Encrypted Attestation</strong> - Your identity
+                        data will be encrypted using Fully Homomorphic
+                        Encryption (FHE) before being stored on-chain. Only
+                        authorized smart contracts can verify claims.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              );
+            })()}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
@@ -453,37 +478,37 @@ function NetworkCard({
 
   return (
     <Button
-      type="button"
-      onClick={onSelect}
-      variant="outline"
-      className={`flex items-center justify-between p-3 rounded-lg border text-left transition-colors w-full ${
+      className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${
         isSelected
           ? "border-primary bg-primary/5"
           : "border-border hover:border-primary/50"
       }`}
+      onClick={onSelect}
+      type="button"
+      variant="outline"
     >
       <div className="flex items-center gap-2">
         <div
-          className={`w-2 h-2 rounded-full ${
+          className={`h-2 w-2 rounded-full ${
             network.type === "fhevm" ? "bg-info" : "bg-primary"
           }`}
         />
         <div>
-          <p className="text-sm font-medium">{network.name}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="font-medium text-sm">{network.name}</p>
+          <p className="text-muted-foreground text-xs">
             {network.type === "fhevm" ? "Encrypted" : "Standard"}
           </p>
         </div>
       </div>
 
-      {network.attestation && (
+      {network.attestation ? (
         <div
-          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${statusColors[network.attestation.status]}`}
+          className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs ${statusColors[network.attestation.status]}`}
         >
           {statusIcons[network.attestation.status]}
           <span className="capitalize">{network.attestation.status}</span>
         </div>
-      )}
+      ) : null}
     </Button>
   );
 }
@@ -520,48 +545,48 @@ function NetworkActions({
       walletAddress.toLowerCase() !== attestedWalletAddress.toLowerCase();
 
     return (
-      <div className="space-y-3 p-4 rounded-lg bg-success/10 border border-success/30">
+      <div className="space-y-3 rounded-lg border border-success/30 bg-success/10 p-4">
         <div className="flex items-center gap-2 text-success">
           <CheckCircle className="h-5 w-5" />
           <span className="font-medium">Attested on {network.name}</span>
         </div>
-        <div className="text-sm space-y-1">
-          {attestation.blockNumber != null && (
+        <div className="space-y-1 text-sm">
+          {attestation.blockNumber !== null && (
             <p className="text-muted-foreground">
               Block: {attestation.blockNumber}
             </p>
           )}
-          {attestation.confirmedAt && (
+          {attestation.confirmedAt ? (
             <p className="text-muted-foreground">
               Confirmed:{" "}
               {new Date(attestation.confirmedAt).toLocaleDateString()}
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Wallet display with Change option */}
-        {attestedWalletAddress && (
+        {attestedWalletAddress ? (
           <div className="flex items-center justify-between">
             <p className="text-sm">
               <strong>Wallet:</strong>{" "}
-              <code className="text-xs bg-success/15 px-2 py-1 rounded">
+              <code className="rounded bg-success/15 px-2 py-1 text-xs">
                 {attestedWalletAddress.slice(0, 6)}...
                 {attestedWalletAddress.slice(-4)}
               </code>
             </p>
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => disconnect()}
               className="text-xs"
+              onClick={() => disconnect()}
+              size="sm"
+              variant="ghost"
             >
               Change
             </Button>
           </div>
-        )}
+        ) : null}
 
         {/* Wallet mismatch warning */}
-        {walletMismatch && (
+        {walletMismatch ? (
           <Alert variant="warning">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription className="text-sm">
@@ -579,34 +604,34 @@ function NetworkActions({
               </div>
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={onSubmit}
             disabled={isSubmitting}
+            onClick={onSubmit}
+            size="sm"
+            variant="outline"
           >
             {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="mr-2 h-4 w-4" />
             )}
             Update Attestation
           </Button>
-          {attestation.explorerUrl && (
-            <Button variant="outline" size="sm" asChild>
+          {attestation.explorerUrl ? (
+            <Button asChild size="sm" variant="outline">
               <a
                 href={attestation.explorerUrl}
-                target="_blank"
                 rel="noopener noreferrer"
+                target="_blank"
               >
                 View on Explorer
                 <ExternalLink className="ml-2 h-3 w-3" />
               </a>
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
     );
@@ -615,40 +640,40 @@ function NetworkActions({
   // Submitted - waiting for confirmation
   if (attestation?.status === "submitted") {
     return (
-      <div className="space-y-3 p-4 rounded-lg bg-info/10 border border-info/30">
+      <div className="space-y-3 rounded-lg border border-info/30 bg-info/10 p-4">
         <div className="flex items-center gap-2 text-info">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="font-medium">Transaction Pending</span>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           Your attestation is being confirmed on {network.name}
         </p>
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={onRefresh}
             disabled={isRefreshing}
+            onClick={onRefresh}
+            size="sm"
+            variant="outline"
           >
             {isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="mr-2 h-4 w-4" />
             )}
             Check Status
           </Button>
-          {attestation.explorerUrl && (
-            <Button variant="outline" size="sm" asChild>
+          {attestation.explorerUrl ? (
+            <Button asChild size="sm" variant="outline">
               <a
                 href={attestation.explorerUrl}
-                target="_blank"
                 rel="noopener noreferrer"
+                target="_blank"
               >
                 View TX
                 <ExternalLink className="ml-2 h-3 w-3" />
               </a>
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
     );
@@ -657,21 +682,21 @@ function NetworkActions({
   // Failed - show error and retry option
   if (attestation?.status === "failed") {
     return (
-      <div className="space-y-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+      <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
         <div className="flex items-center gap-2 text-destructive">
           <AlertTriangle className="h-5 w-5" />
           <span className="font-medium">Attestation Failed</span>
         </div>
-        {attestation.errorMessage && (
-          <p className="text-sm text-muted-foreground">
+        {attestation.errorMessage ? (
+          <p className="text-muted-foreground text-sm">
             {getAttestationError(attestation.errorMessage)}
           </p>
-        )}
-        <Button size="sm" onClick={onSubmit} disabled={isSubmitting}>
+        ) : null}
+        <Button disabled={isSubmitting} onClick={onSubmit} size="sm">
           {isSubmitting ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className="mr-2 h-4 w-4" />
           )}
           Retry Attestation
         </Button>
@@ -682,45 +707,45 @@ function NetworkActions({
   // Not attested - show submit button
   return (
     <div className="space-y-3">
-      <div className="p-4 rounded-lg bg-muted/50 border">
-        <div className="flex items-center justify-between mb-2">
+      <div className="rounded-lg border bg-muted/50 p-4">
+        <div className="mb-2 flex items-center justify-between">
           <p className="text-sm">
             <strong>Wallet:</strong>{" "}
-            <code className="text-xs bg-muted px-2 py-1 rounded">
+            <code className="rounded bg-muted px-2 py-1 text-xs">
               {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
             </code>
           </p>
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => disconnect()}
             className="text-xs"
+            onClick={() => disconnect()}
+            size="sm"
+            variant="ghost"
           >
             Change
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-muted-foreground text-xs">
           Your verified identity will be attested to this wallet address on{" "}
           {network.name}.
         </p>
       </div>
 
-      {error && (
+      {error ? (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{getAttestationError(error)}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
-      <Button onClick={onSubmit} disabled={isSubmitting} className="w-full">
+      <Button className="w-full" disabled={isSubmitting} onClick={onSubmit}>
         {isSubmitting ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Submitting...
           </>
         ) : (
           <>
-            <Shield className="h-4 w-4 mr-2" />
+            <Shield className="mr-2 h-4 w-4" />
             Register on {network.name}
           </>
         )}

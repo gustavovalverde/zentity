@@ -45,7 +45,7 @@ const MOCK_DOC_VALIDITY_PROOF = {
   publicSignals: (() => {
     const now = new Date();
     const currentDate = Number(
-      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`,
+      `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`
     );
     return [String(currentDate), "0x01", "0x02", "1"];
   })(),
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (!rpPublicKey) {
       return NextResponse.json(
         { error: "rpPublicKey is required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -104,14 +104,14 @@ export async function POST(request: NextRequest) {
       publicKeyJwk,
       { name: "RSA-OAEP", hash: "SHA-256" },
       false,
-      ["encrypt"],
+      ["encrypt"]
     );
 
     // Generate AES key for hybrid encryption
     const aesKey = await crypto.subtle.generateKey(
       { name: "AES-GCM", length: 256 },
       true,
-      ["encrypt", "decrypt"],
+      ["encrypt", "decrypt"]
     );
 
     // Encrypt PII with AES
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     const encryptedPii = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
       aesKey,
-      piiBytes,
+      piiBytes
     );
 
     // Encrypt AES key with RSA
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     const encryptedAesKey = await crypto.subtle.encrypt(
       { name: "RSA-OAEP" },
       publicKey,
-      aesKeyRaw,
+      aesKeyRaw
     );
 
     // Create liveness attestation
@@ -165,10 +165,10 @@ export async function POST(request: NextRequest) {
     };
 
     return NextResponse.json(disclosurePackage);
-  } catch (_error) {
+  } catch {
     return NextResponse.json(
       { error: "Failed to create disclosure package" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

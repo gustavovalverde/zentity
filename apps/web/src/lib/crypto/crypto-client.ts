@@ -22,13 +22,13 @@ import {
   persistFheKeyId,
 } from "@/lib/crypto/tfhe-browser";
 import { trpc } from "@/lib/trpc/client";
-import { bytesToBase64 } from "@/lib/utils";
+import { bytesToBase64 } from "@/lib/utils/base64";
 import {
   generateAgeProofNoir,
   generateDocValidityProofNoir,
   generateFaceMatchProofNoir,
   generateNationalityProofNoir,
-} from "@/lib/zk";
+} from "@/lib/zk/noir-prover";
 
 type CryptoOutputs = inferRouterOutputs<AppRouter>["crypto"];
 
@@ -65,8 +65,8 @@ interface ChallengeResponse {
  */
 export async function generateAgeProof(
   birthYear: number,
-  currentYear: number = new Date().getFullYear(),
-  minAge: number = 18,
+  currentYear: number,
+  minAge: number,
   options: {
     /** Server-issued nonce to bind the proof to a challenge. */
     nonce: string;
@@ -74,7 +74,7 @@ export async function generateAgeProof(
     documentHashField: string;
     /** Poseidon claim hash from signed OCR claim. */
     claimHash: string;
-  },
+  }
 ): Promise<ProofResult> {
   const nonce = options.nonce;
 
@@ -103,13 +103,19 @@ export async function generateAgeProof(
  * @param nationalityCode - ISO alpha-3 code (e.g., "DEU" for Germany)
  * @param groupName - Group to prove membership (e.g., "EU", "SCHENGEN", "EEA", "LATAM", "FIVE_EYES")
  */
+interface GenerateNationalityProofOptions {
+  nationalityCode: string;
+  groupName: string;
+  nonce: string;
+  documentHashField: string;
+  claimHash: string;
+}
+
 async function _generateNationalityProof(
-  nationalityCode: string,
-  groupName: string,
-  nonce: string,
-  documentHashField: string,
-  claimHash: string,
+  options: GenerateNationalityProofOptions
 ): Promise<ProofResult> {
+  const { nationalityCode, groupName, nonce, documentHashField, claimHash } =
+    options;
   const result = await generateNationalityProofNoir({
     nationalityCode,
     groupName,
@@ -125,28 +131,30 @@ async function _generateNationalityProof(
   };
 }
 
-export async function generateNationalityProof(
+export function generateNationalityProof(
   nationalityCode: string,
   groupName: string,
-  options: { nonce: string; documentHashField: string; claimHash: string },
+  options: { nonce: string; documentHashField: string; claimHash: string }
 ): Promise<ProofResult> {
-  return _generateNationalityProof(
+  return _generateNationalityProof({
     nationalityCode,
     groupName,
-    options.nonce,
-    options.documentHashField,
-    options.claimHash,
-  );
+    nonce: options.nonce,
+    documentHashField: options.documentHashField,
+    claimHash: options.claimHash,
+  });
 }
 
 /**
  * Converts current date to YYYYMMDD integer format.
  * Used for date comparisons in ZK circuits.
  */
-function getTodayAsIntClient(): number {
+function _getTodayAsIntClient(): number {
   const today = new Date();
   return (
-    today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate()
+    today.getFullYear() * 10_000 +
+    (today.getMonth() + 1) * 100 +
+    today.getDate()
   );
 }
 
@@ -158,8 +166,8 @@ function getTodayAsIntClient(): number {
  */
 export async function generateDocValidityProof(
   expiryDate: number,
-  currentDate: number = getTodayAsIntClient(),
-  options: { nonce: string; documentHashField: string; claimHash: string },
+  currentDate: number,
+  options: { nonce: string; documentHashField: string; claimHash: string }
 ): Promise<ProofResult> {
   const nonce = options.nonce;
 
@@ -190,7 +198,7 @@ export async function generateDocValidityProof(
 export async function generateFaceMatchProof(
   similarityScore: number,
   threshold: number,
-  options: { nonce: string; documentHashField: string; claimHash: string },
+  options: { nonce: string; documentHashField: string; claimHash: string }
 ): Promise<ProofResult> {
   const nonce = options.nonce;
 
@@ -213,15 +221,15 @@ export async function generateFaceMatchProof(
  * Check health of crypto services
  */
 async function _checkCryptoHealth(): Promise<ServiceHealth> {
-  return trpc.crypto.health.query();
+  return await trpc.crypto.health.query();
 }
 
 export async function getSignedClaims(
-  documentId?: string | null,
+  documentId?: string | null
 ): Promise<CryptoOutputs["getSignedClaims"]> {
   return documentId
-    ? trpc.crypto.getSignedClaims.query({ documentId })
-    : trpc.crypto.getSignedClaims.query();
+    ? await trpc.crypto.getSignedClaims.query({ documentId })
+    : await trpc.crypto.getSignedClaims.query();
 }
 
 /**
@@ -238,23 +246,20 @@ export async function getProofChallenge(
     | "age_verification"
     | "doc_validity"
     | "nationality_membership"
-    | "face_match",
+    | "face_match"
 ): Promise<ChallengeResponse> {
   try {
     return await trpc.crypto.createChallenge.mutate({ circuitType });
   } catch (error) {
     throw new Error(
-      error instanceof Error ? error.message : "Failed to get challenge",
+      error instanceof Error ? error.message : "Failed to get challenge"
     );
   }
 }
 
 /**
  * Store user's age proof after verification
- * @param proof - Base64 encoded UltraHonk ZK proof
- * @param publicSignals - The public signals from the proof
- * @param generationTimeMs - Time to generate the ZK proof
- * @param documentId - Optional document ID to bind proof storage to a specific document
+ *
  * NOTE: isOver18 is intentionally NOT a parameter.
  * The server extracts this from publicSignals[3] after cryptographic verification.
  * (Index: [0]=current_year, [1]=min_age, [2]=nonce, [3]=is_old_enough)
@@ -263,22 +268,31 @@ export async function getProofChallenge(
  * IMPORTANT: Persisted proofs must include a server-issued nonce from getProofChallenge().
  * Client-generated nonces are rejected by the storage endpoint.
  */
-export async function storeProof(
+interface StoreProofOptions {
+  /** The type of circuit used to generate the proof */
   circuitType:
     | "age_verification"
     | "doc_validity"
     | "nationality_membership"
-    | "face_match",
-  proof: string,
-  publicSignals: string[],
-  generationTimeMs: number,
-  documentId?: string | null,
-): Promise<{
+    | "face_match";
+  /** Base64 encoded UltraHonk ZK proof */
+  proof: string;
+  /** The public signals from the proof */
+  publicSignals: string[];
+  /** Time to generate the ZK proof */
+  generationTimeMs: number;
+  /** Optional document ID to bind proof storage to a specific document */
+  documentId?: string | null;
+}
+
+export async function storeProof(options: StoreProofOptions): Promise<{
   success: boolean;
   proofId: string;
   proofHash: string;
   verificationTimeMs: number;
 }> {
+  const { circuitType, proof, publicSignals, generationTimeMs, documentId } =
+    options;
   try {
     return await trpc.crypto.storeProof.mutate({
       circuitType,
@@ -289,7 +303,7 @@ export async function storeProof(
     });
   } catch (error) {
     throw new Error(
-      error instanceof Error ? error.message : "Failed to store proof",
+      error instanceof Error ? error.message : "Failed to store proof"
     );
   }
 }
@@ -300,16 +314,16 @@ export async function storeProof(
  */
 export async function getUserProof(full: true): Promise<AgeProofFull | null>;
 export async function getUserProof(
-  full?: false,
+  full?: false
 ): Promise<AgeProofSummary | null>;
 export async function getUserProof(
-  full: boolean = false,
+  full = false
 ): Promise<AgeProofFull | AgeProofSummary | null> {
   try {
     return await trpc.crypto.getUserProof.query({ full });
   } catch (error) {
     throw new Error(
-      error instanceof Error ? error.message : "Failed to get proof",
+      error instanceof Error ? error.message : "Failed to get proof"
     );
   }
 }
@@ -351,7 +365,7 @@ export async function verifyAgeViaFHE(
   ciphertext: string,
   keyId: string,
   currentYear: number = new Date().getFullYear(),
-  minAge: number = 18,
+  minAge = 18
 ): Promise<VerifyAgeFHEResult> {
   try {
     const start = Date.now();
@@ -368,7 +382,7 @@ export async function verifyAgeViaFHE(
     };
   } catch (error) {
     throw new Error(
-      error instanceof Error ? error.message : "Failed to verify age via FHE",
+      error instanceof Error ? error.message : "Failed to verify age via FHE"
     );
   }
 }

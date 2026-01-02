@@ -16,8 +16,8 @@ import {
   FieldMessage,
 } from "@/components/ui/tanstack-form";
 import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
-import { signIn } from "@/lib/auth";
-import { makeFieldValidator } from "@/lib/utils";
+import { signIn } from "@/lib/auth/auth-client";
+import { makeFieldValidator } from "@/lib/utils/validation";
 
 export function SignInForm() {
   const [error, setError] = useState<string | null>(null);
@@ -71,19 +71,19 @@ export function SignInForm() {
         email: fieldName === "email" ? val : form.getFieldValue("email"),
         password:
           fieldName === "password" ? val : form.getFieldValue("password"),
-      }),
+      })
     );
 
     return validator(value);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
+    <form className="space-y-6" onSubmit={handleSubmit}>
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <div className="space-y-4">
         <form.Field
@@ -95,21 +95,21 @@ export function SignInForm() {
         >
           {(field) => (
             <Field
-              name={field.name}
               errors={field.state.meta.errors as string[]}
               isTouched={field.state.meta.isTouched}
               isValidating={field.state.meta.isValidating}
+              name={field.name}
             >
               <FieldLabel>Email</FieldLabel>
               <FieldControl>
                 <Input
-                  type="email"
-                  placeholder="you@example.com"
                   autoComplete="email"
                   disabled={isLoading}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                  value={field.state.value}
                 />
               </FieldControl>
               <FieldMessage />
@@ -126,29 +126,29 @@ export function SignInForm() {
         >
           {(field) => (
             <Field
-              name={field.name}
               errors={field.state.meta.errors as string[]}
               isTouched={field.state.meta.isTouched}
               isValidating={field.state.meta.isValidating}
+              name={field.name}
             >
               <div className="flex items-center justify-between">
                 <FieldLabel>Password</FieldLabel>
                 <Link
+                  className="text-muted-foreground text-xs hover:text-primary hover:underline"
                   href="/forgot-password"
-                  className="text-xs text-muted-foreground hover:text-primary hover:underline"
                 >
                   Forgot password?
                 </Link>
               </div>
               <FieldControl>
                 <Input
-                  type="password"
-                  placeholder="Enter your password"
                   autoComplete="current-password"
                   disabled={isLoading}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="Enter your password"
+                  type="password"
+                  value={field.state.value}
                 />
               </FieldControl>
               <FieldMessage />
@@ -157,7 +157,7 @@ export function SignInForm() {
         </form.Field>
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+      <Button className="w-full" disabled={isLoading} type="submit">
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

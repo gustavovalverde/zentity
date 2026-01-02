@@ -32,7 +32,7 @@ export default async function DashboardLayout({
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Separator className="mr-2 h-4" orientation="vertical" />
           <DynamicBreadcrumb />
           <div className="ml-auto">
             <ModeToggle />
@@ -41,11 +41,11 @@ export default async function DashboardLayout({
         <main className="flex-1 p-4 md:p-6">
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
-        <footer className="border-t py-4 px-4">
-          <div className="mx-auto max-w-6xl text-center text-xs text-muted-foreground">
+        <footer className="border-t px-4 py-4">
+          <div className="mx-auto max-w-6xl text-center text-muted-foreground text-xs">
             <Link
-              href="/api/build-info"
               className="text-muted-foreground/70 hover:text-muted-foreground"
+              href="/api/build-info"
             >
               Verify build attestation
             </Link>

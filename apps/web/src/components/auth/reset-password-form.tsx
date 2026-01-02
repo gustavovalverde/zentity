@@ -16,14 +16,16 @@ import {
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
+import { authClient } from "@/lib/auth/auth-client";
 import {
-  authClient,
   getBetterAuthErrorMessage,
-  getPasswordLengthError,
   getPasswordPolicyErrorMessage,
+} from "@/lib/auth/better-auth-errors";
+import {
+  getPasswordLengthError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
-} from "@/lib/auth";
+} from "@/lib/auth/password-policy";
 
 interface ResetPasswordFormProps {
   token: string;
@@ -61,7 +63,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         if (result.error) {
           const rawMessage = getBetterAuthErrorMessage(
             result.error,
-            "Failed to reset password",
+            "Failed to reset password"
           );
           const policyMessage = getPasswordPolicyErrorMessage(result.error);
           setError(policyMessage || rawMessage);
@@ -93,44 +95,55 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const triggerBreachCheckIfConfirmed = () => {
     const password = form.getFieldValue("password");
     const confirmPassword = form.getFieldValue("confirmPassword");
-    if (!password || password !== confirmPassword) return;
-    if (getPasswordLengthError(password)) return;
+    if (!password || password !== confirmPassword) {
+      return;
+    }
+    if (getPasswordLengthError(password)) {
+      return;
+    }
     setBreachStatus("checking");
     setBreachCheckKey((k) => k + 1);
   };
 
   const validatePassword = (value: string) => {
-    if (!value) return "Password is required";
-    if (value.length < PASSWORD_MIN_LENGTH)
+    if (!value) {
+      return "Password is required";
+    }
+    if (value.length < PASSWORD_MIN_LENGTH) {
       return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
-    if (value.length > PASSWORD_MAX_LENGTH)
+    }
+    if (value.length > PASSWORD_MAX_LENGTH) {
       return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
-    return undefined;
+    }
+    return;
   };
 
   const validateConfirmPassword = (value: string) => {
-    if (!value) return "Please confirm your password";
-    if (value !== form.getFieldValue("password"))
+    if (!value) {
+      return "Please confirm your password";
+    }
+    if (value !== form.getFieldValue("password")) {
       return "Passwords do not match";
-    return undefined;
+    }
+    return;
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form className="space-y-6" onSubmit={handleSubmit}>
       {/* Helps password managers associate the new-password fields to a username. */}
       <input
-        type="text"
-        name="username"
+        aria-hidden="true"
         autoComplete="username"
         className="hidden"
+        name="username"
         tabIndex={-1}
-        aria-hidden="true"
+        type="text"
       />
-      {error && (
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <div className="space-y-4">
         <form.Field
@@ -142,28 +155,28 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         >
           {(field) => (
             <Field
-              name={field.name}
               errors={field.state.meta.errors as string[]}
               isTouched={field.state.meta.isTouched}
               isValidating={field.state.meta.isValidating}
+              name={field.name}
             >
               <FieldLabel>New Password</FieldLabel>
               <FieldControl>
                 <Input
-                  type="password"
-                  placeholder="Enter new password"
                   autoComplete="new-password"
                   disabled={isLoading}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="Enter new password"
+                  type="password"
+                  value={field.state.value}
                 />
               </FieldControl>
               <FieldMessage />
               <PasswordRequirements
-                password={field.state.value}
                 breachCheckKey={breachCheckKey}
                 onBreachStatusChange={(status) => setBreachStatus(status)}
+                password={field.state.value}
               />
             </Field>
           )}
@@ -178,24 +191,24 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         >
           {(field) => (
             <Field
-              name={field.name}
               errors={field.state.meta.errors as string[]}
               isTouched={field.state.meta.isTouched}
               isValidating={field.state.meta.isValidating}
+              name={field.name}
             >
               <FieldLabel>Confirm Password</FieldLabel>
               <FieldControl>
                 <Input
-                  type="password"
-                  placeholder="Confirm new password"
                   autoComplete="new-password"
                   disabled={isLoading}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={() => {
                     field.handleBlur();
                     triggerBreachCheckIfConfirmed();
                   }}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="Confirm new password"
+                  type="password"
+                  value={field.state.value}
                 />
               </FieldControl>
               <FieldMessage />
@@ -204,19 +217,19 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         </form.Field>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         Password must be at least {PASSWORD_MIN_LENGTH} characters. We block
         passwords found in known data breaches.
       </p>
 
       <Button
-        type="submit"
         className="w-full"
         disabled={
           isLoading ||
           breachStatus === "checking" ||
           breachStatus === "compromised"
         }
+        type="submit"
       >
         {isLoading ? (
           <>

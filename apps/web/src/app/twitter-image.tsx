@@ -14,8 +14,8 @@ export default async function Image() {
   const logoData = await fetch(
     new URL(
       "../../public/images/logo/logo-full-dark-transparent.png",
-      import.meta.url,
-    ),
+      import.meta.url
+    )
   ).then((res) => res.arrayBuffer());
 
   return new ImageResponse(
@@ -74,12 +74,12 @@ export default async function Image() {
         {/* biome-ignore lint/a11y/useAltText: OG images use Satori renderer which doesn't render alt text */}
         {/* biome-ignore lint/performance/noImgElement: Satori only supports basic HTML img elements */}
         <img
-          src={logoData as unknown as string}
-          width={460}
           height={250}
+          src={logoData as unknown as string}
           style={{
             objectFit: "contain",
           }}
+          width={460}
         />
 
         {/* Tagline */}
@@ -159,6 +159,6 @@ export default async function Image() {
     </div>,
     {
       ...size,
-    },
+    }
   );
 }

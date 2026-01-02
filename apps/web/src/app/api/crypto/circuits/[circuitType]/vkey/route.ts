@@ -1,11 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { isCircuitType } from "@/lib/zk";
 import { getCircuitVerificationKey } from "@/lib/zk/noir-verifier";
+import { isCircuitType } from "@/lib/zk/zk-circuit-spec";
 
 export async function GET(
   _request: NextRequest,
-  context: { params: Promise<{ circuitType: string }> },
+  context: { params: Promise<{ circuitType: string }> }
 ) {
   const { circuitType } = await context.params;
   if (!isCircuitType(circuitType)) {
@@ -14,7 +14,7 @@ export async function GET(
         error:
           "circuitType must be 'age_verification', 'doc_validity', 'nationality_membership', or 'face_match'",
       },
-      { status: 400 },
+      { status: 400 }
     );
   }
 

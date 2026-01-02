@@ -47,7 +47,9 @@ export function useHumanLiveness(enabled: boolean) {
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      if (!enabled || ready || humanRef.current) return;
+      if (!enabled || ready || humanRef.current) {
+        return;
+      }
       try {
         const mod = await import("@vladmandic/human");
         const human = new mod.Human(clientConfig);
@@ -59,11 +61,11 @@ export function useHumanLiveness(enabled: boolean) {
             () =>
               reject(
                 new Error(
-                  "Model load timeout. Check /human-models/* is reachable.",
-                ),
+                  "Model load timeout. Check /human-models/* is reachable."
+                )
               ),
-            90_000,
-          ),
+            90_000
+          )
         );
         await Promise.race([warmPromise, timeoutPromise]);
         if (!cancelled) {
@@ -76,7 +78,9 @@ export function useHumanLiveness(enabled: boolean) {
         }
       }
     }
-    void init();
+    init().catch(() => {
+      // Error handled via setError() in try block
+    });
     return () => {
       cancelled = true;
     };

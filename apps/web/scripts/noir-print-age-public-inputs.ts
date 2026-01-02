@@ -7,10 +7,10 @@ const ageCircuit = JSON.parse(
   fs.readFileSync(
     new URL(
       "../noir-circuits/age_verification/artifacts/age_verification.json",
-      import.meta.url,
+      import.meta.url
     ),
-    "utf8",
-  ),
+    "utf8"
+  )
 );
 
 const noir = new Noir(ageCircuit);

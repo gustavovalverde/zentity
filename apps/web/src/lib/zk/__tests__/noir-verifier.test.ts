@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+/** Matches a 32-character lowercase hex nonce */
+const HEX_NONCE_PATTERN = /^[0-9a-f]{32}$/;
+
 // Mock server-only
 vi.mock("server-only", () => ({}));
 
@@ -9,16 +12,16 @@ vi.mock(
   () => ({
     default: {
       noir_version: "0.35.0",
-      hash: 12345,
+      hash: 12_345,
       bytecode: "base64_bytecode_age",
     },
-  }),
+  })
 );
 
 vi.mock("@/noir-circuits/doc_validity/artifacts/doc_validity.json", () => ({
   default: {
     noir_version: "0.35.0",
-    hash: 67890,
+    hash: 67_890,
     bytecode: "base64_bytecode_doc",
   },
 }));
@@ -28,16 +31,16 @@ vi.mock(
   () => ({
     default: {
       noir_version: "0.35.0",
-      hash: 11111,
+      hash: 11_111,
       bytecode: "base64_bytecode_nat",
     },
-  }),
+  })
 );
 
 vi.mock("@/noir-circuits/face_match/artifacts/face_match.json", () => ({
   default: {
     noir_version: "0.35.0",
-    hash: 22222,
+    hash: 22_222,
     bytecode: "base64_bytecode_face",
   },
 }));
@@ -174,11 +177,11 @@ describe("zk-circuit-spec", () => {
 
   describe("parsePublicInputToNumber", () => {
     it("parses decimal string", () => {
-      expect(parsePublicInputToNumber("12345")).toBe(12345);
+      expect(parsePublicInputToNumber("12345")).toBe(12_345);
     });
 
     it("parses hex string with 0x prefix", () => {
-      expect(parsePublicInputToNumber("0x1234")).toBe(0x1234);
+      expect(parsePublicInputToNumber("0x1234")).toBe(0x12_34);
     });
 
     it("parses zero", () => {
@@ -187,7 +190,7 @@ describe("zk-circuit-spec", () => {
     });
 
     it("parses large decimal values", () => {
-      expect(parsePublicInputToNumber("20251231")).toBe(20251231);
+      expect(parsePublicInputToNumber("20251231")).toBe(20_251_231);
     });
   });
 
@@ -197,7 +200,7 @@ describe("zk-circuit-spec", () => {
       const result = normalizeChallengeNonce(nonce);
 
       expect(result).toHaveLength(32);
-      expect(/^[0-9a-f]{32}$/.test(result)).toBe(true);
+      expect(HEX_NONCE_PATTERN.test(result)).toBe(true);
     });
 
     it("normalizes 0x-prefixed hex", () => {

@@ -18,7 +18,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { type Config, cookieToInitialState, WagmiProvider } from "wagmi";
 
-import { InMemoryStorageProvider } from "@/lib/fhevm";
+import { InMemoryStorageProvider } from "@/hooks/fhevm/use-in-memory-storage";
 import { getTrpcClientConfig, trpcReact } from "@/lib/trpc/client";
 import {
   createWagmiAdapter,
@@ -57,15 +57,17 @@ export function Web3Provider({
 }: Web3ProviderProps) {
   const wagmiAdapter = useMemo(
     () => createWagmiAdapter(walletScopeId),
-    [walletScopeId],
+    [walletScopeId]
   );
   const storageKey = useMemo(
     () => getWagmiStorageKey(walletScopeId),
-    [walletScopeId],
+    [walletScopeId]
   );
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      return;
+    }
     let isCancelled = false;
     const defaultNetwork = networks[0] ?? fhevmSepolia;
     const activeStorageKey = storageKey;
@@ -105,8 +107,12 @@ export function Web3Provider({
       });
 
     const waitForInjectedProvider = async () => {
-      if (typeof window === "undefined") return;
-      if (window.ethereum) return;
+      if (typeof window === "undefined") {
+        return;
+      }
+      if (window.ethereum) {
+        return;
+      }
 
       await Promise.race([
         new Promise<void>((resolve) => {
@@ -120,9 +126,11 @@ export function Web3Provider({
       ]);
     };
 
-    void (async () => {
+    (async () => {
       await waitForInjectedProvider();
-      if (isCancelled) return;
+      if (isCancelled) {
+        return;
+      }
       if (
         typeof window !== "undefined" &&
         appkitStorageKey &&
@@ -163,11 +171,13 @@ export function Web3Provider({
           ConnectorController,
           OptionsController,
         };
-        ApiController.fetchWallets({ page: 1, entries: 50 })
-          .then((_result) => {})
-          .catch((_error) => {});
+        ApiController.fetchWallets({ page: 1, entries: 50 }).catch(() => {
+          // Wallet list is optional; provider continues without
+        });
       }
-    })();
+    })().catch(() => {
+      // Provider initialization handled by wagmi
+    });
 
     return () => {
       isCancelled = true;
@@ -183,18 +193,18 @@ export function Web3Provider({
             refetchOnWindowFocus: false,
           },
         },
-      }),
+      })
   );
 
   // Create tRPC client once per component instance
   const [trpcClient] = useState(() =>
-    trpcReact.createClient(getTrpcClientConfig()),
+    trpcReact.createClient(getTrpcClientConfig())
   );
 
   // Get initial state from cookies for SSR hydration
   const initialState = cookieToInitialState(
     wagmiAdapter.wagmiConfig as Config,
-    cookies,
+    cookies
   );
 
   return (

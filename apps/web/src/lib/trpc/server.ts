@@ -13,18 +13,15 @@ import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 
 import { auth, type Session } from "@/lib/auth/auth";
-import {
-  createRequestLogger,
-  extractInputMeta,
-  isDebugEnabled,
-  type Logger,
-  logError,
-  logWarn,
-} from "@/lib/logging";
-import { getTracer, hashIdentifier } from "@/lib/observability";
+import { logError, logWarn } from "@/lib/logging/error-logger";
+import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
+import { extractInputMeta } from "@/lib/logging/redact";
+import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
+
+export type { Logger } from "@/lib/logging/logger";
 
 /** Base context available to all procedures (public and protected). */
-type TrpcContext = {
+interface TrpcContext {
   req: Request;
   session: Session | null;
   requestId: string;
@@ -33,9 +30,7 @@ type TrpcContext = {
   span?: Span;
   /** Response headers that will be merged with tRPC response. Use for Set-Cookie. */
   resHeaders: Headers;
-};
-
-export type { Logger };
+}
 
 /**
  * Creates the tRPC context from an incoming request.
@@ -62,60 +57,58 @@ export async function createTrpcContext(args: {
 
 const trpc = initTRPC.context<TrpcContext>().create();
 
-const withTracing = trpc.middleware(
-  async ({ path, type, input, ctx, next }) => {
-    const tracer = getTracer();
-    const inputMeta = extractInputMeta(input);
+const withTracing = trpc.middleware(({ path, type, input, ctx, next }) => {
+  const tracer = getTracer();
+  const inputMeta = extractInputMeta(input);
 
-    const attributes: Record<string, string | number | boolean> = {
-      "rpc.system": "trpc",
-      "rpc.method": path,
-      "rpc.type": type,
-      "request.id": ctx.requestId,
-    };
+  const attributes: Record<string, string | number | boolean> = {
+    "rpc.system": "trpc",
+    "rpc.method": path,
+    "rpc.type": type,
+    "request.id": ctx.requestId,
+  };
 
-    if (typeof inputMeta.inputSize === "number") {
-      attributes["input.size"] = inputMeta.inputSize;
-    }
-    if (typeof inputMeta.hasImage === "boolean") {
-      attributes["input.has_image"] = inputMeta.hasImage;
-    }
-    if (ctx.session?.session?.id) {
-      attributes["session.id"] = hashIdentifier(ctx.session.session.id);
-    }
+  if (typeof inputMeta.inputSize === "number") {
+    attributes["input.size"] = inputMeta.inputSize;
+  }
+  if (typeof inputMeta.hasImage === "boolean") {
+    attributes["input.has_image"] = inputMeta.hasImage;
+  }
+  if (ctx.session?.session?.id) {
+    attributes["session.id"] = hashIdentifier(ctx.session.session.id);
+  }
 
-    return tracer.startActiveSpan(
-      `trpc.${path}`,
-      { attributes },
-      async (span) => {
-        try {
-          const spanContext = span.spanContext();
-          const result = await next({
-            ctx: {
-              ...ctx,
-              span,
-              traceId: spanContext.traceId,
-              spanId: spanContext.spanId,
-            },
-          });
-          span.setStatus({ code: SpanStatusCode.OK });
-          return result;
-        } catch (error) {
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: error instanceof Error ? error.message : "tRPC failed",
-          });
-          if (error instanceof Error) {
-            span.recordException(error);
-          }
-          throw error;
-        } finally {
-          span.end();
+  return tracer.startActiveSpan(
+    `trpc.${path}`,
+    { attributes },
+    async (span) => {
+      try {
+        const spanContext = span.spanContext();
+        const result = await next({
+          ctx: {
+            ...ctx,
+            span,
+            traceId: spanContext.traceId,
+            spanId: spanContext.spanId,
+          },
+        });
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "tRPC failed",
+        });
+        if (error instanceof Error) {
+          span.recordException(error);
         }
-      },
-    );
-  },
-);
+        throw error;
+      } finally {
+        span.end();
+      }
+    }
+  );
+});
 
 /**
  * Paths that should log at debug level only (high frequency, low value).
@@ -158,8 +151,12 @@ const withLogging = trpc.middleware(
   async ({ ctx, next, path, type, input }) => {
     const requestId = ctx.requestId || randomUUID();
     const logBindings: Record<string, unknown> = {};
-    if (ctx.traceId) logBindings.traceId = ctx.traceId;
-    if (ctx.spanId) logBindings.spanId = ctx.spanId;
+    if (ctx.traceId) {
+      logBindings.traceId = ctx.traceId;
+    }
+    if (ctx.spanId) {
+      logBindings.spanId = ctx.spanId;
+    }
     const log = createRequestLogger(requestId, logBindings);
     const debug = isDebugEnabled();
     const start = performance.now();
@@ -185,10 +182,10 @@ const withLogging = trpc.middleware(
       if (isCritical && debug) {
         const duration = Math.round(performance.now() - start);
         log.info({ path, duration, ok: true }, "tRPC complete");
-      } else if (!isDebugPath) {
-        log.info({ path, ok: true }, "tRPC complete");
-      } else {
+      } else if (isDebugPath) {
         log.debug({ path, ok: true }, "tRPC complete");
+      } else {
+        log.info({ path, ok: true }, "tRPC complete");
       }
 
       return result;
@@ -224,7 +221,7 @@ const withLogging = trpc.middleware(
       logError(error, { requestId, path, duration }, log);
       throw error;
     }
-  },
+  }
 );
 
 /**
@@ -234,7 +231,7 @@ const withLogging = trpc.middleware(
 const enforceAuth = trpc.middleware(({ ctx, next }) => {
   const session = ctx.session;
   const userId = session?.user?.id;
-  if (!session || !userId) {
+  if (!(session && userId)) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 

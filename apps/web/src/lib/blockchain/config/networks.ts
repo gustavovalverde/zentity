@@ -65,7 +65,7 @@ const FHEVM_NETWORK_ID =
 const FHEVM_CHAIN_ID = Number(
   process.env.FHEVM_CHAIN_ID ||
     process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID ||
-    11155111,
+    11_155_111
 );
 const FHEVM_NETWORK_NAME =
   process.env.FHEVM_NETWORK_NAME ||
@@ -83,10 +83,10 @@ const FHEVM_PROVIDER_ID =
 function toOverrides(
   values: Partial<
     Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
-  >,
+  >
 ) {
   const overrides = Object.fromEntries(
-    Object.entries(values).filter(([, value]) => Boolean(value?.trim())),
+    Object.entries(values).filter(([, value]) => Boolean(value?.trim()))
   ) as Partial<
     Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
   >;
@@ -99,7 +99,7 @@ function resolveNetworkContracts(
   prefer: "hardhat" | "localhost" | "sepolia",
   overrides?: Partial<
     Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
-  >,
+  >
 ) {
   const contracts = overrides
     ? resolveContractAddresses(chainId, { prefer, overrides })
@@ -125,19 +125,19 @@ const FHEVM_CONTRACTS = FHEVM_ENABLED
         IdentityRegistry: process.env.FHEVM_IDENTITY_REGISTRY,
         ComplianceRules: process.env.FHEVM_COMPLIANCE_RULES,
         CompliantERC20: process.env.FHEVM_COMPLIANT_ERC20,
-      }),
+      })
     )
   : null;
 
 const LOCAL_CONTRACTS = HARDHAT_ENABLED
   ? resolveNetworkContracts(
-      31337,
+      31_337,
       "localhost",
       toOverrides({
         IdentityRegistry: process.env.LOCAL_IDENTITY_REGISTRY,
         ComplianceRules: process.env.LOCAL_COMPLIANCE_RULES,
         CompliantERC20: process.env.LOCAL_COMPLIANT_ERC20,
-      }),
+      })
     )
   : null;
 
@@ -168,7 +168,7 @@ const NETWORKS: Record<string, NetworkConfig> = {
   hardhat: {
     id: "hardhat",
     name: "Local (Hardhat)",
-    chainId: 31337,
+    chainId: 31_337,
     rpcUrl: process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545",
     registrarPrivateKey:
       process.env.LOCAL_REGISTRAR_PRIVATE_KEY ||
@@ -237,7 +237,7 @@ export function getEnabledNetworks(): NetworkConfig[] {
   }
 
   return Object.values(NETWORKS).filter(
-    (network) => network.enabled && network.contracts.identityRegistry,
+    (network) => network.enabled && network.contracts.identityRegistry
   );
 }
 
@@ -261,9 +261,11 @@ export function isNetworkAvailable(id: string): boolean {
  */
 export function getExplorerTxUrl(
   networkId: string,
-  txHash: string,
+  txHash: string
 ): string | undefined {
   const network = getNetworkById(networkId);
-  if (!network?.explorer) return undefined;
+  if (!network?.explorer) {
+    return;
+  }
   return `${network.explorer}/tx/${txHash}`;
 }

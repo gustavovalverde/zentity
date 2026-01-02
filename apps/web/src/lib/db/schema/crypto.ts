@@ -37,7 +37,7 @@ export const zkProofs = sqliteTable(
     typeIdx: index("idx_zk_proofs_type").on(table.proofType),
     documentIdx: index("idx_zk_proofs_document_id").on(table.documentId),
     proofHashIdx: index("idx_zk_proofs_hash").on(table.proofHash),
-  }),
+  })
 );
 
 export const encryptedAttributes = sqliteTable(
@@ -57,7 +57,7 @@ export const encryptedAttributes = sqliteTable(
   (table) => ({
     userIdIdx: index("idx_encrypted_attributes_user_id").on(table.userId),
     typeIdx: index("idx_encrypted_attributes_type").on(table.attributeType),
-  }),
+  })
 );
 
 export const signedClaims = sqliteTable(
@@ -77,7 +77,7 @@ export const signedClaims = sqliteTable(
   (table) => ({
     userIdIdx: index("idx_signed_claims_user_id").on(table.userId),
     typeIdx: index("idx_signed_claims_type").on(table.claimType),
-  }),
+  })
 );
 
 export const zkChallenges = sqliteTable(
@@ -91,7 +91,7 @@ export const zkChallenges = sqliteTable(
   },
   (table) => ({
     expiresAtIdx: index("idx_zk_challenges_expires_at").on(table.expiresAt),
-  }),
+  })
 );
 
 export const encryptedSecrets = sqliteTable(
@@ -113,9 +113,9 @@ export const encryptedSecrets = sqliteTable(
     typeIdx: index("idx_encrypted_secrets_type").on(table.secretType),
     userTypeUnique: uniqueIndex("encrypted_secrets_user_secret_type_unique").on(
       table.userId,
-      table.secretType,
+      table.secretType
     ),
-  }),
+  })
 );
 
 export const secretWrappers = sqliteTable(
@@ -138,12 +138,12 @@ export const secretWrappers = sqliteTable(
   (table) => ({
     userIdIdx: index("idx_secret_wrappers_user_id").on(table.userId),
     credentialIdx: index("idx_secret_wrappers_credential_id").on(
-      table.credentialId,
+      table.credentialId
     ),
     secretCredentialUnique: uniqueIndex(
-      "secret_wrappers_secret_credential_unique",
+      "secret_wrappers_secret_credential_unique"
     ).on(table.secretId, table.credentialId),
-  }),
+  })
 );
 
 export type ZkProofRecord = typeof zkProofs.$inferSelect;

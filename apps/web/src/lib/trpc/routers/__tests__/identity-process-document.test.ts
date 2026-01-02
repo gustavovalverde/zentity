@@ -2,7 +2,7 @@
  * Tests for identity.processDocument (OCR-only onboarding step).
  */
 
-import type { DocumentResult } from "@/lib/document";
+import type { DocumentResult } from "@/lib/document/document-ocr";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -47,7 +47,7 @@ describe("identity.processDocument", () => {
 
     const caller = await createCaller("10.0.0.1");
     await expect(
-      caller.processDocument({ image: "base64" }),
+      caller.processDocument({ image: "base64" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -82,7 +82,7 @@ describe("identity.processDocument", () => {
 
     const caller = await createCaller("10.0.0.3");
     await expect(
-      caller.processDocument({ image: "base64" }),
+      caller.processDocument({ image: "base64" })
     ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });
 
@@ -93,7 +93,7 @@ describe("identity.processDocument", () => {
 
     const caller = await createCaller("10.0.0.4");
     await expect(
-      caller.processDocument({ image: "base64" }),
+      caller.processDocument({ image: "base64" })
     ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
   });
 
@@ -112,7 +112,7 @@ describe("identity.processDocument", () => {
     }
 
     await expect(
-      caller.processDocument({ image: "base64-11" }),
+      caller.processDocument({ image: "base64-11" })
     ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
   });
 });

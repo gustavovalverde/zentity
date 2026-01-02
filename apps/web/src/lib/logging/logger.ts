@@ -13,9 +13,12 @@
  */
 import "server-only";
 
+// biome-ignore lint/style/noExportedImports: Logger type needed locally for return types and exported for consumers
 import pino, { type Logger } from "pino";
 
 import { REDACT_KEYS } from "./redact";
+
+export type { Logger };
 
 const isDev = process.env.NODE_ENV !== "production";
 const logLevel = process.env.LOG_LEVEL || (isDev ? "debug" : "info");
@@ -68,7 +71,7 @@ export const logger: Logger = pino({
  */
 export function createRequestLogger(
   requestId: string,
-  bindings?: Record<string, unknown>,
+  bindings?: Record<string, unknown>
 ): Logger {
   return logger.child({ requestId, ...bindings });
 }
@@ -79,5 +82,3 @@ export function createRequestLogger(
 export function isDebugEnabled(): boolean {
   return logLevel === "debug";
 }
-
-export type { Logger };

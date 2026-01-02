@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { FhevmProviderFactory } from "@/lib/fhevm/providers";
+import type { FhevmProviderFactory } from "@/lib/fhevm/providers/types";
 
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,7 @@ import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 
 const resolveMock = vi.fn();
 
-vi.mock("@/lib/fhevm/providers", () => ({
+vi.mock("@/lib/fhevm/providers/registry", () => ({
   resolveFhevmProviderFactory: (...args: unknown[]) => resolveMock(...args),
 }));
 
@@ -19,9 +19,9 @@ describe("useFhevmSdk provider selection", () => {
   });
 
   it("uses mock provider when providerId=mock", async () => {
-    const factory: FhevmProviderFactory = async (params) => {
+    const factory: FhevmProviderFactory = (params) => {
       expect(params.rpcUrl).toBe("http://localhost:8545");
-      return { createEncryptedInput: () => ({}) } as never;
+      return Promise.resolve({ createEncryptedInput: () => ({}) } as never);
     };
     resolveMock.mockReturnValue(factory);
 
@@ -32,10 +32,10 @@ describe("useFhevmSdk provider selection", () => {
     const { result } = renderHook(() =>
       useFhevmSdk({
         provider,
-        chainId: 31337,
+        chainId: 31_337,
         providerId: "mock",
         initialMockChains: { 31337: "http://localhost:8545" },
-      }),
+      })
     );
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
@@ -52,21 +52,21 @@ describe("useFhevmSdk provider selection", () => {
     const { result } = renderHook(() =>
       useFhevmSdk({
         provider,
-        chainId: 11155111,
+        chainId: 11_155_111,
         providerId: "zama",
-      }),
+      })
     );
 
     await waitFor(() => expect(result.current.status).toBe("error"));
     expect(result.current.error?.message).toContain(
-      "FHEVM provider not registered",
+      "FHEVM provider not registered"
     );
   });
 
   it("uses zama provider on non-mock chain", async () => {
-    const factory: FhevmProviderFactory = async (params) => {
-      expect(params.chainId).toBe(11155111);
-      return { createEncryptedInput: () => ({}) } as never;
+    const factory: FhevmProviderFactory = (params) => {
+      expect(params.chainId).toBe(11_155_111);
+      return Promise.resolve({ createEncryptedInput: () => ({}) } as never);
     };
     resolveMock.mockReturnValue(factory);
 
@@ -77,9 +77,9 @@ describe("useFhevmSdk provider selection", () => {
     const { result } = renderHook(() =>
       useFhevmSdk({
         provider,
-        chainId: 11155111,
+        chainId: 11_155_111,
         providerId: "zama",
-      }),
+      })
     );
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
@@ -87,9 +87,9 @@ describe("useFhevmSdk provider selection", () => {
   });
 
   it("falls back to mock provider on hardhat even when zama requested", async () => {
-    const factory: FhevmProviderFactory = async (params) => {
+    const factory: FhevmProviderFactory = (params) => {
       expect(params.rpcUrl).toBe("http://localhost:8545");
-      return { createEncryptedInput: () => ({}) } as never;
+      return Promise.resolve({ createEncryptedInput: () => ({}) } as never);
     };
     resolveMock.mockReturnValue(factory);
 
@@ -100,10 +100,10 @@ describe("useFhevmSdk provider selection", () => {
     const { result } = renderHook(() =>
       useFhevmSdk({
         provider,
-        chainId: 31337,
+        chainId: 31_337,
         providerId: "zama",
         initialMockChains: { 31337: "http://localhost:8545" },
-      }),
+      })
     );
 
     await waitFor(() => expect(result.current.status).toBe("ready"));

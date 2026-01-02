@@ -83,11 +83,11 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
       <CardContent className="space-y-4">
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <h4 className="font-medium">Delete Account</h4>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-muted-foreground text-sm">
             Permanently delete your account and all associated data. This action
             cannot be undone.
           </p>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-2 text-muted-foreground text-sm">
             Due to our privacy-first architecture, all your data including
             cryptographic commitments, encrypted information, and verification
             proofs will be permanently erased. This is GDPR-compliant by design
@@ -95,9 +95,9 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
             recoverable form.
           </p>
 
-          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <Dialog onOpenChange={setIsOpen} open={isOpen}>
             <DialogTrigger asChild>
-              <Button variant="destructive" className="mt-4">
+              <Button className="mt-4" variant="destructive">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete My Account
               </Button>
@@ -135,26 +135,26 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
                     confirm
                   </Label>
                   <Input
-                    id="confirm-email"
-                    type="email"
-                    placeholder="Enter your email to confirm"
-                    value={confirmEmail}
-                    onChange={(e) => setConfirmEmail(e.target.value)}
                     disabled={isDeleting}
+                    id="confirm-email"
+                    onChange={(e) => setConfirmEmail(e.target.value)}
+                    placeholder="Enter your email to confirm"
+                    type="email"
+                    value={confirmEmail}
                   />
                 </div>
               </div>
 
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button variant="outline" disabled={isDeleting}>
+                  <Button disabled={isDeleting} variant="outline">
                     Cancel
                   </Button>
                 </DialogClose>
                 <Button
-                  variant="destructive"
-                  onClick={handleDelete}
                   disabled={!isEmailMatch || isDeleting}
+                  onClick={handleDelete}
+                  variant="destructive"
                 >
                   {isDeleting ? (
                     <>

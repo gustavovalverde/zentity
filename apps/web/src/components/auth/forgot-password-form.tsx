@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
+/** Basic email format validation pattern */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +18,7 @@ import {
   FieldLabel,
   FieldMessage,
 } from "@/components/ui/tanstack-form";
-import { authClient } from "@/lib/auth";
+import { authClient } from "@/lib/auth/auth-client";
 
 export function ForgotPasswordForm() {
   const router = useRouter();
@@ -45,7 +48,7 @@ export function ForgotPasswordForm() {
           description: "If an account exists, we sent a password reset link.",
         });
         router.push(
-          `/forgot-password/sent?email=${encodeURIComponent(value.email)}`,
+          `/forgot-password/sent?email=${encodeURIComponent(value.email)}`
         );
       } catch {
         setError("An unexpected error occurred. Please try again.");
@@ -63,19 +66,22 @@ export function ForgotPasswordForm() {
   };
 
   const validateEmail = (value: string) => {
-    if (!value) return "Email is required";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+    if (!value) {
+      return "Email is required";
+    }
+    if (!EMAIL_PATTERN.test(value)) {
       return "Invalid email address";
-    return undefined;
+    }
+    return;
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
+    <form className="space-y-6" onSubmit={handleSubmit}>
+      {error ? (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <div className="space-y-4">
         <form.Field
@@ -87,21 +93,21 @@ export function ForgotPasswordForm() {
         >
           {(field) => (
             <Field
-              name={field.name}
               errors={field.state.meta.errors as string[]}
               isTouched={field.state.meta.isTouched}
               isValidating={field.state.meta.isValidating}
+              name={field.name}
             >
               <FieldLabel>Email</FieldLabel>
               <FieldControl>
                 <Input
-                  type="email"
-                  placeholder="you@example.com"
                   autoComplete="email"
                   disabled={isLoading}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                  value={field.state.value}
                 />
               </FieldControl>
               <FieldMessage />
@@ -110,7 +116,7 @@ export function ForgotPasswordForm() {
         </form.Field>
       </div>
 
-      <Button type="submit" className="w-full" disabled={isLoading}>
+      <Button className="w-full" disabled={isLoading} type="submit">
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -35,7 +35,7 @@ export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
   if (tokenLoading) {
     return (
       <Card>
-        <CardContent className="py-8 flex items-center justify-center">
+        <CardContent className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
@@ -50,7 +50,7 @@ export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
             <Coins className="h-5 w-5 text-primary" />
             <CardTitle className="text-lg">Token Info</CardTitle>
           </div>
-          {tokenInfo?.demo && <Badge variant="warning">DEMO</Badge>}
+          {tokenInfo?.demo ? <Badge variant="warning">DEMO</Badge> : null}
         </div>
         <CardDescription>CompliantERC20 contract details</CardDescription>
       </CardHeader>
@@ -79,29 +79,29 @@ export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
               </div>
             </div>
 
-            <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground mb-2">Contract</p>
-              <code className="text-xs bg-muted px-2 py-1 rounded block truncate">
+            <div className="border-t pt-2">
+              <p className="mb-2 text-muted-foreground text-xs">Contract</p>
+              <code className="block truncate rounded bg-muted px-2 py-1 text-xs">
                 {tokenInfo.contractAddress}
               </code>
             </div>
 
-            <div className="pt-2 border-t">
-              <p className="text-xs text-muted-foreground mb-2">Your Status</p>
+            <div className="border-t pt-2">
+              <p className="mb-2 text-muted-foreground text-xs">Your Status</p>
               {attestationStatus?.isAttested ? (
                 <div className="flex items-center gap-2 text-success">
                   <CheckCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">Attested</span>
+                  <span className="font-medium text-sm">Attested</span>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   Not attested on this network
                 </p>
               )}
             </div>
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Token info not available
           </p>
         )}

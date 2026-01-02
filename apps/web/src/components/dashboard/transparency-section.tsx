@@ -34,7 +34,9 @@ export function TransparencySection({
   const [isOpen, setIsOpen] = useState(false);
 
   const truncateHash = (hash: string) => {
-    if (hash.length <= 20) return hash;
+    if (hash.length <= 20) {
+      return hash;
+    }
     return `${hash.slice(0, 10)}...${hash.slice(-10)}`;
   };
 
@@ -59,14 +61,14 @@ export function TransparencySection({
 
   return (
     <Card>
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CardHeader className="pb-3">
           <CollapsibleTrigger asChild>
             <Button
+              className="h-auto w-full justify-between p-0 hover:bg-transparent"
               variant="ghost"
-              className="w-full justify-between p-0 h-auto hover:bg-transparent"
             >
-              <CardTitle className="text-lg flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <Database className="h-5 w-5" />
                 What We Store
               </CardTitle>
@@ -81,84 +83,84 @@ export function TransparencySection({
         <CollapsibleContent>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Lock className="h-5 w-5 text-info mt-0.5" />
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                <Lock className="mt-0.5 h-5 w-5 text-info" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Document Hash</span>
-                    <Badge variant="outline" className="text-xs">
+                    <span className="font-medium text-sm">Document Hash</span>
+                    <Badge className="text-xs" variant="outline">
                       SHA256
                     </Badge>
                   </div>
-                  <code className="text-xs text-muted-foreground block font-mono">
+                  <code className="block font-mono text-muted-foreground text-xs">
                     {documentHash ? truncateHash(documentHash) : "Not verified"}
                   </code>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     One-way hash of document number + salt
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Shield className="h-5 w-5 text-success mt-0.5" />
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                <Shield className="mt-0.5 h-5 w-5 text-success" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Name Commitment</span>
-                    <Badge variant="outline" className="text-xs">
+                    <span className="font-medium text-sm">Name Commitment</span>
+                    <Badge className="text-xs" variant="outline">
                       SHA256
                     </Badge>
                   </div>
-                  <code className="text-xs text-muted-foreground block font-mono">
+                  <code className="block font-mono text-muted-foreground text-xs">
                     {nameCommitment
                       ? truncateHash(nameCommitment)
                       : "Not verified"}
                   </code>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     One-way hash of normalized name + salt
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Eye className="h-5 w-5 text-info mt-0.5" />
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                <Eye className="mt-0.5 h-5 w-5 text-info" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">
+                    <span className="font-medium text-sm">
                       Birth Year Offset Ciphertext
                     </span>
-                    <Badge variant="outline" className="text-xs">
+                    <Badge className="text-xs" variant="outline">
                       FHE
                     </Badge>
                   </div>
-                  <code className="text-xs text-muted-foreground block font-mono">
+                  <code className="block font-mono text-muted-foreground text-xs">
                     {birthYearOffsetCiphertext
                       ? truncateHash(birthYearOffsetCiphertext)
                       : "Not encrypted"}
                   </code>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     Homomorphically encrypted birth year offset
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                <Shield className="h-5 w-5 text-success mt-0.5" />
+              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                <Shield className="mt-0.5 h-5 w-5 text-success" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Age Proof</span>
-                    <Badge variant="outline" className="text-xs">
+                    <span className="font-medium text-sm">Age Proof</span>
+                    <Badge className="text-xs" variant="outline">
                       ZK-SNARK
                     </Badge>
-                    {hasAgeProof && (
-                      <Badge variant="success" className="text-xs">
+                    {hasAgeProof ? (
+                      <Badge className="text-xs" variant="success">
                         Verified 18+
                       </Badge>
-                    )}
+                    ) : null}
                   </div>
-                  <code className="text-xs text-muted-foreground block font-mono">
+                  <code className="block font-mono text-muted-foreground text-xs">
                     {hasAgeProof ? "Stored" : "No proof stored"}
                   </code>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     Cryptographic proof that age {"\u2265"} 18 without revealing
                     birth date
                   </p>
@@ -166,20 +168,20 @@ export function TransparencySection({
               </div>
             </div>
 
-            <div className="pt-2 border-t space-y-3">
+            <div className="space-y-3 border-t pt-2">
               <div>
-                <h4 className="text-sm font-medium mb-2">Proofs Stored</h4>
+                <h4 className="mb-2 font-medium text-sm">Proofs Stored</h4>
                 <div className="flex flex-wrap gap-2">
                   {proofTypes.length === 0 ? (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge className="text-xs" variant="outline">
                       None yet
                     </Badge>
                   ) : (
                     proofTypes.map((proof) => (
                       <Badge
+                        className="text-xs"
                         key={proof}
                         variant="secondary"
-                        className="text-xs"
                       >
                         {proofLabels[proof] ?? proof}
                       </Badge>
@@ -189,17 +191,17 @@ export function TransparencySection({
               </div>
 
               <div>
-                <h4 className="text-sm font-medium mb-2">
+                <h4 className="mb-2 font-medium text-sm">
                   Encrypted Attributes
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {encryptedAttributes.length === 0 ? (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge className="text-xs" variant="outline">
                       None yet
                     </Badge>
                   ) : (
                     encryptedAttributes.map((attr) => (
-                      <Badge key={attr} variant="secondary" className="text-xs">
+                      <Badge className="text-xs" key={attr} variant="secondary">
                         {attributeLabels[attr] ?? attr}
                       </Badge>
                     ))
@@ -208,18 +210,18 @@ export function TransparencySection({
               </div>
 
               <div>
-                <h4 className="text-sm font-medium mb-2">Signed Claims</h4>
+                <h4 className="mb-2 font-medium text-sm">Signed Claims</h4>
                 <div className="flex flex-wrap gap-2">
                   {signedClaimTypes.length === 0 ? (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge className="text-xs" variant="outline">
                       None yet
                     </Badge>
                   ) : (
                     signedClaimTypes.map((claim) => (
                       <Badge
+                        className="text-xs"
                         key={claim}
                         variant="secondary"
-                        className="text-xs"
                       >
                         {claimLabels[claim] ?? claim}
                       </Badge>
@@ -229,8 +231,8 @@ export function TransparencySection({
               </div>
             </div>
 
-            <div className="pt-2 border-t">
-              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+            <div className="border-t pt-2">
+              <h4 className="mb-2 flex items-center gap-2 font-medium text-sm">
                 <EyeOff className="h-4 w-4 text-destructive" />
                 What We NEVER Store
               </h4>
@@ -245,9 +247,9 @@ export function TransparencySection({
                   "Address",
                 ].map((item) => (
                   <Badge
+                    className="border-destructive/30 text-destructive text-xs"
                     key={item}
                     variant="outline"
-                    className="text-xs text-destructive border-destructive/30"
                   >
                     {item}
                   </Badge>

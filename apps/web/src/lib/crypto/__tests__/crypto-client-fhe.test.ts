@@ -23,7 +23,10 @@ vi.mock("@/lib/trpc/client", () => ({
   },
 }));
 
-import { ensureFheKeyRegistration, verifyAgeViaFHE } from "@/lib/crypto";
+import {
+  ensureFheKeyRegistration,
+  verifyAgeViaFHE,
+} from "@/lib/crypto/crypto-client";
 
 describe("crypto-client FHE", () => {
   it("returns existing key id without re-registering", async () => {

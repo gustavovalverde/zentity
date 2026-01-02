@@ -156,7 +156,7 @@ export const useFHEEncryption = (params: UseFHEEncryptionParams) => {
   /** True when all dependencies are ready for encryption */
   const canEncrypt = useMemo(
     () => Boolean(instance && ethersSigner && contractAddress),
-    [instance, ethersSigner, contractAddress],
+    [instance, ethersSigner, contractAddress]
   );
 
   /**
@@ -171,15 +171,17 @@ export const useFHEEncryption = (params: UseFHEEncryptionParams) => {
    */
   const encryptWith = useCallback(
     async (
-      buildFn: (builder: RelayerEncryptedInput) => void,
+      buildFn: (builder: RelayerEncryptedInput) => void
     ): Promise<EncryptResult | undefined> => {
-      if (!instance || !ethersSigner || !contractAddress) return undefined;
+      if (!(instance && ethersSigner && contractAddress)) {
+        return;
+      }
 
       // Encryption context is bound to user + contract for ACL enforcement
       const userAddress = await ethersSigner.getAddress();
       const input = instance.createEncryptedInput(
         contractAddress,
-        userAddress,
+        userAddress
       ) as RelayerEncryptedInput;
 
       // Let caller add values to encrypt
@@ -189,7 +191,7 @@ export const useFHEEncryption = (params: UseFHEEncryptionParams) => {
       const enc = await input.encrypt();
       return enc;
     },
-    [instance, ethersSigner, contractAddress],
+    [instance, ethersSigner, contractAddress]
   );
 
   return {
@@ -212,13 +214,15 @@ export const useFHEEncryption = (params: UseFHEEncryptionParams) => {
 const _buildParamsFromAbi = (
   enc: EncryptResult,
   abi: AbiItem[],
-  functionName: string,
+  functionName: string
 ): unknown[] => {
   const fn = abi.find(
     (item): item is AbiFunctionItem =>
-      item.type === "function" && item.name === functionName,
+      item.type === "function" && item.name === functionName
   );
-  if (!fn) throw new Error(`Function ABI not found for ${functionName}`);
+  if (!fn) {
+    throw new Error(`Function ABI not found for ${functionName}`);
+  }
 
   return fn.inputs.map((input: AbiParameter, index: number) => {
     // First param is typically the handle, second is the proof

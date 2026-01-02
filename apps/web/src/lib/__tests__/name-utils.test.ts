@@ -36,7 +36,7 @@ describe("name-utils", () => {
   describe("buildDisplayName", () => {
     it("combines first parts of first and last names", () => {
       expect(buildDisplayName("Juan Carlos", "Perez Garcia")).toBe(
-        "Juan Perez",
+        "Juan Perez"
       );
     });
 

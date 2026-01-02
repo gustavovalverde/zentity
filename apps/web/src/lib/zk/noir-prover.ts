@@ -78,7 +78,7 @@ interface NationalityProofInput {
  * // Birth year NEVER leaves the browser
  */
 export async function generateAgeProofNoir(
-  input: AgeProofInput,
+  input: AgeProofInput
 ): Promise<NoirProofResult> {
   if (typeof window === "undefined") {
     throw new Error("ZK proofs can only be generated in the browser");
@@ -121,7 +121,7 @@ export async function generateAgeProofNoir(
  * });
  */
 export async function generateDocValidityProofNoir(
-  input: DocValidityInput,
+  input: DocValidityInput
 ): Promise<NoirProofResult> {
   if (typeof window === "undefined") {
     throw new Error("ZK proofs can only be generated in the browser");
@@ -145,7 +145,7 @@ export async function generateDocValidityProofNoir(
 }
 
 export async function generateFaceMatchProofNoir(
-  input: FaceMatchInput,
+  input: FaceMatchInput
 ): Promise<NoirProofResult> {
   if (typeof window === "undefined") {
     throw new Error("ZK proofs can only be generated in the browser");
@@ -187,7 +187,7 @@ export async function generateFaceMatchProofNoir(
  * // Proves German nationality is in EU without revealing "Germany"
  */
 export async function generateNationalityProofNoir(
-  input: NationalityProofInput,
+  input: NationalityProofInput
 ): Promise<NoirProofResult> {
   if (typeof window === "undefined") {
     throw new Error("ZK proofs can only be generated in the browser");
@@ -216,8 +216,10 @@ export async function generateNationalityProofNoir(
  * This triggers the Web Worker to load Noir.js and bb.js before
  * the first proof is needed, reducing perceived latency.
  */
-async function _preloadNoirCircuits(): Promise<void> {
-  if (typeof window === "undefined") return;
+function _preloadNoirCircuits(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
 
   try {
     // Trigger worker initialization by starting (but not awaiting) a proof
@@ -242,7 +244,7 @@ function _isNoirAvailable(): boolean {
  */
 function _dateToInt(dateStr: string): number {
   const [year, month, day] = dateStr.split("-").map(Number);
-  return year * 10000 + month * 100 + day;
+  return year * 10_000 + month * 100 + day;
 }
 
 /**
@@ -251,6 +253,8 @@ function _dateToInt(dateStr: string): number {
 export function getTodayAsInt(): number {
   const today = new Date();
   return (
-    today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate()
+    today.getFullYear() * 10_000 +
+    (today.getMonth() + 1) * 100 +
+    today.getDate()
   );
 }

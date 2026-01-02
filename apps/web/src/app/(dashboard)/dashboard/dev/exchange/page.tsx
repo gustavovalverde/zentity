@@ -25,7 +25,7 @@ import {
   generateFaceMatchProof,
   getProofChallenge,
   getSignedClaims,
-} from "@/lib/crypto";
+} from "@/lib/crypto/crypto-client";
 
 // Types for the demo
 interface ExchangeKeypair {
@@ -78,6 +78,43 @@ type DemoStep =
   | "verification"
   | "summary";
 
+const DEMO_STEPS: DemoStep[] = [
+  "intro",
+  "exchange-request",
+  "user-consent",
+  "disclosure",
+  "verification",
+  "summary",
+];
+
+function getStepBgClass(
+  currentStep: DemoStep,
+  stepToCheck: string,
+  index: number
+): string {
+  if (currentStep === stepToCheck) {
+    return "bg-info";
+  }
+  if (index < DEMO_STEPS.indexOf(currentStep)) {
+    return "bg-success";
+  }
+  return "bg-muted";
+}
+
+function getStatusLabel(status: boolean | undefined): string {
+  if (status === undefined) {
+    return "N/A";
+  }
+  return status ? "Valid" : "Invalid";
+}
+
+function getStatusBgClass(status: boolean | undefined): string {
+  if (status === undefined) {
+    return "bg-muted";
+  }
+  return status ? "bg-success" : "bg-destructive";
+}
+
 export default function ExchangeDemoPage() {
   const [step, setStep] = useState<DemoStep>("intro");
   const [exchangeKeypair, setExchangeKeypair] =
@@ -101,7 +138,7 @@ export default function ExchangeDemoPage() {
       setStep("exchange-request");
     } catch (error) {
       setFlowError(
-        `Failed to generate exchange keypair: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to generate exchange keypair: ${error instanceof Error ? error.message : String(error)}`
       );
     }
     setIsLoading(false);
@@ -109,15 +146,17 @@ export default function ExchangeDemoPage() {
 
   // Step 2: User consents and Zentity creates disclosure package
   const handleUserConsent = async () => {
-    if (!exchangeKeypair) return;
+    if (!exchangeKeypair) {
+      return;
+    }
     setIsLoading(true);
     setFlowError(null);
     try {
       const now = new Date();
       const currentDateInt =
-        now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+        now.getFullYear() * 10_000 + (now.getMonth() + 1) * 100 + now.getDate();
       const claims = await getSignedClaims();
-      if (!claims.ocr || !claims.faceMatch) {
+      if (!(claims.ocr && claims.faceMatch)) {
         setFlowError("Missing signed claims for demo proofs");
         return;
       }
@@ -144,8 +183,8 @@ export default function ExchangeDemoPage() {
 
       if (
         !documentHashField ||
-        ocrData.birthYear == null ||
-        ocrData.expiryDate == null ||
+        typeof ocrData.birthYear !== "number" ||
+        typeof ocrData.expiryDate !== "number" ||
         !ageClaimHash ||
         !docClaimHash ||
         !faceClaimHash
@@ -154,16 +193,18 @@ export default function ExchangeDemoPage() {
         return;
       }
 
-      const similarityFixed =
-        typeof faceData.confidenceFixed === "number"
-          ? faceData.confidenceFixed
-          : typeof faceData.confidence === "number"
-            ? Math.round(faceData.confidence * 10000)
-            : null;
+      let similarityFixed: number | null;
+      if (typeof faceData.confidenceFixed === "number") {
+        similarityFixed = faceData.confidenceFixed;
+      } else if (typeof faceData.confidence === "number") {
+        similarityFixed = Math.round(faceData.confidence * 10_000);
+      } else {
+        similarityFixed = null;
+      }
       const thresholdFixed =
         typeof faceData.thresholdFixed === "number"
           ? faceData.thresholdFixed
-          : Math.round(0.6 * 10000);
+          : Math.round(0.6 * 10_000);
       if (similarityFixed === null) {
         setFlowError("Missing face match score for demo proofs");
         return;
@@ -238,7 +279,7 @@ export default function ExchangeDemoPage() {
       setStep("disclosure");
     } catch (error) {
       setFlowError(
-        `Failed to create disclosure package: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to create disclosure package: ${error instanceof Error ? error.message : String(error)}`
       );
     } finally {
       setIsLoading(false);
@@ -247,7 +288,9 @@ export default function ExchangeDemoPage() {
 
   // Step 3: Exchange decrypts PII
   const handleDecryptPii = async () => {
-    if (!disclosurePackage || !exchangeKeypair) return;
+    if (!(disclosurePackage && exchangeKeypair)) {
+      return;
+    }
     setIsLoading(true);
     setFlowError(null);
     try {
@@ -264,7 +307,7 @@ export default function ExchangeDemoPage() {
       setStep("verification");
     } catch (error) {
       setFlowError(
-        `Failed to decrypt PII: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to decrypt PII: ${error instanceof Error ? error.message : String(error)}`
       );
     }
     setIsLoading(false);
@@ -272,7 +315,9 @@ export default function ExchangeDemoPage() {
 
   // Step 4: Exchange verifies proofs
   const handleVerifyProofs = async () => {
-    if (!disclosurePackage) return;
+    if (!disclosurePackage) {
+      return;
+    }
     setIsLoading(true);
     setFlowError(null);
     try {
@@ -289,7 +334,7 @@ export default function ExchangeDemoPage() {
       setStep("summary");
     } catch (error) {
       setFlowError(
-        `Failed to verify proofs: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to verify proofs: ${error instanceof Error ? error.message : String(error)}`
       );
     }
     setIsLoading(false);
@@ -317,7 +362,7 @@ export default function ExchangeDemoPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Exchange Simulator</h1>
+        <h1 className="font-bold text-2xl">Exchange Simulator</h1>
         <p className="text-muted-foreground">
           Demonstrates privacy-preserving identity verification for regulated
           entities
@@ -335,48 +380,34 @@ export default function ExchangeDemoPage() {
           "summary",
         ].map((s, i) => (
           <div
+            className={`h-2 flex-1 rounded ${getStepBgClass(step, s, i)}`}
             key={s}
-            className={`h-2 flex-1 rounded ${
-              step === s
-                ? "bg-info"
-                : i <
-                    [
-                      "intro",
-                      "exchange-request",
-                      "user-consent",
-                      "disclosure",
-                      "verification",
-                      "summary",
-                    ].indexOf(step)
-                  ? "bg-success"
-                  : "bg-muted"
-            }`}
           />
         ))}
       </div>
 
       {/* Step content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Left: Current step */}
         <Card>
           <CardContent className="pt-6">
-            {flowError && (
-              <Alert variant="destructive" className="mb-4">
+            {flowError ? (
+              <Alert className="mb-4" variant="destructive">
                 <AlertDescription>{flowError}</AlertDescription>
               </Alert>
-            )}
+            ) : null}
             {step === "intro" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="mb-4 font-semibold text-xl">
                   Welcome to the Exchange Demo
                 </h2>
-                <p className="text-muted-foreground mb-4">
+                <p className="mb-4 text-muted-foreground">
                   This demo simulates a crypto exchange requesting identity
                   verification from a Zentity user.
                 </p>
-                <div className="rounded border bg-muted/40 p-4 mb-4">
-                  <h3 className="font-medium mb-2">The Flow:</h3>
-                  <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1">
+                <div className="mb-4 rounded border bg-muted/40 p-4">
+                  <h3 className="mb-2 font-medium">The Flow:</h3>
+                  <ol className="list-inside list-decimal space-y-1 text-muted-foreground text-sm">
                     <li>Exchange generates RSA keypair</li>
                     <li>User consents to share data</li>
                     <li>Zentity creates encrypted disclosure package</li>
@@ -384,10 +415,10 @@ export default function ExchangeDemoPage() {
                   </ol>
                 </div>
                 <Button
-                  type="button"
-                  onClick={handleGenerateKeypair}
-                  disabled={isLoading}
                   className="w-full"
+                  disabled={isLoading}
+                  onClick={handleGenerateKeypair}
+                  type="button"
                 >
                   {isLoading ? "Loading..." : "Start Demo as Exchange"}
                 </Button>
@@ -396,28 +427,28 @@ export default function ExchangeDemoPage() {
 
             {step === "exchange-request" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="mb-4 font-semibold text-xl">
                   Step 1: Exchange Requests Verification
                 </h2>
-                <Alert variant="success" className="mb-4">
+                <Alert className="mb-4" variant="success">
                   <AlertDescription>
                     Exchange keypair generated
                   </AlertDescription>
                 </Alert>
-                <div className="rounded border bg-muted/40 p-4 mb-4">
-                  <h3 className="font-medium mb-2">Exchange Public Key:</h3>
-                  <code className="text-xs text-muted-foreground break-all block">
+                <div className="mb-4 rounded border bg-muted/40 p-4">
+                  <h3 className="mb-2 font-medium">Exchange Public Key:</h3>
+                  <code className="block break-all text-muted-foreground text-xs">
                     {exchangeKeypair?.publicKey.substring(0, 100)}...
                   </code>
                 </div>
-                <p className="text-muted-foreground text-sm mb-4">
+                <p className="mb-4 text-muted-foreground text-sm">
                   The exchange sends their public key to Zentity. PII will be
                   encrypted to this key.
                 </p>
                 <Button
-                  type="button"
-                  onClick={() => setStep("user-consent")}
                   className="w-full"
+                  onClick={() => setStep("user-consent")}
+                  type="button"
                 >
                   Continue to User Consent
                 </Button>
@@ -426,16 +457,16 @@ export default function ExchangeDemoPage() {
 
             {step === "user-consent" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="mb-4 font-semibold text-xl">
                   Step 2: User Consent
                 </h2>
-                <Alert variant="warning" className="mb-4">
+                <Alert className="mb-4" variant="warning">
                   <AlertTitle className="text-sm">Consent Request</AlertTitle>
                   <AlertDescription className="text-sm">
                     <strong>CryptoExchange Inc.</strong> is requesting access
                     to:
                   </AlertDescription>
-                  <ul className="list-disc list-inside text-sm text-muted-foreground mt-2">
+                  <ul className="mt-2 list-inside list-disc text-muted-foreground text-sm">
                     <li>Full Name</li>
                     <li>Date of Birth</li>
                     <li>Nationality</li>
@@ -445,18 +476,18 @@ export default function ExchangeDemoPage() {
                 </Alert>
                 <div className="flex gap-4">
                   <Button
-                    type="button"
-                    onClick={resetDemo}
-                    variant="outline"
                     className="flex-1"
+                    onClick={resetDemo}
+                    type="button"
+                    variant="outline"
                   >
                     Deny
                   </Button>
                   <Button
-                    type="button"
-                    onClick={handleUserConsent}
-                    disabled={isLoading}
                     className="flex-1"
+                    disabled={isLoading}
+                    onClick={handleUserConsent}
+                    type="button"
                   >
                     {isLoading ? "Creating..." : "Approve"}
                   </Button>
@@ -466,23 +497,23 @@ export default function ExchangeDemoPage() {
 
             {step === "disclosure" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="mb-4 font-semibold text-xl">
                   Step 3: Disclosure Package Created
                 </h2>
-                <Alert variant="success" className="mb-4">
+                <Alert className="mb-4" variant="success">
                   <AlertDescription>
                     Package created and encrypted
                   </AlertDescription>
                 </Alert>
-                <div className="rounded border bg-muted/40 p-4 mb-4 space-y-2">
+                <div className="mb-4 space-y-2 rounded border bg-muted/40 p-4">
                   <div>
                     <span className="text-muted-foreground text-sm">
                       Encrypted PII:
                     </span>
-                    <code className="text-xs text-info block truncate">
+                    <code className="block truncate text-info text-xs">
                       {disclosurePackage?.encryptedPii.encryptedData.substring(
                         0,
-                        50,
+                        50
                       )}
                       ...
                     </code>
@@ -491,30 +522,30 @@ export default function ExchangeDemoPage() {
                     <span className="text-muted-foreground text-sm">
                       Proofs included:
                     </span>
-                    <div className="flex gap-2 mt-1">
-                      {disclosurePackage?.proofs.ageProof && (
-                        <Badge variant="info" className="text-xs">
+                    <div className="mt-1 flex gap-2">
+                      {disclosurePackage?.proofs.ageProof ? (
+                        <Badge className="text-xs" variant="info">
                           Age
                         </Badge>
-                      )}
-                      {disclosurePackage?.proofs.faceMatchProof && (
-                        <Badge variant="info" className="text-xs">
+                      ) : null}
+                      {disclosurePackage?.proofs.faceMatchProof ? (
+                        <Badge className="text-xs" variant="info">
                           Face Match
                         </Badge>
-                      )}
-                      {disclosurePackage?.proofs.docValidityProof && (
-                        <Badge variant="info" className="text-xs">
+                      ) : null}
+                      {disclosurePackage?.proofs.docValidityProof ? (
+                        <Badge className="text-xs" variant="info">
                           Doc Validity
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
                 <Button
-                  type="button"
-                  onClick={handleDecryptPii}
-                  disabled={isLoading}
                   className="w-full"
+                  disabled={isLoading}
+                  onClick={handleDecryptPii}
+                  type="button"
                 >
                   {isLoading ? "Decrypting..." : "Exchange: Decrypt PII"}
                 </Button>
@@ -523,16 +554,16 @@ export default function ExchangeDemoPage() {
 
             {step === "verification" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="mb-4 font-semibold text-xl">
                   Step 4: Verify Proofs
                 </h2>
-                <Alert variant="success" className="mb-4">
+                <Alert className="mb-4" variant="success">
                   <AlertDescription>
                     PII decrypted successfully
                   </AlertDescription>
                 </Alert>
-                <div className="rounded border bg-muted/40 p-4 mb-4">
-                  <h3 className="font-medium mb-2">Decrypted PII:</h3>
+                <div className="mb-4 rounded border bg-muted/40 p-4">
+                  <h3 className="mb-2 font-medium">Decrypted PII:</h3>
                   <div className="space-y-1 text-sm">
                     <p>
                       <span className="text-muted-foreground">Name:</span>{" "}
@@ -555,10 +586,10 @@ export default function ExchangeDemoPage() {
                   </div>
                 </div>
                 <Button
-                  type="button"
-                  onClick={handleVerifyProofs}
-                  disabled={isLoading}
                   className="w-full"
+                  disabled={isLoading}
+                  onClick={handleVerifyProofs}
+                  type="button"
                 >
                   {isLoading ? "Verifying..." : "Verify ZK Proofs"}
                 </Button>
@@ -567,23 +598,23 @@ export default function ExchangeDemoPage() {
 
             {step === "summary" && (
               <div>
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="mb-4 font-semibold text-xl">
                   Verification Complete
                 </h2>
                 {hasAnyFailure ? (
-                  <Alert variant="destructive" className="mb-4">
+                  <Alert className="mb-4" variant="destructive">
                     <AlertDescription>
                       One or more verifications failed
                     </AlertDescription>
                   </Alert>
                 ) : (
-                  <Alert variant="success" className="mb-4">
+                  <Alert className="mb-4" variant="success">
                     <AlertDescription>
                       All verifications passed
                     </AlertDescription>
                   </Alert>
                 )}
-                <div className="space-y-2 mb-4">
+                <div className="mb-4 space-y-2">
                   {[
                     { label: "Age Proof", status: ageStatus },
                     { label: "Face Match Proof", status: faceMatchStatus },
@@ -593,32 +624,21 @@ export default function ExchangeDemoPage() {
                     },
                     { label: "Liveness Attestation", status: livenessStatus },
                   ].map(({ label, status }) => (
-                    <div key={label} className="flex items-center gap-2">
+                    <div className="flex items-center gap-2" key={label}>
                       <span
-                        className={`w-4 h-4 rounded-full ${
-                          status === undefined
-                            ? "bg-muted"
-                            : status
-                              ? "bg-success"
-                              : "bg-destructive"
-                        }`}
+                        className={`h-4 w-4 rounded-full ${getStatusBgClass(status)}`}
                       />
                       <span>
-                        {label}:{" "}
-                        {status === undefined
-                          ? "N/A"
-                          : status
-                            ? "Valid"
-                            : "Invalid"}
+                        {label}: {getStatusLabel(status)}
                       </span>
                     </div>
                   ))}
                 </div>
                 <Button
-                  type="button"
-                  onClick={resetDemo}
-                  variant="outline"
                   className="w-full"
+                  onClick={resetDemo}
+                  type="button"
+                  variant="outline"
                 >
                   Restart Demo
                 </Button>
@@ -638,8 +658,8 @@ export default function ExchangeDemoPage() {
           <CardContent className="space-y-6">
             {/* Zentity */}
             <div>
-              <h3 className="font-medium text-info mb-2">Zentity Stores:</h3>
-              <div className="rounded border bg-muted/40 p-3 text-sm space-y-1">
+              <h3 className="mb-2 font-medium text-info">Zentity Stores:</h3>
+              <div className="space-y-1 rounded border bg-muted/40 p-3 text-sm">
                 <p className="text-success">
                   SHA256(name + salt){" "}
                   <span className="text-muted-foreground">commitment</span>
@@ -671,10 +691,10 @@ export default function ExchangeDemoPage() {
 
             {/* Exchange */}
             <div>
-              <h3 className="font-medium text-info mb-2">
+              <h3 className="mb-2 font-medium text-info">
                 Exchange Receives & Stores:
               </h3>
-              <div className="rounded border bg-muted/40 p-3 text-sm space-y-1">
+              <div className="space-y-1 rounded border bg-muted/40 p-3 text-sm">
                 <p className="text-warning">
                   Full Name{" "}
                   <span className="text-muted-foreground">
@@ -707,9 +727,9 @@ export default function ExchangeDemoPage() {
             </div>
 
             {/* Key insight */}
-            <div className="border border-info/30 bg-info/10 rounded p-4">
-              <h3 className="font-medium text-info mb-2">Key Privacy Wins:</h3>
-              <ul className="text-sm text-muted-foreground space-y-1">
+            <div className="rounded border border-info/30 bg-info/10 p-4">
+              <h3 className="mb-2 font-medium text-info">Key Privacy Wins:</h3>
+              <ul className="space-y-1 text-muted-foreground text-sm">
                 <li>Biometrics never leave Zentity</li>
                 <li>Zentity never stores actual PII long-term</li>
                 <li>Exchange gets regulatory compliance</li>

@@ -19,12 +19,10 @@ import { useChainId } from "wagmi";
 
 import "@/lib/fhevm/providers/global";
 
+import type { FhevmGoState, FhevmInstance } from "@/lib/fhevm/types";
+
+import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { useIsMounted } from "@/hooks/use-is-mounted";
-import {
-  type FhevmGoState,
-  type FhevmInstance,
-  useFhevmSdk,
-} from "@/lib/fhevm";
 
 export interface FhevmContextValue {
   /** The FHEVM SDK instance for encryption/decryption operations */
@@ -79,7 +77,7 @@ export function FhevmProvider({ children, mockChains }: FhevmProviderProps) {
   const [provider, setProvider] = useState<unknown | undefined>(undefined);
 
   useEffect(() => {
-    if (!isMounted || !isConnected || typeof window === "undefined") {
+    if (!(isMounted && isConnected) || typeof window === "undefined") {
       setProvider(undefined);
       return;
     }
@@ -119,7 +117,7 @@ export function FhevmProvider({ children, mockChains }: FhevmProviderProps) {
       31337: "http://127.0.0.1:8545", // Hardhat
       ...(mockChains ?? {}),
     }),
-    [mockChains],
+    [mockChains]
   );
 
   const { instance, status, error, refresh } = useFhevmSdk({
@@ -139,7 +137,7 @@ export function FhevmProvider({ children, mockChains }: FhevmProviderProps) {
       isLoading: status === "loading",
       refresh,
     }),
-    [instance, status, error, refresh],
+    [instance, status, error, refresh]
   );
 
   return (

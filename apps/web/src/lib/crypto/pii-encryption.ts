@@ -36,7 +36,7 @@ export async function encryptFirstName(firstName: string): Promise<string> {
  * Decrypt first name from JWE token
  */
 export async function decryptFirstName(
-  encryptedToken: string,
+  encryptedToken: string
 ): Promise<string | null> {
   try {
     const secret = await getEncryptionSecret();
@@ -65,7 +65,7 @@ export async function encryptUserSalt(userSalt: string): Promise<string> {
  * Decrypt user salt from JWE token
  */
 export async function decryptUserSalt(
-  encryptedToken: string,
+  encryptedToken: string
 ): Promise<string | null> {
   try {
     const secret = await getEncryptionSecret();

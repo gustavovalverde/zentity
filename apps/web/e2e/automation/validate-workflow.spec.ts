@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+// Top-level regex patterns for lint/performance/useTopLevelRegex compliance
+const DASHBOARD_URL_PATTERN = /\/dashboard/;
+const DEFI_DEMO_URL_PATTERN = /dashboard\/defi-demo/;
+const WELCOME_HEADING_PATTERN = /welcome/i;
+
 test.describe("Workflow automation", () => {
   test("loads dashboard and DeFi demo for authenticated user", async ({
     page,
@@ -24,13 +29,15 @@ test.describe("Workflow automation", () => {
     };
 
     await navigate("/dashboard");
-    await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible();
+    await expect(page).toHaveURL(DASHBOARD_URL_PATTERN);
+    await expect(
+      page.getByRole("heading", { name: WELCOME_HEADING_PATTERN })
+    ).toBeVisible();
 
     await navigate("/dashboard/defi-demo");
-    await expect(page).toHaveURL(/dashboard\/defi-demo/);
+    await expect(page).toHaveURL(DEFI_DEMO_URL_PATTERN);
     await expect(
-      page.getByRole("heading", { name: "DeFi Compliance Demo" }),
+      page.getByRole("heading", { name: "DeFi Compliance Demo" })
     ).toBeVisible();
   });
 
@@ -39,7 +46,7 @@ test.describe("Workflow automation", () => {
     await expect(
       page.getByRole("heading", {
         name: "Privacy-First Identity Verification",
-      }),
+      })
     ).toBeVisible();
   });
 });

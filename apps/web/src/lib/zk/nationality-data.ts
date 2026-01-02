@@ -282,7 +282,7 @@ export function getNationalityCode(alpha3: string): number | undefined {
  */
 export function isNationalityInGroup(
   nationalityCode: string,
-  groupName: string,
+  groupName: string
 ): boolean {
   const upperCode = nationalityCode.toUpperCase();
   const upperGroup = groupName.toUpperCase();

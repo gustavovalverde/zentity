@@ -9,7 +9,7 @@ let checkPrfSupport: typeof import("../webauthn-prf").checkPrfSupport;
 let extractCredentialRegistrationData: typeof import("../webauthn-prf").extractCredentialRegistrationData;
 
 describe("webauthn-prf", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.resetModules();
   });
 
@@ -18,7 +18,7 @@ describe("webauthn-prf", () => {
     // Clean up global mocks
     if ("PublicKeyCredential" in globalThis) {
       // @ts-expect-error - cleaning up mock
-      delete globalThis.PublicKeyCredential;
+      globalThis.PublicKeyCredential = undefined;
     }
   });
 
@@ -173,7 +173,7 @@ describe("webauthn-prf", () => {
       expect(mockGetClientCapabilities).toHaveBeenNthCalledWith(1);
       expect(mockGetClientCapabilities).toHaveBeenNthCalledWith(
         2,
-        "public-key",
+        "public-key"
       );
       expect(result.supported).toBe(true);
     });
@@ -298,7 +298,7 @@ describe("webauthn-prf", () => {
       });
 
       expect(() => extractCredentialRegistrationData(mockCredential)).toThrow(
-        "Unable to extract public key from credential.",
+        "Unable to extract public key from credential."
       );
     });
 
@@ -311,7 +311,7 @@ describe("webauthn-prf", () => {
       const mockAuthData = createMockAuthenticatorData({
         rpIdHash: new Uint8Array(32).fill(0xaa),
         flags: 0x01,
-        counter: 16909060,
+        counter: 16_909_060,
       });
 
       const mockCredential = createMockCredential({
@@ -323,7 +323,7 @@ describe("webauthn-prf", () => {
 
       const result = extractCredentialRegistrationData(mockCredential);
 
-      expect(result.counter).toBe(16909060);
+      expect(result.counter).toBe(16_909_060);
     });
 
     it("handles empty transports array", async () => {

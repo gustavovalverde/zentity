@@ -35,7 +35,7 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
   // Query token info for remaining supply
   const { data: tokenInfo } = trpcReact.token.info.useQuery(
     { networkId },
-    { staleTime: 30000 }, // Refresh every 30s
+    { staleTime: 30_000 } // Refresh every 30s
   );
 
   const mintMutation = trpcReact.token.mint.useMutation({
@@ -50,7 +50,9 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
   const isSupplyExhausted = remainingTokens <= 0;
 
   const handleMint = async () => {
-    if (!amount || Number.parseFloat(amount) <= 0) return;
+    if (!amount || Number.parseFloat(amount) <= 0) {
+      return;
+    }
 
     await mintMutation.mutateAsync({
       networkId,
@@ -75,24 +77,24 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
           <Label htmlFor="mint-amount">Amount</Label>
           <div className="flex gap-2">
             <Input
-              id="mint-amount"
-              type="number"
-              placeholder="5"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
               disabled={mintMutation.isPending}
-              min="0"
+              id="mint-amount"
               max="10"
+              min="0"
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="5"
               step="0.1"
+              type="number"
+              value={amount}
             />
             <Button
-              onClick={handleMint}
               disabled={
                 mintMutation.isPending ||
                 !amount ||
                 Number.parseFloat(amount) <= 0 ||
                 isSupplyExhausted
               }
+              onClick={handleMint}
             >
               {mintMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -101,7 +103,7 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
               )}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             {isSupplyExhausted ? (
               <span className="text-destructive">
                 Supply cap reached. Contract uses euint64 (~18.4 max tokens).
@@ -115,31 +117,31 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
           </p>
         </div>
 
-        {mintMutation.isSuccess && mintMutation.data && (
+        {mintMutation.isSuccess && mintMutation.data ? (
           <Alert variant="success">
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
               <p className="font-medium">Tokens minted successfully!</p>
-              {mintMutation.data.txHash && !mintMutation.data.demo && (
+              {mintMutation.data.txHash && !mintMutation.data.demo ? (
                 <a
+                  className="mt-1 flex items-center gap-1 text-xs hover:underline"
                   href={`https://sepolia.etherscan.io/tx/${mintMutation.data.txHash}`}
-                  target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs flex items-center gap-1 mt-1 hover:underline"
+                  target="_blank"
                 >
                   View transaction
                   <ExternalLink className="h-3 w-3" />
                 </a>
-              )}
+              ) : null}
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
-        {mintMutation.error && (
+        {mintMutation.error ? (
           <Alert variant="destructive">
             <AlertDescription>{mintMutation.error.message}</AlertDescription>
           </Alert>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );

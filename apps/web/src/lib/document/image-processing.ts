@@ -12,7 +12,7 @@ import { stripDataUrl } from "@/lib/liveness/human-server";
 export async function cropFaceRegion(
   dataUrl: string,
   box: { x: number; y: number; width: number; height: number },
-  padding = 0.3,
+  padding = 0.3
 ): Promise<string> {
   const tf = await import("@tensorflow/tfjs-node");
 
@@ -47,7 +47,7 @@ export async function cropFaceRegion(
   const encoded = await tf.node.encodeJpeg(
     cropped as unknown as Parameters<typeof tf.node.encodeJpeg>[0],
     "rgb",
-    95,
+    95
   );
   cropped.dispose();
 

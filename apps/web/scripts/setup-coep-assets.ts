@@ -13,7 +13,7 @@ const assets = [
     id: "bb-threads",
     from: path.join(
       root,
-      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz",
+      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz"
     ),
     // bb.js appends "-threads" to wasmPath when multi-threading is enabled.
     // Worker passes "/bb/barretenberg.wasm.gz", bb.js requests "barretenberg-threads.wasm.gz"
@@ -24,7 +24,7 @@ const assets = [
     id: "bb-single",
     from: path.join(
       root,
-      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz",
+      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz"
     ),
     // bb.js drops the "-threads" suffix when threads=1, so serve a copy
     // under the non-threaded filename for environments without COI/SAB.
@@ -52,12 +52,12 @@ const assets = [
     id: "tfhe-worker-helpers",
     from: path.join(
       root,
-      "node_modules/tfhe/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js",
+      "node_modules/tfhe/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js"
     ),
     // Must match the import path in tfhe.js
     to: path.join(
       root,
-      "public/tfhe/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js",
+      "public/tfhe/snippets/wasm-bindgen-rayon-38edf6e439f6d70d/src/workerHelpers.js"
     ),
     required: true,
   },
@@ -68,7 +68,7 @@ const assets = [
     id: "zama-sdk",
     from: path.join(
       root,
-      "node_modules/@zama-fhe/relayer-sdk/bundle/relayer-sdk-js.umd.cjs",
+      "node_modules/@zama-fhe/relayer-sdk/bundle/relayer-sdk-js.umd.cjs"
     ),
     to: path.join(root, "public/fhevm/relayer-sdk-js.umd.js"),
     required: true,
@@ -77,7 +77,7 @@ const assets = [
     id: "zama-worker-helpers",
     from: path.join(
       root,
-      "node_modules/@zama-fhe/relayer-sdk/bundle/workerHelpers.js",
+      "node_modules/@zama-fhe/relayer-sdk/bundle/workerHelpers.js"
     ),
     to: path.join(root, "public/workerHelpers.js"),
     required: true,
@@ -86,7 +86,7 @@ const assets = [
     id: "zama-tfhe-wasm",
     from: path.join(
       root,
-      "node_modules/@zama-fhe/relayer-sdk/bundle/tfhe_bg.wasm",
+      "node_modules/@zama-fhe/relayer-sdk/bundle/tfhe_bg.wasm"
     ),
     to: path.join(root, "public/tfhe_bg.wasm"),
     required: true,
@@ -95,7 +95,7 @@ const assets = [
     id: "zama-kms-wasm",
     from: path.join(
       root,
-      "node_modules/@zama-fhe/relayer-sdk/bundle/kms_lib_bg.wasm",
+      "node_modules/@zama-fhe/relayer-sdk/bundle/kms_lib_bg.wasm"
     ),
     to: path.join(root, "public/kms_lib_bg.wasm"),
     required: true,
@@ -106,7 +106,7 @@ for (const asset of assets) {
   if (!fs.existsSync(asset.from)) {
     if (asset.required) {
       throw new Error(
-        `Missing required COEP asset (${asset.id}): ${asset.from}`,
+        `Missing required COEP asset (${asset.id}): ${asset.from}`
       );
     }
     continue;

@@ -27,13 +27,13 @@ export default async function RPIntegrationPage() {
   const ageProof = userId ? getUserAgeProofFull(userId) : null;
   const verificationStatus = userId ? getVerificationStatus(userId) : null;
 
-  const hasProof = verificationStatus?.verified || ageProof?.isOver18 || false;
+  const hasProof = verificationStatus?.verified || ageProof?.isOver18;
 
   const checks = {
     document: verificationStatus?.checks.document ?? false,
     liveness: verificationStatus?.checks.liveness ?? false,
     ageProof: Boolean(
-      verificationStatus?.checks.ageProof || ageProof?.isOver18,
+      verificationStatus?.checks.ageProof || ageProof?.isOver18
     ),
     docValidityProof: verificationStatus?.checks.docValidityProof ?? false,
     nationalityProof: verificationStatus?.checks.nationalityProof ?? false,
@@ -43,7 +43,7 @@ export default async function RPIntegrationPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">RP Integration</h1>
+        <h1 className="font-bold text-2xl">RP Integration</h1>
         <p className="text-muted-foreground">
           Test the API endpoints that allow third parties to verify identity
           claims
@@ -126,7 +126,7 @@ export default async function RPIntegrationPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border bg-muted/30 p-4 font-mono text-xs">
             <pre>{`// 1) Redirect the user into Zentity's verification flow
 const authorizeUrl = new URL('https://zentity.example.com/api/rp/authorize');
 authorizeUrl.searchParams.set('client_id', '<client_uuid>');
@@ -144,7 +144,7 @@ const { verified, level, checks } = await exchange.json();
 // Returns: { verified, level, checks } - NO PII REVEALED`}</pre>
           </div>
           <div className="mt-4">
-            <Button variant="outline" size="sm" asChild>
+            <Button asChild size="sm" variant="outline">
               <Link href="/dashboard/dev">
                 <Code className="mr-2 h-4 w-4" />
                 Debug Tools

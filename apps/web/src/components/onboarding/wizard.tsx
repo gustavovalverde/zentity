@@ -29,7 +29,7 @@ const StepIdUpload = dynamic(
   {
     ssr: false,
     loading: () => <WizardStepLoading label="Loading document step..." />,
-  },
+  }
 );
 
 const StepSelfie = dynamic(
@@ -37,7 +37,7 @@ const StepSelfie = dynamic(
   {
     ssr: false,
     loading: () => <WizardStepLoading label="Loading camera step..." />,
-  },
+  }
 );
 
 const StepCreateAccount = dynamic(
@@ -46,7 +46,7 @@ const StepCreateAccount = dynamic(
   {
     ssr: false,
     loading: () => <WizardStepLoading label="Loading account step..." />,
-  },
+  }
 );
 
 const STEPS = [

@@ -14,12 +14,38 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getUserProof, verifyAgeViaFHE } from "@/lib/crypto";
+import { getUserProof, verifyAgeViaFHE } from "@/lib/crypto/crypto-client";
 
 interface VerificationResult {
   method: "zk" | "fhe";
   isValid: boolean;
   timeMs: number;
+}
+
+function ResultBadge({ result }: { result: VerificationResult }) {
+  return (
+    <div className="flex items-center gap-2">
+      {result.isValid ? (
+        <>
+          <CheckCircle className="h-4 w-4 text-success" />
+          <Badge variant="success">Verified 18+</Badge>
+        </>
+      ) : (
+        <>
+          <XCircle className="h-4 w-4 text-destructive" />
+          <Badge variant="destructive">Not Verified</Badge>
+        </>
+      )}
+      {result.timeMs > 0 ? (
+        <span className="flex items-center gap-1 text-muted-foreground text-xs">
+          <Clock className="h-3 w-3" />
+          {result.timeMs}ms
+        </span>
+      ) : (
+        <span className="text-muted-foreground text-xs">stored</span>
+      )}
+    </div>
+  );
 }
 
 interface ProofData {
@@ -39,7 +65,9 @@ export function VerificationActions() {
   const [proofData, setProofData] = useState<ProofData | null>(null);
 
   const loadProofData = async () => {
-    if (proofData) return proofData;
+    if (proofData) {
+      return proofData;
+    }
 
     setIsLoadingData(true);
     try {
@@ -57,7 +85,7 @@ export function VerificationActions() {
       return loaded;
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to load proof data",
+        err instanceof Error ? err.message : "Failed to load proof data"
       );
       return null;
     } finally {
@@ -82,7 +110,7 @@ export function VerificationActions() {
       });
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to refresh ZK status",
+        err instanceof Error ? err.message : "Failed to refresh ZK status"
       );
     } finally {
       setIsVerifyingZK(false);
@@ -96,15 +124,15 @@ export function VerificationActions() {
 
     try {
       const data = await loadProofData();
-      if (!data || !data.birthYearOffsetCiphertext || !data.fheKeyId) {
+      if (!(data?.birthYearOffsetCiphertext && data.fheKeyId)) {
         throw new Error(
-          "FHE ciphertext or key is missing. Complete identity verification with FHE enabled.",
+          "FHE ciphertext or key is missing. Complete identity verification with FHE enabled."
         );
       }
 
       const result = await verifyAgeViaFHE(
         data.birthYearOffsetCiphertext,
-        data.fheKeyId,
+        data.fheKeyId
       );
 
       setFheResult({
@@ -119,41 +147,17 @@ export function VerificationActions() {
     }
   };
 
-  const ResultBadge = ({ result }: { result: VerificationResult }) => (
-    <div className="flex items-center gap-2">
-      {result.isValid ? (
-        <>
-          <CheckCircle className="h-4 w-4 text-success" />
-          <Badge variant="success">Verified 18+</Badge>
-        </>
-      ) : (
-        <>
-          <XCircle className="h-4 w-4 text-destructive" />
-          <Badge variant="destructive">Not Verified</Badge>
-        </>
-      )}
-      {result.timeMs > 0 ? (
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          {result.timeMs}ms
-        </span>
-      ) : (
-        <span className="text-xs text-muted-foreground">stored</span>
-      )}
-    </div>
-  );
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>Live Age Verification</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && (
+        {error ? (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           {/* ZK Verification */}
@@ -162,13 +166,13 @@ export function VerificationActions() {
               <Shield className="h-5 w-5 text-info" />
               <span className="font-medium">Stored ZK Proof</span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               View the last verified ZK proof status from registration
             </p>
             <Button
-              onClick={handleVerifyZK}
-              disabled={isVerifyingZK || isLoadingData}
               className="w-full"
+              disabled={isVerifyingZK || isLoadingData}
+              onClick={handleVerifyZK}
               variant="outline"
             >
               {isVerifyingZK ? (
@@ -180,7 +184,7 @@ export function VerificationActions() {
                 "Refresh ZK Status"
               )}
             </Button>
-            {zkResult && <ResultBadge result={zkResult} />}
+            {zkResult ? <ResultBadge result={zkResult} /> : null}
           </div>
 
           {/* FHE Verification */}
@@ -189,13 +193,13 @@ export function VerificationActions() {
               <Key className="h-5 w-5 text-info" />
               <span className="font-medium">FHE Computation</span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Compute age check on encrypted data without decryption
             </p>
             <Button
-              onClick={handleVerifyFHE}
-              disabled={isVerifyingFHE || isLoadingData}
               className="w-full"
+              disabled={isVerifyingFHE || isLoadingData}
+              onClick={handleVerifyFHE}
               variant="outline"
             >
               {isVerifyingFHE ? (
@@ -207,11 +211,11 @@ export function VerificationActions() {
                 "Verify via FHE"
               )}
             </Button>
-            {fheResult && <ResultBadge result={fheResult} />}
+            {fheResult ? <ResultBadge result={fheResult} /> : null}
           </div>
         </div>
 
-        {(zkResult || fheResult) && (
+        {zkResult || fheResult ? (
           <Alert>
             <AlertDescription className="text-xs">
               <strong>Comparison:</strong> ZK proofs are fast to verify (~
@@ -221,7 +225,7 @@ export function VerificationActions() {
               data.
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );

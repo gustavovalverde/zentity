@@ -11,7 +11,7 @@ const HARDHAT_NETWORK_NAME =
 const HARDHAT_NETWORK_RPC_URL =
   process.env.SYNPRESS_NETWORK_RPC_URL ?? "http://127.0.0.1:8545";
 const HARDHAT_NETWORK_CHAIN_ID = Number(
-  process.env.SYNPRESS_NETWORK_CHAIN_ID ?? 31337,
+  process.env.SYNPRESS_NETWORK_CHAIN_ID ?? 31_337
 );
 const HARDHAT_NETWORK_SYMBOL = process.env.SYNPRESS_NETWORK_SYMBOL ?? "ETH";
 const HARDHAT_NETWORK_EXPLORER_URL =
@@ -24,7 +24,6 @@ type MetaMaskPage = ConstructorParameters<typeof MetaMask>[1];
 export default defineWalletSetup(
   WALLET_PASSWORD,
   async (context, walletPage) => {
-    // biome-ignore lint/suspicious/noConsole: debug-only log for Synpress setup
     console.log("[synpress] wallet setup start", {
       hasSeedPhrase: Boolean(SEED_PHRASE),
       hasWalletPassword: Boolean(WALLET_PASSWORD),
@@ -34,15 +33,14 @@ export default defineWalletSetup(
 
     const extensionId = await getExtensionId(
       context as unknown as ExtensionContext,
-      "MetaMask",
+      "MetaMask"
     );
-    // biome-ignore lint/suspicious/noConsole: debug-only log for Synpress setup
     console.log("[synpress] extension id", extensionId);
     const metaMask = new MetaMask(
       context as unknown as MetaMaskContext,
       walletPage as unknown as MetaMaskPage,
       WALLET_PASSWORD,
-      extensionId,
+      extensionId
     );
 
     await metaMask.importWallet(SEED_PHRASE);
@@ -70,5 +68,5 @@ export default defineWalletSetup(
     }
 
     await metaMask.switchAccount(E2E_ACCOUNT_NAME);
-  },
+  }
 );

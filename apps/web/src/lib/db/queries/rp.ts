@@ -1,9 +1,9 @@
-import type { RpAuthorizationCode } from "../schema";
+import type { RpAuthorizationCode } from "../schema/rp";
 
 import { and, eq, gt, isNull } from "drizzle-orm";
 
 import { db } from "../connection";
-import { rpAuthorizationCodes } from "../schema";
+import { rpAuthorizationCodes } from "../schema/rp";
 
 const RP_AUTH_CODE_TTL_SECONDS = 5 * 60; // 5 minutes
 
@@ -33,7 +33,7 @@ export function createRpAuthorizationCode(input: {
 }
 
 export function consumeRpAuthorizationCode(
-  code: string,
+  code: string
 ): RpAuthorizationCode | null {
   const now = Math.floor(Date.now() / 1000);
 
@@ -45,13 +45,15 @@ export function consumeRpAuthorizationCode(
         and(
           eq(rpAuthorizationCodes.code, code),
           gt(rpAuthorizationCodes.expiresAt, now),
-          isNull(rpAuthorizationCodes.usedAt),
-        ),
+          isNull(rpAuthorizationCodes.usedAt)
+        )
       )
       .limit(1)
       .get();
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
 
     tx.update(rpAuthorizationCodes)
       .set({ usedAt: now })

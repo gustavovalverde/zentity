@@ -18,13 +18,15 @@ import { hardhat, sepolia } from "viem/chains";
 import { z } from "zod";
 
 import {
-  canCreateProvider,
-  createProvider,
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
   isDemoMode,
-} from "@/lib/blockchain";
+} from "@/lib/blockchain/config/networks";
+import {
+  canCreateProvider,
+  createProvider,
+} from "@/lib/blockchain/providers/factory";
 import { CompliantERC20ABI } from "@/lib/contracts";
 import { getBlockchainAttestationByUserAndNetwork } from "@/lib/db/queries/attestation";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
@@ -97,7 +99,7 @@ export const tokenRouter = router({
       }
 
       const network = getNetworkById(input.networkId);
-      if (!network || !network.enabled) {
+      if (!network?.enabled) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Network ${input.networkId} is not available`,
@@ -181,13 +183,13 @@ export const tokenRouter = router({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
         amount: z.string().regex(/^\d+$/), // Wei amount as string
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       // Demo mode: simulate minting
       if (isDemoMode()) {
         await new Promise((resolve) =>
-          setTimeout(resolve, 1000 + Math.random() * 1000),
+          setTimeout(resolve, 1000 + Math.random() * 1000)
         );
         const mockTxHash =
           `0xdemo${Date.now().toString(16)}${"0".repeat(40)}`.slice(0, 66);
@@ -210,7 +212,7 @@ export const tokenRouter = router({
       // Check attestation on this network
       const attestation = getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
-        input.networkId,
+        input.networkId
       );
       if (!attestation || attestation.status !== "confirmed") {
         throw new TRPCError({
@@ -255,7 +257,7 @@ export const tokenRouter = router({
 
       // Check network availability
       const network = getNetworkById(input.networkId);
-      if (!network || !network.enabled) {
+      if (!network?.enabled) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Network ${input.networkId} is not available`,
@@ -351,7 +353,7 @@ export const tokenRouter = router({
       z.object({
         networkId: z.string(),
         address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-      }),
+      })
     )
     .query(async ({ input }) => {
       // Demo mode
@@ -382,7 +384,7 @@ export const tokenRouter = router({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
         limit: z.number().min(1).max(50).default(20),
-      }),
+      })
     )
     .query(async ({ input }) => {
       // Demo mode
@@ -393,7 +395,7 @@ export const tokenRouter = router({
               txHash: "0xdemo1...",
               from: "0x0000...0000",
               to: input.walletAddress,
-              blockNumber: 12345,
+              blockNumber: 12_345,
               type: "mint" as const,
             },
           ],
@@ -402,7 +404,7 @@ export const tokenRouter = router({
       }
 
       const network = getNetworkById(input.networkId);
-      if (!network || !network.enabled) {
+      if (!network?.enabled) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Network ${input.networkId} is not available`,
@@ -432,16 +434,16 @@ export const tokenRouter = router({
         // Note: CompliantERC20 uses non-standard Transfer event without value
         // because amounts are encrypted (FHE)
         const transferEvent = parseAbiItem(
-          "event Transfer(address indexed from, address indexed to)",
+          "event Transfer(address indexed from, address indexed to)"
         );
         const mintEvent = parseAbiItem(
-          "event Mint(address indexed to, uint256 indexed amount)",
+          "event Mint(address indexed to, uint256 indexed amount)"
         );
 
         // Public RPCs limit block range to 50,000 blocks
         // Get current block and calculate safe range
         const currentBlock = await client.getBlockNumber();
-        const MAX_BLOCK_RANGE = BigInt(50000);
+        const MAX_BLOCK_RANGE = BigInt(50_000);
         const fromBlock =
           currentBlock > MAX_BLOCK_RANGE
             ? currentBlock - MAX_BLOCK_RANGE
@@ -520,7 +522,7 @@ export const tokenRouter = router({
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-      }),
+      })
     )
     .query(async ({ input }) => {
       // Demo mode
@@ -535,7 +537,7 @@ export const tokenRouter = router({
       }
 
       const network = getNetworkById(input.networkId);
-      if (!network || !network.enabled) {
+      if (!network?.enabled) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Network ${input.networkId} is not available`,
@@ -544,7 +546,7 @@ export const tokenRouter = router({
 
       const identityRegistry = network.contracts.identityRegistry;
       const complianceRules = network.contracts.complianceRules;
-      if (!identityRegistry || !complianceRules) {
+      if (!(identityRegistry && complianceRules)) {
         return {
           granted: false,
           demo: false,
@@ -569,12 +571,12 @@ export const tokenRouter = router({
 
       try {
         const accessGrantedEvent = parseAbiItem(
-          "event AccessGranted(address indexed user, address indexed grantee)",
+          "event AccessGranted(address indexed user, address indexed grantee)"
         );
 
         // Public RPCs limit block range to 50,000 blocks
         const currentBlock = await client.getBlockNumber();
-        const MAX_BLOCK_RANGE = BigInt(50000);
+        const MAX_BLOCK_RANGE = BigInt(50_000);
         const fromBlock =
           currentBlock > MAX_BLOCK_RANGE
             ? currentBlock - MAX_BLOCK_RANGE
@@ -597,7 +599,7 @@ export const tokenRouter = router({
                 (log.blockNumber ?? BigInt(0)) >
                 (latest.blockNumber ?? BigInt(0))
                   ? log
-                  : latest,
+                  : latest
               )
             : null;
 

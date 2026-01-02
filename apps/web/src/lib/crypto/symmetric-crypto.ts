@@ -20,7 +20,7 @@ export function generateIv(): Uint8Array {
 export async function encryptAesGcm(
   key: CryptoKey,
   plaintext: Uint8Array,
-  additionalData?: Uint8Array,
+  additionalData?: Uint8Array
 ): Promise<EncryptedBlob> {
   const iv = generateIv();
   const ciphertext = await crypto.subtle.encrypt(
@@ -32,7 +32,7 @@ export async function encryptAesGcm(
         : {}),
     },
     key,
-    toArrayBuffer(plaintext),
+    toArrayBuffer(plaintext)
   );
 
   return { ciphertext: new Uint8Array(ciphertext), iv };
@@ -41,7 +41,7 @@ export async function encryptAesGcm(
 export async function decryptAesGcm(
   key: CryptoKey,
   blob: EncryptedBlob,
-  additionalData?: Uint8Array,
+  additionalData?: Uint8Array
 ): Promise<Uint8Array> {
   const plaintext = await crypto.subtle.decrypt(
     {
@@ -52,7 +52,7 @@ export async function decryptAesGcm(
         : {}),
     },
     key,
-    toArrayBuffer(blob.ciphertext),
+    toArrayBuffer(blob.ciphertext)
   );
   return new Uint8Array(plaintext);
 }

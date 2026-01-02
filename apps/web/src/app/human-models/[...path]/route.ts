@@ -17,7 +17,7 @@ const MIME_TYPES: Record<string, string> = {
 
 export async function GET(
   _request: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
   const { path: parts } = await context.params;
   const safeParts = Array.isArray(parts) ? parts : [];
@@ -42,7 +42,7 @@ export async function GET(
         "Cache-Control": "public, max-age=31536000, immutable",
       },
     });
-  } catch (_error) {
+  } catch {
     return NextResponse.json({ error: "Model not found" }, { status: 404 });
   }
 }

@@ -1,16 +1,38 @@
 import "server-only";
 
 import { Database } from "bun:sqlite";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 
-import * as schema from "./schema";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as attestationSchema from "./schema/attestation";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as authSchema from "./schema/auth";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as cryptoSchema from "./schema/crypto";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as identitySchema from "./schema/identity";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as onboardingSchema from "./schema/onboarding";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as rpSchema from "./schema/rp";
+
+const schema = {
+  ...attestationSchema,
+  ...authSchema,
+  ...cryptoSchema,
+  ...identitySchema,
+  ...onboardingSchema,
+  ...rpSchema,
+};
 
 function isBuildTime() {
-  if (process.env.npm_lifecycle_event === "build") return true;
+  if (process.env.npm_lifecycle_event === "build") {
+    return true;
+  }
   const argv = process.argv.join(" ");
   return argv.includes("next") && argv.includes("build");
 }
@@ -21,36 +43,40 @@ function isBuildTime() {
  * Build-time uses :memory: to avoid SQLite locks across Next.js build workers.
  */
 export function getDefaultDatabasePath(): string {
-  if (isBuildTime()) return ":memory:";
+  if (isBuildTime()) {
+    return ":memory:";
+  }
   return process.env.DATABASE_PATH || "./dev.db";
 }
 
 function ensureDatabaseDirExists(dbPath: string) {
-  if (dbPath === ":memory:") return;
-  const dbDir = path.dirname(dbPath);
-  if (dbDir !== "." && !fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  if (dbPath === ":memory:") {
+    return;
+  }
+  const dbDir = dirname(dbPath);
+  if (dbDir !== "." && !existsSync(dbDir)) {
+    mkdirSync(dbDir, { recursive: true });
   }
 }
 
-function applyPragmas(db: Database) {
+function applyPragmas(conn: Database) {
   try {
-    db.exec("PRAGMA journal_mode = WAL");
+    conn.run("PRAGMA journal_mode = WAL");
   } catch {
     // Best-effort: ignore SQLITE_BUSY / readonly FS during builds.
   }
   try {
-    db.exec("PRAGMA synchronous = NORMAL");
+    conn.run("PRAGMA synchronous = NORMAL");
   } catch {
     // Best-effort
   }
   try {
-    db.exec("PRAGMA foreign_keys = ON");
+    conn.run("PRAGMA foreign_keys = ON");
   } catch {
     // Best-effort
   }
   try {
-    db.exec("PRAGMA busy_timeout = 5000");
+    conn.run("PRAGMA busy_timeout = 5000");
   } catch {
     // Best-effort
   }
@@ -65,13 +91,17 @@ type MigrationStore = Set<string>;
 
 function getStore(): Store {
   const g = globalThis as unknown as Record<string | symbol, unknown>;
-  if (!g[globalKey]) g[globalKey] = new Map();
+  if (!g[globalKey]) {
+    g[globalKey] = new Map();
+  }
   return g[globalKey] as Store;
 }
 
 function getMigrationStore(): MigrationStore {
   const g = globalThis as unknown as Record<string | symbol, unknown>;
-  if (!g[migratedKey]) g[migratedKey] = new Set();
+  if (!g[migratedKey]) {
+    g[migratedKey] = new Set();
+  }
   return g[migratedKey] as MigrationStore;
 }
 
@@ -81,7 +111,9 @@ function getMigrationStore(): MigrationStore {
 export function getSqliteDb(dbPath = getDefaultDatabasePath()): Database {
   const store = getStore();
   const existing = store.get(dbPath);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   ensureDatabaseDirExists(dbPath);
   const db = new Database(dbPath);
@@ -98,9 +130,13 @@ export const db = drizzle(sqlite, {
 });
 
 function shouldRunMigrations(dbPath: string): boolean {
-  if (isBuildTime()) return false;
+  if (isBuildTime()) {
+    return false;
+  }
   // Default: auto-migrate in dev/test, opt-in in production.
-  if (process.env.DATABASE_AUTO_MIGRATE === "false") return false;
+  if (process.env.DATABASE_AUTO_MIGRATE === "false") {
+    return false;
+  }
   if (
     process.env.NODE_ENV === "production" &&
     process.env.DATABASE_AUTO_MIGRATE !== "true"
@@ -109,15 +145,19 @@ function shouldRunMigrations(dbPath: string): boolean {
   }
   // Only run once per dbPath to avoid concurrent migration attempts.
   const migrated = getMigrationStore();
-  if (migrated.has(dbPath)) return false;
+  if (migrated.has(dbPath)) {
+    return false;
+  }
   return true;
 }
 
 function runMigrations() {
   const dbPath = getDefaultDatabasePath();
-  if (!shouldRunMigrations(dbPath)) return;
+  if (!shouldRunMigrations(dbPath)) {
+    return;
+  }
 
-  const migrationsFolder = path.join(process.cwd(), "src/lib/db/migrations");
+  const migrationsFolder = join(process.cwd(), "src/lib/db/migrations");
 
   migrate(db, { migrationsFolder });
   getMigrationStore().add(dbPath);

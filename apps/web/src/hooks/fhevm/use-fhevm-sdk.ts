@@ -39,7 +39,7 @@ import type { FhevmGoState, FhevmInstance } from "@/lib/fhevm/types";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { resolveFhevmProviderFactory } from "@/lib/fhevm/providers";
+import { resolveFhevmProviderFactory } from "@/lib/fhevm/providers/registry";
 
 function assert(condition: boolean, message?: string): asserts condition {
   if (!condition) {
@@ -95,7 +95,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
   } = parameters;
 
   const [instance, setInstance] = useState<FhevmInstance | undefined>(
-    undefined,
+    undefined
   );
   const [status, setStatus] = useState<FhevmGoState>("idle");
   const [error, setError] = useState<Error | undefined>(undefined);
@@ -105,7 +105,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
   const providerRef = useRef<unknown | undefined>(provider);
   const chainIdRef = useRef<number | undefined>(chainId);
   const mockChainsRef = useRef<Record<number, string> | undefined>(
-    initialMockChains as Record<number, string> | undefined,
+    initialMockChains as Record<number, string> | undefined
   );
 
   const refresh = useCallback(() => {
@@ -174,7 +174,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
 
     assert(
       !abortControllerRef.current.signal.aborted,
-      "Controller should not be aborted",
+      "Controller should not be aborted"
     );
 
     setStatus("loading");
@@ -186,6 +186,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
 
     const onStatusChange = (_s: FhevmRelayerStatusType) => {
       if (process.env.NODE_ENV === "development") {
+        /* Debug logging placeholder for SDK status transitions */
       }
     };
 
@@ -197,10 +198,12 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
       providerId,
     })
       .then((i) => {
-        if (thisSignal.aborted) return;
+        if (thisSignal.aborted) {
+          return;
+        }
         assert(
           thisProvider === providerRef.current,
-          "Provider should not change",
+          "Provider should not change"
         );
 
         setInstance(i);
@@ -208,10 +211,12 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
         setStatus("ready");
       })
       .catch((e) => {
-        if (thisSignal.aborted) return;
+        if (thisSignal.aborted) {
+          return;
+        }
         assert(
           thisProvider === providerRef.current,
-          "Provider should not change",
+          "Provider should not change"
         );
 
         setInstance(undefined);
@@ -252,7 +257,7 @@ class FhevmAbortError extends Error {
  * - `userDecrypt()` - Decrypt values with user's signature authorization
  */
 async function createFhevmInstance(
-  parameters: CreateFhevmInstanceParams,
+  parameters: CreateFhevmInstanceParams
 ): Promise<FhevmInstance> {
   const {
     signal,
@@ -263,11 +268,15 @@ async function createFhevmInstance(
   } = parameters;
 
   const throwIfAborted = () => {
-    if (signal.aborted) throw new FhevmAbortError();
+    if (signal.aborted) {
+      throw new FhevmAbortError();
+    }
   };
 
   const notify = (status: FhevmRelayerStatusType) => {
-    if (onStatusChange) onStatusChange(status);
+    if (onStatusChange) {
+      onStatusChange(status);
+    }
   };
 
   // Hardhat local node (chainId 31337) uses mock FHE for testing
@@ -278,15 +287,13 @@ async function createFhevmInstance(
   };
 
   // Query chainId from provider to determine mock vs production
-  let chainId: number;
   if (typeof providerOrUrl === "string") {
     throw new Error("String RPC URLs not supported, use window.ethereum");
-  } else {
-    const chainIdHex = await (providerOrUrl as Eip1193Provider).request({
-      method: "eth_chainId",
-    });
-    chainId = Number.parseInt(chainIdHex as string, 16);
   }
+  const chainIdHex = await (providerOrUrl as Eip1193Provider).request({
+    method: "eth_chainId",
+  });
+  const chainId = Number.parseInt(chainIdHex as string, 16);
 
   const resolvedProviderId =
     providerId || process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID || "zama";
@@ -297,7 +304,7 @@ async function createFhevmInstance(
 
   if (resolvedProviderId === "mock" && !isMockChain) {
     throw new Error(
-      "Mock FHEVM provider requires a configured mock chain RPC URL",
+      "Mock FHEVM provider requires a configured mock chain RPC URL"
     );
   }
 

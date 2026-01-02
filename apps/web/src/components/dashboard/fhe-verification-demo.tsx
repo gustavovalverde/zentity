@@ -20,7 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { verifyAgeViaFHE } from "@/lib/crypto";
+import { verifyAgeViaFHE } from "@/lib/crypto/crypto-client";
 
 interface FheVerificationDemoProps {
   birthYearOffsetCiphertext?: string;
@@ -39,7 +39,9 @@ export function FheVerificationDemo({
   const [error, setError] = useState<string | null>(null);
 
   const handleFheVerification = async () => {
-    if (!birthYearOffsetCiphertext || !fheKeyId) return;
+    if (!(birthYearOffsetCiphertext && fheKeyId)) {
+      return;
+    }
 
     setComputing(true);
     setError(null);
@@ -51,8 +53,8 @@ export function FheVerificationDemo({
           birthYearOffsetCiphertext,
           fheKeyId,
           new Date().getFullYear(),
-          18,
-        ),
+          18
+        )
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Computation failed");
@@ -62,14 +64,16 @@ export function FheVerificationDemo({
   };
 
   const truncateCiphertext = (ct: string) => {
-    if (ct.length <= 60) return ct;
+    if (ct.length <= 60) {
+      return ct;
+    }
     return `${ct.substring(0, 30)}...${ct.substring(ct.length - 30)}`;
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
           <Calculator className="h-5 w-5" />
           FHE Age Verification
         </CardTitle>
@@ -78,23 +82,15 @@ export function FheVerificationDemo({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!birthYearOffsetCiphertext || !fheKeyId ? (
-          <Alert>
-            <Lock className="h-4 w-4" />
-            <AlertDescription>
-              No encrypted birth year offset or key available. Complete identity
-              verification to encrypt your data.
-            </AlertDescription>
-          </Alert>
-        ) : (
+        {birthYearOffsetCiphertext && fheKeyId ? (
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
+                <span className="font-medium text-sm">
                   Encrypted Birth Year Offset
                 </span>
                 <Badge variant="secondary">
-                  <Lock className="h-3 w-3 mr-1" />
+                  <Lock className="mr-1 h-3 w-3" />
                   FHE Encrypted
                 </Badge>
               </div>
@@ -106,9 +102,9 @@ export function FheVerificationDemo({
             </div>
 
             <Button
-              onClick={handleFheVerification}
-              disabled={computing}
               className="w-full"
+              disabled={computing}
+              onClick={handleFheVerification}
               variant="outline"
             >
               {computing ? (
@@ -124,13 +120,13 @@ export function FheVerificationDemo({
               )}
             </Button>
 
-            {result && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/30">
+            {result ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3">
                 {result.isOver18 ? (
                   <>
                     <CheckCircle className="h-5 w-5 text-success" />
                     <span className="font-medium">Age Check Passed</span>
-                    <Badge variant="success" className="ml-auto">
+                    <Badge className="ml-auto" variant="success">
                       {"≥"} 18 Years
                     </Badge>
                   </>
@@ -138,26 +134,26 @@ export function FheVerificationDemo({
                   <>
                     <XCircle className="h-5 w-5 text-destructive" />
                     <span className="font-medium">Age Check Failed</span>
-                    <Badge variant="destructive" className="ml-auto">
+                    <Badge className="ml-auto" variant="destructive">
                       {"<"} 18 Years
                     </Badge>
                   </>
                 )}
               </div>
-            )}
+            ) : null}
 
-            {result && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {result ? (
+              <div className="flex items-center gap-2 text-muted-foreground text-xs">
                 <Clock className="h-3 w-3" />
                 FHE computation time: {result.computationTimeMs}ms
               </div>
-            )}
+            ) : null}
 
-            {error && (
+            {error ? (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
-            )}
+            ) : null}
 
             <Alert>
               <Lock className="h-4 w-4" />
@@ -169,6 +165,14 @@ export function FheVerificationDemo({
               </AlertDescription>
             </Alert>
           </>
+        ) : (
+          <Alert>
+            <Lock className="h-4 w-4" />
+            <AlertDescription>
+              No encrypted birth year offset or key available. Complete identity
+              verification to encrypt your data.
+            </AlertDescription>
+          </Alert>
         )}
       </CardContent>
     </Card>

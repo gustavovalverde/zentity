@@ -20,13 +20,15 @@ import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
-  canCreateProvider,
-  createProvider,
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
   isDemoMode,
-} from "@/lib/blockchain";
+} from "@/lib/blockchain/config/networks";
+import {
+  canCreateProvider,
+  createProvider,
+} from "@/lib/blockchain/providers/factory";
 import {
   createBlockchainAttestation,
   getBlockchainAttestationByUserAndNetwork,
@@ -85,7 +87,7 @@ export const attestationRouter = router({
    * Used to show network selector UI.
    * Returns demo flag to indicate if running in demo mode.
    */
-  networks: protectedProcedure.query(async ({ ctx }) => {
+  networks: protectedProcedure.query(({ ctx }) => {
     const networks = getEnabledNetworks();
     const isDemo = isDemoMode();
 
@@ -142,7 +144,7 @@ export const attestationRouter = router({
     .query(({ ctx, input }) => {
       const attestation = getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
-        input.networkId,
+        input.networkId
       );
 
       if (!attestation) {
@@ -178,14 +180,14 @@ export const attestationRouter = router({
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-      }),
+      })
     )
     .mutation(async ({ ctx, input }) => {
       // Demo mode: simulate successful attestation
       if (isDemoMode()) {
         // Simulate network delay (1-2 seconds)
         await new Promise((resolve) =>
-          setTimeout(resolve, 1000 + Math.random() * 1000),
+          setTimeout(resolve, 1000 + Math.random() * 1000)
         );
 
         // Generate mock transaction hash
@@ -221,7 +223,7 @@ export const attestationRouter = router({
 
       // Check network availability
       const network = getNetworkById(input.networkId);
-      if (!network || !network.enabled) {
+      if (!network?.enabled) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Network ${input.networkId} is not available`,
@@ -240,34 +242,34 @@ export const attestationRouter = router({
       // Check for existing attestation (DB)
       const existing = getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
-        input.networkId,
+        input.networkId
       );
 
       // If on-chain already attested, sync DB and return early (no re-attest).
       const chainStatus = await provider.getAttestationStatus(
-        input.walletAddress,
+        input.walletAddress
       );
       if (chainStatus.isAttested) {
         let attestation = existing;
-        if (!attestation) {
+        if (attestation) {
+          updateBlockchainAttestationWallet(
+            attestation.id,
+            input.walletAddress,
+            network.chainId
+          );
+        } else {
           attestation = createBlockchainAttestation({
             userId: ctx.userId,
             walletAddress: input.walletAddress,
             networkId: input.networkId,
             chainId: network.chainId,
           });
-        } else {
-          updateBlockchainAttestationWallet(
-            attestation.id,
-            input.walletAddress,
-            network.chainId,
-          );
         }
 
         if (attestation.status !== "confirmed") {
           updateBlockchainAttestationConfirmed(
             attestation.id,
-            chainStatus.blockNumber ?? null,
+            chainStatus.blockNumber ?? null
           );
         }
 
@@ -301,24 +303,24 @@ export const attestationRouter = router({
 
       // Create or reset attestation record
       let attestation = existing;
-      if (!attestation) {
+      if (attestation) {
+        // Sync wallet/chain for re-attestation (may have changed)
+        updateBlockchainAttestationWallet(
+          attestation.id,
+          input.walletAddress,
+          network.chainId
+        );
+        // Reset status if failed
+        if (attestation.status === "failed") {
+          resetBlockchainAttestationForRetry(attestation.id);
+        }
+      } else {
         attestation = createBlockchainAttestation({
           userId: ctx.userId,
           walletAddress: input.walletAddress,
           networkId: input.networkId,
           chainId: network.chainId,
         });
-      } else {
-        // Sync wallet/chain for re-attestation (may have changed)
-        updateBlockchainAttestationWallet(
-          attestation.id,
-          input.walletAddress,
-          network.chainId,
-        );
-        // Reset status if failed
-        if (attestation.status === "failed") {
-          resetBlockchainAttestationForRetry(attestation.id);
-        }
       }
 
       // Extract identity data for attestation
@@ -342,7 +344,7 @@ export const attestationRouter = router({
         });
       }
       const countryCode = countryCodeToNumeric(
-        identityDocument.issuerCountry || "",
+        identityDocument.issuerCountry || ""
       );
       const complianceLevel = getComplianceLevel(verificationStatus);
 
@@ -361,7 +363,7 @@ export const attestationRouter = router({
         if (result.status === "failed") {
           updateBlockchainAttestationFailed(
             attestation.id,
-            result.error || "Unknown error",
+            result.error || "Unknown error"
           );
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
@@ -384,7 +386,9 @@ export const attestationRouter = router({
           explorerUrl,
         };
       } catch (error) {
-        if (error instanceof TRPCError) throw error;
+        if (error instanceof TRPCError) {
+          throw error;
+        }
 
         const message =
           error instanceof Error ? error.message : "Unknown error";
@@ -405,7 +409,7 @@ export const attestationRouter = router({
     .mutation(async ({ ctx, input }) => {
       const attestation = getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
-        input.networkId,
+        input.networkId
       );
 
       if (!attestation) {
@@ -431,13 +435,13 @@ export const attestationRouter = router({
         if (txStatus.confirmed && txStatus.blockNumber) {
           updateBlockchainAttestationConfirmed(
             attestation.id,
-            txStatus.blockNumber,
+            txStatus.blockNumber
           );
           return { status: "confirmed", blockNumber: txStatus.blockNumber };
         }
 
         return { status: "submitted", pending: true };
-      } catch (_error) {
+      } catch {
         // Transaction check failed, might still be pending
         return { status: "submitted", pending: true };
       }
@@ -448,10 +452,10 @@ export const attestationRouter = router({
    */
   retry: protectedProcedure
     .input(z.object({ networkId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(({ ctx, input }) => {
       const attestation = getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
-        input.networkId,
+        input.networkId
       );
 
       if (!attestation) {

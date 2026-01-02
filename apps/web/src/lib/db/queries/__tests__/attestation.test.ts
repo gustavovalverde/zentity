@@ -36,7 +36,7 @@ describe("attestation queries", () => {
 
     const evidence = getAttestationEvidenceByUserAndDocument(
       userId,
-      documentId,
+      documentId
     );
     expect(evidence?.policyVersion).toBe("policy-v1");
     expect(evidence?.proofSetHash).toBe("proof-1");
@@ -61,7 +61,7 @@ describe("attestation queries", () => {
       userId,
       walletAddress: "0xabc",
       networkId: "sepolia",
-      chainId: 11155111,
+      chainId: 11_155_111,
     });
 
     expect(attestation.status).toBe("pending");

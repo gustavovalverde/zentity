@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { FhevmDecryptionSignature } from "@/lib/fhevm/fhevm-decryption-signature";
 import { GenericStringInMemoryStorage } from "@/lib/fhevm/storage/generic-string-storage";
 
-type TestEip712 = {
+interface TestEip712 {
   domain: {
     chainId: number;
     name: string;
@@ -25,9 +25,9 @@ type TestEip712 = {
   types: {
     [key: string]: { name: string; type: string }[];
   };
-};
+}
 
-const TEST_CHAIN_ID = 31337;
+const TEST_CHAIN_ID = 31_337;
 const VERIFYING_CONTRACT =
   "0x0000000000000000000000000000000000000001" as const;
 
@@ -40,7 +40,7 @@ function createTestInstance(): FhevmInstance {
     publicKey: string,
     contractAddresses: string[],
     startTimestamp: number | string,
-    durationDays: number | string,
+    durationDays: number | string
   ): TestEip712 => ({
     domain: {
       name: "Decryption",
@@ -87,15 +87,17 @@ describe("FhevmDecryptionSignature", () => {
     const wallet = Wallet.createRandom();
     const contractAddresses = ["0x5FbDB2315678afecb367f032d93F642f64180aa3"];
 
-    const sig = await FhevmDecryptionSignature.loadOrSign(
+    const sig = await FhevmDecryptionSignature.loadOrSign({
       instance,
       contractAddresses,
-      wallet as unknown as JsonRpcSigner,
+      signer: wallet as unknown as JsonRpcSigner,
       storage,
-    );
+    });
 
     expect(sig).not.toBeNull();
-    if (!sig) return;
+    if (!sig) {
+      return;
+    }
 
     const signatureData = sig.toJSON();
     const recovered = verifyTypedData(
@@ -105,7 +107,7 @@ describe("FhevmDecryptionSignature", () => {
           signatureData.eip712.types.UserDecryptRequestVerification,
       },
       signatureData.eip712.message,
-      signatureData.signature,
+      signatureData.signature
     );
 
     expect(recovered.toLowerCase()).toBe(wallet.address.toLowerCase());
@@ -121,15 +123,17 @@ describe("FhevmDecryptionSignature", () => {
       "0x5FbDB2315678afecb367f032d93F642f64180aa3",
     ];
 
-    const sig = await FhevmDecryptionSignature.loadOrSign(
+    const sig = await FhevmDecryptionSignature.loadOrSign({
       instance,
       contractAddresses,
-      wallet as unknown as JsonRpcSigner,
+      signer: wallet as unknown as JsonRpcSigner,
       storage,
-    );
+    });
 
     expect(sig).not.toBeNull();
-    if (!sig) return;
+    if (!sig) {
+      return;
+    }
 
     expect(sig.contractAddresses).toEqual([
       "0x0000000000000000000000000000000000000002",
@@ -143,22 +147,24 @@ describe("FhevmDecryptionSignature", () => {
     const wallet = Wallet.createRandom();
     const contractAddresses = ["0x5FbDB2315678afecb367f032d93F642f64180aa3"];
 
-    const first = await FhevmDecryptionSignature.loadOrSign(
+    const first = await FhevmDecryptionSignature.loadOrSign({
       instance,
       contractAddresses,
-      wallet as unknown as JsonRpcSigner,
+      signer: wallet as unknown as JsonRpcSigner,
       storage,
-    );
-    const second = await FhevmDecryptionSignature.loadOrSign(
+    });
+    const second = await FhevmDecryptionSignature.loadOrSign({
       instance,
       contractAddresses,
-      wallet as unknown as JsonRpcSigner,
+      signer: wallet as unknown as JsonRpcSigner,
       storage,
-    );
+    });
 
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
-    if (!first || !second) return;
+    if (!(first && second)) {
+      return;
+    }
 
     expect(first.signature).toBe(second.signature);
   });

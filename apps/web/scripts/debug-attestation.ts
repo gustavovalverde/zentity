@@ -17,7 +17,7 @@ async function fetchTrpc(cookie: string): Promise<unknown> {
   const url = `${baseUrl}/api/trpc/attestation.networks?batch=1&input=${encodeURIComponent(
     JSON.stringify({
       0: { json: null },
-    }),
+    })
   )}`;
   const res = await fetch(url, {
     headers: {
@@ -33,13 +33,13 @@ async function main() {
   try {
     const cookie = await getSessionCookie();
     const data = await fetchTrpc(cookie);
-    // biome-ignore lint/suspicious/noConsole: debug script output
     console.log(JSON.stringify(data, null, 2));
   } catch (error) {
-    // biome-ignore lint/suspicious/noConsole: debug script output
     console.error(error);
     process.exit(1);
   }
 }
 
-void main();
+main().catch(() => {
+  // intentionally ignored
+});

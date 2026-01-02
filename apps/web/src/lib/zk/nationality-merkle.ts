@@ -10,23 +10,15 @@
 
 import { BarretenbergSync, Fr } from "@aztec/bb.js";
 
-import {
-  COUNTRY_CODES,
-  COUNTRY_GROUPS,
-  getCountriesInGroup,
-  getNationalityCode,
-  isNationalityInGroup,
-  listGroups,
-  TREE_DEPTH,
-} from "./nationality-data";
+import { COUNTRY_CODES, COUNTRY_GROUPS, TREE_DEPTH } from "./nationality-data";
 
-// Re-export convenience helpers
+// biome-ignore lint/performance/noBarrelFile: Re-export of nationality data utilities for convenient access
 export {
   getCountriesInGroup,
   getNationalityCode,
   isNationalityInGroup,
   listGroups,
-};
+} from "./nationality-data";
 
 // Cached Barretenberg instance
 let bbInstance: BarretenbergSync | null = null;
@@ -111,7 +103,7 @@ async function buildMerkleTree(countryCodes: number[]): Promise<{
  */
 async function generateMerkleProof(
   countryCodes: number[],
-  targetCode: number,
+  targetCode: number
 ): Promise<{
   pathElements: bigint[];
   pathIndices: number[];
@@ -171,10 +163,14 @@ async function generateMerkleProof(
     idx = Math.floor(idx / 2);
   }
 
+  const root = levels.at(-1);
+  if (!root) {
+    throw new Error("Invalid Merkle tree: no root level");
+  }
   return {
     pathElements,
     pathIndices,
-    merkleRoot: levels[levels.length - 1][0],
+    merkleRoot: root[0],
     leafIndex,
   };
 }
@@ -208,7 +204,7 @@ export async function getMerkleRoot(groupName: string): Promise<bigint> {
  */
 export async function generateNationalityProofInputs(
   nationalityCode: string,
-  groupName: string,
+  groupName: string
 ): Promise<{
   nationalityCodeNumeric: number;
   merkleRoot: string;

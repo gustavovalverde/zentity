@@ -13,12 +13,12 @@ export type CircuitType =
   | "nationality_membership"
   | "face_match";
 
-type CircuitSpec = {
+interface CircuitSpec {
   minPublicInputs: number;
   nonceIndex: number;
   claimHashIndex: number;
   resultIndex: number;
-};
+}
 
 /**
  * Canonical public input layout per circuit.
@@ -69,7 +69,9 @@ export function isCircuitType(value: unknown): value is CircuitType {
  * bb.js public inputs can be decimal strings or 0x-prefixed hex field elements.
  */
 function parsePublicInputToBigInt(value: string): bigint {
-  if (value.startsWith("0x")) return BigInt(value);
+  if (value.startsWith("0x")) {
+    return BigInt(value);
+  }
   return BigInt(value);
 }
 

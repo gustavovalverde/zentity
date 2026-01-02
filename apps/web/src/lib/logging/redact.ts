@@ -54,7 +54,9 @@ const LONG_DIGIT_PATTERN = /\b\d{6,}\b/g;
  * Keeps messages readable while redacting common sensitive patterns.
  */
 export function sanitizeLogMessage(message: string): string {
-  if (!message) return message;
+  if (!message) {
+    return message;
+  }
 
   if (message.includes("data:image/")) {
     return "[base64-image]";
@@ -111,29 +113,47 @@ function redactEmails(message: string): string {
 
 function looksLikeEmail(candidate: string): boolean {
   const atIndex = candidate.indexOf("@");
-  if (atIndex <= 0 || atIndex !== candidate.lastIndexOf("@")) return false;
+  if (atIndex <= 0 || atIndex !== candidate.lastIndexOf("@")) {
+    return false;
+  }
 
   const local = candidate.slice(0, atIndex);
   const domain = candidate.slice(atIndex + 1);
-  if (local.length === 0 || domain.length < 3) return false;
-  if (domain.startsWith(".") || domain.endsWith(".")) return false;
-  if (!domain.includes(".")) return false;
-  if (domain.includes("..")) return false;
+  if (local.length === 0 || domain.length < 3) {
+    return false;
+  }
+  if (domain.startsWith(".") || domain.endsWith(".")) {
+    return false;
+  }
+  if (!domain.includes(".")) {
+    return false;
+  }
+  if (domain.includes("..")) {
+    return false;
+  }
 
   return true;
 }
 
 function isLocalEmailChar(char: string): boolean {
-  if (!char) return false;
-  if (isAlphaNumeric(char)) return true;
+  if (!char) {
+    return false;
+  }
+  if (isAlphaNumeric(char)) {
+    return true;
+  }
   return (
     char === "." || char === "_" || char === "%" || char === "+" || char === "-"
   );
 }
 
 function isDomainEmailChar(char: string): boolean {
-  if (!char) return false;
-  if (isAlphaNumeric(char)) return true;
+  if (!char) {
+    return false;
+  }
+  if (isAlphaNumeric(char)) {
+    return true;
+  }
   return char === "." || char === "-";
 }
 
@@ -155,9 +175,11 @@ function isAlphaNumeric(char: string): boolean {
 export function sanitizeForLog(
   value: unknown,
   depth = 0,
-  seen?: WeakSet<object>,
+  seen?: WeakSet<object>
 ): unknown {
-  if (depth > 4) return "[max-depth]";
+  if (depth > 4) {
+    return "[max-depth]";
+  }
 
   if (value instanceof Error) {
     return {
@@ -186,7 +208,9 @@ export function sanitizeForLog(
   if (value && typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const set = seen ?? new WeakSet<object>();
-    if (set.has(obj)) return "[circular]";
+    if (set.has(obj)) {
+      return "[circular]";
+    }
     set.add(obj);
 
     const out: Record<string, unknown> = {};
@@ -205,7 +229,7 @@ function safeJsonSize(value: unknown): number | undefined {
   try {
     return JSON.stringify(value).length;
   } catch {
-    return undefined;
+    return;
   }
 }
 

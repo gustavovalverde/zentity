@@ -23,7 +23,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc/client";
 
-type AccountData = {
+interface AccountData {
   email: string;
   firstName: string | null;
   createdAt: string | null;
@@ -40,7 +40,7 @@ type AccountData = {
   };
   documentType: string | null;
   countryVerified: string | null;
-};
+}
 
 function VerificationBadge({
   passed,
@@ -62,7 +62,9 @@ function VerificationBadge({
 }
 
 function formatDate(dateString: string | null): string {
-  if (!dateString) return "Unknown";
+  if (!dateString) {
+    return "Unknown";
+  }
   try {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -76,7 +78,9 @@ function formatDate(dateString: string | null): string {
 }
 
 function formatDocumentType(type: string | null): string {
-  if (!type) return "Unknown";
+  if (!type) {
+    return "Unknown";
+  }
   const types: Record<string, string> = {
     cedula: "National ID (Cedula)",
     passport: "Passport",
@@ -101,7 +105,9 @@ export function UserDataSection() {
         setLoading(false);
       }
     }
-    void fetchData();
+    fetchData().catch(() => {
+      // Error handled via setError() internally
+    });
   }, []);
 
   if (loading) {
@@ -130,7 +136,7 @@ export function UserDataSection() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             {error ?? "Unable to load account data"}
           </p>
         </CardContent>
@@ -151,7 +157,7 @@ export function UserDataSection() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Name */}
-        {data.firstName && (
+        {data.firstName ? (
           <>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -159,14 +165,14 @@ export function UserDataSection() {
                   <User className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">First Name</p>
+                  <p className="text-muted-foreground text-sm">First Name</p>
                   <p className="font-medium">{data.firstName}</p>
                 </div>
               </div>
             </div>
             <Separator />
           </>
-        )}
+        ) : null}
 
         {/* Email */}
         <div className="flex items-center justify-between">
@@ -175,7 +181,7 @@ export function UserDataSection() {
               <Mail className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Email</p>
+              <p className="text-muted-foreground text-sm">Email</p>
               <p className="font-medium">{data.email}</p>
             </div>
           </div>
@@ -190,14 +196,14 @@ export function UserDataSection() {
               <Calendar className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Member Since</p>
+              <p className="text-muted-foreground text-sm">Member Since</p>
               <p className="font-medium">{formatDate(data.createdAt)}</p>
             </div>
           </div>
         </div>
 
         {/* Document Type & Country (if verified) */}
-        {data.documentType && (
+        {data.documentType ? (
           <>
             <Separator />
             <div className="flex items-center justify-between">
@@ -206,7 +212,7 @@ export function UserDataSection() {
                   <FileText className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Document Type</p>
+                  <p className="text-muted-foreground text-sm">Document Type</p>
                   <p className="font-medium">
                     {formatDocumentType(data.documentType)}
                   </p>
@@ -214,9 +220,9 @@ export function UserDataSection() {
               </div>
             </div>
           </>
-        )}
+        ) : null}
 
-        {data.countryVerified && (
+        {data.countryVerified ? (
           <>
             <Separator />
             <div className="flex items-center justify-between">
@@ -225,7 +231,7 @@ export function UserDataSection() {
                   <Globe className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     Country Verified
                   </p>
                   <p className="font-medium">{data.countryVerified}</p>
@@ -233,54 +239,60 @@ export function UserDataSection() {
               </div>
             </div>
           </>
-        )}
+        ) : null}
 
         <Separator />
 
         {/* Verification Status */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Verification Status</p>
+            <p className="font-medium text-sm">Verification Status</p>
             <Badge
-              variant={
-                data.verification.level === "full"
-                  ? "success"
-                  : data.verification.level === "basic"
-                    ? "warning"
-                    : "outline"
-              }
+              variant={(() => {
+                if (data.verification.level === "full") {
+                  return "success";
+                }
+                if (data.verification.level === "basic") {
+                  return "warning";
+                }
+                return "outline";
+              })()}
             >
-              {data.verification.level === "full"
-                ? "Fully Verified"
-                : data.verification.level === "basic"
-                  ? "Partially Verified"
-                  : "Not Verified"}
+              {(() => {
+                if (data.verification.level === "full") {
+                  return "Fully Verified";
+                }
+                if (data.verification.level === "basic") {
+                  return "Partially Verified";
+                }
+                return "Not Verified";
+              })()}
             </Badge>
           </div>
           <div className="flex flex-wrap gap-2">
             <VerificationBadge
-              passed={data.verification.checks.document}
               label="Document"
+              passed={data.verification.checks.document}
             />
             <VerificationBadge
-              passed={data.verification.checks.liveness}
               label="Liveness"
+              passed={data.verification.checks.liveness}
             />
             <VerificationBadge
-              passed={data.verification.checks.faceMatchProof}
               label="Face Match (ZK)"
+              passed={data.verification.checks.faceMatchProof}
             />
             <VerificationBadge
-              passed={data.verification.checks.ageProof}
               label="Age (18+)"
+              passed={data.verification.checks.ageProof}
             />
             <VerificationBadge
-              passed={data.verification.checks.docValidityProof}
               label="Document Valid"
+              passed={data.verification.checks.docValidityProof}
             />
             <VerificationBadge
-              passed={data.verification.checks.nationalityProof}
               label="Nationality"
+              passed={data.verification.checks.nationalityProof}
             />
           </div>
         </div>

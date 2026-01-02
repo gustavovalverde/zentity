@@ -11,6 +11,9 @@ import {
   getActiveChallengeCount,
 } from "../challenge-store";
 
+/** Matches a 32-character lowercase hex nonce */
+const HEX_NONCE_PATTERN = /^[0-9a-f]{32}$/;
+
 describe("challenge-store", () => {
   beforeEach(() => {
     resetDatabase();
@@ -28,7 +31,7 @@ describe("challenge-store", () => {
 
       expect(challenge.nonce).toBeDefined();
       expect(challenge.nonce).toHaveLength(32); // 128-bit = 16 bytes = 32 hex chars
-      expect(/^[0-9a-f]{32}$/.test(challenge.nonce)).toBe(true);
+      expect(HEX_NONCE_PATTERN.test(challenge.nonce)).toBe(true);
     });
 
     it("creates challenge with correct circuit type", () => {
@@ -85,7 +88,7 @@ describe("challenge-store", () => {
       const consumed = consumeChallenge(
         challenge.nonce,
         "age_verification",
-        "user-123",
+        "user-123"
       );
 
       expect(consumed).not.toBeNull();
@@ -120,7 +123,7 @@ describe("challenge-store", () => {
       const result1 = consumeChallenge(
         challenge.nonce,
         "age_verification",
-        "user-123",
+        "user-123"
       );
       expect(result1).not.toBeNull();
 
@@ -128,7 +131,7 @@ describe("challenge-store", () => {
       const result2 = consumeChallenge(
         challenge.nonce,
         "age_verification",
-        "user-123",
+        "user-123"
       );
       expect(result2).toBeNull();
     });
@@ -136,7 +139,7 @@ describe("challenge-store", () => {
     it("rejects non-existent nonce", () => {
       const result = consumeChallenge(
         "00000000000000000000000000000000",
-        "age_verification",
+        "age_verification"
       );
 
       expect(result).toBeNull();
@@ -156,7 +159,7 @@ describe("challenge-store", () => {
       const result = consumeChallenge(
         challenge.nonce,
         "age_verification",
-        "user-456",
+        "user-456"
       );
 
       expect(result).toBeNull();
@@ -258,7 +261,7 @@ describe("challenge-store", () => {
 
   describe("edge cases", () => {
     it("handles rapid sequential challenge creation", () => {
-      const challenges = [];
+      const challenges: ReturnType<typeof createChallenge>[] = [];
       for (let i = 0; i < 10; i++) {
         challenges.push(createChallenge("age_verification"));
       }
@@ -277,12 +280,12 @@ describe("challenge-store", () => {
       const ageResult = consumeChallenge(
         ageChallenge.nonce,
         "age_verification",
-        "user-1",
+        "user-1"
       );
       const docResult = consumeChallenge(
         docChallenge.nonce,
         "doc_validity",
-        "user-1",
+        "user-1"
       );
 
       expect(ageResult).not.toBeNull();

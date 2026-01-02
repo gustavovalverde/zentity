@@ -32,7 +32,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Alert variant="destructive" className="mb-4">
+          <Alert className="mb-4" variant="destructive">
             <AlertDescription>
               Password reset links are valid for 1 hour. Please request a new
               one.
@@ -42,7 +42,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
             <Button asChild className="w-full">
               <Link href="/forgot-password">Request New Link</Link>
             </Button>
-            <Button variant="ghost" asChild className="w-full">
+            <Button asChild className="w-full" variant="ghost">
               <Link href="/sign-in">Back to Sign In</Link>
             </Button>
           </div>
@@ -59,11 +59,11 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
       </CardHeader>
       <CardContent>
         <ResetPasswordForm token={token} />
-        <div className="mt-6 text-center text-sm text-muted-foreground">
+        <div className="mt-6 text-center text-muted-foreground text-sm">
           Remember your password?{" "}
           <Link
-            href="/sign-in"
             className="font-medium text-primary hover:underline"
+            href="/sign-in"
           >
             Sign In
           </Link>

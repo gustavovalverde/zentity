@@ -42,7 +42,7 @@ export function DefiDemoClient({
 }: DefiDemoClientProps) {
   const { address, isConnected } = useAppKitAccount();
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(
-    attestedNetworkId,
+    attestedNetworkId
   );
   const isMounted = useIsMounted();
 
@@ -69,7 +69,7 @@ export function DefiDemoClient({
     !isDemoMode &&
     Boolean(
       selectedNetworkData?.complianceRules &&
-        selectedNetworkData?.identityRegistry,
+        selectedNetworkData?.identityRegistry
     );
 
   // Check on-chain attestation status (validates DB record against actual contract)
@@ -81,8 +81,8 @@ export function DefiDemoClient({
       },
       {
         enabled: Boolean(activeNetworkId && address && !isDemoMode),
-        staleTime: 30000,
-      },
+        staleTime: 30_000,
+      }
     );
 
   // If DB says attested but on-chain says not, user needs to re-attest
@@ -103,9 +103,9 @@ export function DefiDemoClient({
           activeNetworkId &&
           address &&
           !isDemoMode &&
-          !needsReAttestation,
+          !needsReAttestation
       ),
-    },
+    }
   );
 
   const hasComplianceAccess = isDemoMode
@@ -131,7 +131,7 @@ export function DefiDemoClient({
           txHash: null,
           blockNumber: null,
           explorerUrl: null,
-        },
+        }
       );
       utils.token.complianceAccess.invalidate({
         networkId: activeNetworkId,
@@ -171,14 +171,14 @@ export function DefiDemoClient({
             </AlertDescription>
           </Alert>
           <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">Steps to access:</p>
-            <ol className="text-sm space-y-1 list-decimal list-inside text-muted-foreground">
+            <p className="text-muted-foreground text-sm">Steps to access:</p>
+            <ol className="list-inside list-decimal space-y-1 text-muted-foreground text-sm">
               <li>Complete document verification on the main dashboard</li>
               <li>Pass liveness detection</li>
               <li>Register your identity on-chain (attestation)</li>
             </ol>
           </div>
-          <Button variant="outline" asChild>
+          <Button asChild variant="outline">
             <a href="/dashboard">
               Go to Dashboard
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -209,7 +209,7 @@ export function DefiDemoClient({
               Your identity is verified but not yet registered on-chain.
             </AlertDescription>
           </Alert>
-          <Button variant="outline" asChild>
+          <Button asChild variant="outline">
             <a href="/dashboard">
               Register On-Chain
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -221,7 +221,7 @@ export function DefiDemoClient({
   }
 
   // Not connected - show connect button
-  if (!isMounted || !isConnected) {
+  if (!(isMounted && isConnected)) {
     return (
       <Card>
         <CardHeader>
@@ -235,10 +235,10 @@ export function DefiDemoClient({
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-4 py-8">
           <Wallet className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground text-center">
+          <p className="text-center text-muted-foreground text-sm">
             Connect the wallet you registered on-chain to continue
           </p>
-          {isMounted && <appkit-button />}
+          {isMounted ? <appkit-button /> : null}
         </CardContent>
       </Card>
     );
@@ -276,7 +276,7 @@ export function DefiDemoClient({
               identity on-chain again to continue using compliant DeFi features.
             </AlertDescription>
           </Alert>
-          <Button variant="outline" asChild>
+          <Button asChild variant="outline">
             <a href="/dashboard">
               Register On-Chain
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -314,7 +314,7 @@ export function DefiDemoClient({
               </p>
             </AlertDescription>
           </Alert>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Please connect the wallet you registered on-chain, or update your
             attestation with the new wallet.
           </p>
@@ -327,14 +327,14 @@ export function DefiDemoClient({
     <div className="space-y-6">
       {/* Network selector */}
       {networks && networks.length > 1 && (
-        <div className="flex gap-2 items-center">
-          <span className="text-sm font-medium">Network:</span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm">Network:</span>
           {networks.map((network) => (
             <Badge
-              key={network.id}
-              variant={selectedNetwork === network.id ? "default" : "outline"}
               className="cursor-pointer"
+              key={network.id}
               onClick={() => setSelectedNetwork(network.id)}
+              variant={selectedNetwork === network.id ? "default" : "outline"}
             >
               {network.name}
             </Badge>
@@ -342,62 +342,79 @@ export function DefiDemoClient({
         </div>
       )}
 
-      {networksLoading ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Loading networks...
-          </CardContent>
-        </Card>
-      ) : !selectedNetworkData ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No CompliantERC20 deployed on available networks
-          </CardContent>
-        </Card>
-      ) : !address ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Wallet address not available
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {requiresAccessGrant && (
-            <ComplianceAccessCard
-              identityRegistry={
-                selectedNetworkData.identityRegistry as `0x${string}` | null
-              }
-              complianceRules={
-                selectedNetworkData.complianceRules as `0x${string}` | null
-              }
-              expectedChainId={selectedNetworkData.chainId}
-              expectedNetworkName={selectedNetworkData.name}
-              isGranted={hasComplianceAccess}
-              grantedTxHash={complianceTxHash}
-              grantedExplorerUrl={complianceExplorerUrl}
-              onGranted={handleAccessGranted}
+      {(() => {
+        if (networksLoading) {
+          return (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                Loading networks...
+              </CardContent>
+            </Card>
+          );
+        }
+
+        if (!selectedNetworkData) {
+          return (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                No CompliantERC20 deployed on available networks
+              </CardContent>
+            </Card>
+          );
+        }
+
+        if (!address) {
+          return (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                Wallet address not available
+              </CardContent>
+            </Card>
+          );
+        }
+
+        return (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {requiresAccessGrant ? (
+              <ComplianceAccessCard
+                complianceRules={
+                  selectedNetworkData.complianceRules as `0x${string}` | null
+                }
+                expectedChainId={selectedNetworkData.chainId}
+                expectedNetworkName={selectedNetworkData.name}
+                grantedExplorerUrl={complianceExplorerUrl}
+                grantedTxHash={complianceTxHash}
+                identityRegistry={
+                  selectedNetworkData.identityRegistry as `0x${string}` | null
+                }
+                isGranted={hasComplianceAccess}
+                onGranted={handleAccessGranted}
+              />
+            ) : null}
+
+            {/* Token Status */}
+            <TokenStatus
+              networkId={resolvedNetworkId}
+              walletAddress={address}
             />
-          )}
 
-          {/* Token Status */}
-          <TokenStatus networkId={resolvedNetworkId} walletAddress={address} />
+            {/* Mint Form */}
+            <MintForm networkId={resolvedNetworkId} walletAddress={address} />
 
-          {/* Mint Form */}
-          <MintForm networkId={resolvedNetworkId} walletAddress={address} />
+            {/* Transfer Form */}
+            <TransferForm
+              accessGranted={accessReady}
+              contractAddress={
+                selectedNetworkData.contractAddress as `0x${string}`
+              }
+              networkId={resolvedNetworkId}
+            />
 
-          {/* Transfer Form */}
-          <TransferForm
-            networkId={resolvedNetworkId}
-            contractAddress={
-              selectedNetworkData.contractAddress as `0x${string}`
-            }
-            accessGranted={accessReady}
-          />
-
-          {/* Transaction History */}
-          <TxHistory networkId={resolvedNetworkId} walletAddress={address} />
-        </div>
-      )}
+            {/* Transaction History */}
+            <TxHistory networkId={resolvedNetworkId} walletAddress={address} />
+          </div>
+        );
+      })()}
     </div>
   );
 }

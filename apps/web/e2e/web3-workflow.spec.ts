@@ -3,6 +3,29 @@ import { connectWalletIfNeeded } from "./helpers/connect-wallet";
 import { confirmSignature, confirmTransaction } from "./helpers/metamask";
 import { readTestUserId } from "./helpers/test-user";
 
+// Top-level regex patterns for lint/performance/useTopLevelRegex compliance
+const WELCOME_HEADING_PATTERN = /welcome/i;
+const ATTESTATION_URL_PATTERN = /dashboard\/attestation/;
+const ON_CHAIN_ATTESTATION_HEADING = /On-Chain Attestation/i;
+const LOCAL_HARDHAT_BUTTON = /Local \(Hardhat\)/i;
+const REGISTER_ON_BUTTON = /Register on/i;
+const UPDATE_ATTESTATION_BUTTON = /Update Attestation/i;
+const ATTESTED_ON_TEXT = /Attested on/i;
+const TRANSACTION_PENDING_TEXT = /Transaction Pending/i;
+const CHECK_STATUS_BUTTON = /Check Status/i;
+const ATTESTED_ON_FHEVM_TEXT = /Attested on fhEVM/i;
+const LOCAL_HARDHAT_TEXT = /Local \\(Hardhat\\)/i;
+const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
+const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
+const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
+const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
+const FHE_INITIALIZING_TEXT = /Initializing FHE encryption/i;
+const RECIPIENT_NOT_ATTESTED_TEXT = /Recipient not attested/i;
+const RECIPIENT_ATTESTED_TEXT = /Recipient is attested/i;
+const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
+const TRANSFER_SUCCESS_TEXT = /Transfer submitted!/i;
+const TRANSFER_REVERTED_TEXT = /transfer.*reverted/i;
+
 const senderAddress =
   process.env.E2E_SENDER_ADDRESS ??
   "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -16,7 +39,7 @@ const senderAccountName =
 const hardhatNetwork = {
   name: process.env.SYNPRESS_NETWORK_NAME ?? "Hardhat Local",
   rpcUrl: process.env.SYNPRESS_NETWORK_RPC_URL ?? "http://127.0.0.1:8545",
-  chainId: Number(process.env.SYNPRESS_NETWORK_CHAIN_ID ?? 31337),
+  chainId: Number(process.env.SYNPRESS_NETWORK_CHAIN_ID ?? 31_337),
   symbol: process.env.SYNPRESS_NETWORK_SYMBOL ?? "ETH",
 };
 
@@ -43,7 +66,9 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     }
 
     await page.goto("/dashboard");
-    await expect(page.getByRole("heading", { name: /welcome/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: WELCOME_HEADING_PATTERN })
+    ).toBeVisible();
 
     await connectWalletIfNeeded({
       page,
@@ -53,24 +78,26 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     });
 
     await page.goto("/dashboard/attestation");
-    await expect(page).toHaveURL(/dashboard\/attestation/);
+    await expect(page).toHaveURL(ATTESTATION_URL_PATTERN);
     await expect(
-      page.getByRole("heading", { name: /On-Chain Attestation/i }),
+      page.getByRole("heading", { name: ON_CHAIN_ATTESTATION_HEADING })
     ).toBeVisible({ timeout: 60_000 });
 
     const hardhatNetworkButton = page.getByRole("button", {
-      name: /Local \(Hardhat\)/i,
+      name: LOCAL_HARDHAT_BUTTON,
     });
     if (await hardhatNetworkButton.isVisible().catch(() => false)) {
       await hardhatNetworkButton.click();
     }
 
-    const registerButton = page.getByRole("button", { name: /Register on/i });
-    const updateAttestationButton = page.getByRole("button", {
-      name: /Update Attestation/i,
+    const registerButton = page.getByRole("button", {
+      name: REGISTER_ON_BUTTON,
     });
-    const attestedText = page.getByText(/Attested on/i, { exact: false });
-    const pendingText = page.getByText(/Transaction Pending/i, {
+    const updateAttestationButton = page.getByRole("button", {
+      name: UPDATE_ATTESTATION_BUTTON,
+    });
+    const attestedText = page.getByText(ATTESTED_ON_TEXT, { exact: false });
+    const pendingText = page.getByText(TRANSACTION_PENDING_TEXT, {
       exact: false,
     });
 
@@ -78,7 +105,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       registerButton
         .or(updateAttestationButton)
         .or(attestedText)
-        .or(pendingText),
+        .or(pendingText)
     ).toBeVisible({ timeout: 60_000 });
 
     if (await registerButton.isVisible()) {
@@ -92,7 +119,9 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     });
 
     if (await pendingText.isVisible()) {
-      const checkStatus = page.getByRole("button", { name: /Check Status/i });
+      const checkStatus = page.getByRole("button", {
+        name: CHECK_STATUS_BUTTON,
+      });
       for (let attempt = 0; attempt < 5; attempt++) {
         await checkStatus.click();
         try {
@@ -106,19 +135,21 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
 
     await expect(attestedText).toBeVisible({ timeout: 60_000 });
 
-    const sepoliaConfirmed = page.getByText(/Attested on fhEVM/i, {
+    const sepoliaConfirmed = page.getByText(ATTESTED_ON_FHEVM_TEXT, {
       exact: false,
     });
     if (await sepoliaConfirmed.isVisible().catch(() => false)) {
-      await expect(page.getByText(/Local \\(Hardhat\\)/i)).toBeVisible();
-      await page.getByRole("button", { name: /Local \\(Hardhat\\)/i }).click();
+      await expect(page.getByText(LOCAL_HARDHAT_TEXT)).toBeVisible();
+      await page.getByRole("button", { name: LOCAL_HARDHAT_TEXT }).click();
     }
 
     await expect(
-      page.getByText("Your On-Chain Identity", { exact: false }),
+      page.getByText("Your On-Chain Identity", { exact: false })
     ).toBeVisible({ timeout: 120_000 });
 
-    const decryptButton = page.getByRole("button", { name: /Decrypt & View/i });
+    const decryptButton = page.getByRole("button", {
+      name: DECRYPT_VIEW_BUTTON,
+    });
     await expect(decryptButton).toBeVisible();
     await expect(decryptButton).toBeEnabled({ timeout: 60_000 });
     await decryptButton.click();
@@ -127,12 +158,12 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("Level 3")).toBeVisible();
 
-    const complianceGrantedText = page.getByText(/Compliance access granted/i, {
+    const complianceGrantedText = page.getByText(COMPLIANCE_GRANTED_TEXT, {
       exact: false,
     });
     if (!(await complianceGrantedText.isVisible())) {
       const grantButton = page.getByRole("button", {
-        name: /Grant Compliance Access/i,
+        name: GRANT_COMPLIANCE_BUTTON,
       });
       await expect(grantButton).toBeVisible({ timeout: 30_000 });
       await Promise.all([confirmTransaction(metamask), grantButton.click()]);
@@ -142,7 +173,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
 
     await page.goto("/dashboard/defi-demo");
     await expect(
-      page.getByRole("heading", { name: "DeFi Compliance Demo" }),
+      page.getByRole("heading", { name: "DeFi Compliance Demo" })
     ).toBeVisible();
 
     await expect(page.getByText("Mint Tokens", { exact: false })).toBeVisible();
@@ -153,23 +184,23 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await mintButton.click();
 
     await expect(
-      page.getByText(/Tokens minted successfully/i, { exact: false }),
+      page.getByText(TOKENS_MINTED_TEXT, { exact: false })
     ).toBeVisible({ timeout: 60_000 });
 
     await expect(
-      page.getByText("Transfer", { exact: true }).first(),
+      page.getByText("Transfer", { exact: true }).first()
     ).toBeVisible();
-    await expect(page.getByText(/Initializing FHE encryption/i)).toBeHidden({
+    await expect(page.getByText(FHE_INITIALIZING_TEXT)).toBeHidden({
       timeout: 60_000,
     });
 
     const recipientInput = page.locator("#recipient");
     await recipientInput.fill(recipientAddress);
     await recipientInput.blur();
-    const recipientWarning = page.getByText(/Recipient not attested/i, {
+    const recipientWarning = page.getByText(RECIPIENT_NOT_ATTESTED_TEXT, {
       exact: false,
     });
-    const recipientOk = page.getByText(/Recipient is attested/i, {
+    const recipientOk = page.getByText(RECIPIENT_ATTESTED_TEXT, {
       exact: false,
     });
     try {
@@ -187,14 +218,16 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       await expect(recipientOk).toBeVisible({ timeout: 20_000 });
     }
     await page.locator("#transfer-amount").fill("2");
-    const transferButton = page.getByRole("button", { name: /^Transfer$/ });
+    const transferButton = page.getByRole("button", {
+      name: TRANSFER_BUTTON_PATTERN,
+    });
     await expect(transferButton).toBeEnabled({ timeout: 60_000 });
     await Promise.all([confirmTransaction(metamask), transferButton.click()]);
 
-    const transferSuccess = page.getByText(/Transfer submitted!/i, {
+    const transferSuccess = page.getByText(TRANSFER_SUCCESS_TEXT, {
       exact: false,
     });
-    const transferError = page.getByText(/transfer.*reverted/i, {
+    const transferError = page.getByText(TRANSFER_REVERTED_TEXT, {
       exact: false,
     });
     await expect(transferSuccess.or(transferError)).toBeVisible({

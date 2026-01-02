@@ -3,7 +3,7 @@ import type * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils/utils";
 
 const spinnerVariants = cva("animate-spin text-current", {
   variants: {
@@ -26,12 +26,12 @@ function Spinner({
 }: React.ComponentProps<"span"> & VariantProps<typeof spinnerVariants>) {
   return (
     <span
-      role="status"
       aria-live="polite"
       className={cn("inline-flex items-center justify-center", className)}
+      role="status"
       {...props}
     >
-      <Loader2 className={cn(spinnerVariants({ size }))} aria-hidden="true" />
+      <Loader2 aria-hidden="true" className={cn(spinnerVariants({ size }))} />
     </span>
   );
 }

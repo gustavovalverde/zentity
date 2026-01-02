@@ -8,6 +8,12 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * to their encrypted identity data in IdentityRegistry.
  */
 import { AlertTriangle, CheckCircle, Loader2, ShieldCheck } from "lucide-react";
+
+/** Matches error reason text (e.g., "reason: Some error message") */
+const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
+/** Matches hex error data (e.g., "data: 0x12345abc") */
+const ERROR_DATA_PATTERN = /data:\s*(0x[a-fA-F0-9]+)/;
+
 import { useEffect, useState } from "react";
 import {
   useBalance,
@@ -106,8 +112,12 @@ export function ComplianceAccessCard({
   const isActionDisabled = isPending || isChainMismatch || insufficientFunds;
 
   const handleGrant = async () => {
-    if (!identityRegistry || !complianceRules) return;
-    if (isPending || txHash) return;
+    if (!(identityRegistry && complianceRules)) {
+      return;
+    }
+    if (isPending || txHash) {
+      return;
+    }
     setIsSubmitting(true);
     try {
       let hasFunds = !insufficientFunds;
@@ -119,15 +129,20 @@ export function ComplianceAccessCard({
           hasFunds = (refreshed.data?.value ?? BigInt(0)) > BigInt(0);
         }
       }
-      if (!hasFunds) return;
+      if (!hasFunds) {
+        return;
+      }
 
       // Gas overrides for networks where wagmi auto-estimation fails with FHE contracts
-      const txOverrides =
-        chainId === 31337
-          ? { gas: BigInt(500_000) } // Hardhat
-          : chainId === 11155111
-            ? { gas: BigInt(1_000_000) } // Sepolia (fhEVM operations need more gas)
-            : undefined;
+      const txOverrides = (() => {
+        if (chainId === 31_337) {
+          return { gas: BigInt(500_000) }; // Hardhat
+        }
+        if (chainId === 11_155_111) {
+          return { gas: BigInt(1_000_000) }; // Sepolia (fhEVM operations need more gas)
+        }
+        return;
+      })();
 
       await writeContractAsync({
         address: identityRegistry,
@@ -142,11 +157,13 @@ export function ComplianceAccessCard({
   };
 
   const handleSwitchNetwork = () => {
-    if (!expectedChainId || !switchChain) return;
+    if (!(expectedChainId && switchChain)) {
+      return;
+    }
     switchChain({ chainId: expectedChainId });
   };
 
-  if (!identityRegistry || !complianceRules) {
+  if (!(identityRegistry && complianceRules)) {
     return (
       <Card className="border-warning/30">
         <CardHeader>
@@ -175,7 +192,7 @@ export function ComplianceAccessCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {isChainMismatch && (
+        {isChainMismatch ? (
           <Alert variant="warning">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
@@ -184,15 +201,15 @@ export function ComplianceAccessCard({
               grant compliance access.
             </AlertDescription>
           </Alert>
-        )}
-        {insufficientFunds && (
+        ) : null}
+        {insufficientFunds ? (
           <Alert variant="warning">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
               Your wallet has no ETH available for gas on this network.
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         {isGranted ? (
           <Alert variant="success">
@@ -202,17 +219,17 @@ export function ComplianceAccessCard({
                 <div>
                   Compliance access granted. You can now transfer tokens.
                 </div>
-                {grantedTxHash && (
-                  <div className="text-xs text-muted-foreground">
+                {grantedTxHash ? (
+                  <div className="text-muted-foreground text-xs">
                     Already granted on-chain.
                     {grantedExplorerUrl ? (
                       <>
                         {" "}
                         <a
-                          href={grantedExplorerUrl}
-                          target="_blank"
-                          rel="noreferrer"
                           className="underline"
+                          href={grantedExplorerUrl}
+                          rel="noreferrer"
+                          target="_blank"
                         >
                           View transaction
                         </a>
@@ -222,13 +239,13 @@ export function ComplianceAccessCard({
                         {" "}
                         <span className="font-mono">
                           {`${grantedTxHash.slice(0, 6)}...${grantedTxHash.slice(
-                            -4,
+                            -4
                           )}`}
                         </span>
                       </>
                     )}
                   </div>
-                )}
+                ) : null}
               </div>
             </AlertDescription>
           </Alert>
@@ -242,76 +259,88 @@ export function ComplianceAccessCard({
               </AlertDescription>
             </Alert>
             <Button
-              onClick={handleGrant}
-              disabled={isActionDisabled}
               className="w-full"
+              disabled={isActionDisabled}
+              onClick={handleGrant}
             >
-              {isPending || txHash ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  {txHash
+              {(() => {
+                if (isPending || txHash) {
+                  const label = txHash
                     ? "Waiting for Confirmation..."
-                    : "Granting Access..."}
-                </>
-              ) : (
-                "Grant Compliance Access"
-              )}
+                    : "Granting Access...";
+                  return (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {label}
+                    </>
+                  );
+                }
+                return "Grant Compliance Access";
+              })()}
             </Button>
-            {isChainMismatch && (
+            {isChainMismatch ? (
               <Button
-                variant="outline"
-                onClick={handleSwitchNetwork}
-                disabled={isSwitching}
                 className="w-full"
+                disabled={isSwitching}
+                onClick={handleSwitchNetwork}
+                variant="outline"
               >
                 {isSwitching
                   ? "Switching Network..."
                   : `Switch to ${expectedNetworkName ?? "Network"}`}
               </Button>
-            )}
-            {insufficientFunds && isFaucetSupported && (
+            ) : null}
+            {insufficientFunds && isFaucetSupported ? (
               <Button
-                variant="outline"
+                className="w-full"
+                disabled={isFauceting}
                 onClick={async () => {
                   const toppedUp = await faucet(walletAddress);
                   if (toppedUp) {
                     await refetchBalance();
                   }
                 }}
-                disabled={isFauceting}
-                className="w-full"
+                variant="outline"
               >
                 {isFauceting ? "Topping Up..." : "Top Up Test ETH"}
               </Button>
-            )}
+            ) : null}
           </>
         )}
 
-        {error && (
+        {error ? (
           <Alert variant="destructive">
             <AlertDescription className="break-words">
               {(() => {
-                if (!(error instanceof Error)) return "Grant failed";
+                if (!(error instanceof Error)) {
+                  return "Grant failed";
+                }
                 const msg = error.message;
                 // Check for FHE/ACL error selectors
-                if (msg.includes("0x23dada53"))
+                if (msg.includes("0x23dada53")) {
                   return "ACL permission denied. The contract lacks permission to your encrypted data. Please update your attestation.";
-                if (msg.includes("0x99efb890"))
+                }
+                if (msg.includes("0x99efb890")) {
                   return "Identity not attested. Please register on-chain first.";
-                if (msg.includes("0x72c0afff") || msg.includes("0xa4fbc572"))
+                }
+                if (msg.includes("0x72c0afff") || msg.includes("0xa4fbc572")) {
                   return "Invalid encrypted data. Your attestation may have expired. Please re-attest.";
+                }
                 // Extract reason or show more context
-                const reason = msg.match(/reason:\s*(.+)/)?.[1];
-                if (reason) return reason;
+                const reason = msg.match(ERROR_REASON_PATTERN)?.[1];
+                if (reason) {
+                  return reason;
+                }
                 // Show error data if present
-                const dataMatch = msg.match(/data:\s*(0x[a-fA-F0-9]+)/);
-                if (dataMatch)
+                const dataMatch = msg.match(ERROR_DATA_PATTERN);
+                if (dataMatch) {
                   return `Contract reverted with: ${dataMatch[1].slice(0, 10)}...`;
+                }
                 return msg.split("\n").slice(0, 3).join(" ").slice(0, 250);
               })()}
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );

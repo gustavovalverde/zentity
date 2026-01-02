@@ -8,17 +8,21 @@ import {
   hashIdentifier,
   injectTraceHeaders,
   withSpan,
-} from "@/lib/observability";
-import { HttpError } from "@/lib/utils";
+} from "@/lib/observability/telemetry";
+import { HttpError } from "@/lib/utils/http";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 
 function getInternalServiceAuthHeaders(
-  requestId?: string,
+  requestId?: string
 ): Record<string, string> {
   const token = process.env.INTERNAL_SERVICE_TOKEN;
   const headers: Record<string, string> = {};
-  if (token) headers["X-Zentity-Internal-Token"] = token;
-  if (requestId) headers["X-Request-Id"] = requestId;
+  if (token) {
+    headers["X-Zentity-Internal-Token"] = token;
+  }
+  if (requestId) {
+    headers["X-Request-Id"] = requestId;
+  }
   return headers;
 }
 
@@ -81,9 +85,9 @@ interface FetchMsgpackOptions extends RequestInit {
 async function fetchMsgpack<T>(
   url: string,
   payload: unknown,
-  init?: FetchMsgpackOptions,
+  init?: FetchMsgpackOptions
 ): Promise<T> {
-  const { timeoutMs = 60000, ...fetchInit } = init ?? {};
+  const { timeoutMs = 60_000, ...fetchInit } = init ?? {};
 
   const encoded = encode(payload);
   const compressed = gzipSync(encoded);
@@ -139,7 +143,7 @@ async function fetchMsgpack<T>(
 
 async function withFheError<T>(
   operation: FheOperation,
-  run: () => Promise<T>,
+  run: () => Promise<T>
 ): Promise<T> {
   try {
     return await run();
@@ -207,7 +211,7 @@ interface FheRegisterKeyResult {
 }
 
 function buildMsgpackHeaders(
-  extra: Record<string, string> = {},
+  extra: Record<string, string> = {}
 ): Record<string, string> {
   return injectTraceHeaders({
     "Content-Type": "application/msgpack",
@@ -218,7 +222,7 @@ function buildMsgpackHeaders(
   });
 }
 
-export async function encryptBatchFhe(args: {
+export function encryptBatchFhe(args: {
   keyId: string;
   birthYearOffset?: number;
   countryCode?: number;
@@ -247,10 +251,10 @@ export async function encryptBatchFhe(args: {
         fetchMsgpack<FheBatchEncryptResponse>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId),
+            getInternalServiceAuthHeaders(args.requestId)
           ),
-        }),
-    ),
+        })
+    )
   );
 }
 
@@ -317,7 +321,7 @@ export async function encryptLivenessScoreFhe(args: {
   return { ciphertext, score: args.score };
 }
 
-export async function registerFheKey(args: {
+export function registerFheKey(args: {
   serverKey: string;
   publicKey: string;
   requestId?: string;
@@ -343,14 +347,14 @@ export async function registerFheKey(args: {
         fetchMsgpack<FheRegisterKeyResult>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId),
+            getInternalServiceAuthHeaders(args.requestId)
           ),
-        }),
-    ),
+        })
+    )
   );
 }
 
-export async function verifyAgeFhe(args: {
+export function verifyAgeFhe(args: {
   ciphertext: string;
   currentYear: number;
   minAge: number;
@@ -379,14 +383,14 @@ export async function verifyAgeFhe(args: {
         fetchMsgpack<FheVerifyAgeResult>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId),
+            getInternalServiceAuthHeaders(args.requestId)
           ),
-        }),
-    ),
+        })
+    )
   );
 }
 
-export async function verifyLivenessThresholdFhe(args: {
+export function verifyLivenessThresholdFhe(args: {
   ciphertext: string;
   threshold: number;
   keyId: string;
@@ -413,9 +417,9 @@ export async function verifyLivenessThresholdFhe(args: {
         fetchMsgpack<FheVerifyLivenessThresholdResult>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId),
+            getInternalServiceAuthHeaders(args.requestId)
           ),
-        }),
-    ),
+        })
+    )
   );
 }

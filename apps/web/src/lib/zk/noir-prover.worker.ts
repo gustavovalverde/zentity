@@ -41,9 +41,11 @@ const ENABLE_WORKER_LOGS =
 function logWorker(
   stage: string,
   msg: string,
-  data?: Record<string, unknown>,
+  data?: Record<string, unknown>
 ): void {
-  if (!ENABLE_WORKER_LOGS) return;
+  if (!ENABLE_WORKER_LOGS) {
+    return;
+  }
   const timestamp = new Date().toISOString();
   const payload = data
     ? { type: "log" as const, stage, msg, timestamp, ...data }
@@ -107,7 +109,9 @@ function getIsolationSupport() {
 
 function getThreadCount(): number {
   const { canUseThreads } = getIsolationSupport();
-  if (!canUseThreads) return 1;
+  if (!canUseThreads) {
+    return 1;
+  }
   const available = self.navigator?.hardwareConcurrency ?? 4;
   return Math.max(1, Math.min(MAX_THREADS, available));
 }
@@ -166,8 +170,12 @@ const originalFetch =
   typeof globalThis.fetch === "function" ? globalThis.fetch : null;
 
 function setFetchOrigin(origin: string | null) {
-  if (!originalFetch || !origin || origin === "null") return;
-  if (fetchOrigin === origin) return;
+  if (!(originalFetch && origin) || origin === "null") {
+    return;
+  }
+  if (fetchOrigin === origin) {
+    return;
+  }
   fetchOrigin = origin;
 
   const originalFetchBound = originalFetch.bind(globalThis);
@@ -179,7 +187,7 @@ function setFetchOrigin(origin: string | null) {
     if (input instanceof URL && input.pathname.startsWith("/")) {
       return originalFetchBound(
         new URL(`${origin}${input.pathname}${input.search}`),
-        init,
+        init
       );
     }
     return originalFetchBound(input, init);
@@ -249,11 +257,13 @@ async function getModules(): Promise<ModuleCache> {
  * Get Barretenberg instance for Poseidon2 hashing
  */
 async function getBarretenberg() {
-  if (bbInstance) return bbInstance;
+  if (bbInstance) {
+    return bbInstance;
+  }
   const { BarretenbergSync } = await getModules();
   const { canUseThreads, sharedArrayBuffer, crossOriginIsolated } =
     getIsolationSupport();
-  if (!canUseThreads && !loggedIsolationFallback) {
+  if (!(canUseThreads || loggedIsolationFallback)) {
     loggedIsolationFallback = true;
     logWorker(
       "init",
@@ -261,7 +271,7 @@ async function getBarretenberg() {
       {
         sharedArrayBuffer,
         crossOriginIsolated,
-      },
+      }
     );
   }
   bbInstance = await BarretenbergSync.initSingleton(BB_WASM_PATH, bbLogger);
@@ -278,12 +288,18 @@ function getCircuitArtifact(circuit: CircuitName) {
       return faceMatchCircuit as never;
     case "nationality_membership":
       return nationalityCircuit as never;
+    default: {
+      const _exhaustive: never = circuit;
+      throw new Error(`Unknown circuit: ${_exhaustive}`);
+    }
   }
 }
 
 async function getNoirInstance(circuit: CircuitName) {
   const existing = noirInstanceCache.get(circuit);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const { Noir } = await getModules();
   const noir = new Noir(getCircuitArtifact(circuit));
   noirInstanceCache.set(circuit, noir);
@@ -292,11 +308,13 @@ async function getNoirInstance(circuit: CircuitName) {
 
 async function getProverBackend(circuit: CircuitName) {
   const existing = proverBackendCache.get(circuit);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const { UltraHonkBackend } = await getModules();
   const { canUseThreads, sharedArrayBuffer, crossOriginIsolated } =
     getIsolationSupport();
-  if (!canUseThreads && !loggedIsolationFallback) {
+  if (!(canUseThreads || loggedIsolationFallback)) {
     loggedIsolationFallback = true;
     logWorker(
       "init",
@@ -304,7 +322,7 @@ async function getProverBackend(circuit: CircuitName) {
       {
         sharedArrayBuffer,
         crossOriginIsolated,
-      },
+      }
     );
   }
   const threads = getThreadCount();
@@ -335,7 +353,7 @@ async function poseidon2Hash(values: bigint[]): Promise<bigint> {
  */
 async function computeMerklePath(
   nationalityCode: string,
-  groupName: string,
+  groupName: string
 ): Promise<{
   nationalityCodeNumeric: number;
   merkleRoot: string;
@@ -416,7 +434,11 @@ async function computeMerklePath(
     idx = Math.floor(idx / 2);
   }
 
-  const merkleRoot = levels[levels.length - 1][0];
+  const root = levels.at(-1);
+  if (!root) {
+    throw new Error("Invalid Merkle tree: no root level");
+  }
+  const merkleRoot = root[0];
 
   return {
     nationalityCodeNumeric: numericCode,
@@ -443,7 +465,7 @@ function nonceToField(nonce: string): string {
  * Generate an age verification proof
  */
 async function generateAgeProof(
-  payload: AgeProofPayload,
+  payload: AgeProofPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("age_verification");
   logWorker("proof", "Executing age witness");
@@ -476,7 +498,7 @@ async function generateAgeProof(
  * Generate a document validity proof
  */
 async function generateDocValidityProof(
-  payload: DocValidityPayload,
+  payload: DocValidityPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("doc_validity");
   logWorker("proof", "Executing doc validity witness");
@@ -504,7 +526,7 @@ async function generateDocValidityProof(
 }
 
 async function generateFaceMatchProof(
-  payload: FaceMatchPayload,
+  payload: FaceMatchPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("face_match");
   logWorker("proof", "Executing face match witness");
@@ -535,7 +557,7 @@ async function generateFaceMatchProof(
  * Generate a nationality membership proof (with pre-computed Merkle path)
  */
 async function generateNationalityProof(
-  payload: NationalityProofPayload,
+  payload: NationalityProofPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   const noir = await getNoirInstance("nationality_membership");
   logWorker("proof", "Executing nationality witness");
@@ -569,12 +591,12 @@ async function generateNationalityProof(
  * Nationality NEVER leaves this worker - only the ZK proof is returned.
  */
 async function generateNationalityProofClient(
-  payload: NationalityClientPayload,
+  payload: NationalityClientPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
   // Compute Merkle path locally - nationality stays in worker
   const merkleData = await computeMerklePath(
     payload.nationalityCode,
-    payload.groupName,
+    payload.groupName
   );
 
   // Generate proof with computed Merkle data
@@ -593,7 +615,7 @@ async function generateNationalityProofClient(
  * Handle incoming messages from the main thread
  */
 self.onmessage = async (
-  event: MessageEvent<WorkerRequest | WorkerInitMessage>,
+  event: MessageEvent<WorkerRequest | WorkerInitMessage>
 ) => {
   const request = event.data;
 
@@ -647,18 +669,18 @@ self.onmessage = async (
           result = await generateAgeProof(payload as AgeProofPayload);
         } else if (type === "doc_validity") {
           result = await generateDocValidityProof(
-            payload as DocValidityPayload,
+            payload as DocValidityPayload
           );
         } else if (type === "face_match") {
           result = await generateFaceMatchProof(payload as FaceMatchPayload);
         } else if (type === "nationality") {
           result = await generateNationalityProof(
-            payload as NationalityProofPayload,
+            payload as NationalityProofPayload
           );
         } else if (type === "nationality_client") {
           // Client-side Merkle computation - nationality NEVER leaves worker
           result = await generateNationalityProofClient(
-            payload as NationalityClientPayload,
+            payload as NationalityClientPayload
           );
         } else {
           throw new Error(`Unknown proof type: ${type}`);

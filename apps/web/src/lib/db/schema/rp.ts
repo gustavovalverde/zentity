@@ -19,10 +19,10 @@ export const rpAuthorizationCodes = sqliteTable(
   },
   (table) => ({
     expiresAtIdx: index("idx_rp_authorization_codes_expires_at").on(
-      table.expiresAt,
+      table.expiresAt
     ),
     userIdIdx: index("idx_rp_authorization_codes_user_id").on(table.userId),
-  }),
+  })
 );
 
 export type RpAuthorizationCode = typeof rpAuthorizationCodes.$inferSelect;

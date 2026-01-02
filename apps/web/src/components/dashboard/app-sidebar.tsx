@@ -28,7 +28,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { signOut } from "@/lib/auth";
+import { signOut } from "@/lib/auth/auth-client";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
 interface NavItem {
@@ -114,9 +114,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
+            <SidebarMenuButton asChild size="lg">
               <Link href="/dashboard">
-                <Logo variant="icon" size="sm" />
+                <Logo size="sm" variant="icon" />
                 <span className="font-semibold">Zentity</span>
               </Link>
             </SidebarMenuButton>
@@ -149,7 +149,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </SidebarGroup>
 
         {/* Blockchain Section - Only shown when Web3 is enabled */}
-        {web3Enabled && (
+        {web3Enabled ? (
           <SidebarGroup>
             <SidebarGroupLabel>Blockchain</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -171,7 +171,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
+        ) : null}
 
         {/* Development Section */}
         <SidebarGroup>
@@ -201,15 +201,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <SidebarSeparator />
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="cursor-default">
+            <SidebarMenuButton className="cursor-default" size="lg">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
                 <User className="h-4 w-4" />
               </div>
               <div className="flex flex-col truncate">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate font-medium text-sm">
                   {user.name || "User"}
                 </span>
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate text-muted-foreground text-xs">
                   {user.email}
                 </span>
               </div>

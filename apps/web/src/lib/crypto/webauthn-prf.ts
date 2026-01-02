@@ -1,6 +1,6 @@
 "use client";
 
-import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils";
+import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
 
 export interface PrfSupportStatus {
   supported: boolean;
@@ -34,13 +34,13 @@ export interface AuthenticationAssertionData {
 
 const PRF_OUTPUT_LENGTH = 32;
 
-type PrfExtensionResults = {
+interface PrfExtensionResults {
   prf?: {
     enabled?: boolean;
     results?: { first?: ArrayBuffer };
     resultsByCredential?: Record<string, ArrayBuffer>;
   };
-};
+}
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return Uint8Array.from(bytes).buffer;
@@ -51,13 +51,15 @@ function assertUserActivation() {
     return;
   }
   const activation = navigator.userActivation;
-  if (!activation?.isActive && !activation?.hasBeenActive) {
+  if (!(activation?.isActive || activation?.hasBeenActive)) {
     throw new Error("Passkey unlock must be triggered by a user gesture.");
   }
 }
 
 function toPrfOutput(output?: ArrayBuffer): Uint8Array | null {
-  if (!output) return null;
+  if (!output) {
+    return null;
+  }
   const bytes = new Uint8Array(output);
   if (bytes.byteLength !== PRF_OUTPUT_LENGTH) {
     throw new Error("Unexpected PRF output length.");
@@ -119,7 +121,7 @@ export async function checkPrfSupport(): Promise<PrfSupportStatus> {
 }
 
 export async function createCredentialWithPrf(
-  options: PublicKeyCredentialCreationOptions,
+  options: PublicKeyCredentialCreationOptions
 ): Promise<{
   credential: PublicKeyCredential;
   credentialId: string;
@@ -163,7 +165,7 @@ export async function createCredentialWithPrf(
  * Call this after createCredentialWithPrf() to get the data needed for auth.
  */
 export function extractCredentialRegistrationData(
-  credential: PublicKeyCredential,
+  credential: PublicKeyCredential
 ): CredentialRegistrationData {
   const response = credential.response as AuthenticatorAttestationResponse;
 
@@ -181,7 +183,7 @@ export function extractCredentialRegistrationData(
   const counterView = new DataView(
     authData.buffer,
     authData.byteOffset + 33,
-    4,
+    4
   );
   const counter = counterView.getUint32(0, false);
 
@@ -189,7 +191,7 @@ export function extractCredentialRegistrationData(
   // Structure: rpIdHash(32) + flags(1) + counter(4) + aaguid(16) + credIdLen(2) + credId(n) + coseKey(rest)
   if (!hasAttestedCredentialData) {
     throw new Error(
-      "Authenticator data does not contain attested credential data.",
+      "Authenticator data does not contain attested credential data."
     );
   }
 
@@ -203,7 +205,7 @@ export function extractCredentialRegistrationData(
   const credIdLenView = new DataView(
     authData.buffer,
     authData.byteOffset + offset,
-    2,
+    2
   );
   const credIdLen = credIdLenView.getUint16(0, false);
   offset += 2;
@@ -215,7 +217,7 @@ export function extractCredentialRegistrationData(
   const cosePublicKey = authData.slice(offset);
   if (cosePublicKey.length === 0) {
     throw new Error(
-      "Unable to extract COSE public key from authenticator data.",
+      "Unable to extract COSE public key from authenticator data."
     );
   }
 
@@ -280,7 +282,7 @@ export async function authenticateWithPasskey(params: {
 
   const response = credential.response as AuthenticatorAssertionResponse;
   const selectedCredentialId = bytesToBase64Url(
-    new Uint8Array(credential.rawId),
+    new Uint8Array(credential.rawId)
   );
 
   return {
@@ -288,7 +290,7 @@ export async function authenticateWithPasskey(params: {
       credentialId: selectedCredentialId,
       clientDataJSON: bytesToBase64Url(new Uint8Array(response.clientDataJSON)),
       authenticatorData: bytesToBase64Url(
-        new Uint8Array(response.authenticatorData),
+        new Uint8Array(response.authenticatorData)
       ),
       signature: bytesToBase64Url(new Uint8Array(response.signature)),
       userHandle: response.userHandle
@@ -352,7 +354,7 @@ export async function evaluatePrf(params: {
   })) as PublicKeyCredential;
 
   const selectedCredentialId = bytesToBase64Url(
-    new Uint8Array(assertion.rawId),
+    new Uint8Array(assertion.rawId)
   );
 
   const extensionResults = assertion.getClientExtensionResults() as

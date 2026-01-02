@@ -9,10 +9,10 @@
  *   is never sent to HIBP and does not appear in the `/api/password/pwned`
  *   network payload.
  */
-type PasswordPwnedResult = {
+interface PasswordPwnedResult {
   compromised: boolean;
   skipped: boolean;
-};
+}
 
 async function sha1HexUpper(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
@@ -31,7 +31,7 @@ async function sha1HexUpper(input: string): Promise<string> {
  */
 export async function checkPasswordPwned(
   password: string,
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal }
 ): Promise<PasswordPwnedResult> {
   const sha1 = await sha1HexUpper(password);
   const res = await fetch("/api/password/pwned", {
@@ -45,6 +45,8 @@ export async function checkPasswordPwned(
   const data = (await res
     .json()
     .catch(() => null)) as PasswordPwnedResult | null;
-  if (!res.ok || !data) return { compromised: false, skipped: true };
+  if (!(res.ok && data)) {
+    return { compromised: false, skipped: true };
+  }
   return data;
 }

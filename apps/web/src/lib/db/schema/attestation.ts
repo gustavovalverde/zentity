@@ -26,12 +26,12 @@ export const attestationEvidence = sqliteTable(
   (table) => ({
     userIdIdx: index("idx_attestation_evidence_user_id").on(table.userId),
     documentIdIdx: index("idx_attestation_evidence_document_id").on(
-      table.documentId,
+      table.documentId
     ),
     userDocumentUnique: uniqueIndex(
-      "attestation_evidence_user_document_unique",
+      "attestation_evidence_user_document_unique"
     ).on(table.userId, table.documentId),
-  }),
+  })
 );
 
 export type AttestationStatus =
@@ -66,9 +66,9 @@ export const blockchainAttestations = sqliteTable(
     networkIdx: index("idx_attestations_network").on(table.networkId),
     statusIdx: index("idx_attestations_status").on(table.status),
     userNetworkUnique: uniqueIndex(
-      "blockchain_attestations_user_network_unique",
+      "blockchain_attestations_user_network_unique"
     ).on(table.userId, table.networkId),
-  }),
+  })
 );
 
 export type AttestationEvidenceRecord = typeof attestationEvidence.$inferSelect;

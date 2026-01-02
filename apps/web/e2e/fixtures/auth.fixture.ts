@@ -2,7 +2,6 @@
 import {
   type APIRequestContext,
   test as base,
-  expect,
   type Page,
 } from "@playwright/test";
 
@@ -16,7 +15,7 @@ async function signUpViaAPI(
   request: APIRequestContext,
   email: string,
   password: string,
-  name: string,
+  name: string
 ) {
   const response = await request.post(`${BASE_URL}/api/auth/sign-up/email`, {
     data: {
@@ -38,7 +37,7 @@ async function signUpViaAPI(
 async function signInViaAPI(
   request: APIRequestContext,
   email: string,
-  password: string,
+  password: string
 ) {
   const response = await request.post(`${BASE_URL}/api/auth/sign-in/email`, {
     data: {
@@ -61,17 +60,19 @@ export async function createAuthenticatedUser(
   page: Page,
   request: APIRequestContext,
   email?: string,
-  password?: string,
+  password?: string
 ) {
   const testEmail = email || `e2e-${Date.now()}@example.com`;
   const testPassword = password || "TestPassword123!";
   const testName = testEmail.split("@")[0];
 
   const applyCookies = async (
-    response: Awaited<ReturnType<typeof signInViaAPI>>,
+    response: Awaited<ReturnType<typeof signInViaAPI>>
   ) => {
     const cookies = response.headers()["set-cookie"];
-    if (!cookies) return;
+    if (!cookies) {
+      return;
+    }
 
     const cookieStrings = Array.isArray(cookies) ? cookies : [cookies];
     for (const cookieStr of cookieStrings) {
@@ -96,7 +97,7 @@ export async function createAuthenticatedUser(
     request,
     testEmail,
     testPassword,
-    testName,
+    testName
   );
 
   if (signUpResponse.ok()) {
@@ -106,12 +107,10 @@ export async function createAuthenticatedUser(
 
   // If the user already exists or sign-up is rejected, fall back to sign-in.
   let signInResponse = await signInViaAPI(request, testEmail, testPassword);
-  if (!signInResponse.ok()) {
-    // Small retry for transient rate limits.
-    if (signInResponse.status() === 429) {
-      await page.waitForTimeout(1500);
-      signInResponse = await signInViaAPI(request, testEmail, testPassword);
-    }
+  // Small retry for transient rate limits.
+  if (!signInResponse.ok() && signInResponse.status() === 429) {
+    await page.waitForTimeout(1500);
+    signInResponse = await signInViaAPI(request, testEmail, testPassword);
   }
 
   if (!signInResponse.ok()) {
@@ -136,4 +135,5 @@ export const test = base.extend<{
   },
 });
 
-export { expect };
+// biome-ignore lint/performance/noBarrelFile: Playwright fixture pattern - re-exporting expect for test convenience
+export { expect } from "@playwright/test";

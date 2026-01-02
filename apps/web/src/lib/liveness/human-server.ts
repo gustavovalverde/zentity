@@ -4,7 +4,7 @@ import type { Config, Human } from "@vladmandic/human";
 
 import util from "node:util";
 
-import { logger } from "@/lib/logging";
+import { logger } from "@/lib/logging/logger";
 
 import { HUMAN_MODELS_URL } from "./human-models-path";
 
@@ -57,9 +57,9 @@ let initPromise: Promise<Human> | null = null;
 // and can deadlock when multiple detect() calls run simultaneously on the same model.
 let detectionLock: Promise<void> = Promise.resolve();
 
-export async function getHumanServer(): Promise<Human> {
+export function getHumanServer(): Promise<Human> {
   if (humanInstance) {
-    return humanInstance;
+    return Promise.resolve(humanInstance);
   }
   if (!initPromise) {
     initPromise = (async () => {
@@ -103,7 +103,9 @@ async function decodeBase64Image(dataUrl: string): Promise<TfTensor> {
  * Create a deferred promise with external resolve control.
  */
 function createDeferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve: () => void = () => {};
+  let resolve: () => void = () => {
+    /* No-op placeholder until Promise assigns real resolve */
+  };
   const promise = new Promise<void>((res) => {
     resolve = res;
   });
@@ -148,6 +150,6 @@ export async function warmupHumanServer(): Promise<void> {
   await getHumanServer();
   logger.info(
     { durationMs: Date.now() - startTime },
-    "Human.js models preloaded",
+    "Human.js models preloaded"
   );
 }

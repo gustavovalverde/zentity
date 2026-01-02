@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
-import { cn, motion, reducedMotion } from "@/lib/utils";
+import { motion, reducedMotion } from "@/lib/utils/motion";
+import { cn } from "@/lib/utils/utils";
 
 import { useWizard } from "./wizard-provider";
 
@@ -33,7 +34,7 @@ export function WizardStepper() {
   const [isNavigating, setIsNavigating] = useState(false);
   const prefersReducedMotion = usePrefersReducedMotion();
   const m = prefersReducedMotion ? reducedMotion : motion;
-  const headerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLFieldSetElement>(null);
   const hasMountedRef = useRef(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus the step header on step transitions for keyboard/screen reader users.
@@ -47,7 +48,9 @@ export function WizardStepper() {
   }, [state.currentStep]);
 
   const handleStepClick = async (stepNumber: number) => {
-    if (isNavigating) return;
+    if (isNavigating) {
+      return;
+    }
 
     setIsNavigating(true);
     try {
@@ -59,27 +62,26 @@ export function WizardStepper() {
 
   return (
     <div className="space-y-4">
-      <div
+      <fieldset
+        aria-label={`Onboarding progress: step ${state.currentStep} of ${totalSteps}`}
+        className="flex items-center justify-between rounded-md border-0 px-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         ref={headerRef}
         tabIndex={-1}
-        className="flex items-center justify-between text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md px-1"
-        role="group"
-        aria-label={`Onboarding progress: step ${state.currentStep} of ${totalSteps}`}
       >
         <span className={cn("font-medium", m.fadeIn)}>
           Step {state.currentStep} of {totalSteps}
         </span>
         <span
-          key={state.currentStep}
           className={cn("text-muted-foreground", m.slideUp)}
+          key={state.currentStep}
         >
           {STEP_TITLES[state.currentStep - 1]}
         </span>
-      </div>
-      <Progress value={progress} className={cn("h-2", m.progress)} />
+      </fieldset>
+      <Progress className={cn("h-2", m.progress)} value={progress} />
 
       {/* Visual step indicators */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         {STEP_TITLES.map((title, index) => {
           const stepNumber = index + 1;
           const isCompleted = stepNumber < state.currentStep;
@@ -89,42 +91,50 @@ export function WizardStepper() {
 
           return (
             <Button
-              type="button"
-              key={stepNumber}
-              variant="ghost"
-              onClick={() => canNavigate && handleStepClick(stepNumber)}
-              disabled={!canNavigate}
+              aria-current={isCurrent ? "step" : undefined}
+              aria-label={(() => {
+                const base = `${title} - Step ${stepNumber}`;
+                if (isCompleted) {
+                  return `${base} (completed)`;
+                }
+                if (isCurrent) {
+                  return `${base} (current)`;
+                }
+                return base;
+              })()}
               className={cn(
                 // Ensure minimum 44px touch target for accessibility
-                "flex flex-col items-center gap-1 group transition-transform duration-200 min-w-[44px] min-h-[44px] p-1",
+                "group flex min-h-[44px] min-w-[44px] flex-col items-center gap-1 p-1 transition-transform duration-200",
                 canNavigate && "hover:scale-105",
-                isNavigating && "opacity-50",
+                isNavigating && "opacity-50"
               )}
-              aria-label={`${title} - Step ${stepNumber}${isCompleted ? " (completed)" : isCurrent ? " (current)" : ""}`}
-              aria-current={isCurrent ? "step" : undefined}
+              disabled={!canNavigate}
+              key={stepNumber}
+              onClick={() => canNavigate && handleStepClick(stepNumber)}
+              type="button"
+              variant="ghost"
             >
               <div
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all duration-300",
-                  isCompleted && "bg-primary text-primary-foreground scale-100",
+                  "flex h-8 w-8 items-center justify-center rounded-full font-medium text-xs transition-all duration-300",
+                  isCompleted && "scale-100 bg-primary text-primary-foreground",
                   isCurrent &&
-                    "bg-primary text-primary-foreground ring-4 ring-primary/20 scale-110",
-                  !isCompleted &&
-                    !isCurrent &&
-                    "bg-muted text-muted-foreground scale-100",
+                    "scale-110 bg-primary text-primary-foreground ring-4 ring-primary/20",
+                  !(isCompleted || isCurrent) &&
+                    "scale-100 bg-muted text-muted-foreground",
                   canNavigate &&
-                    "group-hover:ring-2 group-hover:ring-primary/30",
+                    "group-hover:ring-2 group-hover:ring-primary/30"
                 )}
               >
                 {isCompleted ? (
                   <Check
-                    className="w-4 h-4 animate-in zoom-in duration-200"
                     aria-hidden="true"
+                    className="zoom-in h-4 w-4 animate-in duration-200"
                   />
                 ) : (
                   <span
                     className={cn(
-                      isCurrent && "animate-in zoom-in duration-200",
+                      isCurrent && "zoom-in animate-in duration-200"
                     )}
                   >
                     {stepNumber}
@@ -133,10 +143,10 @@ export function WizardStepper() {
               </div>
               <span
                 className={cn(
-                  "text-[10px] max-w-[60px] text-center leading-tight hidden sm:block transition-colors duration-200",
+                  "hidden max-w-[60px] text-center text-[10px] leading-tight transition-colors duration-200 sm:block",
                   isCurrent
-                    ? "text-foreground font-medium"
-                    : "text-muted-foreground",
+                    ? "font-medium text-foreground"
+                    : "text-muted-foreground"
                 )}
               >
                 {title}
@@ -147,10 +157,12 @@ export function WizardStepper() {
       </div>
 
       <Dialog
-        open={Boolean(pendingNavigation)}
         onOpenChange={(open) => {
-          if (!open) cancelPendingNavigation();
+          if (!open) {
+            cancelPendingNavigation();
+          }
         }}
+        open={Boolean(pendingNavigation)}
       >
         <DialogContent>
           <DialogHeader>
@@ -162,17 +174,18 @@ export function WizardStepper() {
           </DialogHeader>
           <DialogFooter>
             <Button
+              disabled={isNavigating}
+              onClick={cancelPendingNavigation}
               type="button"
               variant="outline"
-              onClick={cancelPendingNavigation}
-              disabled={isNavigating}
             >
               Cancel
             </Button>
             <Button
-              type="button"
               onClick={async () => {
-                if (isNavigating) return;
+                if (isNavigating) {
+                  return;
+                }
                 setIsNavigating(true);
                 try {
                   await confirmPendingNavigation();
@@ -180,6 +193,7 @@ export function WizardStepper() {
                   setIsNavigating(false);
                 }
               }}
+              type="button"
             >
               Go back
             </Button>

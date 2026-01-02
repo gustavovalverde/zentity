@@ -117,7 +117,7 @@ describe("signed-claims", () => {
       const payload = await verifyAttestationClaim(
         token,
         undefined,
-        "user-123",
+        "user-123"
       );
 
       expect(payload.userId).toBe("user-123");
@@ -128,7 +128,7 @@ describe("signed-claims", () => {
       const payload = await verifyAttestationClaim(
         token,
         "liveness_score",
-        "user-123",
+        "user-123"
       );
 
       expect(payload.type).toBe("liveness_score");
@@ -161,7 +161,7 @@ describe("signed-claims", () => {
       const token = await signAttestationClaim(validLivenessClaim);
 
       await expect(
-        verifyAttestationClaim(token, "face_match_score"),
+        verifyAttestationClaim(token, "face_match_score")
       ).rejects.toThrow("Claim type mismatch: expected face_match_score");
     });
 
@@ -169,7 +169,7 @@ describe("signed-claims", () => {
       const token = await signAttestationClaim(validLivenessClaim);
 
       await expect(
-        verifyAttestationClaim(token, undefined, "different-user"),
+        verifyAttestationClaim(token, undefined, "different-user")
       ).rejects.toThrow("Claim user mismatch");
     });
 

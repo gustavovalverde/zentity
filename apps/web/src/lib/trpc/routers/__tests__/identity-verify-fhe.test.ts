@@ -3,7 +3,7 @@
  */
 
 import type { Session } from "@/lib/auth/auth";
-import type { OcrProcessResult } from "@/lib/document";
+import type { OcrProcessResult } from "@/lib/document/ocr-client";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,15 +134,15 @@ describe("identity.verify (FHE)", () => {
 
     const birthYearOffset = getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
-      "birth_year_offset",
+      "birth_year_offset"
     );
     const countryCode = getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
-      "country_code",
+      "country_code"
     );
     const liveness = getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
-      "liveness_score",
+      "liveness_score"
     );
 
     expect(birthYearOffset?.keyId).toBe("key-123");

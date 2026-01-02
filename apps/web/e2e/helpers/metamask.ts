@@ -36,8 +36,12 @@ async function clickProceedAnyway(notificationPage: Page): Promise<void> {
       if (notificationPage.isClosed()) {
         return;
       }
-      await link.scrollIntoViewIfNeeded().catch(() => {});
-      await link.click({ force: true }).catch(() => {});
+      await link.scrollIntoViewIfNeeded().catch(() => {
+        /* Scroll may fail if element is not attached */
+      });
+      await link.click({ force: true }).catch(() => {
+        /* Click may fail if element is detached or page closed */
+      });
       if (notificationPage.isClosed()) {
         return;
       }
@@ -48,7 +52,7 @@ async function clickProceedAnyway(notificationPage: Page): Promise<void> {
 
 async function findNotificationPage(
   metamask: MetaMask,
-  timeoutMs = 30_000,
+  timeoutMs = 30_000
 ): Promise<Page> {
   if (!metamask.extensionId) {
     throw new Error("MetaMask extensionId is missing for notifications");
@@ -57,7 +61,9 @@ async function findNotificationPage(
   const extensionBase = `chrome-extension://${metamask.extensionId}`;
   const isPopup = (page: Page) => {
     const url = page.url();
-    if (!url.startsWith(extensionBase)) return false;
+    if (!url.startsWith(extensionBase)) {
+      return false;
+    }
     if (url.includes("home.html") || url.includes("onboarding.html")) {
       return false;
     }
@@ -93,12 +99,14 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
     return await new Promise<T>((resolve, reject) => {
       timeoutId = setTimeout(
         () => reject(new Error("MetaMask action timed out")),
-        timeoutMs,
+        timeoutMs
       );
       promise.then(resolve, reject);
     });
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -156,7 +164,9 @@ export async function confirmSignature(metamask: MetaMask): Promise<void> {
     return;
   }
 
-  await signButton.click().catch(() => {});
+  await signButton.click().catch(() => {
+    /* Click may fail if button is disabled or page closed */
+  });
 
   const riskButton = notificationPage.locator(RISK_SIGN_BUTTON_SELECTOR);
   if (notificationPage.isClosed()) {
@@ -164,13 +174,15 @@ export async function confirmSignature(metamask: MetaMask): Promise<void> {
   }
 
   if (await riskButton.isVisible().catch(() => false)) {
-    await riskButton.click().catch(() => {});
+    await riskButton.click().catch(() => {
+      /* Click may fail if modal closed */
+    });
   }
 }
 
 export async function confirmTransaction(
   metamask: MetaMask,
-  options?: { timeoutMs?: number; allowMissing?: boolean },
+  options?: { timeoutMs?: number; allowMissing?: boolean }
 ): Promise<boolean> {
   const timeoutMs = options?.timeoutMs ?? 12_000;
   try {
@@ -183,7 +195,7 @@ export async function confirmTransaction(
   try {
     const notificationPage = await findNotificationPage(
       metamask,
-      options?.timeoutMs ?? 30_000,
+      options?.timeoutMs ?? 30_000
     );
     await notificationPage.bringToFront();
 
@@ -226,7 +238,9 @@ export async function confirmTransaction(
         await notificationPage.keyboard.press("End");
       }
 
-      await confirmButton.scrollIntoViewIfNeeded().catch(() => {});
+      await confirmButton.scrollIntoViewIfNeeded().catch(() => {
+        /* Scroll may fail if element is not attached */
+      });
       await notificationPage.keyboard.press("PageDown");
       await notificationPage.mouse.wheel(0, 800);
       await notificationPage.waitForTimeout(250);
@@ -236,8 +250,12 @@ export async function confirmTransaction(
       return true;
     }
 
-    await confirmButton.scrollIntoViewIfNeeded().catch(() => {});
-    await confirmButton.click().catch(() => {});
+    await confirmButton.scrollIntoViewIfNeeded().catch(() => {
+      /* Scroll may fail if element is not attached */
+    });
+    await confirmButton.click().catch(() => {
+      /* Click may fail if page closed mid-operation */
+    });
     return true;
   } catch (error) {
     if (options?.allowMissing) {

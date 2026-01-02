@@ -36,7 +36,7 @@ async function createCaller(session: Session | null) {
 // Create authenticated session for protected procedures
 function createAuthSession(
   userId: string,
-  email = "test@example.com",
+  email = "test@example.com"
 ): Session {
   return {
     user: { id: userId, email, name: "Test User" },
@@ -222,7 +222,7 @@ describe("passkey-auth router", () => {
             backedUp: false,
             transports: [],
           },
-        }),
+        })
       ).rejects.toMatchObject({
         code: "CONFLICT",
         message: "This passkey is already registered.",
@@ -328,7 +328,7 @@ describe("passkey-auth router", () => {
         caller.verifyAuthentication({
           challengeId: options.challengeId,
           assertion,
-        }),
+        })
       ).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
@@ -398,7 +398,7 @@ describe("passkey-auth router", () => {
             backedUp: false,
             transports: [],
           },
-        }),
+        })
       ).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
@@ -452,7 +452,7 @@ describe("passkey-auth router", () => {
             backedUp: false,
             transports: [],
           },
-        }),
+        })
       ).rejects.toMatchObject({
         code: "CONFLICT",
       });
@@ -464,7 +464,7 @@ describe("passkey-auth router", () => {
       const caller = await createCaller(null);
 
       await expect(
-        caller.removeCredential({ credentialId: "test" }),
+        caller.removeCredential({ credentialId: "test" })
       ).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
@@ -506,7 +506,7 @@ describe("passkey-auth router", () => {
       const caller = await createCaller(session);
 
       await expect(
-        caller.removeCredential({ credentialId: otherCredentialId }),
+        caller.removeCredential({ credentialId: otherCredentialId })
       ).rejects.toMatchObject({
         code: "NOT_FOUND",
         message: "Passkey not found.",
@@ -521,7 +521,7 @@ describe("passkey-auth router", () => {
       const caller = await createCaller(session);
 
       await expect(
-        caller.removeCredential({ credentialId }),
+        caller.removeCredential({ credentialId })
       ).rejects.toMatchObject({
         code: "PRECONDITION_FAILED",
         message: expect.stringContaining("Cannot remove your only passkey"),
@@ -534,7 +534,7 @@ describe("passkey-auth router", () => {
       const caller = await createCaller(null);
 
       await expect(
-        caller.renameCredential({ credentialId: "test", name: "New Name" }),
+        caller.renameCredential({ credentialId: "test", name: "New Name" })
       ).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
@@ -578,7 +578,7 @@ describe("passkey-auth router", () => {
         caller.renameCredential({
           credentialId: otherCredentialId,
           name: "Hijacked Name",
-        }),
+        })
       ).rejects.toMatchObject({
         code: "NOT_FOUND",
         message: "Passkey not found.",
@@ -622,10 +622,10 @@ describe("passkey-auth router", () => {
 
       expect(result.excludeCredentials).toHaveLength(2);
       expect(result.excludeCredentials.map((c) => c.id)).toContain(
-        "existing-1",
+        "existing-1"
       );
       expect(result.excludeCredentials.map((c) => c.id)).toContain(
-        "existing-2",
+        "existing-2"
       );
     });
   });
@@ -635,7 +635,7 @@ describe("passkey-auth router", () => {
       const caller = await createCaller(null);
 
       await expect(
-        caller.getRegistrationOptions({ email: "not-an-email" }),
+        caller.getRegistrationOptions({ email: "not-an-email" })
       ).rejects.toThrow();
     });
 
@@ -647,7 +647,7 @@ describe("passkey-auth router", () => {
       const caller = await createCaller(session);
 
       await expect(
-        caller.renameCredential({ credentialId, name: "" }),
+        caller.renameCredential({ credentialId, name: "" })
       ).rejects.toThrow();
     });
 
@@ -660,7 +660,7 @@ describe("passkey-auth router", () => {
 
       const longName = "a".repeat(101);
       await expect(
-        caller.renameCredential({ credentialId, name: longName }),
+        caller.renameCredential({ credentialId, name: longName })
       ).rejects.toThrow();
     });
   });

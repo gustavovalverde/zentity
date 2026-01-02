@@ -9,6 +9,9 @@
  * The actual names are NOT stored - only cryptographic commitments are persisted.
  */
 
+/** Matches one or more whitespace characters for splitting names */
+const WHITESPACE_PATTERN = /\s+/;
+
 /**
  * Extracts the first part (first word) from a name string.
  *
@@ -19,7 +22,9 @@
  * getFirstPart("") // ""
  */
 export function getFirstPart(name: string | undefined | null): string {
-  if (!name) return "";
+  if (!name) {
+    return "";
+  }
   const trimmed = name.trim();
   const firstSpace = trimmed.indexOf(" ");
   return firstSpace === -1 ? trimmed : trimmed.substring(0, firstSpace);
@@ -37,7 +42,7 @@ export function getFirstPart(name: string | undefined | null): string {
  */
 export function buildDisplayName(
   firstName: string | undefined | null,
-  lastName: string | undefined | null,
+  lastName: string | undefined | null
 ): string {
   const firstPart = getFirstPart(firstName);
   const lastPart = getFirstPart(lastName);
@@ -61,11 +66,13 @@ export function buildDisplayName(
  * buildDisplayNameFromFull("Ana Rodriguez") // "Ana Rodriguez"
  */
 function _buildDisplayNameFromFull(
-  fullName: string | undefined | null,
+  fullName: string | undefined | null
 ): string {
-  if (!fullName) return "";
+  if (!fullName) {
+    return "";
+  }
 
-  const parts = fullName.trim().split(/\s+/);
+  const parts = fullName.trim().split(WHITESPACE_PATTERN);
 
   // If only one or two words, return as-is
   if (parts.length <= 2) {

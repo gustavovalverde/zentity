@@ -21,22 +21,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
-  CHALLENGE_INSTRUCTIONS,
-  type ChallengeInfo,
-  type ChallengeType,
-  SMILE_DELTA_THRESHOLD,
-  SMILE_HIGH_THRESHOLD,
-  SMILE_SCORE_THRESHOLD,
-  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
-  TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness";
-import {
   getFacingDirection,
   getGestureNames,
   getHappyScore,
   getPrimaryFace,
   getYawDegrees,
 } from "@/lib/liveness/human-metrics";
+import {
+  CHALLENGE_INSTRUCTIONS,
+  type ChallengeInfo,
+  type ChallengeType,
+} from "@/lib/liveness/liveness-challenges";
+import {
+  SMILE_DELTA_THRESHOLD,
+  SMILE_HIGH_THRESHOLD,
+  SMILE_SCORE_THRESHOLD,
+  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
+  TURN_YAW_SIGNIFICANT_DELTA_DEG,
+} from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 
 import {
@@ -57,7 +59,7 @@ import {
 async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
-  message: string,
+  message: string
 ): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -67,7 +69,9 @@ async function withTimeout<T>(
   try {
     return await Promise.race([promise, timeoutPromise]);
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -100,7 +104,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const [challengeState, setChallengeState] = useState<ChallengeState>("idle");
   const [baselineImage, setBaselineImage] = useState<string | null>(null);
   const [challengeImage, setChallengeImage] = useState<string | null>(
-    initialSelfieImage || null,
+    initialSelfieImage || null
   );
 
   const [session, setSession] = useState<LivenessSession | null>(null);
@@ -117,7 +121,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   const [timeoutMessage, setTimeoutMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [serverProgress, setServerProgress] = useState<ServerProgress | null>(
-    null,
+    null
   );
   const [serverHint, setServerHint] = useState<string>("");
 
@@ -163,40 +167,56 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     (
       challengeType: ChallengeType,
       index: number,
-      total: number,
-    ): ChallengeInfo => {
-      return {
-        challengeType,
-        index,
-        total,
-        ...CHALLENGE_INSTRUCTIONS[challengeType],
-      };
-    },
-    [],
+      total: number
+    ): ChallengeInfo => ({
+      challengeType,
+      index,
+      total,
+      ...CHALLENGE_INSTRUCTIONS[challengeType],
+    }),
+    []
   );
 
   const syncDebugCanvasSize = useCallback(() => {
-    if (!debugEnabled) return;
+    if (!debugEnabled) {
+      return;
+    }
     const video = videoRef.current;
     const canvas = debugCanvasRef.current;
-    if (!video || !canvas) return;
+    if (!(video && canvas)) {
+      return;
+    }
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 480;
-    if (!width || !height) return;
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+    if (!(width && height)) {
+      return;
+    }
+    if (canvas.width !== width) {
+      canvas.width = width;
+    }
+    if (canvas.height !== height) {
+      canvas.height = height;
+    }
   }, [debugEnabled, videoRef]);
 
   const drawDebugOverlay = useCallback(
     (result: unknown) => {
-      if (!debugEnabled) return;
-      if (!human || !videoRef.current) return;
+      if (!debugEnabled) {
+        return;
+      }
+      if (!(human && videoRef.current)) {
+        return;
+      }
       const canvas = debugCanvasRef.current;
-      if (!canvas) return;
+      if (!canvas) {
+        return;
+      }
 
       syncDebugCanvasSize();
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        return;
+      }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       try {
@@ -207,7 +227,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         // The video has transform: -scale-x-100, so we need to flip x coords
         // biome-ignore lint/suspicious/noExplicitAny: Human.js FaceResult type requires type assertion
         const mirroredFaces = faces.map((face: any) => {
-          if (!face?.box) return face;
+          if (!face?.box) {
+            return face;
+          }
           const [x, y, w, h] = face.box;
           // Mirror x coordinate: newX = canvasWidth - x - width
           const mirroredBox = [canvas.width - x - w, y, w, h];
@@ -221,7 +243,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
                   return [canvas.width - point[0], point[1], point[2] ?? 0];
                 }
                 return point;
-              },
+              }
             );
           }
 
@@ -243,21 +265,25 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
             drawPoints: false,
             drawGaze: false,
             drawAttention: false,
-          },
+          }
         );
       } catch {
         // ignore draw errors in debug mode
       }
     },
-    [debugEnabled, human, syncDebugCanvasSize, videoRef],
+    [debugEnabled, human, syncDebugCanvasSize, videoRef]
   );
 
   const updateDebug = useCallback(
     (result: unknown, face: ReturnType<typeof getPrimaryFace>) => {
-      if (!debugEnabled) return;
+      if (!debugEnabled) {
+        return;
+      }
 
       const now = performance.now();
-      if (now - debugLastUpdateRef.current < 250) return;
+      if (now - debugLastUpdateRef.current < 250) {
+        return;
+      }
       debugLastUpdateRef.current = now;
 
       const video = videoRef.current;
@@ -296,13 +322,17 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           : undefined,
       });
     },
-    [debugEnabled, videoRef],
+    [debugEnabled, videoRef]
   );
 
   useEffect(() => {
-    if (!debugEnabled) return;
+    if (!debugEnabled) {
+      return;
+    }
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      return;
+    }
     const handle = () => syncDebugCanvasSize();
     video.addEventListener("loadedmetadata", handle);
     handle();
@@ -310,12 +340,20 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   }, [debugEnabled, syncDebugCanvasSize, videoRef]);
 
   useEffect(() => {
-    if (!debugEnabled) return;
+    if (!debugEnabled) {
+      return;
+    }
     const canvas = debugCanvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    if (!isStreaming) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!ctx) {
+      return;
+    }
+    if (!isStreaming) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
   }, [debugEnabled, isStreaming]);
 
   const beginCamera = useCallback(async () => {
@@ -326,7 +364,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           numChallenges: NUM_CHALLENGES,
         }),
         10_000,
-        "Liveness session creation timed out. Please try again.",
+        "Liveness session creation timed out. Please try again."
       )) as {
         sessionId: string;
         challenges: ChallengeType[];
@@ -372,8 +410,12 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   }, [startCamera]);
 
   const checkForFace = useCallback(async () => {
-    if (!human || !humanReady || !videoRef.current) return;
-    if (isCheckingRef.current) return;
+    if (!(human && humanReady && videoRef.current)) {
+      return;
+    }
+    if (isCheckingRef.current) {
+      return;
+    }
     isCheckingRef.current = true;
     try {
       // Use square-padded canvas if available (improves face detection accuracy)
@@ -394,7 +436,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         if (dir === "center") {
           consecutiveDetectionsRef.current++;
           setDetectionProgress(
-            (consecutiveDetectionsRef.current / STABILITY_FRAMES) * 100,
+            (consecutiveDetectionsRef.current / STABILITY_FRAMES) * 100
           );
           if (consecutiveDetectionsRef.current >= STABILITY_FRAMES) {
             setChallengeState("countdown");
@@ -421,9 +463,11 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     async (
       challengeType: ChallengeType,
       image: string,
-      turnStartYaw?: number,
+      turnStartYaw?: number
     ) => {
-      if (!session || !baselineImage) return;
+      if (!(session && baselineImage)) {
+        return;
+      }
 
       const newCompleted = [
         ...completedChallenges,
@@ -438,7 +482,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         setTimeout(() => {
           const nextType = session.challenges[nextIndex];
           setCurrentChallenge(
-            buildChallengeInfo(nextType, nextIndex, session.challenges.length),
+            buildChallengeInfo(nextType, nextIndex, session.challenges.length)
           );
           setChallengeProgress(0);
           consecutiveChallengeDetectionsRef.current = 0;
@@ -475,7 +519,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
             })),
           }),
           VERIFY_TIMEOUT,
-          "Verification is taking too long. Please try again.",
+          "Verification is taking too long. Please try again."
         )) as {
           verified?: boolean;
           error?: string;
@@ -502,7 +546,6 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         });
       } catch (err) {
         if (debugEnabled) {
-          // biome-ignore lint/suspicious/noConsole: debug-only liveness diagnostics
           console.warn("Liveness verify failed", { err, lastVerifyResponse });
         }
         setChallengeState("failed");
@@ -521,17 +564,23 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       buildChallengeInfo,
       stopCamera,
       lastVerifyResponse,
-    ],
+    ]
   );
 
   const checkCurrentChallenge = useCallback(async () => {
-    if (!human || !humanReady || !videoRef.current || !currentChallenge) return;
-    if (isCheckingRef.current) return;
+    if (!(human && humanReady && videoRef.current && currentChallenge)) {
+      return;
+    }
+    if (isCheckingRef.current) {
+      return;
+    }
     isCheckingRef.current = true;
     try {
       const detectionInput =
         getSquareDetectionCanvas?.() ?? videoRef.current ?? null;
-      if (!detectionInput) return;
+      if (!detectionInput) {
+        return;
+      }
 
       // Use raw detection for decision making (no temporal smoothing).
       // Avoid dataURL → Image roundtrips to reduce allocations and UI jank.
@@ -584,7 +633,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       } else if (type === "turn_left" || type === "turn_right") {
         const yawProgress = Math.min(
           (Math.abs(yaw) / TURN_YAW_ABSOLUTE_THRESHOLD_DEG) * 100,
-          100,
+          100
         );
         setChallengeProgress(yawProgress);
 
@@ -624,7 +673,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
               await handleCapturedChallenge(
                 type,
                 freshFrame,
-                headTurnStartYawRef.current,
+                headTurnStartYawRef.current
               );
             } else {
               setChallengeState("waiting_challenge");
@@ -652,7 +701,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
   // Countdown effect for baseline capture
   useEffect(() => {
-    if (challengeState !== "countdown") return;
+    if (challengeState !== "countdown") {
+      return;
+    }
 
     let count = 3;
     setCountdown(count);
@@ -682,7 +733,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
   // Main detection loop
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isStreaming) {
+      return;
+    }
     if (
       challengeState !== "detecting" &&
       challengeState !== "waiting_challenge"
@@ -701,9 +754,13 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       lastCheck = timestamp;
 
       if (challengeState === "detecting") {
-        void checkForFace();
+        checkForFace().catch(() => {
+          // Non-critical: face check in animation loop
+        });
       } else if (challengeState === "waiting_challenge") {
-        void checkCurrentChallenge();
+        checkCurrentChallenge().catch(() => {
+          // Non-critical: challenge check in animation loop
+        });
       }
 
       animationId = requestAnimationFrame(detectLoop);
@@ -716,7 +773,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   // Separate rendering loop for smooth debug overlay (60fps)
   // Uses human.next() for temporal smoothing between detections
   useEffect(() => {
-    if (!debugEnabled || !isStreaming || !human) return;
+    if (!(debugEnabled && isStreaming && human)) {
+      return;
+    }
     if (
       challengeState !== "detecting" &&
       challengeState !== "waiting_challenge"
@@ -753,7 +812,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
   // Face detection timeout
   useEffect(() => {
-    if (challengeState !== "detecting") return;
+    if (challengeState !== "detecting") {
+      return;
+    }
 
     const timeout = setTimeout(() => {
       setChallengeState("timeout");
@@ -766,13 +827,15 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
   // Challenge detection timeout
   useEffect(() => {
-    if (challengeState !== "waiting_challenge") return;
+    if (challengeState !== "waiting_challenge") {
+      return;
+    }
 
     const timeout = setTimeout(() => {
       setChallengeState("timeout");
       const challengeName = currentChallenge?.title || "Challenge";
       setTimeoutMessage(
-        `${challengeName} not detected in time. Please try again.`,
+        `${challengeName} not detected in time. Please try again.`
       );
       stopCamera();
     }, CHALLENGE_TIMEOUT);
@@ -808,11 +871,13 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
 
   // SSE connection for real-time server feedback
   useEffect(() => {
-    if (!session?.sessionId) return;
+    if (!session?.sessionId) {
+      return;
+    }
 
     // Connect to SSE stream
     const eventSource = new EventSource(
-      `/api/liveness/stream?sessionId=${session.sessionId}`,
+      `/api/liveness/stream?sessionId=${session.sessionId}`
     );
     eventSourceRef.current = eventSource;
 
@@ -861,15 +926,19 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     }
 
     const streamFrame = async () => {
-      if (isStreamingFrameRef.current) return;
+      if (isStreamingFrameRef.current) {
+        return;
+      }
       // Use optimized stream frame capture if available, otherwise fall back to regular
       const captureForStream = captureStreamFrame ?? captureFrame;
       const frame = captureForStream();
-      if (!frame || !currentChallenge) return;
+      if (!(frame && currentChallenge)) {
+        return;
+      }
 
       isStreamingFrameRef.current = true;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5_000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
         await fetch("/api/liveness/frame", {
           method: "POST",
@@ -892,10 +961,11 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     };
 
     // Stream frames at a limited rate and avoid overlapping requests.
-    frameStreamingRef.current = setInterval(
-      () => void streamFrame(),
-      FRAME_STREAM_INTERVAL,
-    );
+    frameStreamingRef.current = setInterval(() => {
+      streamFrame().catch(() => {
+        // Non-critical: frame streaming is best-effort
+      });
+    }, FRAME_STREAM_INTERVAL);
 
     return () => {
       if (frameStreamingRef.current) {
@@ -943,7 +1013,9 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
     headTurnStartYawRef.current = 0;
     isStreamingFrameRef.current = false;
     onResetRef.current();
-    void beginCamera();
+    beginCamera().catch(() => {
+      // Non-critical: camera reset during cleanup
+    });
   }, [beginCamera]);
 
   return {

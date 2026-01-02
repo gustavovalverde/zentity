@@ -10,7 +10,7 @@ export default function AuthLayout({
 }) {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border">
+      <header className="border-border border-b">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <Link href="/">
             <Logo />

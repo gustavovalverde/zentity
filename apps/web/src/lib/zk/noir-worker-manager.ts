@@ -144,16 +144,20 @@ interface WorkerLogMessage {
 /**
  * Initialize the worker (lazy, singleton)
  */
-async function getWorker(): Promise<Worker> {
-  if (worker) return worker;
-  if (workerInitPromise) return workerInitPromise;
+function getWorker(): Promise<Worker> {
+  if (worker) {
+    return Promise.resolve(worker);
+  }
+  if (workerInitPromise) {
+    return workerInitPromise;
+  }
 
   workerInitPromise = new Promise((resolve, reject) => {
     try {
       // Create worker from the worker file
       const newWorker = new Worker(
         new URL("./noir-prover.worker.ts", import.meta.url),
-        { type: "module" },
+        { type: "module" }
       );
       if (typeof window !== "undefined") {
         newWorker.postMessage({
@@ -163,14 +167,13 @@ async function getWorker(): Promise<Worker> {
       }
 
       newWorker.onmessage = (
-        event: MessageEvent<WorkerResponse | WorkerLogMessage>,
+        event: MessageEvent<WorkerResponse | WorkerLogMessage>
       ) => {
         const data = event.data;
 
         // Handle log messages from worker (for diagnostics)
         if ("type" in data && data.type === "log") {
           if (ENABLE_WORKER_LOGS) {
-            // biome-ignore lint/suspicious/noConsole: Diagnostic logging for local debugging
             console.log(`[noir-worker:${data.stage}]`, data.msg, data);
           }
           return;
@@ -195,7 +198,6 @@ async function getWorker(): Promise<Worker> {
       };
 
       newWorker.onerror = (error) => {
-        // biome-ignore lint/suspicious/noConsole: Error logging for debugging
         console.error("[noir-worker] Uncaught error:", error.message);
         // Reject all pending requests
         for (const [id, pending] of pendingRequests) {
@@ -225,7 +227,7 @@ function generateId(): string {
  * Generate an age proof using the Web Worker
  */
 export async function generateAgeProofWorker(
-  payload: AgeProofPayload,
+  payload: AgeProofPayload
 ): Promise<ProofOutput> {
   const w = await getWorker();
   const id = generateId();
@@ -235,8 +237,8 @@ export async function generateAgeProofWorker(
       pendingRequests.delete(id);
       reject(
         new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
-        ),
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
+        )
       );
     }, WORKER_TIMEOUT_MS);
 
@@ -262,7 +264,7 @@ export async function generateAgeProofWorker(
 }
 
 export async function generateFaceMatchProofWorker(
-  payload: FaceMatchPayload,
+  payload: FaceMatchPayload
 ): Promise<ProofOutput> {
   const w = await getWorker();
   const id = generateId();
@@ -272,8 +274,8 @@ export async function generateFaceMatchProofWorker(
       pendingRequests.delete(id);
       reject(
         new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
-        ),
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
+        )
       );
     }, WORKER_TIMEOUT_MS);
 
@@ -302,7 +304,7 @@ export async function generateFaceMatchProofWorker(
  * Generate a document validity proof using the Web Worker
  */
 export async function generateDocValidityProofWorker(
-  payload: DocValidityPayload,
+  payload: DocValidityPayload
 ): Promise<ProofOutput> {
   const w = await getWorker();
   const id = generateId();
@@ -312,8 +314,8 @@ export async function generateDocValidityProofWorker(
       pendingRequests.delete(id);
       reject(
         new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
-        ),
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
+        )
       );
     }, WORKER_TIMEOUT_MS);
 
@@ -343,7 +345,7 @@ export async function generateDocValidityProofWorker(
  * (with pre-computed Merkle path)
  */
 async function _generateNationalityProofWorker(
-  payload: NationalityProofPayload,
+  payload: NationalityProofPayload
 ): Promise<ProofOutput> {
   const w = await getWorker();
   const id = generateId();
@@ -353,8 +355,8 @@ async function _generateNationalityProofWorker(
       pendingRequests.delete(id);
       reject(
         new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
-        ),
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
+        )
       );
     }, WORKER_TIMEOUT_MS);
 
@@ -390,7 +392,7 @@ async function _generateNationalityProofWorker(
  * @param payload.nonce - Hex string for replay resistance
  */
 export async function generateNationalityProofClientWorker(
-  payload: NationalityClientPayload,
+  payload: NationalityClientPayload
 ): Promise<ProofOutput> {
   const w = await getWorker();
   const id = generateId();
@@ -400,8 +402,8 @@ export async function generateNationalityProofClientWorker(
       pendingRequests.delete(id);
       reject(
         new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`,
-        ),
+          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
+        )
       );
     }, WORKER_TIMEOUT_MS);
 

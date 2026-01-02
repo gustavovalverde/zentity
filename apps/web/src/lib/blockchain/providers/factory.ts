@@ -37,7 +37,7 @@ export function createProvider(networkId: string): IAttestationProvider {
 
   if (!isNetworkAvailable(networkId)) {
     throw new Error(
-      `Network ${networkId} is not available. Check that it's enabled and contracts are configured.`,
+      `Network ${networkId} is not available. Check that it's enabled and contracts are configured.`
     );
   }
 
@@ -61,7 +61,7 @@ export function createProvider(networkId: string): IAttestationProvider {
     }
     default:
       throw new Error(
-        `Unsupported provider type: ${network.type}. Only "fhevm" is supported.`,
+        `Unsupported provider type: ${network.type}. Only "fhevm" is supported.`
       );
   }
 

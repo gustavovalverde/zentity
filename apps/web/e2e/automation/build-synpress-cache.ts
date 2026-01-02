@@ -12,7 +12,10 @@ import {
 } from "@synthetixio/synpress-cache";
 import fs from "fs-extra";
 import { glob } from "glob";
-import * as ts from "typescript";
+import ts from "typescript";
+
+// Top-level regex patterns for lint/performance/useTopLevelRegex compliance
+const TS_JS_MJS_EXTENSION_PATTERN = /\.(ts|js|mjs)$/;
 
 const webRoot = process.cwd();
 const repoRoot = path.resolve(webRoot, "..", "..");
@@ -33,7 +36,9 @@ async function waitForRpc(url: string): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId" }),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        return true;
+      }
     } catch {
       // ignore
     }
@@ -49,7 +54,9 @@ async function ensureHardhatNode(): Promise<boolean> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId" }),
     });
-    if (response.ok) return false;
+    if (response.ok) {
+      return false;
+    }
   } catch {
     // not running
   }
@@ -60,7 +67,7 @@ async function ensureHardhatNode(): Promise<boolean> {
     {
       cwd: contractsPath,
       stdio: "inherit",
-    },
+    }
   );
 
   await waitForRpc(hardhatUrl);
@@ -100,18 +107,27 @@ function extractWalletSetupFunction(sourceCode: string): string {
     }
 
     if (inSingle) {
-      if (ch === "\\") escapeChar = true;
-      else if (ch === "'") inSingle = false;
+      if (ch === "\\") {
+        escapeChar = true;
+      } else if (ch === "'") {
+        inSingle = false;
+      }
       continue;
     }
     if (inDouble) {
-      if (ch === "\\") escapeChar = true;
-      else if (ch === '"') inDouble = false;
+      if (ch === "\\") {
+        escapeChar = true;
+      } else if (ch === '"') {
+        inDouble = false;
+      }
       continue;
     }
     if (inTemplate) {
-      if (ch === "\\") escapeChar = true;
-      else if (ch === "`") inTemplate = false;
+      if (ch === "\\") {
+        escapeChar = true;
+      } else if (ch === "`") {
+        inTemplate = false;
+      }
       continue;
     }
 
@@ -179,17 +195,16 @@ async function compileWalletSetupFunctions(): Promise<{
   await fs.ensureDir(outDir);
 
   const walletSetupDir = path.join(webRoot, "e2e", "wallet-setup");
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log(
     "[synpress-cache] compiling wallet setup files from",
-    walletSetupDir,
+    walletSetupDir
   );
   const fileList = (
     await glob(path.join(walletSetupDir, "**", "*.setup.{ts,js,mjs}"))
   ).sort();
   if (!fileList.length) {
     throw new Error(
-      `No wallet setup files found at ${walletSetupDir}. Ensure files end with .setup.ts/.js/.mjs`,
+      `No wallet setup files found at ${walletSetupDir}. Ensure files end with .setup.ts/.js/.mjs`
     );
   }
 
@@ -204,42 +219,42 @@ async function compileWalletSetupFunctions(): Promise<{
       },
       fileName: filePath,
     });
-    const base = path.basename(filePath).replace(/\.(ts|js|mjs)$/, ".mjs");
+    const base = path
+      .basename(filePath)
+      .replace(TS_JS_MJS_EXTENSION_PATTERN, ".mjs");
     const outPath = path.join(outDir, base);
     await fs.writeFile(outPath, result.outputText, "utf8");
   }
 
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] compiled wallet setup files", fileList);
   return { outDir, fileList };
 }
 
-type WalletSetupModule = {
+interface WalletSetupModule {
   default?: {
     hash?: string;
   };
-};
+}
 
 async function buildSynpressCache() {
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] building cache");
   const { outDir, fileList } = await compileWalletSetupFunctions();
   const hashes: string[] = [];
   const hashMappings: Array<{ compiledHash: string; sourceHash: string }> = [];
   for (const filePath of fileList) {
-    const base = path.basename(filePath).replace(/\.(ts|js|mjs)$/, ".mjs");
+    const base = path
+      .basename(filePath)
+      .replace(TS_JS_MJS_EXTENSION_PATTERN, ".mjs");
     const compiledPath = path.join(outDir, base);
-    // biome-ignore lint/suspicious/noConsole: debug output for cache build
     console.log("[synpress-cache] loading compiled setup", compiledPath);
     const mod = (await import(pathToFileURL(compiledPath).href)) as
       | WalletSetupModule
       | undefined;
-    // biome-ignore lint/suspicious/noConsole: debug output for cache build
     console.log("[synpress-cache] loaded compiled setup", compiledPath);
     const hash = mod?.default?.hash;
     if (!hash || typeof hash !== "string") {
       throw new Error(
-        `Missing hash for compiled wallet setup: ${compiledPath}`,
+        `Missing hash for compiled wallet setup: ${compiledPath}`
       );
     }
     hashes.push(hash);
@@ -251,16 +266,15 @@ async function buildSynpressCache() {
     hashMappings.push({ compiledHash: hash, sourceHash });
   }
 
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] create cache for hashes", hashes, hashMappings);
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] createCache start");
   await createCache(outDir, hashes, prepareExtension, true);
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] createCache done");
 
   for (const { compiledHash, sourceHash } of hashMappings) {
-    if (!sourceHash || sourceHash === compiledHash) continue;
+    if (!sourceHash || sourceHash === compiledHash) {
+      continue;
+    }
     const cacheDir = ensureCacheDirExists();
     const compiledPath = path.join(cacheDir, compiledHash);
     const sourcePath = path.join(cacheDir, sourceHash);
@@ -272,19 +286,19 @@ async function buildSynpressCache() {
 }
 
 async function main() {
-  // biome-ignore lint/suspicious/noConsole: debug output for cache build
   console.log("[synpress-cache] start");
   const started = await ensureHardhatNode();
   process.env.SYNPRESS_NETWORK_RPC_URL = hardhatUrl;
   process.env.SYNPRESS_NETWORK_CHAIN_ID = "31337";
   await buildSynpressCache();
 
-  if (started) stopHardhat();
+  if (started) {
+    stopHardhat();
+  }
   process.exit(0);
 }
 
 main().catch((error) => {
-  // biome-ignore lint/suspicious/noConsole: surface setup failures
   console.error(error);
   stopHardhat();
   process.exit(1);

@@ -37,7 +37,7 @@ export interface FaceMatchResult {
 export async function matchFaces(
   idImage: string,
   selfieImage: string,
-  minConfidence: number = FACE_MATCH_MIN_CONFIDENCE,
+  minConfidence: number = FACE_MATCH_MIN_CONFIDENCE
 ): Promise<FaceMatchResult> {
   try {
     const result = await trpc.liveness.faceMatch.mutate({

@@ -7,11 +7,13 @@ import type { ZodSchema } from "zod";
 export function makeFieldValidator<T, V>(
   schema: ZodSchema<T>,
   path: string,
-  build: (value: V) => unknown,
+  build: (value: V) => unknown
 ) {
   return (value: V) => {
     const result = schema.safeParse(build(value));
-    if (result.success) return undefined;
+    if (result.success) {
+      return;
+    }
 
     const issue = result.error.issues.find((i) => i.path.includes(path));
     return issue?.message;

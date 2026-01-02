@@ -3,6 +3,9 @@ import type { ChildProcess } from "node:child_process";
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 
+// Top-level regex patterns for lint/performance/useTopLevelRegex compliance
+const NEWLINE_PATTERN = /\r?\n/;
+
 const webRoot = process.cwd();
 const repoRoot = path.resolve(webRoot, "..", "..");
 const contractsPath =
@@ -21,7 +24,9 @@ async function waitForRpc(url: string): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId" }),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        return true;
+      }
     } catch {
       // ignore
     }
@@ -50,18 +55,18 @@ async function ensureHardhatNode(): Promise<boolean> {
     {
       cwd: contractsPath,
       stdio: "inherit",
-    },
+    }
   );
 
   await waitForRpc(hardhatUrl);
   return true;
 }
 
-type ContractsEnv = {
+interface ContractsEnv {
   identityRegistry?: string;
   complianceRules?: string;
   compliantErc20?: string;
-};
+}
 
 function deployContracts(): ContractsEnv {
   const deploy = spawnSync("bun", ["run", "deploy:local", "--", "--reset"], {
@@ -80,18 +85,19 @@ function deployContracts(): ContractsEnv {
       cwd: contractsPath,
       encoding: "utf8",
       env: process.env,
-    },
+    }
   );
   if (printed.status !== 0) {
-    // biome-ignore lint/suspicious/noConsole: helpful failure output for CI
     console.error(printed.stderr || printed.stdout);
     process.exit(printed.status ?? 1);
   }
 
   const env: Record<string, string> = {};
-  for (const line of printed.stdout.trim().split(/\r?\n/)) {
+  for (const line of printed.stdout.trim().split(NEWLINE_PATTERN)) {
     const [key, value] = line.split("=");
-    if (key && value) env[key.trim()] = value.trim();
+    if (key && value) {
+      env[key.trim()] = value.trim();
+    }
   }
 
   return {
@@ -126,7 +132,9 @@ function startDevServer(contracts: ContractsEnv) {
   });
 
   const shutdown = () => {
-    if (dev && !dev.killed) dev.kill("SIGTERM");
+    if (dev && !dev.killed) {
+      dev.kill("SIGTERM");
+    }
     if (hardhatProcess && !hardhatProcess.killed) {
       hardhatProcess.kill("SIGTERM");
     }
@@ -149,7 +157,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  // biome-ignore lint/suspicious/noConsole: surface startup failures in CI
   console.error(error);
   process.exit(1);
 });

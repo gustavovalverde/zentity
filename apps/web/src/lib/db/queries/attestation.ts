@@ -1,12 +1,15 @@
 import type {
   AttestationEvidenceRecord,
   BlockchainAttestation,
-} from "../schema";
+} from "../schema/attestation";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "../connection";
-import { attestationEvidence, blockchainAttestations } from "../schema";
+import {
+  attestationEvidence,
+  blockchainAttestations,
+} from "../schema/attestation";
 
 export function upsertAttestationEvidence(args: {
   userId: string;
@@ -38,7 +41,7 @@ export function upsertAttestationEvidence(args: {
 
 export function getAttestationEvidenceByUserAndDocument(
   userId: string,
-  documentId: string,
+  documentId: string
 ): AttestationEvidenceRecord | null {
   const row = db
     .select()
@@ -46,8 +49,8 @@ export function getAttestationEvidenceByUserAndDocument(
     .where(
       and(
         eq(attestationEvidence.userId, userId),
-        eq(attestationEvidence.documentId, documentId),
-      ),
+        eq(attestationEvidence.documentId, documentId)
+      )
     )
     .limit(1)
     .get();
@@ -82,7 +85,7 @@ export function createBlockchainAttestation(data: {
 }
 
 function getBlockchainAttestationById(
-  id: string,
+  id: string
 ): BlockchainAttestation | null {
   const row = db
     .select()
@@ -96,7 +99,7 @@ function getBlockchainAttestationById(
 
 export function getBlockchainAttestationByUserAndNetwork(
   userId: string,
-  networkId: string,
+  networkId: string
 ): BlockchainAttestation | null {
   const row = db
     .select()
@@ -104,8 +107,8 @@ export function getBlockchainAttestationByUserAndNetwork(
     .where(
       and(
         eq(blockchainAttestations.userId, userId),
-        eq(blockchainAttestations.networkId, networkId),
-      ),
+        eq(blockchainAttestations.networkId, networkId)
+      )
     )
     .limit(1)
     .get();
@@ -114,7 +117,7 @@ export function getBlockchainAttestationByUserAndNetwork(
 }
 
 export function getBlockchainAttestationsByUserId(
-  userId: string,
+  userId: string
 ): BlockchainAttestation[] {
   return db
     .select()
@@ -126,7 +129,7 @@ export function getBlockchainAttestationsByUserId(
 
 export function updateBlockchainAttestationSubmitted(
   id: string,
-  txHash: string,
+  txHash: string
 ): void {
   db.update(blockchainAttestations)
     .set({
@@ -140,7 +143,7 @@ export function updateBlockchainAttestationSubmitted(
 
 export function updateBlockchainAttestationConfirmed(
   id: string,
-  blockNumber: number | null,
+  blockNumber: number | null
 ): void {
   db.update(blockchainAttestations)
     .set({
@@ -155,7 +158,7 @@ export function updateBlockchainAttestationConfirmed(
 
 export function updateBlockchainAttestationFailed(
   id: string,
-  errorMessage: string,
+  errorMessage: string
 ): void {
   db.update(blockchainAttestations)
     .set({
@@ -178,8 +181,8 @@ export function resetBlockchainAttestationForRetry(id: string): void {
     .where(
       and(
         eq(blockchainAttestations.id, id),
-        eq(blockchainAttestations.status, "failed"),
-      ),
+        eq(blockchainAttestations.status, "failed")
+      )
     )
     .run();
 }
@@ -187,7 +190,7 @@ export function resetBlockchainAttestationForRetry(id: string): void {
 export function updateBlockchainAttestationWallet(
   id: string,
   walletAddress: string,
-  chainId: number,
+  chainId: number
 ): void {
   db.update(blockchainAttestations)
     .set({

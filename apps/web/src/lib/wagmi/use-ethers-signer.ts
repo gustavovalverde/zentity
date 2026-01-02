@@ -16,7 +16,7 @@ export function useEthersSigner(): Signer | undefined {
 
   useEffect(() => {
     async function getSigner() {
-      if (!isConnected || !address || typeof window === "undefined") {
+      if (!(isConnected && address) || typeof window === "undefined") {
         setSigner(undefined);
         return;
       }
@@ -37,7 +37,9 @@ export function useEthersSigner(): Signer | undefined {
       }
     }
 
-    void getSigner();
+    getSigner().catch(() => {
+      // Error already caught in try-catch above
+    });
   }, [address, isConnected]);
 
   return signer;

@@ -1,9 +1,19 @@
 {
   "root": false,
-  "extends": ["../../biome.json"],
+  "extends": [
+    "../../biome.json",
+    "ultracite/biome/core",
+    "ultracite/biome/react",
+    "ultracite/biome/next"
+  ],
   "linter": {
     "domains": {
       "next": "recommended"
+    },
+    "rules": {
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "off"
+      }
     }
   },
   "files": {
@@ -17,12 +27,8 @@
       "*.cjs",
       "!!**/src/app/globals.css",
       "!!**/node_modules",
-      "!!**/.next",
-      "!!**/coverage",
       "!!**/playwright-report",
       "!!**/test-results",
-      "!!**/dist",
-      "!!**/build",
       "!!**/public/coi-serviceworker.js",
       "!!**/public/fhevm",
       "!!**/public/bb",
@@ -41,6 +47,12 @@
           },
           "correctness": {
             "noUnusedVariables": "off"
+          },
+          "performance": {
+            "noNamespaceImport": "off"
+          },
+          "nursery": {
+            "noShadow": "off"
           }
         }
       }
@@ -59,11 +71,6 @@
       "includes": ["src/components/onboarding/**/*.tsx"],
       "linter": {
         "rules": {
-          "a11y": {
-            "useSemanticElements": "off",
-            "noStaticElementInteractions": "off",
-            "useKeyWithClickEvents": "off"
-          },
           "performance": {
             "noImgElement": "off"
           },
@@ -102,6 +109,34 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "src/lib/auth/passkey-auth.ts",
+        "src/lib/crypto/webauthn-prf.ts",
+        "src/lib/zk/*.ts",
+        "src/lib/blockchain/providers/*.ts",
+        "src/lib/trpc/routers/token.ts",
+        "src/test/passkey-test-utils.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noBitwiseOperators": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/lib/fhevm/fhevm-decryption-signature.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useReadonlyClassProperties": "off"
+          }
+        }
+      }
     }
-  ]
+  ],
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json"
 }
