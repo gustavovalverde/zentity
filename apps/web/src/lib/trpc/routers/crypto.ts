@@ -82,6 +82,7 @@ import {
 } from "@/lib/zk/zk-circuit-spec";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
+import { invalidateVerificationCache } from "./identity";
 
 const FHE_SERVICE_URL = getFheServiceUrl();
 
@@ -98,7 +99,10 @@ const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 
 /** Checks if a backend service is reachable via its /health endpoint. */
-async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
+async function checkServiceUncached(
+  url: string,
+  timeoutMs = 5000
+): Promise<unknown> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -117,6 +121,20 @@ async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
     clearTimeout(timeoutId);
     return null;
   }
+}
+
+/**
+ * Cached health check with 15-second TTL.
+ * Reduces load on backend services while maintaining reasonable freshness.
+ */
+async function checkService(url: string, timeoutMs = 5000): Promise<unknown> {
+  const { unstable_cache } = await import("next/cache");
+  const cachedCheck = unstable_cache(
+    () => checkServiceUncached(url, timeoutMs),
+    [`health-check-${url}`],
+    { revalidate: 15 } // 15-second TTL
+  );
+  return cachedCheck();
 }
 
 function parseFieldToBigInt(value: string): bigint {
@@ -883,6 +901,9 @@ export const cryptoRouter = router({
           issuerId: ISSUER_ID,
         });
       }
+
+      // Invalidate cached verification status after proof storage
+      invalidateVerificationCache(ctx.userId);
 
       return {
         success: true,

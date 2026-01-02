@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
 import { and, eq, sql } from "drizzle-orm";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { v4 as uuidv4 } from "uuid";
 import z from "zod";
 
@@ -86,6 +87,30 @@ import { buildDisplayName } from "@/lib/utils/name-utils";
 import { getNationalityCode } from "@/lib/zk/nationality-data";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
+
+/**
+ * Cached verification status with 5-minute TTL.
+ * Uses unstable_cache with tag-based invalidation.
+ */
+function getCachedVerificationStatus(userId: string) {
+  return unstable_cache(
+    () => Promise.resolve(getVerificationStatus(userId)),
+    [`user-verification-${userId}`],
+    {
+      revalidate: 300, // 5-minute TTL
+      tags: [`user-verification-${userId}`],
+    }
+  )();
+}
+
+/**
+ * Invalidate cached verification status for a user.
+ * Call this after successful verification or proof storage.
+ * Uses 'max' profile for stale-while-revalidate behavior.
+ */
+export function invalidateVerificationCache(userId: string) {
+  revalidateTag(`user-verification-${userId}`, "max");
+}
 
 /** Matches Unicode diacritical marks for name normalization */
 const DIACRITICS_PATTERN = /[\u0300-\u036f]/g;
@@ -742,6 +767,9 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         upsertIdentityBundle(bundleUpdate);
 
+        // Invalidate cached verification status
+        invalidateVerificationCache(job.userId);
+
         if (documentProcessed && draft.documentId) {
           try {
             createIdentityDocument({
@@ -1079,7 +1107,7 @@ export const identityRouter = router({
     }),
   /** Returns the current verification status for the authenticated user. */
   status: protectedProcedure.query(({ ctx }) =>
-    getVerificationStatus(ctx.userId)
+    getCachedVerificationStatus(ctx.userId)
   ),
 
   /**
@@ -1922,6 +1950,9 @@ export const identityRouter = router({
       }
 
       upsertIdentityBundle(bundleUpdate);
+
+      // Invalidate cached verification status
+      invalidateVerificationCache(userId);
 
       if (
         documentProcessed &&
