@@ -17,6 +17,9 @@
 #   web-volume → /var/lib/zentity
 #     - Persists SQLite database at /var/lib/zentity/web/dev.db
 #     - Persists BB CRS cache at /var/lib/zentity/bb-crs
+#
+# Schema apply (run after volume is mounted):
+#   DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db bun run db:push
 
 [build]
 builder = "DOCKERFILE"

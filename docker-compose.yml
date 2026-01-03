@@ -41,7 +41,6 @@ services:
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
-      - DATABASE_AUTO_MIGRATE=true
       - DATABASE_PATH=/var/lib/zentity/web/dev.db
       - SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
       - BB_CRS_PATH=/var/lib/zentity/bb-crs
@@ -66,8 +65,8 @@ services:
       otel-collector:
         condition: service_started
     volumes:
-      # Persist SQLite database across container restarts
-      - frontend-data:/var/lib/zentity/web
+      # Local dev DB + secret blobs (run db:push against apps/web/.data/dev.db)
+      - ./apps/web/.data:/var/lib/zentity/web
       # Persist bb.js CRS cache across restarts
       - bb-crs:/var/lib/zentity/bb-crs
     restart: unless-stopped
@@ -180,8 +179,6 @@ networks:
 
 volumes:
   fhe-keys:
-    driver: local
-  frontend-data:
     driver: local
   bb-crs:
     driver: local

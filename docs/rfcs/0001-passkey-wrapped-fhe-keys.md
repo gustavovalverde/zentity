@@ -544,7 +544,6 @@ This keeps authentication and key-unlock in a single gesture and lets future flo
 | `src/lib/db/schema/onboarding.ts` | Modify | Add keys_secured flag |
 | `src/lib/db/queries/crypto.ts` | Modify | Encrypted secret + wrapper queries |
 | `src/lib/db/queries/onboarding.ts` | Modify | Persist keys_secured updates |
-| `src/lib/db/migrations/0001_passkey_secrets.sql` | Create | Drizzle migration for new tables/column |
 | `src/lib/trpc/routers/secrets.ts` | Create | tRPC router for encrypted secrets |
 | `src/components/onboarding/steps/step-secure-keys.tsx` | Create | New onboarding step |
 | `src/lib/crypto/__tests__/*.test.ts` | Create | Tests for each layer |

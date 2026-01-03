@@ -40,6 +40,15 @@ Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 
 Never commit secrets. Copy `.env.example` to `.env` / `.env.local` and override service URLs or auth keys locally.
 
+## Database (Drizzle)
+
+- Schema source of truth: `apps/web/src/lib/db/schema/`.
+- Apply schema via `bun run db:push` (no runtime migrations; containers do not run drizzle-kit).
+- Local + Docker Compose: create or reset `apps/web/.data/dev.db` with `DATABASE_PATH=./apps/web/.data/dev.db bun run db:push` before `docker compose up`.
+- Railway (container): volumes are mounted at start; run `bun run db:push` as part of the start command or a one-off job with `DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db`.
+- `drizzle-kit push` requires a SQLite driver; in this repo we use `@libsql/client` (Bun-compatible).
+- When wiping DBs, delete the SQLite file and rerun `bun run db:push` before starting the web app.
+
 ## E2E (Playwright/Synpress) - Web
 
 E2E lives in `apps/web/e2e` and relies on a seeded SQLite DB plus MetaMask.

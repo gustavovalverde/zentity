@@ -1,10 +1,20 @@
-import { defineConfig } from "drizzle-kit";
+const rawPath = process.env.DATABASE_PATH || "./.data/dev.db";
 
-export default defineConfig({
+let url = rawPath;
+if (rawPath === ":memory:") {
+  url = "file::memory:";
+} else if (rawPath.startsWith("file:") || rawPath.startsWith("libsql:")) {
+  url = rawPath;
+} else {
+  url = `file:${rawPath}`;
+}
+
+const config = {
   schema: "./src/lib/db/schema/index.ts",
-  out: "./src/lib/db/migrations",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_PATH || "./dev.db",
+    url,
   },
-});
+};
+
+export default config;

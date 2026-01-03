@@ -6,6 +6,8 @@
 | **Created** | 2024-12-29 |
 | **Author** | Gustavo Valverde |
 
+> Note: The repo uses `bun run db:push` for schema application and does not commit migration files.
+
 ## Summary
 
 Replace the 1,886-line manual SQL layer (`src/lib/db/db.ts`) with Drizzle ORM, gaining type-safe queries, proper transaction boundaries, and a formal migration system.
@@ -64,7 +66,6 @@ The current database layer has several critical issues:
 
 - **Migration Strategy**: Aggressive rewrite (not incremental)
   - This is a PoC with no production data
-  - Breaking changes are acceptable
   - Delete old files entirely rather than wrapping
 
 - **Schema Organization**: Domain-driven vertical slices
@@ -103,8 +104,6 @@ src/lib/db/
 │   ├── onboarding.ts       # Session CRUD
 │   ├── rp.ts               # Authorization code CRUD
 │   └── index.ts            # Re-export all queries
-├── migrations/             # Drizzle Kit generated
-│   └── 0000_initial.sql
 ├── drizzle.config.ts       # Drizzle Kit configuration
 └── index.ts                # Public API
 ```
@@ -256,7 +255,7 @@ import * as schema from "./schema";
 function getDbPath(): string {
   // Build-time detection for Next.js
   if (process.env.npm_lifecycle_event === "build") return ":memory:";
-  return process.env.DATABASE_PATH || "./dev.db";
+  return process.env.DATABASE_PATH || "./.data/dev.db";
 }
 
 const sqlite = new Database(getDbPath());
@@ -282,23 +281,29 @@ Create schema files for each domain (see Architecture section):
 
 ```typescript
 // apps/web/drizzle.config.ts
-import { defineConfig } from "drizzle-kit";
+const rawPath = process.env.DATABASE_PATH || "./.data/dev.db";
+const url =
+  rawPath.startsWith("file:") || rawPath.startsWith("libsql:")
+    ? rawPath
+    : rawPath === ":memory:"
+      ? "file::memory:"
+      : `file:${rawPath}`;
 
-export default defineConfig({
+const config = {
   schema: "./src/lib/db/schema/index.ts",
-  out: "./src/lib/db/migrations",
   dialect: "sqlite",
   dbCredentials: {
-    url: process.env.DATABASE_PATH || "./dev.db",
+    url,
   },
-});
+};
+
+export default config;
 ```
 
-### Step 5: Generate Initial Migration
+### Step 5: Apply Schema
 
 ```bash
-bun drizzle-kit generate
-bun drizzle-kit push  # For development
+bun run db:push:dev
 ```
 
 ### Step 6: Create Query Modules
@@ -417,6 +422,6 @@ afterEach(() => {
 ## References
 
 - [Drizzle ORM Documentation](https://orm.drizzle.team/)
-- [Drizzle with Bun SQLite](https://orm.drizzle.team/docs/get-started-sqlite#bun-sqlite)
+- [Drizzle with Bun SQLite](https://orm.drizzle.team/docs/get-started/bun-sqlite-new)
 - [Drizzle Transactions](https://orm.drizzle.team/docs/transactions)
-- [Drizzle Kit Migrations](https://orm.drizzle.team/docs/migrations)
+- [Drizzle Kit Push](https://orm.drizzle.team/docs/drizzle-kit-push)

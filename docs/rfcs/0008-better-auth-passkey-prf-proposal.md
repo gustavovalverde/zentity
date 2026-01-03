@@ -442,16 +442,7 @@ If salt storage is needed (Option A with `getSalt` not provided):
 ALTER TABLE passkey_credential ADD COLUMN prf_salt TEXT;
 ```
 
-Or as Drizzle migration:
-
-```typescript
-// migrations/add_prf_salt.ts
-import { sql } from "drizzle-orm";
-
-export async function up(db: DrizzleDB) {
-  await db.run(sql`ALTER TABLE passkey_credential ADD COLUMN prf_salt TEXT`);
-}
-```
+Update the schema in `src/lib/db/schema/` and run `bun run db:push`.
 
 ## Testing Strategy
 

@@ -20,27 +20,13 @@ if [ ! -d "$DB_DIR" ]; then
   mkdir -p "$DB_DIR" || echo "[entrypoint] Warning: Could not create $DB_DIR (might be mounted)"
 fi
 
-# Create database file if it doesn't exist
-if [ ! -f "$DB_PATH" ]; then
-  echo "[entrypoint] Creating database file..."
-  touch "$DB_PATH" || echo "[entrypoint] Warning: Could not create $DB_PATH"
-fi
-
 # Fix volume permissions if running as root (after files exist)
 if [ "$(id -u)" = "0" ]; then
   echo "[entrypoint] Running as root, fixing volume permissions..."
   chown -R nextjs:nodejs "$DB_DIR" 2>/dev/null || true
-  chown nextjs:nodejs "$DB_PATH" 2>/dev/null || true
 fi
 
-# Initialize database if tables don't exist (skip when using Drizzle auto-migrations)
-if [ "${DATABASE_AUTO_MIGRATE}" = "true" ]; then
-  echo "[entrypoint] DATABASE_AUTO_MIGRATE=true; skipping init-db.sql bootstrap."
-elif [ -f /app/scripts/init-db.sql ]; then
-  echo "[entrypoint] Initializing database schema..."
-  sqlite3 "$DB_PATH" < /app/scripts/init-db.sql 2>&1 || echo "[entrypoint] Warning: Schema init had issues (tables may already exist)"
-  echo "[entrypoint] Database initialized."
-fi
+echo "[entrypoint] Schema is managed via manual drizzle-kit push (no runtime migrations)."
 
 echo "[entrypoint] Starting Next.js server..."
 

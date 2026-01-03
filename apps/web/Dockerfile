@@ -101,7 +101,7 @@ ARG APP_GID
 ARG APP_USER
 ARG APP_HOME
 
-RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 gosu curl nodejs ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu curl nodejs ca-certificates \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 WORKDIR ${APP_HOME}
@@ -117,6 +117,9 @@ ENV BB_CRS_PATH=/var/lib/zentity/bb-crs
 # Create non-root user (high UID/GID avoids host user namespace conflicts)
 RUN groupadd --gid ${APP_GID} nodejs && \
     useradd --uid ${APP_UID} --gid nodejs --shell /sbin/nologin ${APP_USER}
+
+# Copy app metadata
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/package.json ./package.json
 
 # Copy Next.js standalone output
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/public ./public

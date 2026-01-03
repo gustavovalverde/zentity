@@ -216,7 +216,29 @@ Trade-offs:
 
 ## Database Schema (high level)
 
-The schema is managed in `apps/web/scripts/init-db.sql` and `apps/web/src/lib/db/db.ts`. Tables are created/altered on startup.
+The schema is defined in `apps/web/src/lib/db/schema/` and applied with `bun run db:push` (no runtime migrations).
+For a clean reset, delete the SQLite DB and rerun `bun run db:push`.
+
+### Local + Docker Compose
+
+Create the local DB file (bind-mounted into the container) before starting Docker:
+
+```bash
+mkdir -p apps/web/.data
+DATABASE_PATH=./apps/web/.data/dev.db bun run db:push
+docker compose up --build
+```
+
+### Railway (container)
+
+Railway volumes mount at start. Apply the schema with a start command or a one-off job:
+
+```bash
+DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db bun run db:push
+```
+
+Note: `drizzle-kit push` needs a SQLite driver. This repo uses `@libsql/client` (Bun-compatible)
+in the environment that runs the command.
 
 ## Docker
 

@@ -212,7 +212,9 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 - **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
-- **Database**: SQLite via `bun:sqlite` with automatic schema updates in `src/lib/db.ts`
+- **Database**: SQLite via `bun:sqlite` + Drizzle ORM; schema is applied with `bun run db:push` (no runtime migrations; containers do not run drizzle-kit)
+- **Railway**: volumes are mounted at start; run `bun run db:push` in the start command or a one-off job with `DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db`
+- **SQLite driver**: `drizzle-kit push` needs a driver; this repo uses `@libsql/client` (Bun-compatible)
 - **Auth**: better-auth
 
 ## tRPC API Structure
