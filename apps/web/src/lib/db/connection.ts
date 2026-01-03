@@ -47,12 +47,13 @@ export function getDatabaseUrl(): string {
   return process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 }
 
-const client = createClient({
+/** Raw libsql client - exported for test cleanup (close connections) */
+export const dbClient = createClient({
   url: getDatabaseUrl(),
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-export const db: LibSQLDatabase<typeof schema> = drizzle(client, {
+export const db: LibSQLDatabase<typeof schema> = drizzle(dbClient, {
   schema,
   logger: process.env.DRIZZLE_LOG === "true",
 });

@@ -1,13 +1,25 @@
 /**
  * Vitest setup file - runs before each test file
+ *
+ * Responsibilities:
+ * 1. Set default environment variables
+ * 2. Configure React act() environment
+ * 3. Set up global mocks (auth, Next.js)
+ * 4. Register global cleanup hooks
  */
-import { vi } from "vitest";
+import { afterAll, afterEach, vi } from "vitest";
 
-process.env.TURSO_DATABASE_URL ||= "file::memory:";
+// === Environment Variables ===
+// Use file-based test database (schema pushed by globalSetup)
+process.env.TURSO_DATABASE_URL ||= "file:./.data/test.db";
 process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
 process.env.BETTER_AUTH_URL ||= "http://localhost:3000";
 
-// Ensure React act() is enabled in tests (prevents act warnings in jsdom)
+// Disable logging in tests unless explicitly enabled
+process.env.DRIZZLE_LOG ||= "false";
+
+// === React act() Environment ===
+// Prevents act() warnings in jsdom tests
 const actEnv = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
 };
@@ -23,7 +35,9 @@ if (typeof global !== "undefined") {
   ).IS_REACT_ACT_ENVIRONMENT = true;
 }
 
-// Mock Better Auth
+// === Global Mocks ===
+
+// Mock Better Auth - prevents real auth calls in tests
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {
@@ -45,3 +59,33 @@ vi.mock("next/headers", () => ({
     })
   ),
 }));
+
+// === Global Cleanup Hooks ===
+
+afterEach(() => {
+  // Restore all mocks to their original state
+  vi.restoreAllMocks();
+
+  // Restore real timers if fake timers were used
+  if (vi.isFakeTimers()) {
+    vi.useRealTimers();
+  }
+});
+
+afterAll(async () => {
+  // Close database connection to prevent leaks
+  try {
+    const { dbClient } = await import("@/lib/db/connection");
+    dbClient.close();
+  } catch {
+    // Connection may not have been initialized in this test file
+  }
+
+  vi.restoreAllMocks();
+});
+
+// === Unhandled Rejection Handler ===
+// Log unhandled rejections for debugging (now that we removed dangerouslyIgnoreUnhandledErrors)
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection in test:", reason);
+});

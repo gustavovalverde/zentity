@@ -279,12 +279,13 @@ describe("webauthn-prf", () => {
       expect(result.deviceType).toBeNull();
     });
 
-    it("THROWS when getPublicKey is unavailable", async () => {
+    it("THROWS when attested credential data is missing", async () => {
       const module = await import("../webauthn-prf");
       extractCredentialRegistrationData =
         module.extractCredentialRegistrationData;
 
-      const mockAuthData = createMockAuthenticatorData({
+      // Create minimal auth data without AT flag (bit 6)
+      const mockAuthData = createMinimalAuthenticatorData({
         rpIdHash: new Uint8Array(32).fill(0xaa),
         flags: 0x01,
         counter: 0,
@@ -292,13 +293,13 @@ describe("webauthn-prf", () => {
 
       const mockCredential = createMockCredential({
         rawId: new Uint8Array([10]),
-        publicKey: null, // No public key available
+        publicKey: null,
         authenticatorData: mockAuthData,
         authenticatorAttachment: null,
       });
 
       expect(() => extractCredentialRegistrationData(mockCredential)).toThrow(
-        "Unable to extract public key from credential."
+        "Authenticator data does not contain attested credential data."
       );
     });
 
@@ -353,17 +354,87 @@ describe("webauthn-prf", () => {
 });
 
 /**
- * Create mock authenticator data bytes.
+ * Create mock authenticator data bytes with full attested credential data section.
+ *
+ * WebAuthn authenticator data structure:
+ * - rpIdHash: 32 bytes
+ * - flags: 1 byte (bit 6 = 0x40 indicates attested credential data present)
+ * - counter: 4 bytes (big-endian)
+ * - aaguid: 16 bytes (when bit 6 is set)
+ * - credIdLen: 2 bytes (big-endian)
+ * - credentialId: variable
+ * - cosePublicKey: variable
  */
 function createMockAuthenticatorData(params: {
+  rpIdHash: Uint8Array;
+  flags: number;
+  counter: number;
+  cosePublicKey?: Uint8Array;
+}): Uint8Array {
+  // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bitwise OR to set AT flag (bit 6) per WebAuthn spec
+  const flags = params.flags | 0x40;
+
+  const aaguid = new Uint8Array(16).fill(0);
+  const credentialId = new Uint8Array([1, 2, 3, 4]);
+  const credIdLen = credentialId.length;
+  // Minimal valid COSE key structure (just needs to be extractable)
+  const coseKey =
+    params.cosePublicKey ??
+    new Uint8Array([
+      0xa5,
+      0x01,
+      0x02,
+      0x03,
+      0x26,
+      0x20,
+      0x01,
+      0x21,
+      0x58,
+      0x20,
+      ...new Array(32).fill(0),
+      0x22,
+      0x58,
+      0x20,
+      ...new Array(32).fill(0),
+    ]);
+
+  // Total: 37 + 16 + 2 + credIdLen + coseKey.length
+  const totalLen = 37 + 16 + 2 + credIdLen + coseKey.length;
+  const data = new Uint8Array(totalLen);
+
+  let offset = 0;
+  data.set(params.rpIdHash, offset);
+  offset += 32;
+  data[offset++] = flags;
+  const view = new DataView(data.buffer, offset, 4);
+  view.setUint32(0, params.counter, false);
+  offset += 4;
+  data.set(aaguid, offset);
+  offset += 16;
+  // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bitwise ops for big-endian credIdLen encoding per WebAuthn spec
+  data[offset++] = (credIdLen >> 8) & 0xff;
+  // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bitwise AND for low byte extraction
+  data[offset++] = credIdLen & 0xff;
+  data.set(credentialId, offset);
+  offset += credIdLen;
+  data.set(coseKey, offset);
+
+  return data;
+}
+
+/**
+ * Create minimal authenticator data WITHOUT attested credential data.
+ * Used to test error handling when AT flag is not set.
+ */
+function createMinimalAuthenticatorData(params: {
   rpIdHash: Uint8Array;
   flags: number;
   counter: number;
 }): Uint8Array {
   const data = new Uint8Array(37);
   data.set(params.rpIdHash, 0);
-  data[32] = params.flags;
-  // Counter as big-endian 32-bit
+  // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bitwise AND + NOT to clear AT flag (bit 6)
+  data[32] = params.flags & ~0x40;
   const view = new DataView(data.buffer, 33, 4);
   view.setUint32(0, params.counter, false);
   return data;
