@@ -48,6 +48,7 @@ import {
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   getEncryptedSecretByUserAndType,
+  getLatestEncryptedAttributeByUserAndType,
   getLatestSignedClaimByUserTypeAndDocument,
   getProofHashesByUserAndDocument,
   getUserAgeProof,
@@ -63,7 +64,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
-import { hashIdentifier } from "@/lib/observability/telemetry";
+import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import { getTodayAsInt } from "@/lib/zk/noir-prover";
 import {
@@ -425,11 +426,19 @@ async function verifyProofInternal(args: {
     }
   }
 
-  const verificationResult = await verifyNoirProof({
-    proof: args.proof,
-    publicInputs: args.publicInputs,
-    circuitType,
-  });
+  const verificationResult = await withSpan(
+    "zk.verify_noir_proof",
+    {
+      "zk.circuit_type": circuitType,
+      "zk.public_inputs_count": args.publicInputs.length,
+    },
+    () =>
+      verifyNoirProof({
+        proof: args.proof,
+        publicInputs: args.publicInputs,
+        circuitType,
+      })
+  );
 
   if (!verificationResult.isValid) {
     return { result: verificationResult, nonceHex };
@@ -546,8 +555,11 @@ export const cryptoRouter = router({
           "fhe.key_id_hash",
           hashIdentifier(existingKeyId)
         );
+        ctx.span?.setAttribute("fhe.key_reused", true);
+        return { keyId: existingKeyId };
       }
 
+      ctx.span?.setAttribute("fhe.key_reused", false);
       return await registerFheKey({
         serverKey: input.serverKey,
         publicKey: input.publicKey,
@@ -687,6 +699,11 @@ export const cryptoRouter = router({
     .input(z.object({ circuitType: circuitTypeSchema }))
     .mutation(({ ctx, input }) => {
       const challenge = createChallenge(input.circuitType, ctx.userId);
+      ctx.span?.setAttribute("challenge.circuit_type", input.circuitType);
+      ctx.span?.setAttribute(
+        "challenge.active_count",
+        getActiveChallengeCount()
+      );
       return {
         nonce: challenge.nonce,
         circuitType: challenge.circuitType,
@@ -831,24 +848,29 @@ export const cryptoRouter = router({
         policyVersion: POLICY_VERSION,
       });
 
-      insertZkProofRecord({
-        id: proofId,
-        userId: ctx.userId,
-        documentId,
-        proofType: input.circuitType,
-        proofHash,
-        proofPayload: input.proof,
-        publicInputs: JSON.stringify(input.publicSignals),
-        isOver18: input.circuitType === "age_verification" ? true : null,
-        generationTimeMs: input.generationTimeMs,
-        nonce: nonceHex,
-        policyVersion: POLICY_VERSION,
-        circuitType: result.circuitType,
-        noirVersion: result.noirVersion,
-        circuitHash: result.circuitHash,
-        bbVersion: result.bbVersion,
-        verified: true,
-      });
+      await withSpan(
+        "db.insert_zk_proof",
+        { "zk.circuit_type": input.circuitType },
+        () =>
+          insertZkProofRecord({
+            id: proofId,
+            userId: ctx.userId,
+            documentId,
+            proofType: input.circuitType,
+            proofHash,
+            proofPayload: input.proof,
+            publicInputs: JSON.stringify(input.publicSignals),
+            isOver18: input.circuitType === "age_verification" ? true : null,
+            generationTimeMs: input.generationTimeMs,
+            nonce: nonceHex,
+            policyVersion: POLICY_VERSION,
+            circuitType: result.circuitType,
+            noirVersion: result.noirVersion,
+            circuitHash: result.circuitHash,
+            bbVersion: result.bbVersion,
+            verified: true,
+          })
+      );
 
       const proofHashes = getProofHashesByUserAndDocument(
         ctx.userId,
@@ -858,41 +880,81 @@ export const cryptoRouter = router({
         proofHashes,
         policyHash: POLICY_HASH,
       });
-      upsertAttestationEvidence({
-        userId: ctx.userId,
-        documentId,
-        policyVersion: POLICY_VERSION,
-        policyHash: POLICY_HASH,
-        proofSetHash,
-      });
+      await withSpan("db.upsert_attestation_evidence", {}, () =>
+        upsertAttestationEvidence({
+          userId: ctx.userId,
+          documentId,
+          policyVersion: POLICY_VERSION,
+          policyHash: POLICY_HASH,
+          proofSetHash,
+        })
+      );
 
       const bundle = getIdentityBundleByUserId(ctx.userId);
-      if (bundle?.fheKeyId) {
-        try {
-          const verificationStatus = getVerificationStatus(ctx.userId);
-          const complianceLevel = getComplianceLevel(verificationStatus);
-          const startTime = Date.now();
-          const encrypted = await encryptComplianceLevelFhe({
-            complianceLevel,
-            keyId: bundle.fheKeyId,
-            requestId: ctx.requestId,
-            flowId: ctx.flowId ?? undefined,
-          });
-          insertEncryptedAttribute({
-            id: crypto.randomUUID(),
-            userId: ctx.userId,
-            source: "web2_tfhe",
-            attributeType: "compliance_level",
-            ciphertext: encrypted.ciphertext,
-            keyId: bundle.fheKeyId ?? null,
-            encryptionTimeMs: Date.now() - startTime,
-          });
-        } catch (error) {
-          // Compliance level encryption is best-effort; proof storage should still succeed.
-          ctx.log.warn(
-            { error: error instanceof Error ? error.message : String(error) },
-            "Compliance level encryption failed (non-blocking)"
-          );
+      const fheKeyId = bundle?.fheKeyId;
+      if (fheKeyId) {
+        const existingCompliance = getLatestEncryptedAttributeByUserAndType(
+          ctx.userId,
+          "compliance_level"
+        );
+        const shouldEncryptCompliance =
+          !existingCompliance ||
+          (existingCompliance.keyId && existingCompliance.keyId !== fheKeyId) ||
+          (!existingCompliance.keyId && Boolean(fheKeyId));
+        ctx.span?.setAttribute(
+          "fhe.compliance_already_present",
+          !shouldEncryptCompliance
+        );
+        ctx.span?.setAttribute(
+          "fhe.compliance_key_id_hash",
+          hashIdentifier(fheKeyId)
+        );
+        if (shouldEncryptCompliance) {
+          try {
+            const verificationStatus = getVerificationStatus(ctx.userId);
+            const complianceLevel = getComplianceLevel(verificationStatus);
+            const encryptedResult = await withSpan(
+              "fhe.encrypt_compliance_level",
+              {
+                "fhe.operation": "encrypt_compliance_level",
+                "fhe.key_id_hash": hashIdentifier(fheKeyId),
+              },
+              async () => {
+                const startTime = Date.now();
+                const encryptionResult = await encryptComplianceLevelFhe({
+                  complianceLevel,
+                  keyId: fheKeyId,
+                  requestId: ctx.requestId,
+                  flowId: ctx.flowId ?? undefined,
+                });
+                const durationMs = Date.now() - startTime;
+                ctx.span?.setAttribute("fhe.compliance_encrypt_ms", durationMs);
+                return { ...encryptionResult, encryptionTimeMs: durationMs };
+              }
+            );
+            await withSpan(
+              "db.insert_encrypted_attribute",
+              { "fhe.attribute": "compliance_level" },
+              () =>
+                insertEncryptedAttribute({
+                  id: crypto.randomUUID(),
+                  userId: ctx.userId,
+                  source: "web2_tfhe",
+                  attributeType: "compliance_level",
+                  ciphertext: encryptedResult.ciphertext,
+                  keyId: fheKeyId ?? null,
+                  encryptionTimeMs: encryptedResult.encryptionTimeMs ?? null,
+                })
+            );
+          } catch (error) {
+            // Compliance level encryption is best-effort; proof storage should still succeed.
+            ctx.log.warn(
+              { error: error instanceof Error ? error.message : String(error) },
+              "Compliance level encryption failed (non-blocking)"
+            );
+          }
+        } else {
+          // Compliance level encryption is already stored; skip duplication.
         }
       }
 

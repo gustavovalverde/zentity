@@ -233,11 +233,17 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
 
         let res: Record<string, string | bigint | boolean> = {};
         try {
+          const activeSig = sig;
+          if (!activeSig) {
+            setMessage("Unable to build FHEVM decryption signature");
+            setError("SIGNATURE_ERROR: Failed to create decryption signature");
+            return;
+          }
           // Call SDK's userDecrypt - this contacts the Gateway/KMS
           res = await decryptWithMetrics({
             instance,
             requests: mutableReqs,
-            signature: sig,
+            signature: activeSig,
           });
         } catch (e) {
           const err = e as { name?: string; message?: string };
@@ -254,12 +260,20 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
 
           if (isInvalidSig) {
             setMessage("Refreshing decryption signature...");
+            const signatureForClear = sig;
+            if (!signatureForClear) {
+              setError(
+                "SIGNATURE_ERROR: Failed to refresh decryption signature"
+              );
+              setMessage("FHEVM userDecrypt failed");
+              return;
+            }
             // Clear stale signature from cache
             await FhevmDecryptionSignature.clearFromGenericStringStorage({
               storage: fhevmDecryptionSignatureStorage,
               instance,
               contractAddresses: uniqueAddresses,
-              userAddress: sig.userAddress,
+              userAddress: signatureForClear.userAddress,
             });
 
             // Get fresh signature (will prompt user to sign again)
@@ -280,10 +294,18 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
 
             // Retry with fresh signature
             try {
+              const refreshedSig = sig;
+              if (!refreshedSig) {
+                setError(
+                  "SIGNATURE_ERROR: Failed to refresh decryption signature"
+                );
+                setMessage("FHEVM userDecrypt failed");
+                return;
+              }
               res = await decryptWithMetrics({
                 instance,
                 requests: mutableReqs,
-                signature: sig,
+                signature: refreshedSig,
               });
             } catch (retryError) {
               const retryMsg =
@@ -333,10 +355,18 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
                 }
 
                 try {
+                  const refreshedSig = sig;
+                  if (!refreshedSig) {
+                    setError(
+                      "SIGNATURE_ERROR: Failed to create signature after refresh"
+                    );
+                    setMessage("FHEVM userDecrypt failed");
+                    return;
+                  }
                   res = await decryptWithMetrics({
                     instance: refreshedInstance,
                     requests: mutableReqs,
-                    signature: sig,
+                    signature: refreshedSig,
                   });
                 } catch (finalError) {
                   const finalMsg =

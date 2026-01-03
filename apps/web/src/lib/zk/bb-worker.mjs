@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
+import { cpus } from "node:os";
 import { createInterface } from "node:readline";
 
 import { UltraHonkBackend } from "@aztec/bb.js";
@@ -86,8 +87,16 @@ function getBackend(circuitType, bytecode) {
     );
   }
 
+  const parsedThreads = Number.parseInt(process.env.BB_THREADS || "", 10);
+  const cpuCount = Math.max(1, cpus()?.length ?? 1);
+  const defaultThreads = Math.max(2, Math.min(4, cpuCount));
+  const threads =
+    Number.isFinite(parsedThreads) && parsedThreads > 0
+      ? parsedThreads
+      : defaultThreads;
+
   const backend = new UltraHonkBackend(bytecode, {
-    threads: 1,
+    threads,
     crsPath,
   });
 

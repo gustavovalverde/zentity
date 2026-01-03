@@ -476,7 +476,8 @@ export function StepCreateAccount() {
           );
         }
 
-        const proofResults: Array<{
+        const storeTasks: Promise<unknown>[] = [];
+        const enqueueStore = (proof: {
           circuitType:
             | "age_verification"
             | "doc_validity"
@@ -485,7 +486,17 @@ export function StepCreateAccount() {
           proof: string;
           publicSignals: string[];
           generationTimeMs: number;
-        }> = [];
+        }) => {
+          storeTasks.push(
+            storeProof({
+              circuitType: proof.circuitType,
+              proof: proof.proof,
+              publicSignals: proof.publicSignals,
+              generationTimeMs: proof.generationTimeMs,
+              documentId: activeDocumentId,
+            })
+          );
+        };
 
         try {
           const claims = await getSignedClaims(activeDocumentId);
@@ -553,7 +564,7 @@ export function StepCreateAccount() {
               claimHash: ageClaimHash,
             }
           );
-          proofResults.push({
+          enqueueStore({
             circuitType: "age_verification",
             ...ageProof,
           });
@@ -573,7 +584,7 @@ export function StepCreateAccount() {
               claimHash: docValidityClaimHash,
             }
           );
-          proofResults.push({
+          enqueueStore({
             circuitType: "doc_validity",
             ...docProof,
           });
@@ -590,7 +601,7 @@ export function StepCreateAccount() {
               claimHash: nationalityClaimHash,
             }
           );
-          proofResults.push({
+          enqueueStore({
             circuitType: "nationality_membership",
             ...nationalityProof,
           });
@@ -631,7 +642,7 @@ export function StepCreateAccount() {
               claimHash: faceData.claimHash,
             }
           );
-          proofResults.push({
+          enqueueStore({
             circuitType: "face_match",
             ...faceProof,
           });
@@ -658,15 +669,7 @@ export function StepCreateAccount() {
 
         // Step 7: Store proofs
         setStatus("storing-proofs");
-        for (const proof of proofResults) {
-          await storeProof({
-            circuitType: proof.circuitType,
-            proof: proof.proof,
-            publicSignals: proof.publicSignals,
-            generationTimeMs: proof.generationTimeMs,
-            documentId: activeDocumentId,
-          });
-        }
+        await Promise.all(storeTasks);
       }
 
       // Complete!

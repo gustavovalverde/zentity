@@ -95,6 +95,9 @@ yarn-error.log*
 # synpress wallet cache
 .cache-synpress/
 
+# generated noir wasm assets
+apps/web/public/noir/
+
 # vercel
 .vercel
 

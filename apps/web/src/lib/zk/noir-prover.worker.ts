@@ -8,6 +8,8 @@
  * Only cryptographic proofs are returned to the main thread.
  */
 
+import type { InitInput as AcvmInitInput } from "@noir-lang/acvm_js";
+import type { InitInput as NoirAbiInitInput } from "@noir-lang/noirc_abi";
 import type {
   AgeProofPayload,
   DocValidityPayload,
@@ -63,12 +65,15 @@ interface ModuleCache {
   UltraHonkBackend: typeof import("@aztec/bb.js").UltraHonkBackend;
   Fr: typeof import("@aztec/bb.js").Fr;
   BarretenbergSync: typeof import("@aztec/bb.js").BarretenbergSync;
+  initACVM: (input?: NoirWasmInitInput) => Promise<unknown>;
+  initNoirC: (input?: NoirWasmInitInput) => Promise<unknown>;
 }
 
 let moduleCache: ModuleCache | null = null;
 let bbInstance: Awaited<
   ReturnType<typeof import("@aztec/bb.js").BarretenbergSync.initSingleton>
 > | null = null;
+let noirRuntimeInitPromise: Promise<void> | null = null;
 
 type CircuitName =
   | "age_verification"
@@ -88,6 +93,19 @@ let workerQueue: Promise<void> = Promise.resolve();
 
 const MAX_THREADS = 8;
 let loggedIsolationFallback = false;
+let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+let activeProofs = 0;
+
+type NoirWasmInitInput =
+  | AcvmInitInput
+  | NoirAbiInitInput
+  | Promise<AcvmInitInput | NoirAbiInitInput>
+  | {
+      module_or_path:
+        | AcvmInitInput
+        | NoirAbiInitInput
+        | Promise<AcvmInitInput | NoirAbiInitInput>;
+    };
 
 /**
  * Local path for bb.js WASM (copied by setup-coep-assets.ts).
@@ -96,6 +114,13 @@ let loggedIsolationFallback = false;
  * so we pass the base path and it requests "barretenberg-threads.wasm.gz".
  */
 const BB_WASM_PATH = "/bb/barretenberg.wasm.gz";
+const NOIR_WASM_BASE_PATH = "/noir";
+const IDLE_CLEANUP_MS = Number.parseInt(
+  process.env.NEXT_PUBLIC_NOIR_IDLE_CLEANUP_MS ?? "300000",
+  10
+);
+const ENABLE_IDLE_CLEANUP =
+  Number.isFinite(IDLE_CLEANUP_MS) && IDLE_CLEANUP_MS > 0;
 
 function getIsolationSupport() {
   const sharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
@@ -200,6 +225,82 @@ function setFetchOrigin(origin: string | null) {
   globalThis.fetch = wrappedFetch;
 }
 
+function getNoirWasmUrl(filename: string): URL | null {
+  const origin =
+    fetchOrigin ??
+    (typeof self.location?.origin === "string" ? self.location.origin : null);
+  if (!origin || origin === "null") {
+    return null;
+  }
+  return new URL(`${NOIR_WASM_BASE_PATH}/${filename}`, origin);
+}
+
+async function fetchNoirWasmInitInput(url: URL): Promise<NoirWasmInitInput> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load Noir WASM (${response.status} ${response.statusText})`
+    );
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/wasm")) {
+    return response;
+  }
+  return await response.arrayBuffer();
+}
+
+function cancelIdleCleanup() {
+  if (cleanupTimer) {
+    clearTimeout(cleanupTimer);
+    cleanupTimer = null;
+  }
+}
+
+function scheduleIdleCleanup() {
+  if (!ENABLE_IDLE_CLEANUP) {
+    return;
+  }
+  cancelIdleCleanup();
+  cleanupTimer = setTimeout(() => {
+    cleanupProverBackends("idle").catch((error) => {
+      logWorker("cleanup", "Idle cleanup failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, IDLE_CLEANUP_MS);
+}
+
+async function cleanupProverBackends(reason: string) {
+  if (activeProofs > 0) {
+    scheduleIdleCleanup();
+    return;
+  }
+  const backends = Array.from(proverBackendCache.entries());
+  if (!backends.length) {
+    return;
+  }
+  logWorker("cleanup", "Destroying cached prover backends", {
+    count: backends.length,
+    reason,
+  });
+  await Promise.allSettled(
+    backends.map(async ([circuit, backend]) => {
+      try {
+        await backend.destroy();
+      } catch (error) {
+        logWorker("cleanup", "Backend destroy failed", {
+          circuit,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })
+  );
+  proverBackendCache.clear();
+  logWorker("cleanup", "Prover backends cleared", {
+    count: backends.length,
+  });
+}
+
 if (originalFetch) {
   try {
     const origin = new URL(globalThis.location.href).origin;
@@ -235,11 +336,22 @@ async function getModules(): Promise<ModuleCache> {
       durationMs: Math.round(performance.now() - bbImportStart),
     });
 
+    const initACVM =
+      typeof noirModule.acvm?.default === "function"
+        ? noirModule.acvm.default
+        : (await import("@noir-lang/acvm_js")).default;
+    const initNoirC =
+      typeof noirModule.abi?.default === "function"
+        ? noirModule.abi.default
+        : (await import("@noir-lang/noirc_abi")).default;
+
     moduleCache = {
       Noir: noirModule.Noir,
       UltraHonkBackend: bbModule.UltraHonkBackend,
       Fr: bbModule.Fr,
       BarretenbergSync: bbModule.BarretenbergSync,
+      initACVM,
+      initNoirC,
     };
 
     logWorker("init", "Module initialization complete");
@@ -251,6 +363,54 @@ async function getModules(): Promise<ModuleCache> {
     });
     throw error;
   }
+}
+
+function ensureNoirRuntimeReady(): Promise<void> {
+  if (noirRuntimeInitPromise) {
+    return noirRuntimeInitPromise;
+  }
+
+  noirRuntimeInitPromise = (async () => {
+    const { initACVM, initNoirC } = await getModules();
+    const acvmWasm = getNoirWasmUrl("acvm_js_bg.wasm");
+    const noircWasm = getNoirWasmUrl("noirc_abi_wasm_bg.wasm");
+
+    logWorker("init", "Initializing Noir WASM runtime", {
+      acvmWasm: acvmWasm ? String(acvmWasm) : "module-default",
+      noircWasm: noircWasm ? String(noircWasm) : "module-default",
+    });
+
+    let initialized = false;
+    if (acvmWasm && noircWasm) {
+      try {
+        const [acvmInput, noircInput] = await Promise.all([
+          fetchNoirWasmInitInput(acvmWasm),
+          fetchNoirWasmInitInput(noircWasm),
+        ]);
+        await Promise.all([
+          initACVM({ module_or_path: acvmInput }),
+          initNoirC({ module_or_path: noircInput }),
+        ]);
+        initialized = true;
+      } catch (error) {
+        logWorker("init", "Noir WASM init failed; falling back to defaults", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (!initialized) {
+      await Promise.all([initACVM(), initNoirC()]);
+    }
+
+    logWorker("init", "Noir WASM runtime ready");
+  })();
+
+  noirRuntimeInitPromise.catch(() => {
+    noirRuntimeInitPromise = null;
+  });
+
+  return noirRuntimeInitPromise;
 }
 
 /**
@@ -300,6 +460,7 @@ async function getNoirInstance(circuit: CircuitName) {
   if (existing) {
     return existing;
   }
+  await ensureNoirRuntimeReady();
   const { Noir } = await getModules();
   const noir = new Noir(getCircuitArtifact(circuit));
   noirInstanceCache.set(circuit, noir);
@@ -634,9 +795,12 @@ self.onmessage = async (
 
   // Handle health check outside of queue for immediate response
   if (request.type === "health_check") {
+    cancelIdleCleanup();
+    activeProofs += 1;
     logWorker("health", "Health check received, initializing modules...");
     try {
       await getModules();
+      await ensureNoirRuntimeReady();
       logWorker("health", "Health check passed - modules loaded");
       self.postMessage({
         id: request.id,
@@ -652,12 +816,17 @@ self.onmessage = async (
         success: false,
         error: error instanceof Error ? error.message : "Health check failed",
       });
+    } finally {
+      activeProofs = Math.max(0, activeProofs - 1);
+      scheduleIdleCleanup();
     }
     return;
   }
 
   workerQueue = workerQueue
     .then(async () => {
+      cancelIdleCleanup();
+      activeProofs += 1;
       const { id, type, payload } = request;
       logWorker("proof", `Starting ${type} proof generation`, { id });
       const proofStart = performance.now();
@@ -709,6 +878,9 @@ self.onmessage = async (
           error: error instanceof Error ? error.message : "Unknown error",
         };
         self.postMessage(response);
+      } finally {
+        activeProofs = Math.max(0, activeProofs - 1);
+        scheduleIdleCleanup();
       }
     })
     .catch(() => {

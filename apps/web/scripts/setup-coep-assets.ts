@@ -32,6 +32,27 @@ const assets = [
     required: true,
   },
   // =========================================================================
+  // Noir.js runtime (ACVM + ABI) WASM assets
+  // =========================================================================
+  {
+    id: "noir-acvm-wasm",
+    from: path.join(
+      root,
+      "node_modules/@noir-lang/acvm_js/web/acvm_js_bg.wasm"
+    ),
+    to: path.join(root, "public/noir/acvm_js_bg.wasm"),
+    required: true,
+  },
+  {
+    id: "noir-abi-wasm",
+    from: path.join(
+      root,
+      "node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm"
+    ),
+    to: path.join(root, "public/noir/noirc_abi_wasm_bg.wasm"),
+    required: true,
+  },
+  // =========================================================================
   // TFHE-rs (client-side FHE encryption/decryption)
   // Copied to public to avoid Turbopack hanging on 5MB WASM analysis.
   // tfhe-browser.ts loads from /tfhe/ instead of node_modules.

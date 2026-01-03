@@ -15,6 +15,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { cpus } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -146,17 +147,23 @@ interface BbWorkerFailure {
 
 type BbWorkerResponse<T> = BbWorkerSuccess<T> | BbWorkerFailure;
 
-let bbWorkerProcess: ChildProcessWithoutNullStreams | null = null;
-let bbWorkerReadline: ReturnType<typeof createInterface> | null = null;
-let bbWorkerNextId = 0;
+interface BbWorkerState {
+  index: number;
+  process: ChildProcessWithoutNullStreams;
+  readline: ReturnType<typeof createInterface>;
+  pending: Map<
+    string,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+    }
+  >;
+  nextId: number;
+  inflight: number;
+}
 
-const bbWorkerPending = new Map<
-  string,
-  {
-    resolve: (value: unknown) => void;
-    reject: (error: Error) => void;
-  }
->();
+const bbWorkerPool: Array<BbWorkerState | null> = [];
+let bbWorkerPoolSize: number | null = null;
 
 const DEFAULT_BB_WORKER_PATH = (() => {
   try {
@@ -174,26 +181,33 @@ function getBbWorkerNodeBinary(): string {
   return process.env.BB_NODE_BINARY || "node";
 }
 
-function resetBbWorker(error: Error) {
-  bbWorkerProcess = null;
-  bbWorkerReadline?.close();
-  bbWorkerReadline = null;
-
-  for (const [id, pending] of bbWorkerPending) {
+function resetBbWorker(index: number, error: Error) {
+  const worker = bbWorkerPool[index];
+  if (!worker) {
+    return;
+  }
+  worker.readline.close();
+  for (const [id, pending] of worker.pending) {
     pending.reject(
       new Error(
         `bb-worker exited before responding (id=${id}): ${error.message}`
       )
     );
   }
-  bbWorkerPending.clear();
+  worker.pending.clear();
+  bbWorkerPool[index] = null;
 }
 
-function ensureBbWorker(): ChildProcessWithoutNullStreams {
-  if (bbWorkerProcess) {
-    return bbWorkerProcess;
+function getBbWorkerPoolSize(): number {
+  const parsed = Number.parseInt(process.env.BB_WORKER_POOL_SIZE || "", 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
   }
+  const cpuCount = Math.max(1, cpus()?.length ?? 1);
+  return Math.max(1, Math.min(4, cpuCount));
+}
 
+function spawnBbWorker(index: number): BbWorkerState {
   const nodeBinary = getBbWorkerNodeBinary();
   const workerPath = getBbWorkerScriptPath();
 
@@ -203,12 +217,28 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  const worker: BbWorkerState = {
+    index,
+    process: child,
+    readline: createInterface({
+      input: child.stdout,
+      crlfDelay: Number.POSITIVE_INFINITY,
+    }),
+    pending: new Map(),
+    nextId: 0,
+    inflight: 0,
+  };
+
   child.on("error", (error) => {
-    resetBbWorker(error instanceof Error ? error : new Error(String(error)));
+    resetBbWorker(
+      index,
+      error instanceof Error ? error : new Error(String(error))
+    );
   });
 
   child.on("exit", (code, signal) => {
     resetBbWorker(
+      index,
       new Error(
         `bb-worker exited with code=${code ?? "null"} signal=${signal ?? "null"}`
       )
@@ -220,16 +250,11 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
       chunk instanceof Buffer ? chunk.toString("utf8") : String(chunk);
     const trimmed = text.trim();
     if (trimmed) {
-      process.stderr.write(`[bb-worker] ${trimmed}\n`);
+      process.stderr.write(`[bb-worker:${index}] ${trimmed}\n`);
     }
   });
 
-  bbWorkerReadline = createInterface({
-    input: child.stdout,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-
-  bbWorkerReadline.on("line", (line) => {
+  worker.readline.on("line", (line) => {
     if (!line.trim()) {
       return;
     }
@@ -245,11 +270,11 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
       return;
     }
 
-    const pending = bbWorkerPending.get(id);
+    const pending = worker.pending.get(id);
     if (!pending) {
       return;
     }
-    bbWorkerPending.delete(id);
+    worker.pending.delete(id);
 
     if ("error" in parsed) {
       pending.reject(new Error(parsed.error?.message || "bb-worker error"));
@@ -259,16 +284,44 @@ function ensureBbWorker(): ChildProcessWithoutNullStreams {
     pending.resolve(parsed.result);
   });
 
-  bbWorkerProcess = child;
-  return child;
+  return worker;
+}
+
+function ensureBbWorkerPool(): BbWorkerState[] {
+  if (!bbWorkerPoolSize) {
+    bbWorkerPoolSize = getBbWorkerPoolSize();
+  }
+  while (bbWorkerPool.length < bbWorkerPoolSize) {
+    bbWorkerPool.push(null);
+  }
+  for (let i = 0; i < bbWorkerPoolSize; i += 1) {
+    if (!bbWorkerPool[i]) {
+      bbWorkerPool[i] = spawnBbWorker(i);
+    }
+  }
+  return bbWorkerPool.filter(Boolean) as BbWorkerState[];
+}
+
+function pickBbWorker(pool: BbWorkerState[]): BbWorkerState {
+  if (pool.length === 0) {
+    throw new Error("No bb-worker processes available");
+  }
+  let selected = pool[0];
+  for (const worker of pool) {
+    if (worker.inflight < selected.inflight) {
+      selected = worker;
+    }
+  }
+  return selected;
 }
 
 async function callBbWorker<TResult>(
   method: BbWorkerMethod,
   params: unknown
 ): Promise<TResult> {
-  const worker = ensureBbWorker();
-  const id = String(++bbWorkerNextId);
+  const pool = ensureBbWorkerPool();
+  const worker = pickBbWorker(pool);
+  const id = `${worker.index}-${++worker.nextId}`;
 
   const payload = `${JSON.stringify({ id, method, params })}\n`;
 
@@ -281,7 +334,8 @@ async function callBbWorker<TResult>(
       Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 30_000;
 
     const timeoutId = setTimeout(() => {
-      bbWorkerPending.delete(id);
+      worker.pending.delete(id);
+      worker.inflight = Math.max(0, worker.inflight - 1);
       promiseReject(
         new Error(
           `bb-worker request timed out after ${timeoutMs}ms (${method})`
@@ -289,22 +343,26 @@ async function callBbWorker<TResult>(
       );
     }, timeoutMs);
 
-    bbWorkerPending.set(id, {
+    worker.pending.set(id, {
       resolve: (value) => {
         clearTimeout(timeoutId);
+        worker.inflight = Math.max(0, worker.inflight - 1);
         promiseResolve(value as TResult);
       },
       reject: (error) => {
         clearTimeout(timeoutId);
+        worker.inflight = Math.max(0, worker.inflight - 1);
         promiseReject(error);
       },
     });
+    worker.inflight += 1;
 
-    worker.stdin.write(payload, (error) => {
+    worker.process.stdin.write(payload, (error) => {
       if (!error) {
         return;
       }
-      bbWorkerPending.delete(id);
+      worker.pending.delete(id);
+      worker.inflight = Math.max(0, worker.inflight - 1);
       promiseReject(error instanceof Error ? error : new Error(String(error)));
     });
   });

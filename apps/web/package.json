@@ -34,6 +34,10 @@
     "test:e2e:ui": "bun run test:e2e:setup && bunx playwright test --ui",
     "circuits:compile": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo compile && mkdir -p artifacts && cp -f target/*.json artifacts/); done",
     "circuits:test": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo test); done",
+    "circuits:profile": "bun scripts/noir-profile.ts",
+    "circuits:profile:opcodes": "bun scripts/noir-profile.ts opcodes",
+    "circuits:profile:gates": "bun scripts/noir-profile.ts gates",
+    "circuits:profile:execution": "bun scripts/noir-profile.ts execution-opcodes",
     "prepare": "husky"
   },
   "dependencies": {
@@ -41,6 +45,8 @@
     "@fhevm/mock-utils": "^0.3.0-4",
     "@metamask/sdk": "^0.34.0",
     "@msgpack/msgpack": "^3.1.3",
+    "@noir-lang/acvm_js": "^1.0.0-beta.17",
+    "@noir-lang/noirc_abi": "^1.0.0-beta.17",
     "@noir-lang/noir_js": "^1.0.0-beta.17",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.67.3",
