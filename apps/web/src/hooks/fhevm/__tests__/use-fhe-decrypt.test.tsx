@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+
 import type { FhevmInstance } from "@/lib/fhevm/types";
 
 import { act, renderHook, waitFor } from "@testing-library/react";

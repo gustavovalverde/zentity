@@ -110,7 +110,8 @@ repos:
       - id: ocr-requirements-lock
         name: pip-compile lock (ocr)
         entry: bash scripts/check-ocr-requirements-lock.sh
-        language: system
+        language: python
+        additional_dependencies: [pip-tools]
         files: ^apps/ocr/(pyproject\.toml|requirements\.lock)$
         pass_filenames: false
 

@@ -2,6 +2,7 @@
  * Integration tests for passkey auth router.
  * Tests registration, authentication, and credential management flows.
  */
+
 import type { Session } from "@/lib/auth/auth";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

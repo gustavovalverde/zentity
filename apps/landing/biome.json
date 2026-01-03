@@ -1,6 +1,20 @@
 {
   "root": false,
   "extends": ["../../biome.json"],
+  "files": {
+    "includes": [
+      "src/**",
+      "index.html",
+      "vite.config.ts",
+      "*.ts",
+      "*.tsx",
+      "*.js",
+      "*.cjs",
+      "*.mjs",
+      "*.json",
+      "*.jsonc"
+    ]
+  },
   "css": {
     "parser": {
       "cssModules": true,

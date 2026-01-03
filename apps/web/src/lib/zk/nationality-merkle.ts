@@ -14,14 +14,6 @@ import { getBarretenberg } from "@/lib/crypto/barretenberg";
 
 import { COUNTRY_CODES, COUNTRY_GROUPS, TREE_DEPTH } from "./nationality-data";
 
-// biome-ignore lint/performance/noBarrelFile: Re-export of nationality data utilities for convenient access
-export {
-  getCountriesInGroup,
-  getNationalityCode,
-  isNationalityInGroup,
-  listGroups,
-} from "./nationality-data";
-
 /**
  * Convert Fr field element to bigint
  */

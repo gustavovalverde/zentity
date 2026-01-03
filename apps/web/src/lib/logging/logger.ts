@@ -13,12 +13,11 @@
  */
 import "server-only";
 
-// biome-ignore lint/style/noExportedImports: Logger type needed locally for return types and exported for consumers
-import pino, { type Logger } from "pino";
+import pino from "pino";
 
 import { REDACT_KEYS } from "./redact";
 
-export type { Logger };
+export type Logger = import("pino").Logger;
 
 const isDev = process.env.NODE_ENV !== "production";
 const logLevel = process.env.LOG_LEVEL || (isDev ? "debug" : "info");

@@ -9,6 +9,8 @@
  */
 "use client";
 
+import type { FaceResult } from "@vladmandic/human";
+import type { HumanDetectionResult, HumanFaceResult } from "@/types/human";
 import type {
   ChallengeState,
   LivenessDebugFrame,
@@ -221,31 +223,55 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       try {
-        const res = result as { face?: unknown[] } | null;
-        const faces = res?.face ?? [];
+        const res = result as HumanDetectionResult | null;
+        const faces = Array.isArray(res?.face) ? res.face : [];
 
         // Mirror coordinates to match the CSS-mirrored video display
         // The video has transform: -scale-x-100, so we need to flip x coords
-        // biome-ignore lint/suspicious/noExplicitAny: Human.js FaceResult type requires type assertion
-        const mirroredFaces = faces.map((face: any) => {
-          if (!face?.box) {
-            return face;
+        const mirroredFaces = faces.map((face): HumanFaceResult => {
+          const box = face.box;
+          let mirroredBox = box;
+
+          if (box) {
+            if (Array.isArray(box)) {
+              const [x, y, w, h] = box;
+              if (
+                typeof x === "number" &&
+                typeof y === "number" &&
+                typeof w === "number" &&
+                typeof h === "number"
+              ) {
+                // Mirror x coordinate: newX = canvasWidth - x - width
+                mirroredBox = [canvas.width - x - w, y, w, h];
+              }
+            } else {
+              const { x, y, width, height } = box;
+              if (
+                typeof x === "number" &&
+                typeof y === "number" &&
+                typeof width === "number" &&
+                typeof height === "number"
+              ) {
+                mirroredBox = {
+                  x: canvas.width - x - width,
+                  y,
+                  width,
+                  height,
+                };
+              }
+            }
           }
-          const [x, y, w, h] = face.box;
-          // Mirror x coordinate: newX = canvasWidth - x - width
-          const mirroredBox = [canvas.width - x - w, y, w, h];
 
           // Also mirror mesh points if present
           let mirroredMesh = face.mesh;
-          if (face.mesh && Array.isArray(face.mesh)) {
-            mirroredMesh = face.mesh.map(
-              (point: [number, number, number] | number[]) => {
-                if (Array.isArray(point) && point.length >= 2) {
-                  return [canvas.width - point[0], point[1], point[2] ?? 0];
-                }
-                return point;
+          if (Array.isArray(face.mesh)) {
+            mirroredMesh = face.mesh.map((point) => {
+              if (Array.isArray(point) && point.length >= 2) {
+                const [x, y, z] = point;
+                return [canvas.width - x, y, z ?? 0];
               }
-            );
+              return point;
+            });
           }
 
           return {
@@ -255,19 +281,14 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
           };
         });
 
-        human.draw?.face?.(
-          canvas,
-          // biome-ignore lint/suspicious/noExplicitAny: Human.js draw API requires their specific FaceResult type
-          mirroredFaces as any,
-          {
-            drawBoxes: true,
-            drawLabels: true,
-            drawPolygons: true,
-            drawPoints: false,
-            drawGaze: false,
-            drawAttention: false,
-          }
-        );
+        human.draw?.face?.(canvas, mirroredFaces as unknown as FaceResult[], {
+          drawBoxes: true,
+          drawLabels: true,
+          drawPolygons: true,
+          drawPoints: false,
+          drawGaze: false,
+          drawAttention: false,
+        });
       } catch {
         // ignore draw errors in debug mode
       }

@@ -37,14 +37,17 @@ export function WizardStepper() {
   const headerRef = useRef<HTMLFieldSetElement>(null);
   const hasMountedRef = useRef(false);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focus the step header on step transitions for keyboard/screen reader users.
   useEffect(() => {
+    const step = state.currentStep;
     // Avoid stealing focus on initial mount (e.g., when a step input uses `autoFocus`).
     if (!hasMountedRef.current) {
       hasMountedRef.current = true;
       return;
     }
-    headerRef.current?.focus();
+    if (headerRef.current) {
+      headerRef.current.dataset.step = String(step);
+      headerRef.current.focus();
+    }
   }, [state.currentStep]);
 
   const handleStepClick = async (stepNumber: number) => {

@@ -105,6 +105,8 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
   const abortControllerRef = useRef<AbortController | null>(null);
   const providerRef = useRef<unknown | undefined>(provider);
   const chainIdRef = useRef<number | undefined>(chainId);
+  const providerIdRef = useRef<string | undefined>(providerId);
+  const refreshCountRef = useRef<number>(refreshCount);
   const mockChainsRef = useRef<Record<number, string> | undefined>(
     initialMockChains as Record<number, string> | undefined
   );
@@ -119,6 +121,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
     // Update refs with current values
     providerRef.current = provider;
     chainIdRef.current = chainId;
+    providerIdRef.current = providerId;
     mockChainsRef.current = initialMockChains as
       | Record<number, string>
       | undefined;
@@ -130,12 +133,11 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
 
     // Trigger re-initialization via refreshCount change
     setRefreshCount((prev) => prev + 1);
-  }, [provider, chainId, initialMockChains]);
+  }, [provider, chainId, initialMockChains, providerId]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: providerId must trigger SDK refresh
   useEffect(() => {
     refresh();
-  }, [refresh, providerId]);
+  }, [refresh]);
 
   // Keep mock chains in sync if config changes after mount
   useEffect(() => {
@@ -148,9 +150,8 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
     setIsRunning(enabled);
   }, [enabled]);
 
-  // refreshCount is intentionally in deps to trigger re-initialization on refresh()
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshCount triggers re-init
   useEffect(() => {
+    refreshCountRef.current = refreshCount;
     if (!isRunning) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -184,6 +185,8 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
     const thisSignal = abortControllerRef.current.signal;
     const thisProvider = providerRef.current;
     const thisMockChains = mockChainsRef.current;
+    const thisProviderId = providerIdRef.current;
+    const thisRefresh = refreshCount;
 
     const onStatusChange = (_s: FhevmRelayerStatusType) => {
       if (process.env.NODE_ENV === "development") {
@@ -196,10 +199,10 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
       provider: thisProvider,
       mockChains: thisMockChains,
       onStatusChange,
-      providerId,
+      providerId: thisProviderId,
     })
       .then((i) => {
-        if (thisSignal.aborted) {
+        if (thisSignal.aborted || thisRefresh !== refreshCountRef.current) {
           return;
         }
         assert(
@@ -212,7 +215,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
         setStatus("ready");
       })
       .catch((e) => {
-        if (thisSignal.aborted) {
+        if (thisSignal.aborted || thisRefresh !== refreshCountRef.current) {
           return;
         }
         assert(

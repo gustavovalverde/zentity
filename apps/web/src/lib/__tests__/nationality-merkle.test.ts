@@ -5,12 +5,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  generateNationalityProofInputs,
   getCountriesInGroup,
-  getMerkleRoot,
   getNationalityCode,
   isNationalityInGroup,
   listGroups,
+} from "../zk/nationality-data";
+import {
+  generateNationalityProofInputs,
+  getMerkleRoot,
 } from "../zk/nationality-merkle";
 
 /** Matches a lowercase hex string with 0x prefix */
