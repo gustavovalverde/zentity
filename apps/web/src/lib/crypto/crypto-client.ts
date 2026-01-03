@@ -21,6 +21,7 @@ import {
   getOrCreateFheKeyMaterialWithPasskey,
   persistFheKeyId,
 } from "@/lib/crypto/tfhe-browser";
+import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { trpc } from "@/lib/trpc/client";
 import { bytesToBase64 } from "@/lib/utils/base64";
 import {
@@ -37,6 +38,36 @@ interface ProofResult {
   proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
   generationTimeMs: number;
+}
+
+type ClientProofType =
+  | "age_verification"
+  | "doc_validity"
+  | "face_match"
+  | "nationality_membership";
+
+function recordProofSuccess(
+  proofType: ClientProofType,
+  result: { proof: Uint8Array; generationTimeMs: number }
+): void {
+  recordClientMetric({
+    name: "client.noir.proof.duration",
+    value: result.generationTimeMs,
+    attributes: { proof_type: proofType, result: "ok" },
+  });
+  recordClientMetric({
+    name: "client.noir.proof.bytes",
+    value: result.proof.byteLength,
+    attributes: { proof_type: proofType },
+  });
+}
+
+function recordProofError(proofType: ClientProofType, startTime: number): void {
+  recordClientMetric({
+    name: "client.noir.proof.duration",
+    value: performance.now() - startTime,
+    attributes: { proof_type: proofType, result: "error" },
+  });
 }
 
 // Types for FHE operations
@@ -77,21 +108,28 @@ export async function generateAgeProof(
   }
 ): Promise<ProofResult> {
   const nonce = options.nonce;
+  const startTime = performance.now();
 
-  const result = await generateAgeProofNoir({
-    birthYear,
-    currentYear,
-    minAge,
-    nonce,
-    documentHashField: options.documentHashField,
-    claimHash: options.claimHash,
-  });
+  try {
+    const result = await generateAgeProofNoir({
+      birthYear,
+      currentYear,
+      minAge,
+      nonce,
+      documentHashField: options.documentHashField,
+      claimHash: options.claimHash,
+    });
+    recordProofSuccess("age_verification", result);
 
-  return {
-    proof: bytesToBase64(result.proof),
-    publicSignals: result.publicInputs,
-    generationTimeMs: result.generationTimeMs,
-  };
+    return {
+      proof: bytesToBase64(result.proof),
+      publicSignals: result.publicInputs,
+      generationTimeMs: result.generationTimeMs,
+    };
+  } catch (error) {
+    recordProofError("age_verification", startTime);
+    throw error;
+  }
 }
 
 /**
@@ -116,19 +154,27 @@ async function _generateNationalityProof(
 ): Promise<ProofResult> {
   const { nationalityCode, groupName, nonce, documentHashField, claimHash } =
     options;
-  const result = await generateNationalityProofNoir({
-    nationalityCode,
-    groupName,
-    nonce,
-    documentHashField,
-    claimHash,
-  });
+  const startTime = performance.now();
 
-  return {
-    proof: bytesToBase64(result.proof),
-    publicSignals: result.publicInputs,
-    generationTimeMs: result.generationTimeMs,
-  };
+  try {
+    const result = await generateNationalityProofNoir({
+      nationalityCode,
+      groupName,
+      nonce,
+      documentHashField,
+      claimHash,
+    });
+    recordProofSuccess("nationality_membership", result);
+
+    return {
+      proof: bytesToBase64(result.proof),
+      publicSignals: result.publicInputs,
+      generationTimeMs: result.generationTimeMs,
+    };
+  } catch (error) {
+    recordProofError("nationality_membership", startTime);
+    throw error;
+  }
 }
 
 export function generateNationalityProof(
@@ -170,20 +216,27 @@ export async function generateDocValidityProof(
   options: { nonce: string; documentHashField: string; claimHash: string }
 ): Promise<ProofResult> {
   const nonce = options.nonce;
+  const startTime = performance.now();
 
-  const result = await generateDocValidityProofNoir({
-    expiryDate,
-    currentDate,
-    nonce,
-    documentHashField: options.documentHashField,
-    claimHash: options.claimHash,
-  });
+  try {
+    const result = await generateDocValidityProofNoir({
+      expiryDate,
+      currentDate,
+      nonce,
+      documentHashField: options.documentHashField,
+      claimHash: options.claimHash,
+    });
+    recordProofSuccess("doc_validity", result);
 
-  return {
-    proof: bytesToBase64(result.proof),
-    publicSignals: result.publicInputs,
-    generationTimeMs: result.generationTimeMs,
-  };
+    return {
+      proof: bytesToBase64(result.proof),
+      publicSignals: result.publicInputs,
+      generationTimeMs: result.generationTimeMs,
+    };
+  } catch (error) {
+    recordProofError("doc_validity", startTime);
+    throw error;
+  }
 }
 
 /**
@@ -201,20 +254,27 @@ export async function generateFaceMatchProof(
   options: { nonce: string; documentHashField: string; claimHash: string }
 ): Promise<ProofResult> {
   const nonce = options.nonce;
+  const startTime = performance.now();
 
-  const result = await generateFaceMatchProofNoir({
-    similarityScore,
-    threshold,
-    nonce,
-    documentHashField: options.documentHashField,
-    claimHash: options.claimHash,
-  });
+  try {
+    const result = await generateFaceMatchProofNoir({
+      similarityScore,
+      threshold,
+      nonce,
+      documentHashField: options.documentHashField,
+      claimHash: options.claimHash,
+    });
+    recordProofSuccess("face_match", result);
 
-  return {
-    proof: bytesToBase64(result.proof),
-    publicSignals: result.publicInputs,
-    generationTimeMs: result.generationTimeMs,
-  };
+    return {
+      proof: bytesToBase64(result.proof),
+      publicSignals: result.publicInputs,
+      generationTimeMs: result.generationTimeMs,
+    };
+  } catch (error) {
+    recordProofError("face_match", startTime);
+    throw error;
+  }
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getOnboardingFlowId } from "@/lib/observability/flow-client";
 
 export default function Error({
   error,
@@ -28,9 +29,13 @@ export default function Error({
       stack: error.stack,
     };
 
+    const flowId = getOnboardingFlowId();
     fetch("/api/log-client-error", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(flowId ? { "X-Zentity-Flow-Id": flowId } : {}),
+      },
       body: JSON.stringify(payload),
     }).catch(() => {
       // Logging failure shouldn't cascade to user

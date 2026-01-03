@@ -47,6 +47,8 @@ import type { EncryptResult, FhevmInstance } from "@/lib/fhevm/types";
 
 import { useCallback, useMemo } from "react";
 
+import { recordClientMetric } from "@/lib/observability/client-metrics";
+
 /** ABI input/output parameter definition */
 interface AbiParameter {
   name: string;
@@ -188,8 +190,25 @@ export const useFHEEncryption = (params: UseFHEEncryptionParams) => {
       buildFn(input);
 
       // Encrypt all values and generate ZK proof of correct encryption
-      const enc = await input.encrypt();
-      return enc;
+      const start = performance.now();
+      let result: "ok" | "error" = "ok";
+      try {
+        const enc = await input.encrypt();
+        recordClientMetric({
+          name: "client.fhevm.encrypt.proof.bytes",
+          value: enc.inputProof.byteLength,
+        });
+        return enc;
+      } catch (error) {
+        result = "error";
+        throw error;
+      } finally {
+        recordClientMetric({
+          name: "client.fhevm.encrypt.duration",
+          value: performance.now() - start,
+          attributes: { result },
+        });
+      }
     },
     [instance, ethersSigner, contractAddress]
   );

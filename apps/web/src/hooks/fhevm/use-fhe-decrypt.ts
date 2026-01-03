@@ -54,6 +54,7 @@ import type { FHEDecryptRequest, FhevmInstance } from "@/lib/fhevm/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FhevmDecryptionSignature } from "@/lib/fhevm/fhevm-decryption-signature";
+import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 interface UseFHEDecryptParams {
   /** FHEVM SDK instance (from useFhevmSdk) */
@@ -161,6 +162,36 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
         thisSigner !== ethersSigner ||
         requestsKey !== lastReqKeyRef.current;
 
+      const decryptWithMetrics = async (decryptParams: {
+        instance: FhevmInstance;
+        requests: Array<{ handle: string; contractAddress: string }>;
+        signature: FhevmDecryptionSignature;
+      }): Promise<Record<string, string | bigint | boolean>> => {
+        const start = performance.now();
+        let result: "ok" | "error" = "ok";
+        try {
+          return await decryptParams.instance.userDecrypt(
+            decryptParams.requests,
+            decryptParams.signature.privateKey,
+            decryptParams.signature.publicKey,
+            decryptParams.signature.signature,
+            decryptParams.signature.contractAddresses,
+            decryptParams.signature.userAddress,
+            decryptParams.signature.startTimestamp,
+            decryptParams.signature.durationDays
+          );
+        } catch (decryptError) {
+          result = "error";
+          throw decryptError;
+        } finally {
+          recordClientMetric({
+            name: "client.fhevm.decrypt.duration",
+            value: performance.now() - start,
+            attributes: { result },
+          });
+        }
+      };
+
       try {
         // Collect unique contracts for signature scope
         const uniqueAddresses = Array.from(
@@ -203,16 +234,11 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
         let res: Record<string, string | bigint | boolean> = {};
         try {
           // Call SDK's userDecrypt - this contacts the Gateway/KMS
-          res = await instance.userDecrypt(
-            mutableReqs,
-            sig.privateKey,
-            sig.publicKey,
-            sig.signature,
-            sig.contractAddresses,
-            sig.userAddress,
-            sig.startTimestamp,
-            sig.durationDays
-          );
+          res = await decryptWithMetrics({
+            instance,
+            requests: mutableReqs,
+            signature: sig,
+          });
         } catch (e) {
           const err = e as { name?: string; message?: string };
           const msg =
@@ -254,16 +280,11 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
 
             // Retry with fresh signature
             try {
-              res = await instance.userDecrypt(
-                mutableReqs,
-                sig.privateKey,
-                sig.publicKey,
-                sig.signature,
-                sig.contractAddresses,
-                sig.userAddress,
-                sig.startTimestamp,
-                sig.durationDays
-              );
+              res = await decryptWithMetrics({
+                instance,
+                requests: mutableReqs,
+                signature: sig,
+              });
             } catch (retryError) {
               const retryMsg =
                 retryError &&
@@ -312,16 +333,11 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
                 }
 
                 try {
-                  res = await refreshedInstance.userDecrypt(
-                    mutableReqs,
-                    sig.privateKey,
-                    sig.publicKey,
-                    sig.signature,
-                    sig.contractAddresses,
-                    sig.userAddress,
-                    sig.startTimestamp,
-                    sig.durationDays
-                  );
+                  res = await decryptWithMetrics({
+                    instance: refreshedInstance,
+                    requests: mutableReqs,
+                    signature: sig,
+                  });
                 } catch (finalError) {
                   const finalMsg =
                     finalError &&

@@ -5,6 +5,10 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { decode, encode } from "@msgpack/msgpack";
 
 import {
+  recordFheDuration,
+  recordFhePayloadBytes,
+} from "@/lib/observability/metrics";
+import {
   hashIdentifier,
   injectTraceHeaders,
   withSpan,
@@ -13,7 +17,8 @@ import { HttpError } from "@/lib/utils/http";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 
 function getInternalServiceAuthHeaders(
-  requestId?: string
+  requestId?: string,
+  flowId?: string
 ): Record<string, string> {
   const token = process.env.INTERNAL_SERVICE_TOKEN;
   const headers: Record<string, string> = {};
@@ -22,6 +27,9 @@ function getInternalServiceAuthHeaders(
   }
   if (requestId) {
     headers["X-Request-Id"] = requestId;
+  }
+  if (flowId) {
+    headers["X-Zentity-Flow-Id"] = flowId;
   }
   return headers;
 }
@@ -145,13 +153,30 @@ async function withFheError<T>(
   operation: FheOperation,
   run: () => Promise<T>
 ): Promise<T> {
+  const start = performance.now();
   try {
-    return await run();
+    const result = await run();
+    recordFheDuration(performance.now() - start, {
+      operation,
+      result: "ok",
+    });
+    return result;
   } catch (error) {
+    const durationMs = performance.now() - start;
     if (error instanceof FheServiceError) {
+      recordFheDuration(durationMs, {
+        operation,
+        result: "error",
+        error_kind: error.kind,
+      });
       throw error;
     }
     if (error instanceof HttpError) {
+      recordFheDuration(durationMs, {
+        operation,
+        result: "error",
+        error_kind: "http",
+      });
       throw new FheServiceError({
         operation,
         message: error.message,
@@ -161,6 +186,11 @@ async function withFheError<T>(
       });
     }
     if (error instanceof Error && error.name === "TimeoutError") {
+      recordFheDuration(durationMs, {
+        operation,
+        result: "error",
+        error_kind: "timeout",
+      });
       throw new FheServiceError({
         operation,
         message: error.message,
@@ -168,12 +198,22 @@ async function withFheError<T>(
       });
     }
     if (error instanceof Error) {
+      recordFheDuration(durationMs, {
+        operation,
+        result: "error",
+        error_kind: "network",
+      });
       throw new FheServiceError({
         operation,
         message: error.message,
         kind: "network",
       });
     }
+    recordFheDuration(durationMs, {
+      operation,
+      result: "error",
+      error_kind: "unknown",
+    });
     throw new FheServiceError({
       operation,
       message: "Unknown FHE service error",
@@ -229,6 +269,7 @@ export function encryptBatchFhe(args: {
   complianceLevel?: number;
   livenessScore?: number;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheBatchEncryptResponse> {
   const url = `${getFheServiceUrl()}/encrypt-batch`;
   const payload = {
@@ -239,6 +280,7 @@ export function encryptBatchFhe(args: {
     livenessScore: args.livenessScore,
   };
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
+  recordFhePayloadBytes(payloadBytes, { operation: "encrypt_batch" });
   return withFheError("encrypt_batch", () =>
     withSpan(
       "fhe.encrypt_batch",
@@ -251,7 +293,7 @@ export function encryptBatchFhe(args: {
         fetchMsgpack<FheBatchEncryptResponse>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId)
+            getInternalServiceAuthHeaders(args.requestId, args.flowId)
           ),
         })
     )
@@ -262,11 +304,13 @@ export async function encryptBirthYearOffsetFhe(args: {
   birthYearOffset: number;
   keyId: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheCiphertextResult> {
   const result = await encryptBatchFhe({
     keyId: args.keyId,
     birthYearOffset: args.birthYearOffset,
     requestId: args.requestId,
+    flowId: args.flowId,
   });
   const ciphertext = result.birthYearOffsetCiphertext;
   if (!ciphertext) {
@@ -283,11 +327,13 @@ export async function encryptComplianceLevelFhe(args: {
   complianceLevel: number;
   keyId: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheCiphertextResult> {
   const result = await encryptBatchFhe({
     keyId: args.keyId,
     complianceLevel: args.complianceLevel,
     requestId: args.requestId,
+    flowId: args.flowId,
   });
   const ciphertext = result.complianceLevelCiphertext;
   if (!ciphertext) {
@@ -304,11 +350,13 @@ export async function encryptLivenessScoreFhe(args: {
   score: number;
   keyId: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheEncryptLivenessResult> {
   const result = await encryptBatchFhe({
     keyId: args.keyId,
     livenessScore: args.score,
     requestId: args.requestId,
+    flowId: args.flowId,
   });
   const ciphertext = result.livenessScoreCiphertext;
   if (!ciphertext) {
@@ -325,6 +373,7 @@ export function registerFheKey(args: {
   serverKey: string;
   publicKey: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheRegisterKeyResult> {
   const url = `${getFheServiceUrl()}/keys/register`;
   const payload = {
@@ -334,6 +383,7 @@ export function registerFheKey(args: {
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
   const serverKeyBytes = Buffer.byteLength(args.serverKey);
   const publicKeyBytes = Buffer.byteLength(args.publicKey);
+  recordFhePayloadBytes(payloadBytes, { operation: "register_key" });
   return withFheError("register_key", () =>
     withSpan(
       "fhe.register_key",
@@ -347,7 +397,7 @@ export function registerFheKey(args: {
         fetchMsgpack<FheRegisterKeyResult>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId)
+            getInternalServiceAuthHeaders(args.requestId, args.flowId)
           ),
         })
     )
@@ -360,6 +410,7 @@ export function verifyAgeFhe(args: {
   minAge: number;
   keyId: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheVerifyAgeResult> {
   const url = `${getFheServiceUrl()}/verify-age-offset`;
   const payload = {
@@ -370,6 +421,7 @@ export function verifyAgeFhe(args: {
   };
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
   const ciphertextBytes = Buffer.byteLength(args.ciphertext);
+  recordFhePayloadBytes(payloadBytes, { operation: "verify_age_offset" });
   return withFheError("verify_age_offset", () =>
     withSpan(
       "fhe.verify_age_offset",
@@ -383,7 +435,7 @@ export function verifyAgeFhe(args: {
         fetchMsgpack<FheVerifyAgeResult>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId)
+            getInternalServiceAuthHeaders(args.requestId, args.flowId)
           ),
         })
     )
@@ -395,6 +447,7 @@ export function verifyLivenessThresholdFhe(args: {
   threshold: number;
   keyId: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<FheVerifyLivenessThresholdResult> {
   const url = `${getFheServiceUrl()}/verify-liveness-threshold`;
   const payload = {
@@ -404,6 +457,9 @@ export function verifyLivenessThresholdFhe(args: {
   };
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
   const ciphertextBytes = Buffer.byteLength(args.ciphertext);
+  recordFhePayloadBytes(payloadBytes, {
+    operation: "verify_liveness_threshold",
+  });
   return withFheError("verify_liveness_threshold", () =>
     withSpan(
       "fhe.verify_liveness_threshold",
@@ -417,7 +473,7 @@ export function verifyLivenessThresholdFhe(args: {
         fetchMsgpack<FheVerifyLivenessThresholdResult>(url, payload, {
           method: "POST",
           headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId)
+            getInternalServiceAuthHeaders(args.requestId, args.flowId)
           ),
         })
     )

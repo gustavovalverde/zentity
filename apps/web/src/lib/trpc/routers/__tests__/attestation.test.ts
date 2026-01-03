@@ -82,6 +82,9 @@ async function createCaller(session: Session | null) {
     resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
+    flowId: null,
+    flowIdSource: "none",
+    onboardingSessionId: null,
   });
 }
 

@@ -1,9 +1,12 @@
-import { randomUUID } from "node:crypto";
-
 import { type NextRequest, NextResponse } from "next/server";
 
 import { createRequestLogger } from "@/lib/logging/logger";
 import { sanitizeLogMessage } from "@/lib/logging/redact";
+import {
+  attachRequestContextToSpan,
+  getRequestLogBindings,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 
 interface ClientErrorPayload {
   name?: string;
@@ -25,11 +28,12 @@ function sanitizePath(path: string | undefined): string | undefined {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const requestId =
-    request.headers.get("x-request-id") ||
-    request.headers.get("x-correlation-id") ||
-    randomUUID();
-  const log = createRequestLogger(requestId);
+  const requestContext = await resolveRequestContext(request.headers);
+  attachRequestContextToSpan(requestContext);
+  const log = createRequestLogger(
+    requestContext.requestId,
+    getRequestLogBindings(requestContext)
+  );
 
   let payload: ClientErrorPayload | null = null;
   try {

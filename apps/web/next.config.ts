@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployments
   output: "standalone",
 
+  experimental: {
+    // Required for large tRPC payloads (e.g., encrypted secrets) when using proxy.ts
+    proxyClientMaxBodySize: "100mb",
+  },
+
   // Deterministic build ID for reproducible builds
   // Uses GIT_SHA from CI or falls back to git command
   generateBuildId: async () => {

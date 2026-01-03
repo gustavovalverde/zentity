@@ -20,6 +20,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import { logger } from "@/lib/logging/logger";
+import { recordZkVerifyDuration } from "@/lib/observability/metrics";
 // Circuit artifacts (compiled from Noir)
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
@@ -464,6 +465,7 @@ export function getCircuitIdentity(
 export async function verifyNoirProof(
   input: NoirVerifyInput
 ): Promise<NoirVerifyResult> {
+  const start = performance.now();
   const identity = await getCircuitIdentity(input.circuitType);
   const bbVersion = getBbJsVersion();
 
@@ -480,6 +482,11 @@ export async function verifyNoirProof(
       publicInputs,
     });
 
+    recordZkVerifyDuration(workerResult.verificationTimeMs, {
+      circuit_type: input.circuitType,
+      result: "ok",
+    });
+
     return {
       isValid: workerResult.isValid,
       verificationTimeMs: workerResult.verificationTimeMs,
@@ -491,6 +498,10 @@ export async function verifyNoirProof(
       bbVersion,
     };
   } catch (error) {
+    recordZkVerifyDuration(performance.now() - start, {
+      circuit_type: input.circuitType,
+      result: "error",
+    });
     throw new Error(
       `Proof verification failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );

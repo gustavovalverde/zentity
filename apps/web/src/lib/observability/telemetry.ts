@@ -11,18 +11,23 @@ import {
   trace,
 } from "@opentelemetry/api";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import {
   defaultResource,
   resourceFromAttributes,
 } from "@opentelemetry/resources";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 
-const DEFAULT_OTLP_ENDPOINT = "http://localhost:4318/v1/traces";
+const DEFAULT_OTLP_TRACE_ENDPOINT = "http://localhost:4318/v1/traces";
+const DEFAULT_OTLP_METRICS_ENDPOINT = "http://localhost:4318/v1/metrics";
+const OTLP_SIGNAL_SUFFIX_REGEX = /\/v1\/(traces|metrics|logs)$/;
+const TRAILING_SLASH_REGEX = /\/$/;
 
 let sdk: NodeSDK | null = null;
 
@@ -48,11 +53,11 @@ function parseHeaders(raw?: string): Record<string, string> | undefined {
   return Object.keys(headers).length ? headers : undefined;
 }
 
-function getServiceName(): string {
+export function getServiceName(): string {
   return process.env.OTEL_SERVICE_NAME || "zentity-web";
 }
 
-function getServiceVersion(): string {
+export function getServiceVersion(): string {
   return (
     process.env.APP_VERSION ||
     process.env.VERCEL_GIT_COMMIT_SHA ||
@@ -70,11 +75,71 @@ function getEnvironmentName(): string {
   );
 }
 
-export function telemetryEnabled(): boolean {
+function tracingEnabled(): boolean {
   return (
     process.env.OTEL_ENABLED === "true" ||
     Boolean(process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
   );
+}
+
+function metricsEnabled(): boolean {
+  return (
+    process.env.OTEL_ENABLED === "true" ||
+    Boolean(process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) ||
+    Boolean(process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
+  );
+}
+
+export function telemetryEnabled(): boolean {
+  return tracingEnabled() || metricsEnabled();
+}
+
+function resolveOtlpEndpoint(signal: "traces" | "metrics"): string {
+  const specificEnv =
+    signal === "traces"
+      ? process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+      : process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+
+  if (specificEnv) {
+    return specificEnv;
+  }
+
+  const shared = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  if (shared) {
+    if (shared.endsWith(`/v1/${signal}`)) {
+      return shared;
+    }
+    if (shared.endsWith("/v1")) {
+      return `${shared}/${signal}`;
+    }
+    if (shared.endsWith("/v1/")) {
+      return `${shared}${signal}`;
+    }
+    const normalized = shared.replace(
+      OTLP_SIGNAL_SUFFIX_REGEX,
+      `/v1/${signal}`
+    );
+    if (normalized !== shared) {
+      return normalized;
+    }
+    return `${shared.replace(TRAILING_SLASH_REGEX, "")}/v1/${signal}`;
+  }
+
+  return signal === "traces"
+    ? DEFAULT_OTLP_TRACE_ENDPOINT
+    : DEFAULT_OTLP_METRICS_ENDPOINT;
+}
+
+function getMetricsExportIntervalMs(): number {
+  const raw = process.env.OTEL_METRICS_EXPORT_INTERVAL_MS;
+  if (!raw) {
+    return 60_000;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return 60_000;
+  }
+  return parsed;
 }
 
 export function initTelemetry(): void {
@@ -85,14 +150,25 @@ export function initTelemetry(): void {
     return;
   }
 
-  const endpoint =
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT || DEFAULT_OTLP_ENDPOINT;
+  const traceEndpoint = resolveOtlpEndpoint("traces");
+  const metricsEndpoint = resolveOtlpEndpoint("metrics");
   const headers = parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS);
 
-  const exporter = new OTLPTraceExporter({
-    url: endpoint,
-    headers,
-  });
+  const traceExporter = tracingEnabled()
+    ? new OTLPTraceExporter({
+        url: traceEndpoint,
+        headers,
+      })
+    : undefined;
+  const metricReader = metricsEnabled()
+    ? new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter({
+          url: metricsEndpoint,
+          headers,
+        }),
+        exportIntervalMillis: getMetricsExportIntervalMs(),
+      })
+    : undefined;
 
   const resource = defaultResource().merge(
     resourceFromAttributes({
@@ -104,23 +180,32 @@ export function initTelemetry(): void {
 
   sdk = new NodeSDK({
     resource,
-    traceExporter: exporter,
-    instrumentations: [
-      getNodeAutoInstrumentations({
-        "@opentelemetry/instrumentation-http": {
-          ignoreIncomingRequestHook: (req) => {
-            const url = req.url ?? "";
-            return (
-              url.startsWith("/_next") ||
-              url.startsWith("/favicon") ||
-              url.startsWith("/robots.txt") ||
-              url.startsWith("/api/health") ||
-              url.startsWith("/health")
-            );
-          },
-        },
-      }),
-    ],
+    traceExporter,
+    metricReader,
+    instrumentations: tracingEnabled()
+      ? [
+          getNodeAutoInstrumentations({
+            "@opentelemetry/instrumentation-http": {
+              ignoreIncomingRequestHook: (req) => {
+                const url = req.url ?? "";
+                return (
+                  url.startsWith("/_next") ||
+                  url.startsWith("/favicon") ||
+                  url.startsWith("/robots.txt") ||
+                  url.startsWith("/api/health") ||
+                  url.startsWith("/api/ocr/health") ||
+                  url.startsWith("/api/crypto/health") ||
+                  url.startsWith("/api/password/pwned") ||
+                  url.startsWith("/api/metrics/client") ||
+                  url.startsWith("/api/build-info") ||
+                  url.startsWith("/api/fhevm/diagnostics") ||
+                  url.startsWith("/health")
+                );
+              },
+            },
+          }),
+        ]
+      : [],
   });
 
   sdk.start();

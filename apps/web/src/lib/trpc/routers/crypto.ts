@@ -63,10 +63,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
-import {
-  hashIdentifier,
-  injectTraceHeaders,
-} from "@/lib/observability/telemetry";
+import { hashIdentifier } from "@/lib/observability/telemetry";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import { getTodayAsInt } from "@/lib/zk/noir-prover";
 import {
@@ -109,7 +106,9 @@ async function checkServiceUncached(
   try {
     const response = await fetch(`${url}/health`, {
       signal: controller.signal,
-      headers: injectTraceHeaders({}),
+      headers: {
+        "X-Zentity-Healthcheck": "true",
+      },
     });
     clearTimeout(timeoutId);
 
@@ -553,6 +552,7 @@ export const cryptoRouter = router({
         serverKey: input.serverKey,
         publicKey: input.publicKey,
         requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
       });
     }),
 
@@ -577,6 +577,7 @@ export const cryptoRouter = router({
         minAge: input.minAge ?? 18,
         keyId: input.keyId,
         requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
       });
 
       return {
@@ -597,6 +598,7 @@ export const cryptoRouter = router({
         score: input.score,
         keyId: input.keyId,
         requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
       });
 
       return {
@@ -619,6 +621,7 @@ export const cryptoRouter = router({
         threshold: input.threshold ?? 0.3,
         keyId: input.keyId,
         requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
       });
 
       return {
@@ -873,6 +876,7 @@ export const cryptoRouter = router({
             complianceLevel,
             keyId: bundle.fheKeyId,
             requestId: ctx.requestId,
+            flowId: ctx.flowId ?? undefined,
           });
           insertEncryptedAttribute({
             id: crypto.randomUUID(),

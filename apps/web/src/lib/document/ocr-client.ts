@@ -1,11 +1,17 @@
 import "server-only";
 
+import {
+  recordOcrDuration,
+  recordOcrImageBytes,
+  recordOcrPayloadBytes,
+} from "@/lib/observability/metrics";
 import { injectTraceHeaders, withSpan } from "@/lib/observability/telemetry";
 import { fetchJson } from "@/lib/utils/http";
 import { getOcrServiceUrl } from "@/lib/utils/service-urls";
 
 function getInternalServiceAuthHeaders(
-  requestId?: string
+  requestId?: string,
+  flowId?: string
 ): Record<string, string> {
   const token = process.env.INTERNAL_SERVICE_TOKEN;
   const headers: Record<string, string> = {};
@@ -14,6 +20,9 @@ function getInternalServiceAuthHeaders(
   }
   if (requestId) {
     headers["X-Request-Id"] = requestId;
+  }
+  if (flowId) {
+    headers["X-Zentity-Flow-Id"] = flowId;
   }
   return headers;
 }
@@ -48,10 +57,40 @@ export interface OcrProcessResult {
 /** OCR processing timeout (40 seconds) - slightly less than client timeout. */
 const OCR_TIMEOUT_MS = 40_000;
 
+async function withOcrMetrics<T>(args: {
+  operation: "process_document" | "ocr_document" | "health";
+  payloadBytes?: number;
+  imageBytes?: number;
+  run: () => Promise<T>;
+}): Promise<T> {
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+
+  if (typeof args.payloadBytes === "number") {
+    recordOcrPayloadBytes(args.payloadBytes, { operation: args.operation });
+  }
+  if (typeof args.imageBytes === "number") {
+    recordOcrImageBytes(args.imageBytes, { operation: args.operation });
+  }
+
+  try {
+    return await args.run();
+  } catch (error) {
+    result = "error";
+    throw error;
+  } finally {
+    recordOcrDuration(performance.now() - start, {
+      operation: args.operation,
+      result,
+    });
+  }
+}
+
 export function processDocumentOcr(args: {
   image: string;
   userSalt?: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<OcrProcessResult> {
   const url = `${getOcrServiceUrl()}/process`;
   const payload = JSON.stringify({
@@ -68,14 +107,20 @@ export function processDocumentOcr(args: {
       "ocr.image_bytes": imageBytes,
     },
     () =>
-      fetchJson<OcrProcessResult>(url, {
-        method: "POST",
-        headers: injectTraceHeaders({
-          "Content-Type": "application/json",
-          ...getInternalServiceAuthHeaders(args.requestId),
-        }),
-        body: payload,
-        timeoutMs: OCR_TIMEOUT_MS,
+      withOcrMetrics({
+        operation: "process_document",
+        payloadBytes,
+        imageBytes,
+        run: () =>
+          fetchJson<OcrProcessResult>(url, {
+            method: "POST",
+            headers: injectTraceHeaders({
+              "Content-Type": "application/json",
+              ...getInternalServiceAuthHeaders(args.requestId, args.flowId),
+            }),
+            body: payload,
+            timeoutMs: OCR_TIMEOUT_MS,
+          }),
       })
   );
 }
@@ -83,6 +128,7 @@ export function processDocumentOcr(args: {
 export function ocrDocumentOcr(args: {
   image: string;
   requestId?: string;
+  flowId?: string;
 }): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/ocr`;
   const payload = JSON.stringify({ image: args.image });
@@ -96,25 +142,46 @@ export function ocrDocumentOcr(args: {
       "ocr.image_bytes": imageBytes,
     },
     () =>
-      fetchJson<unknown>(url, {
-        method: "POST",
-        headers: injectTraceHeaders({
-          "Content-Type": "application/json",
-          ...getInternalServiceAuthHeaders(args.requestId),
-        }),
-        body: payload,
-        timeoutMs: OCR_TIMEOUT_MS,
+      withOcrMetrics({
+        operation: "ocr_document",
+        payloadBytes,
+        imageBytes,
+        run: () =>
+          fetchJson<unknown>(url, {
+            method: "POST",
+            headers: injectTraceHeaders({
+              "Content-Type": "application/json",
+              ...getInternalServiceAuthHeaders(args.requestId, args.flowId),
+            }),
+            body: payload,
+            timeoutMs: OCR_TIMEOUT_MS,
+          }),
       })
   );
 }
 
-export function getOcrHealth(args?: { requestId?: string }): Promise<unknown> {
+export function getOcrHealth(args?: {
+  requestId?: string;
+  flowId?: string;
+  trace?: boolean;
+}): Promise<unknown> {
   const url = `${getOcrServiceUrl()}/health`;
-  return withSpan("ocr.health", { "ocr.operation": "health" }, () =>
+  const run = () =>
     fetchJson<unknown>(url, {
       headers: injectTraceHeaders({
-        ...getInternalServiceAuthHeaders(args?.requestId),
+        "X-Zentity-Healthcheck": "true",
+        ...getInternalServiceAuthHeaders(args?.requestId, args?.flowId),
       }),
-    })
-  );
+    });
+  const runWithMetrics = () =>
+    withOcrMetrics({
+      operation: "health",
+      run,
+    });
+
+  if (args?.trace === false) {
+    return runWithMetrics();
+  }
+
+  return withSpan("ocr.health", { "ocr.operation": "health" }, runWithMetrics);
 }

@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { ocrDocumentOcr } from "@/lib/document/ocr-client";
+import {
+  attachRequestContextToSpan,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 import { HttpError } from "@/lib/utils/http";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
@@ -13,6 +17,8 @@ interface OCRRequest {
  * Proxy to OCR service /ocr endpoint for document processing
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const requestContext = await resolveRequestContext(request.headers);
+  attachRequestContextToSpan(requestContext);
   try {
     const body: OCRRequest = await request.json();
 
@@ -20,13 +26,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Image is required" }, { status: 400 });
     }
 
-    const requestId =
-      request.headers.get("x-request-id") ||
-      request.headers.get("x-correlation-id") ||
-      undefined;
     const data = await ocrDocumentOcr({
       image: body.image,
-      requestId,
+      requestId: requestContext.requestId,
+      flowId: requestContext.flowId ?? undefined,
     });
     return NextResponse.json(data);
   } catch (error) {

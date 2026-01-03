@@ -22,76 +22,14 @@ import type { AppRouter } from "@/lib/trpc/routers/app";
 import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 
+import { getOnboardingFlowId } from "@/lib/observability/flow-client";
+
 function getTrpcUrl(): string {
   // Same-origin requests to avoid CORS; routed via Next.js API handler.
   return "/api/trpc";
 }
 
 const TRPC_REQUEST_TIMEOUT_MS = 60_000;
-
-const REDACT_KEYS = new Set([
-  // Common image payload keys used across the app
-  "image",
-  "documentImage",
-  "selfieImage",
-  "baselineImage",
-  "frameData",
-  "idImage",
-  // Passkey-wrapped secret payloads
-  "encryptedBlob",
-  "wrappedDek",
-  "prfSalt",
-  "credentialId",
-]);
-
-function sanitizeForLog(
-  value: unknown,
-  depth = 0,
-  seen?: WeakSet<object>
-): unknown {
-  if (depth > 4) {
-    return "[depth]";
-  }
-
-  if (typeof value === "string") {
-    if (value.startsWith("data:image/")) {
-      return `<data:image redacted (${value.length} chars)>`;
-    }
-    if (value.length > 500) {
-      return `<string redacted (${value.length} chars)>`;
-    }
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    const items: unknown[] = value
-      .slice(0, 20)
-      .map((v) => sanitizeForLog(v, depth + 1, seen));
-    if (value.length > 20) {
-      items.push(`<… +${value.length - 20} more>`);
-    }
-    return items;
-  }
-
-  if (value && typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const set = seen ?? new WeakSet<object>();
-    if (set.has(obj)) {
-      return "[circular]";
-    }
-    set.add(obj);
-
-    const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(obj)) {
-      out[key] = REDACT_KEYS.has(key)
-        ? "<redacted>"
-        : sanitizeForLog(val, depth + 1, set);
-    }
-    return out;
-  }
-
-  return value;
-}
 
 function createTimeoutSignal(original: AbortSignal | null | undefined) {
   const controller = new AbortController();
@@ -127,21 +65,22 @@ const links = [
       (opts.direction === "down" && opts.result instanceof Error),
     logger(opts) {
       const dir = opts.direction === "up" ? ">>" : "<<";
-
-      if (opts.direction === "up") {
-        console.log(
-          `[trpc] ${dir} ${opts.type} ${opts.path}`,
-          sanitizeForLog(opts.input)
-        );
-        return;
-      }
-
       const elapsed =
-        typeof opts.elapsedMs === "number" ? ` (${opts.elapsedMs}ms)` : "";
-      console.log(
-        `[trpc] ${dir} ${opts.type} ${opts.path}${elapsed}`,
-        sanitizeForLog(opts.result)
-      );
+        opts.direction === "down" && typeof opts.elapsedMs === "number"
+          ? ` (${opts.elapsedMs}ms)`
+          : "";
+      const errorName =
+        opts.direction === "down" && opts.result instanceof Error
+          ? opts.result.name
+          : undefined;
+      const meta: Record<string, string | number | boolean> = {
+        direction: opts.direction,
+      };
+      if (errorName) {
+        meta.error = true;
+        meta.errorName = errorName;
+      }
+      console.log(`[trpc] ${dir} ${opts.type} ${opts.path}${elapsed}`, meta);
     },
   }),
   httpBatchLink({
@@ -149,8 +88,18 @@ const links = [
     fetch(url, options) {
       // Include credentials so session cookies are sent with requests.
       const { signal, cleanup } = createTimeoutSignal(options?.signal);
+      const flowId = getOnboardingFlowId();
+      const headers = new Headers(options?.headers ?? {});
+      if (flowId) {
+        headers.set("X-Zentity-Flow-Id", flowId);
+      }
       return globalThis
-        .fetch(url, { ...options, credentials: "include", signal })
+        .fetch(url, {
+          ...options,
+          headers,
+          credentials: "include",
+          signal,
+        })
         .finally(cleanup);
     },
   }),

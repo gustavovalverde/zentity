@@ -5,6 +5,7 @@ import type { Config, Human } from "@vladmandic/human";
 import util from "node:util";
 
 import { logger } from "@/lib/logging/logger";
+import { recordLivenessDetectDuration } from "@/lib/observability/metrics";
 
 import { HUMAN_MODELS_URL } from "./human-models-path";
 
@@ -117,6 +118,8 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
  * Uses a mutex to prevent concurrent detection calls which can deadlock TensorFlow.js.
  */
 export async function detectFromBase64(dataUrl: string) {
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
   // Acquire lock - wait for any pending detection to complete
   const previousLock = detectionLock;
   const { promise: currentLock, resolve: releaseLock } = createDeferred();
@@ -129,6 +132,9 @@ export async function detectFromBase64(dataUrl: string) {
     const human = await getHumanServer();
     tensor = await decodeBase64Image(dataUrl);
     return await human.detect(tensor);
+  } catch (error) {
+    result = "error";
+    throw error;
   } finally {
     // Dispose tensor to prevent memory leaks
     try {
@@ -138,6 +144,7 @@ export async function detectFromBase64(dataUrl: string) {
     }
     // Release lock for next detection
     releaseLock();
+    recordLivenessDetectDuration(performance.now() - start, { result });
   }
 }
 

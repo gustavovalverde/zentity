@@ -16,6 +16,11 @@ import { auth, type Session } from "@/lib/auth/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
 import { extractInputMeta } from "@/lib/logging/redact";
+import {
+  getRequestLogBindings,
+  getSpanAttributesFromContext,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
 
 export type { Logger } from "@/lib/logging/logger";
@@ -25,6 +30,11 @@ interface TrpcContext {
   req: Request;
   session: Session | null;
   requestId: string;
+  flowId: string | null;
+  flowIdSource: "header" | "cookie" | "query" | "none";
+  onboardingSessionId: string | null;
+  onboardingStep?: number;
+  identityDraftId?: string | null;
   traceId?: string;
   spanId?: string;
   span?: Span;
@@ -43,14 +53,17 @@ export async function createTrpcContext(args: {
   const session = await auth.api.getSession({
     headers: args.req.headers,
   });
-  const headerRequestId =
-    args.req.headers.get("x-request-id") ||
-    args.req.headers.get("x-correlation-id");
+  const requestContext = await resolveRequestContext(args.req.headers);
 
   return {
     req: args.req,
     session: session ?? null,
-    requestId: headerRequestId || randomUUID(),
+    requestId: requestContext.requestId,
+    flowId: requestContext.flowId,
+    flowIdSource: requestContext.flowIdSource,
+    onboardingSessionId: requestContext.onboardingSessionId,
+    onboardingStep: requestContext.onboardingStep,
+    identityDraftId: requestContext.identityDraftId,
     resHeaders: args.resHeaders ?? new Headers(),
   };
 }
@@ -67,6 +80,13 @@ const withTracing = trpc.middleware(({ path, type, input, ctx, next }) => {
     "rpc.type": type,
     "request.id": ctx.requestId,
   };
+
+  const flowAttributes = getSpanAttributesFromContext(ctx);
+  for (const [key, value] of Object.entries(flowAttributes)) {
+    if (value !== undefined) {
+      attributes[key] = value;
+    }
+  }
 
   if (typeof inputMeta.inputSize === "number") {
     attributes["input.size"] = inputMeta.inputSize;
@@ -150,7 +170,9 @@ const CRITICAL_PATHS = new Set([
 const withLogging = trpc.middleware(
   async ({ ctx, next, path, type, input }) => {
     const requestId = ctx.requestId || randomUUID();
-    const logBindings: Record<string, unknown> = {};
+    const logBindings: Record<string, unknown> = {
+      ...getRequestLogBindings(ctx),
+    };
     if (ctx.traceId) {
       logBindings.traceId = ctx.traceId;
     }

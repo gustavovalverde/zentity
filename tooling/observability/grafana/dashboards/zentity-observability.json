@@ -1,0 +1,289 @@
+{
+  "uid": "zentity-observability",
+  "title": "Zentity Web - Observability",
+  "tags": ["zentity", "observability"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": "Mimir",
+        "refresh": 1,
+        "query": "label_values(service_name)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "zentity-web",
+          "value": "zentity-web"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "OCR request duration p95 (by operation)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zentity_ocr_request_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "FHE request duration p95 (by operation)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zentity_fhe_request_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "ZK verify duration p95 (by circuit)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, circuit_type) (rate(zentity_zk_verify_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "{{circuit_type}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "FHE operation throughput (ops/s)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (operation) (rate(zentity_fhe_request_duration_count{service_name=~\"$service\"}[5m]))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Client Noir proof duration p95 (by proof type)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, proof_type) (rate(zentity_client_noir_proof_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "{{proof_type}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Client TFHE keygen duration p95",
+      "datasource": "Mimir",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(zentity_client_tfhe_keygen_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Client FHEVM encrypt duration p95",
+      "datasource": "Mimir",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(zentity_client_fhevm_encrypt_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Client passkey duration p95 (by operation)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zentity_client_passkey_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Client TFHE load duration p95",
+      "datasource": "Mimir",
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(zentity_client_tfhe_load_duration_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Payload sizes p95 (bytes)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(zentity_ocr_image_bytes_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "ocr_image {{operation}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, proof_type) (rate(zentity_client_noir_proof_bytes_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "noir_proof {{proof_type}}"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(zentity_client_fhevm_encrypt_proof_bytes_bucket{service_name=~\"$service\"}[5m])))",
+          "legendFormat": "fhevm_proof"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "ZK verify throughput (ops/s by circuit)",
+      "datasource": "Mimir",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (circuit_type) (rate(zentity_zk_verify_duration_count{service_name=~\"$service\"}[5m]))",
+          "legendFormat": "{{circuit_type}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "id": 12,
+      "type": "traces",
+      "title": "Traces: heavy onboarding spans",
+      "datasource": "Tempo",
+      "gridPos": { "x": 0, "y": 32, "w": 24, "h": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ span.name =~ \"zk.verify_noir_proof|fhe.register_key|fhe.encrypt_compliance_level|db.insert_zk_proof|ocr.process_document\" }",
+          "limit": 50
+        }
+      ]
+    }
+  ]
+}

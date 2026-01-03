@@ -1,0 +1,37 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  filter/health:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(attributes["http.target"], "^/(health|healthz|ready|live)(/|$)")'
+        - 'IsMatch(attributes["http.route"], "^/(health|healthz|ready|live)(/|$)")'
+        - 'IsMatch(attributes["http.target"], "^/api/metrics/client(/|$)")'
+        - 'IsMatch(attributes["http.route"], "^/api/metrics/client(/|$)")'
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
+  otlphttp/mimir:
+    endpoint: http://mimir:8080/otlp
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/health, batch]
+      exporters: [otlphttp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/mimir]

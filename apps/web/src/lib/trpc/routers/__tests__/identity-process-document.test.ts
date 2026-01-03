@@ -34,6 +34,9 @@ async function createCaller(ip: string) {
     resHeaders: new Headers(),
     session: null,
     requestId: "test-request-id",
+    flowId: null,
+    flowIdSource: "none",
+    onboardingSessionId: null,
   });
 }
 

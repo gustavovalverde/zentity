@@ -38,6 +38,7 @@ import {
   defaultWizardData,
   type WizardData,
 } from "@/features/auth/schemas/sign-up.schema";
+import { setOnboardingFlowId } from "@/lib/observability/flow-client";
 import { trpc } from "@/lib/trpc/client";
 
 const TOTAL_STEPS = 4;
@@ -242,6 +243,13 @@ export function WizardProvider({
     warning: string;
   } | null>(null);
 
+  useEffect(
+    () => () => {
+      setOnboardingFlowId(null);
+    },
+    []
+  );
+
   // Load session state from server on mount
   useEffect(() => {
     if (isHydrated) {
@@ -270,6 +278,7 @@ export function WizardProvider({
           dispatch({ type: "RESET" });
           lastSavedStepRef.current = 1;
           isInitializedRef.current = true;
+          setOnboardingFlowId(null);
           setIsHydrated(true);
 
           // Remove one-shot param so refresh can resume normally.
@@ -316,9 +325,13 @@ export function WizardProvider({
             },
           });
           lastSavedStepRef.current = serverState.step ?? 1;
+          setOnboardingFlowId(serverState.sessionId);
         } else if (serverState?.wasCleared) {
           // Session was cleared due to expiration or mismatch - notify user
           toast.info("Session expired. Please start again.");
+          setOnboardingFlowId(null);
+        } else {
+          setOnboardingFlowId(null);
         }
       } catch {
         /* Server session not available, start fresh */
@@ -455,6 +468,7 @@ export function WizardProvider({
     } catch {
       /* Ignore clear errors - reset proceeds regardless */
     }
+    setOnboardingFlowId(null);
   }, []);
 
   // Start fresh session (clears any existing session to prevent session bleeding)
@@ -490,6 +504,7 @@ export function WizardProvider({
         },
       });
       lastSavedStepRef.current = 1;
+      setOnboardingFlowId(result.sessionId);
     } catch (error) {
       dispatch({
         type: "LOAD_STATE",
@@ -505,6 +520,7 @@ export function WizardProvider({
         },
       });
       lastSavedStepRef.current = 1;
+      setOnboardingFlowId(null);
       // Re-throw so caller knows the session creation failed
       throw error;
     }

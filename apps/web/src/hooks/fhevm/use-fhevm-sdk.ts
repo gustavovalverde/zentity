@@ -40,6 +40,7 @@ import type { FhevmGoState, FhevmInstance } from "@/lib/fhevm/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { resolveFhevmProviderFactory } from "@/lib/fhevm/providers/registry";
+import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 function assert(condition: boolean, message?: string): asserts condition {
   if (!condition) {
@@ -259,6 +260,10 @@ class FhevmAbortError extends Error {
 async function createFhevmInstance(
   parameters: CreateFhevmInstanceParams
 ): Promise<FhevmInstance> {
+  const start = performance.now();
+  let result: "ok" | "error" | "aborted" = "ok";
+  let providerIdAttr: string | undefined;
+  let chainTypeAttr: "mock" | "real" | undefined;
   const {
     signal,
     onStatusChange,
@@ -290,39 +295,68 @@ async function createFhevmInstance(
   if (typeof providerOrUrl === "string") {
     throw new Error("String RPC URLs not supported, use window.ethereum");
   }
-  const chainIdHex = await (providerOrUrl as Eip1193Provider).request({
-    method: "eth_chainId",
-  });
-  const chainId = Number.parseInt(chainIdHex as string, 16);
+  try {
+    const chainIdHex = await (providerOrUrl as Eip1193Provider).request({
+      method: "eth_chainId",
+    });
+    const chainId = Number.parseInt(chainIdHex as string, 16);
 
-  const resolvedProviderId =
-    providerId || process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID || "zama";
+    const resolvedProviderId =
+      providerId || process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID || "zama";
 
-  const isMockChain = Object.hasOwn(defaultMockChains, chainId);
-  const effectiveProviderId =
-    resolvedProviderId === "mock" || isMockChain ? "mock" : resolvedProviderId;
+    const isMockChain = Object.hasOwn(defaultMockChains, chainId);
+    const effectiveProviderId =
+      resolvedProviderId === "mock" || isMockChain
+        ? "mock"
+        : resolvedProviderId;
 
-  if (resolvedProviderId === "mock" && !isMockChain) {
-    throw new Error(
-      "Mock FHEVM provider requires a configured mock chain RPC URL"
-    );
+    providerIdAttr = effectiveProviderId;
+    chainTypeAttr = isMockChain ? "mock" : "real";
+
+    if (resolvedProviderId === "mock" && !isMockChain) {
+      throw new Error(
+        "Mock FHEVM provider requires a configured mock chain RPC URL"
+      );
+    }
+
+    const providerFactory = resolveFhevmProviderFactory(effectiveProviderId);
+    if (!providerFactory) {
+      throw new Error(`FHEVM provider not registered: ${effectiveProviderId}`);
+    }
+
+    notify("sdk-loading");
+    const instance = await providerFactory({
+      provider: providerOrUrl,
+      chainId,
+      rpcUrl: isMockChain ? defaultMockChains[chainId] : undefined,
+      signal,
+    });
+    throwIfAborted();
+    notify("sdk-initialized");
+    notify("creating");
+
+    return instance;
+  } catch (error) {
+    if (error instanceof FhevmAbortError) {
+      result = "aborted";
+    } else {
+      result = "error";
+    }
+    throw error;
+  } finally {
+    const attributes: Record<string, string | number | boolean> = {
+      result,
+    };
+    if (providerIdAttr) {
+      attributes.provider_id = providerIdAttr;
+    }
+    if (chainTypeAttr) {
+      attributes.chain_type = chainTypeAttr;
+    }
+    recordClientMetric({
+      name: "client.fhevm.init.duration",
+      value: performance.now() - start,
+      attributes,
+    });
   }
-
-  const providerFactory = resolveFhevmProviderFactory(effectiveProviderId);
-  if (!providerFactory) {
-    throw new Error(`FHEVM provider not registered: ${effectiveProviderId}`);
-  }
-
-  notify("sdk-loading");
-  const instance = await providerFactory({
-    provider: providerOrUrl,
-    chainId,
-    rpcUrl: isMockChain ? defaultMockChains[chainId] : undefined,
-    signal,
-  });
-  throwIfAborted();
-  notify("sdk-initialized");
-  notify("creating");
-
-  return instance;
 }

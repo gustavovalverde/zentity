@@ -8,6 +8,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
+import {
+  attachRequestContextToSpan,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import {
   getCountriesInGroup,
@@ -29,6 +33,8 @@ import {
  * to generate a ZK proof that their nationality is in the group.
  */
 export async function POST(request: NextRequest) {
+  const requestContext = await resolveRequestContext(request.headers);
+  attachRequestContextToSpan(requestContext);
   try {
     const authResult = await requireSession();
     if (!authResult.ok) {
@@ -94,6 +100,8 @@ export async function POST(request: NextRequest) {
  * - code=DEU&group=EU: Check if country is in group (without proof)
  */
 export async function GET(request: NextRequest) {
+  const requestContext = await resolveRequestContext(request.headers);
+  attachRequestContextToSpan(requestContext);
   try {
     const authResult = await requireSession();
     if (!authResult.ok) {

@@ -12,7 +12,6 @@
 import "server-only";
 
 import { logger } from "@/lib/logging/logger";
-import { injectTraceHeaders } from "@/lib/observability/telemetry";
 import { getFheServiceUrl, getOcrServiceUrl } from "@/lib/utils/service-urls";
 
 interface ServiceHealth {
@@ -35,7 +34,9 @@ async function checkServiceHealth(
   try {
     const response = await fetch(`${url}/health`, {
       signal: controller.signal,
-      headers: injectTraceHeaders({}),
+      headers: {
+        "X-Zentity-Healthcheck": "true",
+      },
     });
     clearTimeout(timeoutId);
 

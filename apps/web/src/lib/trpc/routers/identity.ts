@@ -369,6 +369,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           return;
         }
 
+        span.setAttribute(
+          "onboarding.session_id_hash",
+          hashIdentifier(draft.onboardingSessionId)
+        );
+
         if (!draft.userId) {
           updateIdentityDraft(draft.id, { userId: job.userId });
         }
@@ -659,6 +664,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
                 livenessScore:
                   typeof livenessScore === "number" ? livenessScore : undefined,
                 requestId: job.id,
+                flowId: draft.onboardingSessionId,
               });
 
               if (batchResult.birthYearOffsetCiphertext) {
@@ -911,7 +917,11 @@ export const identityRouter = router({
       );
 
       try {
-        return await processDocument(input.image, ctx.requestId);
+        return await processDocument(
+          input.image,
+          ctx.requestId,
+          ctx.flowId ?? undefined
+        );
       } catch (error) {
         if (
           error instanceof Error &&
@@ -961,6 +971,7 @@ export const identityRouter = router({
         documentResult = await processDocumentOcr({
           image: input.image,
           requestId: ctx.requestId,
+          flowId: ctx.flowId ?? undefined,
         });
         issues.push(...(documentResult?.validationIssues || []));
       } catch {
@@ -1442,6 +1453,8 @@ export const identityRouter = router({
         documentResult = await processDocumentOcr({
           image: input.documentImage,
           userSalt,
+          requestId: ctx.requestId,
+          flowId: ctx.flowId ?? undefined,
         });
         issues.push(...(documentResult?.validationIssues || []));
       } catch {
@@ -1822,6 +1835,7 @@ export const identityRouter = router({
                   ? livenessScore
                   : undefined,
               requestId: ctx.requestId,
+              flowId: ctx.flowId ?? undefined,
             });
 
             if (batchResult.birthYearOffsetCiphertext) {

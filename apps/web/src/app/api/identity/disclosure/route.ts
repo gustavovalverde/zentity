@@ -34,6 +34,12 @@ import {
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
+import { createRequestLogger } from "@/lib/logging/logger";
+import {
+  attachRequestContextToSpan,
+  getRequestLogBindings,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import {
   CIRCUIT_SPECS,
@@ -193,6 +199,12 @@ async function encryptToPublicKey(
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<DisclosureResponse>> {
+  const requestContext = await resolveRequestContext(request.headers);
+  attachRequestContextToSpan(requestContext);
+  const log = createRequestLogger(
+    requestContext.requestId,
+    getRequestLogBindings(requestContext)
+  );
   const packageId = uuidv4();
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
@@ -327,16 +339,12 @@ export async function POST(
       documentOrigin?: string;
     } | null = null;
 
-    const requestId =
-      request.headers.get("x-request-id") ||
-      request.headers.get("x-correlation-id") ||
-      undefined;
-
     try {
       documentResult = await processDocumentOcr({
         image: body.documentImage,
         userSalt: decryptedSalt,
-        requestId,
+        requestId: requestContext.requestId,
+        flowId: requestContext.flowId ?? undefined,
       });
     } catch (error) {
       const { status } = toServiceErrorPayload(
@@ -660,6 +668,13 @@ export async function POST(
       expiresAt,
     });
   } catch (error) {
+    log.error(
+      {
+        path: "/api/identity/disclosure",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Identity disclosure failed"
+    );
     return NextResponse.json(
       {
         success: false,

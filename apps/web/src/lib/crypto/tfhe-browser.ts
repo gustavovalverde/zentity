@@ -18,6 +18,7 @@ import {
   persistFheKeyId as persistFheKeyIdInStore,
   storeFheKeys,
 } from "@/lib/crypto/fhe-key-store";
+import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 // Runtime types (matching the tfhe package's exported shapes).
@@ -85,33 +86,48 @@ let tfheInitPromise: Promise<TfheModule> | null = null;
 function loadTfhe(): Promise<TfheModule> {
   if (!tfheInitPromise) {
     tfheInitPromise = (async () => {
+      const start = performance.now();
+      let result: "ok" | "error" = "ok";
+      const multithreaded =
+        typeof window !== "undefined" && Boolean(window.crossOriginIsolated);
       const tfheUrl = "/tfhe/tfhe.js";
-      const tfhe = (await import(
-        /* webpackIgnore: true */
-        /* @vite-ignore */
-        tfheUrl
-      )) as TfheModule;
-
-      // Initialize WASM (tfhe.js will load tfhe_bg.wasm from same directory)
-      await tfhe.default();
-
-      // Enable multi-threading if cross-origin isolated
-      if (typeof window !== "undefined" && window.crossOriginIsolated) {
-        const threads = navigator.hardwareConcurrency || 4;
-        try {
-          await tfhe.initThreadPool(threads);
-        } catch {
-          // Thread pool init can fail on some environments; continue single-threaded.
-        }
-      }
-
       try {
-        tfhe.init_panic_hook();
-      } catch {
-        // Panic hook is optional in some runtimes.
-      }
+        const tfhe = (await import(
+          /* webpackIgnore: true */
+          /* @vite-ignore */
+          tfheUrl
+        )) as TfheModule;
 
-      return tfhe;
+        // Initialize WASM (tfhe.js will load tfhe_bg.wasm from same directory)
+        await tfhe.default();
+
+        // Enable multi-threading if cross-origin isolated
+        if (typeof window !== "undefined" && window.crossOriginIsolated) {
+          const threads = navigator.hardwareConcurrency || 4;
+          try {
+            await tfhe.initThreadPool(threads);
+          } catch {
+            // Thread pool init can fail on some environments; continue single-threaded.
+          }
+        }
+
+        try {
+          tfhe.init_panic_hook();
+        } catch {
+          // Panic hook is optional in some runtimes.
+        }
+
+        return tfhe;
+      } catch (error) {
+        result = "error";
+        throw error;
+      } finally {
+        recordClientMetric({
+          name: "client.tfhe.load.duration",
+          value: performance.now() - start,
+          attributes: { result, multithreaded },
+        });
+      }
     })();
   }
 
@@ -154,6 +170,9 @@ export async function getOrCreateFheKeyMaterialWithPasskey(
     };
   }
 
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+
   const config = tfhe.TfheConfigBuilder.default().build();
   const clientKey = tfhe.TfheClientKey.generate(config);
   const publicKey = tfhe.TfheCompressedPublicKey.new(clientKey);
@@ -166,7 +185,18 @@ export async function getOrCreateFheKeyMaterialWithPasskey(
     createdAt: new Date().toISOString(),
   };
 
-  await storeFheKeys({ keys: stored, enrollment });
+  try {
+    await storeFheKeys({ keys: stored, enrollment });
+  } catch (error) {
+    result = "error";
+    throw error;
+  } finally {
+    recordClientMetric({
+      name: "client.tfhe.keygen.duration",
+      value: performance.now() - start,
+      attributes: { result },
+    });
+  }
 
   return {
     clientKey,

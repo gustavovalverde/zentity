@@ -7,8 +7,6 @@
 
 import type { ChallengeType } from "@/lib/liveness/liveness-challenges";
 
-import { randomUUID } from "node:crypto";
-
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -28,6 +26,12 @@ import {
 } from "@/lib/liveness/liveness-policy";
 import { createRequestLogger } from "@/lib/logging/logger";
 import { sanitizeLogMessage } from "@/lib/logging/redact";
+import { recordLivenessFrameDuration } from "@/lib/observability/metrics";
+import {
+  attachRequestContextToSpan,
+  getRequestLogBindings,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 
 import { sendSSEEvent } from "../stream/sse";
 
@@ -157,16 +161,20 @@ function calculateProgress(options: CalculateProgressOptions): ProgressResult {
 export async function POST(req: NextRequest) {
   let sessionId: string | undefined;
   let challengeType: ChallengeType | undefined;
-  const requestId =
-    req.headers.get("x-request-id") ||
-    req.headers.get("x-correlation-id") ||
-    randomUUID();
-  const log = createRequestLogger(requestId);
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+  const requestContext = await resolveRequestContext(req.headers);
+  attachRequestContextToSpan(requestContext);
+  const log = createRequestLogger(
+    requestContext.requestId,
+    getRequestLogBindings(requestContext)
+  );
   try {
     const body = await req.json();
     const parsed = frameSchema.safeParse(body);
 
     if (!parsed.success) {
+      result = "error";
       return NextResponse.json(
         { error: "Invalid request", details: parsed.error.format() },
         { status: 400 }
@@ -184,14 +192,14 @@ export async function POST(req: NextRequest) {
     challengeType = parsedChallengeType as ChallengeType;
 
     // Detect face in frame
-    const result = await detectFromBase64(frameData);
-    const face = getPrimaryFace(result);
+    const detectResult = await detectFromBase64(frameData);
+    const face = getPrimaryFace(detectResult);
 
     // Calculate progress
     const progress = calculateProgress({
       challengeType: challengeType as ChallengeType,
       face,
-      result,
+      result: detectResult,
       baselineHappy,
       turnStartYaw,
     });
@@ -201,6 +209,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ received: true, ...progress });
   } catch (error) {
+    result = "error";
     // Avoid logging frame data (PII); only log minimal context.
     log.error(
       {
@@ -217,5 +226,11 @@ export async function POST(req: NextRequest) {
       { error: "Frame processing failed" },
       { status: 500 }
     );
+  } finally {
+    const attributes: Record<string, string> = { result };
+    if (challengeType) {
+      attributes.challenge_type = challengeType;
+    }
+    recordLivenessFrameDuration(performance.now() - start, attributes);
   }
 }

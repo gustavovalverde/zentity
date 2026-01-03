@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 
+import {
+  attachRequestContextToSpan,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 import { getBbJsVersion, getCircuitIdentity } from "@/lib/zk/noir-verifier";
 import { CIRCUIT_SPECS } from "@/lib/zk/zk-circuit-spec";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const requestContext = await resolveRequestContext(request.headers);
+  attachRequestContextToSpan(requestContext);
   const bbVersion = getBbJsVersion();
   const [age, docValidity, nationality, faceMatch] = await Promise.all([
     getCircuitIdentity("age_verification"),

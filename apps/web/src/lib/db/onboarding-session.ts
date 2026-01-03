@@ -46,6 +46,23 @@ const getSecret = async (): Promise<Uint8Array> => {
 const WIZARD_COOKIE_NAME = "zentity-wizard";
 const SESSION_TTL_SECONDS = 30 * 60; // 30 minutes
 
+/** Parses a raw Cookie header into a key/value map. */
+function parseCookieHeader(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of raw.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (!key) {
+      continue;
+    }
+    const value = rest.join("=");
+    if (!value) {
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 /**
  * PII data that gets encrypted before storage
  */
@@ -156,6 +173,32 @@ async function getWizardCookie(): Promise<WizardNavState | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(WIZARD_COOKIE_NAME)?.value;
+    if (!token) {
+      return null;
+    }
+
+    const secret = await getSecret();
+    const { payload } = await jwtDecrypt(token, secret);
+
+    return {
+      sessionId: payload.sessionId as string,
+      step: payload.step as number,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get wizard navigation state from a raw Cookie header.
+ * Used for non-Next handlers (tRPC, Hono) that only have Request headers.
+ */
+async function getWizardNavStateFromCookieHeader(
+  cookieHeader: string
+): Promise<WizardNavState | null> {
+  try {
+    const parsedCookies = parseCookieHeader(cookieHeader);
+    const token = parsedCookies[WIZARD_COOKIE_NAME];
     if (!token) {
       return null;
     }
@@ -445,6 +488,30 @@ export async function getSessionFromCookie(): Promise<OnboardingSession | null> 
   if (!session) {
     // Cookie exists but session expired/missing in DB
     await clearWizardCookie();
+    return null;
+  }
+
+  return session;
+}
+
+/**
+ * Get onboarding session from a raw Cookie header.
+ * Does not mutate cookies; returns null if missing/expired.
+ */
+export async function getSessionFromCookieHeader(
+  cookieHeader: string | null
+): Promise<OnboardingSession | null> {
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const navState = await getWizardNavStateFromCookieHeader(cookieHeader);
+  if (!navState) {
+    return null;
+  }
+
+  const session = getOnboardingSessionById(navState.sessionId);
+  if (!session) {
     return null;
   }
 

@@ -39,6 +39,7 @@ import {
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/liveness/liveness-policy";
+import { getOnboardingFlowId } from "@/lib/observability/flow-client";
 import { trpc } from "@/lib/trpc/client";
 
 import {
@@ -875,9 +876,14 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       return;
     }
 
+    const flowId = getOnboardingFlowId();
+    const params = new URLSearchParams({ sessionId: session.sessionId });
+    if (flowId) {
+      params.set("flowId", flowId);
+    }
     // Connect to SSE stream
     const eventSource = new EventSource(
-      `/api/liveness/stream?sessionId=${session.sessionId}`
+      `/api/liveness/stream?${params.toString()}`
     );
     eventSourceRef.current = eventSource;
 
@@ -940,9 +946,13 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
+        const flowId = getOnboardingFlowId();
         await fetch("/api/liveness/frame", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(flowId ? { "X-Zentity-Flow-Id": flowId } : {}),
+          },
           body: JSON.stringify({
             sessionId: session.sessionId,
             challengeType: currentChallenge.challengeType,

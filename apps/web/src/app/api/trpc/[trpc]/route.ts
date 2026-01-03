@@ -41,11 +41,12 @@ async function handler(req: Request) {
   });
 
   // Return a new Response with the body as text and merged headers
-  return new Response(body, {
+  const withCookies = new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers: mergedHeaders,
   });
+  return withCookies;
 }
 
 export { handler as GET, handler as POST };

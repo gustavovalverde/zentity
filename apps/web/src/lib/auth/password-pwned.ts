@@ -1,3 +1,5 @@
+import { getOnboardingFlowId } from "@/lib/observability/flow-client";
+
 /**
  * Client helper for checking whether a password appears in known breaches.
  *
@@ -34,9 +36,13 @@ export async function checkPasswordPwned(
   opts?: { signal?: AbortSignal }
 ): Promise<PasswordPwnedResult> {
   const sha1 = await sha1HexUpper(password);
+  const flowId = getOnboardingFlowId();
   const res = await fetch("/api/password/pwned", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(flowId ? { "X-Zentity-Flow-Id": flowId } : {}),
+    },
     credentials: "include",
     signal: opts?.signal,
     body: JSON.stringify({ sha1 }),

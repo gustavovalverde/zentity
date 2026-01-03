@@ -30,6 +30,9 @@ async function createCaller(session: Session | null) {
     session,
     requestId: "test-request-id",
     resHeaders: testResHeaders,
+    flowId: null,
+    flowIdSource: "none",
+    onboardingSessionId: null,
   });
 }
 

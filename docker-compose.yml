@@ -33,7 +33,7 @@ services:
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-web
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
@@ -62,7 +62,7 @@ services:
         condition: service_healthy
       ocr-service:
         condition: service_healthy
-      jaeger:
+      otel-collector:
         condition: service_started
     volumes:
       # Persist SQLite database across container restarts
@@ -87,7 +87,7 @@ services:
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
       - FHE_DEBUG_KEYS=${FHE_DEBUG_KEYS:-true}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-fhe
     volumes:
@@ -106,22 +106,68 @@ services:
       - PORT=5004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-ocr
     restart: unless-stopped
     networks:
       - zentity-network
 
-  jaeger:
-    image: jaegertracing/jaeger:2.13.0
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.141.0
     command:
-      - --set=receivers.otlp.protocols.http.endpoint=0.0.0.0:4318
-      - --set=receivers.otlp.protocols.grpc.endpoint=0.0.0.0:4317
+      - --config=/etc/otel-collector.yaml
     ports:
-      - "16686:16686"
       - "4318:4318"
       - "4317:4317"
+    volumes:
+      - ./tooling/observability/otel-collector.yaml:/etc/otel-collector.yaml:ro
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  tempo:
+    image: grafana/tempo:2.9.0
+    command:
+      - -config.file=/etc/tempo.yaml
+    volumes:
+      - tempo-data:/var/tempo
+      - ./tooling/observability/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  mimir:
+    image: grafana/mimir:3.0.1
+    command:
+      - -config.file=/etc/mimir.yaml
+      - -auth.multitenancy-enabled=false
+    volumes:
+      - mimir-data:/var/lib/mimir
+      - ./tooling/observability/mimir.yaml:/etc/mimir.yaml:ro
+    ports:
+      - "9009:8080"
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./tooling/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./tooling/observability/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./tooling/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - tempo
+      - mimir
     restart: unless-stopped
     networks:
       - zentity-network
@@ -137,4 +183,10 @@ volumes:
   frontend-data:
     driver: local
   bb-crs:
+    driver: local
+  tempo-data:
+    driver: local
+  mimir-data:
+    driver: local
+  grafana-data:
     driver: local

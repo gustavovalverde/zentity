@@ -1,0 +1,28 @@
+multitenancy_enabled: false
+
+target: all
+
+blocks_storage:
+  backend: filesystem
+  bucket_store:
+    sync_dir: /var/lib/mimir/tsdb-sync
+  filesystem:
+    dir: /var/lib/mimir/blocks
+  tsdb:
+    dir: /var/lib/mimir/tsdb
+
+compactor:
+  data_dir: /var/lib/mimir/compactor
+
+ingester:
+  ring:
+    replication_factor: 1
+
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /var/lib/mimir/ruler
+
+store_gateway:
+  sharding_ring:
+    replication_factor: 1

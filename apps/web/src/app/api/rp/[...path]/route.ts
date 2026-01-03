@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { deleteCookie, setSignedCookie } from "hono/cookie";
+import { createMiddleware } from "hono/factory";
 import { handle } from "hono/vercel";
 import z from "zod";
 
@@ -17,6 +18,14 @@ import {
   consumeRpAuthorizationCode,
   createRpAuthorizationCode,
 } from "@/lib/db/queries/rp";
+import {
+  RESPONSE_FLOW_ID_HEADER,
+  RESPONSE_REQUEST_ID_HEADER,
+} from "@/lib/observability/correlation-headers";
+import {
+  attachRequestContextToSpan,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
 
 export const runtime = "nodejs";
 
@@ -29,6 +38,18 @@ export const runtime = "nodejs";
  * - `/api/rp/exchange`  -> server-to-server code exchange for coarse verification flags
  */
 const app = new Hono().basePath("/api/rp");
+
+const correlationMiddleware = createMiddleware(async (c, next) => {
+  const requestContext = await resolveRequestContext(c.req.raw.headers);
+  attachRequestContextToSpan(requestContext);
+  await next();
+  c.header(RESPONSE_REQUEST_ID_HEADER, requestContext.requestId);
+  if (requestContext.flowId) {
+    c.header(RESPONSE_FLOW_ID_HEADER, requestContext.flowId);
+  }
+});
+
+app.use("*", correlationMiddleware);
 
 const authorizeQuerySchema = z.object({
   client_id: z.uuid(),

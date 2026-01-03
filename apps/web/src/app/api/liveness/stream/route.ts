@@ -9,6 +9,11 @@
 import type { NextRequest } from "next/server";
 
 import {
+  attachRequestContextToSpan,
+  resolveRequestContext,
+} from "@/lib/observability/request-context";
+
+import {
   closeStreamWriter,
   deleteStreamWriter,
   getStreamWriter,
@@ -16,6 +21,14 @@ import {
 } from "./sse";
 
 export async function GET(req: NextRequest) {
+  const requestContext = await resolveRequestContext(req.headers);
+  const flowId = req.nextUrl.searchParams.get("flowId");
+  const finalContext =
+    flowId && !requestContext.flowId
+      ? { ...requestContext, flowId, flowIdSource: "query" as const }
+      : requestContext;
+  attachRequestContextToSpan(finalContext);
+
   const sessionId = req.nextUrl.searchParams.get("sessionId");
 
   if (!sessionId) {
