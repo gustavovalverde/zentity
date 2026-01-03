@@ -43,6 +43,13 @@
       "when": 1767304800000,
       "tag": "0005_onboarding_session_by_id",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1767427726240,
+      "tag": "0006_secret_blob_refs",
+      "breakpoints": true
     }
   ]
 }

@@ -323,29 +323,6 @@ export async function encryptBirthYearOffsetFhe(args: {
   return { ciphertext };
 }
 
-export async function encryptComplianceLevelFhe(args: {
-  complianceLevel: number;
-  keyId: string;
-  requestId?: string;
-  flowId?: string;
-}): Promise<FheCiphertextResult> {
-  const result = await encryptBatchFhe({
-    keyId: args.keyId,
-    complianceLevel: args.complianceLevel,
-    requestId: args.requestId,
-    flowId: args.flowId,
-  });
-  const ciphertext = result.complianceLevelCiphertext;
-  if (!ciphertext) {
-    throw new FheServiceError({
-      operation: "encrypt_compliance_level",
-      message: "Missing compliance ciphertext from FHE batch response",
-      kind: "unknown",
-    });
-  }
-  return { ciphertext };
-}
-
 export async function encryptLivenessScoreFhe(args: {
   score: number;
   keyId: string;

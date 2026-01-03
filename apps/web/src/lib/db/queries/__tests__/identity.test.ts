@@ -166,7 +166,10 @@ describe("identity queries", () => {
       id: crypto.randomUUID(),
       userId,
       secretType: "fhe_keys",
-      encryptedBlob: "blob",
+      encryptedBlob: "",
+      blobRef: "blob-ref",
+      blobHash: "blob-hash",
+      blobSize: 123,
       metadata: { keyId: "key-1" },
       version: "v1",
     });

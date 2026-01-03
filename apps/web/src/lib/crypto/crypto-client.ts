@@ -84,6 +84,12 @@ interface ChallengeResponse {
   expiresAt: string;
 }
 
+const challengeInFlight = new Map<
+  "age_verification" | "doc_validity" | "nationality_membership" | "face_match",
+  Promise<ChallengeResponse>
+>();
+const registerFheKeyInFlight = new Map<string, Promise<{ keyId: string }>>();
+
 /**
  * Generate a zero-knowledge proof of age (CLIENT-SIDE)
  *
@@ -308,12 +314,21 @@ export async function getProofChallenge(
     | "nationality_membership"
     | "face_match"
 ): Promise<ChallengeResponse> {
+  const inFlight = challengeInFlight.get(circuitType);
+  if (inFlight) {
+    return await inFlight;
+  }
   try {
-    return await trpc.crypto.createChallenge.mutate({ circuitType });
+    const promise = trpc.crypto.createChallenge.mutate({ circuitType });
+    challengeInFlight.set(circuitType, promise);
+    const response = await promise;
+    return response;
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to get challenge"
     );
+  } finally {
+    challengeInFlight.delete(circuitType);
   }
 }
 
@@ -404,13 +419,27 @@ export async function ensureFheKeyRegistration(params?: {
     return { keyId: keyMaterial.keyId };
   }
 
-  const response = await trpc.crypto.registerFheKey.mutate({
-    serverKey: keyMaterial.serverKeyB64,
-    publicKey: keyMaterial.publicKeyB64,
-  });
-  await persistFheKeyId(response.keyId);
+  const inFlightKey = `${keyMaterial.publicKeyB64}:${keyMaterial.serverKeyB64}`;
+  const inFlight = registerFheKeyInFlight.get(inFlightKey);
+  if (inFlight) {
+    return await inFlight;
+  }
 
-  return { keyId: response.keyId };
+  const registrationPromise = (async () => {
+    const response = await trpc.crypto.registerFheKey.mutate({
+      serverKey: keyMaterial.serverKeyB64,
+      publicKey: keyMaterial.publicKeyB64,
+    });
+    await persistFheKeyId(response.keyId);
+    return { keyId: response.keyId };
+  })();
+
+  registerFheKeyInFlight.set(inFlightKey, registrationPromise);
+  try {
+    return await registrationPromise;
+  } finally {
+    registerFheKeyInFlight.delete(inFlightKey);
+  }
 }
 
 /**

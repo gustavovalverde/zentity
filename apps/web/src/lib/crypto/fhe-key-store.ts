@@ -39,6 +39,59 @@ let cached:
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+async function uploadSecretBlob(params: {
+  secretId: string;
+  secretType: string;
+  payload: Uint8Array;
+}): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
+  const response = await fetch("/api/secrets/blob", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Secret-Id": params.secretId,
+      "X-Secret-Type": params.secretType,
+    },
+    body: params.payload.buffer as ArrayBuffer,
+    credentials: "same-origin",
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to upload encrypted secret blob.");
+  }
+
+  const result = (await response.json()) as {
+    blobRef: string;
+    blobHash: string;
+    blobSize: number;
+  };
+
+  if (!(result?.blobRef && result?.blobHash)) {
+    throw new Error("Encrypted secret blob response missing metadata.");
+  }
+
+  return result;
+}
+
+async function downloadSecretBlob(secretId: string): Promise<string> {
+  const response = await fetch(`/api/secrets/blob?secretId=${secretId}`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
+
+  if (response.status === 404) {
+    throw new Error(
+      "Encrypted secret blob is missing. Please re-secure your encryption keys."
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error("Failed to download encrypted secret blob.");
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return textDecoder.decode(bytes);
+}
+
 function serializeKeys(keys: StoredFheKeys): Uint8Array {
   const payload = JSON.stringify({
     clientKey: bytesToBase64(keys.clientKey),
@@ -96,10 +149,18 @@ export async function storeFheKeys(params: {
     prfSalt: params.enrollment.prfSalt,
   });
 
+  const blobMetadata = await uploadSecretBlob({
+    secretId: envelope.secretId,
+    secretType: SECRET_TYPE,
+    payload: textEncoder.encode(envelope.encryptedBlob),
+  });
+
   await trpc.secrets.storeSecret.mutate({
     secretId: envelope.secretId,
     secretType: SECRET_TYPE,
-    encryptedBlob: envelope.encryptedBlob,
+    blobRef: blobMetadata.blobRef,
+    blobHash: blobMetadata.blobHash,
+    blobSize: blobMetadata.blobSize,
     wrappedDek: envelope.wrappedDek,
     prfSalt: bytesToBase64(params.enrollment.prfSalt),
     credentialId: params.enrollment.credentialId,
@@ -137,6 +198,12 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
     throw new Error("No passkeys are registered for this secret.");
   }
 
+  if (!bundle.secret.blobRef) {
+    throw new Error("Encrypted secret blob is missing.");
+  }
+
+  const encryptedBlob = await downloadSecretBlob(bundle.secret.id);
+
   const saltByCredential: Record<string, Uint8Array> = {};
   for (const wrapper of bundle.wrappers) {
     saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
@@ -165,7 +232,7 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
   const plaintext = await decryptSecretEnvelope({
     secretId: bundle.secret.id,
     secretType: SECRET_TYPE,
-    encryptedBlob: bundle.secret.encryptedBlob,
+    encryptedBlob,
     wrappedDek: selectedWrapper.wrappedDek,
     credentialId: selectedWrapper.credentialId,
     prfOutput,

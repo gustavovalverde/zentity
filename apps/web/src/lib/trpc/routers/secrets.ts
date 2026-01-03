@@ -53,7 +53,9 @@ export const secretsRouter = router({
       z.object({
         secretId: z.string().min(1),
         secretType: secretTypeSchema,
-        encryptedBlob: z.string().min(1),
+        blobRef: z.string().min(1),
+        blobHash: z.string().min(1),
+        blobSize: z.number().int().nonnegative(),
         wrappedDek: z.string().min(1),
         prfSalt: z.string().min(1),
         credentialId: z.string().min(1),
@@ -76,7 +78,10 @@ export const secretsRouter = router({
         id: input.secretId,
         userId: ctx.userId,
         secretType: input.secretType,
-        encryptedBlob: input.encryptedBlob,
+        encryptedBlob: "",
+        blobRef: input.blobRef,
+        blobHash: input.blobHash,
+        blobSize: input.blobSize,
         metadata: input.metadata ?? null,
         version: input.version,
       });

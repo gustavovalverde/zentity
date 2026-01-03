@@ -33,9 +33,14 @@ const makeEnrollment = () => ({
   prfSalt: crypto.getRandomValues(new Uint8Array(32)),
 });
 
+const fetchMock = vi.fn();
+
 beforeEach(() => {
   resetFheKeyStoreForTests();
   vi.clearAllMocks();
+  fetchMock.mockReset();
+  // @ts-expect-error - test global override
+  globalThis.fetch = fetchMock;
 });
 
 describe("fhe-key-store", () => {
@@ -49,6 +54,14 @@ describe("fhe-key-store", () => {
 
     trpcMocks.secrets.storeSecret.mutate.mockResolvedValue({
       secret: { id: "secret" },
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        blobRef: "blob-ref",
+        blobHash: "blob-hash",
+        blobSize: 123,
+      }),
     });
 
     await storeFheKeys({ keys: payload, enrollment: makeEnrollment() });
@@ -72,6 +85,14 @@ describe("fhe-key-store", () => {
 
     trpcMocks.secrets.storeSecret.mutate.mockResolvedValue({
       secret: { id: "secret" },
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        blobRef: "blob-ref",
+        blobHash: "blob-hash",
+        blobSize: 123,
+      }),
     });
 
     await storeFheKeys({ keys: payload, enrollment: makeEnrollment() });

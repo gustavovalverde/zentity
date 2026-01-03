@@ -46,18 +46,11 @@ vi.mock("@/lib/liveness/human-metrics", () => ({
   getRealScore: vi.fn().mockReturnValue(0.9),
 }));
 
-vi.mock("@/lib/crypto/fhe-client", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/crypto/fhe-client")>();
-  return {
-    ...actual,
-    encryptBatchFhe: vi.fn().mockResolvedValue({
-      birthYearOffsetCiphertext: "birth-cipher",
-      countryCodeCiphertext: "country-cipher",
-      livenessScoreCiphertext: "live-cipher",
-    }),
-  };
-});
+const mockScheduleFheEncryption = vi.fn();
+vi.mock("@/lib/crypto/fhe-encryption", () => ({
+  scheduleFheEncryption: (...args: unknown[]) =>
+    mockScheduleFheEncryption(...args),
+}));
 
 vi.mock("@/lib/crypto/signed-claims", () => ({
   signAttestationClaim: vi.fn().mockResolvedValue("signature"),
@@ -85,6 +78,7 @@ let authedSession: Session;
 
 beforeEach(() => {
   resetDatabase();
+  mockScheduleFheEncryption.mockReset();
   const userId = createTestUser({ id: "user-fhe-test" });
   authedSession = {
     user: { id: userId },
@@ -114,7 +108,7 @@ const baseOcrResult: OcrProcessResult = {
 };
 
 describe("identity.verify (FHE)", () => {
-  it("stores encrypted attributes with key id", async () => {
+  it("schedules FHE encryption when key id is provided", async () => {
     mockGetSessionFromCookie.mockResolvedValue({ id: "onboarding" });
     mockValidateStepAccess.mockReturnValue({ valid: true });
     mockProcessDocumentOcr.mockResolvedValue(baseOcrResult);
@@ -134,6 +128,12 @@ describe("identity.verify (FHE)", () => {
     });
 
     expect(response.success).toBe(true);
+    expect(mockScheduleFheEncryption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: authedSession.user.id,
+        reason: "identity_verify",
+      })
+    );
 
     const birthYearOffset = getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
@@ -148,9 +148,9 @@ describe("identity.verify (FHE)", () => {
       "liveness_score"
     );
 
-    expect(birthYearOffset?.keyId).toBe("key-123");
-    expect(countryCode?.keyId).toBe("key-123");
-    expect(liveness?.keyId).toBe("key-123");
+    expect(birthYearOffset).toBeNull();
+    expect(countryCode).toBeNull();
+    expect(liveness).toBeNull();
 
     deleteIdentityData(authedSession.user.id);
   });

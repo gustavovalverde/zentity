@@ -186,6 +186,32 @@ export function getEncryptedSecretByUserAndType(
   };
 }
 
+export function getEncryptedSecretById(
+  userId: string,
+  secretId: string
+): EncryptedSecret | null {
+  const row = db
+    .select()
+    .from(encryptedSecrets)
+    .where(
+      and(
+        eq(encryptedSecrets.userId, userId),
+        eq(encryptedSecrets.id, secretId)
+      )
+    )
+    .limit(1)
+    .get();
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...row,
+    metadata: parseSecretMetadata(row.metadata),
+  };
+}
+
 export function getSecretWrappersBySecretId(
   secretId: string
 ): SecretWrapperRecord[] {
@@ -200,25 +226,35 @@ export function upsertEncryptedSecret(data: {
   id: string;
   userId: string;
   secretType: string;
-  encryptedBlob: string;
+  encryptedBlob?: string | null;
+  blobRef?: string | null;
+  blobHash?: string | null;
+  blobSize?: number | null;
   metadata: Record<string, unknown> | null;
   version: string;
 }): EncryptedSecret {
   const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
+  const encryptedBlob = data.encryptedBlob ?? "";
 
   db.insert(encryptedSecrets)
     .values({
       id: data.id,
       userId: data.userId,
       secretType: data.secretType,
-      encryptedBlob: data.encryptedBlob,
+      encryptedBlob,
+      blobRef: data.blobRef ?? null,
+      blobHash: data.blobHash ?? null,
+      blobSize: data.blobSize ?? null,
       metadata,
       version: data.version,
     })
     .onConflictDoUpdate({
       target: [encryptedSecrets.userId, encryptedSecrets.secretType],
       set: {
-        encryptedBlob: data.encryptedBlob,
+        encryptedBlob,
+        blobRef: data.blobRef ?? null,
+        blobHash: data.blobHash ?? null,
+        blobSize: data.blobSize ?? null,
         metadata,
         version: data.version,
         updatedAt: sql`datetime('now')`,

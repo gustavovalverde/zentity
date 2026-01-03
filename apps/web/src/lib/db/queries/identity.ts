@@ -8,7 +8,7 @@ import type {
   IdentityVerificationJob,
 } from "../schema/identity";
 
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { decryptFirstName } from "../../crypto/pii-encryption";
 import { db } from "../connection";
@@ -268,6 +268,40 @@ export function getIdentityDraftBySessionId(
   return row ?? null;
 }
 
+export function getLatestIdentityDraftByUserId(
+  userId: string
+): IdentityVerificationDraft | null {
+  const row = db
+    .select()
+    .from(identityVerificationDrafts)
+    .where(eq(identityVerificationDrafts.userId, userId))
+    .orderBy(desc(identityVerificationDrafts.updatedAt))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+export function getLatestIdentityDraftByUserAndDocument(
+  userId: string,
+  documentId: string
+): IdentityVerificationDraft | null {
+  const row = db
+    .select()
+    .from(identityVerificationDrafts)
+    .where(
+      and(
+        eq(identityVerificationDrafts.userId, userId),
+        eq(identityVerificationDrafts.documentId, documentId)
+      )
+    )
+    .orderBy(desc(identityVerificationDrafts.updatedAt))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
 export function upsertIdentityDraft(
   data: Partial<IdentityVerificationDraft> & {
     id: string;
@@ -470,6 +504,29 @@ export function upsertIdentityBundle(data: {
         updatedAt: sql`datetime('now')`,
       },
     })
+    .run();
+}
+
+export function updateIdentityBundleFheStatus(args: {
+  userId: string;
+  fheStatus: FheStatus | null;
+  fheError?: string | null;
+  fheKeyId?: string | null;
+}): void {
+  const updates: Partial<typeof identityBundles.$inferInsert> = {
+    fheStatus: args.fheStatus ?? null,
+    fheError: args.fheError ?? null,
+  };
+  if (args.fheKeyId !== undefined) {
+    updates.fheKeyId = args.fheKeyId;
+  }
+
+  db.update(identityBundles)
+    .set({
+      ...updates,
+      updatedAt: sql`datetime('now')`,
+    })
+    .where(eq(identityBundles.userId, args.userId))
     .run();
 }
 

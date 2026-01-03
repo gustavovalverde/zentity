@@ -34,12 +34,12 @@ import {
   getActiveChallengeCount,
 } from "@/lib/crypto/challenge-store";
 import {
-  encryptComplianceLevelFhe,
   encryptLivenessScoreFhe,
   registerFheKey,
   verifyAgeFhe,
   verifyLivenessThresholdFhe,
 } from "@/lib/crypto/fhe-client";
+import { scheduleFheEncryption } from "@/lib/crypto/fhe-encryption";
 import {
   type FaceMatchClaimData,
   type OcrClaimData,
@@ -48,21 +48,17 @@ import {
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   getEncryptedSecretByUserAndType,
-  getLatestEncryptedAttributeByUserAndType,
   getLatestSignedClaimByUserTypeAndDocument,
   getProofHashesByUserAndDocument,
   getUserAgeProof,
   getUserAgeProofFull,
-  insertEncryptedAttribute,
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
-  getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
   updateIdentityBundleStatus,
 } from "@/lib/db/queries/identity";
-import { getComplianceLevel } from "@/lib/identity/compliance";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
@@ -890,74 +886,6 @@ export const cryptoRouter = router({
         })
       );
 
-      const bundle = getIdentityBundleByUserId(ctx.userId);
-      const fheKeyId = bundle?.fheKeyId;
-      if (fheKeyId) {
-        const existingCompliance = getLatestEncryptedAttributeByUserAndType(
-          ctx.userId,
-          "compliance_level"
-        );
-        const shouldEncryptCompliance =
-          !existingCompliance ||
-          (existingCompliance.keyId && existingCompliance.keyId !== fheKeyId) ||
-          (!existingCompliance.keyId && Boolean(fheKeyId));
-        ctx.span?.setAttribute(
-          "fhe.compliance_already_present",
-          !shouldEncryptCompliance
-        );
-        ctx.span?.setAttribute(
-          "fhe.compliance_key_id_hash",
-          hashIdentifier(fheKeyId)
-        );
-        if (shouldEncryptCompliance) {
-          try {
-            const verificationStatus = getVerificationStatus(ctx.userId);
-            const complianceLevel = getComplianceLevel(verificationStatus);
-            const encryptedResult = await withSpan(
-              "fhe.encrypt_compliance_level",
-              {
-                "fhe.operation": "encrypt_compliance_level",
-                "fhe.key_id_hash": hashIdentifier(fheKeyId),
-              },
-              async () => {
-                const startTime = Date.now();
-                const encryptionResult = await encryptComplianceLevelFhe({
-                  complianceLevel,
-                  keyId: fheKeyId,
-                  requestId: ctx.requestId,
-                  flowId: ctx.flowId ?? undefined,
-                });
-                const durationMs = Date.now() - startTime;
-                ctx.span?.setAttribute("fhe.compliance_encrypt_ms", durationMs);
-                return { ...encryptionResult, encryptionTimeMs: durationMs };
-              }
-            );
-            await withSpan(
-              "db.insert_encrypted_attribute",
-              { "fhe.attribute": "compliance_level" },
-              () =>
-                insertEncryptedAttribute({
-                  id: crypto.randomUUID(),
-                  userId: ctx.userId,
-                  source: "web2_tfhe",
-                  attributeType: "compliance_level",
-                  ciphertext: encryptedResult.ciphertext,
-                  keyId: fheKeyId ?? null,
-                  encryptionTimeMs: encryptedResult.encryptionTimeMs ?? null,
-                })
-            );
-          } catch (error) {
-            // Compliance level encryption is best-effort; proof storage should still succeed.
-            ctx.log.warn(
-              { error: error instanceof Error ? error.message : String(error) },
-              "Compliance level encryption failed (non-blocking)"
-            );
-          }
-        } else {
-          // Compliance level encryption is already stored; skip duplication.
-        }
-      }
-
       const verificationStatus = getVerificationStatus(ctx.userId);
       if (verificationStatus.verified) {
         updateIdentityBundleStatus({
@@ -970,6 +898,12 @@ export const cryptoRouter = router({
 
       // Invalidate cached verification status after proof storage
       invalidateVerificationCache(ctx.userId);
+      scheduleFheEncryption({
+        userId: ctx.userId,
+        requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
+        reason: "proof_stored",
+      });
 
       return {
         success: true,

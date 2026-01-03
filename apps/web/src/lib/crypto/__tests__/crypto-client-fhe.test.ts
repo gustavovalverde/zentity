@@ -60,6 +60,56 @@ describe("crypto-client FHE", () => {
     expect(result).toEqual({ keyId: "new-key" });
   });
 
+  it("dedupes concurrent key registrations", async () => {
+    tfheMocks.getOrCreateFheKeyMaterial.mockResolvedValue({
+      publicKeyB64: "public-key",
+      serverKeyB64: "server-key",
+    });
+    let resolveRegister: ((value: { keyId: string }) => void) | undefined;
+    const registerPromise = new Promise<{ keyId: string }>((resolve) => {
+      resolveRegister = resolve;
+    });
+    trpcMocks.registerFheKey.mutate.mockReturnValue(registerPromise);
+
+    const first = ensureFheKeyRegistration();
+    const second = ensureFheKeyRegistration();
+
+    resolveRegister?.({ keyId: "shared-key" });
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toEqual({ keyId: "shared-key" });
+    expect(secondResult).toEqual({ keyId: "shared-key" });
+    expect(trpcMocks.registerFheKey.mutate).toHaveBeenCalledTimes(1);
+    expect(tfheMocks.persistFheKeyId).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedupes concurrent proof challenge requests", async () => {
+    const { getProofChallenge } = await import("@/lib/crypto/crypto-client");
+    const challenge = {
+      nonce: "nonce",
+      circuitType: "age_verification",
+      expiresAt: new Date().toISOString(),
+    };
+    const challengePromise = Promise.resolve(challenge);
+    const createChallenge = vi.fn().mockReturnValue(challengePromise);
+
+    const trpcClient = await import("@/lib/trpc/client");
+    const originalCreateChallenge = trpcClient.trpc.crypto.createChallenge;
+    trpcClient.trpc.crypto.createChallenge = { mutate: createChallenge };
+
+    const first = getProofChallenge("age_verification");
+    const second = getProofChallenge("age_verification");
+
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toEqual(challenge);
+    expect(secondResult).toEqual(challenge);
+    expect(createChallenge).toHaveBeenCalledTimes(1);
+
+    trpcClient.trpc.crypto.createChallenge = originalCreateChallenge;
+  });
+
   it("decrypts FHE verification result", async () => {
     trpcMocks.verifyAgeFhe.mutate.mockResolvedValue({
       resultCiphertext: "cipher",

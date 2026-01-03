@@ -98,6 +98,9 @@ yarn-error.log*
 # generated noir wasm assets
 apps/web/public/noir/
 
+# encrypted secret blobs (dev)
+apps/web/.data/secret-blobs/
+
 # vercel
 .vercel
 

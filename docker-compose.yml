@@ -43,6 +43,7 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - DATABASE_AUTO_MIGRATE=true
       - DATABASE_PATH=/var/lib/zentity/web/dev.db
+      - SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
       - BB_CRS_PATH=/var/lib/zentity/bb-crs
       # Blockchain attestation (server-side)
       - REGISTRAR_PRIVATE_KEY=${REGISTRAR_PRIVATE_KEY:-}
