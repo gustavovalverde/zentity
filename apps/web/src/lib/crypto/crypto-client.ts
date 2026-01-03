@@ -412,34 +412,50 @@ export async function ensureFheKeyRegistration(params?: {
 }): Promise<{
   keyId: string;
 }> {
-  const keyMaterial = params?.enrollment
-    ? await getOrCreateFheKeyMaterialWithPasskey(params.enrollment)
-    : await getOrCreateFheKeyMaterial();
-  if (keyMaterial.keyId) {
-    return { keyId: keyMaterial.keyId };
-  }
-
-  const inFlightKey = `${keyMaterial.publicKeyB64}:${keyMaterial.serverKeyB64}`;
+  const inFlightKey = params?.enrollment?.credentialId ?? "default";
   const inFlight = registerFheKeyInFlight.get(inFlightKey);
   if (inFlight) {
     return await inFlight;
   }
 
-  const registrationPromise = (async () => {
-    const response = await trpc.crypto.registerFheKey.mutate({
-      serverKey: keyMaterial.serverKeyB64,
-      publicKey: keyMaterial.publicKeyB64,
-    });
-    await persistFheKeyId(response.keyId);
-    return { keyId: response.keyId };
-  })();
+  let resolvePromise: ((value: { keyId: string }) => void) | undefined;
+  let rejectPromise: ((reason?: unknown) => void) | undefined;
+  const registrationPromise = new Promise<{ keyId: string }>(
+    (resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    }
+  );
 
   registerFheKeyInFlight.set(inFlightKey, registrationPromise);
-  try {
-    return await registrationPromise;
-  } finally {
-    registerFheKeyInFlight.delete(inFlightKey);
-  }
+
+  const runRegistration = async () => {
+    try {
+      const keyMaterial = params?.enrollment
+        ? await getOrCreateFheKeyMaterialWithPasskey(params.enrollment)
+        : await getOrCreateFheKeyMaterial();
+      if (keyMaterial.keyId) {
+        resolvePromise?.({ keyId: keyMaterial.keyId });
+        return;
+      }
+      const response = await trpc.crypto.registerFheKey.mutate({
+        serverKey: keyMaterial.serverKeyB64,
+        publicKey: keyMaterial.publicKeyB64,
+      });
+      await persistFheKeyId(response.keyId);
+      resolvePromise?.({ keyId: response.keyId });
+    } catch (error) {
+      rejectPromise?.(error);
+    } finally {
+      registerFheKeyInFlight.delete(inFlightKey);
+    }
+  };
+
+  runRegistration().catch(() => {
+    // Errors are surfaced via registrationPromise.
+  });
+
+  return await registrationPromise;
 }
 
 /**

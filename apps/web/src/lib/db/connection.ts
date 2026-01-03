@@ -3,6 +3,7 @@ import "server-only";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
@@ -151,13 +152,21 @@ function shouldRunMigrations(dbPath: string): boolean {
   return true;
 }
 
+const moduleDir = dirname(fileURLToPath(new URL(".", import.meta.url)));
+
 function runMigrations() {
   const dbPath = getDefaultDatabasePath();
   if (!shouldRunMigrations(dbPath)) {
     return;
   }
 
-  const migrationsFolder = join(process.cwd(), "src/lib/db/migrations");
+  const moduleMigrations = join(moduleDir, "migrations");
+  const cwdMigrations = join(process.cwd(), "src/lib/db/migrations");
+  const migrationsFolder = existsSync(
+    join(moduleMigrations, "meta", "_journal.json")
+  )
+    ? moduleMigrations
+    : cwdMigrations;
 
   migrate(db, { migrationsFolder });
   getMigrationStore().add(dbPath);

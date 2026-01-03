@@ -1,3 +1,4 @@
+import type { FhevmInstance } from "../../types";
 import type { FhevmProviderFactory } from "../types";
 
 const DEFAULT_ZAMA_SDK_URL = "/fhevm/relayer-sdk-js.umd.js";
@@ -91,11 +92,12 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
 }) => {
   await ensureZamaRelayerSdkLoaded(signal);
 
-  // Dynamic import to enable tree-shaking of WASM modules in production
-  const { initSDK, createInstance, MainnetConfig, SepoliaConfig } =
-    await import("@zama-fhe/relayer-sdk/bundle");
+  const sdk = window.relayerSDK;
+  if (!sdk) {
+    throw new Error("Zama relayer SDK failed to initialize");
+  }
 
-  await initSDK();
+  await sdk.initSDK();
 
   const relayerUrl = process.env.NEXT_PUBLIC_FHEVM_RELAYER_URL?.trim();
   const chainId = Number(process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || "");
@@ -112,10 +114,10 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
     process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS;
 
   // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
-  const baseConfig = chainId === 1 ? MainnetConfig : SepoliaConfig;
+  const baseConfig = chainId === 1 ? sdk.MainnetConfig : sdk.SepoliaConfig;
 
-  const instance = await createInstance({
-    ...baseConfig,
+  const instance = (await sdk.createInstance({
+    ...(baseConfig as Record<string, unknown>),
     ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
       ? { gatewayChainId }
       : {}),
@@ -129,8 +131,8 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
       ? { verifyingContractAddressInputVerification }
       : {}),
     ...(relayerUrl ? { relayerUrl } : {}),
-    network: provider as Parameters<typeof createInstance>[0]["network"],
-  });
+    network: provider as unknown,
+  })) as FhevmInstance;
 
   return instance;
 };

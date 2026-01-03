@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const logError = vi.fn();
-vi.mock("@/lib/logging", () => ({
+vi.mock("@/lib/logging/logger", () => ({
   createRequestLogger: () => ({ error: logError }),
 }));
 

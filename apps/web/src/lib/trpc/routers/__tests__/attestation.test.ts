@@ -13,13 +13,16 @@ const mockCanCreateProvider = vi.fn();
 const mockCreateProvider = vi.fn();
 const mockGetExplorerTxUrl = vi.fn();
 
-vi.mock("@/lib/blockchain", () => ({
+vi.mock("@/lib/blockchain/config/networks", () => ({
   isDemoMode: () => mockIsDemoMode(),
   getEnabledNetworks: (...args: unknown[]) => mockGetEnabledNetworks(...args),
   getNetworkById: (...args: unknown[]) => mockGetNetworkById(...args),
+  getExplorerTxUrl: (...args: unknown[]) => mockGetExplorerTxUrl(...args),
+}));
+
+vi.mock("@/lib/blockchain/providers/factory", () => ({
   canCreateProvider: (...args: unknown[]) => mockCanCreateProvider(...args),
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
-  getExplorerTxUrl: (...args: unknown[]) => mockGetExplorerTxUrl(...args),
 }));
 
 const mockGetVerificationStatus = vi.fn();

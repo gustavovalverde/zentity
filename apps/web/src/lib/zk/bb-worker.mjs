@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { cpus } from "node:os";
+import path from "node:path";
 import { createInterface } from "node:readline";
 
 import { UltraHonkBackend } from "@aztec/bb.js";
@@ -36,6 +37,14 @@ const vkeyCache = new Map();
 const crsPath =
   process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
 
+const CRS_FILES = [
+  "bn254_g1.dat",
+  "bn254_g1.dat.gz",
+  "g1.dat",
+  "g1.dat.gz",
+  "bn254_g2.dat",
+];
+
 if (!process.env.CRS_PATH) {
   process.env.CRS_PATH = crsPath;
 }
@@ -54,6 +63,29 @@ function logError(prefix, error) {
   } else {
     process.stderr.write(`${prefix}: ${message}\n`);
   }
+}
+
+function isInvalidCrsError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("invalid g1_identity") ||
+    message.includes("MemBn254CrsFactory")
+  );
+}
+
+function clearCrsCache(reason) {
+  for (const file of CRS_FILES) {
+    try {
+      rmSync(path.join(crsPath, file), { force: true });
+    } catch {
+      // Best effort cleanup.
+    }
+  }
+  backendCache.clear();
+  vkeyCache.clear();
+  process.stderr.write(
+    `[bb-worker] Cleared CRS cache at ${crsPath} (${reason})\n`
+  );
 }
 
 function getCacheKey(circuitType, bytecode) {
@@ -111,8 +143,18 @@ async function getVerificationKeyResult(circuitType, bytecode) {
     return cached;
   }
 
-  const backend = await getBackend(circuitType, bytecode);
-  const vkBytes = await backend.getVerificationKey();
+  let backend = await getBackend(circuitType, bytecode);
+  let vkBytes;
+  try {
+    vkBytes = await backend.getVerificationKey();
+  } catch (error) {
+    if (!isInvalidCrsError(error)) {
+      throw error;
+    }
+    clearCrsCache("invalid CRS identity");
+    backend = await getBackend(circuitType, bytecode);
+    vkBytes = await backend.getVerificationKey();
+  }
   const vkHash = sha256Hex(vkBytes);
   const result = {
     verificationKey: Buffer.from(vkBytes).toString("base64"),
@@ -130,13 +172,26 @@ async function handle(method, params) {
 
   if (method === "verifyProof") {
     const start = Date.now();
-    const backend = await getBackend(params.circuitType, params.bytecode);
+    let backend = await getBackend(params.circuitType, params.bytecode);
     const proofBytes = Buffer.from(params.proof, "base64");
     const publicInputs = (params.publicInputs || []).map(normalizePublicInput);
-    const isValid = await backend.verifyProof({
-      proof: new Uint8Array(proofBytes),
-      publicInputs,
-    });
+    let isValid;
+    try {
+      isValid = await backend.verifyProof({
+        proof: new Uint8Array(proofBytes),
+        publicInputs,
+      });
+    } catch (error) {
+      if (!isInvalidCrsError(error)) {
+        throw error;
+      }
+      clearCrsCache("invalid CRS identity");
+      backend = await getBackend(params.circuitType, params.bytecode);
+      isValid = await backend.verifyProof({
+        proof: new Uint8Array(proofBytes),
+        publicInputs,
+      });
+    }
     return {
       isValid,
       verificationTimeMs: Date.now() - start,

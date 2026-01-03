@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tfheMocks = vi.hoisted(() => ({
   getOrCreateFheKeyMaterial: vi.fn(),
@@ -29,6 +29,10 @@ import {
 } from "@/lib/crypto/crypto-client";
 
 describe("crypto-client FHE", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("returns existing key id without re-registering", async () => {
     tfheMocks.getOrCreateFheKeyMaterial.mockResolvedValue({
       keyId: "existing-key",

@@ -94,7 +94,7 @@ export const attestationRouter = router({
     // In demo mode, skip DB lookup (no real attestations)
     const attestations = isDemo
       ? []
-      : getBlockchainAttestationsByUserId(ctx.userId);
+      : (getBlockchainAttestationsByUserId(ctx.userId) ?? []);
 
     // Map attestations by network ID for quick lookup
     const attestationMap = new Map(attestations.map((a) => [a.networkId, a]));
@@ -205,7 +205,7 @@ export const attestationRouter = router({
 
       // Check verification status
       const verificationStatus = getVerificationStatus(ctx.userId);
-      if (!verificationStatus.verified) {
+      if (!verificationStatus?.verified) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "Complete identity verification before attesting on-chain",

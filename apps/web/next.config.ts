@@ -108,7 +108,21 @@ const nextConfig: NextConfig = {
       });
     }
 
-    return [{ source: "/(.*)", headers: baseHeaders }];
+    const wasmHeaders = [
+      {
+        source: "/:path*.wasm",
+        headers: [{ key: "Content-Type", value: "application/wasm" }],
+      },
+      {
+        source: "/:path*.wasm.gz",
+        headers: [
+          { key: "Content-Type", value: "application/wasm" },
+          { key: "Content-Encoding", value: "gzip" },
+        ],
+      },
+    ];
+
+    return [...wasmHeaders, { source: "/(.*)", headers: baseHeaders }];
   },
 };
 

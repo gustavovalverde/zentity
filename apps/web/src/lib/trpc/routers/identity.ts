@@ -106,7 +106,11 @@ function getCachedVerificationStatus(userId: string) {
  * Uses 'max' profile for stale-while-revalidate behavior.
  */
 export function invalidateVerificationCache(userId: string) {
-  revalidateTag(`user-verification-${userId}`, "max");
+  try {
+    revalidateTag(`user-verification-${userId}`, "max");
+  } catch {
+    // Ignore when running outside Next.js request/route context (tests, scripts).
+  }
 }
 
 /** Matches Unicode diacritical marks for name normalization */
