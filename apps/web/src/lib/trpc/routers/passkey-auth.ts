@@ -25,6 +25,18 @@ import {
   renamePasskeyCredential,
   verifyPasskeyAssertion,
 } from "@/lib/auth/passkey-auth";
+import {
+  consumeRegistrationBlob,
+  createRegistrationToken,
+} from "@/lib/auth/registration-token";
+import { registerFheKey } from "@/lib/crypto/fhe-client";
+import {
+  deleteEncryptedSecretByUserAndType,
+  getEncryptedSecretByUserAndType,
+  updateEncryptedSecretMetadata,
+  upsertEncryptedSecret,
+  upsertSecretWrapper,
+} from "@/lib/db/queries/crypto";
 import { bytesToBase64Url } from "@/lib/utils/base64url";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
@@ -37,6 +49,17 @@ const credentialRegistrationSchema = z.object({
   backedUp: z.boolean(),
   transports: z.array(z.string()),
   name: z.string().optional(),
+});
+
+const fheEnrollmentSchema = z.object({
+  registrationToken: z.string().min(1),
+  wrappedDek: z.string().min(1),
+  prfSalt: z.string().min(1),
+  credentialId: z.string().min(1),
+  publicKey: z.string().min(1),
+  serverKey: z.string().min(1),
+  version: z.string().min(1),
+  kekVersion: z.string().min(1),
 });
 
 const assertionSchema = z.object({
@@ -84,23 +107,32 @@ export const passkeyAuthRouter = router({
         },
         origin: getExpectedOrigin(),
         userExists: !!existingUser,
+        registrationToken: createRegistrationToken(),
       };
     }),
 
   /**
-   * Complete passkey registration.
-   * Creates user if needed, stores credential, and returns session.
+   * Complete passkey registration with FHE enrollment.
+   * Creates user, stores credential + FHE secret, registers FHE key, returns session.
    */
-  verifyRegistration: publicProcedure
+  completeRegistration: publicProcedure
     .input(
       z.object({
         challengeId: z.string().min(1),
         email: z.string().email(),
         name: z.string().optional(),
         credential: credentialRegistrationSchema,
+        fhe: fheEnrollmentSchema,
       })
     )
     .mutation(async ({ input, ctx }) => {
+      if (input.fhe.credentialId !== input.credential.credentialId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Passkey credential mismatch.",
+        });
+      }
+
       // Check if credential already exists
       const existingCredential = await getPasskeyCredentialByCredentialId(
         input.credential.credentialId
@@ -140,6 +172,69 @@ export const passkeyAuthRouter = router({
         name: input.credential.name,
       });
 
+      const secretType = "fhe_keys";
+      let blobMeta: ReturnType<typeof consumeRegistrationBlob>;
+      try {
+        blobMeta = consumeRegistrationBlob(input.fhe.registrationToken);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Registration token invalid.",
+        });
+      }
+      if (blobMeta.secretType !== secretType) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Registration secret type mismatch.",
+        });
+      }
+
+      const existingSecret = await getEncryptedSecretByUserAndType(
+        user.id,
+        secretType
+      );
+      if (existingSecret && existingSecret.id !== blobMeta.secretId) {
+        await deleteEncryptedSecretByUserAndType(user.id, secretType);
+      }
+
+      await upsertEncryptedSecret({
+        id: blobMeta.secretId,
+        userId: user.id,
+        secretType,
+        encryptedBlob: "",
+        blobRef: blobMeta.blobRef,
+        blobHash: blobMeta.blobHash,
+        blobSize: blobMeta.blobSize,
+        metadata: null,
+        version: input.fhe.version,
+      });
+
+      await upsertSecretWrapper({
+        id: crypto.randomUUID(),
+        secretId: blobMeta.secretId,
+        userId: user.id,
+        credentialId: input.fhe.credentialId,
+        wrappedDek: input.fhe.wrappedDek,
+        prfSalt: input.fhe.prfSalt,
+        kekVersion: input.fhe.kekVersion,
+      });
+
+      const { keyId } = await registerFheKey({
+        serverKey: input.fhe.serverKey,
+        publicKey: input.fhe.publicKey,
+        requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
+      });
+
+      await updateEncryptedSecretMetadata({
+        userId: user.id,
+        secretType,
+        metadata: { keyId },
+      });
+
       // Create session and set cookie via resHeaders
       const { sessionToken, expiresAt } = await createPasskeySession(
         user.id,
@@ -151,6 +246,7 @@ export const passkeyAuthRouter = router({
         userId: user.id,
         sessionToken,
         expiresAt: expiresAt.toISOString(),
+        keyId,
       };
     }),
 

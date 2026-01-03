@@ -10,6 +10,8 @@ import {
   User,
   XCircle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +41,38 @@ interface VerificationProgressProps {
 }
 
 export function VerificationProgress({ checks }: VerificationProgressProps) {
+  const router = useRouter();
+  const refreshAttemptsRef = useRef(0);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
+
+    if (checks.fheEncryption || checks.fheError) {
+      refreshAttemptsRef.current = 0;
+      return;
+    }
+
+    if (refreshAttemptsRef.current >= 8) {
+      return;
+    }
+
+    refreshTimeoutRef.current = setTimeout(() => {
+      refreshAttemptsRef.current += 1;
+      router.refresh();
+    }, 4000);
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+    };
+  }, [checks.fheEncryption, checks.fheError, router]);
+
   const formatFheError = (issue?: string | null): string | null => {
     if (!issue) {
       return null;

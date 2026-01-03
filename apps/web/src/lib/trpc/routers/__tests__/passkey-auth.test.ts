@@ -9,8 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock server-only before any imports
 vi.mock("server-only", () => ({}));
+const registerFheKeyMock = vi.fn();
+
+vi.mock("@/lib/crypto/fhe-client", () => ({
+  registerFheKey: registerFheKeyMock,
+}));
 
 import { getExpectedOrigin, getRelyingPartyId } from "@/lib/auth/passkey-auth";
+import { storeRegistrationBlob } from "@/lib/auth/registration-token";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import {
   createTestAssertion,
@@ -53,6 +59,7 @@ describe("passkey-auth router", () => {
     await resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-15T12:00:00Z"));
+    registerFheKeyMock.mockResolvedValue({ keyId: "fhe-key-1" });
   });
 
   afterEach(() => {
@@ -72,6 +79,7 @@ describe("passkey-auth router", () => {
       expect(result.rp.id).toBe(getRelyingPartyId());
       expect(result.rp.name).toBe("Zentity");
       expect(result.origin).toBe(getExpectedOrigin());
+      expect(result.registrationToken).toBeDefined();
     });
 
     it("returns userExists=true for existing user", async () => {
@@ -117,7 +125,7 @@ describe("passkey-auth router", () => {
     });
   });
 
-  describe("verifyRegistration", () => {
+  describe("completeRegistration", () => {
     it("creates user and credential for new email", async () => {
       const caller = await createCaller(null);
       const keyPair = await createTestKeyPair();
@@ -126,8 +134,16 @@ describe("passkey-auth router", () => {
       const options = await caller.getRegistrationOptions({
         email: "newuser@example.com",
       });
+      const { registrationToken } = options;
+      storeRegistrationBlob(registrationToken, {
+        secretId: "secret-1",
+        secretType: "fhe_keys",
+        blobRef: "blob-ref",
+        blobHash: "blob-hash",
+        blobSize: 123,
+      });
 
-      const result = await caller.verifyRegistration({
+      const result = await caller.completeRegistration({
         challengeId: options.challengeId,
         email: "newuser@example.com",
         credential: {
@@ -138,11 +154,22 @@ describe("passkey-auth router", () => {
           backedUp: false,
           transports: ["internal"],
         },
+        fhe: {
+          registrationToken,
+          wrappedDek: "wrapped-dek",
+          prfSalt: "prf-salt",
+          credentialId: "new-cred-id",
+          publicKey: "public-key",
+          serverKey: "server-key",
+          version: "v2",
+          kekVersion: "v1",
+        },
       });
 
       expect(result.success).toBe(true);
       expect(result.userId).toBeDefined();
       expect(result.sessionToken).toBeDefined();
+      expect(result.keyId).toBeDefined();
     });
 
     it("registers additional credential for existing user", async () => {
@@ -155,8 +182,16 @@ describe("passkey-auth router", () => {
       const options = await caller.getRegistrationOptions({
         email: "existing@example.com",
       });
+      const { registrationToken } = options;
+      storeRegistrationBlob(registrationToken, {
+        secretId: "secret-2",
+        secretType: "fhe_keys",
+        blobRef: "blob-ref",
+        blobHash: "blob-hash",
+        blobSize: 123,
+      });
 
-      const result = await caller.verifyRegistration({
+      const result = await caller.completeRegistration({
         challengeId: options.challengeId,
         email: "existing@example.com",
         credential: {
@@ -166,6 +201,16 @@ describe("passkey-auth router", () => {
           deviceType: "cross-platform",
           backedUp: true,
           transports: ["usb", "nfc"],
+        },
+        fhe: {
+          registrationToken,
+          wrappedDek: "wrapped-dek",
+          prfSalt: "prf-salt",
+          credentialId: "second-cred-id",
+          publicKey: "public-key",
+          serverKey: "server-key",
+          version: "v2",
+          kekVersion: "v1",
         },
       });
 
@@ -180,8 +225,16 @@ describe("passkey-auth router", () => {
       const options = await caller.getRegistrationOptions({
         email: "session@example.com",
       });
+      const { registrationToken } = options;
+      storeRegistrationBlob(registrationToken, {
+        secretId: "secret-3",
+        secretType: "fhe_keys",
+        blobRef: "blob-ref",
+        blobHash: "blob-hash",
+        blobSize: 123,
+      });
 
-      const result = await caller.verifyRegistration({
+      const result = await caller.completeRegistration({
         challengeId: options.challengeId,
         email: "session@example.com",
         credential: {
@@ -192,10 +245,21 @@ describe("passkey-auth router", () => {
           backedUp: false,
           transports: [],
         },
+        fhe: {
+          registrationToken,
+          wrappedDek: "wrapped-dek",
+          prfSalt: "prf-salt",
+          credentialId: "session-cred-id",
+          publicKey: "public-key",
+          serverKey: "server-key",
+          version: "v2",
+          kekVersion: "v1",
+        },
       });
 
       expect(result.sessionToken).toBeDefined();
       expect(result.expiresAt).toBeDefined();
+      expect(result.keyId).toBeDefined();
       // Verify cookie was set via resHeaders
       const setCookie = testResHeaders.get("Set-Cookie");
       expect(setCookie).toContain("better-auth.session_token=");
@@ -216,9 +280,17 @@ describe("passkey-auth router", () => {
       const options = await caller.getRegistrationOptions({
         email: "test@example.com",
       });
+      const { registrationToken } = options;
+      storeRegistrationBlob(registrationToken, {
+        secretId: "secret-4",
+        secretType: "fhe_keys",
+        blobRef: "blob-ref",
+        blobHash: "blob-hash",
+        blobSize: 123,
+      });
 
       await expect(
-        caller.verifyRegistration({
+        caller.completeRegistration({
           challengeId: options.challengeId,
           email: "test@example.com",
           credential: {
@@ -228,6 +300,16 @@ describe("passkey-auth router", () => {
             deviceType: null,
             backedUp: false,
             transports: [],
+          },
+          fhe: {
+            registrationToken,
+            wrappedDek: "wrapped-dek",
+            prfSalt: "prf-salt",
+            credentialId: "existing-cred",
+            publicKey: "public-key",
+            serverKey: "server-key",
+            version: "v2",
+            kekVersion: "v1",
           },
         })
       ).rejects.toMatchObject({

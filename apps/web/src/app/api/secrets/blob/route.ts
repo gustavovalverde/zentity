@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import {
+  isRegistrationTokenValid,
+  storeRegistrationBlob,
+} from "@/lib/auth/registration-token";
+import {
   readSecretBlob,
   writeSecretBlob,
 } from "@/lib/crypto/secret-blob-store";
@@ -17,10 +21,32 @@ function getHeaderValue(headers: Headers, key: string): string | null {
   return value?.trim() ? value.trim() : null;
 }
 
+function getRegistrationToken(headers: Headers): string | null {
+  const authHeader = headers.get("authorization");
+  if (!authHeader) {
+    return null;
+  }
+  const [scheme, token] = authHeader.split(" ");
+  if (!(scheme && token)) {
+    return null;
+  }
+  if (scheme.toLowerCase() !== "bearer") {
+    return null;
+  }
+  return token.trim() || null;
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
-  const authResult = await requireSession();
-  if (!authResult.ok) {
+  const registrationToken = getRegistrationToken(request.headers);
+  const authResult = registrationToken ? null : await requireSession();
+  if (!registrationToken && authResult && !authResult.ok) {
     return authResult.response;
+  }
+  if (registrationToken && !isRegistrationTokenValid(registrationToken)) {
+    return NextResponse.json(
+      { error: "Invalid or expired registration token." },
+      { status: 401 }
+    );
   }
 
   const secretId = getHeaderValue(request.headers, "x-secret-id");
@@ -41,6 +67,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     secretId,
     body: request.body,
   });
+
+  if (registrationToken) {
+    try {
+      storeRegistrationBlob(registrationToken, {
+        secretId,
+        secretType,
+        ...blobMeta,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Invalid token" },
+        { status: 401 }
+      );
+    }
+  }
 
   return NextResponse.json(blobMeta, { status: 201 });
 }

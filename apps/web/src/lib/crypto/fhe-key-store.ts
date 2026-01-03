@@ -25,7 +25,8 @@ export interface PasskeyEnrollmentContext {
   prfSalt: Uint8Array;
 }
 
-const SECRET_TYPE = "fhe_keys";
+export const FHE_SECRET_TYPE = "fhe_keys";
+const SECRET_TYPE = FHE_SECRET_TYPE;
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
 let cached:
@@ -43,14 +44,20 @@ async function uploadSecretBlob(params: {
   secretId: string;
   secretType: string;
   payload: Uint8Array;
+  registrationToken?: string;
 }): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
+  const headers = new Headers({
+    "Content-Type": "application/octet-stream",
+    "X-Secret-Id": params.secretId,
+    "X-Secret-Type": params.secretType,
+  });
+  if (params.registrationToken) {
+    headers.set("Authorization", `Bearer ${params.registrationToken}`);
+  }
+
   const response = await fetch("/api/secrets/blob", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/octet-stream",
-      "X-Secret-Id": params.secretId,
-      "X-Secret-Type": params.secretType,
-    },
+    headers,
     body: params.payload.buffer as ArrayBuffer,
     credentials: "same-origin",
   });
@@ -70,6 +77,20 @@ async function uploadSecretBlob(params: {
   }
 
   return result;
+}
+
+export function uploadSecretBlobWithToken(params: {
+  secretId: string;
+  secretType: string;
+  payload: Uint8Array;
+  registrationToken: string;
+}): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
+  return uploadSecretBlob({
+    secretId: params.secretId,
+    secretType: params.secretType,
+    payload: params.payload,
+    registrationToken: params.registrationToken,
+  });
 }
 
 async function downloadSecretBlob(secretId: string): Promise<string> {
@@ -125,6 +146,29 @@ function cacheKeys(secretId: string, keys: StoredFheKeys) {
   cached = { keys, secretId, cachedAt: Date.now() };
 }
 
+export async function createFheKeyEnvelope(params: {
+  keys: StoredFheKeys;
+  enrollment: PasskeyEnrollmentContext;
+}): Promise<{
+  secretId: string;
+  encryptedBlob: string;
+  wrappedDek: string;
+  prfSalt: string;
+}> {
+  const secretPayload = serializeKeys(params.keys);
+  return await createSecretEnvelope({
+    secretType: SECRET_TYPE,
+    plaintext: secretPayload,
+    prfOutput: params.enrollment.prfOutput,
+    credentialId: params.enrollment.credentialId,
+    prfSalt: params.enrollment.prfSalt,
+  });
+}
+
+export function cacheFheKeys(secretId: string, keys: StoredFheKeys) {
+  cacheKeys(secretId, keys);
+}
+
 function getCachedKeys(): StoredFheKeys | null {
   if (!cached) {
     return null;
@@ -140,14 +184,7 @@ export async function storeFheKeys(params: {
   keys: StoredFheKeys;
   enrollment: PasskeyEnrollmentContext;
 }): Promise<{ secretId: string }> {
-  const secretPayload = serializeKeys(params.keys);
-  const envelope = await createSecretEnvelope({
-    secretType: SECRET_TYPE,
-    plaintext: secretPayload,
-    prfOutput: params.enrollment.prfOutput,
-    credentialId: params.enrollment.credentialId,
-    prfSalt: params.enrollment.prfSalt,
-  });
+  const envelope = await createFheKeyEnvelope(params);
 
   const blobMetadata = await uploadSecretBlob({
     secretId: envelope.secretId,

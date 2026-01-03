@@ -1,8 +1,11 @@
 import "server-only";
 
+import { getCookies } from "better-auth/cookies";
+import { serializeSignedCookie } from "better-call";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
+import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/connection";
 import { passkeyCredentials, users } from "@/lib/db/schema/auth";
 import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
@@ -625,35 +628,6 @@ export async function getUserByEmail(email: string) {
 }
 
 /**
- * Sign a cookie value using HMAC-SHA256, matching Better Auth's cookie signing.
- * Format: <value>.<base64-signature> (URL encoded)
- */
-async function signCookieValue(value: string, secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const secretKey = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    secretKey,
-    encoder.encode(value)
-  );
-
-  // Convert signature to base64
-  const base64Signature = btoa(
-    String.fromCharCode(...new Uint8Array(signature))
-  );
-
-  // Format: <value>.<signature>, URL encoded
-  return encodeURIComponent(`${value}.${base64Signature}`);
-}
-
-/**
  * Create a session for a user after passkey authentication.
  * Creates a session directly in the database and sets a SIGNED session cookie.
  * This integrates with Better Auth's session management.
@@ -690,22 +664,16 @@ export async function createPasskeySession(
 
   // Sign the session token using the same algorithm as Better Auth
   const secret = getBetterAuthSecret();
-  const signedToken = await signCookieValue(sessionToken, secret);
-
-  // Set the session cookie to match Better Auth's format
-  // Cookie value must be signed: <token>.<signature> (URL encoded)
-  const isProduction = process.env.NODE_ENV === "production";
-  const cookieValue = [
-    `better-auth.session_token=${signedToken}`,
-    "HttpOnly",
-    isProduction ? "Secure" : "",
-    "SameSite=Lax",
-    "Path=/",
-    `Expires=${expiresAt.toUTCString()}`,
-  ]
-    .filter(Boolean)
-    .join("; ");
-
+  const cookies = getCookies(auth.options);
+  const cookieValue = await serializeSignedCookie(
+    cookies.sessionToken.name,
+    sessionToken,
+    secret,
+    {
+      ...cookies.sessionToken.options,
+      maxAge: auth.options.session?.expiresIn ?? 60 * 60 * 24 * 7,
+    }
+  );
   resHeaders.append("Set-Cookie", cookieValue);
 
   return {

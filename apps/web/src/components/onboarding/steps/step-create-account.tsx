@@ -24,16 +24,25 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import {
-  ensureFheKeyRegistration,
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
   generateNationalityProof,
   getProofChallenge,
   getSignedClaims,
+  prepareFheKeyEnrollment,
   storeProof,
 } from "@/lib/crypto/crypto-client";
+import {
+  cacheFheKeys,
+  FHE_SECRET_TYPE,
+  uploadSecretBlobWithToken,
+} from "@/lib/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
+import {
+  PASSKEY_VAULT_VERSION,
+  WRAP_VERSION,
+} from "@/lib/crypto/passkey-vault";
 import {
   checkPrfSupport,
   createCredentialWithPrf,
@@ -58,7 +67,8 @@ type SecureStatus =
   | "idle"
   | "registering-passkey"
   | "unlocking-prf"
-  | "registering-fhe"
+  | "securing-keys"
+  | "creating-account"
   | "finalizing-identity"
   | "generating-proofs"
   | "storing-proofs"
@@ -244,7 +254,8 @@ export function StepCreateAccount() {
   const progressStatus = useMemo<{
     passkey: StepIndicatorProps["status"];
     prf: StepIndicatorProps["status"];
-    fhe: StepIndicatorProps["status"];
+    secure: StepIndicatorProps["status"];
+    account: StepIndicatorProps["status"];
     verify: StepIndicatorProps["status"];
     proofs: StepIndicatorProps["status"];
     store: StepIndicatorProps["status"];
@@ -252,7 +263,8 @@ export function StepCreateAccount() {
     const steps: SecureStatus[] = [
       "registering-passkey",
       "unlocking-prf",
-      "registering-fhe",
+      "securing-keys",
+      "creating-account",
       "finalizing-identity",
       "generating-proofs",
       "storing-proofs",
@@ -271,10 +283,11 @@ export function StepCreateAccount() {
     return {
       passkey: stepStatus(0, "registering-passkey"),
       prf: stepStatus(1, "unlocking-prf"),
-      fhe: stepStatus(2, "registering-fhe"),
-      verify: stepStatus(3, "finalizing-identity"),
-      proofs: stepStatus(4, "generating-proofs"),
-      store: stepStatus(5, "storing-proofs"),
+      secure: stepStatus(2, "securing-keys"),
+      account: stepStatus(3, "creating-account"),
+      verify: stepStatus(4, "finalizing-identity"),
+      proofs: stepStatus(5, "generating-proofs"),
+      store: stepStatus(6, "storing-proofs"),
     };
   }, [status]);
 
@@ -372,9 +385,26 @@ export function StepCreateAccount() {
         );
       }
 
-      // Step 3: Complete registration on server (creates user + stores credential + session)
+      // Step 3: Secure FHE keys locally before account creation
+      setStatus("securing-keys");
+      const fheEnrollment = await prepareFheKeyEnrollment({
+        enrollment: {
+          credentialId,
+          prfOutput,
+          prfSalt,
+        },
+      });
+      await uploadSecretBlobWithToken({
+        secretId: fheEnrollment.secretId,
+        secretType: FHE_SECRET_TYPE,
+        payload: new TextEncoder().encode(fheEnrollment.encryptedBlob),
+        registrationToken: registrationOptions.registrationToken,
+      });
+
+      // Step 4: Complete registration on server (creates user + stores secrets + session)
+      setStatus("creating-account");
       const registrationResult =
-        await trpc.passkeyAuth.verifyRegistration.mutate({
+        await trpc.passkeyAuth.completeRegistration.mutate({
           challengeId: registrationOptions.challengeId,
           email: data.email,
           name: accountName,
@@ -387,21 +417,29 @@ export function StepCreateAccount() {
             transports: credentialData.transports,
             name: "Primary Passkey",
           },
+          fhe: {
+            registrationToken: registrationOptions.registrationToken,
+            wrappedDek: fheEnrollment.wrappedDek,
+            prfSalt: fheEnrollment.prfSalt,
+            credentialId,
+            publicKey: fheEnrollment.publicKeyB64,
+            serverKey: fheEnrollment.serverKeyB64,
+            version: PASSKEY_VAULT_VERSION,
+            kekVersion: WRAP_VERSION,
+          },
         });
 
       if (!registrationResult.success) {
-        throw new Error("Failed to register passkey. Please try again.");
+        throw new Error("Failed to create account. Please try again.");
       }
 
-      // Step 4: Register FHE keys
-      setStatus("registering-fhe");
-      const fheKeyInfo = await ensureFheKeyRegistration({
-        enrollment: {
-          credentialId,
-          prfOutput,
-          prfSalt,
-        },
-      });
+      if (!registrationResult.keyId) {
+        throw new Error("Missing FHE key registration. Please try again.");
+      }
+
+      fheEnrollment.storedKeys.keyId = registrationResult.keyId;
+      cacheFheKeys(fheEnrollment.secretId, fheEnrollment.storedKeys);
+      const fheKeyId = registrationResult.keyId;
 
       await updateServerProgress({ keysSecured: true });
 
@@ -416,7 +454,7 @@ export function StepCreateAccount() {
         setStatus("finalizing-identity");
         const job = await trpc.identity.finalizeAsync.mutate({
           draftId: data.identityDraftId,
-          fheKeyId: fheKeyInfo.keyId,
+          fheKeyId,
         });
 
         const waitForFinalization = async () => {
@@ -1021,8 +1059,13 @@ export function StepCreateAccount() {
             />
             <StepIndicator
               icon={<ShieldCheck className="h-4 w-4" />}
-              label="Register FHE keys"
-              status={progressStatus.fhe}
+              label="Encrypt FHE keys"
+              status={progressStatus.secure}
+            />
+            <StepIndicator
+              icon={<ShieldCheck className="h-4 w-4" />}
+              label="Create account & store keys"
+              status={progressStatus.account}
             />
             {hasIdentityDocs ? (
               <>

@@ -170,23 +170,44 @@ export async function getOrCreateFheKeyMaterialWithPasskey(
     };
   }
 
+  const { material, storedKeys } = await generateFheKeyMaterial();
+
+  await storeFheKeys({ keys: storedKeys, enrollment });
+
+  return material;
+}
+
+export async function generateFheKeyMaterial(): Promise<{
+  material: FheKeyMaterial;
+  storedKeys: StoredFheKeys;
+}> {
+  const tfhe = await loadTfhe();
   const start = performance.now();
   let result: "ok" | "error" = "ok";
 
-  const config = tfhe.TfheConfigBuilder.default().build();
-  const clientKey = tfhe.TfheClientKey.generate(config);
-  const publicKey = tfhe.TfheCompressedPublicKey.new(clientKey);
-  const serverKey = tfhe.TfheCompressedServerKey.new(clientKey);
-
-  const stored: StoredFheKeys = {
-    clientKey: clientKey.serialize(),
-    publicKey: publicKey.serialize(),
-    serverKey: serverKey.serialize(),
-    createdAt: new Date().toISOString(),
-  };
-
   try {
-    await storeFheKeys({ keys: stored, enrollment });
+    const config = tfhe.TfheConfigBuilder.default().build();
+    const clientKey = tfhe.TfheClientKey.generate(config);
+    const publicKey = tfhe.TfheCompressedPublicKey.new(clientKey);
+    const serverKey = tfhe.TfheCompressedServerKey.new(clientKey);
+
+    const storedKeys: StoredFheKeys = {
+      clientKey: clientKey.serialize(),
+      publicKey: publicKey.serialize(),
+      serverKey: serverKey.serialize(),
+      createdAt: new Date().toISOString(),
+    };
+
+    return {
+      material: {
+        clientKey,
+        publicKey,
+        serverKey,
+        publicKeyB64: bytesToBase64(storedKeys.publicKey),
+        serverKeyB64: bytesToBase64(storedKeys.serverKey),
+      },
+      storedKeys,
+    };
   } catch (error) {
     result = "error";
     throw error;
@@ -197,14 +218,6 @@ export async function getOrCreateFheKeyMaterialWithPasskey(
       attributes: { result },
     });
   }
-
-  return {
-    clientKey,
-    publicKey,
-    serverKey,
-    publicKeyB64: bytesToBase64(stored.publicKey),
-    serverKeyB64: bytesToBase64(stored.serverKey),
-  };
 }
 
 export async function persistFheKeyId(keyId: string) {

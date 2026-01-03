@@ -12,11 +12,16 @@ import type {
   AgeProofFull,
   AgeProofSummary,
 } from "@/lib/crypto/age-proof-types";
-import type { PasskeyEnrollmentContext } from "@/lib/crypto/fhe-key-store";
+import type {
+  PasskeyEnrollmentContext,
+  StoredFheKeys,
+} from "@/lib/crypto/fhe-key-store";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
+import { createFheKeyEnvelope } from "@/lib/crypto/fhe-key-store";
 import {
   decryptFheBool,
+  generateFheKeyMaterial,
   getOrCreateFheKeyMaterial,
   getOrCreateFheKeyMaterialWithPasskey,
   persistFheKeyId,
@@ -456,6 +461,31 @@ export async function ensureFheKeyRegistration(params?: {
   });
 
   return await registrationPromise;
+}
+
+export async function prepareFheKeyEnrollment(params: {
+  enrollment: PasskeyEnrollmentContext;
+}): Promise<{
+  secretId: string;
+  encryptedBlob: string;
+  wrappedDek: string;
+  prfSalt: string;
+  publicKeyB64: string;
+  serverKeyB64: string;
+  storedKeys: StoredFheKeys;
+}> {
+  const { material, storedKeys } = await generateFheKeyMaterial();
+  const envelope = await createFheKeyEnvelope({
+    keys: storedKeys,
+    enrollment: params.enrollment,
+  });
+
+  return {
+    ...envelope,
+    publicKeyB64: material.publicKeyB64,
+    serverKeyB64: material.serverKeyB64,
+    storedKeys,
+  };
 }
 
 /**
