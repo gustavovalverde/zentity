@@ -431,16 +431,20 @@ export function prewarmVerificationKeys(): Promise<void> {
 
   prewarmPromise = (async () => {
     const circuitTypes = Object.keys(CIRCUITS) as CircuitType[];
-    const results = await Promise.allSettled(
-      circuitTypes.map(async (circuitType) => {
+    const failures: unknown[] = [];
+    for (const circuitType of circuitTypes) {
+      try {
         await getCircuitVerificationKey(circuitType);
-      })
-    );
+      } catch (error) {
+        failures.push(error);
+      }
+    }
 
-    const failures = results.filter((result) => result.status === "rejected");
     if (failures.length) {
       const message = failures
-        .map((failure) => (failure.status === "rejected" ? failure.reason : ""))
+        .map((failure) =>
+          failure instanceof Error ? failure.message : String(failure)
+        )
         .filter(Boolean)
         .join(", ");
       throw new Error(
@@ -460,11 +464,25 @@ export function prewarmVerificationKeys(): Promise<void> {
  */
 export async function warmupCRS(): Promise<void> {
   const startTime = Date.now();
-  await prewarmVerificationKeys();
-  logger.info(
-    { durationMs: Date.now() - startTime, circuits: Object.keys(CIRCUITS) },
-    "ZK verification keys preloaded (CRS cached)"
-  );
+  try {
+    await prewarmVerificationKeys();
+    logger.info(
+      { durationMs: Date.now() - startTime, circuits: Object.keys(CIRCUITS) },
+      "ZK verification keys preloaded (CRS cached)"
+    );
+  } catch (error) {
+    logger.warn(
+      {
+        err: error,
+        durationMs: Date.now() - startTime,
+        circuits: Object.keys(CIRCUITS),
+      },
+      "ZK verification key warmup failed"
+    );
+    if (process.env.ZK_WARMUP_STRICT === "true") {
+      throw error;
+    }
+  }
 }
 
 export function getCircuitIdentity(
