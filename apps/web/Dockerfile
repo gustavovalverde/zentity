@@ -81,14 +81,13 @@ ENV NEXT_PUBLIC_NOIR_DEBUG=${NEXT_PUBLIC_NOIR_DEBUG}
 ENV FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY}
 ENV FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES}
 ENV FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20}
-ENV DATABASE_PATH=/tmp/dev.db
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 
 # Build Next.js
 # NODE_OPTIONS increases heap size for Next build (trace generation can be memory intensive)
 ENV NODE_OPTIONS="--max-old-space-size=6144"
-RUN touch /tmp/dev.db && bun run build
+RUN bun run build
 
 # --- Stage 3: Runtime ---
 FROM oven/bun:1-slim@sha256:10c077f99e1d7dd7fa2947d8ed0a8c2094fa85577856062e43c8967dc97e9fc6 AS runner

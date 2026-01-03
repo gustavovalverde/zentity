@@ -49,8 +49,8 @@ function createAuthSession(
 }
 
 describe("passkey-auth router", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-15T12:00:00Z"));
   });
@@ -75,7 +75,7 @@ describe("passkey-auth router", () => {
     });
 
     it("returns userExists=true for existing user", async () => {
-      createTestUser({ email: "existing@example.com" });
+      await createTestUser({ email: "existing@example.com" });
       const caller = await createCaller(null);
 
       const result = await caller.getRegistrationOptions({
@@ -146,8 +146,8 @@ describe("passkey-auth router", () => {
     });
 
     it("registers additional credential for existing user", async () => {
-      const userId = createTestUser({ email: "existing@example.com" });
-      createTestPasskeyCredential({ userId, name: "First Passkey" });
+      const userId = await createTestUser({ email: "existing@example.com" });
+      await createTestPasskeyCredential({ userId, name: "First Passkey" });
 
       const caller = await createCaller(null);
       const keyPair = await createTestKeyPair();
@@ -204,8 +204,11 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS duplicate credential ID (CONFLICT)", async () => {
-      const userId = createTestUser();
-      createTestPasskeyCredential({ userId, credentialId: "existing-cred" });
+      const userId = await createTestUser();
+      await createTestPasskeyCredential({
+        userId,
+        credentialId: "existing-cred",
+      });
 
       const caller = await createCaller(null);
       const keyPair = await createTestKeyPair();
@@ -246,9 +249,9 @@ describe("passkey-auth router", () => {
     });
 
     it("returns allowCredentials when email provided", async () => {
-      const userId = createTestUser({ email: "auth@example.com" });
-      createTestPasskeyCredential({ userId, credentialId: "cred-1" });
-      createTestPasskeyCredential({ userId, credentialId: "cred-2" });
+      const userId = await createTestUser({ email: "auth@example.com" });
+      await createTestPasskeyCredential({ userId, credentialId: "cred-1" });
+      await createTestPasskeyCredential({ userId, credentialId: "cred-2" });
 
       const caller = await createCaller(null);
 
@@ -272,7 +275,7 @@ describe("passkey-auth router", () => {
 
   describe("verifyAuthentication", () => {
     it("verifies assertion and creates session", async () => {
-      const userId = createTestUser({ email: "auth@example.com" });
+      const userId = await createTestUser({ email: "auth@example.com" });
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -306,7 +309,7 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS with UNAUTHORIZED on verification failure", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId } = await createTestPasskeyCredentialWithKeyPair({
         userId,
         counter: 0,
@@ -349,11 +352,11 @@ describe("passkey-auth router", () => {
     });
 
     it("returns only current user credentials", async () => {
-      const userId = createTestUser({ email: "owner@example.com" });
-      const otherUserId = createTestUser({ email: "other@example.com" });
+      const userId = await createTestUser({ email: "owner@example.com" });
+      const otherUserId = await createTestUser({ email: "other@example.com" });
 
-      createTestPasskeyCredential({ userId, name: "My Passkey" });
-      createTestPasskeyCredential({
+      await createTestPasskeyCredential({ userId, name: "My Passkey" });
+      await createTestPasskeyCredential({
         userId: otherUserId,
         name: "Other Passkey",
       });
@@ -368,8 +371,8 @@ describe("passkey-auth router", () => {
     });
 
     it("excludes sensitive fields", async () => {
-      const userId = createTestUser();
-      createTestPasskeyCredential({ userId });
+      const userId = await createTestUser();
+      await createTestPasskeyCredential({ userId });
 
       const session = createAuthSession(userId);
       const caller = await createCaller(session);
@@ -409,8 +412,8 @@ describe("passkey-auth router", () => {
     });
 
     it("adds credential to current user", async () => {
-      const userId = createTestUser();
-      createTestPasskeyCredential({ userId, name: "First" }); // User already has one
+      const userId = await createTestUser();
+      await createTestPasskeyCredential({ userId, name: "First" }); // User already has one
 
       const session = createAuthSession(userId);
       const caller = await createCaller(session);
@@ -436,8 +439,11 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS duplicate credential ID", async () => {
-      const userId = createTestUser();
-      createTestPasskeyCredential({ userId, credentialId: "existing-cred" });
+      const userId = await createTestUser();
+      await createTestPasskeyCredential({
+        userId,
+        credentialId: "existing-cred",
+      });
 
       const session = createAuthSession(userId);
       const caller = await createCaller(session);
@@ -475,9 +481,9 @@ describe("passkey-auth router", () => {
     });
 
     it("removes credential belonging to current user", async () => {
-      const userId = createTestUser();
-      createTestPasskeyCredential({ userId, credentialId: "cred-1" });
-      const credentialId = createTestPasskeyCredential({
+      const userId = await createTestUser();
+      await createTestPasskeyCredential({ userId, credentialId: "cred-1" });
+      const credentialId = await createTestPasskeyCredential({
         userId,
         credentialId: "cred-2",
       });
@@ -495,13 +501,19 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS removing other user credential (NOT_FOUND)", async () => {
-      const userId = createTestUser({ email: "owner@example.com" });
-      const otherUserId = createTestUser({ email: "other@example.com" });
+      const userId = await createTestUser({ email: "owner@example.com" });
+      const otherUserId = await createTestUser({ email: "other@example.com" });
       // Owner needs at least 2 credentials to pass the "last credential" check
-      createTestPasskeyCredential({ userId, credentialId: "owner-cred-1" });
-      createTestPasskeyCredential({ userId, credentialId: "owner-cred-2" });
+      await createTestPasskeyCredential({
+        userId,
+        credentialId: "owner-cred-1",
+      });
+      await createTestPasskeyCredential({
+        userId,
+        credentialId: "owner-cred-2",
+      });
 
-      const otherCredentialId = createTestPasskeyCredential({
+      const otherCredentialId = await createTestPasskeyCredential({
         userId: otherUserId,
         credentialId: "other-cred",
       });
@@ -518,8 +530,8 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS removing last credential (PRECONDITION_FAILED)", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({ userId }); // Only one
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({ userId }); // Only one
 
       const session = createAuthSession(userId);
       const caller = await createCaller(session);
@@ -545,8 +557,8 @@ describe("passkey-auth router", () => {
     });
 
     it("renames credential belonging to current user", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({
         userId,
         name: "Old Name",
       });
@@ -567,10 +579,10 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS renaming other user credential (NOT_FOUND)", async () => {
-      const userId = createTestUser({ email: "owner@example.com" });
-      const otherUserId = createTestUser({ email: "other@example.com" });
+      const userId = await createTestUser({ email: "owner@example.com" });
+      const otherUserId = await createTestUser({ email: "other@example.com" });
 
-      const otherCredentialId = createTestPasskeyCredential({
+      const otherCredentialId = await createTestPasskeyCredential({
         userId: otherUserId,
         credentialId: "other-cred",
       });
@@ -600,7 +612,7 @@ describe("passkey-auth router", () => {
     });
 
     it("returns challenge with user info", async () => {
-      const userId = createTestUser({ email: "user@example.com" });
+      const userId = await createTestUser({ email: "user@example.com" });
 
       const session = createAuthSession(userId, "user@example.com");
       const caller = await createCaller(session);
@@ -615,9 +627,9 @@ describe("passkey-auth router", () => {
     });
 
     it("returns excludeCredentials list", async () => {
-      const userId = createTestUser({ email: "user@example.com" });
-      createTestPasskeyCredential({ userId, credentialId: "existing-1" });
-      createTestPasskeyCredential({ userId, credentialId: "existing-2" });
+      const userId = await createTestUser({ email: "user@example.com" });
+      await createTestPasskeyCredential({ userId, credentialId: "existing-1" });
+      await createTestPasskeyCredential({ userId, credentialId: "existing-2" });
 
       const session = createAuthSession(userId, "user@example.com");
       const caller = await createCaller(session);
@@ -644,8 +656,8 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS empty credential name in rename", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({ userId });
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({ userId });
 
       const session = createAuthSession(userId);
       const caller = await createCaller(session);
@@ -656,8 +668,8 @@ describe("passkey-auth router", () => {
     });
 
     it("REJECTS name > 100 characters in rename", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({ userId });
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({ userId });
 
       const session = createAuthSession(userId);
       const caller = await createCaller(session);

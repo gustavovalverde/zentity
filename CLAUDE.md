@@ -65,7 +65,7 @@ bun run test:e2e     # Run Playwright tests
 **Existing dev server:**
 
 - Set `E2E_EXTERNAL_WEB_SERVER=true` so Playwright doesn’t spawn its own server.
-- Ensure `DATABASE_PATH` matches `E2E_DATABASE_PATH` (seeded DB) or auth/attestation steps will fail.
+- Ensure `TURSO_DATABASE_URL` (or `E2E_TURSO_DATABASE_URL`) matches `E2E_DATABASE_PATH` (seeded DB) or auth/attestation steps will fail.
 
 **Sepolia (fhEVM):**
 
@@ -142,7 +142,8 @@ railway up apps/web --path-as-root --service web
 **Required env vars** (set via Railway dashboard):
 
 - `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`
-- `INTERNAL_SERVICE_TOKEN`, `DATABASE_PATH`
+- `INTERNAL_SERVICE_TOKEN`
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 - `FHE_SERVICE_URL`, `OCR_SERVICE_URL`
 
 ### Manual Setup (without Docker)
@@ -212,8 +213,9 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 - **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
-- **Database**: SQLite via `bun:sqlite` + Drizzle ORM; schema is applied with `bun run db:push` (no runtime migrations; containers do not run drizzle-kit)
-- **Railway**: volumes are mounted at start; run `bun run db:push` in the start command or a one-off job with `DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db`
+- **Database**: Drizzle ORM with SQLite local files or Turso in production; schema is applied with `bun run db:push` (no runtime migrations; containers do not run drizzle-kit)
+- **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db` (no `DATABASE_PATH` fallback)
+- **Railway**: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service, then run `bun run db:push` from CI or local (no volume mounts or db-init container required)
 - **SQLite driver**: `drizzle-kit push` needs a driver; this repo uses `@libsql/client` (Bun-compatible)
 - **Auth**: better-auth
 

@@ -35,23 +35,27 @@ export default async function AttestationPage() {
   });
 
   const userId = session?.user?.id;
-  const verificationStatus = userId ? getVerificationStatus(userId) : null;
+  const verificationStatus = userId
+    ? await getVerificationStatus(userId)
+    : null;
   const isVerified = verificationStatus?.verified ?? false;
-  const identityBundle = userId ? getIdentityBundleByUserId(userId) : null;
+  const identityBundle = userId
+    ? await getIdentityBundleByUserId(userId)
+    : null;
   const latestDocument = userId
-    ? getSelectedIdentityDocumentByUserId(userId)
+    ? await getSelectedIdentityDocumentByUserId(userId)
     : null;
   const selectedDocumentId = latestDocument?.id ?? null;
   const proofTypes =
     userId && selectedDocumentId
-      ? getZkProofTypesByUserAndDocument(userId, selectedDocumentId)
+      ? await getZkProofTypesByUserAndDocument(userId, selectedDocumentId)
       : [];
   const encryptedAttributes = userId
-    ? getEncryptedAttributeTypesByUserId(userId)
+    ? await getEncryptedAttributeTypesByUserId(userId)
     : [];
   const signedClaimTypes =
     userId && selectedDocumentId
-      ? getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId)
+      ? await getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId)
       : [];
 
   const proofLabels: Record<string, string> = {

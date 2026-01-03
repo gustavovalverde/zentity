@@ -230,7 +230,7 @@ export async function POST(
     const userId = authResult.session.user.id;
 
     // Check if user is verified
-    const verificationStatus = getVerificationStatus(userId);
+    const verificationStatus = await getVerificationStatus(userId);
     if (!verificationStatus.verified) {
       return NextResponse.json(
         {
@@ -283,7 +283,7 @@ export async function POST(
     }
 
     // Get existing identity document for user salt + document binding
-    const identityDocument = getSelectedIdentityDocumentByUserId(userId);
+    const identityDocument = await getSelectedIdentityDocumentByUserId(userId);
     if (!identityDocument?.userSalt) {
       return NextResponse.json(
         {
@@ -407,7 +407,7 @@ export async function POST(
     const documentId = identityDocument.id;
     const proofs: DisclosureResponse["proofs"] = {};
 
-    const ageProofPayload = getLatestZkProofPayloadByUserAndType(
+    const ageProofPayload = await getLatestZkProofPayloadByUserAndType(
       userId,
       "age_verification",
       documentId
@@ -432,7 +432,7 @@ export async function POST(
       };
     }
 
-    const docValidityPayload = getLatestZkProofPayloadByUserAndType(
+    const docValidityPayload = await getLatestZkProofPayloadByUserAndType(
       userId,
       "doc_validity",
       documentId
@@ -455,7 +455,7 @@ export async function POST(
       };
     }
 
-    const nationalityPayload = getLatestZkProofPayloadByUserAndType(
+    const nationalityPayload = await getLatestZkProofPayloadByUserAndType(
       userId,
       "nationality_membership",
       documentId
@@ -476,7 +476,7 @@ export async function POST(
       };
     }
 
-    const faceMatchPayload = getLatestZkProofPayloadByUserAndType(
+    const faceMatchPayload = await getLatestZkProofPayloadByUserAndType(
       userId,
       "face_match",
       documentId
@@ -576,7 +576,7 @@ export async function POST(
     // =========================================================================
     const signedClaims: DisclosureResponse["signedClaims"] = {};
 
-    const livenessClaim = getLatestSignedClaimByUserTypeAndDocument(
+    const livenessClaim = await getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "liveness_score",
       documentId
@@ -609,7 +609,7 @@ export async function POST(
       }
     }
 
-    const faceMatchClaim = getLatestSignedClaimByUserTypeAndDocument(
+    const faceMatchClaim = await getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "face_match_score",
       documentId
@@ -622,7 +622,7 @@ export async function POST(
       };
     }
 
-    const ocrClaim = getLatestSignedClaimByUserTypeAndDocument(
+    const ocrClaim = await getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "ocr_result",
       documentId
@@ -645,7 +645,7 @@ export async function POST(
         : undefined;
     const evidence =
       documentId && verificationStatus.verified
-        ? getAttestationEvidenceByUserAndDocument(userId, documentId)
+        ? await getAttestationEvidenceByUserAndDocument(userId, documentId)
         : null;
 
     return NextResponse.json({

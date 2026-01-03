@@ -46,8 +46,7 @@ export default function Home() {
             <AlertTitle>Proof of Concept</AlertTitle>
             <AlertDescription>
               Zentity is under active development. Our cryptographic approach is
-              being validated. Use for evaluation only - do not submit
-              production-sensitive personal data.
+              being validated. Use for evaluation only.
             </AlertDescription>
           </Alert>
 

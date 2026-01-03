@@ -21,7 +21,7 @@ export default async function SettingsPage() {
   }
 
   // Check if user has a password set (for passwordless users)
-  const hasPassword = userHasPassword(session.user.id);
+  const hasPassword = await userHasPassword(session.user.id);
 
   // Get linked accounts from session/database
   // Better Auth stores accounts in the "account" table

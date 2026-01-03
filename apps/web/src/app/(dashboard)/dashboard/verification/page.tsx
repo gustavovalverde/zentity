@@ -21,7 +21,9 @@ export default async function VerificationPage() {
     headers: await headers(),
   });
 
-  const proof = session?.user?.id ? getUserAgeProof(session.user.id) : null;
+  const proof = session?.user?.id
+    ? await getUserAgeProof(session.user.id)
+    : null;
 
   return (
     <div className="space-y-6">

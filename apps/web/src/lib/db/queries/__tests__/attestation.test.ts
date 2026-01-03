@@ -18,15 +18,15 @@ import {
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("attestation queries", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("upserts attestation evidence", () => {
-    const userId = createTestUser();
+  it("upserts attestation evidence", async () => {
+    const userId = await createTestUser();
     const documentId = crypto.randomUUID();
 
-    upsertAttestationEvidence({
+    await upsertAttestationEvidence({
       userId,
       documentId,
       policyVersion: "policy-v1",
@@ -34,14 +34,14 @@ describe("attestation queries", () => {
       proofSetHash: "proof-1",
     });
 
-    const evidence = getAttestationEvidenceByUserAndDocument(
+    const evidence = await getAttestationEvidenceByUserAndDocument(
       userId,
       documentId
     );
     expect(evidence?.policyVersion).toBe("policy-v1");
     expect(evidence?.proofSetHash).toBe("proof-1");
 
-    upsertAttestationEvidence({
+    await upsertAttestationEvidence({
       userId,
       documentId,
       policyVersion: "policy-v2",
@@ -49,15 +49,18 @@ describe("attestation queries", () => {
       proofSetHash: "proof-2",
     });
 
-    const updated = getAttestationEvidenceByUserAndDocument(userId, documentId);
+    const updated = await getAttestationEvidenceByUserAndDocument(
+      userId,
+      documentId
+    );
     expect(updated?.policyVersion).toBe("policy-v2");
     expect(updated?.policyHash).toBe("hash-2");
     expect(updated?.proofSetHash).toBe("proof-2");
   });
 
-  it("creates and updates blockchain attestation lifecycle", () => {
-    const userId = createTestUser();
-    const attestation = createBlockchainAttestation({
+  it("creates and updates blockchain attestation lifecycle", async () => {
+    const userId = await createTestUser();
+    const attestation = await createBlockchainAttestation({
       userId,
       walletAddress: "0xabc",
       networkId: "sepolia",
@@ -66,37 +69,39 @@ describe("attestation queries", () => {
 
     expect(attestation.status).toBe("pending");
 
-    updateBlockchainAttestationSubmitted(attestation.id, "0xtx");
-    let row = getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
+    await updateBlockchainAttestationSubmitted(attestation.id, "0xtx");
+    let row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
     expect(row?.status).toBe("submitted");
     expect(row?.txHash).toBe("0xtx");
 
-    updateBlockchainAttestationFailed(attestation.id, "boom");
-    row = getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
+    await updateBlockchainAttestationFailed(attestation.id, "boom");
+    row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
     expect(row?.status).toBe("failed");
     expect(row?.errorMessage).toBe("boom");
     expect(row?.retryCount).toBe(1);
 
-    resetBlockchainAttestationForRetry(attestation.id);
-    row = getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
+    await resetBlockchainAttestationForRetry(attestation.id);
+    row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
     expect(row?.status).toBe("pending");
     expect(row?.errorMessage).toBeNull();
 
-    updateBlockchainAttestationConfirmed(attestation.id, 123);
-    row = getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
+    await updateBlockchainAttestationConfirmed(attestation.id, 123);
+    row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
     expect(row?.status).toBe("confirmed");
     expect(row?.blockNumber).toBe(123);
     expect(row?.confirmedAt).not.toBeNull();
 
-    updateBlockchainAttestationWallet(attestation.id, "0xdef", 1);
-    row = getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
+    await updateBlockchainAttestationWallet(attestation.id, "0xdef", 1);
+    row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
     expect(row?.walletAddress).toBe("0xdef");
     expect(row?.chainId).toBe(1);
 
-    const list = getBlockchainAttestationsByUserId(userId);
+    const list = await getBlockchainAttestationsByUserId(userId);
     expect(list).toHaveLength(1);
 
-    deleteBlockchainAttestationsByUserId(userId);
-    expect(getBlockchainAttestationsByUserId(userId)).toHaveLength(0);
+    await deleteBlockchainAttestationsByUserId(userId);
+    await expect(
+      getBlockchainAttestationsByUserId(userId)
+    ).resolves.toHaveLength(0);
   });
 });

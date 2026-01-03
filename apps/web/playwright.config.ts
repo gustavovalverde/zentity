@@ -5,6 +5,9 @@ import { defineConfig, devices } from "@playwright/test";
 const authFile = join(__dirname, "e2e", ".auth", "user.json");
 const e2eDbPath =
   process.env.E2E_DATABASE_PATH ?? join(__dirname, "e2e", ".data", "e2e.db");
+const e2eDbUrl =
+  process.env.E2E_TURSO_DATABASE_URL ??
+  (e2eDbPath.startsWith("file:") ? e2eDbPath : `file:${e2eDbPath}`);
 const useWebServer =
   process.env.E2E_EXTERNAL_WEB_SERVER !== "true" &&
   process.env.E2E_SEPOLIA !== "true";
@@ -37,8 +40,9 @@ export default defineConfig({
           reuseExistingServer: true,
           timeout: 240 * 1000,
           env: {
-            DATABASE_PATH: e2eDbPath,
+            TURSO_DATABASE_URL: e2eDbUrl,
             E2E_DATABASE_PATH: e2eDbPath,
+            E2E_TURSO_DATABASE_URL: e2eDbUrl,
             BETTER_AUTH_SECRET:
               process.env.BETTER_AUTH_SECRET ??
               "test-secret-32-chars-minimum........",

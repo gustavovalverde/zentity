@@ -59,10 +59,10 @@ async function runFheEncryption(
       "fhe.reason": context?.reason,
     },
     async (span) => {
-      const bundle = getIdentityBundleByUserId(userId);
+      const bundle = await getIdentityBundleByUserId(userId);
       const keyId = bundle?.fheKeyId ?? null;
       if (!keyId) {
-        updateIdentityBundleFheStatus({
+        await updateIdentityBundleFheStatus({
           userId,
           fheStatus: "error",
           fheError: "fhe_key_missing",
@@ -73,34 +73,38 @@ async function runFheEncryption(
 
       span.setAttribute("fhe.key_id_hash", hashIdentifier(keyId));
 
-      const selectedDocument = getSelectedIdentityDocumentByUserId(userId);
+      const selectedDocument =
+        await getSelectedIdentityDocumentByUserId(userId);
       const draft = selectedDocument
-        ? getLatestIdentityDraftByUserAndDocument(userId, selectedDocument.id)
-        : getLatestIdentityDraftByUserId(userId);
+        ? await getLatestIdentityDraftByUserAndDocument(
+            userId,
+            selectedDocument.id
+          )
+        : await getLatestIdentityDraftByUserId(userId);
 
       const birthYearOffset =
         draft?.birthYearOffset ?? selectedDocument?.birthYearOffset ?? null;
       const countryCodeNumeric = draft?.countryCodeNumeric ?? 0;
       const livenessScore = draft?.antispoofScore;
 
-      const verificationStatus = getVerificationStatus(userId);
+      const verificationStatus = await getVerificationStatus(userId);
       const complianceLevel = verificationStatus.verified
         ? getComplianceLevel(verificationStatus)
         : null;
 
-      const existingBirthYearOffset = getLatestEncryptedAttributeByUserAndType(
-        userId,
-        "birth_year_offset"
-      );
-      const existingCountryCode = getLatestEncryptedAttributeByUserAndType(
-        userId,
-        "country_code"
-      );
-      const existingLivenessScore = getLatestEncryptedAttributeByUserAndType(
-        userId,
-        "liveness_score"
-      );
-      const existingCompliance = getLatestEncryptedAttributeByUserAndType(
+      const existingBirthYearOffset =
+        await getLatestEncryptedAttributeByUserAndType(
+          userId,
+          "birth_year_offset"
+        );
+      const existingCountryCode =
+        await getLatestEncryptedAttributeByUserAndType(userId, "country_code");
+      const existingLivenessScore =
+        await getLatestEncryptedAttributeByUserAndType(
+          userId,
+          "liveness_score"
+        );
+      const existingCompliance = await getLatestEncryptedAttributeByUserAndType(
         userId,
         "compliance_level"
       );
@@ -141,7 +145,7 @@ async function runFheEncryption(
         shouldEncryptCompliance;
 
       if (!needsEncryption) {
-        updateIdentityBundleFheStatus({
+        await updateIdentityBundleFheStatus({
           userId,
           fheStatus: verificationStatus.verified ? "complete" : "pending",
           fheError: null,
@@ -151,7 +155,7 @@ async function runFheEncryption(
         return;
       }
 
-      updateIdentityBundleFheStatus({
+      await updateIdentityBundleFheStatus({
         userId,
         fheStatus: "pending",
         fheError: null,
@@ -181,7 +185,7 @@ async function runFheEncryption(
 
         if (shouldEncryptBirthYearOffset) {
           if (result.birthYearOffsetCiphertext) {
-            insertEncryptedAttribute({
+            await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
@@ -197,7 +201,7 @@ async function runFheEncryption(
 
         if (shouldEncryptCountryCode) {
           if (result.countryCodeCiphertext) {
-            insertEncryptedAttribute({
+            await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
@@ -213,7 +217,7 @@ async function runFheEncryption(
 
         if (shouldEncryptLivenessScore) {
           if (result.livenessScoreCiphertext) {
-            insertEncryptedAttribute({
+            await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
@@ -229,7 +233,7 @@ async function runFheEncryption(
 
         if (shouldEncryptCompliance) {
           if (result.complianceLevelCiphertext) {
-            insertEncryptedAttribute({
+            await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
@@ -244,7 +248,7 @@ async function runFheEncryption(
         }
 
         if (missingCiphertexts.length > 0) {
-          updateIdentityBundleFheStatus({
+          await updateIdentityBundleFheStatus({
             userId,
             fheStatus: "error",
             fheError: "fhe_encryption_failed",
@@ -254,7 +258,7 @@ async function runFheEncryption(
           return;
         }
 
-        updateIdentityBundleFheStatus({
+        await updateIdentityBundleFheStatus({
           userId,
           fheStatus: verificationStatus.verified ? "complete" : "pending",
           fheError: null,
@@ -267,7 +271,7 @@ async function runFheEncryption(
         const issue = isHttp
           ? "fhe_encryption_failed"
           : "fhe_service_unavailable";
-        updateIdentityBundleFheStatus({
+        await updateIdentityBundleFheStatus({
           userId,
           fheStatus: "error",
           fheError: issue,

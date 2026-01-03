@@ -57,8 +57,10 @@ function parseSecretMetadata(
   }
 }
 
-export function getUserAgeProof(userId: string): AgeProofSummary | null {
-  const proof = db
+export async function getUserAgeProof(
+  userId: string
+): Promise<AgeProofSummary | null> {
+  const proof = await db
     .select({
       id: zkProofs.id,
       isOver18: zkProofs.isOver18,
@@ -81,7 +83,7 @@ export function getUserAgeProof(userId: string): AgeProofSummary | null {
     return null;
   }
 
-  const encrypted = getLatestEncryptedAttributeByUserAndType(
+  const encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
     "birth_year_offset"
   );
@@ -96,8 +98,10 @@ export function getUserAgeProof(userId: string): AgeProofSummary | null {
   };
 }
 
-export function getUserAgeProofFull(userId: string): AgeProofFull | null {
-  const row = db
+export async function getUserAgeProofFull(
+  userId: string
+): Promise<AgeProofFull | null> {
+  const row = await db
     .select({
       id: zkProofs.id,
       isOver18: zkProofs.isOver18,
@@ -126,7 +130,7 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
     return null;
   }
 
-  const encrypted = getLatestEncryptedAttributeByUserAndType(
+  const encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
     "birth_year_offset"
   );
@@ -160,11 +164,11 @@ export function getUserAgeProofFull(userId: string): AgeProofFull | null {
   };
 }
 
-export function getEncryptedSecretByUserAndType(
+export async function getEncryptedSecretByUserAndType(
   userId: string,
   secretType: string
-): EncryptedSecret | null {
-  const row = db
+): Promise<EncryptedSecret | null> {
+  const row = await db
     .select()
     .from(encryptedSecrets)
     .where(
@@ -186,11 +190,11 @@ export function getEncryptedSecretByUserAndType(
   };
 }
 
-export function getEncryptedSecretById(
+export async function getEncryptedSecretById(
   userId: string,
   secretId: string
-): EncryptedSecret | null {
-  const row = db
+): Promise<EncryptedSecret | null> {
+  const row = await db
     .select()
     .from(encryptedSecrets)
     .where(
@@ -212,17 +216,17 @@ export function getEncryptedSecretById(
   };
 }
 
-export function getSecretWrappersBySecretId(
+export async function getSecretWrappersBySecretId(
   secretId: string
-): SecretWrapperRecord[] {
-  return db
+): Promise<SecretWrapperRecord[]> {
+  return await db
     .select()
     .from(secretWrappers)
     .where(eq(secretWrappers.secretId, secretId))
     .all();
 }
 
-export function upsertEncryptedSecret(data: {
+export async function upsertEncryptedSecret(data: {
   id: string;
   userId: string;
   secretType: string;
@@ -232,11 +236,12 @@ export function upsertEncryptedSecret(data: {
   blobSize?: number | null;
   metadata: Record<string, unknown> | null;
   version: string;
-}): EncryptedSecret {
+}): Promise<EncryptedSecret> {
   const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
   const encryptedBlob = data.encryptedBlob ?? "";
 
-  db.insert(encryptedSecrets)
+  await db
+    .insert(encryptedSecrets)
     .values({
       id: data.id,
       userId: data.userId,
@@ -262,21 +267,25 @@ export function upsertEncryptedSecret(data: {
     })
     .run();
 
-  const updated = getEncryptedSecretByUserAndType(data.userId, data.secretType);
+  const updated = await getEncryptedSecretByUserAndType(
+    data.userId,
+    data.secretType
+  );
   if (!updated) {
     throw new Error("Failed to upsert encrypted secret");
   }
   return updated;
 }
 
-export function updateEncryptedSecretMetadata(data: {
+export async function updateEncryptedSecretMetadata(data: {
   userId: string;
   secretType: string;
   metadata: Record<string, unknown> | null;
-}): EncryptedSecret | null {
+}): Promise<EncryptedSecret | null> {
   const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
 
-  db.update(encryptedSecrets)
+  await db
+    .update(encryptedSecrets)
     .set({
       metadata,
       updatedAt: sql`datetime('now')`,
@@ -289,10 +298,10 @@ export function updateEncryptedSecretMetadata(data: {
     )
     .run();
 
-  return getEncryptedSecretByUserAndType(data.userId, data.secretType);
+  return await getEncryptedSecretByUserAndType(data.userId, data.secretType);
 }
 
-export function upsertSecretWrapper(data: {
+export async function upsertSecretWrapper(data: {
   id: string;
   secretId: string;
   userId: string;
@@ -300,8 +309,9 @@ export function upsertSecretWrapper(data: {
   wrappedDek: string;
   prfSalt: string;
   kekVersion: string;
-}): SecretWrapperRecord {
-  db.insert(secretWrappers)
+}): Promise<SecretWrapperRecord> {
+  await db
+    .insert(secretWrappers)
     .values({
       id: data.id,
       secretId: data.secretId,
@@ -322,7 +332,7 @@ export function upsertSecretWrapper(data: {
     })
     .run();
 
-  const wrappers = getSecretWrappersBySecretId(data.secretId);
+  const wrappers = await getSecretWrappersBySecretId(data.secretId);
   const match = wrappers.find(
     (wrapper) => wrapper.credentialId === data.credentialId
   );
@@ -332,11 +342,12 @@ export function upsertSecretWrapper(data: {
   return match;
 }
 
-export function deleteEncryptedSecretByUserAndType(
+export async function deleteEncryptedSecretByUserAndType(
   userId: string,
   secretType: string
-): void {
-  db.delete(encryptedSecrets)
+): Promise<void> {
+  await db
+    .delete(encryptedSecrets)
     .where(
       and(
         eq(encryptedSecrets.userId, userId),
@@ -346,11 +357,11 @@ export function deleteEncryptedSecretByUserAndType(
     .run();
 }
 
-export function getLatestZkProofPayloadByUserAndType(
+export async function getLatestZkProofPayloadByUserAndType(
   userId: string,
   proofType: string,
   documentId?: string
-): { proof: string; publicSignals: string[] } | null {
+): Promise<{ proof: string; publicSignals: string[] } | null> {
   const baseConditions = [
     eq(zkProofs.userId, userId),
     eq(zkProofs.proofType, proofType),
@@ -360,7 +371,7 @@ export function getLatestZkProofPayloadByUserAndType(
     baseConditions.push(eq(zkProofs.documentId, documentId));
   }
 
-  const row = db
+  const row = await db
     .select({
       proofPayload: zkProofs.proofPayload,
       publicInputs: zkProofs.publicInputs,
@@ -389,8 +400,10 @@ export function getLatestZkProofPayloadByUserAndType(
   }
 }
 
-export function getZkProofsByUserId(userId: string): ZkProofRecord[] {
-  return db
+export async function getZkProofsByUserId(
+  userId: string
+): Promise<ZkProofRecord[]> {
+  return await db
     .select()
     .from(zkProofs)
     .where(eq(zkProofs.userId, userId))
@@ -398,11 +411,11 @@ export function getZkProofsByUserId(userId: string): ZkProofRecord[] {
     .all();
 }
 
-export function getZkProofTypesByUserAndDocument(
+export async function getZkProofTypesByUserAndDocument(
   userId: string,
   documentId: string
-): string[] {
-  const rows = db
+): Promise<string[]> {
+  const rows = await db
     .select({ proofType: zkProofs.proofType })
     .from(zkProofs)
     .where(
@@ -419,8 +432,10 @@ export function getZkProofTypesByUserAndDocument(
   return rows.map((row) => row.proofType);
 }
 
-export function getEncryptedAttributeTypesByUserId(userId: string): string[] {
-  const rows = db
+export async function getEncryptedAttributeTypesByUserId(
+  userId: string
+): Promise<string[]> {
+  const rows = await db
     .select({ attributeType: encryptedAttributes.attributeType })
     .from(encryptedAttributes)
     .where(eq(encryptedAttributes.userId, userId))
@@ -431,16 +446,16 @@ export function getEncryptedAttributeTypesByUserId(userId: string): string[] {
   return rows.map((row) => row.attributeType);
 }
 
-export function getLatestEncryptedAttributeByUserAndType(
+export async function getLatestEncryptedAttributeByUserAndType(
   userId: string,
   attributeType: string
-): {
+): Promise<{
   ciphertext: string;
   keyId: string | null;
   encryptionTimeMs: number | null;
   createdAt: string;
-} | null {
-  const row = db
+} | null> {
+  const row = await db
     .select({
       ciphertext: encryptedAttributes.ciphertext,
       keyId: encryptedAttributes.keyId,
@@ -461,11 +476,11 @@ export function getLatestEncryptedAttributeByUserAndType(
   return row ?? null;
 }
 
-export function getSignedClaimTypesByUserAndDocument(
+export async function getSignedClaimTypesByUserAndDocument(
   userId: string,
   documentId: string
-): string[] {
-  const rows = db
+): Promise<string[]> {
+  const rows = await db
     .select({ claimType: signedClaims.claimType })
     .from(signedClaims)
     .where(
@@ -481,11 +496,11 @@ export function getSignedClaimTypesByUserAndDocument(
   return rows.map((row) => row.claimType);
 }
 
-export function getProofHashesByUserAndDocument(
+export async function getProofHashesByUserAndDocument(
   userId: string,
   documentId: string
-): string[] {
-  const rows = db
+): Promise<string[]> {
+  const rows = await db
     .select({ proofHash: zkProofs.proofHash })
     .from(zkProofs)
     .where(
@@ -501,8 +516,9 @@ export function getProofHashesByUserAndDocument(
   return rows.map((row) => row.proofHash);
 }
 
-export function insertZkProofRecord(data: ZkProofInsert): void {
-  db.insert(zkProofs)
+export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
+  await db
+    .insert(zkProofs)
     .values({
       id: data.id,
       userId: data.userId,
@@ -524,10 +540,11 @@ export function insertZkProofRecord(data: ZkProofInsert): void {
     .run();
 }
 
-export function insertEncryptedAttribute(
+export async function insertEncryptedAttribute(
   data: Omit<NewEncryptedAttribute, "createdAt">
-): void {
-  db.insert(encryptedAttributes)
+): Promise<void> {
+  await db
+    .insert(encryptedAttributes)
     .values({
       id: data.id,
       userId: data.userId,
@@ -540,10 +557,11 @@ export function insertEncryptedAttribute(
     .run();
 }
 
-export function insertSignedClaim(
+export async function insertSignedClaim(
   data: Omit<SignedClaimRecord, "createdAt">
-): void {
-  db.insert(signedClaims)
+): Promise<void> {
+  await db
+    .insert(signedClaims)
     .values({
       id: data.id,
       userId: data.userId,
@@ -556,12 +574,12 @@ export function insertSignedClaim(
     .run();
 }
 
-export function getLatestSignedClaimByUserTypeAndDocument(
+export async function getLatestSignedClaimByUserTypeAndDocument(
   userId: string,
   claimType: string,
   documentId: string
-): SignedClaimRecord | null {
-  const row = db
+): Promise<SignedClaimRecord | null> {
+  const row = await db
     .select()
     .from(signedClaims)
     .where(

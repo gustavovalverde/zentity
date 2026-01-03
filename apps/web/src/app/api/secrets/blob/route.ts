@@ -55,11 +55,11 @@ export async function GET(request: Request): Promise<Response> {
   const secretId = searchParams.get("secretId");
   const secretType = searchParams.get("secretType");
 
-  let secret: ReturnType<typeof getEncryptedSecretById> = null;
+  let secret: Awaited<ReturnType<typeof getEncryptedSecretById>> | null = null;
   if (secretId) {
-    secret = getEncryptedSecretById(authResult.session.user.id, secretId);
+    secret = await getEncryptedSecretById(authResult.session.user.id, secretId);
   } else if (secretType) {
-    secret = getEncryptedSecretByUserAndType(
+    secret = await getEncryptedSecretByUserAndType(
       authResult.session.user.id,
       secretType
     );

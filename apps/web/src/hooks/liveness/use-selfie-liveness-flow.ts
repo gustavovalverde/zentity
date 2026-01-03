@@ -57,8 +57,6 @@ import {
   VERIFY_TIMEOUT,
 } from "./constants";
 
-// Re-export types for backward compatibility
-
 async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,

@@ -177,8 +177,8 @@ test.describe("Web3 workflow (Sepolia)", () => {
       throw new Error(
         "Attestation UI is locked because the identity verification data is missing. " +
           "Ensure the Next.js server is using the seeded E2E database " +
-          "(set DATABASE_PATH=apps/web/e2e/.data/e2e.db or run Playwright with " +
-          "E2E_DATABASE_PATH pointing to the same file as the server)."
+          "(set TURSO_DATABASE_URL=file:apps/web/e2e/.data/e2e.db or run Playwright with " +
+          "E2E_TURSO_DATABASE_URL pointing to the same file as the server)."
       );
     }
 

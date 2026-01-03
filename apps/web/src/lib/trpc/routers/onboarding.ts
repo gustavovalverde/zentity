@@ -58,7 +58,7 @@ export const onboardingRouter = router({
    * allowing the client to show a notification to the user.
    */
   getSession: publicProcedure.query(async () => {
-    cleanupExpiredOnboardingSessions();
+    await cleanupExpiredOnboardingSessions();
 
     const { state, wasCleared } = await loadWizardState();
     if (!state) {

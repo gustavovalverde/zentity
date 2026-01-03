@@ -30,9 +30,9 @@ const CHALLENGE_TTL_MS = 15 * 60 * 1000;
 /**
  * Remove expired challenges
  */
-function cleanupExpiredChallenges(): void {
+async function cleanupExpiredChallenges(): Promise<void> {
   const now = Date.now();
-  db.delete(zkChallenges).where(lt(zkChallenges.expiresAt, now)).run();
+  await db.delete(zkChallenges).where(lt(zkChallenges.expiresAt, now)).run();
 }
 
 /**
@@ -49,11 +49,11 @@ function generateNonce(): string {
  * @param userId - Optional user ID to bind the challenge to
  * @returns The created challenge
  */
-export function createChallenge(
+export async function createChallenge(
   circuitType: CircuitType,
   userId?: string
-): Challenge {
-  cleanupExpiredChallenges();
+): Promise<Challenge> {
+  await cleanupExpiredChallenges();
 
   const now = Date.now();
   const expiresAt = now + CHALLENGE_TTL_MS;
@@ -62,7 +62,8 @@ export function createChallenge(
   for (let i = 0; i < 3; i++) {
     const nonce = generateNonce();
     try {
-      db.insert(zkChallenges)
+      await db
+        .insert(zkChallenges)
         .values({
           nonce,
           circuitType,
@@ -91,15 +92,15 @@ export function createChallenge(
  *
  * IMPORTANT: This function consumes the challenge (one-time use)
  */
-export function consumeChallenge(
+export async function consumeChallenge(
   nonce: string,
   circuitType: CircuitType,
   userId?: string
-): Challenge | null {
-  cleanupExpiredChallenges();
+): Promise<Challenge | null> {
+  await cleanupExpiredChallenges();
 
-  return db.transaction((tx) => {
-    const row = tx
+  return db.transaction(async (tx) => {
+    const row = await tx
       .select({
         nonce: zkChallenges.nonce,
         circuitType: zkChallenges.circuitType,
@@ -122,11 +123,11 @@ export function consumeChallenge(
       return null;
     }
     if (row.expiresAt < Date.now()) {
-      tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
+      await tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
       return null;
     }
 
-    tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
+    await tx.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
 
     return {
       nonce: row.nonce,
@@ -141,9 +142,9 @@ export function consumeChallenge(
 /**
  * Get a challenge without consuming it (for debugging/inspection)
  */
-function _getChallenge(nonce: string): Challenge | null {
-  cleanupExpiredChallenges();
-  const row = db
+async function _getChallenge(nonce: string): Promise<Challenge | null> {
+  await cleanupExpiredChallenges();
+  const row = await db
     .select({
       nonce: zkChallenges.nonce,
       circuitType: zkChallenges.circuitType,
@@ -160,7 +161,7 @@ function _getChallenge(nonce: string): Challenge | null {
     return null;
   }
   if (row.expiresAt < Date.now()) {
-    db.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
+    await db.delete(zkChallenges).where(eq(zkChallenges.nonce, nonce)).run();
     return null;
   }
 
@@ -176,9 +177,9 @@ function _getChallenge(nonce: string): Challenge | null {
 /**
  * Get count of active challenges (for monitoring)
  */
-export function getActiveChallengeCount(): number {
-  cleanupExpiredChallenges();
-  const row = db
+export async function getActiveChallengeCount(): Promise<number> {
+  await cleanupExpiredChallenges();
+  const row = await db
     .select({ count: sql<number>`count(*)` })
     .from(zkChallenges)
     .get();

@@ -8,18 +8,18 @@
 #   BETTER_AUTH_URL=https://app.zentity.xyz
 #   NEXT_PUBLIC_APP_URL=https://app.zentity.xyz
 #   INTERNAL_SERVICE_TOKEN=<secret>
-#   DATABASE_PATH=/var/lib/zentity/web/dev.db
+#   TURSO_DATABASE_URL=libsql://<db>.turso.io
+#   TURSO_AUTH_TOKEN=<secret>
 #   BB_CRS_PATH=/var/lib/zentity/bb-crs
 #   FHE_SERVICE_URL=http://fhe.railway.internal:5001
 #   OCR_SERVICE_URL=http://ocr.railway.internal:5004
 #
-# Required volumes (create via Railway dashboard):
-#   web-volume → /var/lib/zentity
-#     - Persists SQLite database at /var/lib/zentity/web/dev.db
-#     - Persists BB CRS cache at /var/lib/zentity/bb-crs
+# Optional volumes (create via Railway dashboard):
+#   bb-crs-cache → /var/lib/zentity/bb-crs
+#     - Persists BB CRS cache across restarts
 #
-# Schema apply (run after volume is mounted):
-#   DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db bun run db:push
+# Schema apply (run from CI/local machine):
+#   TURSO_DATABASE_URL=libsql://<db>.turso.io TURSO_AUTH_TOKEN=<secret> bun run db:push
 
 [build]
 builder = "DOCKERFILE"

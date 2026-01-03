@@ -545,8 +545,8 @@ export async function registerPasskeyCredential(params: {
 /**
  * Get passkey credentials for a user.
  */
-export function getPasskeyCredentials(userId: string) {
-  return db.query.passkeyCredentials.findMany({
+export async function getPasskeyCredentials(userId: string) {
+  return await db.query.passkeyCredentials.findMany({
     where: eq(passkeyCredentials.userId, userId),
   });
 }
@@ -554,8 +554,8 @@ export function getPasskeyCredentials(userId: string) {
 /**
  * Get passkey credential by credential ID.
  */
-export function getPasskeyCredentialByCredentialId(credentialId: string) {
-  return db.query.passkeyCredentials.findFirst({
+export async function getPasskeyCredentialByCredentialId(credentialId: string) {
+  return await db.query.passkeyCredentials.findFirst({
     where: eq(passkeyCredentials.credentialId, credentialId),
   });
 }
@@ -570,7 +570,7 @@ export async function deletePasskeyCredential(params: {
   const result = await db
     .delete(passkeyCredentials)
     .where(eq(passkeyCredentials.credentialId, params.credentialId))
-    .returning({ id: passkeyCredentials.id });
+    .returning();
 
   return { deleted: result.length > 0 };
 }
@@ -587,7 +587,7 @@ export async function renamePasskeyCredential(params: {
     .update(passkeyCredentials)
     .set({ name: params.name })
     .where(eq(passkeyCredentials.credentialId, params.credentialId))
-    .returning({ id: passkeyCredentials.id });
+    .returning();
 
   return { updated: result.length > 0 };
 }
@@ -618,8 +618,8 @@ export async function createPasswordlessUser(params: {
 /**
  * Get user by email.
  */
-export function getUserByEmail(email: string) {
-  return db.query.users.findFirst({
+export async function getUserByEmail(email: string) {
+  return await db.query.users.findFirst({
     where: eq(users.email, email),
   });
 }

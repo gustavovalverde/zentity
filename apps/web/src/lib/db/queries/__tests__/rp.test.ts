@@ -7,8 +7,8 @@ import {
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("rp authorization code queries", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
   });
@@ -17,9 +17,9 @@ describe("rp authorization code queries", () => {
     vi.useRealTimers();
   });
 
-  it("creates and consumes authorization codes", () => {
-    const userId = createTestUser();
-    const { code, expiresAt } = createRpAuthorizationCode({
+  it("creates and consumes authorization codes", async () => {
+    const userId = await createTestUser();
+    const { code, expiresAt } = await createRpAuthorizationCode({
       clientId: "client-1",
       redirectUri: "https://example.com/callback",
       state: "state-1",
@@ -29,17 +29,17 @@ describe("rp authorization code queries", () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     expect(expiresAt).toBe(nowSeconds + 5 * 60);
 
-    const consumed = consumeRpAuthorizationCode(code);
+    const consumed = await consumeRpAuthorizationCode(code);
     expect(consumed?.code).toBe(code);
     expect(consumed?.usedAt).toBe(nowSeconds);
 
-    const secondConsume = consumeRpAuthorizationCode(code);
+    const secondConsume = await consumeRpAuthorizationCode(code);
     expect(secondConsume).toBeNull();
   });
 
-  it("rejects expired authorization codes", () => {
-    const userId = createTestUser();
-    const { code } = createRpAuthorizationCode({
+  it("rejects expired authorization codes", async () => {
+    const userId = await createTestUser();
+    const { code } = await createRpAuthorizationCode({
       clientId: "client-2",
       redirectUri: "https://example.com/callback",
       userId,
@@ -47,7 +47,7 @@ describe("rp authorization code queries", () => {
 
     vi.advanceTimersByTime(6 * 60 * 1000);
 
-    const consumed = consumeRpAuthorizationCode(code);
+    const consumed = await consumeRpAuthorizationCode(code);
     expect(consumed).toBeNull();
   });
 });

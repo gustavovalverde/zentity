@@ -24,8 +24,10 @@ export default async function RPIntegrationPage() {
   });
 
   const userId = session?.user?.id;
-  const ageProof = userId ? getUserAgeProofFull(userId) : null;
-  const verificationStatus = userId ? getVerificationStatus(userId) : null;
+  const ageProof = userId ? await getUserAgeProofFull(userId) : null;
+  const verificationStatus = userId
+    ? await getVerificationStatus(userId)
+    : null;
 
   const hasProof = verificationStatus?.verified || ageProof?.isOver18;
 

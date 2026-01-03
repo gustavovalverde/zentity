@@ -3,7 +3,7 @@
  */
 import { vi } from "vitest";
 
-process.env.DATABASE_PATH ||= ":memory:";
+process.env.TURSO_DATABASE_URL ||= "file::memory:";
 process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
 process.env.BETTER_AUTH_URL ||= "http://localhost:3000";
 

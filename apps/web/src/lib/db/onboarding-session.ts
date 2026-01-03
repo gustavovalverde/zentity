@@ -243,7 +243,7 @@ export async function saveWizardState(
   }
 
   // Save to database (generates sessionId if not provided)
-  const session = upsertOnboardingSession({
+  const session = await upsertOnboardingSession({
     id: sessionId,
     email: state.email,
     step: state.step,
@@ -270,7 +270,7 @@ export async function loadWizardState(): Promise<WizardStateResult> {
   }
 
   // Get full session from database by sessionId
-  const session = getOnboardingSessionById(navState.sessionId);
+  const session = await getOnboardingSessionById(navState.sessionId);
   if (!session) {
     // Cookie exists but session expired/missing in DB - clear stale cookie
     await clearWizardCookie();
@@ -318,13 +318,13 @@ export async function updateWizardProgress(
     identityDraftId?: string | null;
   }
 ): Promise<void> {
-  const previousSession = getOnboardingSessionById(sessionId);
+  const previousSession = await getOnboardingSessionById(sessionId);
   const previousStep = previousSession?.step ?? null;
   const inferredStep = updates.step ?? (updates.keysSecured ? 5 : null);
   const step = inferredStep ?? undefined;
 
   // Update database
-  upsertOnboardingSession({
+  await upsertOnboardingSession({
     id: sessionId,
     ...updates,
     step,
@@ -360,7 +360,7 @@ export async function updateWizardProgress(
  * Complete onboarding - delete session data
  */
 export async function completeOnboarding(sessionId: string): Promise<void> {
-  deleteOnboardingSessionById(sessionId);
+  await deleteOnboardingSessionById(sessionId);
   addSpanEvent("onboarding.complete", {});
   await clearWizardCookie();
 }
@@ -484,7 +484,7 @@ export async function getSessionFromCookie(): Promise<OnboardingSession | null> 
     return null;
   }
 
-  const session = getOnboardingSessionById(navState.sessionId);
+  const session = await getOnboardingSessionById(navState.sessionId);
   if (!session) {
     // Cookie exists but session expired/missing in DB
     await clearWizardCookie();
@@ -510,7 +510,7 @@ export async function getSessionFromCookieHeader(
     return null;
   }
 
-  const session = getOnboardingSessionById(navState.sessionId);
+  const session = await getOnboardingSessionById(navState.sessionId);
   if (!session) {
     return null;
   }

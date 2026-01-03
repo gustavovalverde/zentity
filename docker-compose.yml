@@ -41,7 +41,8 @@ services:
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
-      - DATABASE_PATH=/var/lib/zentity/web/dev.db
+      - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}
       - SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
       - BB_CRS_PATH=/var/lib/zentity/bb-crs
       # Blockchain attestation (server-side)

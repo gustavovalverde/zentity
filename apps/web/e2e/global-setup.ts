@@ -1,10 +1,10 @@
-import { Database } from "bun:sqlite";
 import { spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { createClient } from "@libsql/client";
 import { type APIResponse, type FullConfig, request } from "@playwright/test";
 
 const currentDir =
@@ -15,8 +15,7 @@ const AUTH_STATE_PATH = join(currentDir, ".auth", "user.json");
 const AUTH_SEED_PATH = join(currentDir, ".auth", "seed.json");
 const E2E_DB_PATH =
   process.env.E2E_DATABASE_PATH ?? join(currentDir, ".data", "e2e.db");
-const DEFAULT_APP_DB_PATH =
-  process.env.DATABASE_PATH ?? join(currentDir, "..", ".data", "dev.db");
+const DEFAULT_APP_DB_PATH = join(currentDir, "..", ".data", "dev.db");
 const SELECT_QUERY_REGEX = /^select\s/i;
 
 type ApiContext = Awaited<ReturnType<typeof request.newContext>>;
@@ -85,61 +84,91 @@ function getOrCreateSeed(): AuthSeed {
   return seed;
 }
 
-function runDrizzlePush(dbPath: string) {
+function toFileUrl(value: string) {
+  if (value.startsWith("file:") || value.startsWith("libsql:")) {
+    return value;
+  }
+  return `file:${value}`;
+}
+
+function getFilePathFromUrl(dbUrl: string): string | null {
+  if (!dbUrl.startsWith("file:")) {
+    return null;
+  }
+  const path = dbUrl.slice("file:".length);
+  if (path === ":memory:" || path === "::memory:") {
+    return null;
+  }
+  return path;
+}
+
+const E2E_DB_URL = process.env.E2E_TURSO_DATABASE_URL ?? toFileUrl(E2E_DB_PATH);
+const DEFAULT_APP_DB_URL =
+  process.env.TURSO_DATABASE_URL ?? toFileUrl(DEFAULT_APP_DB_PATH);
+
+function runDrizzlePush(dbUrl: string) {
   const result = spawnSync("bun", ["run", "db:push"], {
     cwd: join(currentDir, ".."),
     env: {
       ...process.env,
-      DATABASE_PATH: dbPath,
+      TURSO_DATABASE_URL: dbUrl,
+      TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
     },
     encoding: "utf8",
   });
 
   if (result.status !== 0) {
     throw new Error(
-      `db:push failed for ${dbPath}: ${result.stderr || result.stdout || "unknown error"}`
+      `db:push failed for ${dbUrl}: ${result.stderr || result.stdout || "unknown error"}`
     );
   }
 }
 
 function ensureE2EDatabaseInitialized() {
-  mkdirSync(dirname(E2E_DB_PATH), { recursive: true });
-  runDrizzlePush(E2E_DB_PATH);
+  const filePath = getFilePathFromUrl(E2E_DB_URL);
+  if (filePath) {
+    mkdirSync(dirname(filePath), { recursive: true });
+  }
+  runDrizzlePush(E2E_DB_URL);
 }
 
-function ensureDatabaseInitialized(dbPath: string) {
-  mkdirSync(dirname(dbPath), { recursive: true });
-  runDrizzlePush(dbPath);
+function ensureDatabaseInitialized(dbUrl: string) {
+  const filePath = getFilePathFromUrl(dbUrl);
+  if (filePath) {
+    mkdirSync(dirname(filePath), { recursive: true });
+  }
+  runDrizzlePush(dbUrl);
 }
 
-function runSql(dbPath: string, sql: string) {
-  const db = new Database(dbPath);
+async function runSql(dbUrl: string, sql: string) {
+  const client = createClient({
+    url: dbUrl,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  });
   try {
     const trimmed = sql.trim();
     if (!trimmed) {
       return "";
     }
     const isSelect = SELECT_QUERY_REGEX.test(trimmed);
-    if (isSelect) {
-      const row = db.query(trimmed).get() as
-        | Record<string, unknown>
-        | undefined;
-      if (!row) {
-        return "";
-      }
-      const firstKey = Object.keys(row)[0];
-      const value = firstKey ? row[firstKey] : undefined;
-      return value === undefined || value === null ? "" : String(value);
+    const result = await client.execute(trimmed);
+    if (!isSelect) {
+      return "";
     }
-    db.exec(trimmed);
-    return "";
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (!row) {
+      return "";
+    }
+    const firstKey = Object.keys(row)[0];
+    const value = firstKey ? row[firstKey] : undefined;
+    return value === undefined || value === null ? "" : String(value);
   } catch (error) {
     throw new Error(
       `E2E DB query failed: ${error instanceof Error ? error.message : String(error)}`
     );
   } finally {
     try {
-      db.close();
+      client.close();
     } catch {
       // Best-effort cleanup.
     }
@@ -148,9 +177,9 @@ function runSql(dbPath: string, sql: string) {
 
 // Schema is managed via drizzle-kit push; no manual schema migrations here.
 
-function seedVerifiedIdentity(dbPath: string, email: string) {
-  const userId = runSql(
-    dbPath,
+async function seedVerifiedIdentity(dbUrl: string, email: string) {
+  const userId = await runSql(
+    dbUrl,
     `SELECT id FROM "user" WHERE email = '${email.replace(/'/g, "''")}';`
   );
 
@@ -311,15 +340,15 @@ function seedVerifiedIdentity(dbPath: string, email: string) {
     );
   `;
 
-  runSql(dbPath, identityBundleSql);
-  runSql(dbPath, identityDocumentSql);
-  runSql(dbPath, signedClaimsSql);
-  runSql(dbPath, zkProofSql);
-  runSql(dbPath, encryptedAttributesSql);
+  await runSql(dbUrl, identityBundleSql);
+  await runSql(dbUrl, identityDocumentSql);
+  await runSql(dbUrl, signedClaimsSql);
+  await runSql(dbUrl, zkProofSql);
+  await runSql(dbUrl, encryptedAttributesSql);
 }
 
-function resetBlockchainState(dbPath: string) {
-  runSql(dbPath, "DELETE FROM blockchain_attestations;");
+async function resetBlockchainState(dbUrl: string) {
+  await runSql(dbUrl, "DELETE FROM blockchain_attestations;");
 }
 
 export default async function globalSetup(config: FullConfig) {
@@ -341,11 +370,11 @@ export default async function globalSetup(config: FullConfig) {
 
   await waitForServer(api);
   ensureE2EDatabaseInitialized();
-  resetBlockchainState(E2E_DB_PATH);
+  await resetBlockchainState(E2E_DB_URL);
 
-  if (DEFAULT_APP_DB_PATH !== E2E_DB_PATH) {
-    ensureDatabaseInitialized(DEFAULT_APP_DB_PATH);
-    resetBlockchainState(DEFAULT_APP_DB_PATH);
+  if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
+    ensureDatabaseInitialized(DEFAULT_APP_DB_URL);
+    await resetBlockchainState(DEFAULT_APP_DB_URL);
   }
 
   const signUpResponse = await postWithRetries(api, "/api/auth/sign-up/email", {
@@ -380,9 +409,9 @@ export default async function globalSetup(config: FullConfig) {
     );
   }
 
-  seedVerifiedIdentity(E2E_DB_PATH, email);
-  if (DEFAULT_APP_DB_PATH !== E2E_DB_PATH) {
-    seedVerifiedIdentity(DEFAULT_APP_DB_PATH, email);
+  await seedVerifiedIdentity(E2E_DB_URL, email);
+  if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
+    await seedVerifiedIdentity(DEFAULT_APP_DB_URL, email);
   }
 
   await api.storageState({ path: AUTH_STATE_PATH });

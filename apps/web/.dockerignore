@@ -24,7 +24,7 @@
 !tailwind.config.ts
 !components.json
 
-# Include scripts (entrypoint, db init)
+# Include scripts (entrypoint)
 !scripts/
 
 # Include Noir circuits (needed for ZK proofs)

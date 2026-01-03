@@ -2,32 +2,37 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createClient } from "@libsql/client";
 import { describe, expect, it } from "vitest";
 
-import { getSqliteDb } from "@/lib/db/connection";
-
-function getTableNames(db: ReturnType<typeof getSqliteDb>): string[] {
-  const rows = db
-    .query("select name from sqlite_master where type = 'table'")
-    .all() as Array<{ name: string }>;
-  return rows.map((row) => row.name);
-}
-
-describe("db connection", () => {
-  it("does not auto-create schema without drizzle-kit push", () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "zentity-db-"));
-    const dbPath = join(tmpDir, "test.db");
-    const db = getSqliteDb(dbPath);
-
-    const tableNames = getTableNames(db);
-
-    expect(tableNames).not.toContain("user");
-
+async function getTableNames(dbUrl: string): Promise<string[]> {
+  const client = createClient({ url: dbUrl });
+  try {
+    const result = await client.execute(
+      "select name from sqlite_master where type = 'table'"
+    );
+    return result.rows
+      .map((row) => String((row as Record<string, unknown>).name))
+      .filter(Boolean);
+  } finally {
     try {
-      db.close();
+      client.close();
     } catch {
       // Best-effort cleanup.
     }
+  }
+}
+
+describe("db connection", () => {
+  it("does not auto-create schema without drizzle-kit push", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "zentity-db-"));
+    const dbPath = join(tmpDir, "test.db");
+    const dbUrl = `file:${dbPath}`;
+
+    const tableNames = await getTableNames(dbUrl);
+
+    expect(tableNames).not.toContain("user");
+
     rmSync(tmpDir, { recursive: true, force: true });
   });
 });

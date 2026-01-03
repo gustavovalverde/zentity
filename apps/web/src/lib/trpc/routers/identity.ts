@@ -91,7 +91,7 @@ import { protectedProcedure, publicProcedure, router } from "../server";
  */
 function getCachedVerificationStatus(userId: string) {
   return unstable_cache(
-    () => Promise.resolve(getVerificationStatus(userId)),
+    () => getVerificationStatus(userId),
     [`user-verification-${userId}`],
     {
       revalidate: 300, // 5-minute TTL
@@ -328,7 +328,8 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
     },
     async (span) => {
       const claimTime = new Date().toISOString();
-      db.update(identityVerificationJobs)
+      await db
+        .update(identityVerificationJobs)
         .set({
           status: "running",
           startedAt: claimTime,
@@ -343,7 +344,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         )
         .run();
 
-      const job = getIdentityVerificationJobById(jobId);
+      const job = await getIdentityVerificationJobById(jobId);
       if (!job || job.status !== "running" || job.startedAt !== claimTime) {
         span.setAttribute("identity.job_skipped", true);
         return;
@@ -358,9 +359,9 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
       const issues: string[] = [];
 
       try {
-        const draft = getIdentityDraftById(job.draftId);
+        const draft = await getIdentityDraftById(job.draftId);
         if (!draft) {
-          updateIdentityVerificationJobStatus({
+          await updateIdentityVerificationJobStatus({
             jobId,
             status: "error",
             error: "Identity draft not found",
@@ -376,7 +377,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         );
 
         if (!draft.userId) {
-          updateIdentityDraft(draft.id, { userId: job.userId });
+          await updateIdentityDraft(draft.id, { userId: job.userId });
         }
 
         const documentProcessed = Boolean(draft.documentProcessed);
@@ -412,7 +413,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         if (!documentHashField && documentHash) {
           try {
             documentHashField = await getDocumentHashField(documentHash);
-            updateIdentityDraft(draft.id, { documentHashField });
+            await updateIdentityDraft(draft.id, { documentHashField });
           } catch {
             issues.push("document_hash_field_failed");
           }
@@ -476,7 +477,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             };
 
             const ocrSignature = await signAttestationClaim(ocrClaimPayload);
-            insertSignedClaim({
+            await insertSignedClaim({
               id: uuidv4(),
               userId: job.userId,
               documentId: draft.documentId,
@@ -519,7 +520,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
             const livenessSignature =
               await signAttestationClaim(livenessClaimPayload);
-            insertSignedClaim({
+            await insertSignedClaim({
               id: uuidv4(),
               userId: job.userId,
               documentId: draft.documentId,
@@ -569,7 +570,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             const faceMatchSignature = await signAttestationClaim(
               faceMatchClaimPayload
             );
-            insertSignedClaim({
+            await insertSignedClaim({
               id: uuidv4(),
               userId: job.userId,
               documentId: draft.documentId,
@@ -621,7 +622,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           bundleUpdate.fheKeyId = job.fheKeyId;
         }
 
-        upsertIdentityBundle(bundleUpdate);
+        await upsertIdentityBundle(bundleUpdate);
 
         // Invalidate cached verification status
         invalidateVerificationCache(job.userId);
@@ -636,7 +637,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         if (documentProcessed && draft.documentId) {
           try {
-            createIdentityDocument({
+            await createIdentityDocument({
               id: draft.documentId,
               userId: job.userId,
               documentType: draft.documentType ?? null,
@@ -683,7 +684,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           issues,
         };
 
-        updateIdentityVerificationJobStatus({
+        await updateIdentityVerificationJobStatus({
           jobId,
           status: "complete",
           result: JSON.stringify(resultPayload),
@@ -695,7 +696,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         span.setAttribute("identity.issue_count", issues.length);
         span.setAttribute("identity.processing_ms", Date.now() - startTime);
       } catch (error) {
-        updateIdentityVerificationJobStatus({
+        await updateIdentityVerificationJobStatus({
           jobId,
           status: "error",
           error: error instanceof Error ? error.message : "Job failed",
@@ -807,8 +808,8 @@ export const identityRouter = router({
       const existingDraft =
         validation.session.identityDraftId !== null &&
         validation.session.identityDraftId !== undefined
-          ? getIdentityDraftById(validation.session.identityDraftId)
-          : getIdentityDraftBySessionId(sessionId);
+          ? await getIdentityDraftById(validation.session.identityDraftId)
+          : await getIdentityDraftBySessionId(sessionId);
 
       const draftId = existingDraft?.id ?? uuidv4();
       const documentId = existingDraft?.documentId ?? uuidv4();
@@ -826,7 +827,7 @@ export const identityRouter = router({
 
       let isDuplicateDocument = false;
       if (documentHash) {
-        const hashExists = documentHashExists(documentHash);
+        const hashExists = await documentHashExists(documentHash);
         if (hashExists) {
           isDuplicateDocument = true;
           issues.push("duplicate_document");
@@ -886,7 +887,7 @@ export const identityRouter = router({
       );
       ctx.span?.setAttribute("onboarding.issues_count", issues.length);
 
-      upsertIdentityDraft({
+      await upsertIdentityDraft({
         id: draftId,
         onboardingSessionId: sessionId,
         documentId,
@@ -997,7 +998,7 @@ export const identityRouter = router({
         });
       }
 
-      const draft = getIdentityDraftById(input.draftId);
+      const draft = await getIdentityDraftById(input.draftId);
       if (!draft) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -1076,7 +1077,7 @@ export const identityRouter = router({
       const livenessPassed = livenessPassedLocal;
       const faceMatchPassed = facesMatchLocal;
 
-      updateIdentityDraft(draft.id, {
+      await updateIdentityDraft(draft.id, {
         antispoofScore,
         liveScore,
         livenessPassed,
@@ -1151,7 +1152,7 @@ export const identityRouter = router({
         });
       }
 
-      const draft = getIdentityDraftById(input.draftId);
+      const draft = await getIdentityDraftById(input.draftId);
       if (!draft) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -1159,7 +1160,7 @@ export const identityRouter = router({
         });
       }
 
-      const existingJob = getLatestIdentityVerificationJobForDraft(
+      const existingJob = await getLatestIdentityVerificationJobForDraft(
         input.draftId
       );
       if (
@@ -1172,7 +1173,7 @@ export const identityRouter = router({
       }
 
       const jobId = uuidv4();
-      createIdentityVerificationJob({
+      await createIdentityVerificationJob({
         id: jobId,
         draftId: input.draftId,
         userId: ctx.userId,
@@ -1189,8 +1190,8 @@ export const identityRouter = router({
    */
   finalizeStatus: protectedProcedure
     .input(z.object({ jobId: z.string().min(1) }))
-    .query(({ input }) => {
-      const job = getIdentityVerificationJobById(input.jobId);
+    .query(async ({ input }) => {
+      const job = await getIdentityVerificationJobById(input.jobId);
       if (!job) {
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -1260,7 +1261,7 @@ export const identityRouter = router({
       }
 
       const userId = ctx.userId;
-      const existingDocument = getLatestIdentityDocumentByUserId(userId);
+      const existingDocument = await getLatestIdentityDocumentByUserId(userId);
       let userSalt = input.userSalt;
       if (!userSalt && existingDocument?.userSalt) {
         const decryptedSalt = await decryptUserSalt(existingDocument.userSalt);
@@ -1288,7 +1289,7 @@ export const identityRouter = router({
 
       let isDuplicateDocument = false;
       if (documentResult?.commitments?.documentHash) {
-        const hashExists = documentHashExists(
+        const hashExists = await documentHashExists(
           documentResult.commitments.documentHash
         );
         if (hashExists && !existingDocument) {
@@ -1467,7 +1468,7 @@ export const identityRouter = router({
           };
 
           const ocrSignature = await signAttestationClaim(ocrClaimPayload);
-          insertSignedClaim({
+          await insertSignedClaim({
             id: uuidv4(),
             userId,
             documentId: identityDocumentId,
@@ -1508,7 +1509,7 @@ export const identityRouter = router({
 
           const livenessSignature =
             await signAttestationClaim(livenessClaimPayload);
-          insertSignedClaim({
+          await insertSignedClaim({
             id: uuidv4(),
             userId,
             documentId: identityDocumentId,
@@ -1547,7 +1548,7 @@ export const identityRouter = router({
           const faceMatchSignature = await signAttestationClaim(
             faceMatchClaimPayload
           );
-          insertSignedClaim({
+          await insertSignedClaim({
             id: uuidv4(),
             userId,
             documentId: identityDocumentId,
@@ -1639,7 +1640,7 @@ export const identityRouter = router({
         bundleUpdate.fheKeyId = fheKeyId;
       }
 
-      upsertIdentityBundle(bundleUpdate);
+      await upsertIdentityBundle(bundleUpdate);
 
       // Invalidate cached verification status
       invalidateVerificationCache(userId);
@@ -1653,7 +1654,7 @@ export const identityRouter = router({
           const encryptedUserSalt = documentResult.commitments.userSalt
             ? await encryptUserSalt(documentResult.commitments.userSalt)
             : null;
-          createIdentityDocument({
+          await createIdentityDocument({
             id: identityDocumentId,
             userId,
             documentType: documentResult.documentType ?? null,
@@ -1685,7 +1686,7 @@ export const identityRouter = router({
             documentResult.extractedData.lastName
           );
           if (displayName) {
-            updateUserName(userId, displayName);
+            await updateUserName(userId, displayName);
           }
         } catch {
           /* Name update failed, non-critical for verification */
@@ -1750,7 +1751,7 @@ export const identityRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const document = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const document = await getSelectedIdentityDocumentByUserId(ctx.userId);
       if (!(document?.userSalt && document.nameCommitment)) {
         throw new TRPCError({
           code: "NOT_FOUND",

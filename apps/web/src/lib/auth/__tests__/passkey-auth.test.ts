@@ -30,8 +30,8 @@ import {
 } from "../passkey-auth";
 
 describe("passkey-auth", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-15T12:00:00Z"));
   });
@@ -152,7 +152,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - happy path", () => {
     it("verifies valid assertion and returns user ID", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -177,7 +177,7 @@ describe("passkey-auth", () => {
     });
 
     it("updates counter in database after success", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 5 });
 
@@ -224,7 +224,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - challenge verification", () => {
     it("REJECTS invalid challenge ID", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -243,7 +243,7 @@ describe("passkey-auth", () => {
     });
 
     it("REJECTS expired challenge", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -269,7 +269,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - counter validation (replay attacks)", () => {
     it("accepts counter increment of 1", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -289,7 +289,7 @@ describe("passkey-auth", () => {
     });
 
     it("accepts counter increment > 1 (skipped operations)", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 5 });
 
@@ -309,7 +309,7 @@ describe("passkey-auth", () => {
     });
 
     it("REJECTS same counter value (replay attack)", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 5 });
 
@@ -330,7 +330,7 @@ describe("passkey-auth", () => {
     });
 
     it("REJECTS lower counter value (cloned authenticator)", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 100 });
 
@@ -353,7 +353,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - origin verification", () => {
     it("REJECTS wrong origin", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -376,7 +376,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - RP ID verification", () => {
     it("REJECTS wrong RP ID hash", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -400,7 +400,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - user presence flag", () => {
     it("REJECTS missing user presence flag", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({ userId, counter: 0 });
 
@@ -425,7 +425,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - signature verification", () => {
     it("REJECTS invalid signature", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const { credentialId } = await createTestPasskeyCredentialWithKeyPair({
         userId,
         counter: 0,
@@ -452,7 +452,7 @@ describe("passkey-auth", () => {
 
   describe("verifyPasskeyAssertion - user binding", () => {
     it("returns userId from credential, not from client", async () => {
-      const realUserId = createTestUser({ email: "real@example.com" });
+      const realUserId = await createTestUser({ email: "real@example.com" });
       const { credentialId, keyPair } =
         await createTestPasskeyCredentialWithKeyPair({
           userId: realUserId,
@@ -481,7 +481,7 @@ describe("passkey-auth", () => {
 
   describe("registerPasskeyCredential", () => {
     it("inserts credential with all fields", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const keyPair = await createTestKeyPair();
 
       const result = await registerPasskeyCredential({
@@ -506,7 +506,7 @@ describe("passkey-auth", () => {
     });
 
     it("sets default name when not provided", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const keyPair = await createTestKeyPair();
 
       await registerPasskeyCredential({
@@ -527,16 +527,16 @@ describe("passkey-auth", () => {
 
   describe("getPasskeyCredentials", () => {
     it("returns all credentials for user", async () => {
-      const userId = createTestUser();
-      createTestPasskeyCredential({ userId, name: "Passkey 1" });
-      createTestPasskeyCredential({ userId, name: "Passkey 2" });
+      const userId = await createTestUser();
+      await createTestPasskeyCredential({ userId, name: "Passkey 1" });
+      await createTestPasskeyCredential({ userId, name: "Passkey 2" });
 
       const credentials = await getPasskeyCredentials(userId);
       expect(credentials).toHaveLength(2);
     });
 
     it("returns empty array for user with no credentials", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const credentials = await getPasskeyCredentials(userId);
       expect(credentials).toHaveLength(0);
     });
@@ -544,8 +544,8 @@ describe("passkey-auth", () => {
 
   describe("getPasskeyCredentialByCredentialId", () => {
     it("returns credential by credential ID", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({
         userId,
         name: "My Passkey",
       });
@@ -562,8 +562,8 @@ describe("passkey-auth", () => {
 
   describe("deletePasskeyCredential", () => {
     it("deletes credential and returns deleted=true", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({ userId });
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({ userId });
 
       const result = await deletePasskeyCredential({ userId, credentialId });
       expect(result.deleted).toBe(true);
@@ -573,7 +573,7 @@ describe("passkey-auth", () => {
     });
 
     it("returns deleted=false for unknown credential", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const result = await deletePasskeyCredential({
         userId,
         credentialId: "unknown-id",
@@ -584,8 +584,8 @@ describe("passkey-auth", () => {
 
   describe("renamePasskeyCredential", () => {
     it("updates credential name", async () => {
-      const userId = createTestUser();
-      const credentialId = createTestPasskeyCredential({
+      const userId = await createTestUser();
+      const credentialId = await createTestPasskeyCredential({
         userId,
         name: "Old Name",
       });
@@ -602,7 +602,7 @@ describe("passkey-auth", () => {
     });
 
     it("returns updated=false for unknown credential", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const result = await renamePasskeyCredential({
         userId,
         credentialId: "unknown-id",
@@ -629,7 +629,7 @@ describe("passkey-auth", () => {
 
   describe("getUserByEmail", () => {
     it("returns user by email", async () => {
-      createTestUser({ email: "find@example.com", name: "Find Me" });
+      await createTestUser({ email: "find@example.com", name: "Find Me" });
 
       const user = await getUserByEmail("find@example.com");
       expect(user?.name).toBe("Find Me");
@@ -643,7 +643,7 @@ describe("passkey-auth", () => {
 
   describe("createPasskeySession", () => {
     it("creates session and sets cookie", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const resHeaders = new Headers();
 
       const result = await createPasskeySession(userId, resHeaders);
@@ -662,7 +662,7 @@ describe("passkey-auth", () => {
     });
 
     it("sets 7-day expiration", async () => {
-      const userId = createTestUser();
+      const userId = await createTestUser();
       const resHeaders = new Headers();
 
       const result = await createPasskeySession(userId, resHeaders);

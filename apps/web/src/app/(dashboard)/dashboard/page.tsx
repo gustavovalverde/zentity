@@ -72,24 +72,29 @@ export default async function DashboardPage() {
   const userId = session?.user?.id;
 
   // Fetch off-chain attestation data
-  const identityBundle = userId ? getIdentityBundleByUserId(userId) : null;
+  const identityBundle = userId
+    ? await getIdentityBundleByUserId(userId)
+    : null;
   const latestDocument = userId
-    ? getSelectedIdentityDocumentByUserId(userId)
+    ? await getSelectedIdentityDocumentByUserId(userId)
     : null;
   const selectedDocumentId = latestDocument?.id ?? null;
   const zkProofTypes =
     userId && selectedDocumentId
-      ? getZkProofTypesByUserAndDocument(userId, selectedDocumentId)
+      ? await getZkProofTypesByUserAndDocument(userId, selectedDocumentId)
       : [];
   const encryptedAttributes = userId
-    ? getEncryptedAttributeTypesByUserId(userId)
+    ? await getEncryptedAttributeTypesByUserId(userId)
     : [];
   const birthYearOffsetCiphertext = userId
-    ? getLatestEncryptedAttributeByUserAndType(userId, "birth_year_offset")
+    ? await getLatestEncryptedAttributeByUserAndType(
+        userId,
+        "birth_year_offset"
+      )
     : null;
   const signedClaimTypes =
     userId && selectedDocumentId
-      ? getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId)
+      ? await getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId)
       : [];
   const proofTypes = Array.from(new Set(zkProofTypes));
   const fheStatus = identityBundle?.fheStatus ?? null;
@@ -97,7 +102,9 @@ export default async function DashboardPage() {
     identityBundle?.fheStatus === "error" ? identityBundle.fheError : null;
 
   // Get verification status
-  const verificationStatus = userId ? getVerificationStatus(userId) : null;
+  const verificationStatus = userId
+    ? await getVerificationStatus(userId)
+    : null;
 
   // Fetch decrypted first name for personalized greeting
   const firstName = userId ? await getUserFirstName(userId) : null;

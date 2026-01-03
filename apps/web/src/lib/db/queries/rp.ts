@@ -7,17 +7,18 @@ import { rpAuthorizationCodes } from "../schema/rp";
 
 const RP_AUTH_CODE_TTL_SECONDS = 5 * 60; // 5 minutes
 
-export function createRpAuthorizationCode(input: {
+export async function createRpAuthorizationCode(input: {
   clientId: string;
   redirectUri: string;
   state?: string;
   userId: string;
-}): { code: string; expiresAt: number } {
+}): Promise<{ code: string; expiresAt: number }> {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + RP_AUTH_CODE_TTL_SECONDS;
   const code = crypto.randomUUID();
 
-  db.insert(rpAuthorizationCodes)
+  await db
+    .insert(rpAuthorizationCodes)
     .values({
       code,
       clientId: input.clientId,
@@ -32,13 +33,13 @@ export function createRpAuthorizationCode(input: {
   return { code, expiresAt };
 }
 
-export function consumeRpAuthorizationCode(
+export async function consumeRpAuthorizationCode(
   code: string
-): RpAuthorizationCode | null {
+): Promise<RpAuthorizationCode | null> {
   const now = Math.floor(Date.now() / 1000);
 
-  return db.transaction((tx) => {
-    const row = tx
+  return await db.transaction(async (tx) => {
+    const row = await tx
       .select()
       .from(rpAuthorizationCodes)
       .where(
@@ -55,7 +56,8 @@ export function consumeRpAuthorizationCode(
       return null;
     }
 
-    tx.update(rpAuthorizationCodes)
+    await tx
+      .update(rpAuthorizationCodes)
       .set({ usedAt: now })
       .where(eq(rpAuthorizationCodes.code, code))
       .run();

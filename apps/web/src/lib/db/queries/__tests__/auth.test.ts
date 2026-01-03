@@ -11,23 +11,23 @@ import { users } from "@/lib/db/schema/auth";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("auth queries", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("returns createdAt for an existing user", () => {
+  it("returns createdAt for an existing user", async () => {
     const createdAt = new Date("2025-01-01T00:00:00Z").toISOString();
-    const userId = createTestUser({ createdAt, updatedAt: createdAt });
+    const userId = await createTestUser({ createdAt, updatedAt: createdAt });
 
-    expect(getUserCreatedAt(userId)).toBe(createdAt);
+    await expect(getUserCreatedAt(userId)).resolves.toBe(createdAt);
   });
 
-  it("updates user display name", () => {
-    const userId = createTestUser({ name: "Original" });
+  it("updates user display name", async () => {
+    const userId = await createTestUser({ name: "Original" });
 
-    updateUserName(userId, "Updated");
+    await updateUserName(userId, "Updated");
 
-    const row = db
+    const row = await db
       .select({ name: users.name })
       .from(users)
       .where(eq(users.id, userId))
@@ -36,12 +36,12 @@ describe("auth queries", () => {
     expect(row?.name).toBe("Updated");
   });
 
-  it("deletes user by id", () => {
-    const userId = createTestUser();
+  it("deletes user by id", async () => {
+    const userId = await createTestUser();
 
-    deleteUserById(userId);
+    await deleteUserById(userId);
 
-    const row = db
+    const row = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.id, userId))

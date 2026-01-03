@@ -11,14 +11,15 @@ import {
   blockchainAttestations,
 } from "../schema/attestation";
 
-export function upsertAttestationEvidence(args: {
+export async function upsertAttestationEvidence(args: {
   userId: string;
   documentId: string;
   policyVersion: string | null;
   policyHash: string | null;
   proofSetHash: string | null;
-}): void {
-  db.insert(attestationEvidence)
+}): Promise<void> {
+  await db
+    .insert(attestationEvidence)
     .values({
       id: args.documentId,
       userId: args.userId,
@@ -39,11 +40,11 @@ export function upsertAttestationEvidence(args: {
     .run();
 }
 
-export function getAttestationEvidenceByUserAndDocument(
+export async function getAttestationEvidenceByUserAndDocument(
   userId: string,
   documentId: string
-): AttestationEvidenceRecord | null {
-  const row = db
+): Promise<AttestationEvidenceRecord | null> {
+  const row = await db
     .select()
     .from(attestationEvidence)
     .where(
@@ -58,15 +59,16 @@ export function getAttestationEvidenceByUserAndDocument(
   return row ?? null;
 }
 
-export function createBlockchainAttestation(data: {
+export async function createBlockchainAttestation(data: {
   userId: string;
   walletAddress: string;
   networkId: string;
   chainId: number;
-}): BlockchainAttestation {
+}): Promise<BlockchainAttestation> {
   const id = crypto.randomUUID();
 
-  db.insert(blockchainAttestations)
+  await db
+    .insert(blockchainAttestations)
     .values({
       id,
       userId: data.userId,
@@ -77,17 +79,17 @@ export function createBlockchainAttestation(data: {
     })
     .run();
 
-  const attestation = getBlockchainAttestationById(id);
+  const attestation = await getBlockchainAttestationById(id);
   if (!attestation) {
     throw new Error("Failed to create blockchain attestation");
   }
   return attestation;
 }
 
-function getBlockchainAttestationById(
+async function getBlockchainAttestationById(
   id: string
-): BlockchainAttestation | null {
-  const row = db
+): Promise<BlockchainAttestation | null> {
+  const row = await db
     .select()
     .from(blockchainAttestations)
     .where(eq(blockchainAttestations.id, id))
@@ -97,11 +99,11 @@ function getBlockchainAttestationById(
   return row ?? null;
 }
 
-export function getBlockchainAttestationByUserAndNetwork(
+export async function getBlockchainAttestationByUserAndNetwork(
   userId: string,
   networkId: string
-): BlockchainAttestation | null {
-  const row = db
+): Promise<BlockchainAttestation | null> {
+  const row = await db
     .select()
     .from(blockchainAttestations)
     .where(
@@ -116,10 +118,10 @@ export function getBlockchainAttestationByUserAndNetwork(
   return row ?? null;
 }
 
-export function getBlockchainAttestationsByUserId(
+export async function getBlockchainAttestationsByUserId(
   userId: string
-): BlockchainAttestation[] {
-  return db
+): Promise<BlockchainAttestation[]> {
+  return await db
     .select()
     .from(blockchainAttestations)
     .where(eq(blockchainAttestations.userId, userId))
@@ -127,11 +129,12 @@ export function getBlockchainAttestationsByUserId(
     .all();
 }
 
-export function updateBlockchainAttestationSubmitted(
+export async function updateBlockchainAttestationSubmitted(
   id: string,
   txHash: string
-): void {
-  db.update(blockchainAttestations)
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
     .set({
       status: "submitted",
       txHash,
@@ -141,11 +144,12 @@ export function updateBlockchainAttestationSubmitted(
     .run();
 }
 
-export function updateBlockchainAttestationConfirmed(
+export async function updateBlockchainAttestationConfirmed(
   id: string,
   blockNumber: number | null
-): void {
-  db.update(blockchainAttestations)
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
     .set({
       status: "confirmed",
       blockNumber,
@@ -156,11 +160,12 @@ export function updateBlockchainAttestationConfirmed(
     .run();
 }
 
-export function updateBlockchainAttestationFailed(
+export async function updateBlockchainAttestationFailed(
   id: string,
   errorMessage: string
-): void {
-  db.update(blockchainAttestations)
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
     .set({
       status: "failed",
       errorMessage,
@@ -171,8 +176,11 @@ export function updateBlockchainAttestationFailed(
     .run();
 }
 
-export function resetBlockchainAttestationForRetry(id: string): void {
-  db.update(blockchainAttestations)
+export async function resetBlockchainAttestationForRetry(
+  id: string
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
     .set({
       status: "pending",
       errorMessage: null,
@@ -187,12 +195,13 @@ export function resetBlockchainAttestationForRetry(id: string): void {
     .run();
 }
 
-export function updateBlockchainAttestationWallet(
+export async function updateBlockchainAttestationWallet(
   id: string,
   walletAddress: string,
   chainId: number
-): void {
-  db.update(blockchainAttestations)
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
     .set({
       walletAddress,
       chainId,
@@ -202,8 +211,11 @@ export function updateBlockchainAttestationWallet(
     .run();
 }
 
-export function deleteBlockchainAttestationsByUserId(userId: string): void {
-  db.delete(blockchainAttestations)
+export async function deleteBlockchainAttestationsByUserId(
+  userId: string
+): Promise<void> {
+  await db
+    .delete(blockchainAttestations)
     .where(eq(blockchainAttestations.userId, userId))
     .run();
 }

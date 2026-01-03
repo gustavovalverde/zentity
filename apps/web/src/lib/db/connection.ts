@@ -1,10 +1,9 @@
 import "server-only";
 
-import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import type { LibSQLDatabase } from "drizzle-orm/libsql";
 
-import { drizzle } from "drizzle-orm/bun-sqlite";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as attestationSchema from "./schema/attestation";
@@ -37,83 +36,23 @@ function isBuildTime() {
 }
 
 /**
- * Returns the default DB path for the current process.
+ * Returns the libsql URL for the current process.
  *
- * Build-time uses :memory: to avoid SQLite locks across Next.js build workers.
+ * Build-time uses an in-memory database to avoid SQLite locks across Next.js build workers.
  */
-export function getDefaultDatabasePath(): string {
+export function getDatabaseUrl(): string {
   if (isBuildTime()) {
-    return ":memory:";
+    return "file::memory:";
   }
-  return process.env.DATABASE_PATH || "./.data/dev.db";
+  return process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 }
 
-function ensureDatabaseDirExists(dbPath: string) {
-  if (dbPath === ":memory:") {
-    return;
-  }
-  const dbDir = dirname(dbPath);
-  if (dbDir !== "." && !existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true });
-  }
-}
+const client = createClient({
+  url: getDatabaseUrl(),
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-function applyPragmas(conn: Database) {
-  try {
-    conn.run("PRAGMA journal_mode = WAL");
-  } catch {
-    // Best-effort: ignore SQLITE_BUSY / readonly FS during builds.
-  }
-  try {
-    conn.run("PRAGMA synchronous = NORMAL");
-  } catch {
-    // Best-effort
-  }
-  try {
-    conn.run("PRAGMA foreign_keys = ON");
-  } catch {
-    // Best-effort
-  }
-  try {
-    conn.run("PRAGMA busy_timeout = 5000");
-  } catch {
-    // Best-effort
-  }
-}
-
-const globalKey = Symbol.for("zentity.sqlite.connections");
-type Store = Map<string, Database>;
-
-function getStore(): Store {
-  const g = globalThis as unknown as Record<string | symbol, unknown>;
-  if (!g[globalKey]) {
-    g[globalKey] = new Map();
-  }
-  return g[globalKey] as Store;
-}
-
-/**
- * Returns a singleton `bun:sqlite` connection for a given dbPath.
- */
-export function getSqliteDb(dbPath = getDefaultDatabasePath()): Database {
-  const store = getStore();
-  const existing = store.get(dbPath);
-  if (existing) {
-    return existing;
-  }
-
-  ensureDatabaseDirExists(dbPath);
-  const db = new Database(dbPath);
-  applyPragmas(db);
-  store.set(dbPath, db);
-  return db;
-}
-
-const sqlite = getSqliteDb(getDefaultDatabasePath());
-
-export const db = drizzle(sqlite, {
+export const db: LibSQLDatabase<typeof schema> = drizzle(client, {
   schema,
   logger: process.env.DRIZZLE_LOG === "true",
 });
-
-export { sqlite };

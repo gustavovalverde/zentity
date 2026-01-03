@@ -328,15 +328,16 @@ export interface CreateTestCredentialParams {
  * Create a passkey credential in the test database.
  * Returns the credential ID.
  */
-export function createTestPasskeyCredential(
+export async function createTestPasskeyCredential(
   params: CreateTestCredentialParams
-): string {
+): Promise<string> {
   const id = crypto.randomUUID();
   const credentialId =
     params.credentialId ??
     bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 
-  db.insert(passkeyCredentials)
+  await db
+    .insert(passkeyCredentials)
     .values({
       id,
       userId: params.userId,
@@ -365,7 +366,7 @@ export async function createTestPasskeyCredentialWithKeyPair(
   keyPair: TestKeyPair;
 }> {
   const keyPair = await createTestKeyPair();
-  const credentialId = createTestPasskeyCredential({
+  const credentialId = await createTestPasskeyCredential({
     ...params,
     publicKey: keyPair.cosePublicKeyBase64,
   });

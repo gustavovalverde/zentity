@@ -41,16 +41,16 @@ export const accountRouter = router({
     const firstName = await getUserFirstName(userId);
 
     // Get verification status
-    const verification = getVerificationStatus(userId);
+    const verification = await getVerificationStatus(userId);
 
     // Get latest verified document details
-    const document = getSelectedIdentityDocumentByUserId(userId);
+    const document = await getSelectedIdentityDocumentByUserId(userId);
 
     // Get user creation date from better-auth user table
-    const createdAt = getUserCreatedAt(userId);
+    const createdAt = await getUserCreatedAt(userId);
 
     // Check if user has a password set (for Change vs Set password UI)
-    const hasPassword = userHasPassword(userId);
+    const hasPassword = await userHasPassword(userId);
 
     return {
       email: session.user.email,
@@ -81,7 +81,7 @@ export const accountRouter = router({
         confirmEmail: z.string().email(),
       })
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { userId, session } = ctx;
 
       // Verify email matches to prevent accidental deletion
@@ -96,17 +96,17 @@ export const accountRouter = router({
 
       // Execute deletion in order:
       // 1. Delete identity attestation data (removes salts/commitments)
-      deleteIdentityData(userId);
+      await deleteIdentityData(userId);
 
       // 2. Delete blockchain attestation records
-      deleteBlockchainAttestationsByUserId(userId);
+      await deleteBlockchainAttestationsByUserId(userId);
 
       // 3. Clean up any orphaned onboarding sessions
-      deleteOnboardingSessionsByEmail(session.user.email);
+      await deleteOnboardingSessionsByEmail(session.user.email);
 
       // 4. Delete user from better-auth (cascades to sessions, accounts)
       // This also invalidates the current session
-      deleteUserById(userId);
+      await deleteUserById(userId);
 
       return { success: true };
     }),
@@ -134,7 +134,7 @@ export const accountRouter = router({
       const { userId } = ctx;
 
       // Check if user already has a password
-      if (userHasPassword(userId)) {
+      if (await userHasPassword(userId)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:

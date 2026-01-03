@@ -35,8 +35,8 @@ export const secretsRouter = router({
 
   getSecretBundle: protectedProcedure
     .input(z.object({ secretType: secretTypeSchema }))
-    .query(({ ctx, input }) => {
-      const secret = getEncryptedSecretByUserAndType(
+    .query(async ({ ctx, input }) => {
+      const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
       );
@@ -44,7 +44,7 @@ export const secretsRouter = router({
         return { secret: null, wrappers: [] };
       }
 
-      const wrappers = getSecretWrappersBySecretId(secret.id);
+      const wrappers = await getSecretWrappersBySecretId(secret.id);
       return { secret, wrappers };
     }),
 
@@ -64,17 +64,17 @@ export const secretsRouter = router({
         kekVersion: z.string().min(1),
       })
     )
-    .mutation(({ ctx, input }) => {
-      const existing = getEncryptedSecretByUserAndType(
+    .mutation(async ({ ctx, input }) => {
+      const existing = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
       );
 
       if (existing && existing.id !== input.secretId) {
-        deleteEncryptedSecretByUserAndType(ctx.userId, input.secretType);
+        await deleteEncryptedSecretByUserAndType(ctx.userId, input.secretType);
       }
 
-      const secret = upsertEncryptedSecret({
+      const secret = await upsertEncryptedSecret({
         id: input.secretId,
         userId: ctx.userId,
         secretType: input.secretType,
@@ -86,7 +86,7 @@ export const secretsRouter = router({
         version: input.version,
       });
 
-      const wrapper = upsertSecretWrapper({
+      const wrapper = await upsertSecretWrapper({
         id: crypto.randomUUID(),
         secretId: secret.id,
         userId: ctx.userId,
@@ -110,8 +110,8 @@ export const secretsRouter = router({
         kekVersion: z.string().min(1),
       })
     )
-    .mutation(({ ctx, input }) => {
-      const secret = getEncryptedSecretByUserAndType(
+    .mutation(async ({ ctx, input }) => {
+      const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
       );
@@ -122,7 +122,7 @@ export const secretsRouter = router({
         });
       }
 
-      const wrapper = upsertSecretWrapper({
+      const wrapper = await upsertSecretWrapper({
         id: crypto.randomUUID(),
         secretId: secret.id,
         userId: ctx.userId,
@@ -142,8 +142,8 @@ export const secretsRouter = router({
         metadata: metadataSchema,
       })
     )
-    .mutation(({ ctx, input }) => {
-      const existing = getEncryptedSecretByUserAndType(
+    .mutation(async ({ ctx, input }) => {
+      const existing = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
       );
@@ -159,7 +159,7 @@ export const secretsRouter = router({
         ...(input.metadata ?? {}),
       };
 
-      const updated = updateEncryptedSecretMetadata({
+      const updated = await updateEncryptedSecretMetadata({
         userId: ctx.userId,
         secretType: input.secretType,
         metadata: mergedMetadata,

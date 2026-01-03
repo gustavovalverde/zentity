@@ -225,19 +225,24 @@ Create the local DB file (bind-mounted into the container) before starting Docke
 
 ```bash
 mkdir -p apps/web/.data
-DATABASE_PATH=./apps/web/.data/dev.db bun run db:push
+TURSO_DATABASE_URL=file:./apps/web/.data/dev.db bun run db:push
 docker compose up --build
 ```
 
-### Railway (container)
+### Turso (production / CI)
 
-Railway volumes mount at start. Apply the schema with a start command or a one-off job:
+Set the Turso env vars and run `bun run db:push` from CI or your local machine:
 
 ```bash
-DATABASE_PATH=$RAILWAY_VOLUME_MOUNT_PATH/web/dev.db bun run db:push
+TURSO_DATABASE_URL=libsql://your-db.turso.io \
+TURSO_AUTH_TOKEN=your-token \
+bun run db:push
 ```
 
-Note: `drizzle-kit push` needs a SQLite driver. This repo uses `@libsql/client` (Bun-compatible)
+In Railway, configure `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` on the web service.
+For local SQLite files, use `TURSO_DATABASE_URL=file:./.data/dev.db`.
+
+Note: `drizzle-kit push` needs a SQLite driver. This repo uses `@libsql/client`
 in the environment that runs the command.
 
 ## Docker

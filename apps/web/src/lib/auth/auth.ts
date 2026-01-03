@@ -1,11 +1,18 @@
 import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { haveIBeenPwned, magicLink } from "better-auth/plugins";
 
-import { getDefaultDatabasePath, getSqliteDb } from "@/lib/db/connection";
+import { db } from "@/lib/db/connection";
+import { accounts, sessions, users, verifications } from "@/lib/db/schema/auth";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
-const db = getSqliteDb(getDefaultDatabasePath());
+const betterAuthSchema = {
+  user: users,
+  session: sessions,
+  account: accounts,
+  verification: verifications,
+};
 
 // Build trusted origins based on environment
 // In production: only the configured app URL + any explicit TRUSTED_ORIGINS
@@ -44,7 +51,10 @@ const getTrustedOrigins = (): string[] => {
 };
 
 export const auth = betterAuth({
-  database: db,
+  database: drizzleAdapter(db, {
+    provider: "sqlite",
+    schema: betterAuthSchema,
+  }),
   secret: getBetterAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   trustedOrigins: getTrustedOrigins(),

@@ -3,8 +3,12 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "../connection";
 import { accounts, users } from "../schema/auth";
 
-export function updateUserName(userId: string, displayName: string): void {
-  db.update(users)
+export async function updateUserName(
+  userId: string,
+  displayName: string
+): Promise<void> {
+  await db
+    .update(users)
     .set({
       name: displayName,
       updatedAt: sql`datetime('now')`,
@@ -13,8 +17,8 @@ export function updateUserName(userId: string, displayName: string): void {
     .run();
 }
 
-export function getUserCreatedAt(userId: string): string | null {
-  const row = db
+export async function getUserCreatedAt(userId: string): Promise<string | null> {
+  const row = await db
     .select({ createdAt: users.createdAt })
     .from(users)
     .where(eq(users.id, userId))
@@ -23,16 +27,16 @@ export function getUserCreatedAt(userId: string): string | null {
   return row?.createdAt ?? null;
 }
 
-export function deleteUserById(userId: string): void {
-  db.delete(users).where(eq(users.id, userId)).run();
+export async function deleteUserById(userId: string): Promise<void> {
+  await db.delete(users).where(eq(users.id, userId)).run();
 }
 
 /**
  * Check if a user has a credential account with a password set.
  * Users who signed up with passkey-only or OAuth won't have a password.
  */
-export function userHasPassword(userId: string): boolean {
-  const row = db
+export async function userHasPassword(userId: string): Promise<boolean> {
+  const row = await db
     .select({ password: accounts.password })
     .from(accounts)
     .where(

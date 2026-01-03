@@ -15,8 +15,8 @@ import {
 const HEX_NONCE_PATTERN = /^[0-9a-f]{32}$/;
 
 describe("challenge-store", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-15T12:00:00Z"));
   });
@@ -26,48 +26,48 @@ describe("challenge-store", () => {
   });
 
   describe("createChallenge", () => {
-    it("creates a challenge with unique 32-char hex nonce", () => {
-      const challenge = createChallenge("age_verification");
+    it("creates a challenge with unique 32-char hex nonce", async () => {
+      const challenge = await createChallenge("age_verification");
 
       expect(challenge.nonce).toBeDefined();
       expect(challenge.nonce).toHaveLength(32); // 128-bit = 16 bytes = 32 hex chars
       expect(HEX_NONCE_PATTERN.test(challenge.nonce)).toBe(true);
     });
 
-    it("creates challenge with correct circuit type", () => {
-      const challenge = createChallenge("doc_validity");
+    it("creates challenge with correct circuit type", async () => {
+      const challenge = await createChallenge("doc_validity");
 
       expect(challenge.circuitType).toBe("doc_validity");
     });
 
-    it("creates challenge bound to user when provided", () => {
-      const challenge = createChallenge("age_verification", "user-123");
+    it("creates challenge bound to user when provided", async () => {
+      const challenge = await createChallenge("age_verification", "user-123");
 
       expect(challenge.userId).toBe("user-123");
     });
 
-    it("creates challenge without user binding when not provided", () => {
-      const challenge = createChallenge("age_verification");
+    it("creates challenge without user binding when not provided", async () => {
+      const challenge = await createChallenge("age_verification");
 
       expect(challenge.userId).toBeUndefined();
     });
 
-    it("sets expiry 15 minutes from creation", () => {
+    it("sets expiry 15 minutes from creation", async () => {
       const now = Date.now();
-      const challenge = createChallenge("age_verification");
+      const challenge = await createChallenge("age_verification");
 
       expect(challenge.createdAt).toBe(now);
       expect(challenge.expiresAt).toBe(now + 15 * 60 * 1000);
     });
 
-    it("generates unique nonces for each challenge", () => {
-      const challenge1 = createChallenge("age_verification");
-      const challenge2 = createChallenge("age_verification");
+    it("generates unique nonces for each challenge", async () => {
+      const challenge1 = await createChallenge("age_verification");
+      const challenge2 = await createChallenge("age_verification");
 
       expect(challenge1.nonce).not.toBe(challenge2.nonce);
     });
 
-    it("supports all circuit types", () => {
+    it("supports all circuit types", async () => {
       const circuitTypes = [
         "age_verification",
         "doc_validity",
@@ -76,16 +76,16 @@ describe("challenge-store", () => {
       ] as const;
 
       for (const circuitType of circuitTypes) {
-        const challenge = createChallenge(circuitType);
+        const challenge = await createChallenge(circuitType);
         expect(challenge.circuitType).toBe(circuitType);
       }
     });
   });
 
   describe("consumeChallenge - success cases", () => {
-    it("consumes a valid challenge and returns it", () => {
-      const challenge = createChallenge("age_verification", "user-123");
-      const consumed = consumeChallenge(
+    it("consumes a valid challenge and returns it", async () => {
+      const challenge = await createChallenge("age_verification", "user-123");
+      const consumed = await consumeChallenge(
         challenge.nonce,
         "age_verification",
         "user-123"
@@ -97,18 +97,24 @@ describe("challenge-store", () => {
       expect(consumed?.userId).toBe("user-123");
     });
 
-    it("consumes challenge without user binding", () => {
-      const challenge = createChallenge("age_verification");
-      const consumed = consumeChallenge(challenge.nonce, "age_verification");
+    it("consumes challenge without user binding", async () => {
+      const challenge = await createChallenge("age_verification");
+      const consumed = await consumeChallenge(
+        challenge.nonce,
+        "age_verification"
+      );
 
       expect(consumed).not.toBeNull();
       expect(consumed?.nonce).toBe(challenge.nonce);
     });
 
-    it("returns challenge with correct timestamps", () => {
+    it("returns challenge with correct timestamps", async () => {
       const now = Date.now();
-      const challenge = createChallenge("age_verification");
-      const consumed = consumeChallenge(challenge.nonce, "age_verification");
+      const challenge = await createChallenge("age_verification");
+      const consumed = await consumeChallenge(
+        challenge.nonce,
+        "age_verification"
+      );
 
       expect(consumed?.createdAt).toBe(now);
       expect(consumed?.expiresAt).toBe(now + 15 * 60 * 1000);
@@ -116,11 +122,11 @@ describe("challenge-store", () => {
   });
 
   describe("consumeChallenge - replay prevention (critical security)", () => {
-    it("rejects already-consumed challenge (replay attack prevention)", () => {
-      const challenge = createChallenge("age_verification", "user-123");
+    it("rejects already-consumed challenge (replay attack prevention)", async () => {
+      const challenge = await createChallenge("age_verification", "user-123");
 
       // First consumption succeeds
-      const result1 = consumeChallenge(
+      const result1 = await consumeChallenge(
         challenge.nonce,
         "age_verification",
         "user-123"
@@ -128,7 +134,7 @@ describe("challenge-store", () => {
       expect(result1).not.toBeNull();
 
       // Second consumption fails (replay attack)
-      const result2 = consumeChallenge(
+      const result2 = await consumeChallenge(
         challenge.nonce,
         "age_verification",
         "user-123"
@@ -136,8 +142,8 @@ describe("challenge-store", () => {
       expect(result2).toBeNull();
     });
 
-    it("rejects non-existent nonce", () => {
-      const result = consumeChallenge(
+    it("rejects non-existent nonce", async () => {
+      const result = await consumeChallenge(
         "00000000000000000000000000000000",
         "age_verification"
       );
@@ -145,18 +151,18 @@ describe("challenge-store", () => {
       expect(result).toBeNull();
     });
 
-    it("rejects wrong circuit type", () => {
-      const challenge = createChallenge("age_verification");
+    it("rejects wrong circuit type", async () => {
+      const challenge = await createChallenge("age_verification");
 
-      const result = consumeChallenge(challenge.nonce, "doc_validity");
+      const result = await consumeChallenge(challenge.nonce, "doc_validity");
 
       expect(result).toBeNull();
     });
 
-    it("rejects challenge bound to different user", () => {
-      const challenge = createChallenge("age_verification", "user-123");
+    it("rejects challenge bound to different user", async () => {
+      const challenge = await createChallenge("age_verification", "user-123");
 
-      const result = consumeChallenge(
+      const result = await consumeChallenge(
         challenge.nonce,
         "age_verification",
         "user-456"
@@ -165,105 +171,114 @@ describe("challenge-store", () => {
       expect(result).toBeNull();
     });
 
-    it("allows consumption of user-bound challenge without user param", () => {
+    it("allows consumption of user-bound challenge without user param", async () => {
       // When challenge is bound to a user but consumer doesn't specify user,
       // the check for user_id mismatch is skipped (user_id check only if row.user_id is set AND userId is provided)
-      const challenge = createChallenge("age_verification", "user-123");
+      const challenge = await createChallenge("age_verification", "user-123");
 
       // Note: Looking at the code, row.user_id && row.user_id !== userId
       // If userId is undefined, this check passes because row.user_id !== undefined is false
       // Actually: row.user_id is "user-123" (truthy), userId is undefined
       // So: row.user_id ("user-123") !== undefined -> true -> returns null
-      const result = consumeChallenge(challenge.nonce, "age_verification");
+      const result = await consumeChallenge(
+        challenge.nonce,
+        "age_verification"
+      );
 
       // Based on code logic, this should fail because the challenge is bound to a user
       expect(result).toBeNull();
     });
 
-    it("rejects expired challenge", () => {
-      const challenge = createChallenge("age_verification");
+    it("rejects expired challenge", async () => {
+      const challenge = await createChallenge("age_verification");
 
       // Advance time past TTL (15 minutes + 1ms)
       vi.advanceTimersByTime(15 * 60 * 1000 + 1);
 
-      const result = consumeChallenge(challenge.nonce, "age_verification");
+      const result = await consumeChallenge(
+        challenge.nonce,
+        "age_verification"
+      );
 
       expect(result).toBeNull();
     });
 
-    it("accepts challenge just before expiry", () => {
-      const challenge = createChallenge("age_verification");
+    it("accepts challenge just before expiry", async () => {
+      const challenge = await createChallenge("age_verification");
 
       // Advance time to just before expiry (15 minutes - 1ms)
       vi.advanceTimersByTime(15 * 60 * 1000 - 1);
 
-      const result = consumeChallenge(challenge.nonce, "age_verification");
+      const result = await consumeChallenge(
+        challenge.nonce,
+        "age_verification"
+      );
 
       expect(result).not.toBeNull();
     });
   });
 
   describe("getActiveChallengeCount", () => {
-    it("returns 0 when no challenges exist", () => {
+    it("returns 0 when no challenges exist", async () => {
       // Clean slate - consume any existing test challenges by advancing time
       vi.advanceTimersByTime(16 * 60 * 1000);
 
       // Create and consume to trigger cleanup
-      const temp = createChallenge("age_verification");
-      consumeChallenge(temp.nonce, "age_verification");
+      const temp = await createChallenge("age_verification");
+      await consumeChallenge(temp.nonce, "age_verification");
 
-      const countBefore = getActiveChallengeCount();
+      const countBefore = await getActiveChallengeCount();
 
-      const challenge = createChallenge("age_verification");
-      const countAfter = getActiveChallengeCount();
+      const challenge = await createChallenge("age_verification");
+      const countAfter = await getActiveChallengeCount();
 
       expect(countAfter).toBe(countBefore + 1);
 
       // Cleanup
-      consumeChallenge(challenge.nonce, "age_verification");
+      await consumeChallenge(challenge.nonce, "age_verification");
     });
 
-    it("increments count when challenges are created", () => {
-      const countBefore = getActiveChallengeCount();
+    it("increments count when challenges are created", async () => {
+      const countBefore = await getActiveChallengeCount();
 
-      createChallenge("age_verification");
-      createChallenge("doc_validity");
+      await createChallenge("age_verification");
+      await createChallenge("doc_validity");
 
-      const countAfter = getActiveChallengeCount();
+      const countAfter = await getActiveChallengeCount();
 
       expect(countAfter).toBeGreaterThanOrEqual(countBefore + 2);
     });
 
-    it("decrements count when challenges are consumed", () => {
-      const challenge = createChallenge("age_verification");
-      const countWithChallenge = getActiveChallengeCount();
+    it("decrements count when challenges are consumed", async () => {
+      const challenge = await createChallenge("age_verification");
+      const countWithChallenge = await getActiveChallengeCount();
 
-      consumeChallenge(challenge.nonce, "age_verification");
-      const countAfterConsume = getActiveChallengeCount();
+      await consumeChallenge(challenge.nonce, "age_verification");
+      const countAfterConsume = await getActiveChallengeCount();
 
       expect(countAfterConsume).toBe(countWithChallenge - 1);
     });
 
-    it("excludes expired challenges from count", () => {
+    it("excludes expired challenges from count", async () => {
       // Create a challenge
-      createChallenge("age_verification");
-      const countBefore = getActiveChallengeCount();
+      await createChallenge("age_verification");
+      const countBefore = await getActiveChallengeCount();
 
       // Expire it
       vi.advanceTimersByTime(16 * 60 * 1000);
 
       // Count should be lower after cleanup triggered by getActiveChallengeCount
-      const countAfter = getActiveChallengeCount();
+      const countAfter = await getActiveChallengeCount();
 
       expect(countAfter).toBeLessThan(countBefore);
     });
   });
 
   describe("edge cases", () => {
-    it("handles rapid sequential challenge creation", () => {
-      const challenges: ReturnType<typeof createChallenge>[] = [];
+    it("handles rapid sequential challenge creation", async () => {
+      const challenges: Awaited<ReturnType<typeof createChallenge>>[] = [];
       for (let i = 0; i < 10; i++) {
-        challenges.push(createChallenge("age_verification"));
+        challenges.push(await createChallenge("age_verification"));
       }
 
       // All nonces should be unique
@@ -272,17 +287,17 @@ describe("challenge-store", () => {
       expect(uniqueNonces.size).toBe(10);
     });
 
-    it("handles different circuit types independently", () => {
-      const ageChallenge = createChallenge("age_verification", "user-1");
-      const docChallenge = createChallenge("doc_validity", "user-1");
+    it("handles different circuit types independently", async () => {
+      const ageChallenge = await createChallenge("age_verification", "user-1");
+      const docChallenge = await createChallenge("doc_validity", "user-1");
 
       // Each can be consumed with its own circuit type
-      const ageResult = consumeChallenge(
+      const ageResult = await consumeChallenge(
         ageChallenge.nonce,
         "age_verification",
         "user-1"
       );
-      const docResult = consumeChallenge(
+      const docResult = await consumeChallenge(
         docChallenge.nonce,
         "doc_validity",
         "user-1"
@@ -292,13 +307,13 @@ describe("challenge-store", () => {
       expect(docResult).not.toBeNull();
     });
 
-    it("challenge nonce is case-sensitive", () => {
-      const challenge = createChallenge("age_verification");
+    it("challenge nonce is case-sensitive", async () => {
+      const challenge = await createChallenge("age_verification");
       const upperNonce = challenge.nonce.toUpperCase();
 
       // If the nonce was all lowercase hex, uppercase should not match
       if (challenge.nonce !== upperNonce) {
-        const result = consumeChallenge(upperNonce, "age_verification");
+        const result = await consumeChallenge(upperNonce, "age_verification");
         expect(result).toBeNull();
       }
     });

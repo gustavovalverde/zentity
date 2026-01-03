@@ -76,10 +76,10 @@ async function createCaller(session: Session | null) {
 
 let authedSession: Session;
 
-beforeEach(() => {
-  resetDatabase();
+beforeEach(async () => {
+  await resetDatabase();
   mockScheduleFheEncryption.mockReset();
-  const userId = createTestUser({ id: "user-fhe-test" });
+  const userId = await createTestUser({ id: "user-fhe-test" });
   authedSession = {
     user: { id: userId },
     session: { id: "session-fhe" },
@@ -118,7 +118,7 @@ describe("identity.verify (FHE)", () => {
       "@/lib/db/queries/crypto"
     );
 
-    deleteIdentityData(authedSession.user.id);
+    await deleteIdentityData(authedSession.user.id);
 
     const caller = await createCaller(authedSession);
     const response = await caller.verify({
@@ -135,15 +135,15 @@ describe("identity.verify (FHE)", () => {
       })
     );
 
-    const birthYearOffset = getLatestEncryptedAttributeByUserAndType(
+    const birthYearOffset = await getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
       "birth_year_offset"
     );
-    const countryCode = getLatestEncryptedAttributeByUserAndType(
+    const countryCode = await getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
       "country_code"
     );
-    const liveness = getLatestEncryptedAttributeByUserAndType(
+    const liveness = await getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
       "liveness_score"
     );
@@ -152,7 +152,7 @@ describe("identity.verify (FHE)", () => {
     expect(countryCode).toBeNull();
     expect(liveness).toBeNull();
 
-    deleteIdentityData(authedSession.user.id);
+    await deleteIdentityData(authedSession.user.id);
   });
 
   it("records missing FHE key when not provided", async () => {

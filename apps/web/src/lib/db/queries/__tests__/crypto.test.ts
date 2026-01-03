@@ -18,14 +18,14 @@ import {
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("crypto queries", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("returns age proof summary with encrypted attribute", () => {
-    const userId = createTestUser();
+  it("returns age proof summary with encrypted attribute", async () => {
+    const userId = await createTestUser();
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       proofType: "age_verification",
@@ -35,7 +35,7 @@ describe("crypto queries", () => {
       generationTimeMs: 120,
     });
 
-    insertEncryptedAttribute({
+    await insertEncryptedAttribute({
       id: crypto.randomUUID(),
       userId,
       source: "web2_tfhe",
@@ -45,19 +45,19 @@ describe("crypto queries", () => {
       encryptionTimeMs: 55,
     });
 
-    const summary = getUserAgeProof(userId);
+    const summary = await getUserAgeProof(userId);
     expect(summary?.isOver18).toBe(true);
     expect(summary?.generationTimeMs).toBe(120);
     expect(summary?.birthYearOffsetCiphertext).toBe("ciphertext");
     expect(summary?.fheEncryptionTimeMs).toBe(55);
   });
 
-  it("returns full age proof payload", () => {
-    const userId = createTestUser();
+  it("returns full age proof payload", async () => {
+    const userId = await createTestUser();
     const payload = "proof-payload";
     const publicInputs = JSON.stringify(["1", "2", "3"]);
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       proofType: "age_verification",
@@ -72,16 +72,16 @@ describe("crypto queries", () => {
       bbVersion: "0.8.0",
     });
 
-    const full = getUserAgeProofFull(userId);
+    const full = await getUserAgeProofFull(userId);
     expect(full?.proof).toBe(payload);
     expect(full?.publicSignals).toEqual(["1", "2", "3"]);
     expect(full?.isOver18).toBe(false);
   });
 
-  it("parses latest zk proof payload and handles invalid JSON", () => {
-    const userId = createTestUser();
+  it("parses latest zk proof payload and handles invalid JSON", async () => {
+    const userId = await createTestUser();
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       proofType: "doc_validity",
@@ -91,12 +91,15 @@ describe("crypto queries", () => {
       publicInputs: JSON.stringify(["a", "b"]),
     });
 
-    const parsed = getLatestZkProofPayloadByUserAndType(userId, "doc_validity");
+    const parsed = await getLatestZkProofPayloadByUserAndType(
+      userId,
+      "doc_validity"
+    );
     expect(parsed?.proof).toBe("payload");
     expect(parsed?.publicSignals).toEqual(["a", "b"]);
 
-    const userIdInvalid = createTestUser();
-    insertZkProofRecord({
+    const userIdInvalid = await createTestUser();
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId: userIdInvalid,
       proofType: "doc_validity",
@@ -106,18 +109,18 @@ describe("crypto queries", () => {
       publicInputs: "not-json",
     });
 
-    const invalid = getLatestZkProofPayloadByUserAndType(
+    const invalid = await getLatestZkProofPayloadByUserAndType(
       userIdInvalid,
       "doc_validity"
     );
     expect(invalid).toBeNull();
   });
 
-  it("returns proof hashes and signed claim types", () => {
-    const userId = createTestUser();
+  it("returns proof hashes and signed claim types", async () => {
+    const userId = await createTestUser();
     const documentId = crypto.randomUUID();
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -126,7 +129,7 @@ describe("crypto queries", () => {
       verified: true,
     });
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -135,7 +138,7 @@ describe("crypto queries", () => {
       verified: true,
     });
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -144,10 +147,10 @@ describe("crypto queries", () => {
       verified: false,
     });
 
-    const hashes = getProofHashesByUserAndDocument(userId, documentId);
+    const hashes = await getProofHashesByUserAndDocument(userId, documentId);
     expect(hashes).toEqual(["hash-1", "hash-2"]);
 
-    insertSignedClaim({
+    await insertSignedClaim({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -157,7 +160,7 @@ describe("crypto queries", () => {
       issuedAt: "2025-01-01T00:00:00Z",
     });
 
-    insertSignedClaim({
+    await insertSignedClaim({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -167,15 +170,18 @@ describe("crypto queries", () => {
       issuedAt: "2025-01-02T00:00:00Z",
     });
 
-    const claimTypes = getSignedClaimTypesByUserAndDocument(userId, documentId);
+    const claimTypes = await getSignedClaimTypesByUserAndDocument(
+      userId,
+      documentId
+    );
     expect(claimTypes).toEqual(["liveness_score", "ocr_result"]);
   });
 
-  it("returns latest signed claim and encrypted attributes", () => {
-    const userId = createTestUser();
+  it("returns latest signed claim and encrypted attributes", async () => {
+    const userId = await createTestUser();
     const documentId = crypto.randomUUID();
 
-    insertSignedClaim({
+    await insertSignedClaim({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -185,7 +191,7 @@ describe("crypto queries", () => {
       issuedAt: "2025-01-01T00:00:00Z",
     });
 
-    insertSignedClaim({
+    await insertSignedClaim({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -195,14 +201,14 @@ describe("crypto queries", () => {
       issuedAt: "2025-01-02T00:00:00Z",
     });
 
-    const latestClaim = getLatestSignedClaimByUserTypeAndDocument(
+    const latestClaim = await getLatestSignedClaimByUserTypeAndDocument(
       userId,
       "ocr_result",
       documentId
     );
     expect(latestClaim?.claimPayload).toBe('{"result":2}');
 
-    insertEncryptedAttribute({
+    await insertEncryptedAttribute({
       id: crypto.randomUUID(),
       userId,
       source: "web2_tfhe",
@@ -212,10 +218,10 @@ describe("crypto queries", () => {
       encryptionTimeMs: 30,
     });
 
-    const types = getEncryptedAttributeTypesByUserId(userId);
+    const types = await getEncryptedAttributeTypesByUserId(userId);
     expect(types).toEqual(["birth_year_offset"]);
 
-    const latestEncrypted = getLatestEncryptedAttributeByUserAndType(
+    const latestEncrypted = await getLatestEncryptedAttributeByUserAndType(
       userId,
       "birth_year_offset"
     );

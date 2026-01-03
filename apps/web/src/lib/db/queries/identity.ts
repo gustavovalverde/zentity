@@ -31,8 +31,10 @@ import {
   getZkProofTypesByUserAndDocument,
 } from "./crypto";
 
-export function documentHashExists(documentHash: string): boolean {
-  const row = db
+export async function documentHashExists(
+  documentHash: string
+): Promise<boolean> {
+  const row = await db
     .select({ id: identityDocuments.id })
     .from(identityDocuments)
     .where(eq(identityDocuments.documentHash, documentHash))
@@ -41,34 +43,46 @@ export function documentHashExists(documentHash: string): boolean {
   return !!row;
 }
 
-export function deleteIdentityData(userId: string): void {
-  db.transaction((tx) => {
-    tx.delete(attestationEvidence)
+export async function deleteIdentityData(userId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(attestationEvidence)
       .where(eq(attestationEvidence.userId, userId))
       .run();
-    tx.delete(signedClaims).where(eq(signedClaims.userId, userId)).run();
-    tx.delete(encryptedAttributes)
+    await tx.delete(signedClaims).where(eq(signedClaims.userId, userId)).run();
+    await tx
+      .delete(encryptedAttributes)
       .where(eq(encryptedAttributes.userId, userId))
       .run();
-    tx.delete(secretWrappers).where(eq(secretWrappers.userId, userId)).run();
-    tx.delete(encryptedSecrets)
+    await tx
+      .delete(secretWrappers)
+      .where(eq(secretWrappers.userId, userId))
+      .run();
+    await tx
+      .delete(encryptedSecrets)
       .where(eq(encryptedSecrets.userId, userId))
       .run();
-    tx.delete(zkProofs).where(eq(zkProofs.userId, userId)).run();
-    tx.delete(identityVerificationJobs)
+    await tx.delete(zkProofs).where(eq(zkProofs.userId, userId)).run();
+    await tx
+      .delete(identityVerificationJobs)
       .where(eq(identityVerificationJobs.userId, userId))
       .run();
-    tx.delete(identityVerificationDrafts)
+    await tx
+      .delete(identityVerificationDrafts)
       .where(eq(identityVerificationDrafts.userId, userId))
       .run();
-    tx.delete(identityDocuments)
+    await tx
+      .delete(identityDocuments)
       .where(eq(identityDocuments.userId, userId))
       .run();
-    tx.delete(identityBundles).where(eq(identityBundles.userId, userId)).run();
+    await tx
+      .delete(identityBundles)
+      .where(eq(identityBundles.userId, userId))
+      .run();
   });
 }
 
-export function getVerificationStatus(userId: string): {
+export async function getVerificationStatus(userId: string): Promise<{
   verified: boolean;
   level: "none" | "basic" | "full";
   checks: {
@@ -79,14 +93,14 @@ export function getVerificationStatus(userId: string): {
     nationalityProof: boolean;
     faceMatchProof: boolean;
   };
-} {
-  const selectedDocument = getSelectedIdentityDocumentByUserId(userId);
+}> {
+  const selectedDocument = await getSelectedIdentityDocumentByUserId(userId);
   const documentId = selectedDocument?.id ?? null;
   const zkProofTypes = documentId
-    ? getZkProofTypesByUserAndDocument(userId, documentId)
+    ? await getZkProofTypesByUserAndDocument(userId, documentId)
     : [];
   const signedClaimTypes = documentId
-    ? getSignedClaimTypesByUserAndDocument(userId, documentId)
+    ? await getSignedClaimTypesByUserAndDocument(userId, documentId)
     : [];
 
   const checks = {
@@ -115,10 +129,10 @@ export function getVerificationStatus(userId: string): {
   };
 }
 
-export function getIdentityBundleByUserId(
+export async function getIdentityBundleByUserId(
   userId: string
-): IdentityBundle | null {
-  const row = db
+): Promise<IdentityBundle | null> {
+  const row = await db
     .select()
     .from(identityBundles)
     .where(eq(identityBundles.userId, userId))
@@ -128,10 +142,10 @@ export function getIdentityBundleByUserId(
   return row ?? null;
 }
 
-export function getLatestIdentityDocumentByUserId(
+export async function getLatestIdentityDocumentByUserId(
   userId: string
-): IdentityDocument | null {
-  const row = db
+): Promise<IdentityDocument | null> {
+  const row = await db
     .select()
     .from(identityDocuments)
     .where(eq(identityDocuments.userId, userId))
@@ -146,10 +160,10 @@ export function getLatestIdentityDocumentByUserId(
   return row ?? null;
 }
 
-export function getIdentityDocumentsByUserId(
+export async function getIdentityDocumentsByUserId(
   userId: string
-): IdentityDocument[] {
-  return db
+): Promise<IdentityDocument[]> {
+  return await db
     .select()
     .from(identityDocuments)
     .where(eq(identityDocuments.userId, userId))
@@ -161,15 +175,15 @@ export function getIdentityDocumentsByUserId(
     .all();
 }
 
-export function getSelectedIdentityDocumentByUserId(
+export async function getSelectedIdentityDocumentByUserId(
   userId: string
-): IdentityDocument | null {
-  const documents = getIdentityDocumentsByUserId(userId);
+): Promise<IdentityDocument | null> {
+  const documents = await getIdentityDocumentsByUserId(userId);
   if (documents.length === 0) {
     return null;
   }
 
-  const proofRows = db
+  const proofRows = await db
     .select({
       documentId: zkProofs.documentId,
       proofType: zkProofs.proofType,
@@ -179,7 +193,7 @@ export function getSelectedIdentityDocumentByUserId(
     .where(eq(zkProofs.userId, userId))
     .all();
 
-  const claimRows = db
+  const claimRows = await db
     .select({
       documentId: signedClaims.documentId,
       claimType: signedClaims.claimType,
@@ -241,10 +255,10 @@ export function getSelectedIdentityDocumentByUserId(
   return documents[0] ?? null;
 }
 
-export function getIdentityDraftById(
+export async function getIdentityDraftById(
   draftId: string
-): IdentityVerificationDraft | null {
-  const row = db
+): Promise<IdentityVerificationDraft | null> {
+  const row = await db
     .select()
     .from(identityVerificationDrafts)
     .where(eq(identityVerificationDrafts.id, draftId))
@@ -254,10 +268,10 @@ export function getIdentityDraftById(
   return row ?? null;
 }
 
-export function getIdentityDraftBySessionId(
+export async function getIdentityDraftBySessionId(
   sessionId: string
-): IdentityVerificationDraft | null {
-  const row = db
+): Promise<IdentityVerificationDraft | null> {
+  const row = await db
     .select()
     .from(identityVerificationDrafts)
     .where(eq(identityVerificationDrafts.onboardingSessionId, sessionId))
@@ -268,10 +282,10 @@ export function getIdentityDraftBySessionId(
   return row ?? null;
 }
 
-export function getLatestIdentityDraftByUserId(
+export async function getLatestIdentityDraftByUserId(
   userId: string
-): IdentityVerificationDraft | null {
-  const row = db
+): Promise<IdentityVerificationDraft | null> {
+  const row = await db
     .select()
     .from(identityVerificationDrafts)
     .where(eq(identityVerificationDrafts.userId, userId))
@@ -282,11 +296,11 @@ export function getLatestIdentityDraftByUserId(
   return row ?? null;
 }
 
-export function getLatestIdentityDraftByUserAndDocument(
+export async function getLatestIdentityDraftByUserAndDocument(
   userId: string,
   documentId: string
-): IdentityVerificationDraft | null {
-  const row = db
+): Promise<IdentityVerificationDraft | null> {
+  const row = await db
     .select()
     .from(identityVerificationDrafts)
     .where(
@@ -302,15 +316,16 @@ export function getLatestIdentityDraftByUserAndDocument(
   return row ?? null;
 }
 
-export function upsertIdentityDraft(
+export async function upsertIdentityDraft(
   data: Partial<IdentityVerificationDraft> & {
     id: string;
     onboardingSessionId: string;
     documentId: string;
   }
-): IdentityVerificationDraft {
+): Promise<IdentityVerificationDraft> {
   const now = new Date().toISOString();
-  db.insert(identityVerificationDrafts)
+  await db
+    .insert(identityVerificationDrafts)
     .values({
       id: data.id,
       onboardingSessionId: data.onboardingSessionId,
@@ -375,18 +390,19 @@ export function upsertIdentityDraft(
     })
     .run();
 
-  const updated = getIdentityDraftById(data.id);
+  const updated = await getIdentityDraftById(data.id);
   if (!updated) {
     throw new Error("Failed to upsert identity draft");
   }
   return updated;
 }
 
-export function updateIdentityDraft(
+export async function updateIdentityDraft(
   draftId: string,
   updates: Partial<IdentityVerificationDraft>
-): void {
-  db.update(identityVerificationDrafts)
+): Promise<void> {
+  await db
+    .update(identityVerificationDrafts)
     .set({
       ...updates,
       updatedAt: sql`datetime('now')`,
@@ -395,10 +411,10 @@ export function updateIdentityDraft(
     .run();
 }
 
-export function getIdentityVerificationJobById(
+export async function getIdentityVerificationJobById(
   jobId: string
-): IdentityVerificationJob | null {
-  const row = db
+): Promise<IdentityVerificationJob | null> {
+  const row = await db
     .select()
     .from(identityVerificationJobs)
     .where(eq(identityVerificationJobs.id, jobId))
@@ -408,10 +424,10 @@ export function getIdentityVerificationJobById(
   return row ?? null;
 }
 
-export function getLatestIdentityVerificationJobForDraft(
+export async function getLatestIdentityVerificationJobForDraft(
   draftId: string
-): IdentityVerificationJob | null {
-  const row = db
+): Promise<IdentityVerificationJob | null> {
+  const row = await db
     .select()
     .from(identityVerificationJobs)
     .where(eq(identityVerificationJobs.draftId, draftId))
@@ -422,13 +438,14 @@ export function getLatestIdentityVerificationJobForDraft(
   return row ?? null;
 }
 
-export function createIdentityVerificationJob(args: {
+export async function createIdentityVerificationJob(args: {
   id: string;
   draftId: string;
   userId: string;
   fheKeyId?: string | null;
-}): void {
-  db.insert(identityVerificationJobs)
+}): Promise<void> {
+  await db
+    .insert(identityVerificationJobs)
     .values({
       id: args.id,
       draftId: args.draftId,
@@ -440,7 +457,7 @@ export function createIdentityVerificationJob(args: {
     .run();
 }
 
-export function updateIdentityVerificationJobStatus(args: {
+export async function updateIdentityVerificationJobStatus(args: {
   jobId: string;
   status: IdentityJobStatus;
   error?: string | null;
@@ -448,7 +465,7 @@ export function updateIdentityVerificationJobStatus(args: {
   startedAt?: string | null;
   finishedAt?: string | null;
   attempts?: number;
-}): void {
+}): Promise<void> {
   const updates: Partial<typeof identityVerificationJobs.$inferInsert> = {
     status: args.status,
     error: args.error ?? null,
@@ -461,13 +478,14 @@ export function updateIdentityVerificationJobStatus(args: {
     updates.attempts = args.attempts;
   }
 
-  db.update(identityVerificationJobs)
+  await db
+    .update(identityVerificationJobs)
     .set({ ...updates, updatedAt: sql`datetime('now')` })
     .where(eq(identityVerificationJobs.id, args.jobId))
     .run();
 }
 
-export function upsertIdentityBundle(data: {
+export async function upsertIdentityBundle(data: {
   userId: string;
   walletAddress?: string | null;
   status?: IdentityBundleStatus;
@@ -477,8 +495,9 @@ export function upsertIdentityBundle(data: {
   fheKeyId?: string | null;
   fheStatus?: FheStatus | null;
   fheError?: string | null;
-}): void {
-  db.insert(identityBundles)
+}): Promise<void> {
+  await db
+    .insert(identityBundles)
     .values({
       userId: data.userId,
       walletAddress: data.walletAddress ?? null,
@@ -507,12 +526,12 @@ export function upsertIdentityBundle(data: {
     .run();
 }
 
-export function updateIdentityBundleFheStatus(args: {
+export async function updateIdentityBundleFheStatus(args: {
   userId: string;
   fheStatus: FheStatus | null;
   fheError?: string | null;
   fheKeyId?: string | null;
-}): void {
+}): Promise<void> {
   const updates: Partial<typeof identityBundles.$inferInsert> = {
     fheStatus: args.fheStatus ?? null,
     fheError: args.fheError ?? null,
@@ -521,7 +540,8 @@ export function updateIdentityBundleFheStatus(args: {
     updates.fheKeyId = args.fheKeyId;
   }
 
-  db.update(identityBundles)
+  await db
+    .update(identityBundles)
     .set({
       ...updates,
       updatedAt: sql`datetime('now')`,
@@ -530,13 +550,13 @@ export function updateIdentityBundleFheStatus(args: {
     .run();
 }
 
-export function updateIdentityBundleStatus(args: {
+export async function updateIdentityBundleStatus(args: {
   userId: string;
   status: IdentityBundleStatus;
   policyVersion?: string | null;
   issuerId?: string | null;
   attestationExpiresAt?: string | null;
-}): void {
+}): Promise<void> {
   const updates: Partial<typeof identityBundles.$inferInsert> = {
     status: args.status,
   };
@@ -551,7 +571,8 @@ export function updateIdentityBundleStatus(args: {
     updates.attestationExpiresAt = args.attestationExpiresAt;
   }
 
-  db.update(identityBundles)
+  await db
+    .update(identityBundles)
     .set({
       ...updates,
       updatedAt: sql`datetime('now')`,
@@ -560,10 +581,11 @@ export function updateIdentityBundleStatus(args: {
     .run();
 }
 
-export function createIdentityDocument(
+export async function createIdentityDocument(
   data: Omit<IdentityDocument, "createdAt" | "updatedAt">
-): void {
-  db.insert(identityDocuments)
+): Promise<void> {
+  await db
+    .insert(identityDocuments)
     .values({
       ...data,
     })
@@ -571,10 +593,10 @@ export function createIdentityDocument(
 }
 
 export function getUserFirstName(userId: string): Promise<string | null> {
-  const document = getSelectedIdentityDocumentByUserId(userId);
-  if (!document?.firstNameEncrypted) {
-    return Promise.resolve(null);
-  }
-
-  return decryptFirstName(document.firstNameEncrypted);
+  return getSelectedIdentityDocumentByUserId(userId).then((document) => {
+    if (!document?.firstNameEncrypted) {
+      return null;
+    }
+    return decryptFirstName(document.firstNameEncrypted);
+  });
 }

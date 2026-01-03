@@ -159,7 +159,7 @@ async function getVerifiedClaim(
     });
   }
 
-  const signedClaim = getLatestSignedClaimByUserTypeAndDocument(
+  const signedClaim = await getLatestSignedClaimByUserTypeAndDocument(
     userId,
     claimType,
     documentId
@@ -536,7 +536,7 @@ export const cryptoRouter = router({
       ctx.span?.setAttribute("fhe.server_key_bytes", serverKeyBytes);
       ctx.span?.setAttribute("fhe.public_key_bytes", publicKeyBytes);
 
-      const existingSecret = getEncryptedSecretByUserAndType(
+      const existingSecret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         "fhe_keys"
       );
@@ -657,7 +657,9 @@ export const cryptoRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const selectedDocument = await getSelectedIdentityDocumentByUserId(
+        ctx.userId
+      );
       const documentId = input.documentId ?? selectedDocument?.id ?? null;
       const { result, nonceHex } = await verifyProofInternal({
         userId: ctx.userId,
@@ -671,7 +673,7 @@ export const cryptoRouter = router({
         return result;
       }
 
-      const challenge = consumeChallenge(
+      const challenge = await consumeChallenge(
         nonceHex,
         input.circuitType,
         ctx.userId
@@ -693,12 +695,12 @@ export const cryptoRouter = router({
    */
   createChallenge: protectedProcedure
     .input(z.object({ circuitType: circuitTypeSchema }))
-    .mutation(({ ctx, input }) => {
-      const challenge = createChallenge(input.circuitType, ctx.userId);
+    .mutation(async ({ ctx, input }) => {
+      const challenge = await createChallenge(input.circuitType, ctx.userId);
       ctx.span?.setAttribute("challenge.circuit_type", input.circuitType);
       ctx.span?.setAttribute(
         "challenge.active_count",
-        getActiveChallengeCount()
+        await getActiveChallengeCount()
       );
       return {
         nonce: challenge.nonce,
@@ -707,18 +709,18 @@ export const cryptoRouter = router({
       };
     }),
 
-  challengeStatus: protectedProcedure.query(() => ({
-    activeChallenges: getActiveChallengeCount(),
+  challengeStatus: protectedProcedure.query(async () => ({
+    activeChallenges: await getActiveChallengeCount(),
     supportedCircuitTypes: circuitTypeSchema.options,
     ttlMinutes: 15,
   })),
 
   getUserProof: protectedProcedure
     .input(z.object({ full: z.boolean().optional() }).optional())
-    .query(({ ctx, input }) =>
+    .query(async ({ ctx, input }) =>
       input?.full === true
-        ? getUserAgeProofFull(ctx.userId)
-        : getUserAgeProof(ctx.userId)
+        ? await getUserAgeProofFull(ctx.userId)
+        : await getUserAgeProof(ctx.userId)
     ),
 
   /**
@@ -727,7 +729,9 @@ export const cryptoRouter = router({
   getSignedClaims: protectedProcedure
     .input(z.object({ documentId: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
-      const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const selectedDocument = await getSelectedIdentityDocumentByUserId(
+        ctx.userId
+      );
       const documentId = input?.documentId ?? selectedDocument?.id ?? null;
       if (!documentId) {
         return {
@@ -738,17 +742,17 @@ export const cryptoRouter = router({
         };
       }
 
-      const ocr = getLatestSignedClaimByUserTypeAndDocument(
+      const ocr = await getLatestSignedClaimByUserTypeAndDocument(
         ctx.userId,
         "ocr_result",
         documentId
       );
-      const faceMatch = getLatestSignedClaimByUserTypeAndDocument(
+      const faceMatch = await getLatestSignedClaimByUserTypeAndDocument(
         ctx.userId,
         "face_match_score",
         documentId
       );
-      const liveness = getLatestSignedClaimByUserTypeAndDocument(
+      const liveness = await getLatestSignedClaimByUserTypeAndDocument(
         ctx.userId,
         "liveness_score",
         documentId
@@ -801,7 +805,9 @@ export const cryptoRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const selectedDocument = getSelectedIdentityDocumentByUserId(ctx.userId);
+      const selectedDocument = await getSelectedIdentityDocumentByUserId(
+        ctx.userId
+      );
       const documentId = input.documentId ?? selectedDocument?.id ?? null;
       if (!documentId) {
         throw new TRPCError({
@@ -825,7 +831,7 @@ export const cryptoRouter = router({
         });
       }
 
-      const challenge = consumeChallenge(
+      const challenge = await consumeChallenge(
         nonceHex,
         input.circuitType,
         ctx.userId
@@ -868,7 +874,7 @@ export const cryptoRouter = router({
           })
       );
 
-      const proofHashes = getProofHashesByUserAndDocument(
+      const proofHashes = await getProofHashesByUserAndDocument(
         ctx.userId,
         documentId
       );
@@ -886,9 +892,9 @@ export const cryptoRouter = router({
         })
       );
 
-      const verificationStatus = getVerificationStatus(ctx.userId);
+      const verificationStatus = await getVerificationStatus(ctx.userId);
       if (verificationStatus.verified) {
-        updateIdentityBundleStatus({
+        await updateIdentityBundleStatus({
           userId: ctx.userId,
           status: "verified",
           policyVersion: POLICY_VERSION,

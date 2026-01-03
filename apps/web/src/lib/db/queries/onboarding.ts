@@ -13,9 +13,9 @@ const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
  * If sessionId is not provided, generates a new one.
  * Returns the session including the sessionId for cookie storage.
  */
-export function upsertOnboardingSession(
+export async function upsertOnboardingSession(
   data: Partial<OnboardingSession> & { id?: string; email?: string | null }
-): OnboardingSession {
+): Promise<OnboardingSession> {
   const sessionId = data.id ?? nanoid();
   const normalizedEmail = data.email?.toLowerCase().trim() ?? null;
   const now = Math.floor(Date.now() / 1000);
@@ -55,7 +55,8 @@ export function upsertOnboardingSession(
     updateSet.keysSecured = data.keysSecured;
   }
 
-  db.insert(onboardingSessions)
+  await db
+    .insert(onboardingSessions)
     .values({
       id: sessionId,
       email: normalizedEmail,
@@ -77,7 +78,7 @@ export function upsertOnboardingSession(
     })
     .run();
 
-  const session = getOnboardingSessionById(sessionId);
+  const session = await getOnboardingSessionById(sessionId);
   if (!session) {
     throw new Error("Failed to upsert onboarding session");
   }
@@ -88,12 +89,12 @@ export function upsertOnboardingSession(
  * Get an onboarding session by its sessionId.
  * Returns null if not found or expired.
  */
-export function getOnboardingSessionById(
+export async function getOnboardingSessionById(
   sessionId: string
-): OnboardingSession | null {
+): Promise<OnboardingSession | null> {
   const now = Math.floor(Date.now() / 1000);
 
-  const row = db
+  const row = await db
     .select()
     .from(onboardingSessions)
     .where(
@@ -111,8 +112,11 @@ export function getOnboardingSessionById(
 /**
  * Delete an onboarding session by its sessionId.
  */
-export function deleteOnboardingSessionById(sessionId: string): void {
-  db.delete(onboardingSessions)
+export async function deleteOnboardingSessionById(
+  sessionId: string
+): Promise<void> {
+  await db
+    .delete(onboardingSessions)
     .where(eq(onboardingSessions.id, sessionId))
     .run();
 }
@@ -121,9 +125,12 @@ export function deleteOnboardingSessionById(sessionId: string): void {
  * Delete all onboarding sessions for a given email.
  * Used during account deletion to clean up orphaned sessions.
  */
-export function deleteOnboardingSessionsByEmail(email: string): void {
+export async function deleteOnboardingSessionsByEmail(
+  email: string
+): Promise<void> {
   const normalizedEmail = email.toLowerCase().trim();
-  db.delete(onboardingSessions)
+  await db
+    .delete(onboardingSessions)
     .where(eq(onboardingSessions.email, normalizedEmail))
     .run();
 }
@@ -132,9 +139,9 @@ export function deleteOnboardingSessionsByEmail(email: string): void {
  * Cleanup expired sessions.
  * Returns the number of sessions deleted.
  */
-export function cleanupExpiredOnboardingSessions(): number {
+export async function cleanupExpiredOnboardingSessions(): Promise<number> {
   const now = Math.floor(Date.now() / 1000);
-  const expiredRows = db
+  const expiredRows = await db
     .select({ id: onboardingSessions.id })
     .from(onboardingSessions)
     .where(sql`${onboardingSessions.expiresAt} < ${now}`)
@@ -144,7 +151,8 @@ export function cleanupExpiredOnboardingSessions(): number {
     return 0;
   }
 
-  db.delete(onboardingSessions)
+  await db
+    .delete(onboardingSessions)
     .where(sql`${onboardingSessions.expiresAt} < ${now}`)
     .run();
 

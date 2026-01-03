@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const nonceHex = normalizeChallengeNonce(
       publicInputs[CIRCUIT_SPECS.nationality_membership.nonceIndex]
     );
-    const challenge = consumeChallenge(
+    const challenge = await consumeChallenge(
       nonceHex,
       "nationality_membership",
       authResult.session.user.id

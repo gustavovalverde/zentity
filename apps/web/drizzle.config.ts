@@ -1,20 +1,15 @@
-const rawPath = process.env.DATABASE_PATH || "./.data/dev.db";
+const url = process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-let url = rawPath;
-if (rawPath === ":memory:") {
-  url = "file::memory:";
-} else if (rawPath.startsWith("file:") || rawPath.startsWith("libsql:")) {
-  url = rawPath;
-} else {
-  url = `file:${rawPath}`;
-}
-
-const config = {
+export default {
   schema: "./src/lib/db/schema/index.ts",
-  dialect: "sqlite",
-  dbCredentials: {
-    url,
-  },
+  dialect: "turso",
+  dbCredentials: authToken
+    ? {
+        url,
+        authToken,
+      }
+    : {
+        url,
+      },
 };
-
-export default config;

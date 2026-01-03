@@ -10,7 +10,7 @@
 
 ## Summary
 
-Replace the 1,886-line manual SQL layer (`src/lib/db/db.ts`) with Drizzle ORM, gaining type-safe queries, proper transaction boundaries, and a formal migration system.
+Replace the manual SQL layer (`src/lib/db/db.ts`) with Drizzle ORM using libsql for both local files and Turso, and apply schema via `drizzle-kit push` (no committed migrations).
 
 ## Problem Statement
 
@@ -58,7 +58,7 @@ The current database layer has several critical issues:
 ## Design Decisions
 
 - **ORM Choice**: Drizzle ORM over Prisma/Kysely
-  - Native `bun:sqlite` support via `drizzle-orm/bun-sqlite`
+  - LibSQL adapter (`drizzle-orm/libsql`) for both local file URLs and Turso
   - SQL-like syntax (minimal learning curve)
   - Lightweight (no codegen, no runtime overhead)
   - Full transaction support with rollback
@@ -67,6 +67,7 @@ The current database layer has several critical issues:
 - **Migration Strategy**: Aggressive rewrite (not incremental)
   - This is a PoC with no production data
   - Delete old files entirely rather than wrapping
+  - Schema applied via `drizzle-kit push` (no migration files committed)
 
 - **Schema Organization**: Domain-driven vertical slices
   - `schema/identity.ts` for identity verification
@@ -248,23 +249,31 @@ bun add -D drizzle-kit
 
 ```typescript
 // src/lib/db/connection.ts
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { Database } from "bun:sqlite";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "./schema";
 
-function getDbPath(): string {
-  // Build-time detection for Next.js
-  if (process.env.npm_lifecycle_event === "build") return ":memory:";
-  return process.env.DATABASE_PATH || "./.data/dev.db";
+function isBuildTime() {
+  if (process.env.npm_lifecycle_event === "build") {
+    return true;
+  }
+  const argv = process.argv.join(" ");
+  return argv.includes("next") && argv.includes("build");
 }
 
-const sqlite = new Database(getDbPath());
+function getDatabaseUrl(): string {
+  if (isBuildTime()) {
+    return "file::memory:";
+  }
+  return process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
+}
 
-// Apply pragmas for performance
-sqlite.exec("PRAGMA journal_mode = WAL");
-sqlite.exec("PRAGMA synchronous = NORMAL");
+const client = createClient({
+  url: getDatabaseUrl(),
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(client, { schema });
 ```
 
 ### Step 3: Create Schema Files
@@ -281,23 +290,21 @@ Create schema files for each domain (see Architecture section):
 
 ```typescript
 // apps/web/drizzle.config.ts
-const rawPath = process.env.DATABASE_PATH || "./.data/dev.db";
-const url =
-  rawPath.startsWith("file:") || rawPath.startsWith("libsql:")
-    ? rawPath
-    : rawPath === ":memory:"
-      ? "file::memory:"
-      : `file:${rawPath}`;
+const url = process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-const config = {
+export default {
   schema: "./src/lib/db/schema/index.ts",
-  dialect: "sqlite",
-  dbCredentials: {
-    url,
-  },
+  dialect: "turso",
+  dbCredentials: authToken
+    ? {
+        url,
+        authToken,
+      }
+    : {
+        url,
+      },
 };
-
-export default config;
 ```
 
 ### Step 5: Apply Schema

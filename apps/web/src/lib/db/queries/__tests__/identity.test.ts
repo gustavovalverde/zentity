@@ -30,26 +30,26 @@ import {
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("identity queries", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("upserts and updates identity bundle status", () => {
-    const userId = createTestUser();
+  it("upserts and updates identity bundle status", async () => {
+    const userId = await createTestUser();
 
-    upsertIdentityBundle({
+    await upsertIdentityBundle({
       userId,
       walletAddress: "0xabc",
       status: "pending",
       policyVersion: "policy-v1",
     });
 
-    const initial = getIdentityBundleByUserId(userId);
+    const initial = await getIdentityBundleByUserId(userId);
     expect(initial?.walletAddress).toBe("0xabc");
     expect(initial?.status).toBe("pending");
     expect(initial?.policyVersion).toBe("policy-v1");
 
-    updateIdentityBundleStatus({
+    await updateIdentityBundleStatus({
       userId,
       status: "verified",
       policyVersion: "policy-v2",
@@ -57,19 +57,19 @@ describe("identity queries", () => {
       attestationExpiresAt: "2025-01-01T00:00:00Z",
     });
 
-    const updated = getIdentityBundleByUserId(userId);
+    const updated = await getIdentityBundleByUserId(userId);
     expect(updated?.status).toBe("verified");
     expect(updated?.policyVersion).toBe("policy-v2");
     expect(updated?.issuerId).toBe("issuer-1");
     expect(updated?.attestationExpiresAt).toBe("2025-01-01T00:00:00Z");
   });
 
-  it("returns latest verified identity document", () => {
-    const userId = createTestUser();
+  it("returns latest verified identity document", async () => {
+    const userId = await createTestUser();
     const olderDoc = crypto.randomUUID();
     const newerDoc = crypto.randomUUID();
 
-    createIdentityDocument({
+    await createIdentityDocument({
       id: olderDoc,
       userId,
       documentType: "passport",
@@ -84,7 +84,7 @@ describe("identity queries", () => {
       status: "verified",
     });
 
-    createIdentityDocument({
+    await createIdentityDocument({
       id: newerDoc,
       userId,
       documentType: "passport",
@@ -99,18 +99,18 @@ describe("identity queries", () => {
       status: "verified",
     });
 
-    const latest = getLatestIdentityDocumentByUserId(userId);
+    const latest = await getLatestIdentityDocumentByUserId(userId);
     expect(latest?.id).toBe(newerDoc);
-    expect(documentHashExists("hash-new")).toBe(true);
+    await expect(documentHashExists("hash-new")).resolves.toBe(true);
   });
 
-  it("deletes all identity data for a user", () => {
-    const userId = createTestUser();
+  it("deletes all identity data for a user", async () => {
+    const userId = await createTestUser();
     const documentId = crypto.randomUUID();
 
-    upsertIdentityBundle({ userId });
+    await upsertIdentityBundle({ userId });
 
-    createIdentityDocument({
+    await createIdentityDocument({
       id: documentId,
       userId,
       documentType: "passport",
@@ -125,7 +125,7 @@ describe("identity queries", () => {
       status: "verified",
     });
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -134,7 +134,7 @@ describe("identity queries", () => {
       verified: true,
     });
 
-    insertSignedClaim({
+    await insertSignedClaim({
       id: crypto.randomUUID(),
       userId,
       documentId,
@@ -144,7 +144,7 @@ describe("identity queries", () => {
       issuedAt: new Date().toISOString(),
     });
 
-    insertEncryptedAttribute({
+    await insertEncryptedAttribute({
       id: crypto.randomUUID(),
       userId,
       source: "web2_tfhe",
@@ -154,7 +154,7 @@ describe("identity queries", () => {
       encryptionTimeMs: 123,
     });
 
-    upsertAttestationEvidence({
+    await upsertAttestationEvidence({
       userId,
       documentId,
       policyVersion: "policy-v1",
@@ -162,7 +162,7 @@ describe("identity queries", () => {
       proofSetHash: "proof-set",
     });
 
-    const secret = upsertEncryptedSecret({
+    const secret = await upsertEncryptedSecret({
       id: crypto.randomUUID(),
       userId,
       secretType: "fhe_keys",
@@ -174,7 +174,7 @@ describe("identity queries", () => {
       version: "v1",
     });
 
-    upsertSecretWrapper({
+    await upsertSecretWrapper({
       id: crypto.randomUUID(),
       secretId: secret.id,
       userId,
@@ -184,16 +184,22 @@ describe("identity queries", () => {
       kekVersion: "v1",
     });
 
-    deleteIdentityData(userId);
+    await deleteIdentityData(userId);
 
-    expect(getIdentityBundleByUserId(userId)).toBeNull();
-    expect(getIdentityDocumentsByUserId(userId)).toHaveLength(0);
-    expect(getZkProofsByUserId(userId)).toHaveLength(0);
-    expect(getEncryptedAttributeTypesByUserId(userId)).toEqual([]);
-    expect(
+    await expect(getIdentityBundleByUserId(userId)).resolves.toBeNull();
+    await expect(getIdentityDocumentsByUserId(userId)).resolves.toHaveLength(0);
+    await expect(getZkProofsByUserId(userId)).resolves.toHaveLength(0);
+    await expect(getEncryptedAttributeTypesByUserId(userId)).resolves.toEqual(
+      []
+    );
+    await expect(
       getAttestationEvidenceByUserAndDocument(userId, documentId)
-    ).toBeNull();
-    expect(getEncryptedSecretByUserAndType(userId, "fhe_keys")).toBeNull();
-    expect(getSecretWrappersBySecretId(secret.id)).toHaveLength(0);
+    ).resolves.toBeNull();
+    await expect(
+      getEncryptedSecretByUserAndType(userId, "fhe_keys")
+    ).resolves.toBeNull();
+    await expect(getSecretWrappersBySecretId(secret.id)).resolves.toHaveLength(
+      0
+    );
   });
 });

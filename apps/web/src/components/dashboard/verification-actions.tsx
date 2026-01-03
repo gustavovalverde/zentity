@@ -65,7 +65,10 @@ export function VerificationActions() {
   const [proofData, setProofData] = useState<ProofData | null>(null);
 
   const loadProofData = async () => {
-    if (proofData) {
+    const hasCachedFheData =
+      Boolean(proofData?.birthYearOffsetCiphertext) &&
+      Boolean(proofData?.fheKeyId);
+    if (hasCachedFheData) {
       return proofData;
     }
 

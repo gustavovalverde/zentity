@@ -201,7 +201,7 @@ export const tokenRouter = router({
       }
 
       // Check verification status
-      const verificationStatus = getVerificationStatus(ctx.userId);
+      const verificationStatus = await getVerificationStatus(ctx.userId);
       if (!verificationStatus.verified) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -210,7 +210,7 @@ export const tokenRouter = router({
       }
 
       // Check attestation on this network
-      const attestation = getBlockchainAttestationByUserAndNetwork(
+      const attestation = await getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
         input.networkId
       );

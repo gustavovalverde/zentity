@@ -117,7 +117,7 @@ app.get("/complete", async (c) => {
     return c.json({ error: "redirect_uri not allowed" }, 400);
   }
 
-  const { code } = createRpAuthorizationCode({
+  const { code } = await createRpAuthorizationCode({
     clientId: flow.clientId,
     redirectUri: flow.redirectUri,
     state: flow.state,
@@ -151,7 +151,7 @@ app.post("/exchange", async (c) => {
     return c.json({ error: "Invalid request" }, 400);
   }
 
-  const consumed = consumeRpAuthorizationCode(parsed.data.code);
+  const consumed = await consumeRpAuthorizationCode(parsed.data.code);
   if (!consumed) {
     return c.json({ error: "Invalid or expired code" }, 400);
   }
@@ -161,7 +161,7 @@ app.post("/exchange", async (c) => {
   }
 
   const userId = consumed.userId;
-  const verificationStatus = getVerificationStatus(userId);
+  const verificationStatus = await getVerificationStatus(userId);
 
   return c.json({
     success: true,

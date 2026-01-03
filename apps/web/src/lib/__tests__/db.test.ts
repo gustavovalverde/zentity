@@ -26,14 +26,14 @@ import {
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("Database Module", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
   describe("getVerificationStatus", () => {
-    it("returns level none for unverified user", () => {
-      const userId = createTestUser();
-      const status = getVerificationStatus(userId);
+    it("returns level none for unverified user", async () => {
+      const userId = await createTestUser();
+      const status = await getVerificationStatus(userId);
 
       expect(status.level).toBe("none");
       expect(status.verified).toBe(false);
@@ -47,9 +47,9 @@ describe("Database Module", () => {
   });
 
   describe("documentHashExists", () => {
-    it("returns true for existing hash", () => {
-      const userId = createTestUser();
-      createIdentityDocument({
+    it("returns true for existing hash", async () => {
+      const userId = await createTestUser();
+      await createIdentityDocument({
         id: crypto.randomUUID(),
         userId,
         documentType: "passport",
@@ -64,21 +64,21 @@ describe("Database Module", () => {
         status: "verified",
       });
 
-      expect(documentHashExists("existing-hash")).toBe(true);
-      expect(documentHashExists("missing-hash")).toBe(false);
+      await expect(documentHashExists("existing-hash")).resolves.toBe(true);
+      await expect(documentHashExists("missing-hash")).resolves.toBe(false);
     });
   });
 });
 
 describe("ZK proofs and encrypted attributes", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("persists zk proof records", () => {
-    const userId = createTestUser();
+  it("persists zk proof records", async () => {
+    const userId = await createTestUser();
 
-    insertZkProofRecord({
+    await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       proofType: "age_verification",
@@ -86,16 +86,16 @@ describe("ZK proofs and encrypted attributes", () => {
       verified: true,
     });
 
-    const proofs = getZkProofsByUserId(userId);
+    const proofs = await getZkProofsByUserId(userId);
     expect(proofs).toHaveLength(1);
     expect(proofs[0]?.proofType).toBe("age_verification");
     expect(Boolean(proofs[0]?.verified)).toBe(true);
   });
 
-  it("persists encrypted attributes", () => {
-    const userId = createTestUser();
+  it("persists encrypted attributes", async () => {
+    const userId = await createTestUser();
 
-    insertEncryptedAttribute({
+    await insertEncryptedAttribute({
       id: crypto.randomUUID(),
       userId,
       source: "web2_tfhe",
@@ -105,10 +105,10 @@ describe("ZK proofs and encrypted attributes", () => {
       encryptionTimeMs: 123,
     });
 
-    const types = getEncryptedAttributeTypesByUserId(userId);
+    const types = await getEncryptedAttributeTypesByUserId(userId);
     expect(types).toEqual(["birth_year_offset"]);
 
-    const latest = getLatestEncryptedAttributeByUserAndType(
+    const latest = await getLatestEncryptedAttributeByUserAndType(
       userId,
       "birth_year_offset"
     );
@@ -119,17 +119,17 @@ describe("ZK proofs and encrypted attributes", () => {
 });
 
 describe("Document selection", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("prefers a fully proven document over a newer incomplete one", () => {
-    const userId = createTestUser();
+  it("prefers a fully proven document over a newer incomplete one", async () => {
+    const userId = await createTestUser();
 
     const docFull = crypto.randomUUID();
     const docIncomplete = crypto.randomUUID();
 
-    createIdentityDocument({
+    await createIdentityDocument({
       id: docFull,
       userId,
       documentType: "passport",
@@ -144,7 +144,7 @@ describe("Document selection", () => {
       status: "verified",
     });
 
-    createIdentityDocument({
+    await createIdentityDocument({
       id: docIncomplete,
       userId,
       documentType: "passport",
@@ -165,7 +165,7 @@ describe("Document selection", () => {
       "liveness_score",
       "face_match_score",
     ]) {
-      insertSignedClaim({
+      await insertSignedClaim({
         id: crypto.randomUUID(),
         userId,
         documentId: docFull,
@@ -182,7 +182,7 @@ describe("Document selection", () => {
       "nationality_membership",
       "face_match",
     ]) {
-      insertZkProofRecord({
+      await insertZkProofRecord({
         id: crypto.randomUUID(),
         userId,
         documentId: docFull,
@@ -192,21 +192,21 @@ describe("Document selection", () => {
       });
     }
 
-    const selected = getSelectedIdentityDocumentByUserId(userId);
+    const selected = await getSelectedIdentityDocumentByUserId(userId);
     expect(selected?.id).toBe(docFull);
   });
 });
 
 describe("Attestation evidence", () => {
-  beforeEach(() => {
-    resetDatabase();
+  beforeEach(async () => {
+    await resetDatabase();
   });
 
-  it("persists evidence pack metadata", () => {
-    const userId = createTestUser();
+  it("persists evidence pack metadata", async () => {
+    const userId = await createTestUser();
     const documentId = crypto.randomUUID();
 
-    upsertAttestationEvidence({
+    await upsertAttestationEvidence({
       userId,
       documentId,
       policyVersion: "policy-v1",
@@ -214,7 +214,7 @@ describe("Attestation evidence", () => {
       proofSetHash: "proof-set-hash",
     });
 
-    const evidence = getAttestationEvidenceByUserAndDocument(
+    const evidence = await getAttestationEvidenceByUserAndDocument(
       userId,
       documentId
     );
