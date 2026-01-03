@@ -1,15 +1,18 @@
-import { readFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { gzipSync, gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
 const FHE_URL = process.env.FHE_URL ?? "http://localhost:5001";
 const JAEGER_URL = process.env.JAEGER_URL ?? "http://localhost:16686";
 const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN ?? "";
 
-const require = createRequire(new URL("../apps/web/package.json", import.meta.url));
-const { encode, decode } = require("@msgpack/msgpack") as typeof import("@msgpack/msgpack");
+const require = createRequire(
+  new URL("../apps/web/package.json", import.meta.url),
+);
+const { encode, decode } =
+  require("@msgpack/msgpack") as typeof import("@msgpack/msgpack");
 
 const traceId = process.env.OTEL_TRACE_ID ?? randomBytes(16).toString("hex");
 const parentSpanId = randomBytes(8).toString("hex");
@@ -76,9 +79,12 @@ async function getDebugKey(): Promise<{ keyId: string; publicKey: string }> {
   if (INTERNAL_TOKEN) {
     headers["X-Zentity-Internal-Token"] = INTERNAL_TOKEN;
   }
-  return fetchJson<{ keyId: string; publicKey: string }>(`${FHE_URL}/keys/debug`, {
-    headers: withTraceHeaders(headers),
-  });
+  return fetchJson<{ keyId: string; publicKey: string }>(
+    `${FHE_URL}/keys/debug`,
+    {
+      headers: withTraceHeaders(headers),
+    },
+  );
 }
 
 async function getKeyId(): Promise<string> {
