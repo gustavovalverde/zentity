@@ -25,36 +25,36 @@ const categories = [
 
 export function ProblemSolution() {
   return (
-    <section className="py-24 px-4 md:px-6" id="problem">
+    <section className="px-4 py-24 md:px-6" id="problem">
       <div className="mx-auto max-w-4xl">
         {/* Header */}
-        <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold sm:text-4xl">
+        <div className="mb-16 text-center">
+          <h2 className="font-bold text-3xl sm:text-4xl">
             Traditional KYC is a privacy disaster
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Every data breach exposes millions of identities. We built something
             different.
           </p>
         </div>
 
         {/* Comparison Cards */}
-        <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
+        <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
           {/* Traditional - Problems */}
           <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-6 lg:p-8">
-            <div className="flex items-center gap-2 mb-8">
+            <div className="mb-8 flex items-center gap-2">
               <IconX className="size-5 text-destructive" />
-              <h3 className="text-xl font-semibold text-destructive">
+              <h3 className="font-semibold text-destructive text-xl">
                 Traditional Identity
               </h3>
             </div>
             <div className="space-y-6">
               {categories.map((cat) => (
                 <div key={cat.label}>
-                  <div className="text-sm font-medium tracking-wider text-muted-foreground mb-1">
+                  <div className="mb-1 font-medium text-muted-foreground text-sm tracking-wider">
                     {cat.label}
                   </div>
-                  <div className="text-foreground font-medium">
+                  <div className="font-medium text-foreground">
                     {cat.problem}
                   </div>
                 </div>
@@ -64,19 +64,19 @@ export function ProblemSolution() {
 
           {/* Zentity - Solutions */}
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 lg:p-8">
-            <div className="flex items-center gap-2 mb-8">
+            <div className="mb-8 flex items-center gap-2">
               <IconCheck className="size-5 text-emerald-400" />
-              <h3 className="text-xl font-semibold text-emerald-400">
+              <h3 className="font-semibold text-emerald-400 text-xl">
                 Zentity Approach
               </h3>
             </div>
             <div className="space-y-6">
               {categories.map((cat) => (
                 <div key={cat.label}>
-                  <div className="text-sm font-medium tracking-wider text-muted-foreground mb-1">
+                  <div className="mb-1 font-medium text-muted-foreground text-sm tracking-wider">
                     {cat.label}
                   </div>
-                  <div className="text-foreground font-medium">
+                  <div className="font-medium text-foreground">
                     {cat.solution}
                   </div>
                 </div>
@@ -87,7 +87,7 @@ export function ProblemSolution() {
 
         {/* Bottom Statement */}
         <div className="mt-12 text-center">
-          <p className="text-lg font-medium">
+          <p className="font-medium text-lg">
             Breaches expose only{" "}
             <span className="text-emerald-400">encrypted data and proofs</span>
             —not readable documents or personal data.

@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 
 export function MidPageCTA() {
   return (
-    <section className="py-16 px-4 md:px-6">
+    <section className="px-4 py-16 md:px-6">
       <div className="mx-auto max-w-4xl text-center">
         <div className="rounded-2xl border border-border bg-card/50 p-8 md:p-12">
-          <h2 className="text-2xl font-bold sm:text-3xl">
+          <h2 className="font-bold text-2xl sm:text-3xl">
             Ready to see it in action?
           </h2>
           <p className="mt-3 text-muted-foreground">
@@ -20,7 +20,7 @@ export function MidPageCTA() {
               rel="noopener noreferrer"
             >
               <Button size="lg" className="px-8">
-                <IconPlayerPlay className="size-5 mr-2" />
+                <IconPlayerPlay className="mr-2 size-5" />
                 Try Live Demo
               </Button>
             </a>

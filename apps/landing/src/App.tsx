@@ -30,7 +30,7 @@ function LandingPage() {
       <SoftwareApplicationSchema />
       <FAQSchema />
 
-      <div className="min-h-screen flex flex-col bg-background text-foreground">
+      <div className="flex min-h-screen flex-col bg-background text-foreground">
         <Nav />
         <main>
           <Hero />

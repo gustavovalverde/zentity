@@ -87,9 +87,9 @@ export function Nav() {
   return (
     <header
       className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        "fixed top-0 right-0 left-0 z-50 transition-all duration-300",
         isScrolled
-          ? "bg-background/80 backdrop-blur-md border-b border-border shadow-sm"
+          ? "border-border border-b bg-background/80 shadow-sm backdrop-blur-md"
           : "bg-transparent",
       )}
     >
@@ -104,13 +104,13 @@ export function Nav() {
         </div>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-6">
+        <div className="hidden items-center gap-6 md:flex">
           {navLinks.map((link) =>
             link.href.startsWith("/") ? (
               <Link
                 key={link.href}
                 to={link.href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className="font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
               >
                 {link.label}
               </Link>
@@ -118,7 +118,7 @@ export function Nav() {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className="font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
               >
                 {link.label}
               </a>
@@ -126,7 +126,7 @@ export function Nav() {
           )}
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden items-center gap-3 md:flex">
           <ThemeToggle />
           <a
             href="https://github.com/gustavovalverde/zentity"
@@ -134,7 +134,7 @@ export function Nav() {
             rel="noopener noreferrer"
           >
             <Button variant="outline" size="sm">
-              <IconBrandGithub className="size-4 mr-2" />
+              <IconBrandGithub className="mr-2 size-4" />
               GitHub
             </Button>
           </a>
@@ -148,7 +148,7 @@ export function Nav() {
         </div>
 
         {/* Mobile Menu */}
-        <div className="flex md:hidden items-center gap-2">
+        <div className="flex items-center gap-2 md:hidden">
           <ThemeToggle />
           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger
@@ -162,14 +162,14 @@ export function Nav() {
               <SheetHeader>
                 <SheetTitle>Menu</SheetTitle>
               </SheetHeader>
-              <nav className="flex flex-col gap-1 mt-4">
+              <nav className="mt-4 flex flex-col gap-1">
                 {navLinks.map((link) =>
                   link.href.startsWith("/") ? (
                     <Link
                       key={link.href}
                       to={link.href}
                       onClick={() => setIsSheetOpen(false)}
-                      className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-2 rounded-md hover:bg-muted"
+                      className="block rounded-md px-2 py-2 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
                     >
                       {link.label}
                     </Link>
@@ -178,21 +178,21 @@ export function Nav() {
                       key={link.href}
                       href={link.href}
                       onClick={() => setIsSheetOpen(false)}
-                      className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors py-2 px-2 rounded-md hover:bg-muted"
+                      className="block rounded-md px-2 py-2 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
                     >
                       {link.label}
                     </a>
                   ),
                 )}
               </nav>
-              <div className="flex flex-col gap-2 mt-6 pt-4 border-t border-border">
+              <div className="mt-6 flex flex-col gap-2 border-border border-t pt-4">
                 <a
                   href="https://github.com/gustavovalverde/zentity"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <Button variant="outline" className="w-full">
-                    <IconBrandGithub className="size-4 mr-2" />
+                    <IconBrandGithub className="mr-2 size-4" />
                     View on GitHub
                   </Button>
                 </a>

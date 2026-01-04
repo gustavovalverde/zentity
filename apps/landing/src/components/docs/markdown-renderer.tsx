@@ -63,22 +63,22 @@ interface MarkdownRendererProps {
 // Custom components following shadcn typography patterns
 const components: Components = {
   h1: ({ children }) => (
-    <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight text-balance mb-6">
+    <h1 className="mb-6 scroll-m-20 text-balance font-extrabold text-4xl tracking-tight">
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight transition-colors first:mt-0 mt-10 mb-4">
+    <h2 className="mt-10 mb-4 scroll-m-20 border-b pb-2 font-semibold text-3xl tracking-tight transition-colors first:mt-0">
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="scroll-m-20 text-2xl font-semibold tracking-tight mt-8 mb-4">
+    <h3 className="mt-8 mb-4 scroll-m-20 font-semibold text-2xl tracking-tight">
       {children}
     </h3>
   ),
   h4: ({ children }) => (
-    <h4 className="scroll-m-20 text-xl font-semibold tracking-tight mt-6 mb-2">
+    <h4 className="mt-6 mb-2 scroll-m-20 font-semibold text-xl tracking-tight">
       {children}
     </h4>
   ),
@@ -96,7 +96,7 @@ const components: Components = {
       return (
         <Link
           to={transformedHref}
-          className="text-primary font-medium underline underline-offset-4 hover:text-primary/80"
+          className="font-medium text-primary underline underline-offset-4 hover:text-primary/80"
         >
           {children}
         </Link>
@@ -106,7 +106,7 @@ const components: Components = {
     return (
       <a
         href={transformedHref}
-        className="text-primary font-medium underline underline-offset-4 hover:text-primary/80"
+        className="font-medium text-primary underline underline-offset-4 hover:text-primary/80"
         target={isExternal ? "_blank" : undefined}
         rel={isExternal ? "noopener noreferrer" : undefined}
       >
@@ -115,7 +115,7 @@ const components: Components = {
     );
   },
   blockquote: ({ children }) => (
-    <blockquote className="mt-6 border-l-2 border-primary/20 pl-6 italic text-muted-foreground">
+    <blockquote className="mt-6 border-primary/20 border-l-2 pl-6 text-muted-foreground italic">
       {children}
     </blockquote>
   ),
@@ -135,7 +135,7 @@ const components: Components = {
   thead: ({ children }) => <thead>{children}</thead>,
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => (
-    <tr className="even:bg-muted/50 m-0 border-t p-0">{children}</tr>
+    <tr className="m-0 border-t p-0 even:bg-muted/50">{children}</tr>
   ),
   th: ({ children }) => (
     <th className="border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right">

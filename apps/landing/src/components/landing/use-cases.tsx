@@ -64,30 +64,30 @@ const useCases = [
 
 export function UseCases() {
   return (
-    <section className="py-24 overflow-hidden" id="use-cases">
+    <section className="overflow-hidden py-24" id="use-cases">
       <div className="mx-auto max-w-4xl px-4 md:px-6">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold">
+        <div className="mb-16 text-center">
+          <h2 className="font-bold text-3xl md:text-4xl">
             Built for Real World Privacy
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Where data minimization meets regulatory compliance.
           </p>
         </div>
 
         {/* 2x2 Grid Layout */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid gap-6 md:grid-cols-2">
           {useCases.map((useCase) => {
             const styles = colorStyles[useCase.color];
             return (
               <Card
                 key={useCase.title}
-                className="h-full border-border bg-card/50 hover:bg-card transition-colors"
+                className="h-full border-border bg-card/50 transition-colors hover:bg-card"
               >
                 <CardHeader className="flex flex-row items-center gap-4">
                   <div
                     className={cn(
-                      "p-2 rounded-lg border",
+                      "rounded-lg border p-2",
                       styles.bg,
                       styles.border,
                     )}

@@ -11,24 +11,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export function TechnicalDeepDive() {
   return (
     <section
-      className="py-24 bg-muted/30 border-y border-border/50"
+      className="border-border/50 border-y bg-muted/30 py-24"
       id="architecture"
     >
       <div className="mx-auto max-w-6xl px-4 md:px-6">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+        <div className="mb-16 text-center">
+          <h2 className="mb-4 font-bold text-3xl md:text-4xl">
             Technical Deep-Dive
           </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-muted-foreground">
             Under the hood of the privacy machine.
           </p>
         </div>
 
-        <div className="max-w-6xl mx-auto">
+        <div className="mx-auto max-w-6xl">
           <Tabs defaultValue="architecture" className="w-full">
             {/* Pill-shaped Tabs */}
-            <div className="flex justify-center mb-12">
-              <TabsList className="bg-muted p-1 border border-border h-auto rounded-full w-fit">
+            <div className="mb-12 flex justify-center">
+              <TabsList className="h-auto w-fit rounded-full border border-border bg-muted p-1">
                 <TabsTrigger
                   value="architecture"
                   className="rounded-full px-6 py-2"
@@ -51,24 +51,24 @@ export function TechnicalDeepDive() {
             </div>
 
             {/* macOS Window Container */}
-            <div className="relative rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
               {/* Window Title Bar */}
-              <div className="h-10 border-b border-border bg-muted/30 flex items-center px-4 gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-                <div className="w-3 h-3 rounded-full bg-green-500/80" />
-                <div className="ml-4 text-xs font-mono text-muted-foreground">
+              <div className="flex h-10 items-center gap-2 border-border border-b bg-muted/30 px-4">
+                <div className="h-3 w-3 rounded-full bg-red-500/80" />
+                <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
+                <div className="h-3 w-3 rounded-full bg-green-500/80" />
+                <div className="ml-4 font-mono text-muted-foreground text-xs">
                   zentity-architecture.v1
                 </div>
               </div>
 
-              <div className="p-8 md:p-12 min-h-[450px] bg-background">
+              <div className="min-h-[450px] bg-background p-8 md:p-12">
                 {/* Architecture Tab */}
                 <TabsContent value="architecture" className="mt-0">
-                  <div className="grid md:grid-cols-2 gap-12 items-center">
+                  <div className="grid items-center gap-12 md:grid-cols-2">
                     <div className="space-y-8">
                       <div>
-                        <h3 className="text-2xl font-bold mb-2">
+                        <h3 className="mb-2 font-bold text-2xl">
                           3-Service Monorepo
                         </h3>
                         <p className="text-muted-foreground">
@@ -78,42 +78,42 @@ export function TechnicalDeepDive() {
 
                       <div className="space-y-6">
                         <div className="flex gap-4">
-                          <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400 h-fit border border-blue-500/20">
+                          <div className="h-fit rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-blue-400">
                             <IconDeviceDesktop className="h-6 w-6" />
                           </div>
                           <div>
                             <h4 className="font-semibold text-foreground">
                               Web Client (Next.js)
                             </h4>
-                            <p className="text-sm text-muted-foreground mt-1">
+                            <p className="mt-1 text-muted-foreground text-sm">
                               Handles UI, client key storage, and ZK proof
                               generation (Noir/WASM) tied to verified docs.
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-4">
-                          <div className="p-3 bg-orange-500/10 rounded-xl text-orange-400 h-fit border border-orange-500/20">
+                          <div className="h-fit rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-orange-400">
                             <IconServer className="h-6 w-6" />
                           </div>
                           <div>
                             <h4 className="font-semibold text-foreground">
                               FHE Service (Rust)
                             </h4>
-                            <p className="text-sm text-muted-foreground mt-1">
+                            <p className="mt-1 text-muted-foreground text-sm">
                               Performs encrypted computations using TFHE-rs.
                               Never sees plaintext.
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-4">
-                          <div className="p-3 bg-yellow-500/10 rounded-xl text-yellow-400 h-fit border border-yellow-500/20">
+                          <div className="h-fit rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-yellow-400">
                             <IconCpu className="h-6 w-6" />
                           </div>
                           <div>
                             <h4 className="font-semibold text-foreground">
                               OCR Service (Python)
                             </h4>
-                            <p className="text-sm text-muted-foreground mt-1">
+                            <p className="mt-1 text-muted-foreground text-sm">
                               Transiently extracts document attributes, then
                               discards raw images.
                             </p>
@@ -123,43 +123,43 @@ export function TechnicalDeepDive() {
                     </div>
 
                     {/* Architecture Diagram */}
-                    <div className="rounded-xl border border-border bg-muted/20 p-6 flex flex-col justify-between h-full min-h-[300px] relative">
+                    <div className="relative flex h-full min-h-[300px] flex-col justify-between rounded-xl border border-border bg-muted/20 p-6">
                       {/* Client Box */}
-                      <div className="p-4 rounded-lg bg-background border border-border shadow-sm flex items-center justify-between z-10">
-                        <div className="font-mono text-sm font-semibold text-foreground">
+                      <div className="z-10 flex items-center justify-between rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="font-mono font-semibold text-foreground text-sm">
                           Client
                         </div>
                         <IconDeviceDesktop className="h-4 w-4 text-muted-foreground" />
                       </div>
 
                       {/* Connection Line */}
-                      <div className="flex-1 flex flex-col items-center justify-center my-4 relative">
-                        <div className="absolute inset-y-0 w-px border-l border-dashed border-border left-1/2 -ml-[0.5px]" />
-                        <div className="bg-background px-3 py-1 text-[10px] font-mono border border-border rounded-full text-muted-foreground z-10">
+                      <div className="relative my-4 flex flex-1 flex-col items-center justify-center">
+                        <div className="absolute inset-y-0 left-1/2 -ml-[0.5px] w-px border-border border-l border-dashed" />
+                        <div className="z-10 rounded-full border border-border bg-background px-3 py-1 font-mono text-[10px] text-muted-foreground">
                           HTTPS / WSS
                         </div>
                       </div>
 
                       {/* Gateway Box */}
-                      <div className="p-4 rounded-lg bg-background border border-border shadow-sm z-10 mb-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="font-mono text-sm font-semibold text-foreground">
+                      <div className="z-10 mb-4 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
                             API Gateway
                           </div>
                           <IconServer className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mt-2">
-                          <div className="p-2 rounded bg-orange-500/10 border border-orange-500/20 text-xs font-medium text-orange-400 text-center">
+                        <div className="mt-2 grid grid-cols-2 gap-3">
+                          <div className="rounded border border-orange-500/20 bg-orange-500/10 p-2 text-center font-medium text-orange-400 text-xs">
                             FHE Service
                           </div>
-                          <div className="p-2 rounded bg-yellow-500/10 border border-yellow-500/20 text-xs font-medium text-yellow-400 text-center">
+                          <div className="rounded border border-yellow-500/20 bg-yellow-500/10 p-2 text-center font-medium text-xs text-yellow-400">
                             OCR Service
                           </div>
                         </div>
                       </div>
 
                       {/* DB Box */}
-                      <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 text-center text-xs text-blue-400 font-mono">
+                      <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-center font-mono text-blue-400 text-xs">
                         Encrypted DB (Data + Proofs)
                       </div>
                     </div>
@@ -169,60 +169,60 @@ export function TechnicalDeepDive() {
                 {/* Data Flow Tab */}
                 <TabsContent value="dataflow" className="mt-0">
                   <div className="space-y-8">
-                    <h3 className="text-2xl font-bold mb-6">
+                    <h3 className="mb-6 font-bold text-2xl">
                       Privacy-Preserving Flow
                     </h3>
 
-                    <div className="space-y-0 relative">
+                    <div className="relative space-y-0">
                       {/* Connecting Line */}
-                      <div className="absolute top-8 bottom-8 left-[27px] w-0.5 bg-border -z-10" />
+                      <div className="absolute top-8 bottom-8 left-[27px] -z-10 w-0.5 bg-border" />
 
-                      <div className="flex gap-6 items-start">
-                        <div className="shrink-0 w-14 h-14 rounded-full bg-background border border-border flex items-center justify-center text-red-500 font-bold shadow-sm z-10">
+                      <div className="flex items-start gap-6">
+                        <div className="z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold text-red-500 shadow-sm">
                           1
                         </div>
-                        <div className="bg-card border border-border p-4 rounded-xl flex-1 shadow-sm">
-                          <h4 className="font-semibold text-foreground mb-1">
+                        <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
+                          <h4 className="mb-1 font-semibold text-foreground">
                             Data Extraction
                           </h4>
-                          <p className="text-sm text-muted-foreground mb-2">
+                          <p className="mb-2 text-muted-foreground text-sm">
                             OCR extracts fields (no storage).
                           </p>
-                          <div className="bg-muted px-3 py-2 rounded text-xs font-mono text-foreground border border-border">
+                          <div className="rounded border border-border bg-muted px-3 py-2 font-mono text-foreground text-xs">
                             Input: "ID_Card.jpg" → Output: verified fields
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex gap-6 items-start pt-8">
-                        <div className="shrink-0 w-14 h-14 rounded-full bg-background border border-border flex items-center justify-center text-purple-400 font-bold shadow-sm z-10">
+                      <div className="flex items-start gap-6 pt-8">
+                        <div className="z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold text-purple-400 shadow-sm">
                           2
                         </div>
-                        <div className="bg-card border border-border p-4 rounded-xl flex-1 shadow-sm">
-                          <h4 className="font-semibold text-foreground mb-1">
+                        <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
+                          <h4 className="mb-1 font-semibold text-foreground">
                             Proof Generation
                           </h4>
-                          <p className="text-sm text-muted-foreground mb-2">
+                          <p className="mb-2 text-muted-foreground text-sm">
                             Client proves eligibility with ZK.
                           </p>
-                          <div className="bg-muted px-3 py-2 rounded text-xs font-mono text-foreground border border-border">
+                          <div className="rounded border border-border bg-muted px-3 py-2 font-mono text-foreground text-xs">
                             Generate(private inputs, nonce) → Proof_0x8f2...
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex gap-6 items-start pt-8">
-                        <div className="shrink-0 w-14 h-14 rounded-full bg-background border border-border flex items-center justify-center text-emerald-400 font-bold shadow-sm z-10">
+                      <div className="flex items-start gap-6 pt-8">
+                        <div className="z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold text-emerald-400 shadow-sm">
                           3
                         </div>
-                        <div className="bg-card border border-border p-4 rounded-xl flex-1 shadow-sm">
-                          <h4 className="font-semibold text-foreground mb-1">
+                        <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
+                          <h4 className="mb-1 font-semibold text-foreground">
                             Verification
                           </h4>
-                          <p className="text-sm text-muted-foreground mb-2">
+                          <p className="mb-2 text-muted-foreground text-sm">
                             Server verifies the mathematical proof.
                           </p>
-                          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                          <div className="flex items-center gap-2 font-semibold text-emerald-400 text-xs">
                             <IconCircleCheck className="h-3 w-3" /> VERIFIED:
                             Age ≥ 18
                           </div>
@@ -234,53 +234,53 @@ export function TechnicalDeepDive() {
 
                 {/* ZK Circuits Tab */}
                 <TabsContent value="circuits" className="mt-0">
-                  <div className="grid md:grid-cols-2 gap-12">
+                  <div className="grid gap-12 md:grid-cols-2">
                     <div>
-                      <h3 className="text-2xl font-bold mb-6">Noir Circuits</h3>
+                      <h3 className="mb-6 font-bold text-2xl">Noir Circuits</h3>
                       <ul className="space-y-4">
-                        <li className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
+                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                          <div className="mb-2 flex items-center gap-3">
                             <IconFileCode className="h-5 w-5 text-purple-400" />
                             <h4 className="font-semibold text-foreground">
                               age_verification.nr
                             </h4>
                           </div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-muted-foreground text-sm">
                             Proves age is above threshold without revealing
                             birth date.
                           </p>
                         </li>
-                        <li className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
+                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                          <div className="mb-2 flex items-center gap-3">
                             <IconFileCode className="h-5 w-5 text-purple-400" />
                             <h4 className="font-semibold text-foreground">
                               doc_validity.nr
                             </h4>
                           </div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-muted-foreground text-sm">
                             Proves document expiration is valid.
                           </p>
                         </li>
-                        <li className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
+                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                          <div className="mb-2 flex items-center gap-3">
                             <IconFileCode className="h-5 w-5 text-purple-400" />
                             <h4 className="font-semibold text-foreground">
                               face_match.nr
                             </h4>
                           </div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-muted-foreground text-sm">
                             Proves face match meets a threshold without storing
                             biometrics.
                           </p>
                         </li>
-                        <li className="p-4 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
-                          <div className="flex items-center gap-3 mb-2">
+                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                          <div className="mb-2 flex items-center gap-3">
                             <IconFileCode className="h-5 w-5 text-purple-400" />
                             <h4 className="font-semibold text-foreground">
                               nationality_membership.nr
                             </h4>
                           </div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-muted-foreground text-sm">
                             Proves nationality belongs to a group (EU, SCHENGEN)
                             via Merkle proof.
                           </p>
@@ -289,10 +289,10 @@ export function TechnicalDeepDive() {
                     </div>
 
                     {/* Code Preview */}
-                    <div className="relative group">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/20 to-blue-500/20 rounded-xl blur-lg transition-opacity opacity-50 group-hover:opacity-100" />
-                      <div className="relative bg-[#0d1117] rounded-xl border border-border/50 p-4 font-mono text-sm text-gray-300 shadow-xl overflow-hidden min-h-[300px]">
-                        <div className="flex justify-between items-center text-xs text-gray-500 mb-4 pb-2 border-b border-gray-800">
+                    <div className="group relative">
+                      <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-purple-500/20 to-blue-500/20 opacity-50 blur-lg transition-opacity group-hover:opacity-100" />
+                      <div className="relative min-h-[300px] overflow-hidden rounded-xl border border-border/50 bg-[#0d1117] p-4 font-mono text-gray-300 text-sm shadow-xl">
+                        <div className="mb-4 flex items-center justify-between border-gray-800 border-b pb-2 text-gray-500 text-xs">
                           <span>main.nr</span>
                           <span>Noir</span>
                         </div>

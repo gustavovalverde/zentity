@@ -25,7 +25,7 @@ export function Logo({ variant = "full", className, size = "md" }: LogoProps) {
       alt="Zentity"
       width={dimensions.width}
       height={dimensions.height}
-      className={cn("dark:invert object-contain", className)}
+      className={cn("object-contain dark:invert", className)}
     />
   );
 }

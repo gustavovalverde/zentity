@@ -31,13 +31,13 @@ const footerLinks = {
 
 export function Footer() {
   return (
-    <footer className="border-t border-border bg-muted/30">
+    <footer className="border-border border-t bg-muted/30">
       <div className="mx-auto max-w-6xl px-4 py-12">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           {/* Brand Column */}
           <div className="col-span-2 md:col-span-1">
-            <span className="text-xl font-bold">Zentity</span>
-            <p className="mt-4 text-sm text-muted-foreground">
+            <span className="font-bold text-xl">Zentity</span>
+            <p className="mt-4 text-muted-foreground text-sm">
               Privacy-first identity verification powered by zero-knowledge
               cryptography.
             </p>
@@ -46,7 +46,7 @@ export function Footer() {
                 href="https://github.com/gustavovalverde/zentity"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="GitHub"
               >
                 <IconBrandGithub className="size-5" />
@@ -55,7 +55,7 @@ export function Footer() {
                 href="https://x.com/gustavovalverde"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="X (Twitter)"
               >
                 <IconBrandX className="size-5" />
@@ -65,13 +65,13 @@ export function Footer() {
 
           {/* Product Links */}
           <div>
-            <h3 className="text-sm font-semibold mb-4">Product</h3>
+            <h3 className="mb-4 font-semibold text-sm">Product</h3>
             <ul className="space-y-3">
               {footerLinks.product.map((link) => (
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
                   >
                     {link.label}
                   </a>
@@ -82,13 +82,13 @@ export function Footer() {
 
           {/* Developer Links */}
           <div>
-            <h3 className="text-sm font-semibold mb-4">Developers</h3>
+            <h3 className="mb-4 font-semibold text-sm">Developers</h3>
             <ul className="space-y-3">
               {footerLinks.developers.map((link) => (
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
                     {...(link.external && {
                       target: "_blank",
                       rel: "noopener noreferrer",
@@ -103,13 +103,13 @@ export function Footer() {
 
           {/* Legal Links */}
           <div>
-            <h3 className="text-sm font-semibold mb-4">Legal</h3>
+            <h3 className="mb-4 font-semibold text-sm">Legal</h3>
             <ul className="space-y-3">
               {footerLinks.legal.map((link) => (
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
                   >
                     {link.label}
                   </a>
@@ -119,14 +119,14 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-border">
-          <p className="text-center text-sm text-muted-foreground">
+        <div className="mt-12 border-border border-t pt-8">
+          <p className="text-center text-muted-foreground text-sm">
             &copy; {new Date().getFullYear()} Zentity. Open source under{" "}
             <a
               href="https://osaasy.dev/"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors underline"
+              className="underline transition-colors hover:text-foreground"
             >
               O'Saasy License
             </a>

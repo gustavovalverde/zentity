@@ -136,7 +136,7 @@ const categories: Category[] = [
 function CategoryColumn({ category }: { category: Category }) {
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="font-semibold text-muted-foreground text-sm uppercase tracking-wider">
         {category.title}
       </h3>
       <div className="space-y-3">
@@ -145,7 +145,7 @@ function CategoryColumn({ category }: { category: Category }) {
           return (
             <div
               key={feature.title}
-              className="rounded-lg border border-border bg-card p-4 hover:border-primary/50 transition-colors"
+              className="rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50"
             >
               <div className="flex items-start gap-3">
                 <div
@@ -159,7 +159,7 @@ function CategoryColumn({ category }: { category: Category }) {
                 </div>
                 <div>
                   <h4 className="font-medium">{feature.title}</h4>
-                  <p className="text-sm text-muted-foreground mt-0.5">
+                  <p className="mt-0.5 text-muted-foreground text-sm">
                     {feature.description}
                   </p>
                 </div>
@@ -176,19 +176,19 @@ export function FeaturesGrid() {
   const [verifyIdentity, protectData, stayCompliant] = categories;
 
   return (
-    <section className="py-24 px-4 md:px-6" id="features">
+    <section className="px-4 py-24 md:px-6" id="features">
       <div className="mx-auto max-w-4xl">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold sm:text-4xl">
+        <div className="mb-16 text-center">
+          <h2 className="font-bold text-3xl sm:text-4xl">
             8 verification features, zero raw data stored
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Complete identity verification without the privacy trade-offs.
           </p>
         </div>
 
         {/* Row 1: Verify Identity + Protect Data */}
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid gap-8 md:grid-cols-2">
           <CategoryColumn category={verifyIdentity} />
           <CategoryColumn category={protectData} />
         </div>

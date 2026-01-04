@@ -56,33 +56,33 @@ const colorStyles = {
 
 export function ThreePillars() {
   return (
-    <section className="py-24 px-4 md:px-6 bg-muted/30" id="how-it-works">
+    <section className="bg-muted/30 px-4 py-24 md:px-6" id="how-it-works">
       <div className="mx-auto max-w-6xl">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold sm:text-4xl">
+        <div className="mb-16 text-center">
+          <h2 className="font-bold text-3xl sm:text-4xl">
             Three cryptographic pillars.
             <br />
             <span className="text-muted-foreground">
               One privacy guarantee.
             </span>
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Different privacy techniques for different needs—combined for
             complete protection.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid gap-8 md:grid-cols-3">
           {pillars.map((pillar) => {
             const styles = colorStyles[pillar.color];
             return (
               <div
                 key={pillar.title}
-                className="rounded-xl border border-border bg-card/50 hover:bg-card transition-colors duration-300 p-6 lg:p-8 flex flex-col"
+                className="flex flex-col rounded-xl border border-border bg-card/50 p-6 transition-colors duration-300 hover:bg-card lg:p-8"
               >
                 <div
                   className={cn(
-                    "p-3 rounded-xl w-fit border mb-4",
+                    "mb-4 w-fit rounded-xl border p-3",
                     styles.bg,
                     styles.border,
                   )}
@@ -90,25 +90,25 @@ export function ThreePillars() {
                   <pillar.icon className={cn("size-8", styles.text)} />
                 </div>
 
-                <h3 className="text-xl font-semibold">{pillar.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">
+                <h3 className="font-semibold text-xl">{pillar.title}</h3>
+                <p className="mt-1 text-muted-foreground text-sm">
                   {pillar.subtitle}
                 </p>
 
-                <p className="mt-4 text-muted-foreground flex-grow">
+                <p className="mt-4 flex-grow text-muted-foreground">
                   {pillar.description}
                 </p>
 
-                <div className="mt-6 pt-4 border-t border-border">
-                  <div className="text-sm text-muted-foreground mb-2">
+                <div className="mt-6 border-border border-t pt-4">
+                  <div className="mb-2 text-muted-foreground text-sm">
                     Example:
                   </div>
-                  <code className="text-sm bg-muted px-2 py-1 rounded">
+                  <code className="rounded bg-muted px-2 py-1 text-sm">
                     {pillar.example}
                   </code>
                 </div>
 
-                <div className="mt-4 text-sm text-muted-foreground">
+                <div className="mt-4 text-muted-foreground text-sm">
                   Tech: {pillar.tech}
                 </div>
               </div>

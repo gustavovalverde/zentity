@@ -40,12 +40,12 @@ function DocsSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link to="/" />}>
-              <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <Logo variant="icon" className="size-5" />
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-semibold">Zentity Docs</span>
-                <span className="text-xs text-muted-foreground">v0.1.0</span>
+                <span className="text-muted-foreground text-xs">v0.1.0</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -114,28 +114,28 @@ export function DocsLayout({ children }: { children: ReactNode }) {
               <BreadcrumbItem className="hidden md:block">
                 <BreadcrumbLink render={<Link to="/docs">Docs</Link>} />
               </BreadcrumbItem>
-              {currentGroup && (
+              {currentGroup ? (
                 <>
                   <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem className="hidden md:block">
                     <BreadcrumbPage>{currentGroup.title}</BreadcrumbPage>
                   </BreadcrumbItem>
                 </>
-              )}
-              {doc && (
+              ) : null}
+              {doc ? (
                 <>
                   <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem>
                     <BreadcrumbPage>{doc.title}</BreadcrumbPage>
                   </BreadcrumbItem>
                 </>
-              )}
+              ) : null}
             </BreadcrumbList>
           </Breadcrumb>
         </header>
         <div className="flex flex-1 flex-col">
           <ScrollArea className="flex-1">
-            <div className="p-6 md:p-8 lg:p-10 max-w-4xl">{children}</div>
+            <div className="max-w-4xl p-6 md:p-8 lg:p-10">{children}</div>
           </ScrollArea>
         </div>
       </SidebarInset>

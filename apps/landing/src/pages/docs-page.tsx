@@ -24,12 +24,12 @@ export function DocsPage() {
     const availableSlugs = getAllDocSlugs();
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <h1 className="text-2xl font-bold">Document Not Found</h1>
+        <h1 className="font-bold text-2xl">Document Not Found</h1>
         <p className="mt-2 text-muted-foreground">
           The document "{slug}" doesn't exist.
         </p>
         <div className="mt-6">
-          <p className="text-sm text-muted-foreground mb-2">
+          <p className="mb-2 text-muted-foreground text-sm">
             Available documents:
           </p>
           <ul className="text-sm">

@@ -26,32 +26,32 @@ const trustPoints = [
 
 export function CTASection() {
   return (
-    <section className="py-24 px-4 md:px-6">
+    <section className="px-4 py-24 md:px-6">
       <div className="mx-auto max-w-4xl">
         {/* Open Source Badge + Headline */}
         <div className="text-center">
           <Badge variant="outline" className="mb-4">
             O'Saasy License
           </Badge>
-          <h2 className="text-3xl font-bold sm:text-4xl">
+          <h2 className="font-bold text-3xl sm:text-4xl">
             100% open source.
             <br />
             <span className="text-muted-foreground">Zero lock-in.</span>
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Every line of code is public. Audit every cryptographic operation.
             Self-host on your own infrastructure.
           </p>
         </div>
 
         {/* Trust Points */}
-        <div className="mt-10 grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto">
+        <div className="mx-auto mt-10 grid max-w-3xl gap-6 sm:grid-cols-3">
           {trustPoints.map((point) => (
             <div key={point.title} className="flex items-start gap-3">
-              <IconCheck className="size-5 text-emerald-400 shrink-0 mt-0.5" />
+              <IconCheck className="mt-0.5 size-5 shrink-0 text-emerald-400" />
               <div>
                 <div className="font-medium">{point.title}</div>
-                <div className="text-sm text-muted-foreground mt-0.5">
+                <div className="mt-0.5 text-muted-foreground text-sm">
                   {point.description}
                 </div>
               </div>
@@ -60,7 +60,7 @@ export function CTASection() {
         </div>
 
         {/* CTA Cards */}
-        <div className="mt-12 grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto">
+        <div className="mx-auto mt-12 grid max-w-3xl gap-6 sm:grid-cols-3">
           {/* Try Demo */}
           <a
             href="https://app.zentity.xyz/sign-up?fresh=1"
@@ -68,12 +68,12 @@ export function CTASection() {
             rel="noopener noreferrer"
             className="group"
           >
-            <div className="rounded-xl border border-border bg-card p-6 hover:border-purple-500/50 transition-colors h-full flex flex-col">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-500/10 border border-purple-500/20 mb-4 group-hover:bg-purple-500/20 transition-colors">
+            <div className="flex h-full flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-purple-500/50">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-purple-500/20 bg-purple-500/10 transition-colors group-hover:bg-purple-500/20">
                 <IconPlayerPlay className="size-6 text-purple-400" />
               </div>
-              <h3 className="font-semibold mb-2">Try the Demo</h3>
-              <p className="text-sm text-muted-foreground flex-grow">
+              <h3 className="mb-2 font-semibold">Try the Demo</h3>
+              <p className="flex-grow text-muted-foreground text-sm">
                 Full verification flow in 60 seconds.
               </p>
               <Button className="mt-4 w-full">Launch Demo</Button>
@@ -87,12 +87,12 @@ export function CTASection() {
             rel="noopener noreferrer"
             className="group"
           >
-            <div className="rounded-xl border border-border bg-card p-6 hover:border-blue-500/50 transition-colors h-full flex flex-col">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10 border border-blue-500/20 mb-4 group-hover:bg-blue-500/20 transition-colors">
+            <div className="flex h-full flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-blue-500/50">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
                 <IconBrandGithub className="size-6 text-blue-400" />
               </div>
-              <h3 className="font-semibold mb-2">View Source</h3>
-              <p className="text-sm text-muted-foreground flex-grow">
+              <h3 className="mb-2 font-semibold">View Source</h3>
+              <p className="flex-grow text-muted-foreground text-sm">
                 Star the repo, fork it, or deploy your own.
               </p>
               <Button variant="outline" className="mt-4 w-full">
@@ -108,12 +108,12 @@ export function CTASection() {
             rel="noopener noreferrer"
             className="group"
           >
-            <div className="rounded-xl border border-border bg-card p-6 hover:border-emerald-500/50 transition-colors h-full flex flex-col">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-4 group-hover:bg-emerald-500/20 transition-colors">
+            <div className="flex h-full flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-emerald-500/50">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 transition-colors group-hover:bg-emerald-500/20">
                 <IconExternalLink className="size-6 text-emerald-400" />
               </div>
-              <h3 className="font-semibold mb-2">Read the Docs</h3>
-              <p className="text-sm text-muted-foreground flex-grow">
+              <h3 className="mb-2 font-semibold">Read the Docs</h3>
+              <p className="flex-grow text-muted-foreground text-sm">
                 Understand the architecture in depth.
               </p>
               <Button variant="outline" className="mt-4 w-full">

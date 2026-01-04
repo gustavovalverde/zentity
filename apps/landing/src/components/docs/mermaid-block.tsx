@@ -26,8 +26,8 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
         // Generate a unique ID for this diagram
         const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
 
-        const { svg } = await mermaid.render(id, chart);
-        setSvg(svg);
+        const { svg: renderedSvg } = await mermaid.render(id, chart);
+        setSvg(renderedSvg);
         setError(null);
       } catch (err) {
         setError(
@@ -41,10 +41,10 @@ export default function MermaidBlock({ chart }: MermaidBlockProps) {
 
   if (error) {
     return (
-      <div className="my-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+      <div className="my-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive text-sm">
         <p className="font-medium">Diagram Error</p>
         <p className="mt-1 text-xs">{error}</p>
-        <pre className="mt-2 overflow-x-auto rounded bg-muted p-2 text-xs text-muted-foreground">
+        <pre className="mt-2 overflow-x-auto rounded bg-muted p-2 text-muted-foreground text-xs">
           {chart}
         </pre>
       </div>
