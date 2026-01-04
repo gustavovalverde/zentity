@@ -12,7 +12,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -79,6 +79,10 @@ function DeviceIcon({ deviceType }: { deviceType: string | null }) {
   return <Smartphone className="h-4 w-4" />;
 }
 
+type OptimisticAction =
+  | { type: "delete"; credentialId: string }
+  | { type: "rename"; credentialId: string; name: string };
+
 export function PasskeyManagementSection() {
   const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,10 +90,24 @@ export function PasskeyManagementSection() {
   const [isAdding, setIsAdding] = useState(false);
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+
+  // Optimistic state for instant feedback on delete and rename
+  const [optimisticPasskeys, applyOptimistic] = useOptimistic(
+    passkeys,
+    (currentPasskeys, action: OptimisticAction) => {
+      if (action.type === "delete") {
+        return currentPasskeys.filter(
+          (p) => p.credentialId !== action.credentialId
+        );
+      }
+      // Rename
+      return currentPasskeys.map((p) =>
+        p.credentialId === action.credentialId ? { ...p, name: action.name } : p
+      );
+    }
+  );
 
   const loadPasskeys = useCallback(async () => {
     setIsLoading(true);
@@ -204,7 +222,7 @@ export function PasskeyManagementSection() {
           deviceType: credentialData.deviceType,
           backedUp: credentialData.backedUp,
           transports: credentialData.transports,
-          name: `Passkey ${passkeys.length + 1}`,
+          name: `Passkey ${optimisticPasskeys.length + 1}`,
         },
       });
 
@@ -232,19 +250,22 @@ export function PasskeyManagementSection() {
   };
 
   const handleDeletePasskey = async (credentialId: string) => {
-    setIsDeleting(true);
+    // Close dialog immediately for instant feedback
+    setDeleteConfirm(null);
+
+    // Apply optimistic update - item disappears instantly
+    applyOptimistic({ type: "delete", credentialId });
 
     try {
       await trpc.passkeyAuth.removeCredential.mutate({ credentialId });
       toast.success("Passkey removed successfully");
       await loadPasskeys();
     } catch (err) {
+      // On error, loadPasskeys will restore the item
       toast.error("Failed to remove passkey", {
         description: err instanceof Error ? err.message : "Please try again",
       });
-    } finally {
-      setIsDeleting(false);
-      setDeleteConfirm(null);
+      await loadPasskeys();
     }
   };
 
@@ -263,23 +284,29 @@ export function PasskeyManagementSection() {
       return;
     }
 
-    setIsSaving(true);
+    const credentialId = editingId;
+    const newName = editName.trim();
+
+    // Close edit mode immediately for instant feedback
+    setEditingId(null);
+    setEditName("");
+
+    // Apply optimistic update - name changes instantly
+    applyOptimistic({ type: "rename", credentialId, name: newName });
 
     try {
       await trpc.passkeyAuth.renameCredential.mutate({
-        credentialId: editingId,
-        name: editName.trim(),
+        credentialId,
+        name: newName,
       });
       toast.success("Passkey renamed successfully");
       await loadPasskeys();
     } catch (err) {
+      // On error, loadPasskeys will restore the original name
       toast.error("Failed to rename passkey", {
         description: err instanceof Error ? err.message : "Please try again",
       });
-    } finally {
-      setIsSaving(false);
-      setEditingId(null);
-      setEditName("");
+      await loadPasskeys();
     }
   };
 
@@ -311,7 +338,7 @@ export function PasskeyManagementSection() {
             );
           }
 
-          if (passkeys.length === 0) {
+          if (optimisticPasskeys.length === 0) {
             return (
               <div className="py-6 text-center text-muted-foreground">
                 <KeyRound className="mx-auto mb-3 h-12 w-12 opacity-50" />
@@ -325,7 +352,7 @@ export function PasskeyManagementSection() {
 
           return (
             <div className="space-y-3">
-              {passkeys.map((passkey) => (
+              {optimisticPasskeys.map((passkey) => (
                 <div
                   className="flex items-center justify-between rounded-lg border bg-card p-3"
                   key={passkey.id}
@@ -354,19 +381,14 @@ export function PasskeyManagementSection() {
                             value={editName}
                           />
                           <Button
-                            disabled={isSaving || !editName.trim()}
+                            disabled={!editName.trim()}
                             onClick={handleSaveEdit}
                             size="sm"
                             variant="ghost"
                           >
-                            {isSaving ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Check className="h-3 w-3" />
-                            )}
+                            <Check className="h-3 w-3" />
                           </Button>
                           <Button
-                            disabled={isSaving}
                             onClick={handleCancelEdit}
                             size="sm"
                             variant="ghost"
@@ -410,11 +432,11 @@ export function PasskeyManagementSection() {
                     ) : null}
                     <Button
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      disabled={passkeys.length <= 1}
+                      disabled={optimisticPasskeys.length <= 1}
                       onClick={() => setDeleteConfirm(passkey.credentialId)}
                       size="sm"
                       title={
-                        passkeys.length <= 1
+                        optimisticPasskeys.length <= 1
                           ? "Cannot remove your only passkey"
                           : "Remove passkey"
                       }
@@ -473,24 +495,14 @@ export function PasskeyManagementSection() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>
-                Cancel
-              </AlertDialogCancel>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={isDeleting}
                 onClick={() =>
                   deleteConfirm && handleDeletePasskey(deleteConfirm)
                 }
               >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Removing...
-                  </>
-                ) : (
-                  "Remove Passkey"
-                )}
+                Remove Passkey
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

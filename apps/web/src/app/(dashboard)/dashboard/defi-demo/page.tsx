@@ -19,13 +19,13 @@ export default async function DefiDemoPage() {
 
   const userId = session?.user?.id || process.env.E2E_USER_ID || null;
 
-  // Get verification and attestation status
-  const verificationStatus = userId
-    ? await getVerificationStatus(userId)
-    : null;
-  const attestations = userId
-    ? await getBlockchainAttestationsByUserId(userId)
-    : [];
+  // Parallelize independent queries for faster page load
+  const [verificationStatus, attestations] = userId
+    ? await Promise.all([
+        getVerificationStatus(userId),
+        getBlockchainAttestationsByUserId(userId),
+      ])
+    : [null, []];
 
   // Find confirmed attestation (prefer hardhat for local dev)
   const confirmedAttestation = attestations.find(

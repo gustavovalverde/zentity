@@ -1,35 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { getStoredProfile } from "@/lib/crypto/profile-secret";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  getProfileSnapshot,
+  getServerProfileSnapshot,
+  getStoredProfile,
+  subscribeToProfileCache,
+} from "@/lib/crypto/profile-secret";
 
+/**
+ * Displays the user's first name from their passkey-encrypted profile.
+ * Uses useSyncExternalStore to subscribe to the module-level cache,
+ * ensuring all instances update when the profile is fetched.
+ * Shows a skeleton during initial load to prevent "User" → actual name flash.
+ */
 export function ProfileGreetingName({
   fallback = "User",
 }: {
-  fallback?: string;
+  readonly fallback?: string;
 }) {
-  const [name, setName] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
+  // Subscribe to profile cache changes - all instances share the same cache
+  const profile = useSyncExternalStore(
+    subscribeToProfileCache,
+    getProfileSnapshot,
+    getServerProfileSnapshot
+  );
+
+  // Track when profile loads to transition from skeleton to content
   useEffect(() => {
-    let active = true;
-    getStoredProfile()
-      .then((profile) => {
-        if (!active) {
-          return;
-        }
-        setName(profile?.firstName ?? null);
-      })
-      .catch(() => {
-        if (!active) {
-          return;
-        }
-        setName(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (profile) {
+      setIsInitialLoad(false);
+    }
+  }, [profile]);
 
-  return <span>{name || fallback}</span>;
+  // Trigger a fetch on mount if no profile is cached
+  useEffect(() => {
+    if (!profile) {
+      let isCancelled = false;
+      // Fire and forget - the subscription will pick up the result
+      getStoredProfile()
+        .catch(() => {
+          // Errors are expected if user hasn't completed onboarding
+        })
+        .finally(() => {
+          // After fetch attempt completes (success or fail), stop showing skeleton
+          if (!isCancelled) {
+            setIsInitialLoad(false);
+          }
+        });
+
+      return () => {
+        isCancelled = true;
+      };
+    }
+  }, [profile]);
+
+  // Show skeleton during initial load to avoid "User" flash
+  if (isInitialLoad && !profile) {
+    return <Skeleton className="inline-block h-6 w-24 align-baseline" />;
+  }
+
+  return <span>{profile?.firstName || fallback}</span>;
 }

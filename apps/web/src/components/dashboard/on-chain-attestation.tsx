@@ -355,7 +355,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                       <AlertDescription>
                         <strong>Wallet Changed</strong> - Attestation will be
                         linked to:{" "}
-                        <code className="rounded bg-warning/15 px-1 text-xs">
+                        <code className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-xs">
                           {address?.slice(0, 6)}...{address?.slice(-4)}
                         </code>
                       </AlertDescription>
@@ -481,10 +481,10 @@ function NetworkCard({
   onSelect: () => void;
 }) {
   const statusColors = {
-    pending: "text-warning bg-warning/15",
-    submitted: "text-info bg-info/15",
-    confirmed: "text-success bg-success/15",
-    failed: "text-destructive bg-destructive/15",
+    pending: "text-warning bg-warning/10",
+    submitted: "text-info bg-info/10",
+    confirmed: "text-success bg-success/10",
+    failed: "text-destructive bg-destructive/10",
   };
 
   const statusIcons = {
@@ -587,17 +587,12 @@ function NetworkActions({
           <div className="flex items-center justify-between">
             <p className="text-sm">
               <strong>Wallet:</strong>{" "}
-              <code className="rounded bg-success/15 px-2 py-1 text-xs">
+              <code className="rounded bg-success/10 px-1.5 py-0.5 font-mono text-xs">
                 {attestedWalletAddress.slice(0, 6)}...
                 {attestedWalletAddress.slice(-4)}
               </code>
             </p>
-            <Button
-              className="text-xs"
-              onClick={() => disconnect()}
-              size="sm"
-              variant="ghost"
-            >
+            <Button onClick={() => disconnect()} size="sm" variant="ghost">
               Change
             </Button>
           </div>
@@ -666,6 +661,12 @@ function NetworkActions({
         <p className="text-muted-foreground text-sm">
           Your attestation is being confirmed on {network.name}
         </p>
+        {attestation.txHash ? (
+          <div className="rounded bg-muted p-2 font-mono text-xs">
+            <span className="text-muted-foreground">TX: </span>
+            <span className="break-all">{attestation.txHash}</span>
+          </div>
+        ) : null}
         <div className="flex gap-2">
           <Button
             disabled={isRefreshing}
@@ -710,6 +711,12 @@ function NetworkActions({
             {getAttestationError(attestation.errorMessage)}
           </p>
         ) : null}
+        {attestation.txHash ? (
+          <div className="rounded bg-muted p-2 font-mono text-xs">
+            <span className="text-muted-foreground">TX: </span>
+            <span className="break-all">{attestation.txHash}</span>
+          </div>
+        ) : null}
         <Button disabled={isSubmitting} onClick={onSubmit} size="sm">
           {isSubmitting ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -729,16 +736,11 @@ function NetworkActions({
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm">
             <strong>Wallet:</strong>{" "}
-            <code className="rounded bg-muted px-2 py-1 text-xs">
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
               {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
             </code>
           </p>
-          <Button
-            className="text-xs"
-            onClick={() => disconnect()}
-            size="sm"
-            variant="ghost"
-          >
+          <Button onClick={() => disconnect()} size="sm" variant="ghost">
             Change
           </Button>
         </div>

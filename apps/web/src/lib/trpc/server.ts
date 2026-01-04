@@ -50,10 +50,10 @@ export async function createTrpcContext(args: {
   req: Request;
   resHeaders?: Headers;
 }): Promise<TrpcContext> {
-  const session = await auth.api.getSession({
-    headers: args.req.headers,
-  });
-  const requestContext = await resolveRequestContext(args.req.headers);
+  const [session, requestContext] = await Promise.all([
+    auth.api.getSession({ headers: args.req.headers }),
+    resolveRequestContext(args.req.headers),
+  ]);
 
   return {
     req: args.req,

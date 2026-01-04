@@ -201,18 +201,20 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <SidebarSeparator />
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="cursor-default" size="lg">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                <User className="h-4 w-4" />
-              </div>
-              <div className="flex flex-col truncate">
-                <span className="truncate font-medium text-sm">
-                  <ProfileGreetingName fallback="User" />
-                </span>
-                <span className="truncate text-muted-foreground text-xs">
-                  {user.email}
-                </span>
-              </div>
+            <SidebarMenuButton asChild size="lg" tooltip="Settings">
+              <Link href="/dashboard/settings">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
+                  <User className="h-4 w-4" />
+                </div>
+                <div className="flex flex-col truncate">
+                  <span className="truncate font-medium text-sm">
+                    <ProfileGreetingName fallback="User" />
+                  </span>
+                  <span className="truncate text-muted-foreground text-xs">
+                    {user.email}
+                  </span>
+                </div>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

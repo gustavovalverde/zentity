@@ -11,6 +11,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  getAttributeLabel,
+  getClaimTypeLabel,
+  getProofTypeLabel,
+} from "@/lib/constants/verification-labels";
 
 interface TransparencySectionProps {
   documentHash?: string;
@@ -38,25 +43,6 @@ export function TransparencySection({
       return hash;
     }
     return `${hash.slice(0, 10)}...${hash.slice(-10)}`;
-  };
-
-  const proofLabels: Record<string, string> = {
-    age_verification: "Age ≥ 18",
-    doc_validity: "Document Valid",
-    nationality_membership: "Nationality Group",
-    face_match: "Face Match",
-  };
-
-  const claimLabels: Record<string, string> = {
-    liveness_score: "Liveness Score",
-    face_match_score: "Face Match Score",
-  };
-
-  const attributeLabels: Record<string, string> = {
-    birth_year_offset: "Birth Year Offset",
-    country_code: "Country Code",
-    compliance_level: "Compliance Level",
-    liveness_score: "Liveness Score",
   };
 
   return (
@@ -183,7 +169,7 @@ export function TransparencySection({
                         key={proof}
                         variant="secondary"
                       >
-                        {proofLabels[proof] ?? proof}
+                        {getProofTypeLabel(proof)}
                       </Badge>
                     ))
                   )}
@@ -202,7 +188,7 @@ export function TransparencySection({
                   ) : (
                     encryptedAttributes.map((attr) => (
                       <Badge className="text-xs" key={attr} variant="secondary">
-                        {attributeLabels[attr] ?? attr}
+                        {getAttributeLabel(attr)}
                       </Badge>
                     ))
                   )}
@@ -223,7 +209,7 @@ export function TransparencySection({
                         key={claim}
                         variant="secondary"
                       >
-                        {claimLabels[claim] ?? claim}
+                        {getClaimTypeLabel(claim)}
                       </Badge>
                     ))
                   )}

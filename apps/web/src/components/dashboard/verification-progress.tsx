@@ -6,16 +6,17 @@ import {
   Circle,
   FileCheck,
   Key,
+  Loader2,
   Shield,
   User,
   XCircle,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { trpcReact } from "@/lib/trpc/client";
 
 interface VerificationCheck {
   id: string;
@@ -41,37 +42,36 @@ interface VerificationProgressProps {
 }
 
 export function VerificationProgress({ checks }: VerificationProgressProps) {
-  const router = useRouter();
   const refreshAttemptsRef = useRef(0);
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-      refreshTimeoutRef.current = null;
-    }
-
-    if (checks.fheEncryption || checks.fheError) {
-      refreshAttemptsRef.current = 0;
-      return;
-    }
-
-    if (refreshAttemptsRef.current >= 8) {
-      return;
-    }
-
-    refreshTimeoutRef.current = setTimeout(() => {
-      refreshAttemptsRef.current += 1;
-      router.refresh();
-    }, 4000);
-
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-        refreshTimeoutRef.current = null;
+  const shouldPoll = !(checks.fheEncryption || checks.fheError);
+  const { data: fheStatus } = trpcReact.identity.fheStatus.useQuery(undefined, {
+    enabled: shouldPoll,
+    refetchInterval: (query) => {
+      if (!shouldPoll) {
+        return false;
       }
-    };
-  }, [checks.fheEncryption, checks.fheError, router]);
+      const data = query.state.data;
+      if (data?.status === "complete" || data?.status === "error") {
+        return false;
+      }
+      if (refreshAttemptsRef.current >= 8) {
+        return false;
+      }
+      refreshAttemptsRef.current += 1;
+      return 4000;
+    },
+  });
+
+  const fheEncryption =
+    checks.fheEncryption || fheStatus?.status === "complete";
+  const fheError =
+    checks.fheError ??
+    (fheStatus?.status === "error" ? (fheStatus.error ?? null) : null);
+  const effectiveChecks: VerificationChecks = {
+    ...checks,
+    fheEncryption,
+    fheError,
+  };
 
   const formatFheError = (issue?: string | null): string | null => {
     if (!issue) {
@@ -98,61 +98,61 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
       id: "document",
       label: "Document Verified",
       description: "ID document processed via OCR",
-      completed: checks.document,
+      completed: effectiveChecks.document,
       icon: <FileCheck className="h-4 w-4" />,
     },
     {
       id: "liveness",
       label: "Liveness Check",
       description: "Real person confirmed",
-      completed: checks.liveness,
+      completed: effectiveChecks.liveness,
       icon: <Camera className="h-4 w-4" />,
     },
     {
       id: "faceMatchProof",
       label: "Face Match (ZK)",
       description: "Selfie matches ID photo",
-      completed: checks.faceMatchProof,
+      completed: effectiveChecks.faceMatchProof,
       icon: <User className="h-4 w-4" />,
     },
     {
       id: "ageProof",
       label: "Age Proof (ZK)",
       description: "18+ verified cryptographically",
-      completed: checks.ageProof,
+      completed: effectiveChecks.ageProof,
       icon: <Shield className="h-4 w-4" />,
     },
     {
       id: "docValidityProof",
       label: "Document Valid (ZK)",
       description: "Document is not expired",
-      completed: checks.docValidityProof,
+      completed: effectiveChecks.docValidityProof,
       icon: <FileCheck className="h-4 w-4" />,
     },
     {
       id: "nationalityProof",
       label: "Nationality Proof (ZK)",
       description: "Membership in allowlist group",
-      completed: checks.nationalityProof,
+      completed: effectiveChecks.nationalityProof,
       icon: <Shield className="h-4 w-4" />,
     },
     {
       id: "fheEncryption",
       label: "FHE Encryption",
       description: "Data encrypted homomorphically",
-      completed: checks.fheEncryption,
+      completed: effectiveChecks.fheEncryption,
       icon: <Key className="h-4 w-4" />,
     },
   ];
 
   const completedCount = [
-    checks.document,
-    checks.liveness,
-    checks.ageProof,
-    checks.docValidityProof,
-    checks.nationalityProof,
-    checks.faceMatchProof,
-    checks.fheEncryption,
+    effectiveChecks.document,
+    effectiveChecks.liveness,
+    effectiveChecks.ageProof,
+    effectiveChecks.docValidityProof,
+    effectiveChecks.nationalityProof,
+    effectiveChecks.faceMatchProof,
+    effectiveChecks.fheEncryption,
   ].filter(Boolean).length;
   const progress = (completedCount / 7) * 100;
 
@@ -169,9 +169,9 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
         <div className="space-y-3">
           {verificationChecks.map((check) => {
             const isFhe = check.id === "fheEncryption";
-            const hasError = isFhe && Boolean(checks.fheError);
+            const hasError = isFhe && Boolean(effectiveChecks.fheError);
             const fheErrorLabel = hasError
-              ? formatFheError(checks.fheError)
+              ? formatFheError(effectiveChecks.fheError)
               : null;
             return (
               <div className="flex items-center gap-3" key={check.id}>
@@ -228,6 +228,12 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
             );
           })}
         </div>
+        {!(effectiveChecks.fheEncryption || effectiveChecks.fheError) && (
+          <p className="flex items-center gap-1.5 text-muted-foreground text-xs">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Encrypting data securely... This may take a moment.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

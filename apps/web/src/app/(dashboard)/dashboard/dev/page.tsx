@@ -233,7 +233,7 @@ export default function DevViewPage() {
                       <Copy className="h-4 w-4" />
                     )}
                   </Button>
-                  <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-4 text-xs">
+                  <pre className="max-h-64 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
                     {proofJson}
                   </pre>
                 </div>
@@ -265,7 +265,7 @@ export default function DevViewPage() {
                       <Copy className="h-4 w-4" />
                     )}
                   </Button>
-                  <pre className="max-h-32 overflow-auto rounded-lg bg-muted p-4 text-xs">
+                  <pre className="max-h-48 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
                     {signalsJson}
                   </pre>
                 </div>
@@ -328,7 +328,7 @@ export default function DevViewPage() {
                         <Copy className="h-4 w-4" />
                       )}
                     </Button>
-                    <pre className="max-h-32 overflow-auto break-all rounded-lg bg-muted p-4 text-xs">
+                    <pre className="max-h-48 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
                       {proofData.birthYearOffsetCiphertext.length > 500
                         ? `${proofData.birthYearOffsetCiphertext.slice(0, 500)}...`
                         : proofData.birthYearOffsetCiphertext}

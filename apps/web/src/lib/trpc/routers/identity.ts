@@ -43,6 +43,7 @@ import {
   createIdentityDocument,
   createIdentityVerificationJob,
   documentHashExists,
+  getIdentityBundleByUserId,
   getIdentityDraftById,
   getIdentityDraftBySessionId,
   getIdentityVerificationJobById,
@@ -816,35 +817,51 @@ export const identityRouter = router({
       let docValidityClaimHash: string | null = null;
       let nationalityClaimHash: string | null = null;
       if (documentHashField) {
+        const hashTasks: Promise<void>[] = [];
         if (birthYear !== null) {
-          try {
-            ageClaimHash = await computeClaimHash({
-              value: birthYear,
-              documentHashField,
-            });
-          } catch {
-            issues.push("age_claim_hash_failed");
-          }
+          hashTasks.push(
+            (async () => {
+              try {
+                ageClaimHash = await computeClaimHash({
+                  value: birthYear,
+                  documentHashField,
+                });
+              } catch {
+                issues.push("age_claim_hash_failed");
+              }
+            })()
+          );
         }
         if (expiryDateInt !== null) {
-          try {
-            docValidityClaimHash = await computeClaimHash({
-              value: expiryDateInt,
-              documentHashField,
-            });
-          } catch {
-            issues.push("doc_validity_claim_hash_failed");
-          }
+          hashTasks.push(
+            (async () => {
+              try {
+                docValidityClaimHash = await computeClaimHash({
+                  value: expiryDateInt,
+                  documentHashField,
+                });
+              } catch {
+                issues.push("doc_validity_claim_hash_failed");
+              }
+            })()
+          );
         }
         if (nationalityCodeNumeric) {
-          try {
-            nationalityClaimHash = await computeClaimHash({
-              value: nationalityCodeNumeric,
-              documentHashField,
-            });
-          } catch {
-            issues.push("nationality_claim_hash_failed");
-          }
+          hashTasks.push(
+            (async () => {
+              try {
+                nationalityClaimHash = await computeClaimHash({
+                  value: nationalityCodeNumeric,
+                  documentHashField,
+                });
+              } catch {
+                issues.push("nationality_claim_hash_failed");
+              }
+            })()
+          );
+        }
+        if (hashTasks.length) {
+          await Promise.all(hashTasks);
         }
       }
       const issuerCountry =
@@ -922,6 +939,15 @@ export const identityRouter = router({
   status: protectedProcedure.query(({ ctx }) =>
     getCachedVerificationStatus(ctx.userId)
   ),
+
+  /** Returns current FHE status for the authenticated user (for client polling). */
+  fheStatus: protectedProcedure.query(async ({ ctx }) => {
+    const bundle = await getIdentityBundleByUserId(ctx.userId);
+    return {
+      status: bundle?.fheStatus ?? null,
+      error: bundle?.fheError ?? null,
+    };
+  }),
 
   /**
    * Precompute liveness + face match and persist to the identity draft.
@@ -1403,23 +1429,39 @@ export const identityRouter = router({
             nationality: null,
           };
 
+          const hashTasks: Promise<void>[] = [];
           if (birthYear) {
-            claimHashes.age = await computeClaimHash({
-              value: birthYear,
-              documentHashField,
-            });
+            hashTasks.push(
+              (async () => {
+                claimHashes.age = await computeClaimHash({
+                  value: birthYear,
+                  documentHashField,
+                });
+              })()
+            );
           }
           if (expiryDate) {
-            claimHashes.docValidity = await computeClaimHash({
-              value: expiryDate,
-              documentHashField,
-            });
+            hashTasks.push(
+              (async () => {
+                claimHashes.docValidity = await computeClaimHash({
+                  value: expiryDate,
+                  documentHashField,
+                });
+              })()
+            );
           }
           if (nationalityCodeNumeric) {
-            claimHashes.nationality = await computeClaimHash({
-              value: nationalityCodeNumeric,
-              documentHashField,
-            });
+            hashTasks.push(
+              (async () => {
+                claimHashes.nationality = await computeClaimHash({
+                  value: nationalityCodeNumeric,
+                  documentHashField,
+                });
+              })()
+            );
+          }
+          if (hashTasks.length) {
+            await Promise.all(hashTasks);
           }
 
           const ocrClaimPayload = {

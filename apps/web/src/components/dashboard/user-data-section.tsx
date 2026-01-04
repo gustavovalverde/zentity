@@ -23,25 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { getStoredProfile } from "@/lib/crypto/profile-secret";
-import { trpc } from "@/lib/trpc/client";
-
-interface AccountData {
-  email: string;
-  createdAt: string | null;
-  verification: {
-    level: "none" | "basic" | "full";
-    checks: {
-      document: boolean;
-      liveness: boolean;
-      ageProof: boolean;
-      docValidityProof: boolean;
-      nationalityProof: boolean;
-      faceMatchProof: boolean;
-    };
-  };
-  documentType: string | null;
-  countryVerified: string | null;
-}
+import { trpcReact } from "@/lib/trpc/client";
 
 function VerificationBadge({
   passed,
@@ -91,28 +73,17 @@ function formatDocumentType(type: string | null): string {
 }
 
 export function UserDataSection() {
-  const [data, setData] = useState<AccountData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use trpcReact hook for automatic data fetching, caching, and state management
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+  } = trpcReact.account.getData.useQuery();
+  const error = queryError?.message ?? null;
+
   const [profileName, setProfileName] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const result = await trpc.account.getData.query();
-        setData(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData().catch(() => {
-      // Error handled via setError() internally
-    });
-  }, []);
 
   const loadProfile = useCallback(async () => {
     setProfileLoading(true);

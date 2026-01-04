@@ -95,12 +95,16 @@ export async function getVerificationStatus(userId: string): Promise<{
 }> {
   const selectedDocument = await getSelectedIdentityDocumentByUserId(userId);
   const documentId = selectedDocument?.id ?? null;
-  const zkProofTypes = documentId
-    ? await getZkProofTypesByUserAndDocument(userId, documentId)
-    : [];
-  const signedClaimTypes = documentId
-    ? await getSignedClaimTypesByUserAndDocument(userId, documentId)
-    : [];
+
+  // Parallelize queries that don't depend on each other
+  const [zkProofTypes, signedClaimTypes] = await Promise.all([
+    documentId
+      ? getZkProofTypesByUserAndDocument(userId, documentId)
+      : Promise.resolve([]),
+    documentId
+      ? getSignedClaimTypesByUserAndDocument(userId, documentId)
+      : Promise.resolve([]),
+  ]);
 
   const checks = {
     document: selectedDocument?.status === "verified",
@@ -177,29 +181,31 @@ export async function getIdentityDocumentsByUserId(
 export async function getSelectedIdentityDocumentByUserId(
   userId: string
 ): Promise<IdentityDocument | null> {
-  const documents = await getIdentityDocumentsByUserId(userId);
+  // Parallelize all three independent queries
+  const [documents, proofRows, claimRows] = await Promise.all([
+    getIdentityDocumentsByUserId(userId),
+    db
+      .select({
+        documentId: zkProofs.documentId,
+        proofType: zkProofs.proofType,
+        verified: zkProofs.verified,
+      })
+      .from(zkProofs)
+      .where(eq(zkProofs.userId, userId))
+      .all(),
+    db
+      .select({
+        documentId: signedClaims.documentId,
+        claimType: signedClaims.claimType,
+      })
+      .from(signedClaims)
+      .where(eq(signedClaims.userId, userId))
+      .all(),
+  ]);
+
   if (documents.length === 0) {
     return null;
   }
-
-  const proofRows = await db
-    .select({
-      documentId: zkProofs.documentId,
-      proofType: zkProofs.proofType,
-      verified: zkProofs.verified,
-    })
-    .from(zkProofs)
-    .where(eq(zkProofs.userId, userId))
-    .all();
-
-  const claimRows = await db
-    .select({
-      documentId: signedClaims.documentId,
-      claimType: signedClaims.claimType,
-    })
-    .from(signedClaims)
-    .where(eq(signedClaims.userId, userId))
-    .all();
 
   const proofTypesByDocument = new Map<string, Set<string>>();
   for (const row of proofRows) {

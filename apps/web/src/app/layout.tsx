@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 
-import { Web3Provider } from "@/components/providers/web3-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { auth } from "@/lib/auth/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -46,11 +43,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Get cookies for SSR hydration of wallet state
-  const headersObj = await headers();
-  const cookies = headersObj.get("cookie");
-  const session = await auth.api.getSession({ headers: headersObj });
-  const walletScopeId = session?.user?.id ?? null;
   const coopHeader =
     process.env.NEXT_PUBLIC_COOP === "same-origin-allow-popups" ||
     process.env.NEXT_PUBLIC_COOP === "unsafe-none"
@@ -85,17 +77,15 @@ export default async function RootLayout({
           disableTransitionOnChange
           enableSystem
         >
-          <Web3Provider cookies={cookies} walletScopeId={walletScopeId}>
-            {/* Skip to main content link for keyboard users */}
-            <a
-              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              href="#main-content"
-            >
-              Skip to main content
-            </a>
-            <main id="main-content">{children}</main>
-            <Toaster />
-          </Web3Provider>
+          {/* Skip to main content link for keyboard users */}
+          <a
+            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            href="#main-content"
+          >
+            Skip to main content
+          </a>
+          <main id="main-content">{children}</main>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>
