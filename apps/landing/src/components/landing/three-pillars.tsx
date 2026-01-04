@@ -9,7 +9,7 @@ const pillars = [
     title: "Zero-Knowledge Proofs",
     subtitle: "Prove claims without revealing data",
     description:
-      'Prove "I\'m over 18" or "I\'m in the EU" without revealing the underlying values. Proofs are cryptographically tied to verified documents.',
+      'Prove "I\'m over 18" or "I\'m in the EU" without revealing the underlying values. Proofs are bound to signed claim hashes and verified documents.',
     tech: "Noir circuits + UltraHonk",
     example: 'Service learns: "Age verified: Yes" — nothing else.',
   },
@@ -19,7 +19,7 @@ const pillars = [
     title: "Homomorphic Encryption",
     subtitle: "Compute on encrypted data",
     description:
-      "Sensitive values stay encrypted. The server can compute, but only you can decrypt the result.",
+      "Sensitive values stay encrypted. The server can compute, but only you can decrypt the result with your passkey.",
     tech: "TFHE-rs (Rust)",
     example:
       "Server computes: encrypted value → result: true — never sees your data.",
@@ -30,7 +30,7 @@ const pillars = [
     title: "Cryptographic Commitments",
     subtitle: "Verify without storing",
     description:
-      'Names and document numbers become one-way hashes. Delete the salt, and we cryptographically "forget" you.',
+      "Names and document numbers become one-way hashes. Salt lives in your passkey-sealed profile for user-controlled privacy.",
     tech: "Salted SHA256",
     example: '"John Doe" → 8f14e45f... — Irreversible, GDPR-friendly.',
   },

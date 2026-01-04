@@ -79,13 +79,14 @@ const categories: Category[] = [
         icon: IconFileText,
         color: "blue",
         title: "Document Verification",
-        description: "OCR extracts minimum fields. Documents never stored.",
+        description:
+          "OCR extracts minimum fields. Images are discarded after processing.",
       },
       {
         icon: IconScan,
         color: "orange",
         title: "Liveness Detection",
-        description: "Liveness checks with encrypted scoring.",
+        description: "Signed liveness scores with encrypted attributes.",
       },
     ],
   },
@@ -97,7 +98,8 @@ const categories: Category[] = [
         icon: IconLock,
         color: "blue",
         title: "Encrypted Storage",
-        description: "Encrypted data that only the user can decrypt.",
+        description:
+          "Passkey-sealed profile + secrets. Only the user can decrypt.",
       },
       {
         icon: IconUserCheck,
@@ -121,13 +123,13 @@ const categories: Category[] = [
         icon: IconTrash,
         color: "red",
         title: "GDPR Compliance",
-        description: "Delete salt = cryptographically forgotten.",
+        description: "Delete the sealed profile = cryptographic erasure.",
       },
       {
         icon: IconKey,
         color: "yellow",
         title: "Audit Bundles",
-        description: "Audit-ready proof bundles without raw PII.",
+        description: "Audit-ready evidence packs without raw PII.",
       },
     ],
   },
@@ -180,7 +182,7 @@ export function FeaturesGrid() {
       <div className="mx-auto max-w-4xl">
         <div className="mb-16 text-center">
           <h2 className="font-bold text-3xl sm:text-4xl">
-            8 verification features, zero raw data stored
+            8 verification features, zero plaintext PII stored
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Complete identity verification without the privacy trade-offs.

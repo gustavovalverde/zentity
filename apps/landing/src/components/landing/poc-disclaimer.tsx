@@ -12,7 +12,7 @@ const disclaimerPoints = [
   },
   {
     icon: IconFlask,
-    text: "Cryptographic approach under active validation",
+    text: "Cryptographic approach (passkeys, ZK, FHE) under active validation",
   },
   {
     icon: IconShieldCheck,

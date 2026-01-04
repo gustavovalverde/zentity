@@ -4,7 +4,7 @@ const categories = [
   {
     label: "PII STORAGE",
     problem: "Stores full names, addresses, birthdays",
-    solution: "Stores hashed commitments + encrypted data",
+    solution: "Stores passkey-sealed profile + hashed commitments",
   },
   {
     label: "IMAGES",
@@ -19,7 +19,7 @@ const categories = [
   {
     label: "AUDITABILITY",
     problem: "Opaque checks, no verifiable trail",
-    solution: "Verifiable proof bundles",
+    solution: "Verifiable proof bundles + consent receipts",
   },
 ];
 
@@ -89,8 +89,10 @@ export function ProblemSolution() {
         <div className="mt-12 text-center">
           <p className="font-medium text-lg">
             Breaches expose only{" "}
-            <span className="text-emerald-400">encrypted data and proofs</span>
-            —not readable documents or personal data.
+            <span className="text-emerald-400">
+              encrypted data, hashes, and proofs
+            </span>
+            —not readable documents or plaintext PII.
           </p>
         </div>
       </div>

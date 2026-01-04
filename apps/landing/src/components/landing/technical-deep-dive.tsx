@@ -86,8 +86,9 @@ export function TechnicalDeepDive() {
                               Web Client (Next.js)
                             </h4>
                             <p className="mt-1 text-muted-foreground text-sm">
-                              Handles UI, client key storage, and ZK proof
-                              generation (Noir/WASM) tied to verified docs.
+                              Handles UI, passkey-sealed profile unlock, and ZK
+                              proof generation (Noir/WASM) tied to verified
+                              docs.
                             </p>
                           </div>
                         </div>
@@ -160,7 +161,7 @@ export function TechnicalDeepDive() {
 
                       {/* DB Box */}
                       <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-center font-mono text-blue-400 text-xs">
-                        Encrypted DB (Data + Proofs)
+                        Encrypted DB (Proofs + Sealed Data)
                       </div>
                     </div>
                   </div>
@@ -186,7 +187,8 @@ export function TechnicalDeepDive() {
                             Data Extraction
                           </h4>
                           <p className="mb-2 text-muted-foreground text-sm">
-                            OCR extracts fields (no storage).
+                            OCR extracts fields; images discarded; claim hashes
+                            created.
                           </p>
                           <div className="rounded border border-border bg-muted px-3 py-2 font-mono text-foreground text-xs">
                             Input: "ID_Card.jpg" → Output: verified fields
@@ -203,7 +205,8 @@ export function TechnicalDeepDive() {
                             Proof Generation
                           </h4>
                           <p className="mb-2 text-muted-foreground text-sm">
-                            Client proves eligibility with ZK.
+                            Client unlocks profile with passkey, then proves
+                            eligibility with ZK.
                           </p>
                           <div className="rounded border border-border bg-muted px-3 py-2 font-mono text-foreground text-xs">
                             Generate(private inputs, nonce) → Proof_0x8f2...
@@ -220,7 +223,8 @@ export function TechnicalDeepDive() {
                             Verification
                           </h4>
                           <p className="mb-2 text-muted-foreground text-sm">
-                            Server verifies the mathematical proof.
+                            Server verifies proofs and stores encrypted
+                            artifacts. Disclosure requires user consent.
                           </p>
                           <div className="flex items-center gap-2 font-semibold text-emerald-400 text-xs">
                             <IconCircleCheck className="h-3 w-3" /> VERIFIED:
