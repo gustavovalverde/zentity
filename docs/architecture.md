@@ -90,7 +90,7 @@ Zentity uses three complementary techniques:
 ├─────────────────────────────────────────────────────────────────┤
 │               CRYPTOGRAPHIC COMMITMENTS                         │
 │           One-way hashes for identity verification              │
-│              Names • Document numbers • Nationality             │
+│              Name commitment (expandable to more fields)         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -133,12 +133,12 @@ The FHE architecture uses passkey-wrapped client-side key ownership for user-con
 | Aspect | Implementation |
 |--------|----------------|
 | Key generation | Browser (TFHE-rs WASM via `tfhe-browser.ts`) |
-| Key storage | Server DB stores encrypted secrets + passkey wrappers (no plaintext keys) |
+| Key storage | SQLite stores encrypted secrets + passkey wrappers (no plaintext keys) |
 | Key protection | PRF-derived KEK wraps a random DEK (WebAuthn PRF + HKDF + AES-GCM) |
 | Who can decrypt | Only user (passkey presence + PRF unlocks DEK) |
-| Server receives | Encrypted key blob + wrappers, public + server keys for computation |
+| Server receives | Encrypted key blob + wrappers; registers public + server keys with FHE service (key_id) |
 
-**Privacy guarantee:** The server can compute on encrypted data but cannot decrypt results—only the user can. Plaintext client keys exist only in memory during an active session.
+**Privacy guarantee:** The server can compute on encrypted data (via the FHE service) but cannot decrypt results—only the user can. Plaintext client keys exist only in memory during an active session.
 
 **Planned enhancements**:
 
@@ -156,7 +156,7 @@ The FHE architecture uses passkey-wrapped client-side key ownership for user-con
 |------|------|---------|
 | Account email | Plaintext | Authentication + recovery |
 | Document metadata (type, issuer country, document hash) | Plaintext | UX + dedup context |
-| Commitments (name, doc#, nationality) | Salted SHA256 | Dedup + integrity checks |
+| Commitments (name) | Salted SHA256 | Dedup + integrity checks |
 | ZK proof payloads + public inputs | Proof bytes | Disclosure + verification |
 | Evidence pack (policy_hash, proof_set_hash) | Hashes | Audit trail |
 | Signed claims (OCR, liveness, face match) | Signed hashes + metadata (no raw PII fields) | Tamper-resistant measurements |
@@ -272,7 +272,7 @@ sequenceDiagram
   API->>DB: UPDATE identity_verification_drafts (liveness + face match)
   API-->>UI: liveness + face match flags
 
-  UI->>API: tRPC identity.finalizeAsync (draftId + FHE keys)
+  UI->>API: tRPC identity.finalizeAsync (draftId + fheKeyId + FHE inputs)
   API->>DB: INSERT identity_verification_jobs (queued)
   API->>FHE: encrypt birth_year_offset / country_code / liveness
   FHE-->>API: ciphertexts
@@ -305,9 +305,12 @@ sequenceDiagram
   participant DB as SQLite
   participant RP as Relying Party
 
-  UI->>API: Request disclosure package
-  API->>DB: Read commitments / ciphertexts / proofs / evidence
-  API-->>RP: Disclosure payload + proof payloads + evidence pack
+  UI->>UI: Decrypt passkey-sealed profile
+  UI->>UI: Encrypt to RP (RSA-OAEP + AES-GCM)
+  UI->>API: Request disclosure package (encrypted payload + consent scope)
+  API->>DB: Read commitments / proofs / evidence
+  API-->>UI: Disclosure bundle (encrypted payload + proofs + evidence pack)
+  UI-->>RP: Send disclosure bundle
   RP->>RP: Verify ZK proof(s)
   RP-->>UI: Accept / reject
 ```
@@ -352,11 +355,13 @@ See [Web3 Architecture](web3-architecture.md) and [Web2 to Web3 Transition](web2
 
 ## Storage Model (SQLite)
 
+SQLite is accessed via the libSQL client (Turso optional for hosted environments).
+
 Tables (via `better-auth` + custom):
 
 **Authentication (better-auth):**
 
-- `user`, `session`, `account`, `verification`
+- `user`, `session`, `account`, `verification`, `passkey_credentials`
 
 **Identity verification (Web2):**
 

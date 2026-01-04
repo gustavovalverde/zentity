@@ -199,6 +199,9 @@ Zentity stores privacy-preserving artifacts across multiple tables:
 - **encrypted_attributes** — TFHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score)
 - **signed_claims** — server-signed OCR/liveness/face match claims
 - **attestation_evidence** — policy_hash + proof_set_hash for audits
+- **encrypted_secrets** — passkey-wrapped secrets (FHE keys, profile data)
+- **secret_wrappers** — per-passkey DEK wrappers for multi-passkey access
+- **passkey_credentials** — WebAuthn credential metadata (better-auth)
 
 Important: proofs are bound to server-signed claims + document hash, but not yet to cryptographic document signatures.
 

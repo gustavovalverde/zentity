@@ -235,12 +235,12 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 |--------|---------|
 | `crypto` | FHE encryption, ZK proof verification, challenge nonces |
 | `identity` | Full identity verification (document + selfie + liveness) |
-| `kyc` | Document OCR processing (router name; used in regulated/KYC flows) |
 | `liveness` | Multi-gesture liveness detection sessions |
 | `onboarding` | Wizard state management and step validation |
 | `attestation` | On-chain identity attestation (submit, refresh, networks) |
 | `account` | User account management |
 | `passkeyAuth` | Passkey credential management (register, authenticate, list, remove) |
+| `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
 | `token` | Session/token operations |
 
 **Client usage:**

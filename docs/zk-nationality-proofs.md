@@ -189,7 +189,7 @@ Levels | Max Countries | Use Case
 Proofs are generated entirely in the browser using Web Workers:
 
 ```typescript
-// apps/web/src/lib/noir-prover.ts
+// apps/web/src/lib/zk/noir-prover.ts
 
 import {
   generateNationalityProofClientWorker,
@@ -223,35 +223,24 @@ export async function generateNationalityProofNoir(
 ### Server-Side Verification
 
 ```typescript
-// apps/web/src/lib/noir-verifier.ts
+// apps/web/src/lib/trpc/routers/crypto.ts
 
-import { UltraHonkBackend } from "@aztec/bb.js";
-import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
+const verificationResult = await verifyNoirProof({
+  proof: input.proof,
+  publicInputs: input.publicInputs,
+  circuitType: "nationality_membership",
+});
 
-export async function verifyNoirProof(
-  input: NoirVerifyInput,
-): Promise<NoirVerifyResult> {
-  const backend = new UltraHonkBackend(
-    circuit.bytecode,
-    { crsPath: getBbCrsPath() },
-  );
-
-  const proofBytes = Buffer.from(input.proof, "base64");
-
-  const isValid = await backend.verifyProof({
-    proof: new Uint8Array(proofBytes),
-    publicInputs: input.publicInputs,
-  });
-
-  return {
-    isValid,
-    verificationTimeMs: Date.now() - startTime,
-    circuitType: input.circuitType,
-    noirVersion: meta.noirVersion,
-    circuitHash: meta.circuitHash,
-    bbVersion,
-  };
-}
+return {
+  isValid: verificationResult.isValid,
+  verificationTimeMs: verificationResult.verificationTimeMs,
+  circuitType: verificationResult.circuitType,
+  noirVersion: verificationResult.noirVersion,
+  circuitHash: verificationResult.circuitHash,
+  verificationKeyHash: verificationResult.verificationKeyHash,
+  circuitId: verificationResult.circuitId,
+  bbVersion: verificationResult.bbVersion,
+};
 ```
 
 ---
@@ -271,7 +260,7 @@ export async function verifyNoirProof(
 ### Each Group Has a Unique Root
 
 ```typescript
-// apps/web/src/lib/nationality-data.ts
+// apps/web/src/lib/zk/nationality-data.ts
 
 export const COUNTRY_GROUPS: Record<string, string[]> = {
   EU: ["AUT", "BEL", "BGR", "HRV", "CYP", ...],
@@ -318,7 +307,7 @@ Proofs are generated in Web Workers to keep the UI responsive.
 In Zentity's flow:
 
 1. OCR extracts nationality from passport (e.g., "DEU") and signs the claim
-2. Passport authenticity verified via MRZ checksums
+2. MRZ checksums validate document data consistency
 3. Face match verifies it's your passport
 4. ZK nationality proof is generated **client-side** in the browser, bound to `claim_hash`
 5. Only the proof + public inputs are sent to the server and stored, never "DEU"
@@ -335,11 +324,12 @@ apps/web/
 │       ├── src/main.nr           # Noir circuit source
 │       └── artifacts/
 │           └── nationality_membership.json  # Compiled ACIR
-├── src/lib/
+├── src/lib/zk/
 │   ├── nationality-data.ts       # Country codes and group definitions
 │   ├── nationality-merkle.ts     # Merkle tree construction (Poseidon2)
 │   ├── noir-prover.ts            # Client-side proof generation API
 │   ├── noir-prover.worker.ts     # Web Worker for proof generation
+│   ├── noir-worker-manager.ts    # Worker pool management
 │   └── noir-verifier.ts          # Server-side verification
 ```
 

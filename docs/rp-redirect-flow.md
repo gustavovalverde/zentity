@@ -22,7 +22,7 @@ This RP flow solves a separate problem: **how a third party requests verificatio
 
 1. RP redirects the user to Zentity:
    - `GET /api/rp/authorize?client_id=...&redirect_uri=...&state=...`
-2. Zentity validates and replaces those params with a short-lived `flow`:
+2. Zentity validates and replaces those params with a short-lived `flow` (UUID, ~2 min TTL):
    - Redirects user to `/rp/verify?flow=...`
    - Stores flow data in an **httpOnly signed cookie** (short TTL, tamper-resistant)
 3. User completes onboarding/verification in Zentity
@@ -32,7 +32,7 @@ This RP flow solves a separate problem: **how a third party requests verificatio
    - Redirects user to `redirect_uri?code=...&state=...`
 5. RP exchanges the code server-to-server:
    - `POST /api/rp/exchange { code, client_id? }`
-   - Receives **verification flags only** (no raw PII)
+   - Receives **verification flags only** (no raw PII): `verified`, `level`, `checks`
 
 ## Endpoints and responsibilities
 
@@ -44,7 +44,7 @@ Responsibilities:
 
 - Validate request parameters (`client_id`, `redirect_uri`, optional `state`)
 - Enforce redirect allowlist for **external** redirect URIs (`RP_ALLOWED_REDIRECT_URIS`)
-- Create a short-lived `flow` ID and store flow state in an **httpOnly signed cookie**
+- Create a short-lived `flow` ID (UUID) and store flow state in an **httpOnly signed cookie**
 - Redirect to a clean URL: `/rp/verify?flow=...`
 
 Security value:
@@ -70,7 +70,7 @@ Responsibilities:
 
 - Require an authenticated user session
 - Load and validate the `flow`
-- Issue a one-time authorization `code` bound to `(client_id, redirect_uri, user_id)`
+- Issue a one-time authorization `code` (UUID, ~5 min TTL) bound to `(client_id, redirect_uri, user_id)`
 - Redirect back to the relying party with `code` (+ `state`)
 
 Security value:
@@ -88,7 +88,7 @@ Responsibilities:
 
 Privacy value:
 
-- Returns only coarse flags (e.g., `verified`, `checks`)—not DOB, document images, selfies, embeddings, or raw ZK proof payloads.
+- Returns only coarse flags (e.g., `verified`, `level`, `checks`)—not DOB, document images, selfies, embeddings, or raw ZK proof payloads.
 
 ## Configuration
 

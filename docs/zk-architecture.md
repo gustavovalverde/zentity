@@ -167,7 +167,7 @@ fn main(
 ### Proof Generation API
 
 ```typescript
-// apps/web/src/lib/noir-prover.ts
+// apps/web/src/lib/zk/noir-prover.ts
 
 // Age proof
 const ageResult = await generateAgeProofNoir({
@@ -214,7 +214,7 @@ Main Thread                    Web Worker
      │                              │
 ```
 
-Key files:
+Key files (apps/web/src/lib/zk):
 
 - `noir-prover.ts` - Public API for proof generation
 - `noir-worker-manager.ts` - Worker pool management
@@ -244,7 +244,7 @@ Next.js API Route              bb-worker.mjs (child process)
 - **Timeout handling**: Main thread can kill stale workers (configurable via `BB_WORKER_TIMEOUT_MS`)
 - **Backend caching**: Worker caches `UltraHonkBackend` instances per circuit
 
-**Key files:**
+**Key files (apps/web/src/lib/zk):**
 
 - `noir-verifier.ts` - Spawns and communicates with worker
 - `bb-worker.mjs` - Standalone Node.js script with JSON-RPC interface
@@ -252,7 +252,7 @@ Next.js API Route              bb-worker.mjs (child process)
 ### Verifier API
 
 ```typescript
-// apps/web/src/lib/noir-verifier.ts
+// apps/web/src/lib/zk/noir-verifier.ts
 
 const result = await verifyNoirProof({
   proof: proofBase64,
@@ -266,6 +266,8 @@ const result = await verifyNoirProof({
 //   circuitType: "age_verification",
 //   noirVersion: "1.0.0-beta.1",
 //   circuitHash: "abc123...",
+//   verificationKeyHash: "def456...",
+//   circuitId: "ultrahonk:def456...",
 //   bbVersion: "0.82.2"
 // }
 ```
@@ -276,6 +278,8 @@ Each verification returns circuit metadata for audit trails:
 
 - `noirVersion` - Noir compiler version
 - `circuitHash` - Hash of compiled circuit
+- `verificationKeyHash` - Verification key hash (audit + caching)
+- `circuitId` - Stable circuit identifier derived from the verification key
 - `bbVersion` - Barretenberg verifier version
 
 ---
@@ -333,10 +337,10 @@ bun run circuits:compile
 
 Update these files:
 
-- `src/lib/zk-circuit-spec.ts` - Add circuit type
-- `src/lib/noir-verifier.ts` - Import compiled JSON
-- `src/lib/noir-prover.worker.ts` - Add worker handler
-- `src/lib/noir-prover.ts` - Add public API function
+- `src/lib/zk/zk-circuit-spec.ts` - Add circuit type
+- `src/lib/zk/noir-verifier.ts` - Import compiled JSON
+- `src/lib/zk/noir-prover.worker.ts` - Add worker handler
+- `src/lib/zk/noir-prover.ts` - Add public API function
 
 ---
 
@@ -392,9 +396,17 @@ All circuits require a `nonce` public input:
 
 Circuits include range checks:
 
-- Age: birth year cannot be in the future
-- Face match: scores must be 0-10000
-- Dates: validated as YYYYMMDD integers
+- **Age**: birth year cannot be in the future (`birth_year <= current_year`)
+- **Face match**: scores validated 0-10000 range, threshold validated 0-10000 range
+- **Dates**: validated as YYYYMMDD integers
+
+### Nonce Format
+
+Challenge nonces are 128-bit hex strings issued by the server via `crypto.createChallenge`. They are:
+
+- Bound to the user session
+- One-time use (consumed on proof submission)
+- Normalized to Field elements before circuit execution
 
 ---
 

@@ -182,24 +182,24 @@ The FHEVM module enables client-side encryption and user-controlled decryption o
 ```text
 apps/web/src/
 ├── hooks/fhevm/
-│   ├── index.ts                    # Public exports
 │   ├── use-fhevm-sdk.ts            # SDK lifecycle management
 │   ├── use-fhe-encryption.ts       # Client-side encryption
 │   ├── use-fhe-decrypt.ts          # User-controlled decryption
+│   ├── use-fhe-transfer.ts         # Encrypted transfer helper
 │   └── use-in-memory-storage.tsx   # Signature cache provider
 ├── lib/fhevm/
-│   ├── index.ts                    # Library exports
 │   ├── types.ts                    # TypeScript definitions
 │   ├── fhevm-decryption-signature.ts # EIP-712 signature management
 │   ├── providers/
+│   │   ├── global.ts               # Global provider registry bootstrap
 │   │   ├── registry.ts             # Provider registry
 │   │   ├── types.ts                # Provider types
 │   │   ├── zama/
+│   │   │   ├── index.ts             # Zama provider factory
 │   │   │   └── relayer.ts           # Zama relayer transport
 │   │   └── mock/
 │   │       └── index.ts             # Hardhat mock provider
 │   └── storage/
-│       ├── index.ts
 │       └── generic-string-storage.ts # Storage interface
 └── components/providers/
     └── fhevm-provider.tsx           # React context provider
@@ -248,7 +248,7 @@ sequenceDiagram
         SDK->>SDK: Create MockFhevmInstance
         Note over SDK: No real encryption,<br/>simulates FHE for testing
     else Production (Sepolia)
-        SDK->>WASM: Load via CDN script
+        SDK->>WASM: Load relayer SDK script (default /fhevm/relayer-sdk-js.umd.js)
         WASM-->>SDK: Modules ready
         SDK->>SDK: createInstance(SepoliaConfig)
         Note over SDK: Real FHE with<br/>FHEVM Gateway connection
@@ -330,7 +330,7 @@ sequenceDiagram
 #### Usage
 
 ```typescript
-import { useFHEEncryption, toHex } from "@/hooks/fhevm";
+import { useFHEEncryption, toHex } from "@/hooks/fhevm/use-fhe-encryption";
 
 function TransferForm({ contractAddress }) {
   const { instance } = useFhevmContext();
@@ -363,7 +363,7 @@ The `useFHEDecrypt` hook enables users to decrypt their on-chain data.
 #### How It Works
 
 1. **EIP-712 Signature**: User signs a message authorizing decryption
-2. **Signature Caching**: Signature is cached for 365 days (no repeated popups)
+2. **Signature Caching**: Signature can be cached for up to 365 days (default in-memory cache resets on refresh)
 3. **Gateway Request**: Signature + requests sent to FHEVM Gateway
 4. **KMS Re-encryption**: KMS re-encrypts data to user's ephemeral public key
 5. **Local Decryption**: User decrypts locally with ephemeral private key
@@ -391,7 +391,7 @@ sequenceDiagram
         H->>W: Request EIP-712 signature
         Note over W: User sees wallet popup<br/>to authorize decryption
         W-->>H: Signature
-        H->>Cache: Store signature (365 days)
+        H->>Cache: Store signature (max 365 days; default in-memory)
     else Signature cached
         Cache-->>H: Return cached signature
         Note over H: No wallet popup needed
@@ -425,7 +425,8 @@ The hook implements automatic error recovery:
 #### Usage
 
 ```typescript
-import { useFHEDecrypt, useInMemoryStorage } from "@/hooks/fhevm";
+import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
+import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
 
 function ViewIdentityData({ contractAddress, handles }) {
   const { instance, refresh } = useFhevmContext();
@@ -1049,6 +1050,14 @@ FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
 FHEVM_EXPLORER_URL=https://sepolia.etherscan.io
 FHEVM_IDENTITY_REGISTRY=0x...
 FHEVM_REGISTRAR_PRIVATE_KEY=0x...
+
+# Client-side equivalents (used by SDK + wallet UI)
+NEXT_PUBLIC_FHEVM_RPC_URL=...
+NEXT_PUBLIC_FHEVM_NETWORK_ID=...
+NEXT_PUBLIC_FHEVM_CHAIN_ID=...
+NEXT_PUBLIC_FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
+NEXT_PUBLIC_FHEVM_EXPLORER_URL=...
+NEXT_PUBLIC_FHEVM_PROVIDER_ID=zama
 ```
 
 #### Optional
@@ -1067,6 +1076,16 @@ FHEVM_COMPLIANT_ERC20=0x...
 LOCAL_RPC_URL=http://127.0.0.1:8545
 LOCAL_IDENTITY_REGISTRY=0x...
 LOCAL_REGISTRAR_PRIVATE_KEY=0x...
+
+# Relayer/Gateway overrides (advanced)
+NEXT_PUBLIC_FHEVM_RELAYER_URL=...
+NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID=...
+NEXT_PUBLIC_FHEVM_ACL_CONTRACT_ADDRESS=...
+NEXT_PUBLIC_FHEVM_KMS_CONTRACT_ADDRESS=...
+NEXT_PUBLIC_FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS=...
+NEXT_PUBLIC_FHEVM_DECRYPTION_ADDRESS=...
+NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS=...
+NEXT_PUBLIC_FHEVM_ZAMA_SDK_URL=/fhevm/relayer-sdk-js.umd.js
 ```
 
 ### Common Patterns

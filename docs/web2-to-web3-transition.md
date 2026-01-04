@@ -14,7 +14,7 @@ The current implementation has several known limitations that would need to be a
 | **Rate limiting** | In-memory Map (resets on server restart) | Redis or database-backed |
 | **Liveness sessions** | In-memory storage | Persistent storage (Redis/DB) |
 
-**Note:** The `attestation.submit` endpoint supports a demo mode that simulates successful attestation without executing real blockchain transactions. This is controlled by the `NEXT_PUBLIC_DEMO_MODE` environment variable.
+**Note:** The `attestation.submit` endpoint supports a demo mode that simulates successful attestation without executing real blockchain transactions. This is controlled by the `NEXT_PUBLIC_ATTESTATION_DEMO` environment variable.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ Zentity bridges traditional identity verification (compliance/liveness) with pri
 | **Purpose** | Collect & verify identity | Store & enforce compliance |
 | **Data State** | Plaintext (briefly) | Always encrypted |
 | **Trust Model** | Trust Zentity backend | Trustless verification |
-| **Storage** | SQLite (commitments only) | Blockchain (ciphertext handles) |
+| **Storage** | SQLite (commitments only, via libSQL client) | Blockchain (ciphertext handles) |
 | **Operations** | OCR, liveness, face match | Encrypted comparisons |
 
 ---
@@ -116,7 +116,7 @@ The Web2 layer handles all **sensitive data collection and verification**:
 ### What Web2 Stores (Privacy-First)
 
 ```text
-SQLite Database
+SQLite Database (via libSQL client)
 ├── User accounts (email, auth tokens)
 ├── Verification status (verified/pending/failed)
 ├── ZK proofs (age >= 18, nationality in EU, etc.)

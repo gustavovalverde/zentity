@@ -9,7 +9,7 @@ This document covers integrity controls for both deployment modes:
 
 | Aspect | Web2 (Off-chain) | Web3 (On-chain) |
 |--------|------------------|-----------------|
-| **Proof verification** | Backend (`noir-verifier.ts`) | Smart contract or backend |
+| **Proof verification** | Backend (`apps/web/src/lib/zk/noir-verifier.ts`) | Smart contract or backend |
 | **FHE inputs** | Server-signed claims required | FHEVM InputVerifier on-chain |
 | **Nonce issuance** | `trpc.crypto.createChallenge` | Same, before attestation |
 | **Attestation authority** | SQLite records | IdentityRegistry contract |
@@ -72,7 +72,7 @@ These must be verified by the backend or by on-chain cryptographic checks.
 ### Evidence Pack
 
 - Compute `proof_hash` for each verified proof.
-- Compute `proof_set_hash = SHA256(sorted(proof_hashes) || policy_hash)`.
+- Compute `proof_set_hash = SHA256(JSON.stringify(sorted(proof_hashes)) || policy_hash)`.
 - Persist evidence to support audits and relying-party verification.
 
 ### Service-to-Service Authentication
