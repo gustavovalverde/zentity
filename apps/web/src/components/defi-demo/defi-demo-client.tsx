@@ -21,7 +21,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useIsMounted } from "@/hooks/use-is-mounted";
 import { trpcReact } from "@/lib/trpc/client";
 
 import { MintForm } from "./mint-form";
@@ -44,7 +43,6 @@ export function DefiDemoClient({
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(
     attestedNetworkId
   );
-  const isMounted = useIsMounted();
 
   // In demo mode (Hardhat), skip wallet mismatch check for easier testing
   const isDemoMode = process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true";
@@ -221,7 +219,7 @@ export function DefiDemoClient({
   }
 
   // Not connected - show connect button
-  if (!(isMounted && isConnected)) {
+  if (!isConnected) {
     return (
       <Card>
         <CardHeader>
@@ -238,7 +236,7 @@ export function DefiDemoClient({
           <p className="text-center text-muted-foreground text-sm">
             Connect the wallet you registered on-chain to continue
           </p>
-          {isMounted ? <appkit-button /> : null}
+          <appkit-button />
         </CardContent>
       </Card>
     );

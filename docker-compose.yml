@@ -9,6 +9,7 @@ services:
         - NEXT_PUBLIC_PROJECT_ID=${NEXT_PUBLIC_PROJECT_ID:-}
         - NEXT_PUBLIC_ENABLE_FHEVM=${NEXT_PUBLIC_ENABLE_FHEVM:-false}
         - NEXT_PUBLIC_ENABLE_HARDHAT=${NEXT_PUBLIC_ENABLE_HARDHAT:-false}
+        - NEXT_PUBLIC_COOP=${NEXT_PUBLIC_COOP:-same-origin-allow-popups}
         - NEXT_PUBLIC_FHEVM_RPC_URL=${NEXT_PUBLIC_FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
         - NEXT_PUBLIC_FHEVM_NETWORK_ID=${NEXT_PUBLIC_FHEVM_NETWORK_ID:-fhevm_sepolia}
         - NEXT_PUBLIC_FHEVM_CHAIN_ID=${NEXT_PUBLIC_FHEVM_CHAIN_ID:-11155111}
@@ -29,6 +30,7 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-1}
+      - NEXT_PUBLIC_COOP=${NEXT_PUBLIC_COOP:-same-origin-allow-popups}
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004

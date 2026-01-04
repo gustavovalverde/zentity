@@ -10,9 +10,10 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -21,11 +22,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { getStoredProfile } from "@/lib/crypto/profile-secret";
 import { trpc } from "@/lib/trpc/client";
 
 interface AccountData {
   email: string;
-  firstName: string | null;
   createdAt: string | null;
   verification: {
     level: "none" | "basic" | "full";
@@ -93,6 +94,9 @@ export function UserDataSection() {
   const [data, setData] = useState<AccountData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -109,6 +113,34 @@ export function UserDataSection() {
       // Error handled via setError() internally
     });
   }, []);
+
+  const loadProfile = useCallback(async () => {
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const profile = await getStoredProfile();
+      const firstName = profile?.firstName ?? null;
+      setProfileName(firstName);
+    } catch (err) {
+      setProfileError(
+        err instanceof Error ? err.message : "Unable to unlock profile"
+      );
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+    if (profileName) {
+      return;
+    }
+    loadProfile().catch(() => {
+      // Ignore auto-unlock errors; user can retry manually.
+    });
+  }, [data, profileName, loadProfile]);
 
   if (loading) {
     return (
@@ -152,12 +184,13 @@ export function UserDataSection() {
           Your Information
         </CardTitle>
         <CardDescription>
-          Data we've verified about you (stored as encrypted commitments)
+          Data we've verified about you (commitments + encrypted profile,
+          passkey required to unlock)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Name */}
-        {data.firstName ? (
+        {profileName ? (
           <>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -166,13 +199,46 @@ export function UserDataSection() {
                 </div>
                 <div>
                   <p className="text-muted-foreground text-sm">First Name</p>
-                  <p className="font-medium">{data.firstName}</p>
+                  <p className="font-medium">{profileName}</p>
                 </div>
               </div>
             </div>
             <Separator />
           </>
-        ) : null}
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                  <User className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-sm">First Name</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      disabled={profileLoading}
+                      onClick={() => {
+                        loadProfile().catch(() => {
+                          // handled via state
+                        });
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {profileLoading ? "Unlocking..." : "Unlock with passkey"}
+                    </Button>
+                    {profileError ? (
+                      <span className="text-destructive text-xs">
+                        {profileError}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
 
         {/* Email */}
         <div className="flex items-center justify-between">

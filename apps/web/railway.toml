@@ -7,6 +7,7 @@
 #   BETTER_AUTH_SECRET=<secret>
 #   BETTER_AUTH_URL=https://app.zentity.xyz
 #   NEXT_PUBLIC_APP_URL=https://app.zentity.xyz
+#   NEXT_PUBLIC_COOP=same-origin-allow-popups
 #   INTERNAL_SERVICE_TOKEN=<secret>
 #   TURSO_DATABASE_URL=libsql://<db>.turso.io
 #   TURSO_AUTH_TOKEN=<secret>

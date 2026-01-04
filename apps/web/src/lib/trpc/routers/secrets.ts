@@ -24,14 +24,11 @@ const secretTypeSchema = z.string().min(1);
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 
 export const secretsRouter = router({
-  getPasskeyUser: protectedProcedure.query(({ ctx }) => {
-    const name = ctx.session.user.name || ctx.session.user.email;
-    return {
-      userId: ctx.userId,
-      email: ctx.session.user.email,
-      displayName: name,
-    };
-  }),
+  getPasskeyUser: protectedProcedure.query(({ ctx }) => ({
+    userId: ctx.userId,
+    email: ctx.session.user.email,
+    displayName: ctx.session.user.email,
+  })),
 
   getSecretBundle: protectedProcedure
     .input(z.object({ secretType: secretTypeSchema }))

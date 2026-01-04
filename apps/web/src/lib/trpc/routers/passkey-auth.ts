@@ -79,7 +79,6 @@ export const passkeyAuthRouter = router({
     .input(
       z.object({
         email: z.string().email(),
-        name: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -91,7 +90,7 @@ export const passkeyAuthRouter = router({
 
       // If user exists, use their info; otherwise generate new user ID
       const userId = existingUser?.id || crypto.randomUUID();
-      const userName = input.name || existingUser?.name || input.email;
+      const userName = input.email;
 
       return {
         challengeId,
@@ -120,7 +119,6 @@ export const passkeyAuthRouter = router({
       z.object({
         challengeId: z.string().min(1),
         email: z.string().email(),
-        name: z.string().optional(),
         credential: credentialRegistrationSchema,
         fhe: fheEnrollmentSchema,
       })
@@ -149,7 +147,6 @@ export const passkeyAuthRouter = router({
       if (!user) {
         await createPasswordlessUser({
           email: input.email,
-          name: input.name || input.email.split("@")[0],
         });
         user = await getUserByEmail(input.email);
         if (!user) {
@@ -470,7 +467,7 @@ export const passkeyAuthRouter = router({
       user: {
         id: ctx.userId,
         email: ctx.session.user.email,
-        name: ctx.session.user.name || ctx.session.user.email,
+        name: ctx.session.user.email,
       },
       rp: {
         id: getRelyingPartyId(),

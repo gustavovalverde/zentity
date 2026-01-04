@@ -58,9 +58,9 @@ These must be verified by the backend or by on-chain cryptographic checks.
 
 ### Claim Signing
 
-- Backend signs high-risk values (liveness score, face match score, OCR-derived attributes).
+- Backend signs **claim hashes** for high-risk values (liveness score, face match score, OCR-derived attributes).
 - Client creates ZK proofs over **signed claim hashes** (e.g., Poseidon2(value, document_hash)).
-- Server verifies signature before accepting any proof.
+- Server verifies signature before accepting any proof. No raw PII is stored in claim payloads.
 
 ### FHE Input Validation
 

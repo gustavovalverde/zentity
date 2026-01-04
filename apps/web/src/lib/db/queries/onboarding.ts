@@ -14,10 +14,9 @@ const ONBOARDING_SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
  * Returns the session including the sessionId for cookie storage.
  */
 export async function upsertOnboardingSession(
-  data: Partial<OnboardingSession> & { id?: string; email?: string | null }
+  data: Partial<OnboardingSession> & { id?: string }
 ): Promise<OnboardingSession> {
   const sessionId = data.id ?? nanoid();
-  const normalizedEmail = data.email?.toLowerCase().trim() ?? null;
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + Math.floor(ONBOARDING_SESSION_TTL_MS / 1000);
 
@@ -27,14 +26,8 @@ export async function upsertOnboardingSession(
   };
 
   // Only update fields that are explicitly provided
-  if (data.email !== undefined) {
-    updateSet.email = normalizedEmail;
-  }
   if (data.step !== undefined) {
     updateSet.step = data.step;
-  }
-  if (data.encryptedPii !== undefined) {
-    updateSet.encryptedPii = data.encryptedPii;
   }
   if (data.documentHash !== undefined) {
     updateSet.documentHash = data.documentHash;
@@ -59,9 +52,7 @@ export async function upsertOnboardingSession(
     .insert(onboardingSessions)
     .values({
       id: sessionId,
-      email: normalizedEmail,
       step: data.step ?? 1,
-      encryptedPii: data.encryptedPii ?? null,
       documentHash: data.documentHash ?? null,
       identityDraftId: data.identityDraftId ?? null,
       documentProcessed: data.documentProcessed ?? false,
@@ -118,20 +109,6 @@ export async function deleteOnboardingSessionById(
   await db
     .delete(onboardingSessions)
     .where(eq(onboardingSessions.id, sessionId))
-    .run();
-}
-
-/**
- * Delete all onboarding sessions for a given email.
- * Used during account deletion to clean up orphaned sessions.
- */
-export async function deleteOnboardingSessionsByEmail(
-  email: string
-): Promise<void> {
-  const normalizedEmail = email.toLowerCase().trim();
-  await db
-    .delete(onboardingSessions)
-    .where(eq(onboardingSessions.email, normalizedEmail))
     .run();
 }
 

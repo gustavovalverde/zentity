@@ -234,8 +234,12 @@ export function TransparencySection({
             <div className="border-t pt-2">
               <h4 className="mb-2 flex items-center gap-2 font-medium text-sm">
                 <EyeOff className="h-4 w-4 text-destructive" />
-                What We NEVER Store
+                What We Never Store in Plaintext
               </h4>
+              <p className="mb-2 text-muted-foreground text-xs">
+                Encrypted profile fields are stored and can only be unlocked
+                with your passkey.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {[
                   "ID Document Image",

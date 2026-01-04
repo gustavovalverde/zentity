@@ -6,7 +6,7 @@ This document describes Zentity's zero-knowledge proof system using Noir and Ult
 
 ## Overview
 
-Zentity uses client-side ZK proof generation so the **private inputs to proofs stay in the browser during proving**. The architecture consists of:
+Zentity uses client-side ZK proof generation so the **private inputs to proofs stay in the browser during proving**. Private inputs are sourced from the **passkey-sealed profile** (client decrypt only), so the server never sees plaintext values. The architecture consists of:
 
 1. **Noir Circuits** - ZK logic written in Noir language
 2. **Client-Side Prover** - Browser-based proof generation using Noir.js + bb.js

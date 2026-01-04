@@ -92,6 +92,17 @@ All signatures are recorded in public transparency logs:
 - **Rekor** (Sigstore): <https://search.sigstore.dev/>
 - **GitHub Attestations**: Viewable via `gh attestation verify`
 
+## Client Integrity Roadmap
+
+We are planning additional safeguards so users can verify the **exact client code**
+their browser executes:
+
+- **Signed build manifests + SRI + CSP** (RFC-0011)
+- **Public build transparency log** (RFC-0012)
+
+These are not yet enforced in production, but will raise the guarantee that
+client code matches audited builds.
+
 ## Security Contact
 
 If you discover a discrepancy between attested builds and deployed services, please report it to <security@zentity.app>.

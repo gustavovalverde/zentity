@@ -17,7 +17,7 @@ Every database is a breach waiting to happen. The model itself is broken.
 
 ---
 
-**Zentity** proves you can verify identity claims without storing the underlying data.
+**Zentity** proves you can verify identity claims without storing plaintext underlying data.
 Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
 
 </div>
@@ -143,20 +143,21 @@ flowchart LR
 - Multi-document identity model with document-scoped proofs + evidence packs
 - Salted SHA256 commitments for dedup + later integrity checks (name, document number, nationality)
 - FHE key registration + encryption for birth_year_offset, country_code, compliance_level, liveness score
-- Disclosure demo flow (RP-style verification of proofs + evidence pack)
+- Passkey-sealed profile secret for user-controlled PII (client decrypt only)
+- Disclosure demo flow (client decrypt → re-encrypt to RP + consent receipt)
 - OAuth-style RP redirect flow (clean URL + one-time authorization code exchange)
 
 ## Data Handling (at a glance)
 
 The PoC stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
 
-- Plaintext at rest: account email; document metadata (type, issuer country, birth_year_offset)
-- Encrypted at rest: short-lived onboarding PII (wizard continuity), display-only first name
+- Plaintext at rest: account email; document metadata (type, issuer country, document hash)
+- Encrypted at rest: passkey-sealed profile (full name, DOB, document number, nationality), FHE key blobs
 - Non-reversible at rest: salted commitments (SHA256)
-- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claims, evidence pack hashes
+- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes
 - On-chain (optional): encrypted identity attestation via FHEVM—only user can decrypt
 
-**User-controlled privacy:** FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets. The server registers only the public + server keys (evaluation keys) for computation and encrypts with the public key—it cannot decrypt user data. Only the user can decrypt their own encrypted attributes.
+**User-controlled privacy:** Profile data is encrypted client-side and sealed with the user’s passkey (PRF + envelope encryption). FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets. The server registers only public + server keys (evaluation keys) for computation and cannot decrypt user data. Only the user can decrypt their own encrypted attributes.
 
 Details: `docs/architecture.md` | `docs/attestation-privacy-architecture.md`
 

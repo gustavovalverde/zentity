@@ -133,6 +133,7 @@ flowchart TD
 4. **Compliance Checks** operate on encrypted data - the smart contract never sees plaintext
 5. **Attestation Metadata** stores `policy_hash` + `proof_set_hash` for auditability
 6. **User Decryption** requires EIP-712 signature authorization - only the user can decrypt their own data
+7. **Profile PII** is stored off-chain as a **passkey-sealed profile** (encrypted client-side). Disclosure is consented: the client decrypts locally and re-encrypts to the relying party.
 
 ---
 

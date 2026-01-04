@@ -31,7 +31,6 @@ import { rpAuthorizationCodes } from "@/lib/db/schema/rp";
 
 export interface CreateUserInput {
   id?: string;
-  name?: string;
   email?: string;
   emailVerified?: boolean;
   image?: string | null;
@@ -75,7 +74,6 @@ export async function createTestUser(
     .insert(users)
     .values({
       id,
-      name: input.name ?? "Test User",
       email,
       emailVerified: input.emailVerified ?? false,
       image: input.image ?? null,

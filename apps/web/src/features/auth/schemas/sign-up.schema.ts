@@ -59,7 +59,9 @@ export interface WizardData {
   extractedDOB: string | null;
   extractedDocNumber: string | null;
   extractedNationality: string | null;
+  extractedNationalityCode: string | null;
   extractedExpirationDate: string | null;
+  userSalt: string | null;
 
   // Step 3: Selfie/Liveness
   selfieImage: string | null;
@@ -83,7 +85,9 @@ export const defaultWizardData: WizardData = {
   extractedDOB: null,
   extractedDocNumber: null,
   extractedNationality: null,
+  extractedNationalityCode: null,
   extractedExpirationDate: null,
+  userSalt: null,
   // Step 3
   selfieImage: null,
   bestSelfieFrame: null,

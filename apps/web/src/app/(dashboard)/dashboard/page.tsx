@@ -8,6 +8,7 @@ import {
 import { headers } from "next/headers";
 import Link from "next/link";
 
+import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { TransparencySection } from "@/components/dashboard/transparency-section";
 import { VerificationActions } from "@/components/dashboard/verification-actions";
 import {
@@ -33,10 +34,8 @@ import {
 import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
-  getUserFirstName,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
-import { getFirstPart } from "@/lib/utils/name-utils";
 
 // Fallback country names used when the backend doesn't provide a display name.
 const COUNTRY_NAMES_FALLBACK: Record<string, string> = {
@@ -106,9 +105,6 @@ export default async function DashboardPage() {
     ? await getVerificationStatus(userId)
     : null;
 
-  // Fetch decrypted first name for personalized greeting
-  const firstName = userId ? await getUserFirstName(userId) : null;
-
   // Build verification checks combining both sources
   const checks: VerificationChecks = {
     document: latestDocument?.status === "verified",
@@ -138,15 +134,13 @@ export default async function DashboardPage() {
     verifiedAt: latestDocument?.verifiedAt ?? undefined,
   };
 
-  // Determine the best name to display
-  const displayName =
-    getFirstPart(firstName) || getFirstPart(session?.user.name) || "User";
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="font-bold text-3xl">Welcome, {displayName}</h1>
+          <h1 className="font-bold text-3xl">
+            Welcome, <ProfileGreetingName />
+          </h1>
           <p className="text-muted-foreground">
             Manage your privacy-preserving identity verification
           </p>
@@ -204,7 +198,7 @@ export default async function DashboardPage() {
             </p>
             <p className="text-muted-foreground text-xs">
               {hasProof
-                ? "Only proofs, hashes, and encrypted values stored"
+                ? "Only proofs, hashes, encrypted values, and passkey-sealed profile stored"
                 : "Complete verification for privacy"}
             </p>
           </CardContent>
@@ -253,13 +247,14 @@ export default async function DashboardPage() {
                   <div>
                     <Badge variant="success">Maximum Privacy</Badge>
                     <p className="mt-1 text-muted-foreground text-xs">
-                      No raw PII stored on our servers
+                      No plaintext PII stored on our servers
                     </p>
                   </div>
                 </div>
                 <p className="text-muted-foreground text-xs">
                   Your identity is verified using cryptographic proofs. Only
-                  hashes and encrypted data are stored.
+                  hashes and encrypted data are stored; your passkey is required
+                  to decrypt.
                 </p>
               </div>
             ) : (

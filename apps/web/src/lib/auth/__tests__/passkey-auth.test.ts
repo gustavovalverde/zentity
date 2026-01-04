@@ -616,7 +616,6 @@ describe("passkey-auth", () => {
     it("creates user with passwordlessSignup=true", async () => {
       const result = await createPasswordlessUser({
         email: "test@example.com",
-        name: "Test User",
       });
 
       expect(result.userId).toBeDefined();
@@ -629,10 +628,10 @@ describe("passkey-auth", () => {
 
   describe("getUserByEmail", () => {
     it("returns user by email", async () => {
-      await createTestUser({ email: "find@example.com", name: "Find Me" });
+      await createTestUser({ email: "find@example.com" });
 
       const user = await getUserByEmail("find@example.com");
-      expect(user?.name).toBe("Find Me");
+      expect(user?.email).toBe("find@example.com");
     });
 
     it("returns undefined for unknown email", async () => {

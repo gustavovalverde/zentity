@@ -44,11 +44,17 @@ import {
   WRAP_VERSION,
 } from "@/lib/crypto/passkey-vault";
 import {
+  type ProfileSecretPayload,
+  storeProfileSecret,
+} from "@/lib/crypto/profile-secret";
+import {
   checkPrfSupport,
   createCredentialWithPrf,
   evaluatePrf,
   extractCredentialRegistrationData,
 } from "@/lib/crypto/webauthn-prf";
+import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
+import { countryCodeToNumeric } from "@/lib/identity/compliance";
 import {
   type FaceMatchResult,
   matchFaces,
@@ -56,6 +62,7 @@ import {
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 import { base64UrlToBytes } from "@/lib/utils/base64url";
+import { getFirstPart } from "@/lib/utils/name-utils";
 import { cn } from "@/lib/utils/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
@@ -74,6 +81,8 @@ type SecureStatus =
   | "storing-proofs"
   | "complete"
   | "error";
+
+const YEAR_PATTERN = /\b(\d{4})\b/;
 
 interface StepIndicatorProps {
   label: string;
@@ -125,6 +134,85 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
       </span>
     </div>
   );
+}
+
+function parseBirthYear(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const match = value.match(YEAR_PATTERN);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  return Number.isFinite(year) ? year : null;
+}
+
+function parseDateToInt(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 8) {
+    return null;
+  }
+  const dateInt = Number(digits.slice(0, 8));
+  return Number.isFinite(dateInt) ? dateInt : null;
+}
+
+function buildProfilePayload(args: {
+  editedName: string;
+  extractedName: string | null;
+  extractedDOB: string | null;
+  extractedDocNumber: string | null;
+  extractedNationality: string | null;
+  extractedExpirationDate: string | null;
+  extractedNationalityCode: string | null;
+  documentType: string | null;
+  documentOrigin: string | null;
+  userSalt: string | null;
+}): ProfileSecretPayload | null {
+  const firstName = getFirstPart(args.editedName || args.extractedName) || null;
+  const birthYear = parseBirthYear(args.extractedDOB);
+  const expiryDateInt = parseDateToInt(args.extractedExpirationDate);
+  const nationalityCode = args.extractedNationalityCode || null;
+  const fullName = args.editedName || args.extractedName || null;
+  const dateOfBirth = args.extractedDOB || null;
+  const documentNumber = args.extractedDocNumber || null;
+  const nationality = args.extractedNationality || null;
+  const documentType = args.documentType || null;
+  const documentOrigin = args.documentOrigin || null;
+
+  const hasAny =
+    Boolean(fullName) ||
+    Boolean(firstName) ||
+    birthYear !== null ||
+    expiryDateInt !== null ||
+    Boolean(documentNumber) ||
+    Boolean(nationality) ||
+    Boolean(nationalityCode) ||
+    Boolean(documentType) ||
+    Boolean(documentOrigin) ||
+    Boolean(args.userSalt);
+
+  if (!hasAny) {
+    return null;
+  }
+
+  return {
+    fullName,
+    firstName,
+    birthYear,
+    dateOfBirth,
+    expiryDateInt,
+    documentNumber,
+    documentType,
+    documentOrigin,
+    nationality,
+    nationalityCode,
+    userSalt: args.userSalt ?? null,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -305,9 +393,18 @@ export function StepCreateAccount() {
     setError(null);
 
     try {
-      // Use extracted name or edited name, fallback to email prefix
-      const accountName =
-        editedName || data.extractedName || data.email.split("@")[0];
+      const profilePayload = buildProfilePayload({
+        editedName,
+        extractedName: data.extractedName,
+        extractedDOB: data.extractedDOB,
+        extractedDocNumber: data.extractedDocNumber,
+        extractedNationality: data.extractedNationality,
+        extractedExpirationDate: data.extractedExpirationDate,
+        extractedNationalityCode: data.extractedNationalityCode,
+        documentType: data.documentResult?.documentType ?? null,
+        documentOrigin: data.documentResult?.documentOrigin ?? null,
+        userSalt: data.userSalt,
+      });
 
       // Step 1: Register passkey and create user account
       setStatus("registering-passkey");
@@ -317,7 +414,6 @@ export function StepCreateAccount() {
       const registrationOptions =
         await trpc.passkeyAuth.getRegistrationOptions.mutate({
           email: data.email,
-          name: accountName,
         });
 
       // Build WebAuthn options with PRF
@@ -387,12 +483,13 @@ export function StepCreateAccount() {
 
       // Step 3: Secure FHE keys locally before account creation
       setStatus("securing-keys");
+      const enrollment = {
+        credentialId,
+        prfOutput,
+        prfSalt,
+      };
       const fheEnrollment = await prepareFheKeyEnrollment({
-        enrollment: {
-          credentialId,
-          prfOutput,
-          prfSalt,
-        },
+        enrollment,
       });
       await uploadSecretBlobWithToken({
         secretId: fheEnrollment.secretId,
@@ -407,7 +504,6 @@ export function StepCreateAccount() {
         await trpc.passkeyAuth.completeRegistration.mutate({
           challengeId: registrationOptions.challengeId,
           email: data.email,
-          name: accountName,
           credential: {
             credentialId: credentialData.credentialId,
             publicKey: credentialData.publicKey,
@@ -437,6 +533,10 @@ export function StepCreateAccount() {
         throw new Error("Missing FHE key registration. Please try again.");
       }
 
+      if (profilePayload) {
+        await storeProfileSecret({ profile: profilePayload, enrollment });
+      }
+
       fheEnrollment.storedKeys.keyId = registrationResult.keyId;
       cacheFheKeys(fheEnrollment.secretId, fheEnrollment.storedKeys);
       const fheKeyId = registrationResult.keyId;
@@ -452,9 +552,23 @@ export function StepCreateAccount() {
         }
 
         setStatus("finalizing-identity");
+        const profileBirthYear =
+          profilePayload?.birthYear ?? parseBirthYear(data.extractedDOB);
+        const birthYearOffset =
+          calculateBirthYearOffsetFromYear(profileBirthYear);
+        const profileNationalityCode =
+          profilePayload?.nationalityCode ??
+          data.extractedNationalityCode ??
+          null;
+        const countryCodeNumeric = profileNationalityCode
+          ? countryCodeToNumeric(profileNationalityCode)
+          : 0;
         const job = await trpc.identity.finalizeAsync.mutate({
           draftId: data.identityDraftId,
           fheKeyId,
+          birthYearOffset: birthYearOffset ?? undefined,
+          countryCodeNumeric:
+            countryCodeNumeric > 0 ? countryCodeNumeric : undefined,
         });
 
         const waitForFinalization = async () => {
@@ -545,9 +659,6 @@ export function StepCreateAccount() {
           const ocrClaim = claims.ocr;
           const faceClaim = claims.faceMatch;
           const ocrData = ocrClaim.data as {
-            birthYear?: number | null;
-            expiryDate?: number | null;
-            nationalityCode?: string | null;
             claimHashes?: {
               age?: string | null;
               docValidity?: string | null;
@@ -570,21 +681,27 @@ export function StepCreateAccount() {
           const docValidityClaimHash = ocrData.claimHashes?.docValidity;
           const nationalityClaimHash = ocrData.claimHashes?.nationality;
 
-          if (
-            ocrData.birthYear === null ||
-            ocrData.birthYear === undefined ||
-            !ageClaimHash
-          ) {
+          const birthYear =
+            profilePayload?.birthYear ?? parseBirthYear(data.extractedDOB);
+          const expiryDateInt =
+            profilePayload?.expiryDateInt ??
+            parseDateToInt(data.extractedExpirationDate);
+          const nationalityCode =
+            profilePayload?.nationalityCode ??
+            data.extractedNationalityCode ??
+            null;
+
+          if (birthYear === null || birthYear === undefined || !ageClaimHash) {
             throw new Error("Missing birth year claim for age proof");
           }
           if (
-            ocrData.expiryDate === null ||
-            ocrData.expiryDate === undefined ||
+            expiryDateInt === null ||
+            expiryDateInt === undefined ||
             !docValidityClaimHash
           ) {
             throw new Error("Missing expiry date claim for document proof");
           }
-          if (!(ocrData.nationalityCode && nationalityClaimHash)) {
+          if (!(nationalityCode && nationalityClaimHash)) {
             throw new Error("Missing nationality claim for membership proof");
           }
           if (!faceData.claimHash) {
@@ -593,7 +710,7 @@ export function StepCreateAccount() {
 
           const ageChallenge = await getProofChallenge("age_verification");
           const ageProof = await generateAgeProof(
-            ocrData.birthYear,
+            birthYear,
             new Date().getFullYear(),
             18,
             {
@@ -614,7 +731,7 @@ export function StepCreateAccount() {
             (now.getMonth() + 1) * 100 +
             now.getDate();
           const docProof = await generateDocValidityProof(
-            ocrData.expiryDate,
+            expiryDateInt,
             currentDateInt,
             {
               nonce: docChallenge.nonce,
@@ -631,7 +748,7 @@ export function StepCreateAccount() {
             "nationality_membership"
           );
           const nationalityProof = await generateNationalityProof(
-            ocrData.nationalityCode,
+            nationalityCode,
             NATIONALITY_GROUP,
             {
               nonce: nationalityChallenge.nonce,
@@ -1130,8 +1247,9 @@ export function StepCreateAccount() {
                 </>
               ) : null}
               <li>
-                Only commitments, proofs, signed claims, and encrypted
-                attributes are stored - all PII is deleted immediately
+                Only commitments, proofs, signed claims, encrypted attributes,
+                and a passkey-sealed profile are stored - no plaintext PII is
+                retained
               </li>
             </ul>
           </AlertDescription>

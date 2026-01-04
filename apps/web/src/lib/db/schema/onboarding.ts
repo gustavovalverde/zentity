@@ -6,10 +6,7 @@ export const onboardingSessions = sqliteTable(
   {
     /** Random session ID - the primary key for session lookup */
     id: text("id").primaryKey(),
-    /** User's email - nullable until entered, NOT unique (multiple sessions can exist) */
-    email: text("email"),
     step: integer("step").notNull().default(1),
-    encryptedPii: text("encrypted_pii"),
     documentHash: text("document_hash"),
     identityDraftId: text("identity_draft_id"),
     documentProcessed: integer("document_processed", { mode: "boolean" })
@@ -32,7 +29,6 @@ export const onboardingSessions = sqliteTable(
     expiresAtIdx: index("idx_onboarding_sessions_expires_at").on(
       table.expiresAt
     ),
-    emailIdx: index("idx_onboarding_sessions_email").on(table.email),
   })
 );
 

@@ -6,9 +6,8 @@
  *
  * PRIVACY DESIGN:
  * - User must explicitly consent and initiate disclosure
- * - PII is extracted fresh from document (not stored)
- * - PII is encrypted end-to-end to RP's public key
- * - Zentity never sees unencrypted PII after extraction
+ * - PII is decrypted client-side from the passkey-sealed profile
+ * - Client re-encrypts to the RP (server never sees plaintext)
  * - ZK proofs (face match, age) are included but not encrypted
  *
  * USE CASE:
@@ -19,12 +18,16 @@
  * 3. Minimizing Zentity's liability (no PII storage)
  */
 
+import { createHash } from "node:crypto";
+
 import { type NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { decryptUserSalt } from "@/lib/crypto/pii-encryption";
-import { getAttestationEvidenceByUserAndDocument } from "@/lib/db/queries/attestation";
+import {
+  getAttestationEvidenceByUserAndDocument,
+  recordAttestationConsent,
+} from "@/lib/db/queries/attestation";
 import {
   getLatestSignedClaimByUserTypeAndDocument,
   getLatestZkProofPayloadByUserAndType,
@@ -33,14 +36,12 @@ import {
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
-import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { createRequestLogger } from "@/lib/logging/logger";
 import {
   attachRequestContextToSpan,
   getRequestLogBindings,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import {
   CIRCUIT_SPECS,
   parsePublicInputToNumber,
@@ -50,19 +51,16 @@ interface DisclosureRequest {
   // RP identification
   rpId: string;
   rpName?: string;
-  rpPublicKey: string; // Base64 encoded RSA public key (SPKI format)
+  // Client-generated metadata for auditability
+  packageId?: string;
+  createdAt?: string;
+  expiresAt?: string;
 
-  // Document for fresh PII extraction
-  documentImage: string;
+  // Client-encrypted payload (passkey decrypt + re-encrypt to RP)
+  encryptedPackage: string; // Base64 encoded
 
-  // Fields to include in disclosure
-  fields: {
-    fullName?: boolean;
-    dateOfBirth?: boolean;
-    nationality?: boolean;
-    documentType?: boolean;
-    documentNumber?: boolean;
-  };
+  // Explicit consent scope (fields approved by the user)
+  scope: string[];
 }
 
 interface DisclosureResponse {
@@ -122,6 +120,11 @@ interface DisclosureResponse {
     policyVersion: string | null;
     policyHash: string | null;
     proofSetHash: string | null;
+    consentReceipt?: string | null;
+    consentReceiptHash?: string | null;
+    consentScope?: string[] | null;
+    consentedAt?: string | null;
+    consentRpId?: string | null;
   } | null;
 
   // Document binding metadata
@@ -135,67 +138,6 @@ interface DisclosureResponse {
   error?: string;
 }
 
-/**
- * Encrypt data to RP's public key using RSA-OAEP
- * For larger payloads, uses hybrid encryption (RSA + AES-GCM)
- */
-async function encryptToPublicKey(
-  data: string,
-  publicKeyBase64: string
-): Promise<string> {
-  // Decode the public key
-  const publicKeyBuffer = Buffer.from(publicKeyBase64, "base64");
-
-  // Import the public key
-  const publicKey = await crypto.subtle.importKey(
-    "spki",
-    publicKeyBuffer,
-    {
-      name: "RSA-OAEP",
-      hash: "SHA-256",
-    },
-    false,
-    ["encrypt"]
-  );
-
-  // For hybrid encryption: generate AES key, encrypt data with AES, encrypt AES key with RSA
-  const aesKey = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt"]
-  );
-
-  // Encrypt data with AES-GCM
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const dataBuffer = new TextEncoder().encode(data);
-  const encryptedData = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    dataBuffer
-  );
-
-  // Export and encrypt AES key with RSA
-  const aesKeyRaw = await crypto.subtle.exportKey("raw", aesKey);
-  const encryptedAesKey = await crypto.subtle.encrypt(
-    { name: "RSA-OAEP" },
-    publicKey,
-    aesKeyRaw
-  );
-
-  // Combine: encryptedAesKey (256 bytes for 2048-bit RSA) + iv (12 bytes) + encryptedData
-  const result = new Uint8Array(
-    encryptedAesKey.byteLength + iv.byteLength + encryptedData.byteLength
-  );
-  result.set(new Uint8Array(encryptedAesKey), 0);
-  result.set(iv, encryptedAesKey.byteLength);
-  result.set(
-    new Uint8Array(encryptedData),
-    encryptedAesKey.byteLength + iv.byteLength
-  );
-
-  return Buffer.from(result).toString("base64");
-}
-
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<DisclosureResponse>> {
@@ -205,9 +147,14 @@ export async function POST(
     requestContext.requestId,
     getRequestLogBindings(requestContext)
   );
-  const packageId = uuidv4();
-  const createdAt = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+  const fallbackPackageId = uuidv4();
+  const fallbackCreatedAt = new Date().toISOString();
+  const fallbackExpiresAt = new Date(
+    Date.now() + 24 * 60 * 60 * 1000
+  ).toISOString(); // 24 hours
+  let packageId = fallbackPackageId;
+  let createdAt = fallbackCreatedAt;
+  let expiresAt = fallbackExpiresAt;
 
   try {
     const authResult = await requireSession();
@@ -248,9 +195,12 @@ export async function POST(
     }
 
     const body = (await request.json()) as DisclosureRequest;
+    packageId = body.packageId ?? fallbackPackageId;
+    createdAt = body.createdAt ?? fallbackCreatedAt;
+    expiresAt = body.expiresAt ?? fallbackExpiresAt;
 
     // Validate required fields
-    if (!(body.rpId && body.rpPublicKey)) {
+    if (!(body.rpId && body.encryptedPackage)) {
       return NextResponse.json(
         {
           success: false,
@@ -260,13 +210,13 @@ export async function POST(
           proofs: {},
           createdAt,
           expiresAt,
-          error: "RP ID and public key are required",
+          error: "RP ID and encrypted package are required",
         },
         { status: 400 }
       );
     }
 
-    if (!body.documentImage) {
+    if (!body.scope || body.scope.length === 0) {
       return NextResponse.json(
         {
           success: false,
@@ -276,15 +226,15 @@ export async function POST(
           proofs: {},
           createdAt,
           expiresAt,
-          error: "Document image is required for disclosure",
+          error: "Consent scope is required for disclosure",
         },
         { status: 400 }
       );
     }
 
-    // Get existing identity document for user salt + document binding
+    // Get existing identity document for document binding
     const identityDocument = await getSelectedIdentityDocumentByUserId(userId);
-    if (!identityDocument?.userSalt) {
+    if (!identityDocument) {
       return NextResponse.json(
         {
           success: false,
@@ -295,111 +245,13 @@ export async function POST(
           createdAt,
           expiresAt,
           error:
-            "Identity document is missing required cryptographic metadata. Please re-run verification.",
+            "Identity document is missing required metadata. Please re-run verification.",
         },
         { status: 409 }
       );
     }
 
-    const decryptedSalt = await decryptUserSalt(identityDocument.userSalt);
-    if (!decryptedSalt) {
-      return NextResponse.json(
-        {
-          success: false,
-          packageId,
-          encryptionMethod: "none",
-          encryptedFields: [],
-          proofs: {},
-          createdAt,
-          expiresAt,
-          error:
-            "Unable to decrypt identity commitments. Please re-run verification.",
-        },
-        { status: 409 }
-      );
-    }
-
-    // =========================================================================
-    // STEP 1: Extract PII from document
-    // =========================================================================
-    let documentResult: {
-      extractedData?: {
-        fullName?: string;
-        firstName?: string;
-        lastName?: string;
-        documentNumber?: string;
-        dateOfBirth?: string;
-        nationality?: string;
-        nationalityCode?: string;
-      };
-      commitments?: {
-        documentHash?: string | null;
-      };
-      documentType?: string;
-      documentOrigin?: string;
-    } | null = null;
-
-    try {
-      documentResult = await processDocumentOcr({
-        image: body.documentImage,
-        userSalt: decryptedSalt,
-        requestId: requestContext.requestId,
-        flowId: requestContext.flowId ?? undefined,
-      });
-    } catch (error) {
-      const { status } = toServiceErrorPayload(
-        error,
-        "Failed to process document"
-      );
-      return NextResponse.json(
-        {
-          success: false,
-          packageId,
-          encryptionMethod: "none",
-          encryptedFields: [],
-          proofs: {},
-          createdAt,
-          expiresAt,
-          error: "Failed to process document",
-        },
-        { status }
-      );
-    }
-
-    const documentHash = documentResult?.commitments?.documentHash ?? null;
-    if (!(documentHash && identityDocument.documentHash)) {
-      return NextResponse.json(
-        {
-          success: false,
-          packageId,
-          encryptionMethod: "none",
-          encryptedFields: [],
-          proofs: {},
-          createdAt,
-          expiresAt,
-          error:
-            "Unable to validate document commitments. Please re-run verification.",
-        },
-        { status: 409 }
-      );
-    }
-
-    if (documentHash !== identityDocument.documentHash) {
-      return NextResponse.json(
-        {
-          success: false,
-          packageId,
-          encryptionMethod: "none",
-          encryptedFields: [],
-          proofs: {},
-          createdAt,
-          expiresAt,
-          error:
-            "Provided document does not match the verified identity record.",
-        },
-        { status: 403 }
-      );
-    }
+    const documentHash = identityDocument.documentHash ?? null;
 
     // =========================================================================
     // STEP 2: Load verified proofs bound to the stored document
@@ -498,78 +350,7 @@ export async function POST(
       };
     }
 
-    // =========================================================================
-    // STEP 3: Build and encrypt PII package
-    // =========================================================================
-    const piiPackage: Record<string, string | undefined> = {};
-    const encryptedFields: string[] = [];
-
-    if (body.fields.fullName && documentResult?.extractedData?.fullName) {
-      piiPackage.fullName = documentResult.extractedData.fullName;
-      encryptedFields.push("fullName");
-    }
-
-    if (body.fields.dateOfBirth && documentResult?.extractedData?.dateOfBirth) {
-      piiPackage.dateOfBirth = documentResult.extractedData.dateOfBirth;
-      encryptedFields.push("dateOfBirth");
-    }
-
-    if (body.fields.nationality) {
-      // Use nationality from extracted data or document origin
-      piiPackage.nationality =
-        documentResult?.extractedData?.nationality ||
-        documentResult?.extractedData?.nationalityCode ||
-        documentResult?.documentOrigin;
-      if (piiPackage.nationality) {
-        encryptedFields.push("nationality");
-      }
-    }
-
-    if (body.fields.documentType && documentResult?.documentType) {
-      piiPackage.documentType = documentResult.documentType;
-      encryptedFields.push("documentType");
-    }
-
-    if (
-      body.fields.documentNumber &&
-      documentResult?.extractedData?.documentNumber
-    ) {
-      piiPackage.documentNumber = documentResult.extractedData.documentNumber;
-      encryptedFields.push("documentNumber");
-    }
-
-    // Add metadata to package
-    const fullPackage = {
-      ...piiPackage,
-      zentityUserId: userId,
-      packageId,
-      rpId: body.rpId,
-      createdAt,
-      expiresAt,
-    };
-
-    // Encrypt the package
-    let encryptedPackage: string;
-    try {
-      encryptedPackage = await encryptToPublicKey(
-        JSON.stringify(fullPackage),
-        body.rpPublicKey
-      );
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          packageId,
-          encryptionMethod: "none",
-          encryptedFields: [],
-          proofs: {},
-          createdAt,
-          expiresAt,
-          error: "Failed to encrypt disclosure package. Invalid RP public key?",
-        },
-        { status: 400 }
-      );
-    }
+    const encryptedFields = body.scope;
 
     // =========================================================================
     // STEP 4: Build response with proofs + signed claims
@@ -635,9 +416,29 @@ export async function POST(
       };
     }
 
-    // PII has been extracted, encrypted, and is being returned
-    // Document image is NOT stored - only transmitted to OCR service transiently
-    // Encrypted package can only be decrypted by RP
+    const consentReceipt = {
+      version: 1,
+      rpId: body.rpId,
+      rpName: body.rpName ?? null,
+      scope: encryptedFields,
+      packageId,
+      documentId,
+      issuedAt: createdAt,
+      expiresAt,
+    };
+    const consentReceiptJson = JSON.stringify(consentReceipt);
+    const consentReceiptHash = createHash("sha256")
+      .update(consentReceiptJson)
+      .digest("hex");
+
+    await recordAttestationConsent({
+      userId,
+      documentId,
+      consentReceipt: consentReceiptJson,
+      consentScope: JSON.stringify(encryptedFields),
+      consentedAt: createdAt,
+      consentRpId: body.rpId,
+    });
 
     const signedClaimsPayload =
       signedClaims && Object.keys(signedClaims).length > 0
@@ -647,22 +448,26 @@ export async function POST(
       documentId && verificationStatus.verified
         ? await getAttestationEvidenceByUserAndDocument(userId, documentId)
         : null;
+    const evidencePayload = {
+      policyVersion: evidence?.policyVersion ?? null,
+      policyHash: evidence?.policyHash ?? null,
+      proofSetHash: evidence?.proofSetHash ?? null,
+      consentReceipt: evidence?.consentReceipt ?? consentReceiptJson,
+      consentReceiptHash,
+      consentScope: encryptedFields,
+      consentedAt: createdAt,
+      consentRpId: body.rpId,
+    };
 
     return NextResponse.json({
       success: true,
       packageId,
-      encryptedPackage,
-      encryptionMethod: "RSA-OAEP+AES-GCM-256",
+      encryptedPackage: body.encryptedPackage,
+      encryptionMethod: "client-side: RSA-OAEP+AES-GCM-256",
       encryptedFields,
       proofs,
       signedClaims: signedClaimsPayload,
-      evidence: evidence
-        ? {
-            policyVersion: evidence.policyVersion,
-            policyHash: evidence.policyHash,
-            proofSetHash: evidence.proofSetHash,
-          }
-        : null,
+      evidence: evidencePayload,
       documentHash,
       createdAt,
       expiresAt,

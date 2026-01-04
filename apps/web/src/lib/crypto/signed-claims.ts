@@ -33,10 +33,6 @@ export interface FaceMatchClaimData {
 export interface OcrClaimData {
   documentType?: string | null;
   issuerCountry?: string | null;
-  nationalityCode?: string | null;
-  nationalityCodeNumeric?: number | null;
-  expiryDate?: number | null; // YYYYMMDD
-  birthYear?: number | null;
   confidence?: number | null;
   claimHashes: {
     age?: string | null;

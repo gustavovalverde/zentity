@@ -38,7 +38,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useIsMounted } from "@/hooks/use-is-mounted";
+import { getStoredProfile } from "@/lib/crypto/profile-secret";
+import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
 import { trpcReact } from "@/lib/trpc/client";
 import { getAttestationError } from "@/lib/utils/error-messages";
 
@@ -71,7 +72,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   const { address, isConnected } = useAppKitAccount();
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
-  const isMounted = useIsMounted();
+  const [clientError, setClientError] = useState<string | null>(null);
   const utils = trpcReact.useUtils();
 
   // Fetch available networks with attestation status
@@ -197,9 +198,31 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
       return;
     }
 
+    setClientError(null);
+    let birthYearOffset: number | undefined;
+    try {
+      const profile = await getStoredProfile();
+      birthYearOffset = calculateBirthYearOffsetFromYear(profile?.birthYear);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to unlock your profile. Please try again.";
+      setClientError(message);
+      return;
+    }
+
+    if (birthYearOffset === undefined) {
+      setClientError(
+        "Unlock your passkey to continue. We need your birth year locally to attest on-chain."
+      );
+      return;
+    }
+
     await submitMutation.mutateAsync({
       networkId: selectedNetwork,
       walletAddress: address,
+      birthYearOffset,
     });
   }, [selectedNetwork, address, submitMutation]);
 
@@ -277,16 +300,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            {/* Show loading until client hydration completes to avoid mismatch */}
             {(() => {
-              if (!isMounted) {
-                return (
-                  <div className="flex items-center justify-center py-8">
-                    <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                );
-              }
-
               if (!isConnected) {
                 return (
                   <div className="flex flex-col items-center gap-4 py-4">
@@ -369,7 +383,11 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                       attestedWalletAddress={
                         selectedNetworkData.attestation?.walletAddress
                       }
-                      error={submitMutation.error?.message}
+                      error={
+                        submitMutation.error?.message ??
+                        clientError ??
+                        undefined
+                      }
                       isRefreshing={refreshMutation.isPending}
                       isSubmitting={submitMutation.isPending}
                       network={selectedNetworkData as NetworkStatus}

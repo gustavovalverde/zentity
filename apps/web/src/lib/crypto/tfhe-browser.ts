@@ -21,6 +21,8 @@ import {
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
+import { generateFheKeyMaterialInWorker } from "./tfhe-keygen.client";
+
 // Runtime types (matching the tfhe package's exported shapes).
 interface TfheClientKey {
   serialize(): Uint8Array;
@@ -154,60 +156,17 @@ export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
   );
 }
 
-export async function getOrCreateFheKeyMaterialWithPasskey(
-  enrollment: PasskeyEnrollmentContext
-): Promise<FheKeyMaterial> {
-  const tfhe = await loadTfhe();
-  const existing = await getStoredFheKeys();
-  if (existing) {
-    return {
-      clientKey: tfhe.TfheClientKey.deserialize(existing.clientKey),
-      publicKey: tfhe.TfheCompressedPublicKey.deserialize(existing.publicKey),
-      serverKey: tfhe.TfheCompressedServerKey.deserialize(existing.serverKey),
-      publicKeyB64: bytesToBase64(existing.publicKey),
-      serverKeyB64: bytesToBase64(existing.serverKey),
-      keyId: existing.keyId,
-    };
-  }
-
-  const { material, storedKeys } = await generateFheKeyMaterial();
-
-  await storeFheKeys({ keys: storedKeys, enrollment });
-
-  return material;
-}
-
-export async function generateFheKeyMaterial(): Promise<{
-  material: FheKeyMaterial;
+export async function generateFheKeyMaterialForStorage(): Promise<{
   storedKeys: StoredFheKeys;
+  publicKeyB64: string;
+  serverKeyB64: string;
+  durationMs: number;
 }> {
-  const tfhe = await loadTfhe();
   const start = performance.now();
   let result: "ok" | "error" = "ok";
 
   try {
-    const config = tfhe.TfheConfigBuilder.default().build();
-    const clientKey = tfhe.TfheClientKey.generate(config);
-    const publicKey = tfhe.TfheCompressedPublicKey.new(clientKey);
-    const serverKey = tfhe.TfheCompressedServerKey.new(clientKey);
-
-    const storedKeys: StoredFheKeys = {
-      clientKey: clientKey.serialize(),
-      publicKey: publicKey.serialize(),
-      serverKey: serverKey.serialize(),
-      createdAt: new Date().toISOString(),
-    };
-
-    return {
-      material: {
-        clientKey,
-        publicKey,
-        serverKey,
-        publicKeyB64: bytesToBase64(storedKeys.publicKey),
-        serverKeyB64: bytesToBase64(storedKeys.serverKey),
-      },
-      storedKeys,
-    };
+    return await generateFheKeyMaterialInWorker();
   } catch (error) {
     result = "error";
     throw error;
@@ -218,6 +177,34 @@ export async function generateFheKeyMaterial(): Promise<{
       attributes: { result },
     });
   }
+}
+
+export async function getOrCreateFheKeyRegistrationMaterial(params?: {
+  enrollment?: PasskeyEnrollmentContext;
+}): Promise<{
+  publicKeyB64: string;
+  serverKeyB64: string;
+  keyId?: string;
+}> {
+  const existing = await getStoredFheKeys();
+  if (existing) {
+    return {
+      publicKeyB64: bytesToBase64(existing.publicKey),
+      serverKeyB64: bytesToBase64(existing.serverKey),
+      keyId: existing.keyId,
+    };
+  }
+
+  if (!params?.enrollment) {
+    throw new Error(
+      "FHE keys are not initialized. Secure your encryption keys with a passkey first."
+    );
+  }
+
+  const { storedKeys, publicKeyB64, serverKeyB64 } =
+    await generateFheKeyMaterialForStorage();
+  await storeFheKeys({ keys: storedKeys, enrollment: params.enrollment });
+  return { publicKeyB64, serverKeyB64 };
 }
 
 export async function persistFheKeyId(keyId: string) {

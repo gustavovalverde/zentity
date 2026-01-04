@@ -49,7 +49,7 @@ function createAuthSession(
   email = "test@example.com"
 ): Session {
   return {
-    user: { id: userId, email, name: "Test User" },
+    user: { id: userId, email, name: null },
     session: { id: "test-session", userId, expiresAt: new Date() },
   } as unknown as Session;
 }
@@ -103,18 +103,7 @@ describe("passkey-auth router", () => {
       expect(result.userExists).toBe(false);
     });
 
-    it("uses provided name when given", async () => {
-      const caller = await createCaller(null);
-
-      const result = await caller.getRegistrationOptions({
-        email: "new@example.com",
-        name: "Custom Name",
-      });
-
-      expect(result.user.name).toBe("Custom Name");
-    });
-
-    it("defaults name to email when not provided", async () => {
+    it("uses email as the WebAuthn display name", async () => {
       const caller = await createCaller(null);
 
       const result = await caller.getRegistrationOptions({

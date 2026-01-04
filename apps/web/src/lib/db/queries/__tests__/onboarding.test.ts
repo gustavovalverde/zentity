@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupExpiredOnboardingSessions,
   deleteOnboardingSessionById,
-  deleteOnboardingSessionsByEmail,
   getOnboardingSessionById,
   upsertOnboardingSession,
 } from "@/lib/db/queries/onboarding";
@@ -20,15 +19,13 @@ describe("onboarding queries", () => {
     vi.useRealTimers();
   });
 
-  it("upserts sessions with sessionId and normalizes email", async () => {
+  it("upserts sessions with sessionId", async () => {
     const session = await upsertOnboardingSession({
-      email: "USER@Example.COM",
       step: 2,
       documentHash: "doc-hash",
     });
 
     expect(session.id).toBeDefined();
-    expect(session.email).toBe("user@example.com");
     expect(session.step).toBe(2);
 
     // Fetch by sessionId
@@ -38,7 +35,6 @@ describe("onboarding queries", () => {
     // Update existing session by id
     const updated = await upsertOnboardingSession({
       id: session.id,
-      email: "user@example.com",
       step: 3,
       livenessPassed: true,
     });
@@ -48,7 +44,7 @@ describe("onboarding queries", () => {
 
   it("deletes onboarding sessions by sessionId", async () => {
     const session = await upsertOnboardingSession({
-      email: "delete@example.com",
+      step: 1,
     });
 
     await deleteOnboardingSessionById(session.id);
@@ -56,31 +52,9 @@ describe("onboarding queries", () => {
     await expect(getOnboardingSessionById(session.id)).resolves.toBeNull();
   });
 
-  it("deletes onboarding sessions by email (for account cleanup)", async () => {
-    const session1 = await upsertOnboardingSession({
-      email: "cleanup@example.com",
-    });
-    const session2 = await upsertOnboardingSession({
-      email: "cleanup@example.com",
-    });
-    const otherSession = await upsertOnboardingSession({
-      email: "other@example.com",
-    });
-
-    await deleteOnboardingSessionsByEmail("cleanup@example.com");
-
-    // Both sessions with the email should be deleted
-    await expect(getOnboardingSessionById(session1.id)).resolves.toBeNull();
-    await expect(getOnboardingSessionById(session2.id)).resolves.toBeNull();
-    // Other session should remain
-    await expect(
-      getOnboardingSessionById(otherSession.id)
-    ).resolves.not.toBeNull();
-  });
-
   it("cleans up expired onboarding sessions", async () => {
     const session = await upsertOnboardingSession({
-      email: "expire@example.com",
+      step: 1,
     });
 
     vi.advanceTimersByTime(31 * 60 * 1000);

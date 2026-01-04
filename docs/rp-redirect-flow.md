@@ -10,6 +10,8 @@ It is intentionally **OAuth-like** (authorization code + server-to-server exchan
 - A safe way to **avoid putting sensitive data in the URL**
 - A minimal way for the RP to retrieve **non-PII verification flags** via a one-time code
 
+**Note:** PII disclosure is a separate, passkey‑consented flow (OIDC‑style). This doc only covers verification flags.
+
 ## Why this exists (in addition to Better Auth)
 
 Better Auth powers **authentication inside Zentity** (sessions, login, magic links, account creation).

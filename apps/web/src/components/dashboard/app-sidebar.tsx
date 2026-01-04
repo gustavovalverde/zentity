@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { Logo } from "@/components/logo";
 import {
   Sidebar,
@@ -40,7 +41,6 @@ interface NavItem {
 interface AppSidebarProps {
   user: {
     email?: string | null;
-    name?: string | null;
   };
 }
 
@@ -207,7 +207,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               </div>
               <div className="flex flex-col truncate">
                 <span className="truncate font-medium text-sm">
-                  {user.name || "User"}
+                  <ProfileGreetingName fallback="User" />
                 </span>
                 <span className="truncate text-muted-foreground text-xs">
                   {user.email}

@@ -23,10 +23,8 @@ import {
 import {
   deleteIdentityData,
   getSelectedIdentityDocumentByUserId,
-  getUserFirstName,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
-import { deleteOnboardingSessionsByEmail } from "@/lib/db/queries/onboarding";
 
 import { protectedProcedure, router } from "../server";
 
@@ -36,9 +34,6 @@ export const accountRouter = router({
    */
   getData: protectedProcedure.query(async ({ ctx }) => {
     const { userId, session } = ctx;
-
-    // Get first name (decrypted)
-    const firstName = await getUserFirstName(userId);
 
     // Get verification status
     const verification = await getVerificationStatus(userId);
@@ -54,7 +49,6 @@ export const accountRouter = router({
 
     return {
       email: session.user.email,
-      firstName,
       createdAt,
       hasPassword,
       verification: {
@@ -101,10 +95,7 @@ export const accountRouter = router({
       // 2. Delete blockchain attestation records
       await deleteBlockchainAttestationsByUserId(userId);
 
-      // 3. Clean up any orphaned onboarding sessions
-      await deleteOnboardingSessionsByEmail(session.user.email);
-
-      // 4. Delete user from better-auth (cascades to sessions, accounts)
+      // 3. Delete user from better-auth (cascades to sessions, accounts)
       // This also invalidates the current session
       await deleteUserById(userId);
 

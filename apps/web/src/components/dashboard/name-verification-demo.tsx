@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getStoredProfile } from "@/lib/crypto/profile-secret";
 import { trpc } from "@/lib/trpc/client";
 
 interface VerifyResult {
@@ -39,8 +40,13 @@ export function NameVerificationDemo() {
     const startTime = Date.now();
 
     try {
+      const profile = await getStoredProfile();
+      if (!profile?.userSalt) {
+        throw new Error("User salt unavailable. Unlock your profile first.");
+      }
       const data = await trpc.identity.verifyName.mutate({
         claimedName: claimedName.trim(),
+        userSalt: profile.userSalt,
       });
       const timeMs = Date.now() - startTime;
       setResult({ matches: data.matches, timeMs });

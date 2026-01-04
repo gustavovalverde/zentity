@@ -124,6 +124,7 @@ describe("identity.verify (FHE)", () => {
     const response = await caller.verify({
       documentImage: "doc",
       selfieImage: "selfie",
+      userSalt: "salt",
       fheKeyId: "key-123",
     });
 
@@ -164,6 +165,7 @@ describe("identity.verify (FHE)", () => {
     const response = await caller.verify({
       documentImage: "doc",
       selfieImage: "selfie",
+      userSalt: "salt",
     });
 
     expect(response.issues).toContain("fhe_key_missing");

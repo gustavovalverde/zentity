@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tfheMocks = vi.hoisted(() => ({
-  getOrCreateFheKeyMaterial: vi.fn(),
-  getOrCreateFheKeyMaterialWithPasskey: vi.fn(),
+  getOrCreateFheKeyRegistrationMaterial: vi.fn(),
   persistFheKeyId: vi.fn(),
   decryptFheBool: vi.fn(),
 }));
@@ -34,7 +33,7 @@ describe("crypto-client FHE", () => {
   });
 
   it("returns existing key id without re-registering", async () => {
-    tfheMocks.getOrCreateFheKeyMaterial.mockResolvedValue({
+    tfheMocks.getOrCreateFheKeyRegistrationMaterial.mockResolvedValue({
       keyId: "existing-key",
       publicKeyB64: "public-key",
       serverKeyB64: "server-key",
@@ -48,7 +47,7 @@ describe("crypto-client FHE", () => {
   });
 
   it("registers server key and persists key id when missing", async () => {
-    tfheMocks.getOrCreateFheKeyMaterial.mockResolvedValue({
+    tfheMocks.getOrCreateFheKeyRegistrationMaterial.mockResolvedValue({
       publicKeyB64: "public-key",
       serverKeyB64: "server-key",
     });
@@ -65,7 +64,7 @@ describe("crypto-client FHE", () => {
   });
 
   it("dedupes concurrent key registrations", async () => {
-    tfheMocks.getOrCreateFheKeyMaterial.mockResolvedValue({
+    tfheMocks.getOrCreateFheKeyRegistrationMaterial.mockResolvedValue({
       publicKeyB64: "public-key",
       serverKeyB64: "server-key",
     });

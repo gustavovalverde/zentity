@@ -20,12 +20,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  generateAgeProof,
-  generateDocValidityProof,
-  generateFaceMatchProof,
-  getProofChallenge,
-  getSignedClaims,
-} from "@/lib/crypto/crypto-client";
+  buildDisclosurePayload,
+  type DisclosureField,
+  encryptDisclosurePayload,
+} from "@/lib/crypto/disclosure-client";
+import { getStoredProfile } from "@/lib/crypto/profile-secret";
 
 // Types for the demo
 interface ExchangeKeypair {
@@ -34,25 +33,17 @@ interface ExchangeKeypair {
 }
 
 interface DisclosurePackage {
-  encryptedPii: {
-    iv: string;
-    encryptedData: string;
-    encryptedAesKey: string;
-  };
+  encryptedPackage: string;
+  encryptedFields: string[];
   proofs: {
     ageProof?: { proof: string; publicSignals: string[] };
     faceMatchProof?: { proof: string; publicSignals: string[] };
     docValidityProof?: { proof: string; publicSignals: string[] };
-  };
-  livenessAttestation: {
-    verified: boolean;
-    timestamp: string;
-    signature: string;
-  };
-  metadata: {
-    issuedAt: string;
-    expiresAt: string;
-    rpId: string;
+    livenessAttestation?: {
+      verified: boolean;
+      timestamp: string;
+      method: string;
+    };
   };
 }
 
@@ -152,126 +143,42 @@ export default function ExchangeDemoPage() {
     setIsLoading(true);
     setFlowError(null);
     try {
-      const now = new Date();
-      const currentDateInt =
-        now.getFullYear() * 10_000 + (now.getMonth() + 1) * 100 + now.getDate();
-      const claims = await getSignedClaims();
-      if (!(claims.ocr && claims.faceMatch)) {
-        setFlowError("Missing signed claims for demo proofs");
-        return;
-      }
+      const profile = await getStoredProfile();
+      const scope: DisclosureField[] = [
+        "fullName",
+        "dateOfBirth",
+        "nationality",
+        "documentNumber",
+      ];
+      const packageId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const expiresAt = new Date(
+        Date.now() + 24 * 60 * 60 * 1000
+      ).toISOString();
+      const { payload, encryptedFields } = buildDisclosurePayload({
+        profile,
+        scope,
+        rpId: "crypto-exchange-demo",
+        packageId,
+        createdAt,
+        expiresAt,
+      });
+      const encryptedPackage = await encryptDisclosurePayload(
+        JSON.stringify(payload),
+        exchangeKeypair.publicKey
+      );
 
-      const ocrData = claims.ocr.data as {
-        birthYear?: number | null;
-        expiryDate?: number | null;
-        claimHashes?: {
-          age?: string | null;
-          docValidity?: string | null;
-        };
-      };
-      const faceData = claims.faceMatch.data as {
-        confidence?: number;
-        confidenceFixed?: number;
-        thresholdFixed?: number;
-        claimHash?: string | null;
-      };
-
-      const documentHashField = claims.ocr.documentHashField;
-      const ageClaimHash = ocrData.claimHashes?.age;
-      const docClaimHash = ocrData.claimHashes?.docValidity;
-      const faceClaimHash = faceData.claimHash;
-
-      if (
-        !documentHashField ||
-        typeof ocrData.birthYear !== "number" ||
-        typeof ocrData.expiryDate !== "number" ||
-        !ageClaimHash ||
-        !docClaimHash ||
-        !faceClaimHash
-      ) {
-        setFlowError("Incomplete OCR/face match claims for demo proofs");
-        return;
-      }
-
-      let similarityFixed: number | null;
-      if (typeof faceData.confidenceFixed === "number") {
-        similarityFixed = faceData.confidenceFixed;
-      } else if (typeof faceData.confidence === "number") {
-        similarityFixed = Math.round(faceData.confidence * 10_000);
-      } else {
-        similarityFixed = null;
-      }
-      const thresholdFixed =
-        typeof faceData.thresholdFixed === "number"
-          ? faceData.thresholdFixed
-          : Math.round(0.6 * 10_000);
-      if (similarityFixed === null) {
-        setFlowError("Missing face match score for demo proofs");
-        return;
-      }
-      const [ageChallenge, faceChallenge, docChallenge] = await Promise.all([
-        getProofChallenge("age_verification"),
-        getProofChallenge("face_match"),
-        getProofChallenge("doc_validity"),
-      ]);
-      const results = await Promise.allSettled([
-        generateAgeProof(ocrData.birthYear, new Date().getFullYear(), 18, {
-          nonce: ageChallenge.nonce,
-          documentHashField,
-          claimHash: ageClaimHash,
-        }),
-        generateFaceMatchProof(similarityFixed, thresholdFixed, {
-          nonce: faceChallenge.nonce,
-          documentHashField,
-          claimHash: faceClaimHash,
-        }),
-        generateDocValidityProof(ocrData.expiryDate, currentDateInt, {
-          nonce: docChallenge.nonce,
-          documentHashField,
-          claimHash: docClaimHash,
-        }),
-      ]);
-
-      const [ageProof, faceMatchProof, docValidityProof] = results;
-      if (
-        ageProof.status !== "fulfilled" ||
-        faceMatchProof.status !== "fulfilled" ||
-        docValidityProof.status !== "fulfilled"
-      ) {
-        const details = [
-          ageProof.status === "rejected" ? `age: ${ageProof.reason}` : null,
-          faceMatchProof.status === "rejected"
-            ? `face_match: ${faceMatchProof.reason}`
-            : null,
-          docValidityProof.status === "rejected"
-            ? `doc_validity: ${docValidityProof.reason}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-        setFlowError(`Failed to generate one or more proofs: ${details}`);
-        return;
-      }
-
-      const res = await fetch("/api/demo/exchange/mock-disclosure", {
+      const res = await fetch("/api/identity/disclosure", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rpPublicKey: exchangeKeypair.publicKey,
-          proofs: {
-            ageProof: {
-              proof: ageProof.value.proof,
-              publicSignals: ageProof.value.publicSignals,
-            },
-            faceMatchProof: {
-              proof: faceMatchProof.value.proof,
-              publicSignals: faceMatchProof.value.publicSignals,
-            },
-            docValidityProof: {
-              proof: docValidityProof.value.proof,
-              publicSignals: docValidityProof.value.publicSignals,
-            },
-          },
+          rpId: "crypto-exchange-demo",
+          rpName: "CryptoExchange Inc.",
+          packageId,
+          createdAt,
+          expiresAt,
+          encryptedPackage,
+          scope: encryptedFields,
         }),
       });
       const data = await res.json();
@@ -298,7 +205,7 @@ export default function ExchangeDemoPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          encryptedPii: disclosurePackage.encryptedPii,
+          encryptedPackage: disclosurePackage.encryptedPackage,
           privateKey: exchangeKeypair.privateKey,
         }),
       });
@@ -329,7 +236,8 @@ export default function ExchangeDemoPage() {
       const data = await res.json();
       setVerificationResults({
         ...data,
-        livenessValid: disclosurePackage.livenessAttestation.verified,
+        livenessValid:
+          disclosurePackage.proofs.livenessAttestation?.verified ?? false,
       });
       setStep("summary");
     } catch (error) {
@@ -410,7 +318,7 @@ export default function ExchangeDemoPage() {
                   <ol className="list-inside list-decimal space-y-1 text-muted-foreground text-sm">
                     <li>Exchange generates RSA keypair</li>
                     <li>User consents to share data</li>
-                    <li>Zentity creates encrypted disclosure package</li>
+                    <li>Client encrypts disclosure package to RP</li>
                     <li>Exchange decrypts PII and verifies proofs</li>
                   </ol>
                 </div>
@@ -442,8 +350,8 @@ export default function ExchangeDemoPage() {
                   </code>
                 </div>
                 <p className="mb-4 text-muted-foreground text-sm">
-                  The exchange sends their public key to Zentity. PII will be
-                  encrypted to this key.
+                  The exchange sends their public key. The client encrypts the
+                  disclosure package to this key after passkey consent.
                 </p>
                 <Button
                   className="w-full"
@@ -511,11 +419,7 @@ export default function ExchangeDemoPage() {
                       Encrypted PII:
                     </span>
                     <code className="block truncate text-info text-xs">
-                      {disclosurePackage?.encryptedPii.encryptedData.substring(
-                        0,
-                        50
-                      )}
-                      ...
+                      {disclosurePackage?.encryptedPackage.substring(0, 50)}...
                     </code>
                   </div>
                   <div>
@@ -731,7 +635,7 @@ export default function ExchangeDemoPage() {
               <h3 className="mb-2 font-medium text-info">Key Privacy Wins:</h3>
               <ul className="space-y-1 text-muted-foreground text-sm">
                 <li>Biometrics never leave Zentity</li>
-                <li>Zentity never stores actual PII long-term</li>
+                <li>Zentity never stores plaintext PII long-term</li>
                 <li>Exchange gets regulatory compliance</li>
                 <li>ZK proofs provide cryptographic assurance</li>
               </ul>

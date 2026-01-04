@@ -24,6 +24,7 @@ import {
   getProofChallenge,
   getSignedClaims,
 } from "@/lib/crypto/crypto-client";
+import { getStoredProfile } from "@/lib/crypto/profile-secret";
 
 // Types for the demo
 interface ExchangeKeypair {
@@ -156,13 +157,14 @@ export default function ExchangeSimulatorPage() {
       }
 
       const ocrData = claims.ocr.data as {
-        birthYear?: number | null;
-        expiryDate?: number | null;
         claimHashes?: {
           age?: string | null;
           docValidity?: string | null;
         };
       };
+      const profile = await getStoredProfile();
+      const birthYear = profile?.birthYear ?? null;
+      const expiryDate = profile?.expiryDateInt ?? null;
       const faceData = claims.faceMatch.data as {
         confidence?: number;
         confidenceFixed?: number;
@@ -177,8 +179,8 @@ export default function ExchangeSimulatorPage() {
 
       if (
         !documentHashField ||
-        typeof ocrData.birthYear !== "number" ||
-        typeof ocrData.expiryDate !== "number" ||
+        typeof birthYear !== "number" ||
+        typeof expiryDate !== "number" ||
         !ageClaimHash ||
         !docClaimHash ||
         !faceClaimHash
@@ -210,7 +212,7 @@ export default function ExchangeSimulatorPage() {
         getProofChallenge("doc_validity"),
       ]);
       const results = await Promise.allSettled([
-        generateAgeProof(ocrData.birthYear, new Date().getFullYear(), 18, {
+        generateAgeProof(birthYear, new Date().getFullYear(), 18, {
           nonce: ageChallenge.nonce,
           documentHashField,
           claimHash: ageClaimHash,
@@ -220,7 +222,7 @@ export default function ExchangeSimulatorPage() {
           documentHashField,
           claimHash: faceClaimHash,
         }),
-        generateDocValidityProof(ocrData.expiryDate, currentDateInt, {
+        generateDocValidityProof(expiryDate, currentDateInt, {
           nonce: docChallenge.nonce,
           documentHashField,
           claimHash: docClaimHash,
@@ -701,7 +703,9 @@ export default function ExchangeSimulatorPage() {
                   </p>
                   <p className="text-destructive line-through">
                     Actual name/DOB{" "}
-                    <span className="text-muted-foreground">never stored</span>
+                    <span className="text-muted-foreground">
+                      never stored in plaintext
+                    </span>
                   </p>
                 </div>
               </div>
@@ -770,7 +774,7 @@ export default function ExchangeSimulatorPage() {
                 </h3>
                 <ul className="space-y-1 text-muted-foreground text-sm">
                   <li>Biometrics never leave Zentity</li>
-                  <li>Zentity never stores actual PII long-term</li>
+                  <li>Zentity never stores plaintext PII long-term</li>
                   <li>Exchange gets regulatory compliance</li>
                   <li>ZK proofs provide cryptographic assurance</li>
                   <li>Liability is minimized for both parties</li>

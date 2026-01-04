@@ -18,7 +18,6 @@ import z from "zod";
 
 import {
   completeOnboarding,
-  type EncryptedPiiData,
   getSessionFromCookie,
   loadWizardState,
   type OnboardingStep,
@@ -40,15 +39,6 @@ const stepSchema = z.union([
   z.literal(5),
 ]);
 
-const piiSchema = z
-  .object({
-    extractedName: z.string().optional(),
-    extractedDOB: z.string().optional(),
-    extractedDocNumber: z.string().optional(),
-    extractedNationality: z.string().optional(),
-  })
-  .partial();
-
 export const onboardingRouter = router({
   /**
    * Retrieves current onboarding session state.
@@ -69,16 +59,12 @@ export const onboardingRouter = router({
       hasSession: true,
       wasCleared: false,
       sessionId: state.sessionId,
-      email: state.email,
       step: state.step,
       identityDraftId: state.identityDraftId ?? null,
       documentProcessed: state.documentProcessed,
       livenessPassed: state.livenessPassed,
       faceMatchPassed: state.faceMatchPassed,
       keysSecured: state.keysSecured,
-      hasPii: Boolean(state.pii),
-      hasExtractedName: Boolean(state.pii?.extractedName),
-      hasExtractedDOB: Boolean(state.pii?.extractedDOB),
     };
   }),
 
@@ -92,9 +78,7 @@ export const onboardingRouter = router({
   saveSession: publicProcedure
     .input(
       z.object({
-        email: z.string().trim().toLowerCase().min(1, "Email is required"),
         step: stepSchema.default(1),
-        pii: piiSchema.optional(),
         forceNew: z.boolean().optional(),
         documentProcessed: z.boolean().optional(),
         livenessPassed: z.boolean().optional(),
@@ -137,7 +121,6 @@ export const onboardingRouter = router({
       if (hasUpdates && sessionId) {
         // Update existing session
         await updateWizardProgress(sessionId, {
-          email: input.email,
           step: input.step,
           ...updates,
         });
@@ -145,11 +128,9 @@ export const onboardingRouter = router({
       }
 
       // Create new session or update basic fields
-      const session = await saveWizardState(
-        sessionId,
-        { email: input.email, step: input.step ?? 1 },
-        input.pii as EncryptedPiiData | undefined
-      );
+      const session = await saveWizardState(sessionId, {
+        step: input.step ?? 1,
+      });
 
       return { success: true, sessionId: session.id };
     }),

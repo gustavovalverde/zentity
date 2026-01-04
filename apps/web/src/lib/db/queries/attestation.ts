@@ -59,6 +59,38 @@ export async function getAttestationEvidenceByUserAndDocument(
   return row ?? null;
 }
 
+export async function recordAttestationConsent(args: {
+  userId: string;
+  documentId: string;
+  consentReceipt: string;
+  consentScope: string;
+  consentedAt: string;
+  consentRpId: string;
+}): Promise<void> {
+  await db
+    .insert(attestationEvidence)
+    .values({
+      id: args.documentId,
+      userId: args.userId,
+      documentId: args.documentId,
+      consentReceipt: args.consentReceipt,
+      consentScope: args.consentScope,
+      consentedAt: args.consentedAt,
+      consentRpId: args.consentRpId,
+    })
+    .onConflictDoUpdate({
+      target: [attestationEvidence.userId, attestationEvidence.documentId],
+      set: {
+        consentReceipt: args.consentReceipt,
+        consentScope: args.consentScope,
+        consentedAt: args.consentedAt,
+        consentRpId: args.consentRpId,
+        updatedAt: sql`datetime('now')`,
+      },
+    })
+    .run();
+}
+
 export async function createBlockchainAttestation(data: {
   userId: string;
   walletAddress: string;

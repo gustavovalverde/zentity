@@ -21,9 +21,8 @@ import type { AppRouter } from "@/lib/trpc/routers/app";
 import { createFheKeyEnvelope } from "@/lib/crypto/fhe-key-store";
 import {
   decryptFheBool,
-  generateFheKeyMaterial,
-  getOrCreateFheKeyMaterial,
-  getOrCreateFheKeyMaterialWithPasskey,
+  generateFheKeyMaterialForStorage,
+  getOrCreateFheKeyRegistrationMaterial,
   persistFheKeyId,
 } from "@/lib/crypto/tfhe-browser";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
@@ -436,9 +435,9 @@ export async function ensureFheKeyRegistration(params?: {
 
   const runRegistration = async () => {
     try {
-      const keyMaterial = params?.enrollment
-        ? await getOrCreateFheKeyMaterialWithPasskey(params.enrollment)
-        : await getOrCreateFheKeyMaterial();
+      const keyMaterial = await getOrCreateFheKeyRegistrationMaterial({
+        enrollment: params?.enrollment,
+      });
       if (keyMaterial.keyId) {
         resolvePromise?.({ keyId: keyMaterial.keyId });
         return;
@@ -474,7 +473,8 @@ export async function prepareFheKeyEnrollment(params: {
   serverKeyB64: string;
   storedKeys: StoredFheKeys;
 }> {
-  const { material, storedKeys } = await generateFheKeyMaterial();
+  const { storedKeys, publicKeyB64, serverKeyB64 } =
+    await generateFheKeyMaterialForStorage();
   const envelope = await createFheKeyEnvelope({
     keys: storedKeys,
     enrollment: params.enrollment,
@@ -482,8 +482,8 @@ export async function prepareFheKeyEnrollment(params: {
 
   return {
     ...envelope,
-    publicKeyB64: material.publicKeyB64,
-    serverKeyB64: material.serverKeyB64,
+    publicKeyB64,
+    serverKeyB64,
     storedKeys,
   };
 }

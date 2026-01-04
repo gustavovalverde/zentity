@@ -88,11 +88,10 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
             cannot be undone.
           </p>
           <p className="mt-2 text-muted-foreground text-sm">
-            Due to our privacy-first architecture, all your data including
-            cryptographic commitments, encrypted information, and verification
-            proofs will be permanently erased. This is GDPR-compliant by design
-            - we cannot recover your data because we never stored it in a
-            recoverable form.
+            Due to our privacy-first architecture, we do not store plaintext
+            PII. Your encrypted profile data is passkey-sealed, and your email
+            is stored only for authentication. Deleting your account removes
+            encrypted data, commitments, proofs, and credentials.
           </p>
 
           <Dialog onOpenChange={setIsOpen} open={isOpen}>
@@ -124,7 +123,7 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
                     <li>All identity verification data</li>
                     <li>Cryptographic commitments and salts</li>
                     <li>Zero-knowledge proofs</li>
-                    <li>Encrypted biometric data</li>
+                    <li>Encrypted verification attributes (e.g., liveness)</li>
                   </ul>
                 </div>
 

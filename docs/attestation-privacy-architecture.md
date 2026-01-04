@@ -60,7 +60,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | Document number / name | ❌ | ❌ | ✅ | Commitments enable dedup + audit. |
 | Raw images / biometrics | ❌ | ❌ | ❌ | Never stored; transient only. |
 
-**Note:** The current PoC stores a **coarse birth_year_offset** (years since 1900) as metadata alongside ciphertext, but never stores full DOB.
+**Note:** The current PoC does **not** store plaintext birth year offset—only encrypted attributes and claim hashes.
 
 ---
 
@@ -76,8 +76,8 @@ This model supports **multi-document identities**, **revocable attestations**, a
 
 **`identity_documents`** (per document)
 
-- `document_hash`, `name_commitment`, `user_salt` (encrypted)
-- `issuer_country`, `document_type`, `birth_year_offset`
+- `document_hash`, `name_commitment`
+- `issuer_country`, `document_type`
 - `verified_at`, `confidence_score`, `status`
 
 **`zk_proofs`**
@@ -94,7 +94,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 **`signed_claims`**
 
 - `claim_type`: ocr_result | face_match_score | liveness_score
-- `claim_payload`, `signature`, `issued_at`
+- `claim_payload`, `signature`, `issued_at` (scores + metadata; no raw PII fields)
 
 **`attestation_evidence`**
 
@@ -114,6 +114,8 @@ The evidence pack binds **policy + proof set** into a durable, auditable commitm
 - **`policy_hash`**: hash of the active compliance policy inputs (age threshold, liveness thresholds, nationality group, etc.)
 - **`proof_hash`**: hash of each proof payload + public inputs + policy version
 - **`proof_set_hash`**: hash of sorted `proof_hashes` + `policy_hash`
+- **`consent_receipt_hash`**: hash of the user consent receipt (RP + scope + timestamps)
+- **`consent_scope`**: explicit fields the user approved for disclosure
 
 Canonical form (current implementation):
 
@@ -178,6 +180,8 @@ A relying party receives:
 - Encrypted attributes (if required for encrypted checks)
 - Evidence pack (`policy_hash`, `proof_set_hash`)
 - Signed claims (liveness / face match scores)
+
+**Consent model:** PII disclosure is **user‑authorized**. The client decrypts the passkey‑sealed profile and re‑encrypts to the RP. Zentity never handles plaintext PII.
 
 This enables a bank or exchange to:
 

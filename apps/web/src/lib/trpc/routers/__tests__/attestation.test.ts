@@ -131,6 +131,7 @@ describe("attestation router", () => {
     const promise = caller.submit({
       networkId: "demo_fhevm",
       walletAddress: "0x0000000000000000000000000000000000000001",
+      birthYearOffset: 90,
     });
     await vi.runAllTimersAsync();
     const result = await promise;
@@ -161,6 +162,7 @@ describe("attestation router", () => {
       caller.submit({
         networkId: "fhevm_sepolia",
         walletAddress: "0x0000000000000000000000000000000000000001",
+        birthYearOffset: 90,
       })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
@@ -180,7 +182,6 @@ describe("attestation router", () => {
       },
     });
     mockGetSelectedIdentityDocumentByUserId.mockReturnValue({
-      birthYearOffset: 90,
       issuerCountry: "USA",
     });
     mockGetNetworkById.mockReturnValue({
@@ -193,6 +194,7 @@ describe("attestation router", () => {
       caller.submit({
         networkId: "fhevm_sepolia",
         walletAddress: "0x0000000000000000000000000000000000000001",
+        birthYearOffset: 90,
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });

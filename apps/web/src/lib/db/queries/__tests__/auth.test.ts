@@ -2,11 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
-import {
-  deleteUserById,
-  getUserCreatedAt,
-  updateUserName,
-} from "@/lib/db/queries/auth";
+import { deleteUserById, getUserCreatedAt } from "@/lib/db/queries/auth";
 import { users } from "@/lib/db/schema/auth";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
@@ -20,20 +16,6 @@ describe("auth queries", () => {
     const userId = await createTestUser({ createdAt, updatedAt: createdAt });
 
     await expect(getUserCreatedAt(userId)).resolves.toBe(createdAt);
-  });
-
-  it("updates user display name", async () => {
-    const userId = await createTestUser({ name: "Original" });
-
-    await updateUserName(userId, "Updated");
-
-    const row = await db
-      .select({ name: users.name })
-      .from(users)
-      .where(eq(users.id, userId))
-      .get();
-
-    expect(row?.name).toBe("Updated");
   });
 
   it("deletes user by id", async () => {

@@ -75,7 +75,6 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
       // Enable account linking
       mapProfileToUser: (profile) => ({
-        name: profile.name,
         image: profile.picture,
       }),
     },
@@ -84,7 +83,6 @@ export const auth = betterAuth({
       clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
       // Enable account linking
       mapProfileToUser: (profile) => ({
-        name: profile.name || profile.login,
         image: profile.avatar_url,
       }),
     },

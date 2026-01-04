@@ -227,8 +227,11 @@ export function StepIdUpload() {
               extractedDOB: result.extractedData.dateOfBirth || null,
               extractedDocNumber: result.extractedData.documentNumber || null,
               extractedNationality: result.extractedData.nationality || null,
+              extractedNationalityCode:
+                result.extractedData.nationalityCode || null,
               extractedExpirationDate:
                 result.extractedData.expirationDate || null,
+              userSalt: response.userSalt ?? null,
             });
           }
         } else {
@@ -312,7 +315,9 @@ export function StepIdUpload() {
       extractedDOB: null,
       extractedDocNumber: null,
       extractedNationality: null,
+      extractedNationalityCode: null,
       extractedExpirationDate: null,
+      userSalt: null,
     });
   };
 

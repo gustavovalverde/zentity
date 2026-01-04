@@ -180,6 +180,7 @@ export const attestationRouter = router({
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+        birthYearOffset: z.number().int().min(0).max(255),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -326,15 +327,7 @@ export const attestationRouter = router({
       }
 
       // Extract identity data for attestation
-      // birthYearOffset is calculated during document verification and stored in identity_documents
-      const birthYearOffset = identityDocument.birthYearOffset;
-      if (birthYearOffset === null || birthYearOffset === undefined) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message:
-            "Birth year missing from identity document. Re-run identity verification before attesting on-chain.",
-        });
-      }
+      const birthYearOffset = input.birthYearOffset;
       if (
         !Number.isInteger(birthYearOffset) ||
         birthYearOffset < 0 ||

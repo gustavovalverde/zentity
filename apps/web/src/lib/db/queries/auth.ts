@@ -1,21 +1,7 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../connection";
 import { accounts, users } from "../schema/auth";
-
-export async function updateUserName(
-  userId: string,
-  displayName: string
-): Promise<void> {
-  await db
-    .update(users)
-    .set({
-      name: displayName,
-      updatedAt: sql`datetime('now')`,
-    })
-    .where(eq(users.id, userId))
-    .run();
-}
 
 export async function getUserCreatedAt(userId: string): Promise<string | null> {
   const row = await db

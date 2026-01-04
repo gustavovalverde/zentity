@@ -11,9 +11,9 @@
  * 4. Create account with passkey (review + passkey-protected FHE keys + privacy proofs)
  *
  * Features:
- * - Server-side state persistence via encrypted cookies
+ * - Server-side state persistence via encrypted cookies (sessionId only)
  * - Navigation validation (forward requires prerequisites, backward warns)
- * - PII stored encrypted in session, never in plain text
+ * - Sensitive fields stored client-side only until passkey vault is available
  * - beforeunload warning for unsaved progress
  * - Passwordless-first authentication using passkeys
  */
@@ -39,6 +39,11 @@ import {
   type WizardData,
 } from "@/features/auth/schemas/sign-up.schema";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
+import {
+  clearOnboardingDraft,
+  loadOnboardingDraft,
+  saveOnboardingDraft,
+} from "@/lib/onboarding/wizard-storage";
 import { trpc } from "@/lib/trpc/client";
 
 const TOTAL_STEPS = 4;
@@ -58,16 +63,12 @@ interface ServerSessionState {
   wasCleared?: boolean;
   /** Session ID from server (used for all session operations) */
   sessionId?: string;
-  email?: string;
   step?: WizardStep;
   identityDraftId?: string | null;
   documentProcessed?: boolean;
   livenessPassed?: boolean;
   faceMatchPassed?: boolean;
   keysSecured?: boolean;
-  hasPii?: boolean;
-  hasExtractedName?: boolean;
-  hasExtractedDOB?: boolean;
 }
 
 interface WizardState {
@@ -197,13 +198,6 @@ interface WizardContextType {
   startFresh: (email: string) => Promise<void>;
   /** Skip liveness verification and advance to next step */
   skipLiveness: () => Promise<boolean>;
-  /** Save PII to server (encrypted) */
-  savePiiToServer: (pii: {
-    extractedName?: string;
-    extractedDOB?: string;
-    extractedDocNumber?: string;
-    extractedNationality?: string;
-  }) => Promise<void>;
   /** Update verification progress on server */
   updateServerProgress: (updates: {
     step?: WizardStep;
@@ -296,16 +290,13 @@ export function WizardProvider({
         const serverState = (await trpc.onboarding.getSession.query()) as
           | ServerSessionState
           | undefined;
+        const localDraft = loadOnboardingDraft();
 
         if (hasLocalSessionRef.current) {
           return;
         }
 
-        if (
-          serverState?.hasSession &&
-          serverState.email &&
-          serverState.sessionId
-        ) {
+        if (serverState?.hasSession && serverState.sessionId) {
           // Restore state from server (including sessionId for future operations)
           dispatch({
             type: "LOAD_STATE",
@@ -313,7 +304,16 @@ export function WizardProvider({
               sessionId: serverState.sessionId,
               currentStep: serverState.step ?? 1,
               data: {
-                email: serverState.email,
+                email: localDraft?.email ?? "",
+                extractedName: localDraft?.extractedName ?? null,
+                extractedDOB: localDraft?.extractedDOB ?? null,
+                extractedDocNumber: localDraft?.extractedDocNumber ?? null,
+                extractedNationality: localDraft?.extractedNationality ?? null,
+                extractedNationalityCode:
+                  localDraft?.extractedNationalityCode ?? null,
+                extractedExpirationDate:
+                  localDraft?.extractedExpirationDate ?? null,
+                userSalt: localDraft?.userSalt ?? null,
                 identityDraftId: serverState.identityDraftId ?? null,
               },
               serverState: {
@@ -330,8 +330,48 @@ export function WizardProvider({
           // Session was cleared due to expiration or mismatch - notify user
           toast.info("Session expired. Please start again.");
           setOnboardingFlowId(null);
+          if (localDraft) {
+            dispatch({
+              type: "LOAD_STATE",
+              state: {
+                currentStep: 1,
+                data: {
+                  email: localDraft.email ?? "",
+                  extractedName: localDraft.extractedName ?? null,
+                  extractedDOB: localDraft.extractedDOB ?? null,
+                  extractedDocNumber: localDraft.extractedDocNumber ?? null,
+                  extractedNationality: localDraft.extractedNationality ?? null,
+                  extractedNationalityCode:
+                    localDraft.extractedNationalityCode ?? null,
+                  extractedExpirationDate:
+                    localDraft.extractedExpirationDate ?? null,
+                  userSalt: localDraft.userSalt ?? null,
+                },
+              },
+            });
+          }
         } else {
           setOnboardingFlowId(null);
+          if (localDraft) {
+            dispatch({
+              type: "LOAD_STATE",
+              state: {
+                currentStep: 1,
+                data: {
+                  email: localDraft.email ?? "",
+                  extractedName: localDraft.extractedName ?? null,
+                  extractedDOB: localDraft.extractedDOB ?? null,
+                  extractedDocNumber: localDraft.extractedDocNumber ?? null,
+                  extractedNationality: localDraft.extractedNationality ?? null,
+                  extractedNationalityCode:
+                    localDraft.extractedNationalityCode ?? null,
+                  extractedExpirationDate:
+                    localDraft.extractedExpirationDate ?? null,
+                  userSalt: localDraft.userSalt ?? null,
+                },
+              },
+            });
+          }
         }
       } catch {
         /* Server session not available, start fresh */
@@ -359,7 +399,6 @@ export function WizardProvider({
     const saveStep = async () => {
       try {
         await trpc.onboarding.saveSession.mutate({
-          email: state.data.email,
           step: state.currentStep,
         });
         lastSavedStepRef.current = state.currentStep;
@@ -373,30 +412,33 @@ export function WizardProvider({
     return () => clearTimeout(timeout);
   }, [state.currentStep, state.data.email]);
 
-  // Save PII to server (encrypted)
-  const savePiiToServer = useCallback(
-    async (pii: {
-      extractedName?: string;
-      extractedDOB?: string;
-      extractedDocNumber?: string;
-      extractedNationality?: string;
-    }) => {
-      if (!state.data.email) {
-        return;
-      }
+  // Persist sensitive draft fields locally (client-only).
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
 
-      try {
-        await trpc.onboarding.saveSession.mutate({
-          email: state.data.email,
-          step: state.currentStep,
-          pii,
-        });
-      } catch {
-        /* Ignore PII save errors - non-critical for wizard flow */
-      }
-    },
-    [state.data.email, state.currentStep]
-  );
+    saveOnboardingDraft({
+      email: state.data.email || undefined,
+      extractedName: state.data.extractedName ?? null,
+      extractedDOB: state.data.extractedDOB ?? null,
+      extractedDocNumber: state.data.extractedDocNumber ?? null,
+      extractedNationality: state.data.extractedNationality ?? null,
+      extractedNationalityCode: state.data.extractedNationalityCode ?? null,
+      extractedExpirationDate: state.data.extractedExpirationDate ?? null,
+      userSalt: state.data.userSalt ?? null,
+    });
+  }, [
+    isHydrated,
+    state.data.email,
+    state.data.extractedName,
+    state.data.extractedDOB,
+    state.data.extractedDocNumber,
+    state.data.extractedNationality,
+    state.data.extractedNationalityCode,
+    state.data.extractedExpirationDate,
+    state.data.userSalt,
+  ]);
 
   // Update verification progress on server
   const updateServerProgress = useCallback(
@@ -414,7 +456,6 @@ export function WizardProvider({
 
       try {
         await trpc.onboarding.saveSession.mutate({
-          email: state.data.email,
           step: updates.step ?? state.currentStep,
           ...updates,
         });
@@ -461,6 +502,7 @@ export function WizardProvider({
 
   const reset = useCallback(async () => {
     dispatch({ type: "RESET" });
+    clearOnboardingDraft();
 
     // Clear server session
     try {
@@ -474,6 +516,8 @@ export function WizardProvider({
   // Start fresh session (clears any existing session to prevent session bleeding)
   const startFresh = useCallback(async (email: string) => {
     hasLocalSessionRef.current = true;
+    clearOnboardingDraft();
+    saveOnboardingDraft({ email });
 
     // Reset local state first
     dispatch({ type: "RESET" });
@@ -483,7 +527,6 @@ export function WizardProvider({
     // This prevents session bleeding between users.
     try {
       const result = await trpc.onboarding.saveSession.mutate({
-        email,
         step: 1,
         forceNew: true,
       });
@@ -642,7 +685,6 @@ export function WizardProvider({
       reset,
       startFresh,
       skipLiveness,
-      savePiiToServer,
       updateServerProgress,
       canGoBack: state.currentStep > 1,
       canGoNext: state.currentStep < TOTAL_STEPS,
@@ -665,7 +707,6 @@ export function WizardProvider({
       reset,
       startFresh,
       skipLiveness,
-      savePiiToServer,
       updateServerProgress,
     ]
   );

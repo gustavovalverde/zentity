@@ -1,14 +1,12 @@
 /**
  * Onboarding Session Management
  *
- * Handles secure storage of wizard state using:
- * - jose JWE for encrypting sensitive PII before database storage
+ * Handles wizard state using:
  * - SQLite for server-side session persistence
  * - Encrypted cookies for stateless wizard navigation (stores sessionId)
  *
  * Security model:
- * - Sessions are keyed by random sessionId, NOT email
- * - PII is encrypted with AES-256-GCM before storage
+ * - Sessions are keyed by random sessionId (no email stored server-side)
  * - Only sessionId + step stored in navigation cookie
  * - Sensitive data (documents, selfies) never stored - processed in real-time
  */
@@ -64,18 +62,8 @@ function parseCookieHeader(raw: string): Record<string, string> {
 }
 
 /**
- * PII data that gets encrypted before storage
- */
-export interface EncryptedPiiData {
-  extractedName?: string;
-  extractedDOB?: string;
-  extractedDocNumber?: string;
-  extractedNationality?: string;
-}
-
-/**
  * Wizard navigation state (stored in cookie)
- * Now uses sessionId instead of email as the key
+ * Session cookie stores only sessionId + step
  */
 interface WizardNavState {
   sessionId: string;
@@ -87,9 +75,7 @@ interface WizardNavState {
  */
 interface FullWizardState {
   sessionId: string;
-  email: string | null;
   step: number;
-  pii?: EncryptedPiiData;
   identityDraftId?: string | null;
   documentProcessed: boolean;
   livenessPassed: boolean;
@@ -104,35 +90,6 @@ interface WizardStateResult {
   state: FullWizardState | null;
   /** True if a stale cookie was cleared (cookie existed but DB session was missing/expired) */
   wasCleared: boolean;
-}
-
-/**
- * Encrypt PII data using jose JWE (AES-256-GCM)
- */
-async function encryptPii(pii: EncryptedPiiData): Promise<string> {
-  const secret = await getSecret();
-
-  const token = await new EncryptJWT({ pii })
-    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
-    .encrypt(secret);
-
-  return token;
-}
-
-/**
- * Decrypt PII data from JWE token
- */
-async function decryptPii(token: string): Promise<EncryptedPiiData | null> {
-  try {
-    const secret = await getSecret();
-    const { payload } = await jwtDecrypt(token, secret);
-    return (payload.pii as EncryptedPiiData) || null;
-  } catch {
-    // Token expired or invalid
-    return null;
-  }
 }
 
 /**
@@ -227,27 +184,18 @@ export async function clearWizardCookie(): Promise<void> {
  * Save wizard state (combines cookie + database storage)
  *
  * @param sessionId - Session ID (generated if not provided)
- * @param state - Wizard state to save (email, step)
+ * @param state - Wizard state to save (step)
  * @param pii - Optional PII data to encrypt and store
  * @returns The session including its ID
  */
 export async function saveWizardState(
   sessionId: string | undefined,
-  state: { email?: string; step: number },
-  pii?: EncryptedPiiData
+  state: { step: number }
 ): Promise<OnboardingSession> {
-  // Encrypt PII if provided
-  let encryptedPii: string | null = null;
-  if (pii && Object.keys(pii).length > 0) {
-    encryptedPii = await encryptPii(pii);
-  }
-
   // Save to database (generates sessionId if not provided)
   const session = await upsertOnboardingSession({
     id: sessionId,
-    email: state.email,
     step: state.step,
-    encryptedPii,
   });
 
   // Set navigation cookie with sessionId
@@ -277,21 +225,10 @@ export async function loadWizardState(): Promise<WizardStateResult> {
     return { state: null, wasCleared: true };
   }
 
-  // Decrypt PII if present
-  let pii: EncryptedPiiData | undefined;
-  if (session.encryptedPii) {
-    const decrypted = await decryptPii(session.encryptedPii);
-    if (decrypted) {
-      pii = decrypted;
-    }
-  }
-
   return {
     state: {
       sessionId: session.id,
-      email: session.email,
       step: session.step,
-      pii,
       identityDraftId: session.identityDraftId ?? null,
       documentProcessed: session.documentProcessed,
       livenessPassed: session.livenessPassed,
@@ -308,7 +245,6 @@ export async function loadWizardState(): Promise<WizardStateResult> {
 export async function updateWizardProgress(
   sessionId: string,
   updates: {
-    email?: string;
     step?: number;
     documentProcessed?: boolean;
     livenessPassed?: boolean;

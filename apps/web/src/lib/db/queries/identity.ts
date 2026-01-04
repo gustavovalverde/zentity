@@ -10,7 +10,6 @@ import type {
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { decryptFirstName } from "../../crypto/pii-encryption";
 import { db } from "../connection";
 import { attestationEvidence } from "../schema/attestation";
 import {
@@ -339,15 +338,10 @@ export async function upsertIdentityDraft(
       documentHash: data.documentHash ?? null,
       documentHashField: data.documentHashField ?? null,
       nameCommitment: data.nameCommitment ?? null,
-      userSalt: data.userSalt ?? null,
-      birthYear: data.birthYear ?? null,
-      birthYearOffset: data.birthYearOffset ?? null,
-      expiryDateInt: data.expiryDateInt ?? null,
-      nationalityCode: data.nationalityCode ?? null,
-      nationalityCodeNumeric: data.nationalityCodeNumeric ?? null,
-      countryCodeNumeric: data.countryCodeNumeric ?? null,
+      ageClaimHash: data.ageClaimHash ?? null,
+      docValidityClaimHash: data.docValidityClaimHash ?? null,
+      nationalityClaimHash: data.nationalityClaimHash ?? null,
       confidenceScore: data.confidenceScore ?? null,
-      firstNameEncrypted: data.firstNameEncrypted ?? null,
       ocrIssues: data.ocrIssues ?? null,
       antispoofScore: data.antispoofScore ?? null,
       liveScore: data.liveScore ?? null,
@@ -370,15 +364,10 @@ export async function upsertIdentityDraft(
         documentHash: data.documentHash ?? null,
         documentHashField: data.documentHashField ?? null,
         nameCommitment: data.nameCommitment ?? null,
-        userSalt: data.userSalt ?? null,
-        birthYear: data.birthYear ?? null,
-        birthYearOffset: data.birthYearOffset ?? null,
-        expiryDateInt: data.expiryDateInt ?? null,
-        nationalityCode: data.nationalityCode ?? null,
-        nationalityCodeNumeric: data.nationalityCodeNumeric ?? null,
-        countryCodeNumeric: data.countryCodeNumeric ?? null,
+        ageClaimHash: data.ageClaimHash ?? null,
+        docValidityClaimHash: data.docValidityClaimHash ?? null,
+        nationalityClaimHash: data.nationalityClaimHash ?? null,
         confidenceScore: data.confidenceScore ?? null,
-        firstNameEncrypted: data.firstNameEncrypted ?? null,
         ocrIssues: data.ocrIssues ?? null,
         antispoofScore: data.antispoofScore ?? null,
         liveScore: data.liveScore ?? null,
@@ -590,13 +579,4 @@ export async function createIdentityDocument(
       ...data,
     })
     .run();
-}
-
-export function getUserFirstName(userId: string): Promise<string | null> {
-  return getSelectedIdentityDocumentByUserId(userId).then((document) => {
-    if (!document?.firstNameEncrypted) {
-      return null;
-    }
-    return decryptFirstName(document.firstNameEncrypted);
-  });
 }

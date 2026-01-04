@@ -31,11 +31,6 @@ import {
 import { ISSUER_ID, POLICY_VERSION } from "@/lib/attestation/policy";
 import { sha256CommitmentHex } from "@/lib/crypto/commitments";
 import { scheduleFheEncryption } from "@/lib/crypto/fhe-encryption";
-import {
-  decryptUserSalt,
-  encryptFirstName,
-  encryptUserSalt,
-} from "@/lib/crypto/pii-encryption";
 import { signAttestationClaim } from "@/lib/crypto/signed-claims";
 import { db } from "@/lib/db/connection";
 import {
@@ -43,7 +38,6 @@ import {
   updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
-import { updateUserName } from "@/lib/db/queries/auth";
 import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
   createIdentityDocument,
@@ -80,7 +74,6 @@ import {
   FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/liveness/liveness-policy";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
-import { buildDisplayName } from "@/lib/utils/name-utils";
 import { getNationalityCode } from "@/lib/zk/nationality-data";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
@@ -303,6 +296,10 @@ function parseDateToInt(dateValue?: string | null): number | null {
 }
 
 const activeIdentityJobs = new Set<string>();
+const pendingFheInputs = new Map<
+  string,
+  { birthYearOffset?: number | null; countryCodeNumeric?: number | null }
+>();
 
 function scheduleIdentityJob(jobId: string): void {
   if (activeIdentityJobs.has(jobId)) {
@@ -349,6 +346,9 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         span.setAttribute("identity.job_skipped", true);
         return;
       }
+
+      const pendingInputs = pendingFheInputs.get(job.id);
+      pendingFheInputs.delete(job.id);
 
       span.setAttribute("identity.job_id", job.id);
       span.setAttribute("identity.user_id_hash", hashIdentifier(job.userId));
@@ -420,41 +420,13 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         }
 
         const issuedAt = new Date().toISOString();
-        const claimHashes: {
-          age?: string | null;
-          docValidity?: string | null;
-          nationality?: string | null;
-        } = {
-          age: null,
-          docValidity: null,
-          nationality: null,
-        };
-
         if (documentProcessed && documentHash && documentHashField) {
           try {
-            const birthYear = draft.birthYear ?? null;
-            const expiryDate = draft.expiryDateInt ?? null;
-            const nationalityCode = draft.nationalityCode ?? null;
-            const nationalityCodeNumeric = draft.nationalityCodeNumeric ?? null;
-
-            if (birthYear !== null) {
-              claimHashes.age = await computeClaimHash({
-                value: birthYear,
-                documentHashField,
-              });
-            }
-            if (expiryDate !== null) {
-              claimHashes.docValidity = await computeClaimHash({
-                value: expiryDate,
-                documentHashField,
-              });
-            }
-            if (nationalityCodeNumeric) {
-              claimHashes.nationality = await computeClaimHash({
-                value: nationalityCodeNumeric,
-                documentHashField,
-              });
-            }
+            const claimHashes = {
+              age: draft.ageClaimHash ?? null,
+              docValidity: draft.docValidityClaimHash ?? null,
+              nationality: draft.nationalityClaimHash ?? null,
+            };
 
             const ocrClaimPayload = {
               type: "ocr_result" as const,
@@ -467,10 +439,6 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               data: {
                 documentType: draft.documentType ?? null,
                 issuerCountry: draft.issuerCountry ?? null,
-                nationalityCode,
-                nationalityCodeNumeric,
-                expiryDate,
-                birthYear,
                 confidence: draft.confidenceScore ?? null,
                 claimHashes,
               },
@@ -632,6 +600,8 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             requestId: job.id,
             flowId: draft.onboardingSessionId,
             reason: "identity_finalize",
+            birthYearOffset: pendingInputs?.birthYearOffset ?? null,
+            countryCodeNumeric: pendingInputs?.countryCodeNumeric ?? null,
           });
         }
 
@@ -646,9 +616,6 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
                 ? null
                 : (draft.documentHash ?? null),
               nameCommitment: draft.nameCommitment ?? null,
-              userSalt: draft.userSalt ?? null,
-              birthYearOffset: draft.birthYearOffset ?? null,
-              firstNameEncrypted: draft.firstNameEncrypted ?? null,
               verifiedAt: verified ? new Date().toISOString() : null,
               confidenceScore: draft.confidenceScore ?? null,
               status: verified ? "verified" : "failed",
@@ -673,8 +640,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             ageProofGenerated: false,
             birthYearOffsetEncrypted,
             docValidityProofGenerated: false,
-            nationalityCommitmentGenerated:
-              (draft.nationalityCode ?? null) !== null,
+            nationalityCommitmentGenerated: Boolean(draft.nationalityClaimHash),
             countryCodeEncrypted,
             livenessScoreEncrypted,
           },
@@ -840,36 +806,51 @@ export const identityRouter = router({
       const expiryDateInt = parseDateToInt(
         documentResult?.extractedData?.expirationDate
       );
-      const birthYearOffset = calculateBirthYearOffset(
-        documentResult?.extractedData?.dateOfBirth
-      );
-
       const nationalityCode =
         documentResult?.extractedData?.nationalityCode ?? null;
       const nationalityCodeNumeric = nationalityCode
         ? (getNationalityCode(nationalityCode) ?? null)
         : null;
+
+      let ageClaimHash: string | null = null;
+      let docValidityClaimHash: string | null = null;
+      let nationalityClaimHash: string | null = null;
+      if (documentHashField) {
+        if (birthYear !== null) {
+          try {
+            ageClaimHash = await computeClaimHash({
+              value: birthYear,
+              documentHashField,
+            });
+          } catch {
+            issues.push("age_claim_hash_failed");
+          }
+        }
+        if (expiryDateInt !== null) {
+          try {
+            docValidityClaimHash = await computeClaimHash({
+              value: expiryDateInt,
+              documentHashField,
+            });
+          } catch {
+            issues.push("doc_validity_claim_hash_failed");
+          }
+        }
+        if (nationalityCodeNumeric) {
+          try {
+            nationalityClaimHash = await computeClaimHash({
+              value: nationalityCodeNumeric,
+              documentHashField,
+            });
+          } catch {
+            issues.push("nationality_claim_hash_failed");
+          }
+        }
+      }
       const issuerCountry =
         documentResult?.documentOrigin ||
         documentResult?.extractedData?.nationalityCode ||
         null;
-      const countryCodeNumeric = issuerCountry
-        ? countryCodeToNumeric(issuerCountry)
-        : 0;
-
-      let firstNameEncrypted: string | null = null;
-      const firstName = documentResult?.extractedData?.firstName;
-      if (firstName) {
-        try {
-          firstNameEncrypted = await encryptFirstName(firstName);
-        } catch {
-          issues.push("first_name_encryption_failed");
-        }
-      }
-
-      const encryptedUserSalt = documentResult?.commitments?.userSalt
-        ? await encryptUserSalt(documentResult.commitments.userSalt)
-        : null;
 
       const isDocumentValid =
         documentProcessed &&
@@ -899,16 +880,10 @@ export const identityRouter = router({
         documentHash,
         documentHashField,
         nameCommitment: documentResult?.commitments?.nameCommitment ?? null,
-        userSalt: encryptedUserSalt,
-        birthYear,
-        birthYearOffset:
-          birthYearOffset === undefined ? null : (birthYearOffset ?? null),
-        expiryDateInt,
-        nationalityCode,
-        nationalityCodeNumeric,
-        countryCodeNumeric: countryCodeNumeric > 0 ? countryCodeNumeric : null,
+        ageClaimHash,
+        docValidityClaimHash,
+        nationalityClaimHash,
         confidenceScore: documentResult?.confidence ?? null,
-        firstNameEncrypted,
         ocrIssues: issues.length ? JSON.stringify(issues) : null,
       });
 
@@ -927,6 +902,7 @@ export const identityRouter = router({
         isDocumentValid,
         isDuplicateDocument,
         issues,
+        userSalt: documentResult?.commitments?.userSalt ?? null,
         documentResult: documentResult
           ? {
               documentType: documentResult.documentType,
@@ -1121,6 +1097,8 @@ export const identityRouter = router({
       z.object({
         draftId: z.string().min(1),
         fheKeyId: z.string().min(1),
+        birthYearOffset: z.number().int().min(0).max(255).optional(),
+        countryCodeNumeric: z.number().int().min(0).max(999).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1168,6 +1146,10 @@ export const identityRouter = router({
         existingJob.status !== "error" &&
         existingJob.status !== "complete"
       ) {
+        pendingFheInputs.set(existingJob.id, {
+          birthYearOffset: input.birthYearOffset,
+          countryCodeNumeric: input.countryCodeNumeric,
+        });
         scheduleIdentityJob(existingJob.id);
         return { jobId: existingJob.id, status: existingJob.status };
       }
@@ -1178,6 +1160,10 @@ export const identityRouter = router({
         draftId: input.draftId,
         userId: ctx.userId,
         fheKeyId: input.fheKeyId,
+      });
+      pendingFheInputs.set(jobId, {
+        birthYearOffset: input.birthYearOffset,
+        countryCodeNumeric: input.countryCodeNumeric,
       });
 
       scheduleIdentityJob(jobId);
@@ -1240,7 +1226,7 @@ export const identityRouter = router({
       z.object({
         documentImage: z.string().min(1),
         selfieImage: z.string().min(1),
-        userSalt: z.string().optional(),
+        userSalt: z.string().min(1),
         fheKeyId: z.string().optional(),
       })
     )
@@ -1262,15 +1248,7 @@ export const identityRouter = router({
 
       const userId = ctx.userId;
       const existingDocument = await getLatestIdentityDocumentByUserId(userId);
-      let userSalt = input.userSalt;
-      if (!userSalt && existingDocument?.userSalt) {
-        const decryptedSalt = await decryptUserSalt(existingDocument.userSalt);
-        if (decryptedSalt) {
-          userSalt = decryptedSalt;
-        } else {
-          issues.push("user_salt_decrypt_failed");
-        }
-      }
+      const userSalt = input.userSalt;
       const fheKeyId = input.fheKeyId;
       const hasFheKeyMaterial = Boolean(fheKeyId);
 
@@ -1458,10 +1436,6 @@ export const identityRouter = router({
                 documentResult?.documentOrigin ||
                 documentResult?.extractedData?.nationalityCode ||
                 null,
-              nationalityCode,
-              nationalityCodeNumeric,
-              expiryDate,
-              birthYear,
               confidence: documentResult?.confidence ?? null,
               claimHashes,
             },
@@ -1563,10 +1537,6 @@ export const identityRouter = router({
       }
 
       let nationalityCommitment: string | null = null;
-      let firstNameEncrypted: string | null = null;
-
-      const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
-      const birthYearOffset = calculateBirthYearOffset(dateOfBirth);
 
       if (!hasFheKeyMaterial) {
         issues.push("fhe_key_missing");
@@ -1581,15 +1551,6 @@ export const identityRouter = router({
           });
         } catch {
           issues.push("nationality_commitment_failed");
-        }
-      }
-
-      const firstName = documentResult?.extractedData?.firstName;
-      if (firstName) {
-        try {
-          firstNameEncrypted = await encryptFirstName(firstName);
-        } catch {
-          issues.push("first_name_encryption_failed");
         }
       }
 
@@ -1614,10 +1575,6 @@ export const identityRouter = router({
         livenessPassed &&
         facesMatch &&
         !isDuplicateDocument;
-
-      // Calculate birth year offset from extracted DOB (for on-chain attestation)
-      const birthYearOffsetFinal =
-        birthYearOffset === undefined ? null : birthYearOffset;
 
       const bundleStatus = ((): "pending" | "verified" | "failed" => {
         if (verified) {
@@ -1651,9 +1608,6 @@ export const identityRouter = router({
         documentResult?.commitments
       ) {
         try {
-          const encryptedUserSalt = documentResult.commitments.userSalt
-            ? await encryptUserSalt(documentResult.commitments.userSalt)
-            : null;
           await createIdentityDocument({
             id: identityDocumentId,
             userId,
@@ -1664,9 +1618,6 @@ export const identityRouter = router({
               null,
             documentHash: documentResult.commitments.documentHash ?? null,
             nameCommitment: documentResult.commitments.nameCommitment ?? null,
-            userSalt: encryptedUserSalt,
-            birthYearOffset: birthYearOffsetFinal,
-            firstNameEncrypted: firstNameEncrypted ?? null,
             verifiedAt: verified ? new Date().toISOString() : null,
             confidenceScore: documentResult.confidence ?? null,
             status: verified ? "verified" : "failed",
@@ -1676,29 +1627,25 @@ export const identityRouter = router({
         }
       }
 
-      if (
-        documentResult?.extractedData?.firstName ||
-        documentResult?.extractedData?.lastName
-      ) {
-        try {
-          const displayName = buildDisplayName(
-            documentResult.extractedData.firstName,
-            documentResult.extractedData.lastName
-          );
-          if (displayName) {
-            await updateUserName(userId, displayName);
-          }
-        } catch {
-          /* Name update failed, non-critical for verification */
-        }
-      }
-
       if (fheKeyId) {
+        const birthYearOffset = calculateBirthYearOffset(
+          documentResult?.extractedData?.dateOfBirth
+        );
+        const countryCodeSource =
+          documentResult?.documentOrigin ||
+          documentResult?.extractedData?.nationalityCode ||
+          null;
+        const resolvedCountryCode = countryCodeSource
+          ? countryCodeToNumeric(countryCodeSource)
+          : 0;
         scheduleFheEncryption({
           userId,
           requestId: ctx.requestId,
           flowId: ctx.flowId ?? undefined,
           reason: "identity_verify",
+          birthYearOffset: birthYearOffset ?? null,
+          countryCodeNumeric:
+            resolvedCountryCode > 0 ? resolvedCountryCode : null,
         });
       }
 
@@ -1748,28 +1695,21 @@ export const identityRouter = router({
     .input(
       z.object({
         claimedName: z.string().trim().min(1, "Claimed name is required"),
+        userSalt: z.string().min(1, "User salt is required"),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const document = await getSelectedIdentityDocumentByUserId(ctx.userId);
-      if (!(document?.userSalt && document.nameCommitment)) {
+      if (!document?.nameCommitment) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "User has not completed identity verification",
         });
       }
 
-      const decryptedSalt = await decryptUserSalt(document.userSalt);
-      if (!decryptedSalt) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Unable to decrypt verification salt",
-        });
-      }
-
       const claimedCommitment = generateNameCommitment(
         input.claimedName,
-        decryptedSalt
+        input.userSalt
       );
 
       const matches = crypto.timingSafeEqual(

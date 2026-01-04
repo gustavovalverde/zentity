@@ -178,6 +178,14 @@ cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -e
 cd apps/fhe && cargo build --release
 ```
 
+**Troubleshooting: tfjs-node on macOS**
+
+If you see `libtensorflow.2.dylib` errors after `bun install`, the tfjs-node postinstall may have failed to download the TensorFlow library (~340MB). Run manually:
+
+```bash
+cd apps/web/node_modules/@tensorflow/tfjs-node && node scripts/install.js
+```
+
 **Start Services (3 terminals):**
 
 ```bash

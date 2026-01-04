@@ -600,7 +600,6 @@ export async function renamePasskeyCredential(params: {
  */
 export async function createPasswordlessUser(params: {
   email: string;
-  name: string;
 }): Promise<{ userId: string }> {
   const id = nanoid();
   const now = new Date().toISOString();
@@ -608,7 +607,6 @@ export async function createPasswordlessUser(params: {
   await db.insert(users).values({
     id,
     email: params.email,
-    name: params.name,
     emailVerified: false,
     passwordlessSignup: true,
     createdAt: now,

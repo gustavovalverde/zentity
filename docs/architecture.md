@@ -101,18 +101,19 @@ Zentity uses three complementary techniques:
 | "Verify my name without storing it" | **Commitment** | SHA256(name + salt); verify by recomputing |
 | "Check if I'm over 18 without seeing my DOB" | **FHE** | Encrypted birth year offset compared homomorphically |
 | "Prove I'm EU citizen without revealing country" | **ZK Proof** | Merkle tree membership proof |
-| "Delete my data for GDPR" | **Commitment** | Delete salt → commitment becomes unlinkable |
+| "Delete my data for GDPR" | **Passkey-sealed profile** | Delete the encrypted profile secret (and account) → server has no plaintext PII to recover |
 
 ### Commitments
 
 A commitment is a one-way hash that binds you to a value without revealing it.
 
-1. During verification: `commitment = SHA256("John Doe" + random_salt)`
-2. Commitment stored in database (hash, not name)
-3. Later verification: Recompute hash with claimed name + stored salt
-4. Match = verified. No name ever stored.
+1. During verification: `commitment = SHA256("John Doe" + user_salt)`
+2. Commitment stored in database (hash only)
+3. `user_salt` is stored **client-side** in the passkey-sealed profile (`profile_v1`)
+4. Later verification: Client supplies claimed name + salt → server recomputes commitment
+5. Match = verified. Server never stores name or salt.
 
-**GDPR compliance:** Deleting the salt makes the commitment cryptographically unlinkable.
+**Privacy note:** Deleting the passkey-sealed profile breaks future name verification; commitments remain non-reversible.
 
 ### FHE
 
@@ -153,17 +154,15 @@ The FHE architecture uses passkey-wrapped client-side key ownership for user-con
 
 | Data | Form | Purpose |
 |------|------|---------|
-| Account email | Plaintext | Authentication |
-| Document metadata (type, issuer country, birth_year_offset) | Plaintext | UX + compliance context |
+| Account email | Plaintext | Authentication + recovery |
+| Document metadata (type, issuer country, document hash) | Plaintext | UX + dedup context |
 | Commitments (name, doc#, nationality) | Salted SHA256 | Dedup + integrity checks |
-| Per-user salt | JWE encrypted | Enables GDPR erasure |
 | ZK proof payloads + public inputs | Proof bytes | Disclosure + verification |
 | Evidence pack (policy_hash, proof_set_hash) | Hashes | Audit trail |
-| Signed claims (OCR, liveness, face match) | Signed JSON | Tamper-resistant measurements |
+| Signed claims (OCR, liveness, face match) | Signed hashes + metadata (no raw PII fields) | Tamper-resistant measurements |
 | FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext | Policy checks without decrypting |
-| First name (display only) | JWE encrypted | UX convenience |
-| Onboarding PII | JWE encrypted + TTL | Wizard continuity (short-lived) |
-| Encrypted secrets + wrappers | AES-GCM + PRF-wrapped DEK | Passkey-protected FHE key storage |
+| Passkey-sealed profile (`profile_v1`) | Encrypted blob | UX + resume + consented disclosure (client decrypt only) |
+| Encrypted secrets + wrappers (`fhe_keys`) | AES-GCM + PRF-wrapped DEK | Passkey-protected FHE key storage |
 
 ### What We NEVER Store
 
@@ -172,22 +171,44 @@ The FHE architecture uses passkey-wrapped client-side key ownership for user-con
 | Document images | Request body only → discarded |
 | Selfie images | Request body only → discarded |
 | Face embeddings | Memory only → discarded |
-| Full DOB (YYYYMMDD) | Never stored |
-| Plaintext name | Only as SHA256 commitment |
-| Plaintext nationality | Only as SHA256 commitment |
-| Document number | Only as SHA256 commitment |
+| Plaintext DOB (YYYYMMDD) | Stored only in passkey-sealed profile (encrypted) |
+| User salt | Stored only in passkey-sealed profile (client-controlled) |
+| Plaintext name | Stored only in passkey-sealed profile (encrypted) |
+| Plaintext nationality | Stored only in passkey-sealed profile (encrypted) |
+| Document number | Stored only in passkey-sealed profile (encrypted) |
 | Plaintext client FHE keys | Decrypted only in memory; encrypted at rest with passkey PRF |
 
-**Key guarantee:** Application-level persistence never includes raw PII or biometric data.
+**Key guarantee:** Application-level persistence never includes plaintext PII or biometric data.
+
+### Consent-Based Disclosure (Portable KYC)
+
+Zentity supports **on-demand disclosure** for banks, exchanges, and regulated RPs:
+
+- The server stores **only encrypted profile data** (`profile_v1`) and signed claims.
+- When a relying party requests disclosure, the **user must authorize with a passkey**.
+- The client decrypts the profile locally and **re-encrypts it to the RP** (OIDC/OAuth-style consent).
+- Zentity can provide **auditable artifacts** (signed claims + evidence pack) without ever seeing plaintext PII.
+
+This keeps the platform useful for compliance while preserving a strict privacy boundary.
+
+### State Durability & Shared Devices
+
+Onboarding uses **cookies + local storage** for short‑lived progress and OCR previews. These can be deleted by:
+
+- Clearing browser data
+- Using shared devices or private windows
+- Aggressive privacy settings
+
+If that happens, the user may need to **restart onboarding**. The only durable, user‑controlled source of profile data is the **passkey‑sealed profile**. This tradeoff is intentional: we favor privacy over server‑side caching of PII.
 
 ### Privacy Guarantees
 
 1. **Transient image processing** — Images exist only in request bodies; discarded after verification
-2. **One-way commitments** — SHA256 + user salt; cannot derive original values
+2. **One-way commitments** — SHA256 + user salt (kept client-side); cannot derive original values
 3. **FHE for sensitive numerics** — Server computes on ciphertext without decryption
 4. **Claim-hash binding** — Proofs are tied to server-signed claims + document hashes
 5. **Client-side ZK proving** — Birth year and nationality are not persisted; only proofs are stored
-6. **GDPR erasure** — Delete `user_salt` → commitments become unlinkable
+6. **User-controlled erasure** — Delete the passkey-sealed profile (and account) → server retains no decryptable PII
 7. **No biometric storage** — Face embeddings computed transiently, never persisted
 
 ---
@@ -345,10 +366,11 @@ Tables (via `better-auth` + custom):
 - `identity_verification_jobs` — DB-backed async finalization queue
 - `zk_proofs` — Proof payloads + public signals + metadata
 - `encrypted_attributes` — TFHE ciphertexts + metadata
-- `signed_claims` — Server-signed scores and structured claims
-- `attestation_evidence` — Policy hash + proof set hash (audit trail)
+- `signed_claims` — Server-signed scores + metadata (no raw PII fields)
+- `attestation_evidence` — Policy hash + proof set hash + consent receipt (audit trail)
 - `zk_challenges` — Server-issued one-time nonces
-- `onboarding_sessions` — Short-lived wizard state (encrypted PII only)
+- `encrypted_secrets` / `secret_wrappers` — Passkey-sealed secrets (`profile_v1`, `fhe_keys`)
+- `onboarding_sessions` — Short-lived wizard state (no PII; progress flags only)
 
 **Blockchain attestation (Web3):**
 

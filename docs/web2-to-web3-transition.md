@@ -122,12 +122,13 @@ SQLite Database
 ├── ZK proofs (age >= 18, nationality in EU, etc.)
 ├── Encrypted secrets (passkey-wrapped FHE keys, no plaintext)
 ├── Cryptographic commitments (SHA-256 of attributes)
-├── Signed claims (OCR, liveness, face match)
+├── Signed claim hashes (OCR, liveness, face match metadata)
 ├── Encrypted attributes (birth_year_offset, country_code, compliance_level, liveness_score)
+├── Passkey-sealed profile (encrypted PII, user unlock required)
 ├── Evidence pack (policy_hash, proof_set_hash)
 └── Attestation records (txHash, status, networkId)
 
-NOT stored: Raw images, plaintext PII, full DOB, biometric templates
+NOT stored: Raw images, plaintext PII, biometric templates
 ```
 
 ---

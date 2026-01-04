@@ -71,13 +71,12 @@ export function parseBirthYearFromDob(
 }
 
 /**
- * Calculate birth year offset (years since 1900) from a DOB string.
+ * Calculate birth year offset (years since 1900) from a birth year.
  */
-export function calculateBirthYearOffset(
-  dateOfBirth: string | undefined
+export function calculateBirthYearOffsetFromYear(
+  birthYear: number | undefined | null
 ): number | undefined {
-  const birthYear = parseBirthYearFromDob(dateOfBirth);
-  if (birthYear === undefined) {
+  if (birthYear === undefined || birthYear === null) {
     return;
   }
 
@@ -92,4 +91,14 @@ export function calculateBirthYearOffset(
   }
 
   return offset;
+}
+
+/**
+ * Calculate birth year offset (years since 1900) from a DOB string.
+ */
+export function calculateBirthYearOffset(
+  dateOfBirth: string | undefined
+): number | undefined {
+  const birthYear = parseBirthYearFromDob(dateOfBirth);
+  return calculateBirthYearOffsetFromYear(birthYear);
 }

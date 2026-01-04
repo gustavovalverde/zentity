@@ -24,6 +24,8 @@ export interface FheEncryptionSchedule {
   requestId?: string;
   flowId?: string;
   reason?: string;
+  birthYearOffset?: number | null;
+  countryCodeNumeric?: number | null;
 }
 
 const activeFheJobs = new Set<string>();
@@ -83,8 +85,13 @@ async function runFheEncryption(
         : await getLatestIdentityDraftByUserId(userId);
 
       const birthYearOffset =
-        draft?.birthYearOffset ?? selectedDocument?.birthYearOffset ?? null;
-      const countryCodeNumeric = draft?.countryCodeNumeric ?? 0;
+        typeof context?.birthYearOffset === "number"
+          ? context.birthYearOffset
+          : null;
+      const countryCodeNumeric =
+        typeof context?.countryCodeNumeric === "number"
+          ? context.countryCodeNumeric
+          : null;
       const livenessScore = draft?.antispoofScore;
 
       const verificationStatus = await getVerificationStatus(userId);
@@ -109,13 +116,21 @@ async function runFheEncryption(
         "compliance_level"
       );
 
+      const hasBirthYearOffsetValue =
+        typeof birthYearOffset === "number" &&
+        Number.isInteger(birthYearOffset) &&
+        birthYearOffset >= 0 &&
+        birthYearOffset <= 255;
+      const hasCountryCodeValue =
+        typeof countryCodeNumeric === "number" &&
+        Number.isInteger(countryCodeNumeric) &&
+        countryCodeNumeric > 0;
+
       const shouldEncryptBirthYearOffset =
-        birthYearOffset !== null &&
-        birthYearOffset !== undefined &&
+        hasBirthYearOffsetValue &&
         shouldEncryptWithKey(existingBirthYearOffset, keyId);
       const shouldEncryptCountryCode =
-        countryCodeNumeric > 0 &&
-        shouldEncryptWithKey(existingCountryCode, keyId);
+        hasCountryCodeValue && shouldEncryptWithKey(existingCountryCode, keyId);
       const shouldEncryptLivenessScore =
         typeof livenessScore === "number" &&
         Number.isFinite(livenessScore) &&
@@ -145,13 +160,24 @@ async function runFheEncryption(
         shouldEncryptCompliance;
 
       if (!needsEncryption) {
+        const missingBirthYearOffset = !(
+          hasBirthYearOffsetValue || existingBirthYearOffset
+        );
+        const missingCountryCode = !(
+          hasCountryCodeValue || existingCountryCode
+        );
+        const missingInputs = missingBirthYearOffset || missingCountryCode;
         await updateIdentityBundleFheStatus({
           userId,
-          fheStatus: verificationStatus.verified ? "complete" : "pending",
+          fheStatus:
+            verificationStatus.verified && !missingInputs
+              ? "complete"
+              : "pending",
           fheError: null,
           fheKeyId: keyId,
         });
         span.setAttribute("fhe.encryption_skipped", true);
+        span.setAttribute("fhe.inputs_missing", missingInputs);
         return;
       }
 
@@ -299,6 +325,8 @@ export function scheduleFheEncryption(args: FheEncryptionSchedule): void {
     requestId: args.requestId,
     flowId: args.flowId,
     reason: args.reason,
+    birthYearOffset: args.birthYearOffset ?? undefined,
+    countryCodeNumeric: args.countryCodeNumeric ?? undefined,
   });
   if (activeFheJobs.has(args.userId)) {
     return;

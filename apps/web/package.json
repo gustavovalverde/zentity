@@ -148,5 +148,8 @@
     "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
       "bun x ultracite fix"
     ]
-  }
+  },
+  "trustedDependencies": [
+    "@tensorflow/tfjs-node"
+  ]
 }
