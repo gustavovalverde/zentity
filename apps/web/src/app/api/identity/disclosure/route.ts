@@ -76,7 +76,7 @@ interface DisclosureResponse {
 
   // Verification proofs (public, not encrypted)
   proofs: {
-    faceMatch?: {
+    faceMatchProof?: {
       proof: string;
       publicSignals: string[];
       isMatch: boolean;
@@ -341,7 +341,7 @@ export async function POST(
         parsePublicInputToNumber(
           faceMatchPayload.publicSignals[CIRCUIT_SPECS.face_match.resultIndex]
         ) === 1;
-      proofs.faceMatch = {
+      proofs.faceMatchProof = {
         proof: faceMatchPayload.proof,
         publicSignals: faceMatchPayload.publicSignals,
         isMatch,
