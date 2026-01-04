@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   FileText,
   Globe,
-  Loader2,
   Mail,
   User,
   XCircle,
@@ -21,7 +20,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from "@/components/ui/item";
+import { Spinner } from "@/components/ui/spinner";
 import { getStoredProfile } from "@/lib/crypto/profile-secret";
 import { trpcReact } from "@/lib/trpc/client";
 
@@ -123,7 +131,7 @@ export function UserDataSection() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Spinner size="lg" />
         </CardContent>
       </Card>
     );
@@ -160,125 +168,98 @@ export function UserDataSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Name */}
-        {profileName ? (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <User className="h-5 w-5" />
+        <ItemGroup>
+          {/* Name */}
+          <Item>
+            <ItemMedia variant="icon">
+              <User className="h-5 w-5" />
+            </ItemMedia>
+            <ItemContent>
+              <ItemDescription>First Name</ItemDescription>
+              {profileName ? (
+                <ItemTitle>{profileName}</ItemTitle>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button
+                    disabled={profileLoading}
+                    onClick={() => {
+                      loadProfile().catch(() => {
+                        // handled via state
+                      });
+                    }}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {profileLoading ? "Unlocking..." : "Unlock with passkey"}
+                  </Button>
+                  {profileError ? (
+                    <span className="text-destructive text-xs">
+                      {profileError}
+                    </span>
+                  ) : null}
                 </div>
-                <div>
-                  <p className="text-muted-foreground text-sm">First Name</p>
-                  <p className="font-medium">{profileName}</p>
-                </div>
-              </div>
-            </div>
-            <Separator />
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <User className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-sm">First Name</p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      disabled={profileLoading}
-                      onClick={() => {
-                        loadProfile().catch(() => {
-                          // handled via state
-                        });
-                      }}
-                      size="sm"
-                      variant="outline"
-                    >
-                      {profileLoading ? "Unlocking..." : "Unlock with passkey"}
-                    </Button>
-                    {profileError ? (
-                      <span className="text-destructive text-xs">
-                        {profileError}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <Separator />
-          </>
-        )}
+              )}
+            </ItemContent>
+          </Item>
 
-        {/* Email */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          <ItemSeparator />
+
+          {/* Email */}
+          <Item>
+            <ItemMedia variant="icon">
               <Mail className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-sm">Email</p>
-              <p className="font-medium">{data.email}</p>
-            </div>
-          </div>
-        </div>
+            </ItemMedia>
+            <ItemContent>
+              <ItemDescription>Email</ItemDescription>
+              <ItemTitle>{data.email}</ItemTitle>
+            </ItemContent>
+          </Item>
 
-        <Separator />
+          <ItemSeparator />
 
-        {/* Member Since */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          {/* Member Since */}
+          <Item>
+            <ItemMedia variant="icon">
               <Calendar className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-sm">Member Since</p>
-              <p className="font-medium">{formatDate(data.createdAt)}</p>
-            </div>
-          </div>
-        </div>
+            </ItemMedia>
+            <ItemContent>
+              <ItemDescription>Member Since</ItemDescription>
+              <ItemTitle>{formatDate(data.createdAt)}</ItemTitle>
+            </ItemContent>
+          </Item>
 
-        {/* Document Type & Country (if verified) */}
-        {data.documentType ? (
-          <>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          {/* Document Type (if verified) */}
+          {data.documentType ? (
+            <>
+              <ItemSeparator />
+              <Item>
+                <ItemMedia variant="icon">
                   <FileText className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-sm">Document Type</p>
-                  <p className="font-medium">
-                    {formatDocumentType(data.documentType)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : null}
+                </ItemMedia>
+                <ItemContent>
+                  <ItemDescription>Document Type</ItemDescription>
+                  <ItemTitle>{formatDocumentType(data.documentType)}</ItemTitle>
+                </ItemContent>
+              </Item>
+            </>
+          ) : null}
 
-        {data.countryVerified ? (
-          <>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          {/* Country (if verified) */}
+          {data.countryVerified ? (
+            <>
+              <ItemSeparator />
+              <Item>
+                <ItemMedia variant="icon">
                   <Globe className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-sm">
-                    Country Verified
-                  </p>
-                  <p className="font-medium">{data.countryVerified}</p>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : null}
-
-        <Separator />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemDescription>Country Verified</ItemDescription>
+                  <ItemTitle>{data.countryVerified}</ItemTitle>
+                </ItemContent>
+              </Item>
+            </>
+          ) : null}
+        </ItemGroup>
 
         {/* Verification Status */}
         <div className="space-y-3">

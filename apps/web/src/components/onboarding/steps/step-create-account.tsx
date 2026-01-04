@@ -20,7 +20,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import {
@@ -901,38 +909,46 @@ export function StepCreateAccount() {
 
       {/* Extracted Information Review - only show when idle */}
       {status === "idle" && (
-        <div className="space-y-4 rounded-lg border p-4">
-          <h4 className="font-medium text-muted-foreground text-sm uppercase tracking-wide">
+        <div className="rounded-lg border p-4">
+          <h4 className="mb-4 font-medium text-muted-foreground text-sm uppercase tracking-wide">
             Your Information
           </h4>
 
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">Email</span>
-            <span className="font-medium">{data.email}</span>
-          </div>
+          <ItemGroup>
+            {/* Email */}
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Email</ItemDescription>
+                <ItemTitle>{data.email}</ItemTitle>
+              </ItemContent>
+            </Item>
 
-          <Separator />
+            <ItemSeparator />
 
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">Name</span>
-            <div className="flex items-center gap-2">
-              {isEditingName ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    className="h-8 w-48"
-                    onChange={(e) => setEditedName(e.target.value)}
-                    placeholder="Enter name"
-                    value={editedName}
-                  />
-                  <Button onClick={handleSaveName} size="sm" variant="ghost">
-                    <Check className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <span className="font-medium">
+            {/* Name */}
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Name</ItemDescription>
+                {isEditingName ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      className="h-8 w-48"
+                      onChange={(e) => setEditedName(e.target.value)}
+                      placeholder="Enter name"
+                      value={editedName}
+                    />
+                    <Button onClick={handleSaveName} size="sm" variant="ghost">
+                      <Check className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <ItemTitle>
                     {editedName || data.extractedName || "Not extracted"}
-                  </span>
+                  </ItemTitle>
+                )}
+              </ItemContent>
+              {!isEditingName && (
+                <ItemActions>
                   <Button
                     onClick={() => {
                       setEditedName(data.extractedName || "");
@@ -943,53 +959,67 @@ export function StepCreateAccount() {
                   >
                     <Edit2 className="h-3 w-3" />
                   </Button>
-                </>
+                </ItemActions>
               )}
-            </div>
-          </div>
+            </Item>
 
-          <Separator />
+            <ItemSeparator />
 
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">Date of Birth</span>
-            <div className="flex items-center gap-2">
-              <span className="font-medium">
-                {data.extractedDOB || "Not extracted"}
-              </span>
+            {/* Date of Birth */}
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Date of Birth</ItemDescription>
+                <ItemTitle>{data.extractedDOB || "Not extracted"}</ItemTitle>
+              </ItemContent>
               {calculateAge(data.extractedDOB) !== null && (
-                <Badge variant="secondary">
-                  {calculateAge(data.extractedDOB)}+ years
-                </Badge>
+                <ItemActions>
+                  <Badge variant="secondary">
+                    {calculateAge(data.extractedDOB)}+ years
+                  </Badge>
+                </ItemActions>
               )}
-            </div>
-          </div>
+            </Item>
 
-          <Separator />
+            <ItemSeparator />
 
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">Nationality</span>
-            <span className="font-medium">
-              {data.extractedNationality || "Not extracted"}
-            </span>
-          </div>
+            {/* Nationality */}
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Nationality</ItemDescription>
+                <ItemTitle>
+                  {data.extractedNationality || "Not extracted"}
+                </ItemTitle>
+              </ItemContent>
+            </Item>
 
-          <Separator />
+            <ItemSeparator />
 
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">Document</span>
-            <Badge variant={data.idDocument ? "default" : "outline"}>
-              {data.idDocument ? "Uploaded" : "Skipped"}
-            </Badge>
-          </div>
+            {/* Document */}
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Document</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Badge variant={data.idDocument ? "default" : "outline"}>
+                  {data.idDocument ? "Uploaded" : "Skipped"}
+                </Badge>
+              </ItemActions>
+            </Item>
 
-          <Separator />
+            <ItemSeparator />
 
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">Liveness</span>
-            <Badge variant={data.selfieImage ? "default" : "outline"}>
-              {data.selfieImage ? "Verified" : "Skipped"}
-            </Badge>
-          </div>
+            {/* Liveness */}
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Liveness</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Badge variant={data.selfieImage ? "default" : "outline"}>
+                  {data.selfieImage ? "Verified" : "Skipped"}
+                </Badge>
+              </ItemActions>
+            </Item>
+          </ItemGroup>
         </div>
       )}
 

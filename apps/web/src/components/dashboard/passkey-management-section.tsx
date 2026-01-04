@@ -4,7 +4,6 @@ import {
   Check,
   Edit2,
   KeyRound,
-  Loader2,
   Monitor,
   Plus,
   Smartphone,
@@ -35,8 +34,24 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
 import {
   checkPrfSupport,
@@ -340,91 +355,83 @@ export function PasskeyManagementSection() {
 
           if (optimisticPasskeys.length === 0) {
             return (
-              <div className="py-6 text-center text-muted-foreground">
-                <KeyRound className="mx-auto mb-3 h-12 w-12 opacity-50" />
-                <p>No passkeys registered yet.</p>
-                <p className="mt-1 text-sm">
-                  Add a passkey for secure, passwordless sign-in.
-                </p>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <KeyRound />
+                  </EmptyMedia>
+                  <EmptyTitle>No Passkeys Registered</EmptyTitle>
+                  <EmptyDescription>
+                    Add a passkey for secure, passwordless sign-in.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             );
           }
 
           return (
-            <div className="space-y-3">
+            <ItemGroup>
               {optimisticPasskeys.map((passkey) => (
-                <div
-                  className="flex items-center justify-between rounded-lg border bg-card p-3"
-                  key={passkey.id}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                      <DeviceIcon deviceType={passkey.deviceType} />
-                    </div>
-                    <div className="space-y-1">
-                      {editingId === passkey.credentialId ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            autoFocus
-                            className="h-7 w-40"
-                            onChange={(e) => setEditName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handleSaveEdit().catch(() => {
-                                  // Error feedback provided by handleSaveEdit() internally
-                                });
-                              }
-                              if (e.key === "Escape") {
-                                handleCancelEdit();
-                              }
-                            }}
-                            value={editName}
-                          />
-                          <Button
-                            disabled={!editName.trim()}
-                            onClick={handleSaveEdit}
-                            size="sm"
-                            variant="ghost"
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            onClick={handleCancelEdit}
-                            size="sm"
-                            variant="ghost"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">
-                            {passkey.name || "Unnamed Passkey"}
-                          </p>
-                          <Button
-                            className="h-6 w-6 p-0"
-                            onClick={() => handleStartEdit(passkey)}
-                            size="sm"
-                            variant="ghost"
-                          >
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                        <span>Added {formatDate(passkey.createdAt)}</span>
-                        {passkey.lastUsedAt ? (
-                          <>
-                            <span>·</span>
-                            <span>
-                              Last used {formatDate(passkey.lastUsedAt)}
-                            </span>
-                          </>
-                        ) : null}
+                <Item key={passkey.id} size="sm" variant="outline">
+                  <ItemMedia variant="icon">
+                    <DeviceIcon deviceType={passkey.deviceType} />
+                  </ItemMedia>
+                  <ItemContent>
+                    {editingId === passkey.credentialId ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          autoFocus
+                          className="h-7 w-40"
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleSaveEdit().catch(() => {
+                                // Error feedback provided by handleSaveEdit() internally
+                              });
+                            }
+                            if (e.key === "Escape") {
+                              handleCancelEdit();
+                            }
+                          }}
+                          value={editName}
+                        />
+                        <Button
+                          disabled={!editName.trim()}
+                          onClick={handleSaveEdit}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          onClick={handleCancelEdit}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
+                    ) : (
+                      <ItemTitle className="flex items-center gap-2">
+                        {passkey.name || "Unnamed Passkey"}
+                        <Button
+                          className="h-6 w-6 p-0"
+                          onClick={() => handleStartEdit(passkey)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                      </ItemTitle>
+                    )}
+                    <p className="text-muted-foreground text-xs">
+                      Added {formatDate(passkey.createdAt)}
+                      {passkey.lastUsedAt
+                        ? ` · Last used ${formatDate(passkey.lastUsedAt)}`
+                        : null}
+                    </p>
+                  </ItemContent>
+                  <ItemActions>
                     {passkey.backedUp ? (
                       <Badge className="text-xs" variant="secondary">
                         Synced
@@ -444,10 +451,10 @@ export function PasskeyManagementSection() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  </div>
-                </div>
+                  </ItemActions>
+                </Item>
               ))}
-            </div>
+            </ItemGroup>
           );
         })()}
 
@@ -460,7 +467,7 @@ export function PasskeyManagementSection() {
         >
           {isAdding ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner className="mr-2" size="sm" />
               Creating passkey...
             </>
           ) : (

@@ -5,7 +5,7 @@
  *
  * Displays token information and user's attestation status.
  */
-import { CheckCircle, Coins, Loader2 } from "lucide-react";
+import { CheckCircle, Coins } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 import { formatTokenAmount } from "@/lib/utils/token";
 
@@ -36,7 +37,7 @@ export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Spinner size="lg" />
         </CardContent>
       </Card>
     );

@@ -8,7 +8,7 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * Orchestrates token operations with encrypted identity verification.
  */
 import { AlertTriangle, ArrowRight, Lock, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ComplianceAccessCard } from "@/components/blockchain/compliance-access-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
 import { MintForm } from "./mint-form";
@@ -43,6 +44,14 @@ export function DefiDemoClient({
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(
     attestedNetworkId
   );
+  const mintFormRef = useRef<HTMLDivElement>(null);
+
+  const handleMintClick = useCallback(() => {
+    mintFormRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, []);
 
   // In demo mode (Hardhat), skip wallet mismatch check for easier testing
   const isDemoMode = process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true";
@@ -246,8 +255,11 @@ export function DefiDemoClient({
   if (attestationLoading && !isDemoMode) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
-          Verifying on-chain attestation...
+        <CardContent className="flex flex-col items-center justify-center gap-3 py-8">
+          <Spinner size="lg" />
+          <p className="text-muted-foreground text-sm">
+            Verifying on-chain attestation...
+          </p>
         </CardContent>
       </Card>
     );
@@ -344,8 +356,11 @@ export function DefiDemoClient({
         if (networksLoading) {
           return (
             <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Loading networks...
+              <CardContent className="flex flex-col items-center justify-center gap-3 py-8">
+                <Spinner size="lg" />
+                <p className="text-muted-foreground text-sm">
+                  Loading networks...
+                </p>
               </CardContent>
             </Card>
           );
@@ -397,7 +412,9 @@ export function DefiDemoClient({
             />
 
             {/* Mint Form */}
-            <MintForm networkId={resolvedNetworkId} walletAddress={address} />
+            <div ref={mintFormRef}>
+              <MintForm networkId={resolvedNetworkId} walletAddress={address} />
+            </div>
 
             {/* Transfer Form */}
             <TransferForm
@@ -409,7 +426,11 @@ export function DefiDemoClient({
             />
 
             {/* Transaction History */}
-            <TxHistory networkId={resolvedNetworkId} walletAddress={address} />
+            <TxHistory
+              networkId={resolvedNetworkId}
+              onMintClick={handleMintClick}
+              walletAddress={address}
+            />
           </div>
         );
       })()}

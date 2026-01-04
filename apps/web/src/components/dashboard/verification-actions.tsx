@@ -1,19 +1,13 @@
 "use client";
 
-import {
-  CheckCircle,
-  Clock,
-  Key,
-  Loader2,
-  Shield,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle, Clock, Key, Shield, XCircle } from "lucide-react";
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { getUserProof, verifyAgeViaFHE } from "@/lib/crypto/crypto-client";
 
 interface VerificationResult {
@@ -164,58 +158,62 @@ export function VerificationActions() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           {/* ZK Verification */}
-          <div className="space-y-3 rounded-lg border p-4">
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-info" />
-              <span className="font-medium">Stored ZK Proof</span>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              View the last verified ZK proof status from registration
-            </p>
-            <Button
-              className="w-full"
-              disabled={isVerifyingZK || isLoadingData}
-              onClick={handleVerifyZK}
-              variant="outline"
-            >
-              {isVerifyingZK ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Refreshing...
-                </>
-              ) : (
-                "Refresh ZK Status"
-              )}
-            </Button>
-            {zkResult ? <ResultBadge result={zkResult} /> : null}
-          </div>
+          <Card>
+            <CardContent className="space-y-3 pt-4">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-info" />
+                <span className="font-medium">Stored ZK Proof</span>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                View the last verified ZK proof status from registration
+              </p>
+              <Button
+                className="w-full"
+                disabled={isVerifyingZK || isLoadingData}
+                onClick={handleVerifyZK}
+                variant="outline"
+              >
+                {isVerifyingZK ? (
+                  <>
+                    <Spinner className="mr-2" size="sm" />
+                    Refreshing...
+                  </>
+                ) : (
+                  "Refresh ZK Status"
+                )}
+              </Button>
+              {zkResult ? <ResultBadge result={zkResult} /> : null}
+            </CardContent>
+          </Card>
 
           {/* FHE Verification */}
-          <div className="space-y-3 rounded-lg border p-4">
-            <div className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-info" />
-              <span className="font-medium">FHE Computation</span>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              Compute age check on encrypted data without decryption
-            </p>
-            <Button
-              className="w-full"
-              disabled={isVerifyingFHE || isLoadingData}
-              onClick={handleVerifyFHE}
-              variant="outline"
-            >
-              {isVerifyingFHE ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Computing...
-                </>
-              ) : (
-                "Verify via FHE"
-              )}
-            </Button>
-            {fheResult ? <ResultBadge result={fheResult} /> : null}
-          </div>
+          <Card>
+            <CardContent className="space-y-3 pt-4">
+              <div className="flex items-center gap-2">
+                <Key className="h-5 w-5 text-info" />
+                <span className="font-medium">FHE Computation</span>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Compute age check on encrypted data without decryption
+              </p>
+              <Button
+                className="w-full"
+                disabled={isVerifyingFHE || isLoadingData}
+                onClick={handleVerifyFHE}
+                variant="outline"
+              >
+                {isVerifyingFHE ? (
+                  <>
+                    <Spinner className="mr-2" size="sm" />
+                    Computing...
+                  </>
+                ) : (
+                  "Verify via FHE"
+                )}
+              </Button>
+              {fheResult ? <ResultBadge result={fheResult} /> : null}
+            </CardContent>
+          </Card>
         </div>
 
         {zkResult || fheResult ? (

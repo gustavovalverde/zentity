@@ -32,6 +32,22 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+} from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { getUserProof } from "@/lib/crypto/crypto-client";
 
@@ -77,6 +93,13 @@ export default function DevViewPage() {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const formatMs = (ms: number | null | undefined): string => {
+    if (ms === null || ms === undefined) {
+      return "N/A";
+    }
+    return `${ms.toFixed(2)}ms`;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -98,17 +121,23 @@ export default function DevViewPage() {
           </p>
         </div>
         <Card>
-          <CardContent className="py-12 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <Code className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="font-medium">{error || "No Proof Found"}</h3>
-            <p className="mt-1 text-muted-foreground text-sm">
-              Complete the registration process to generate proof data.
-            </p>
-            <Button asChild className="mt-4">
-              <Link href="/sign-up">Complete Registration</Link>
-            </Button>
+          <CardContent className="py-8">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Code />
+                </EmptyMedia>
+                <EmptyTitle>{error || "No Proof Found"}</EmptyTitle>
+                <EmptyDescription>
+                  Complete the registration process to generate proof data.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button asChild>
+                  <Link href="/sign-up">Complete Registration</Link>
+                </Button>
+              </EmptyContent>
+            </Empty>
           </CardContent>
         </Card>
       </div>
@@ -152,33 +181,29 @@ export default function DevViewPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border p-4">
+            <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">
                 ZK Proof Generation
               </p>
-              <p className="font-bold font-mono text-2xl">
-                {proofData.generationTimeMs !== null
-                  ? `${proofData.generationTimeMs}ms`
-                  : "N/A"}
+              <p className="truncate font-bold font-mono text-2xl">
+                {formatMs(proofData.generationTimeMs)}
               </p>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">FHE Encryption</p>
-              <p className="font-bold font-mono text-2xl">
-                {proofData.fheEncryptionTimeMs
-                  ? `${proofData.fheEncryptionTimeMs}ms`
-                  : "N/A"}
+              <p className="truncate font-bold font-mono text-2xl">
+                {formatMs(proofData.fheEncryptionTimeMs)}
               </p>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">Proof Size</p>
-              <p className="font-bold font-mono text-2xl">
+              <p className="truncate font-bold font-mono text-2xl">
                 {proofJson ? formatBytes(proofJson) : "N/A"}
               </p>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">Ciphertext Size</p>
-              <p className="font-bold font-mono text-2xl">
+              <p className="truncate font-bold font-mono text-2xl">
                 {proofData.birthYearOffsetCiphertext
                   ? formatBytes(proofData.birthYearOffsetCiphertext)
                   : "N/A"}
@@ -367,21 +392,39 @@ export default function DevViewPage() {
             Metadata
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Proof ID</span>
-            <code className="text-xs">{proofData.proofId}</code>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Created At</span>
-            <span>{new Date(proofData.createdAt).toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Age Status</span>
-            <Badge variant={proofData.isOver18 ? "default" : "destructive"}>
-              {proofData.isOver18 ? "18+" : "Under 18"}
-            </Badge>
-          </div>
+        <CardContent>
+          <ItemGroup>
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Proof ID</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <code className="text-xs">{proofData.proofId}</code>
+              </ItemActions>
+            </Item>
+            <ItemSeparator />
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Created At</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span className="text-sm">
+                  {new Date(proofData.createdAt).toLocaleString()}
+                </span>
+              </ItemActions>
+            </Item>
+            <ItemSeparator />
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Age Status</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Badge variant={proofData.isOver18 ? "default" : "destructive"}>
+                  {proofData.isOver18 ? "18+" : "Under 18"}
+                </Badge>
+              </ItemActions>
+            </Item>
+          </ItemGroup>
         </CardContent>
       </Card>
     </div>

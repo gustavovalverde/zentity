@@ -1,6 +1,6 @@
 "use client";
 
-import { Github, Key, Loader2, Mail, Unlink } from "lucide-react";
+import { Github, Key, Mail, Unlink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +15,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from "@/components/ui/item";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 
 // Google icon component
@@ -112,121 +122,118 @@ export function AuthMethodsSection({
           Manage how you sign in to your account
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Email/Password */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Mail className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-medium">Email & Password</p>
-              <p className="text-muted-foreground text-sm">{email}</p>
-            </div>
-          </div>
-          <Badge variant={hasPassword ? "default" : "outline"}>
-            {hasPassword ? "Active" : "Not set"}
-          </Badge>
-        </div>
+      <CardContent>
+        <ItemGroup>
+          {/* Email/Password */}
+          <Item>
+            <ItemMedia variant="icon">
+              <Mail />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>Email & Password</ItemTitle>
+              <ItemDescription>{email}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Badge variant={hasPassword ? "default" : "outline"}>
+                {hasPassword ? "Active" : "Not set"}
+              </Badge>
+            </ItemActions>
+          </Item>
 
-        <Separator />
+          <ItemSeparator />
 
-        {/* Magic Link */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Mail className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-medium">Magic Link</p>
-              <p className="text-muted-foreground text-sm">
-                Sign in via email link
-              </p>
-            </div>
-          </div>
-          <Badge variant="default">Available</Badge>
-        </div>
+          {/* Magic Link */}
+          <Item>
+            <ItemMedia variant="icon">
+              <Mail />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>Magic Link</ItemTitle>
+              <ItemDescription>Sign in via email link</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Badge variant="default">Available</Badge>
+            </ItemActions>
+          </Item>
 
-        <Separator />
+          <ItemSeparator />
 
-        {/* Google */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          {/* Google */}
+          <Item>
+            <ItemMedia variant="icon">
               <GoogleIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-medium">Google</p>
-              <p className="text-muted-foreground text-sm">
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>Google</ItemTitle>
+              <ItemDescription>
                 {isGoogleLinked ? "Linked to your account" : "Not linked"}
-              </p>
-            </div>
-          </div>
-          {isGoogleLinked ? (
-            <Button
-              disabled={unlinkingProvider !== null}
-              onClick={() => handleUnlink("google")}
-              size="sm"
-              variant="outline"
-            >
-              {unlinkingProvider === "google" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              {isGoogleLinked ? (
+                <Button
+                  disabled={unlinkingProvider !== null}
+                  onClick={() => handleUnlink("google")}
+                  size="sm"
+                  variant="outline"
+                >
+                  {unlinkingProvider === "google" ? (
+                    <Spinner className="mr-2" size="sm" />
+                  ) : (
+                    <Unlink className="mr-2 h-4 w-4" />
+                  )}
+                  Unlink
+                </Button>
               ) : (
-                <Unlink className="mr-2 h-4 w-4" />
+                <Badge variant="outline">Not linked</Badge>
               )}
-              Unlink
-            </Button>
-          ) : (
-            <Badge variant="outline">Not linked</Badge>
-          )}
-        </div>
+            </ItemActions>
+          </Item>
 
-        <Separator />
+          <ItemSeparator />
 
-        {/* GitHub */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Github className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-medium">GitHub</p>
-              <p className="text-muted-foreground text-sm">
+          {/* GitHub */}
+          <Item>
+            <ItemMedia variant="icon">
+              <Github />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>GitHub</ItemTitle>
+              <ItemDescription>
                 {isGitHubLinked ? "Linked to your account" : "Not linked"}
-              </p>
-            </div>
-          </div>
-          {isGitHubLinked ? (
-            <Button
-              disabled={unlinkingProvider !== null}
-              onClick={() => handleUnlink("github")}
-              size="sm"
-              variant="outline"
-            >
-              {unlinkingProvider === "github" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              </ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              {isGitHubLinked ? (
+                <Button
+                  disabled={unlinkingProvider !== null}
+                  onClick={() => handleUnlink("github")}
+                  size="sm"
+                  variant="outline"
+                >
+                  {unlinkingProvider === "github" ? (
+                    <Spinner className="mr-2" size="sm" />
+                  ) : (
+                    <Unlink className="mr-2 h-4 w-4" />
+                  )}
+                  Unlink
+                </Button>
               ) : (
-                <Unlink className="mr-2 h-4 w-4" />
+                <Badge variant="outline">Not linked</Badge>
               )}
-              Unlink
-            </Button>
-          ) : (
-            <Badge variant="outline">Not linked</Badge>
-          )}
-        </div>
+            </ItemActions>
+          </Item>
+        </ItemGroup>
 
         {/* Link new accounts section */}
         {!(isGoogleLinked && isGitHubLinked) && (
-          <>
-            <Separator />
-            <div className="space-y-3">
-              <p className="font-medium text-sm">Link additional accounts</p>
-              <p className="text-muted-foreground text-xs">
-                Link your social accounts for easier sign-in
-              </p>
-              <OAuthButtons mode="link" onSuccess={() => router.refresh()} />
-            </div>
-          </>
+          <div className="mt-6 space-y-3 border-t pt-6">
+            <p className="font-medium text-sm">Link additional accounts</p>
+            <p className="text-muted-foreground text-xs">
+              Link your social accounts for easier sign-in
+            </p>
+            <OAuthButtons mode="link" onSuccess={() => router.refresh()} />
+          </div>
         )}
       </CardContent>
     </Card>

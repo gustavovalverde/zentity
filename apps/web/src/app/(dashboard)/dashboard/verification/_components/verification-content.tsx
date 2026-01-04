@@ -26,6 +26,24 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from "@/components/ui/item";
 import { getCountryDisplayName } from "@/lib/constants/verification-labels";
 import {
   getEncryptedAttributeTypesByUserId,
@@ -109,18 +127,24 @@ export async function VerificationContent({
   if (!hasProof) {
     return (
       <Card>
-        <CardContent className="py-12 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <Shield className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <h3 className="font-medium">No Verification Found</h3>
-          <p className="mt-1 text-muted-foreground text-sm">
-            Complete the registration process to generate your identity
-            verification proofs.
-          </p>
-          <Button asChild className="mt-4">
-            <Link href="/sign-up">Complete Registration</Link>
-          </Button>
+        <CardContent className="py-8">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Shield />
+              </EmptyMedia>
+              <EmptyTitle>No Verification Found</EmptyTitle>
+              <EmptyDescription>
+                Complete the registration process to generate your identity
+                verification proofs.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button asChild>
+                <Link href="/sign-up">Complete Registration</Link>
+              </Button>
+            </EmptyContent>
+          </Empty>
         </CardContent>
       </Card>
     );
@@ -299,42 +323,72 @@ export async function VerificationContent({
         <CardHeader>
           <CardTitle className="text-base">Technical Details</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Cryptographic Scheme</span>
-            <span>UltraHonk zk-SNARK</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Elliptic Curve</span>
-            <span>BN254</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Proof System</span>
-            <span>Noir.js + Barretenberg</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">FHE Encryption</span>
-            <span>TFHE-rs</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Verification</span>
-            <span className="font-medium text-success">Valid</span>
-          </div>
+        <CardContent>
+          <ItemGroup>
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Cryptographic Scheme</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span className="text-sm">UltraHonk zk-SNARK</span>
+              </ItemActions>
+            </Item>
+            <ItemSeparator />
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Elliptic Curve</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span className="text-sm">BN254</span>
+              </ItemActions>
+            </Item>
+            <ItemSeparator />
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Proof System</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span className="text-sm">Noir.js + Barretenberg</span>
+              </ItemActions>
+            </Item>
+            <ItemSeparator />
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>FHE Encryption</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span className="text-sm">TFHE-rs</span>
+              </ItemActions>
+            </Item>
+            <ItemSeparator />
+            <Item size="sm">
+              <ItemContent>
+                <ItemDescription>Verification</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span className="font-medium text-sm text-success">Valid</span>
+              </ItemActions>
+            </Item>
+          </ItemGroup>
         </CardContent>
       </Card>
 
       {/* Developer Link */}
       <Card>
         <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Code className="h-5 w-5 text-muted-foreground" />
-              <span className="font-medium text-sm">Developer View</span>
-            </div>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/dashboard/dev">View Raw Data</Link>
-            </Button>
-          </div>
+          <Item size="sm">
+            <ItemMedia variant="icon">
+              <Code />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>Developer View</ItemTitle>
+            </ItemContent>
+            <ItemActions>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/dashboard/dev">View Raw Data</Link>
+              </Button>
+            </ItemActions>
+          </Item>
         </CardContent>
       </Card>
     </div>

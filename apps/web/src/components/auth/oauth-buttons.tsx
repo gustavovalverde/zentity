@@ -1,10 +1,12 @@
 "use client";
 
-import { Github, Loader2 } from "lucide-react";
+import { Github, Info } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 
 // Google icon component
@@ -102,12 +104,13 @@ export function OAuthButtons({
   // If no providers configured, show a message
   if (!(isGoogleConfigured || isGitHubConfigured)) {
     return (
-      <div className="py-4 text-center text-muted-foreground text-sm">
-        <p>OAuth providers not configured.</p>
-        <p className="mt-1 text-xs">
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertTitle>OAuth providers not configured</AlertTitle>
+        <AlertDescription className="text-xs">
           Add GOOGLE_CLIENT_ID/SECRET or GITHUB_CLIENT_ID/SECRET to enable.
-        </p>
-      </div>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -121,7 +124,7 @@ export function OAuthButtons({
           variant="outline"
         >
           {loadingProvider === "google" ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" size="sm" />
           ) : (
             <GoogleIcon className="mr-2 h-4 w-4" />
           )}
@@ -137,7 +140,7 @@ export function OAuthButtons({
           variant="outline"
         >
           {loadingProvider === "github" ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" size="sm" />
           ) : (
             <Github className="mr-2 h-4 w-4" />
           )}

@@ -11,10 +11,10 @@ import {
   Coins,
   ExternalLink,
   History,
-  Loader2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -22,11 +22,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
 interface TxHistoryProps {
   networkId: string;
   walletAddress: string;
+  onMintClick?: () => void;
 }
 
 interface Transfer {
@@ -73,6 +83,7 @@ function TxHistoryContent({
   getTypeIcon,
   getTypeLabel,
   formatAddress,
+  onMintClick,
 }: {
   isLoading: boolean;
   error: unknown;
@@ -80,11 +91,12 @@ function TxHistoryContent({
   getTypeIcon: (type: string) => React.ReactNode;
   getTypeLabel: (type: string) => string;
   formatAddress: (address: string) => string;
+  onMintClick?: () => void;
 }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -99,9 +111,25 @@ function TxHistoryContent({
 
   if (!data?.transfers || data.transfers.length === 0) {
     return (
-      <p className="py-4 text-center text-muted-foreground text-sm">
-        No transactions yet
-      </p>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <History />
+          </EmptyMedia>
+          <EmptyTitle>No Transactions Yet</EmptyTitle>
+          <EmptyDescription>
+            Mint or transfer tokens to see your history here.
+          </EmptyDescription>
+        </EmptyHeader>
+        {onMintClick ? (
+          <EmptyContent>
+            <Button onClick={onMintClick} size="sm" variant="outline">
+              <Coins className="mr-2 h-4 w-4" />
+              Mint Tokens
+            </Button>
+          </EmptyContent>
+        ) : null}
+      </Empty>
     );
   }
 
@@ -149,7 +177,11 @@ function TxHistoryContent({
   );
 }
 
-export function TxHistory({ networkId, walletAddress }: TxHistoryProps) {
+export function TxHistory({
+  networkId,
+  walletAddress,
+  onMintClick,
+}: TxHistoryProps) {
   const { data, isLoading, error } = trpcReact.token.history.useQuery({
     networkId,
     walletAddress,
@@ -206,6 +238,7 @@ export function TxHistory({ networkId, walletAddress }: TxHistoryProps) {
           getTypeIcon={getTypeIcon}
           getTypeLabel={getTypeLabel}
           isLoading={isLoading}
+          onMintClick={onMintClick}
         />
       </CardContent>
     </Card>

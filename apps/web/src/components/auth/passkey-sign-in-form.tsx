@@ -1,12 +1,14 @@
 "use client";
 
-import { KeyRound, Loader2, TriangleAlert } from "lucide-react";
+import { KeyRound, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import {
   authenticateWithPasskey,
   checkPrfSupport,
@@ -103,16 +105,18 @@ export function PasskeySignInForm() {
         </Alert>
       ) : null}
 
-      <div className="space-y-3 rounded-lg border p-4">
-        <div className="flex items-center gap-2">
-          <KeyRound className="h-5 w-5 text-muted-foreground" />
-          <span className="font-medium">Sign in with Passkey</span>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Use your device's biometrics (Face ID, Touch ID, Windows Hello) or
-          security key to sign in securely without a password.
-        </p>
-      </div>
+      <Card>
+        <CardContent className="space-y-3 pt-4">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-muted-foreground" />
+            <span className="font-medium">Sign in with Passkey</span>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Use your device's biometrics (Face ID, Touch ID, Windows Hello) or
+            security key to sign in securely without a password.
+          </p>
+        </CardContent>
+      </Card>
 
       <Button
         className="w-full"
@@ -123,19 +127,19 @@ export function PasskeySignInForm() {
       >
         {status === "checking" && (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" size="sm" />
             Getting options...
           </>
         )}
         {status === "authenticating" && (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" size="sm" />
             Waiting for passkey...
           </>
         )}
         {status === "verifying" && (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" size="sm" />
             Signing in...
           </>
         )}

@@ -14,7 +14,6 @@ import {
   ChevronDown,
   ExternalLink,
   Loader2,
-  LoaderCircle,
   Lock,
   RefreshCw,
   Shield,
@@ -23,7 +22,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import { ComplianceAccessCard } from "@/components/blockchain/compliance-access-card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +37,22 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from "@/components/ui/item";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { getStoredProfile } from "@/lib/crypto/profile-secret";
 import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
 import { trpcReact } from "@/lib/trpc/client";
@@ -317,20 +332,25 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
               if (networksLoading) {
                 return (
                   <div className="flex items-center justify-center py-8">
-                    <LoaderCircle className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <Spinner size="lg" />
                   </div>
                 );
               }
 
               if (!(networks && networks.length > 0)) {
                 return (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      No blockchain networks are currently available. Check your
-                      configuration.
-                    </AlertDescription>
-                  </Alert>
+                  <Empty>
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <AlertTriangle />
+                      </EmptyMedia>
+                      <EmptyTitle>No Networks Available</EmptyTitle>
+                      <EmptyDescription>
+                        No blockchain networks are configured. Contact support
+                        if this persists.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
                 );
               }
 
@@ -363,8 +383,10 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                   ) : null}
 
                   {/* Network Selector */}
-                  <div className="space-y-2">
-                    <span className="font-medium text-sm">Select Network</span>
+                  <fieldset className="space-y-3">
+                    <Label asChild>
+                      <legend>Select Network</legend>
+                    </Label>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {networks.map((network) => (
                         <NetworkCard
@@ -375,7 +397,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                         />
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
 
                   {/* Selected Network Actions */}
                   {selectedNetworkData && address ? (
@@ -413,8 +435,8 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                   {/* Loading on-chain status */}
                   {showComplianceAccess && isCheckingOnChain ? (
                     <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Verifying on-chain attestation...
+                      <Spinner size="sm" />
+                      <span>Verifying on-chain attestation...</span>
                     </div>
                   ) : null}
 
@@ -480,11 +502,14 @@ function NetworkCard({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const statusColors = {
-    pending: "text-warning bg-warning/10",
-    submitted: "text-info bg-info/10",
-    confirmed: "text-success bg-success/10",
-    failed: "text-destructive bg-destructive/10",
+  const statusVariant: Record<
+    string,
+    "warning" | "info" | "success" | "destructive"
+  > = {
+    pending: "warning",
+    submitted: "info",
+    confirmed: "success",
+    failed: "destructive",
   };
 
   const statusIcons = {
@@ -495,39 +520,36 @@ function NetworkCard({
   };
 
   return (
-    <Button
-      className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+    <button
+      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
         isSelected
-          ? "border-primary bg-primary/5"
-          : "border-border hover:border-primary/50"
+          ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+          : "border-border bg-card hover:border-primary/50 hover:bg-accent/50"
       }`}
       onClick={onSelect}
       type="button"
-      variant="outline"
     >
-      <div className="flex items-center gap-2">
-        <div
-          className={`h-2 w-2 rounded-full ${
-            network.type === "fhevm" ? "bg-info" : "bg-primary"
-          }`}
-        />
-        <div>
-          <p className="font-medium text-sm">{network.name}</p>
-          <p className="text-muted-foreground text-xs">
-            {network.type === "fhevm" ? "Encrypted" : "Standard"}
-          </p>
-        </div>
+      <div
+        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+          network.type === "fhevm" ? "bg-info" : "bg-primary"
+        }`}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-sm">{network.name}</p>
+        <p className="text-muted-foreground text-xs">
+          {network.type === "fhevm" ? "Encrypted" : "Standard"}
+        </p>
       </div>
-
       {network.attestation ? (
-        <div
-          className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs ${statusColors[network.attestation.status]}`}
+        <Badge
+          className="shrink-0"
+          variant={statusVariant[network.attestation.status]}
         >
           {statusIcons[network.attestation.status]}
-          <span className="capitalize">{network.attestation.status}</span>
-        </div>
+          <span className="ml-1 capitalize">{network.attestation.status}</span>
+        </Badge>
       ) : null}
-    </Button>
+    </button>
   );
 }
 
@@ -563,39 +585,45 @@ function NetworkActions({
       walletAddress.toLowerCase() !== attestedWalletAddress.toLowerCase();
 
     return (
-      <div className="space-y-3 rounded-lg border border-success/30 bg-success/10 p-4">
-        <div className="flex items-center gap-2 text-success">
+      <div className="space-y-3">
+        <Alert variant="success">
           <CheckCircle className="h-5 w-5" />
-          <span className="font-medium">Attested on {network.name}</span>
-        </div>
-        <div className="space-y-1 text-sm">
-          {attestation.blockNumber !== null && (
-            <p className="text-muted-foreground">
-              Block: {attestation.blockNumber}
-            </p>
-          )}
-          {attestation.confirmedAt ? (
-            <p className="text-muted-foreground">
-              Confirmed:{" "}
-              {new Date(attestation.confirmedAt).toLocaleDateString()}
-            </p>
-          ) : null}
-        </div>
+          <AlertTitle>Attested on {network.name}</AlertTitle>
+          <AlertDescription>
+            {attestation.blockNumber !== null && (
+              <span>Block: {attestation.blockNumber}</span>
+            )}
+            {attestation.blockNumber !== null && attestation.confirmedAt && (
+              <span> · </span>
+            )}
+            {attestation.confirmedAt ? (
+              <span>
+                Confirmed:{" "}
+                {new Date(attestation.confirmedAt).toLocaleDateString()}
+              </span>
+            ) : null}
+          </AlertDescription>
+        </Alert>
 
         {/* Wallet display with Change option */}
         {attestedWalletAddress ? (
-          <div className="flex items-center justify-between">
-            <p className="text-sm">
-              <strong>Wallet:</strong>{" "}
-              <code className="rounded bg-success/10 px-1.5 py-0.5 font-mono text-xs">
-                {attestedWalletAddress.slice(0, 6)}...
-                {attestedWalletAddress.slice(-4)}
-              </code>
-            </p>
-            <Button onClick={() => disconnect()} size="sm" variant="ghost">
-              Change
-            </Button>
-          </div>
+          <Item size="sm" variant="muted">
+            <ItemContent>
+              <ItemDescription>Attested Wallet</ItemDescription>
+              <ItemTitle>
+                <code className="font-mono text-sm">
+                  {attestedWalletAddress.slice(0, 6)}...
+                  {attestedWalletAddress.slice(-4)}
+                </code>
+              </ItemTitle>
+            </ItemContent>
+            <ItemActions>
+              <Button onClick={() => disconnect()} size="sm" variant="outline">
+                <Wallet className="mr-2 h-3 w-3" />
+                Change
+              </Button>
+            </ItemActions>
+          </Item>
         ) : null}
 
         {/* Wallet mismatch warning */}
@@ -653,16 +681,16 @@ function NetworkActions({
   // Submitted - waiting for confirmation
   if (attestation?.status === "submitted") {
     return (
-      <div className="space-y-3 rounded-lg border border-info/30 bg-info/10 p-4">
-        <div className="flex items-center gap-2 text-info">
+      <div className="space-y-3">
+        <Alert variant="info">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="font-medium">Transaction Pending</span>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Your attestation is being confirmed on {network.name}
-        </p>
+          <AlertTitle>Transaction Pending</AlertTitle>
+          <AlertDescription>
+            Your attestation is being confirmed on {network.name}
+          </AlertDescription>
+        </Alert>
         {attestation.txHash ? (
-          <div className="rounded bg-muted p-2 font-mono text-xs">
+          <div className="rounded-lg border bg-muted/50 p-2 font-mono text-xs">
             <span className="text-muted-foreground">TX: </span>
             <span className="break-all">{attestation.txHash}</span>
           </div>
@@ -701,18 +729,18 @@ function NetworkActions({
   // Failed - show error and retry option
   if (attestation?.status === "failed") {
     return (
-      <div className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-        <div className="flex items-center gap-2 text-destructive">
+      <div className="space-y-3">
+        <Alert variant="destructive">
           <AlertTriangle className="h-5 w-5" />
-          <span className="font-medium">Attestation Failed</span>
-        </div>
-        {attestation.errorMessage ? (
-          <p className="text-muted-foreground text-sm">
-            {getAttestationError(attestation.errorMessage)}
-          </p>
-        ) : null}
+          <AlertTitle>Attestation Failed</AlertTitle>
+          {attestation.errorMessage ? (
+            <AlertDescription>
+              {getAttestationError(attestation.errorMessage)}
+            </AlertDescription>
+          ) : null}
+        </Alert>
         {attestation.txHash ? (
-          <div className="rounded bg-muted p-2 font-mono text-xs">
+          <div className="rounded-lg border bg-muted/50 p-2 font-mono text-xs">
             <span className="text-muted-foreground">TX: </span>
             <span className="break-all">{attestation.txHash}</span>
           </div>
@@ -732,23 +760,26 @@ function NetworkActions({
   // Not attested - show submit button
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border bg-muted/50 p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-sm">
-            <strong>Wallet:</strong>{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+      <Item size="sm" variant="outline">
+        <ItemContent>
+          <ItemDescription>Connected Wallet</ItemDescription>
+          <ItemTitle>
+            <code className="font-mono text-sm">
               {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
             </code>
+          </ItemTitle>
+          <p className="mt-1 text-muted-foreground text-xs">
+            Your verified identity will be attested to this wallet on{" "}
+            {network.name}.
           </p>
-          <Button onClick={() => disconnect()} size="sm" variant="ghost">
+        </ItemContent>
+        <ItemActions>
+          <Button onClick={() => disconnect()} size="sm" variant="outline">
+            <Wallet className="mr-2 h-3 w-3" />
             Change
           </Button>
-        </div>
-        <p className="text-muted-foreground text-xs">
-          Your verified identity will be attested to this wallet address on{" "}
-          {network.name}.
-        </p>
-      </div>
+        </ItemActions>
+      </Item>
 
       {error ? (
         <Alert variant="destructive">
