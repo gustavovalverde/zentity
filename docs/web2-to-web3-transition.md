@@ -58,7 +58,7 @@ sequenceDiagram
     participant UI as Zentity Web App
     participant BE as Zentity Backend
     participant Verifier as Compliance/Liveness Services
-    participant SDK as FHEVM SDK
+    participant SDK as Relayer SDK (server)
     participant Registrar as Registrar Wallet
     participant IR as IdentityRegistry
     participant CR as ComplianceRules
@@ -73,11 +73,12 @@ sequenceDiagram
     BE-->>UI: Verification complete
 
     Note over UI,IR: ── Phase 2: Web3 Attestation ──
-    Note over UI: User unlocks passkey (PRF) to access FHE keys
-    UI->>SDK: Encrypt identity attributes
+    Note over UI: User unlocks passkey to read birthYearOffset
+    UI->>BE: attestation.submit(networkId, walletAddress, birthYearOffset)
+    BE->>SDK: Encrypt identity attributes (server-side)
     Note over SDK: birthYearOffset, countryCode,<br/>complianceLevel, blacklist status
-    SDK-->>UI: Ciphertext handles + proof
-    UI->>Registrar: Request attestation
+    SDK-->>BE: Ciphertext handles + proof
+    BE->>Registrar: Sign & submit attestation
     Registrar->>IR: attestIdentity(user, handles, proof)
     IR-->>User: Encrypted state stored
 
@@ -110,7 +111,7 @@ The Web2 layer handles all **sensitive data collection and verification**:
 
 - **Attribute extraction**: Birth year offset, nationality, document expiry
 - **ZK proof generation**: Client-side proofs for age, nationality membership
-- **FHE encryption**: Prepare encrypted inputs for on-chain storage
+- **FHE attestation encryption**: Backend registrar encrypts identity attributes for on-chain storage (relayer SDK / mock relayer)
 - **Key custody**: Passkey PRF unlocks FHE keys locally; encrypted key blobs + wrappers stored server-side
 
 ### What Web2 Stores (Privacy-First)
@@ -199,14 +200,14 @@ flowchart TD
     end
 
     subgraph "Off-chain"
-        SDK[FHEVM SDK] --> |"encrypts"| IR
-        SDK --> |"encrypts"| ERC
+        RegistrarSDK["Relayer SDK (server)"] --> |"encrypts attestation"| IR
+        ClientSDK["FHEVM SDK (client)"] --> |"encrypts transfers"| ERC
         FHE[FHE Coprocessor] <--> |"homomorphic ops"| IR
         FHE <--> CR
         FHE <--> ERC
     end
 
-    User[User Wallet] --> SDK
+    User[User Wallet] --> ClientSDK
     User --> |"grantAccessTo"| IR
 ```
 
@@ -252,21 +253,31 @@ CompliantERC20.transfer()
 
 ```mermaid
 flowchart LR
-    subgraph "Client Browser"
-        Plain["Plaintext Values<br/>birthYear: 1990<br/>country: 'FR'"]
+    subgraph "Client Browser (DeFi transfers)"
+        PlainUser["Plaintext Values<br/>amount: 100"]
         SDK["FHEVM SDK"]
-        Cipher["Ciphertext + Proof"]
-        Plain --> SDK --> Cipher
+        CipherUser["Ciphertext + Proof"]
+        PlainUser --> SDK --> CipherUser
+    end
+
+    subgraph "Backend Registrar (attestation)"
+        PlainServer["Plaintext Values<br/>birthYearOffset, countryCode"]
+        Relayer["Relayer SDK (Node)"]
+        CipherServer["Ciphertext + Proof"]
+        PlainServer --> Relayer --> CipherServer
     end
 
     subgraph "Blockchain"
         Handle["Ciphertext Handle<br/>0x1234..."]
         Storage["Contract Storage"]
-        Cipher --> Handle --> Storage
+        CipherUser --> Handle --> Storage
+        CipherServer --> Handle
     end
 
-    style Plain fill:#ffcccc
-    style Cipher fill:#ccffcc
+    style PlainUser fill:#ffcccc
+    style PlainServer fill:#ffcccc
+    style CipherUser fill:#ccffcc
+    style CipherServer fill:#ccffcc
     style Handle fill:#ccffcc
     style Storage fill:#ccffcc
 ```
@@ -274,13 +285,14 @@ flowchart LR
 ### Encryption Points
 
 1. **Client-Side Encryption** (via FHEVM SDK)
-   - User's birth year → `euint8` (offset from 1900)
-   - User's country code → `euint16` (ISO numeric)
    - Transfer amounts → `euint64`
+   - Any user-initiated encrypted contract interactions (DeFi demo)
 
-2. **Server-Side Encryption** (via Registrar)
+2. **Server-Side Encryption** (via Registrar + relayer SDK)
+   - birth year offset → `euint8` (years since 1900)
+   - country code → `euint16` (ISO numeric)
    - compliance level → `euint8`
-   - Blacklist status → `ebool`
+   - blacklist status → `ebool`
 
 3. **Never Encrypted**
    - Wallet addresses (public by design)

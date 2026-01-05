@@ -9,11 +9,11 @@ This document covers integrity controls for both deployment modes:
 
 | Aspect | Web2 (Off-chain) | Web3 (On-chain) |
 |--------|------------------|-----------------|
-| **Proof verification** | Backend (`apps/web/src/lib/zk/noir-verifier.ts`) | Smart contract or backend |
-| **FHE inputs** | Server-signed claims required | FHEVM InputVerifier on-chain |
-| **Nonce issuance** | `trpc.crypto.createChallenge` | Same, before attestation |
+| **Proof verification** | Backend (`apps/web/src/lib/zk/noir-verifier.ts`) | Backend for ZK proofs; on-chain InputVerifier for FHE inputs |
+| **FHE inputs** | Server-derived + server-side encryption | FHEVM InputVerifier on-chain (wallet/registrar inputs) |
+| **Nonce issuance** | `trpc.crypto.createChallenge` (ZK only) | Same ZK challenge flow (not used for attestation/transfer) |
 | **Attestation authority** | SQLite records | IdentityRegistry contract |
-| **Replay resistance** | Single-use nonces in DB | Nonce + on-chain state |
+| **Replay resistance** | Single-use nonces in DB (ZK proofs) | On-chain state + InputVerifier proofs |
 
 **Key difference:** In Web3 mode, the blockchain enforces immutability and ACL permissions. In Web2 mode, the server is the sole authority.
 
@@ -55,6 +55,8 @@ These must be verified by the backend or by on-chain cryptographic checks.
 - Each proof includes a **server-issued nonce** (public input).
 - Nonces are single-use and short-lived.
 - Proof verification rejects stale or reused nonces.
+- Verification validates **public input length against the VK** before cryptographic checks.
+- Proof metadata stores **circuit + VK hashes** (SHA-256 + Poseidon2) for audit/registry alignment.
 
 ### Claim Signing
 
@@ -65,9 +67,7 @@ These must be verified by the backend or by on-chain cryptographic checks.
 ### FHE Input Validation
 
 - Web3: rely on FHEVM input proofs and on-chain InputVerifier.
-- Web2: do **not** accept client-encrypted values as truth unless backed by:
-  - a server-signed claim, or
-  - a ZK proof of validity.
+- Web2: FHE inputs are derived server-side from verified data; the backend does **not** accept client-encrypted values as truth.
 
 ### Evidence Pack
 

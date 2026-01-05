@@ -36,16 +36,70 @@ Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographi
 
 ## Contents
 
-- [TL;DR (run + test)](#tldr-run--test)
-- [Architecture (start here)](#architecture-start-here)
-- [What's implemented (PoC)](#whats-implemented-poc)
-- [Data handling (at a glance)](#data-handling-at-a-glance)
-- [Background and use cases](#background-and-use-cases) *(collapsed)*
-- [Cryptographic architecture](#cryptographic-architecture) *(collapsed)*
-- [Technical reference](#technical-reference) *(collapsed)*
-- [Documentation](#documentation)
+- [Project guide](#project-guide)
+- [TL;DR run and test](#tldr-run-and-test)
+- [Architecture](#architecture)
+- [What's implemented](#whats-implemented)
+- [Use cases](#use-cases)
+- [Planned features](#planned-features)
+- [Data handling at a glance](#data-handling-at-a-glance)
+- [Services and ports](#services-and-ports)
 
-## TL;DR (run + test)
+## Project Guide
+
+Zentity is building a **privacy-first user management and KYC onboarding layer** that sits **alongside** existing authentication systems. It lets users prove things like age, residency, and verification status **without exposing raw PII**.
+
+### Why we are building this
+
+- Minimize breach impact so attackers only see ciphertexts and proofs.
+- Allow selective disclosure without sharing full documents or attributes.
+- Keep the UX familiar and fast.
+- Support KYC-grade onboarding while storing as little sensitive data as possible.
+- Fit into existing IdPs and auth stacks instead of replacing them.
+
+### What this project demonstrates
+
+- ZK proofs, FHE, commitments, Merkle trees, and passkeys with PRF can work together in a real flow.
+- Privacy-preserving compliance can be practical without sacrificing usability.
+
+### How the pieces connect
+
+1. **Onboarding and KYC**:
+   - Document capture and selfie/liveness flows run in the app.
+   - OCR and liveness checks produce verified attributes and scores.
+2. **Encryption and storage**:
+   - Sensitive attributes are encrypted before storage.
+   - Passkey vaults use PRF-derived keys to seal profiles and wrap FHE keys.
+3. **Proof layer**:
+   - ZK proofs are generated client-side.
+   - Proofs are verified server-side.
+4. **Consumption**:
+   - Apps request privacy-preserving signals such as `is_over_18`.
+   - Raw attributes are never shared with integrators.
+
+### Tech choices and rationale
+
+| Capability | Tech | Why we chose it | Deep dive |
+|---|---|---|---|
+| ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
+| Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
+| Client-held secrets | Passkey vaults + PRF-derived keys | Keep decryption capability with the user, support multi-device, and avoid server-held secrets | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md) |
+| Data integrity and dedup | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
+| KYC extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
+
+### Where to go next
+
+- **System map and data flow**: [docs/architecture.md](docs/architecture.md)
+- **Attestation and privacy boundaries**: [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)
+- **ZK circuits and proofs**: [docs/zk-architecture.md](docs/zk-architecture.md)
+- **FHE and on-chain flow**: [docs/web3-architecture.md](docs/web3-architecture.md)
+- **Threat model and integrity controls**: [docs/tamper-model.md](docs/tamper-model.md)
+- **Architectural Decision Records**: [docs/adr/README.md](docs/adr/README.md)
+- **Additional deep dives**: [docs/zk-nationality-proofs.md](docs/zk-nationality-proofs.md), [docs/web2-to-web3-transition.md](docs/web2-to-web3-transition.md), [docs/password-security.md](docs/password-security.md), [docs/rp-redirect-flow.md](docs/rp-redirect-flow.md), [docs/blockchain-setup.md](docs/blockchain-setup.md), [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md)
+
+If you are new, start with the **System Architecture** and then follow ADRs for the rationale behind each major decision.
+
+## TL;DR run and test
 
 ```bash
 # Set required secrets (do this once)
@@ -55,7 +109,7 @@ openssl rand -base64 32
 # Paste it into .env as BETTER_AUTH_SECRET
 
 # Optional: increase FHE request body limit if key registration fails
-# (default is 64MB)
+# Default is 64MB
 # FHE_BODY_LIMIT_MB=64
 
 docker compose up --build
@@ -100,7 +154,7 @@ Quick manual test (happy path):
 - Go to `/sign-up` → complete the 4-step wizard (email → upload ID → liveness → create account)
 - After completion, open `/dashboard` and check verification + proof status
 
-## Architecture (start here)
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -110,7 +164,9 @@ flowchart LR
   end
   subgraph Server["Next.js :3000"]
     API[API Routes]
+    BB[Node bb-worker<br/>UltraHonkVerifierBackend]
     DB[(SQLite)]
+    API <--> BB
   end
   OCR[OCR :5004]
   FHE[FHE :5001]
@@ -124,232 +180,56 @@ flowchart LR
   API -->|attestation| BC
 ```
 
-> [!TIP]
-> **Deep-dive documentation:**
->
-> - [System Architecture](docs/architecture.md) — data flow, storage model, privacy guarantees
-> - [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) — attestation schema, data classification, privacy boundaries
-> - [ZK Circuits](docs/zk-architecture.md) — circuit specs, client/server proving
-> - [Nationality Proofs](docs/zk-nationality-proofs.md) — Merkle trees, country groups
-> - [Password Security](docs/password-security.md) — breached-password blocking + privacy-preserving UX pre-check
-> - [RP Redirect Flow](docs/rp-redirect-flow.md) — OAuth-style RP handoff (clean URL + one-time code exchange)
+## What’s implemented
 
-## What’s Implemented (PoC)
+This is a proof of concept and will change quickly.
 
-- 4-step onboarding wizard (email → upload ID → liveness → create account)
+- 4-step onboarding wizard: email → upload ID → liveness → create account
 - Server-side OCR/liveness/face match with signed claims for tamper resistance
-- Client-side ZK proving (Web Worker) + server-side verification:
+- Client-side ZK proving (Web Worker) + server-side verification (Node bb-worker):
   - age, doc validity, nationality membership, face-match threshold proofs
 - Multi-document identity model with document-scoped proofs + evidence packs
 - Salted SHA256 commitments for dedup + later integrity checks (name, document number, nationality)
 - FHE key registration + encryption for birth_year_offset, country_code, compliance_level, liveness score
-- Passkey-sealed profile secret for user-controlled PII (client decrypt only)
+- Passkey-first auth + passkey-sealed profile secret for user-controlled PII (client decrypt only)
+- Passkey-wrapped FHE key storage (multi-device support; explicit user unlock required)
 - Disclosure demo flow (client decrypt → re-encrypt to RP + consent receipt)
 - OAuth-style RP redirect flow (clean URL + one-time authorization code exchange)
 
-## Data Handling (at a glance)
+## Use cases
+
+- **Age verification** without revealing date of birth.
+- **Nationality group membership** without revealing the exact country.
+- **Liveness checks** without exposing biometric scores.
+- **Document validity** without sharing expiration dates.
+
+## Planned features
+
+- **AML and sanctions screening** with privacy-preserving list checks.
+- **Accredited investor verification** without exposing income.
+- **Source of funds verification** with minimal disclosure.
+
+## Data handling at a glance
 
 The PoC stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
 
 - Plaintext at rest: account email; document metadata (type, issuer country, document hash)
-- Encrypted at rest: passkey-sealed profile (full name, DOB, document number, nationality), FHE key blobs
+- Encrypted at rest: passkey-sealed profile (full name, DOB, document number, nationality), passkey-wrapped FHE key blobs
 - Non-reversible at rest: salted commitments (SHA256)
-- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes
-- On-chain (optional): encrypted identity attestation via FHEVM—only user can decrypt
+- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
+- On-chain (optional): encrypted identity attestation via FHEVM—registrar encrypts, only user can decrypt
 
-**User-controlled privacy:** Profile data is encrypted client-side and sealed with the user’s passkey (PRF + envelope encryption). FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets. The server registers only public + server keys (evaluation keys) for computation and cannot decrypt user data. Only the user can decrypt their own encrypted attributes.
+**User-controlled privacy:** The passkey vault derives encryption keys using WebAuthn PRF. Those PRF-derived keys seal the profile and wrap FHE keys, so the server never holds a decryption secret. FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets with per-credential wrappers. The server registers only public + server keys (evaluation keys) for computation and cannot decrypt user data. Only the user can decrypt their own encrypted attributes after an explicit passkey unlock.
 
 Details: `docs/architecture.md` | `docs/attestation-privacy-architecture.md`
 
-<details id="background-and-use-cases">
-<summary>Background and use cases</summary>
-
-## Why Zentity Exists
-
-### The Problem
-
-Advanced cryptographic techniques—zero-knowledge proofs, fully homomorphic encryption, Merkle trees—have existed for decades. They solve real problems: proving claims without revealing data, computing on encrypted values, verifying set membership privately.
-
-Yet these techniques are **rarely used in mainstream applications**.
-
-Why? The barrier isn't mathematical—it's practical:
-
-- Complex setup (trusted ceremonies, circuit compilation, key generation)
-- Specialized expertise required
-- No reference implementations for common use cases
-- Perceived performance overhead
-
-Meanwhile, identity verification systems store millions of passport photos, birth dates, and biometric templates in plaintext databases—creating honeypots for attackers and compliance nightmares for organizations.
-
-### The Opportunity
-
-Compliance and identity verification is the perfect domain for privacy-preserving cryptography:
-
-- **High-value PII**: Names, birthdates, document numbers, face images
-- **Binary decisions**: "Is this person over 18?" doesn't require knowing their exact birthday
-- **Regulatory pressure**: GDPR, data minimization laws demand "privacy by design"
-- **Business alignment**: Companies *want* to verify without the liability of storing
-
-### What This Project Demonstrates
-
-Zentity proves these cryptographic techniques **can work together** in a real application:
-
-| Technique | Traditional Barrier | Zentity Approach |
-|-----------|---------------------|------------------|
-| Zero-Knowledge Proofs | Complex circuit design | Pre-built circuits for age, nationality, document validity |
-| Fully Homomorphic Encryption | Slow, requires expertise | TFHE-rs with optimized operations for compliance use cases |
-| Cryptographic Commitments | Roll-your-own risk | Standardized SHA256 + salt with GDPR erasure support |
-| Merkle Trees | Custom implementation | Ready-to-use country group trees (EU, EEA, SCHENGEN) |
-
-The result: **complete identity verification with minimized plaintext storage** (no raw ID images/selfies stored; cryptographic artifacts persisted; authentication data stored as required).
-
-> [!NOTE]
-> Zentity is a demonstration project showing that privacy-preserving compliance is technically feasible today. It serves as a reference architecture for teams building production systems.
-
-## What is Zentity?
-
-Zentity is a privacy-preserving compliance platform that enables identity verification for banks, crypto exchanges, and fintechs—without storing or accessing sensitive personal information.
-
-### Currently Available
-
-- **Verify age** without revealing date of birth (ZK proofs + FHE)
-- **Verify nationality group membership** without revealing country (ZK Merkle proofs)
-- **Verify liveness** with multi-gesture challenges (smile, blink, head turns)
-- **Verify liveness scores** without revealing biometric data (FHE threshold comparisons)
-- **Match faces** to ID documents without storing biometrics (DeepFace/ArcFace)
-- **Verify document validity** without exposing expiration date (ZK proofs)
-- **Passkey-wrapped FHE keys** (WebAuthn PRF + envelope encryption, multi-device)
-
-### Planned Features
-
-- **AML/Sanctions screening** - Privacy-preserving sanctions list checking
-- **Accredited investor verification** - Prove income thresholds without revealing amounts
-- **Source of funds verification** - ZK proofs for financial compliance
-
-## Business Use Cases
-
-### Privacy-Preserving Liveness Verification
-
-Traditional liveness detection exposes exact anti-spoof confidence scores. Zentity encrypts liveness scores using FHE, enabling threshold comparisons without revealing the actual score:
-
-```text
-User → Liveness Service: Submit face capture
-Liveness Service → FHE: encrypt(score=0.85)
-FHE → Storage: ciphertext (score hidden)
-Verifier → FHE: verify(ciphertext >= 0.3)
-FHE → Verifier: true/false (score never revealed)
-```
-
-**Benefits:**
-
-- Prevents gaming the system by knowing exact thresholds
-- Protects biometric scoring algorithms from reverse engineering
-- Enables different threshold policies per use case
-
-**Current POC implementation (Human.js):**
-
-- Real-time challenges (smile + head turns) run in the browser for instant feedback.
-- The client captures a baseline frame and one frame per challenge.
-- Those frames are sent to the server via tRPC (`liveness.verify` on `/api/trpc/*`), where Next.js re-runs Human.js on Node to make the authoritative decision and return a face embedding.
-
-> [!WARNING]
-> **Limitations (non-production):**
->
-> - Server-side re-scoring blocks simple UI tampering, but can't prove frames came from a live camera; replayed or edited frames can still be submitted.
-> - Human's antispoof/liveness models are lightweight "quick checks" and not compliance‑grade on their own.
-> - Model weights are bundled locally via `@vladmandic/human-models` and served from `/human-models/*`; first run may still be slow while models initialize, but no external download is needed.
-> - Liveness sessions are stored in memory and reset on server restart.
-
-### Nationality Group Membership
-
-Proving citizenship often requires revealing exact nationality, which can lead to discrimination. Zentity's ZK Merkle proofs enable group membership verification:
-
-```text
-User → Zentity: "Prove I'm EU citizen"
-Zentity (browser) → Web Worker: Generate Merkle membership proof
-Zentity → Verifier: proof + merkleRoot (EU identifier)
-Verifier: Knows user is EU citizen, but NOT which of 27 countries
-```
-
-**Use Cases:**
-
-- **EU Right to Work**: Verify employment authorization without revealing specific nationality
-- **Schengen Travel**: Prove travel zone eligibility without passport country disclosure
-- **Regional Compliance**: Meet LATAM or EEA requirements without over-sharing
-- **Anti-Discrimination**: Prevent nationality-based bias in hiring/services
-
-### Multi-Threshold Age Verification
-
-Different jurisdictions require different age thresholds. The `age_verification` circuit supports a public `min_age` input (e.g. 18/21/25).
-
-| Threshold | Use Case |
-|-----------|----------|
-| 18+ | General adult verification (EU, most jurisdictions) |
-| 21+ | US alcohol/cannabis, car rental |
-| 25+ | Premium car rental, certain financial products |
-
-> [!NOTE]
-> **Current PoC status:** The onboarding flow persists an `age ≥ 18` proof payload. Other thresholds can be generated/verified, but aren't fully wired into the default UI/storage flows yet.
-
-</details>
-
-<details id="cryptographic-architecture">
-<summary>Cryptographic architecture</summary>
-
-## Cryptographic Architecture
-
-Zentity uses three complementary techniques:
-
-| Technique | Purpose | Example |
-|-----------|---------|---------|
-| **Zero-Knowledge Proofs** | Prove claims without revealing data | "I'm over 18" without showing birthday |
-| **FHE (TFHE-rs)** | Compute on encrypted data | Age comparison on ciphertext |
-| **Commitments (SHA256)** | Bind data without storing it | Name hash for dedup |
-
-**Why three techniques?** Each solves a specific problem:
-
-- **ZK**: Prove boolean claims (age threshold, nationality group)
-- **FHE**: Server-side arithmetic on encrypted values
-- **Commitments**: Data binding + GDPR erasure (delete salt → unlinkable)
-
-> [!NOTE]
-> For detailed explanations, data flow diagrams, and storage model, see [docs/architecture.md](docs/architecture.md).
-
-</details>
-
-<details id="technical-reference">
-<summary>Technical reference</summary>
-
-## Technical Reference
+## Services and ports
 
 | Service | Stack | Port |
 |---------|-------|------|
-| Web Frontend | Next.js 16, React 19, Noir.js, Human.js | 3000 |
+| Web Frontend | Next.js 16, React 19, Noir.js, bb.js, Human.js | 3000 |
 | FHE Service | Rust, Axum, TFHE-rs | 5001 |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
-
-**ZK Circuits:** `age_verification`, `doc_validity`, `nationality_membership`, `face_match`
-
-> [!NOTE]
-> For development commands and detailed architecture, see [CLAUDE.md](CLAUDE.md) and [docs/architecture.md](docs/architecture.md).
-
-</details>
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [System Architecture](docs/architecture.md) | End-to-end components + data flow + storage model |
-| [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) | Attestation schema, data classification, privacy boundaries |
-| [Tamper Model](docs/tamper-model.md) | Integrity controls and threat model |
-| [Web3 Architecture](docs/web3-architecture.md) | FHEVM module, providers, encryption/decryption flows |
-| [Web2 → Web3 Transition](docs/web2-to-web3-transition.md) | End-to-end flow from verification to on-chain attestation |
-| [Blockchain Setup](docs/blockchain-setup.md) | FHEVM network config, envs, faucets, deployments |
-| [ZK Proof Architecture](docs/zk-architecture.md) | Circuits + proving/verifying model |
-| [ZK Nationality Proofs](docs/zk-nationality-proofs.md) | Merkle tree nationality verification |
-| [Password Security](docs/password-security.md) | Breached-password blocking + privacy-preserving UX |
-| [RP Redirect Flow](docs/rp-redirect-flow.md) | OAuth-style RP handoff (clean URL + one-time code) |
-| [API Collection](tooling/bruno-collection/README.md) | Bruno API testing collection |
 
 ## License
 

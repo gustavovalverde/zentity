@@ -25,6 +25,8 @@ This document provides a comprehensive overview of Zentity's web3 implementation
 
 Zentity's web3 stack enables privacy-preserving identity attestation and compliant DeFi interactions using Fully Homomorphic Encryption (FHE). Users can attest their verified identity on-chain while keeping sensitive data (birth year, nationality, compliance level) encrypted. Smart contracts can perform compliance checks on encrypted data without ever seeing plaintext values.
 
+Attestation encryption is performed server-side by the backend registrar (Zama relayer SDK in Node). Client-side FHEVM SDK usage is focused on wallet-initiated interactions like encrypted token transfers and user-driven decryption.
+
 ### Key Technologies
 
 | Technology | Purpose |
@@ -97,8 +99,10 @@ This diagram shows how encrypted data flows through the smart contracts:
 ```mermaid
 flowchart TD
     User["User Wallet + FHEVM SDK"]
-    User -- "1) Encrypt input" --> EncIn["Ciphertext handle + proof"]
-    EncIn -- "2) tx call" --> IR["IdentityRegistry"]
+    Registrar["Backend Registrar + Relayer SDK"]
+    User -- "1) Encrypt transfer" --> EncIn["Ciphertext handle + proof"]
+    Registrar -- "1) Encrypt attestation" --> AttIn["Ciphertext handle + proof"]
+    AttIn -- "2) tx call" --> IR["IdentityRegistry"]
     EncIn -- "2) tx call" --> ERC["CompliantERC20"]
 
     subgraph OnChain["On-chain fhEVM"]
@@ -120,7 +124,7 @@ flowchart TD
 
 **Key points:**
 
-- Encryption happens **client-side** using the FHEVM SDK
+- Attestation encryption happens **server-side** (registrar + relayer SDK), while wallet-initiated actions use **client-side** FHEVM SDK
 - On-chain storage is **always encrypted** (ciphertext handles)
 - Compliance is evaluated **under encryption** - contracts never see plaintext
 - Access grants are **explicit** - users must call `grantAccessTo()` for contracts to read their data
@@ -128,12 +132,13 @@ flowchart TD
 ### Data Privacy Model
 
 1. **Identity Verification** happens off-chain (document OCR, liveness detection)
-2. **Identity Data** (birth year offset, country code, compliance level) is encrypted client-side using the FHEVM SDK
-3. **Encrypted Handles** are stored on-chain in the IdentityRegistry contract
-4. **Compliance Checks** operate on encrypted data - the smart contract never sees plaintext
-5. **Attestation Metadata** stores `policy_hash` + `proof_set_hash` for auditability
-6. **User Decryption** requires EIP-712 signature authorization - only the user can decrypt their own data
-7. **Profile PII** is stored off-chain as a **passkey-sealed profile** (encrypted client-side). Disclosure is consented: the client decrypts locally and re-encrypts to the relying party.
+2. **Identity Data** (birth year offset, country code, compliance level) is encrypted server-side by the registrar using the relayer SDK
+3. **Client-side Encryption** is used for wallet-initiated operations (e.g., CompliantERC20 transfers) via the FHEVM SDK
+4. **Encrypted Handles** are stored on-chain in the IdentityRegistry contract
+5. **Compliance Checks** operate on encrypted data - the smart contract never sees plaintext
+6. **Attestation Metadata** stores `policy_hash` + `proof_set_hash` for auditability
+7. **User Decryption** requires EIP-712 signature authorization - only the user can decrypt their own data
+8. **Profile PII** is stored off-chain as a **passkey-sealed profile** (encrypted client-side). Disclosure is consented: the client decrypts locally and re-encrypts to the relying party.
 
 ---
 
@@ -495,14 +500,14 @@ The attestation module handles on-chain identity registration.
 
 ```text
 apps/web/src/lib/blockchain/
-├── index.ts                          # Public exports
 ├── config/
 │   └── networks.ts                   # Network definitions
 └── providers/
     ├── types.ts                      # Interface definitions
     ├── base-provider.ts              # Shared wallet/tx logic
+    ├── fhevm-mock-provider.ts        # Hardhat/mock relayer
+    ├── fhevm-utils.ts                # ABI + error helpers
     ├── fhevm-zama-provider.ts        # fhEVM attestation (Zama relayer)
-    ├── evm-provider.ts               # Standard EVM (future)
     └── factory.ts                    # Provider factory
 ```
 
@@ -516,9 +521,9 @@ interface NetworkConfig {
   name: string;         // Display name
   chainId: number;      // EVM chain ID
   rpcUrl: string;       // RPC endpoint
-  type: "fhevm" | "evm";
+  type: "fhevm";
   providerId?: string; // "zama" | "mock"
-  features: ["encrypted"] | ["basic"];
+  features: Array<"encrypted" | "basic">;
   contracts: {
     identityRegistry: string;
     complianceRules?: string;
@@ -617,14 +622,9 @@ classDiagram
         +submitAttestation(params)
     }
 
-    class EvmProvider {
-        +submitAttestation(params)
-    }
-
     IAttestationProvider <|.. BaseProvider
     BaseProvider <|-- FhevmZamaProvider
     BaseProvider <|-- FhevmMockProvider
-    BaseProvider <|-- EvmProvider
 ```
 
 ### Attestation Flow
@@ -641,7 +641,8 @@ sequenceDiagram
 
     Note over User,DB: ── Phase 1: Validation & Preparation ──
     User->>UI: Click "Register on [Network]"
-    UI->>API: attestation.submit({networkId, walletAddress})
+    UI->>UI: Unlock passkey to read birthYearOffset
+    UI->>API: attestation.submit({networkId, walletAddress, birthYearOffset})
     API->>API: Validate user is fully verified
     API->>DB: Fetch identity proof
     Note over API: Extract birthYearOffset,<br/>countryCode, complianceLevel
@@ -655,7 +656,7 @@ sequenceDiagram
         P->>BC: fhevm_relayer_v1_input_proof RPC
         Note over P: No real encryption,<br/>testing mode
     else Production (Sepolia)
-        P->>P: Encrypt via FHEVM SDK
+        P->>P: Encrypt via Zama relayer SDK (Node)
         Note over P: Real FHE encryption<br/>of identity attributes
     end
 
@@ -691,13 +692,20 @@ Lists all enabled networks with user's attestation status.
     id: string;
     name: string;
     chainId: number;
-    type: "fhevm" | "evm";
+    type: "fhevm";
+    features: string[];
+    explorer?: string;
     identityRegistry: string | null;
+    complianceRules: string | null;
     attestation: {
+      id: string;
       status: "pending" | "submitted" | "confirmed" | "failed";
       txHash: string | null;
-      walletAddress: string;
+      blockNumber: number | null;
+      confirmedAt: string | null;
+      errorMessage: string | null;
       explorerUrl?: string;
+      walletAddress: string;
     } | null;
   }>;
   demo: boolean;
@@ -710,16 +718,46 @@ Submits identity attestation to blockchain.
 
 ```typescript
 // Input
-{ networkId: string; walletAddress: string }
+{ networkId: string; walletAddress: string; birthYearOffset: number }
 
 // Response
-{ success: true; status: "submitted"; txHash: string; explorerUrl?: string }
+{
+  success: true;
+  status: "submitted" | "confirmed";
+  txHash?: string | null;
+  explorerUrl?: string;
+  demo?: true;
+}
 ```
 
 **Requirements:**
 
 - User must be fully verified (document + liveness + face match)
 - Rate limit: 3 attempts per hour per network
+
+#### `attestation.status` (Query)
+
+Returns attestation status for a single network.
+
+```typescript
+// Input
+{ networkId: string }
+
+// Response
+{
+  attested: boolean;
+  attestation: {
+    id: string;
+    status: "pending" | "submitted" | "confirmed" | "failed";
+    txHash: string | null;
+    blockNumber: number | null;
+    confirmedAt: string | null;
+    errorMessage: string | null;
+    explorerUrl?: string;
+    walletAddress: string;
+  } | null;
+}
+```
 
 #### `attestation.refresh` (Mutation)
 
@@ -927,7 +965,7 @@ function DevTools() {
 High-level hook for encrypted token transfers.
 
 ```typescript
-import { useFheTransfer } from "@/hooks/use-fhe-transfer";
+import { useFheTransfer } from "@/hooks/fhevm/use-fhe-transfer";
 
 function TransferForm({ contractAddress }) {
   const {
@@ -1050,6 +1088,7 @@ FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
 FHEVM_EXPLORER_URL=https://sepolia.etherscan.io
 FHEVM_IDENTITY_REGISTRY=0x...
 FHEVM_REGISTRAR_PRIVATE_KEY=0x...
+FHEVM_PROVIDER_ID=zama
 
 # Client-side equivalents (used by SDK + wallet UI)
 NEXT_PUBLIC_FHEVM_RPC_URL=...
@@ -1075,7 +1114,10 @@ FHEVM_COMPLIANT_ERC20=0x...
 # Local Development
 LOCAL_RPC_URL=http://127.0.0.1:8545
 LOCAL_IDENTITY_REGISTRY=0x...
+LOCAL_COMPLIANCE_RULES=0x...
+LOCAL_COMPLIANT_ERC20=0x...
 LOCAL_REGISTRAR_PRIVATE_KEY=0x...
+REGISTRAR_PRIVATE_KEY=0x...          # Fallback if per-network keys are unset
 
 # Relayer/Gateway overrides (advanced)
 NEXT_PUBLIC_FHEVM_RELAYER_URL=...

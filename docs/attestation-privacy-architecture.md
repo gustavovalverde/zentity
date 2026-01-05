@@ -32,14 +32,14 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | Layer | What happens | Who can decrypt | Why |
 |---|---|---|---|
 | **Web2 (off-chain)** | TFHE encryption via FHE service using client public key | **User only** (client key in browser) | Server can compute on ciphertext without decryption. |
-| **Web3 (on-chain)** | FHEVM encryption in browser via SDK | **User only** (wallet signature auth) | On-chain compliance checks operate on ciphertext. |
+| **Web3 (on-chain)** | Attestation encryption via registrar (server relayer SDK); client SDK used for wallet-initiated ops (transfers, decrypt) | **User only** (wallet signature auth) | On-chain compliance checks operate on ciphertext; decryption is user-authorized. |
 
 **Important**: The server persists **encrypted key bundles** (passkey-wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser. The FHE service uses MessagePack + gzip binary transport and persists keys in ReDB.
 
 ### Integrity controls
 
 - All ZK proofs include a **server-issued nonce** (replay protection).
-- Proofs are **verified server-side** (or on-chain in Web3 flows).
+- Proofs are **verified server-side**; on-chain InputVerifier validates FHE input proofs.
 - High-risk measurements (OCR results, liveness, face match) are **server-signed claims**.
 - Proofs are **bound to a claim hash** to prevent client tampering.
 
@@ -54,7 +54,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | Nationality in allowlist | ✅ | Optional | Merkle root | Membership proof avoids country disclosure. |
 | Face match >= threshold | ✅ | ❌ | Proof hash | Share only pass/fail. |
 | Liveness score | ❌ | ✅ | **Signed claim** | Score should stay private; server attests. |
-| Compliance level | ❌ | ✅ | **Signed claim** | Used for dynamic policy gating. |
+| Compliance level | ❌ | ✅ | Server-derived | Computed from verification status for policy gating. |
 | Birth year offset | Optional | ✅ | None | Enables on-chain compliance checks. |
 | Country code (numeric) | Optional | ✅ | None | Enables on-chain allowlist checks. |
 | Name (full name) | ❌ | ❌ | ✅ | Commitment enables dedup + audit. |
@@ -86,7 +86,7 @@ SQLite is accessed via the libSQL client (Turso optional for hosted environments
 
 - `proof_type`: age_verification | doc_validity | nationality_membership | face_match
 - `proof_hash`, `public_inputs`, `nonce`, `policy_version`
-- Proof metadata (circuit hash, verifier version)
+- Proof metadata (`noir_version`, `circuit_hash`, `verification_key_hash`, `verification_key_poseidon_hash`, `circuit_id`, `bb_version`)
 
 **`encrypted_attributes`**
 

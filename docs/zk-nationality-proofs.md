@@ -87,6 +87,12 @@ If it matches → your country IS in the set (but verifier doesn't know which on
 
 ---
 
+## Implementation Notes (Zentity)
+
+- **Claim binding**: `claim_hash` is Poseidon2(`nationality_code`, `document_hash`) and must match the **server-signed OCR claim hash**. This prevents client tampering.
+- **Public input order**: `[merkle_root, nonce, claim_hash, is_member]` (see `apps/web/src/lib/zk/zk-circuit-spec.ts`).
+- **Merkle roots** are computed with Poseidon2 using Barretenberg and cached in the client worker for repeat proofs.
+
 ## Why Poseidon Hash Instead of SHA256?
 
 ### The Problem with SHA256 in ZK Circuits
@@ -238,6 +244,7 @@ return {
   noirVersion: verificationResult.noirVersion,
   circuitHash: verificationResult.circuitHash,
   verificationKeyHash: verificationResult.verificationKeyHash,
+  verificationKeyPoseidonHash: verificationResult.verificationKeyPoseidonHash,
   circuitId: verificationResult.circuitId,
   bbVersion: verificationResult.bbVersion,
 };
@@ -276,12 +283,8 @@ The Merkle root is computed from each group's country codes and uniquely identif
 
 ## Performance
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Build Merkle Tree | ~50ms | One-time per group (cached) |
-| Generate Proof | 100-300ms | Client-side, Web Worker |
-| Verify Proof | <50ms | Server-side, bb.js |
-| Proof Size | ~2KB | UltraHonk proof |
+Performance varies by device, thread availability, and circuit size.
+Treat any numbers as **order-of-magnitude guidance**, not guarantees.
 
 Proofs are generated in Web Workers to keep the UI responsive.
 

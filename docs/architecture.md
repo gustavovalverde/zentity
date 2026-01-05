@@ -22,7 +22,7 @@ Non-goals (current state):
 
 | Service | Stack | Role |
 |---------|-------|------|
-| `apps/web` | Next.js 16, React 19 | UI, ZK proving (Web Worker), API routes, SQLite |
+| `apps/web` | Next.js 16, React 19 | UI, ZK proving (Web Worker), API routes, SQLite (libSQL/Turso), server-side proof verification via Node bb-worker |
 | `apps/ocr` | Python, FastAPI | OCR + document parsing (no image persistence) |
 | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | Homomorphic encryption operations (binary transport) |
 
@@ -38,7 +38,9 @@ flowchart LR
 
   subgraph WEB["Next.js Server :3000"]
     API[/"API Routes"/]
+    BB["Node bb-worker<br/>UltraHonkVerifierBackend"]
     DB[("SQLite")]
+    API <--> BB
   end
 
   OCR["OCR Service :5004"]
@@ -54,7 +56,8 @@ flowchart LR
   UI -->|birthYear + nonce| W
   W -->|proof| UI
   UI -->|submit proof| API
-  API -->|verify UltraHonk| API
+  API -->|verify UltraHonk| BB
+  BB -->|result| API
   API -->|consume nonce| DB
 
   API -->|encrypt| FHE
@@ -160,6 +163,7 @@ The FHE architecture uses passkey-wrapped client-side key ownership for user-con
 | Document metadata (type, issuer country, document hash) | Plaintext | UX + dedup context |
 | Commitments (name) | Salted SHA256 | Dedup + integrity checks |
 | ZK proof payloads + public inputs | Proof bytes | Disclosure + verification |
+| ZK proof metadata (noir/bb versions, verification key hashes) | Strings | Provenance + verifier binding |
 | Evidence pack (policy_hash, proof_set_hash) | Hashes | Audit trail |
 | Signed claims (OCR, liveness, face match) | Signed hashes + metadata (no raw PII fields) | Tamper-resistant measurements |
 | FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext (binary blob) | Policy checks without decrypting |
@@ -333,8 +337,9 @@ sequenceDiagram
 
   Note over User,API: After Web2 verification is complete
   User->>UI: Click "Register on Blockchain"
-  UI->>UI: Encrypt identity attributes (FHEVM SDK)
-  UI->>API: attestation.submit(networkId, walletAddress)
+  UI->>UI: Unlock passkey to read birthYearOffset
+  UI->>API: attestation.submit(networkId, walletAddress, birthYearOffset)
+  API->>API: Encrypt identity attributes (server-side relayer SDK)
   API->>BC: attestIdentity(user, handles, proof)
   BC-->>API: txHash
   API-->>UI: Attestation pending
@@ -348,6 +353,7 @@ sequenceDiagram
 - Compliance checks run on encrypted data—contracts never see plaintext
 - User controls access grants via ACL (`grantAccessTo()`)
 - Silent failure pattern prevents information leakage
+- Attestation transactions are submitted by a backend registrar wallet; users authorize by unlocking the passkey to supply birthYearOffset
 
 **tRPC router:** `trpc.attestation.*` (submit, refresh, networks)
 
@@ -394,3 +400,4 @@ Tables (via `better-auth` + custom):
 - Commitments are **per-attribute** (salted SHA256), not a single identity commitment.
 - ZK proofs are bound to server-signed claims + document hash, but not yet bound to cryptographic document signatures.
 - Challenge nonces are server-issued and one-time-use; they mitigate replay attacks.
+- Verification enforces public-input count derived from the circuit verification key; both SHA-256 and Poseidon2 vkey hashes are stored alongside proofs.

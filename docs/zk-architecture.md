@@ -6,11 +6,11 @@ This document describes Zentity's zero-knowledge proof system using Noir and Ult
 
 ## Overview
 
-Zentity uses client-side ZK proof generation so the **private inputs to proofs stay in the browser during proving**. Private inputs are sourced from the **passkey-sealed profile** (client decrypt only), so the server never sees plaintext values. The architecture consists of:
+Zentity uses client-side ZK proof generation so the **private inputs to proofs stay in the browser during proving**. Private inputs come from a mix of **passkey-sealed profile data** (e.g., birth year, nationality) and **server-signed claim payloads** (e.g., face match scores) that the client verifies locally before proving. The server never sees plaintext values. The architecture consists of:
 
 1. **Noir Circuits** - ZK logic written in Noir language
 2. **Client-Side Prover** - Browser-based proof generation using Noir.js + bb.js
-3. **Server-Side Verifier** - Proof verification using bb.js
+3. **Server-Side Verifier** - Proof verification using bb.js (UltraHonk verifier backend)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -28,7 +28,7 @@ Zentity uses client-side ZK proof generation so the **private inputs to proofs s
 │                              Server                                 │
 │  ┌──────────────────────────┐    ┌───────────────────────────────┐ │
 │  │     bb.js Verifier       │───▶│   Store: proof + metadata     │ │
-│  │  (UltraHonk backend)     │    │   (never raw PII)             │ │
+│  │ (UltraHonk verifier)     │    │   (never raw PII)             │ │
 │  └──────────────────────────┘    └───────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -219,6 +219,8 @@ Key files (apps/web/src/lib/zk):
 - `noir-prover.ts` - Public API for proof generation
 - `noir-worker-manager.ts` - Worker pool management
 - `noir-prover.worker.ts` - Worker implementation
+- `noir-verifier.ts` - Server verifier orchestration
+- `bb-worker.mjs` - Node worker for bb.js verification
 
 ---
 
@@ -242,7 +244,7 @@ Next.js API Route              bb-worker.mjs (child process)
 
 - **Isolation**: WASM/native operations run in separate process memory
 - **Timeout handling**: Main thread can kill stale workers (configurable via `BB_WORKER_TIMEOUT_MS`)
-- **Backend caching**: Worker caches `UltraHonkBackend` instances per circuit
+- **Backend caching**: Worker caches `UltraHonkBackend` instances for VK derivation and uses `UltraHonkVerifierBackend` for verification
 
 **Key files (apps/web/src/lib/zk):**
 
@@ -264,9 +266,10 @@ const result = await verifyNoirProof({
 //   isValid: true,
 //   verificationTimeMs: 45,
 //   circuitType: "age_verification",
-//   noirVersion: "1.0.0-beta.1",
+//   noirVersion: "1.0.0-beta.17",
 //   circuitHash: "abc123...",
 //   verificationKeyHash: "def456...",
+//   verificationKeyPoseidonHash: "0xabc...def",
 //   circuitId: "ultrahonk:def456...",
 //   bbVersion: "0.82.2"
 // }
@@ -279,8 +282,19 @@ Each verification returns circuit metadata for audit trails:
 - `noirVersion` - Noir compiler version
 - `circuitHash` - Hash of compiled circuit
 - `verificationKeyHash` - Verification key hash (audit + caching)
+- `verificationKeyPoseidonHash` - Registry-compatible VK hash (Poseidon2)
 - `circuitId` - Stable circuit identifier derived from the verification key
 - `bbVersion` - Barretenberg verifier version
+
+**Validation notes**:
+
+- Public input length is **validated against the VK** before verification.
+- Verification runs in a **dedicated Node.js worker** for Bun stability.
+
+### Performance and Isolation
+
+- **COEP/COOP + COI service worker** enable multithreaded WASM (faster proofs).
+- A **worker pool** can be enabled for parallel proof generation when needed.
 
 ---
 
@@ -363,14 +377,8 @@ nargo test
 
 ## Performance
 
-| Metric | Value |
-|--------|-------|
-| Age proof generation | 50-150ms |
-| Nationality proof generation | 100-300ms |
-| Proof verification | <50ms |
-| Proof size | ~2KB |
-
-Proof generation times depend on circuit complexity and device performance.
+Proof generation and verification times are **device- and circuit-dependent**.
+Treat any numbers as **order-of-magnitude guidance**, not SLAs.
 
 ---
 
@@ -389,7 +397,7 @@ UltraHonk uses a universal trusted setup (SRS/CRS) that:
 All circuits require a `nonce` public input:
 
 - Server issues challenge nonces via tRPC (`crypto.createChallenge` on `/api/trpc/*`)
-- Nonce is bound to session/user
+- Nonce is bound to the authenticated user when issued via protected routes
 - Same proof cannot be replayed with different nonce
 
 ### Input Validation
@@ -398,7 +406,7 @@ Circuits include range checks:
 
 - **Age**: birth year cannot be in the future (`birth_year <= current_year`)
 - **Face match**: scores validated 0-10000 range, threshold validated 0-10000 range
-- **Dates**: validated as YYYYMMDD integers
+- **Dates**: treated as YYYYMMDD integers; server enforces `current_date == today`
 
 ### Nonce Format
 
