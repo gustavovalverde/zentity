@@ -40,15 +40,22 @@ describe("crypto queries", () => {
       userId,
       source: "web2_tfhe",
       attributeType: "birth_year_offset",
-      ciphertext: "ciphertext",
+      ciphertext: Buffer.from("ciphertext"),
       keyId: "key-1",
       encryptionTimeMs: 55,
     });
 
     const summary = await getUserAgeProof(userId);
+    const expectedHash = crypto
+      .createHash("sha256")
+      .update(Buffer.from("ciphertext"))
+      .digest("hex");
     expect(summary?.isOver18).toBe(true);
     expect(summary?.generationTimeMs).toBe(120);
-    expect(summary?.birthYearOffsetCiphertext).toBe("ciphertext");
+    expect(summary?.birthYearOffsetCiphertextHash).toBe(expectedHash);
+    expect(summary?.birthYearOffsetCiphertextBytes).toBe(
+      Buffer.byteLength("ciphertext")
+    );
     expect(summary?.fheEncryptionTimeMs).toBe(55);
   });
 
@@ -213,7 +220,7 @@ describe("crypto queries", () => {
       userId,
       source: "web2_tfhe",
       attributeType: "birth_year_offset",
-      ciphertext: "cipher-2",
+      ciphertext: Buffer.from("cipher-2"),
       keyId: "key-2",
       encryptionTimeMs: 30,
     });
@@ -225,7 +232,7 @@ describe("crypto queries", () => {
       userId,
       "birth_year_offset"
     );
-    expect(latestEncrypted?.ciphertext).toBe("cipher-2");
+    expect(latestEncrypted?.ciphertext).toEqual(Buffer.from("cipher-2"));
     expect(latestEncrypted?.keyId).toBe("key-2");
     expect(latestEncrypted?.encryptionTimeMs).toBe(30);
   });

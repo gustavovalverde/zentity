@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import {
   Calendar,
   CheckCircle,
@@ -114,11 +116,20 @@ export async function VerificationContent({
     Object.values(checks).some(Boolean);
 
   // Identity data for transparency section
+  const birthYearOffsetCiphertextBytes =
+    birthYearOffsetCiphertext?.ciphertext?.byteLength ?? undefined;
+  const birthYearOffsetCiphertextHash = birthYearOffsetCiphertext?.ciphertext
+    ? crypto
+        .createHash("sha256")
+        .update(birthYearOffsetCiphertext.ciphertext)
+        .digest("hex")
+    : undefined;
+
   const identityData = {
     documentHash: latestDocument?.documentHash ?? undefined,
     nameCommitment: latestDocument?.nameCommitment ?? undefined,
-    birthYearOffsetCiphertext:
-      birthYearOffsetCiphertext?.ciphertext ?? undefined,
+    birthYearOffsetCiphertextBytes,
+    birthYearOffsetCiphertextHash,
     documentType: latestDocument?.documentType ?? undefined,
     countryVerified: latestDocument?.issuerCountry ?? undefined,
     verifiedAt: latestDocument?.verifiedAt ?? undefined,
@@ -295,7 +306,12 @@ export async function VerificationContent({
 
       {/* Transparency Section */}
       <TransparencySection
-        birthYearOffsetCiphertext={identityData.birthYearOffsetCiphertext}
+        birthYearOffsetCiphertextBytes={
+          identityData.birthYearOffsetCiphertextBytes
+        }
+        birthYearOffsetCiphertextHash={
+          identityData.birthYearOffsetCiphertextHash
+        }
         documentHash={identityData.documentHash}
         encryptedAttributes={encryptedAttributes}
         hasAgeProof={checks.ageProof}

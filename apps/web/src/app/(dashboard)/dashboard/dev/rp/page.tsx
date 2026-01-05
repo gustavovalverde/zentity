@@ -69,8 +69,11 @@ export default async function RPIntegrationPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <FheVerificationDemo
-          birthYearOffsetCiphertext={
-            ageProof?.birthYearOffsetCiphertext ?? undefined
+          birthYearOffsetCiphertextBytes={
+            ageProof?.birthYearOffsetCiphertextBytes ?? undefined
+          }
+          birthYearOffsetCiphertextHash={
+            ageProof?.birthYearOffsetCiphertextHash ?? undefined
           }
           fheKeyId={ageProof?.fheKeyId ?? undefined}
         />

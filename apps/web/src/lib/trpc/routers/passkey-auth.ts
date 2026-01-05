@@ -29,7 +29,6 @@ import {
   consumeRegistrationBlob,
   createRegistrationToken,
 } from "@/lib/auth/registration-token";
-import { registerFheKey } from "@/lib/crypto/fhe-client";
 import {
   deleteEncryptedSecretByUserAndType,
   getEncryptedSecretByUserAndType,
@@ -56,8 +55,7 @@ const fheEnrollmentSchema = z.object({
   wrappedDek: z.string().min(1),
   prfSalt: z.string().min(1),
   credentialId: z.string().min(1),
-  publicKey: z.string().min(1),
-  serverKey: z.string().min(1),
+  keyId: z.string().min(1),
   version: z.string().min(1),
   kekVersion: z.string().min(1),
 });
@@ -219,12 +217,7 @@ export const passkeyAuthRouter = router({
         kekVersion: input.fhe.kekVersion,
       });
 
-      const { keyId } = await registerFheKey({
-        serverKey: input.fhe.serverKey,
-        publicKey: input.fhe.publicKey,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-      });
+      const { keyId } = input.fhe;
 
       await updateEncryptedSecretMetadata({
         userId: user.id,

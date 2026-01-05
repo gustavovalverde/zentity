@@ -13,7 +13,24 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http::fixtures::liveness_boundaries::*;
+use serde::Deserialize;
 use tower::ServiceExt;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptLivenessResponse {
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
+    score: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifyLivenessThresholdResponse {
+    #[serde(with = "serde_bytes")]
+    passes_ciphertext: Vec<u8>,
+    threshold: f64,
+}
 
 // ============================================================================
 // Encrypt Liveness Score - Happy Path Tests
@@ -41,11 +58,10 @@ async fn encrypt_liveness_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert!(json["ciphertext"].is_string());
-    assert!(!json["ciphertext"].as_str().unwrap().is_empty());
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
+    assert!(!body.ciphertext.is_empty());
     // Score is echoed back for confirmation
-    assert_eq!(json["score"], TYPICAL_SCORE);
+    assert_eq!(body.score, TYPICAL_SCORE);
 }
 
 /// Encrypt with minimum score (0.0) succeeds.
@@ -70,8 +86,8 @@ async fn encrypt_liveness_boundary_zero() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["score"], MIN_SCORE);
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.score, MIN_SCORE);
 }
 
 /// Encrypt with maximum score (1.0) succeeds.
@@ -96,8 +112,8 @@ async fn encrypt_liveness_boundary_one() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["score"], MAX_SCORE);
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.score, MAX_SCORE);
 }
 
 /// Encrypt with precision score preserves 4 decimal places.
@@ -122,9 +138,9 @@ async fn encrypt_liveness_precision() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
     // Score echoed should match input (within precision)
-    let echoed_score = json["score"].as_f64().unwrap();
+    let echoed_score = body.score;
     assert!(
         (echoed_score - PRECISION_SCORE).abs() < 0.0001,
         "Score precision not preserved: {} vs {}",
@@ -289,12 +305,12 @@ async fn verify_liveness_threshold_success() {
         .unwrap();
 
     assert_eq!(encrypt_response.status(), StatusCode::OK);
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Now verify threshold
     let verify_body = http::fixtures::verify_liveness_threshold_request(
-        ciphertext,
+        &ciphertext,
         TYPICAL_THRESHOLD, // 0.8
         &key_id,
     );
@@ -314,11 +330,10 @@ async fn verify_liveness_threshold_success() {
 
     assert_eq!(verify_response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(verify_response).await;
-    assert!(json["passesCiphertext"].is_string());
-    assert!(!json["passesCiphertext"].as_str().unwrap().is_empty());
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
+    assert!(!body.passes_ciphertext.is_empty());
     // Threshold is echoed back
-    assert_eq!(json["threshold"], TYPICAL_THRESHOLD);
+    assert_eq!(body.threshold, TYPICAL_THRESHOLD);
 }
 
 // ============================================================================
@@ -347,15 +362,15 @@ async fn verify_liveness_threshold_invalid_key_id() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Try to verify with invalid key ID
-    let verify_body = serde_json::json!({
-        "ciphertext": ciphertext,
-        "threshold": 0.8,
-        "keyId": "00000000-0000-0000-0000-000000000000"
-    });
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: ciphertext.clone(),
+        threshold: 0.8,
+        key_id: "00000000-0000-0000-0000-000000000000".to_string(),
+    };
 
     let app = http::test_app();
     let verify_response = app
@@ -395,15 +410,15 @@ async fn verify_liveness_threshold_over_max() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Try to verify with threshold > 1.0
-    let verify_body = serde_json::json!({
-        "ciphertext": ciphertext,
-        "threshold": 1.5,
-        "keyId": key_id
-    });
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: ciphertext.clone(),
+        threshold: 1.5,
+        key_id: key_id.clone(),
+    };
 
     let app = http::test_app();
     let verify_response = app
@@ -443,15 +458,15 @@ async fn verify_liveness_threshold_negative() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Try to verify with negative threshold
-    let verify_body = serde_json::json!({
-        "ciphertext": ciphertext,
-        "threshold": -0.1,
-        "keyId": key_id
-    });
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: ciphertext.clone(),
+        threshold: -0.1,
+        key_id: key_id.clone(),
+    };
 
     let app = http::test_app();
     let verify_response = app
@@ -476,11 +491,11 @@ async fn verify_liveness_threshold_invalid_ciphertext() {
     let (_, _, key_id) = common::get_test_keys();
 
     // Try to verify with garbage ciphertext
-    let verify_body = serde_json::json!({
-        "ciphertext": "dGhpcyBpcyBub3QgYSB2YWxpZCBjaXBoZXJ0ZXh0",
-        "threshold": 0.8,
-        "keyId": key_id
-    });
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: b"this is not a valid ciphertext".to_vec(),
+        threshold: 0.8,
+        key_id,
+    };
 
     let verify_response = app
         .oneshot(
@@ -529,7 +544,6 @@ async fn verify_liveness_threshold_missing_fields() {
 /// Roundtrip test: score passes threshold (0.9 >= 0.8).
 #[tokio::test]
 async fn liveness_roundtrip_passes_threshold() {
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use tfhe::FheBool;
 
     let app = http::test_app();
@@ -551,11 +565,11 @@ async fn liveness_roundtrip_passes_threshold() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Verify with threshold 0.8
-    let verify_body = http::fixtures::verify_liveness_threshold_request(ciphertext, 0.8, &key_id);
+    let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
 
     let app = http::test_app();
     let verify_response = app
@@ -572,12 +586,11 @@ async fn liveness_roundtrip_passes_threshold() {
 
     assert_eq!(verify_response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(verify_response).await;
-    let passes_ciphertext_b64 = json["passesCiphertext"].as_str().unwrap();
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
+    let passes_ciphertext = body.passes_ciphertext;
 
     // Decrypt the result
-    let passes_bytes = BASE64.decode(passes_ciphertext_b64).unwrap();
-    let passes_encrypted: FheBool = bincode::deserialize(&passes_bytes).unwrap();
+    let passes_encrypted: FheBool = bincode::deserialize(&passes_ciphertext).unwrap();
     let passes: bool = passes_encrypted.decrypt(&client_key);
 
     assert!(passes, "Score 0.9 should pass threshold 0.8");
@@ -586,7 +599,6 @@ async fn liveness_roundtrip_passes_threshold() {
 /// Roundtrip test: score fails threshold (0.7 < 0.8).
 #[tokio::test]
 async fn liveness_roundtrip_fails_threshold() {
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use tfhe::FheBool;
 
     let app = http::test_app();
@@ -608,11 +620,11 @@ async fn liveness_roundtrip_fails_threshold() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Verify with threshold 0.8
-    let verify_body = http::fixtures::verify_liveness_threshold_request(ciphertext, 0.8, &key_id);
+    let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
 
     let app = http::test_app();
     let verify_response = app
@@ -629,12 +641,10 @@ async fn liveness_roundtrip_fails_threshold() {
 
     assert_eq!(verify_response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(verify_response).await;
-    let passes_ciphertext_b64 = json["passesCiphertext"].as_str().unwrap();
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
 
     // Decrypt the result
-    let passes_bytes = BASE64.decode(passes_ciphertext_b64).unwrap();
-    let passes_encrypted: FheBool = bincode::deserialize(&passes_bytes).unwrap();
+    let passes_encrypted: FheBool = bincode::deserialize(&body.passes_ciphertext).unwrap();
     let passes: bool = passes_encrypted.decrypt(&client_key);
 
     assert!(!passes, "Score 0.7 should fail threshold 0.8");
@@ -643,7 +653,6 @@ async fn liveness_roundtrip_fails_threshold() {
 /// Roundtrip test: exact threshold boundary (0.8 >= 0.8).
 #[tokio::test]
 async fn liveness_roundtrip_exact_threshold() {
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use tfhe::FheBool;
 
     let app = http::test_app();
@@ -665,11 +674,11 @@ async fn liveness_roundtrip_exact_threshold() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Verify with same threshold
-    let verify_body = http::fixtures::verify_liveness_threshold_request(ciphertext, 0.8, &key_id);
+    let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
 
     let app = http::test_app();
     let verify_response = app
@@ -686,12 +695,10 @@ async fn liveness_roundtrip_exact_threshold() {
 
     assert_eq!(verify_response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(verify_response).await;
-    let passes_ciphertext_b64 = json["passesCiphertext"].as_str().unwrap();
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
 
     // Decrypt the result
-    let passes_bytes = BASE64.decode(passes_ciphertext_b64).unwrap();
-    let passes_encrypted: FheBool = bincode::deserialize(&passes_bytes).unwrap();
+    let passes_encrypted: FheBool = bincode::deserialize(&body.passes_ciphertext).unwrap();
     let passes: bool = passes_encrypted.decrypt(&client_key);
 
     assert!(passes, "Score 0.8 should pass threshold 0.8 (>=)");

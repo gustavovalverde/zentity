@@ -141,7 +141,7 @@ export async function storeProfileSecret(params: {
   const blobMetadata = await uploadSecretBlob({
     secretId: envelope.secretId,
     secretType: PROFILE_SECRET_TYPE,
-    payload: textEncoder.encode(envelope.encryptedBlob),
+    payload: envelope.encryptedBlob,
   });
 
   await trpc.secrets.storeSecret.mutate({

@@ -22,15 +22,15 @@ async fn concurrent_key_registrations() {
     use std::sync::Arc;
 
     // Use cached server key for performance
-    let server_key_b64 = Arc::new(common::get_server_key_b64());
-    let public_key_b64 = Arc::new(common::get_public_key_b64());
+    let server_key_bytes = Arc::new(common::get_server_key_bytes());
+    let public_key_bytes = Arc::new(common::get_public_key_bytes());
 
     // Spawn concurrent registration tasks
     let mut handles = Vec::new();
 
     for _ in 0..5 {
-        let key = server_key_b64.clone();
-        let public_key = public_key_b64.clone();
+        let key = server_key_bytes.clone();
+        let public_key = public_key_bytes.clone();
         let handle = tokio::spawn(async move {
             let app = http::test_app();
             let body = http::fixtures::register_key_request(&key, &public_key);
@@ -49,8 +49,13 @@ async fn concurrent_key_registrations() {
 
             assert_eq!(response.status(), StatusCode::OK);
 
-            let json = http::parse_msgpack_body(response).await;
-            json["keyId"].as_str().unwrap().to_string()
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct RegisterKeyResponse {
+                key_id: String,
+            }
+            let body: RegisterKeyResponse = http::parse_msgpack_body(response).await;
+            body.key_id
         });
         handles.push(handle);
     }
@@ -82,16 +87,16 @@ async fn concurrent_reads_during_write() {
     let key_id = Arc::new(key_id);
 
     // Use cached server key for registration
-    let server_key_b64 = Arc::new(common::get_server_key_b64());
-    let public_key_b64 = Arc::new(common::get_public_key_b64());
+    let server_key_bytes = Arc::new(common::get_server_key_bytes());
+    let public_key_bytes = Arc::new(common::get_public_key_bytes());
 
     // Spawn read and write tasks concurrently
     let mut handles = Vec::new();
 
     // Write task (register new key)
     {
-        let key = server_key_b64.clone();
-        let public_key = public_key_b64.clone();
+        let key = server_key_bytes.clone();
+        let public_key = public_key_bytes.clone();
         handles.push(tokio::spawn(async move {
             let app = http::test_app();
             let body = http::fixtures::register_key_request(&key, &public_key);
@@ -167,8 +172,15 @@ async fn concurrent_verifications() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = Arc::new(encrypt_json["ciphertext"].as_str().unwrap().to_string());
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct EncryptBirthYearOffsetResponse {
+        #[serde(with = "serde_bytes")]
+        ciphertext: Vec<u8>,
+    }
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = Arc::new(encrypt_body.ciphertext);
     let key_id = Arc::new(key_id);
 
     // Spawn concurrent verification tasks
@@ -203,7 +215,7 @@ async fn concurrent_verifications() {
     // All verifications should complete
     for handle in handles {
         let min_age = handle.await.unwrap();
-        assert!(min_age >= 18 && min_age <= 20);
+        assert!((18..=20).contains(&min_age));
     }
 }
 
@@ -388,12 +400,18 @@ async fn key_store_no_panic() {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let json = http::parse_msgpack_body(response).await;
-        let ciphertext = json["ciphertext"].as_str().unwrap();
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct EncryptBirthYearOffsetResponse {
+            #[serde(with = "serde_bytes")]
+            ciphertext: Vec<u8>,
+        }
+        let body: EncryptBirthYearOffsetResponse = http::parse_msgpack_body(response).await;
+        let ciphertext = body.ciphertext;
 
         // Verify
         let app = http::test_app();
-        let body = http::fixtures::verify_age_offset_request(ciphertext, 2025, 18, &key_id);
+        let body = http::fixtures::verify_age_offset_request(&ciphertext, 2025, 18, &key_id);
         let response = app
             .oneshot(
                 Request::builder()

@@ -24,7 +24,7 @@ Non-goals (current state):
 |---------|-------|------|
 | `apps/web` | Next.js 16, React 19 | UI, ZK proving (Web Worker), API routes, SQLite |
 | `apps/ocr` | Python, FastAPI | OCR + document parsing (no image persistence) |
-| `apps/fhe` | Rust, Axum, TFHE-rs | Homomorphic encryption operations |
+| `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | Homomorphic encryption operations (binary transport) |
 
 ### System Diagram
 
@@ -126,6 +126,8 @@ FHE allows computations on encrypted data without decryption.
 
 **Library:** [TFHE-rs](https://github.com/zama-ai/tfhe-rs) (Rust)
 
+**Transport:** The FHE service uses MessagePack + gzip compression for all POST endpoints. Keys are persisted in ReDB.
+
 ### Passkey-Wrapped Client Key Ownership
 
 The FHE architecture uses passkey-wrapped client-side key ownership for user-controlled privacy and multi-device access:
@@ -160,7 +162,7 @@ The FHE architecture uses passkey-wrapped client-side key ownership for user-con
 | ZK proof payloads + public inputs | Proof bytes | Disclosure + verification |
 | Evidence pack (policy_hash, proof_set_hash) | Hashes | Audit trail |
 | Signed claims (OCR, liveness, face match) | Signed hashes + metadata (no raw PII fields) | Tamper-resistant measurements |
-| FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext | Policy checks without decrypting |
+| FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext (binary blob) | Policy checks without decrypting |
 | Passkey-sealed profile (`profile_v1`) | Encrypted blob | UX + resume + consented disclosure (client decrypt only) |
 | Encrypted secrets + wrappers (`fhe_keys`) | AES-GCM + PRF-wrapped DEK | Passkey-protected FHE key storage |
 

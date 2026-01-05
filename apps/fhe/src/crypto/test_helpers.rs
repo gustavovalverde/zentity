@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 use tfhe::{generate_keys, ClientKey, CompressedPublicKey, CompressedServerKey, ConfigBuilder};
 
 use crate::crypto::{get_key_store, init_keys};
+use crate::test_support;
 
 struct TestKeyMaterial {
     client_key_bytes: Vec<u8>,
@@ -13,13 +14,16 @@ static TEST_KEYS: OnceLock<TestKeyMaterial> = OnceLock::new();
 
 pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
     let material = TEST_KEYS.get_or_init(|| {
-        init_keys();
+        test_support::init_test_env();
+        init_keys().expect("Failed to initialize FHE keys for tests");
 
         let config = ConfigBuilder::default().build();
         let (client_key, _server_key) = generate_keys(config);
         let public_key = CompressedPublicKey::new(&client_key);
-        let server_key = CompressedServerKey::new(&client_key).decompress();
-        let key_id = get_key_store().register_key(public_key.clone(), server_key);
+        let server_key = CompressedServerKey::new(&client_key);
+        let key_id = get_key_store()
+            .register_key(public_key.clone(), server_key)
+            .expect("Failed to register FHE keys for tests");
 
         let public_key_bytes = bincode::serialize(&public_key).unwrap();
         let client_key_bytes = bincode::serialize(&client_key).unwrap();

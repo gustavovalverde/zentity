@@ -31,7 +31,7 @@ Monorepo with 3 active services communicating via REST APIs:
 | Service | Location | Stack | Port |
 |---------|----------|-------|------|
 | Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
-| FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs | 5001 |
+| FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
 
 The frontend handles:
@@ -88,9 +88,11 @@ bun run circuits:test     # Run circuit tests
 
 ### FHE Service (apps/fhe)
 
+The FHE service uses **MessagePack + gzip** for all POST endpoints (not JSON). Keys are persisted in a **ReDB** embedded database.
+
 ```bash
 cargo build --release    # Build
-cargo run --release      # Run (compiles TFHE keys on first start)
+cargo run --release      # Run (keys persist to ReDB on first registration)
 cargo test               # Run tests
 ```
 
@@ -204,7 +206,7 @@ cd apps/ocr && source venv/bin/activate && PYTHONPATH=src uvicorn ocr_service.ma
 The main verification flow is orchestrated via `trpc.identity.verify`:
 
 1. **OCR Service** → Extract document data, generate SHA256 commitments
-2. **FHE Service** → Encrypt DOB, gender, liveness score with TFHE-rs
+2. **FHE Service** → Encrypt DOB, country code, compliance level, liveness score with TFHE-rs (binary transport)
 3. **Client-side Noir** → Generate UltraHonk proofs (age, document validity, nationality, face match) in browser
 4. **Human.js** (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
 5. **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`

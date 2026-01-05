@@ -5,6 +5,7 @@ echo "[entrypoint] Starting Zentity Web service..."
 
 DB_URL="${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}"
 echo "[entrypoint] Database URL: $DB_URL"
+SECRET_BLOB_DIR="${SECRET_BLOB_DIR:-}"
 
 DB_PATH=""
 DB_DIR=""
@@ -18,6 +19,11 @@ fi
 # Ensure CRS cache directory exists (actual warming happens in instrumentation.ts)
 if [ -n "${BB_CRS_PATH:-}" ]; then
   mkdir -p "$BB_CRS_PATH" 2>/dev/null || true
+fi
+
+# Ensure secret blob directory exists if configured
+if [ -n "$SECRET_BLOB_DIR" ]; then
+  mkdir -p "$SECRET_BLOB_DIR" 2>/dev/null || true
 fi
 
 # Ensure the database directory exists and is writable (local file URL only).
@@ -34,6 +40,9 @@ if [ "$(id -u)" = "0" ]; then
   fi
   if [ -n "${BB_CRS_PATH:-}" ]; then
     chown -R nextjs:nodejs "$BB_CRS_PATH" 2>/dev/null || true
+  fi
+  if [ -n "$SECRET_BLOB_DIR" ]; then
+    chown -R nextjs:nodejs "$SECRET_BLOB_DIR" 2>/dev/null || true
   fi
 fi
 

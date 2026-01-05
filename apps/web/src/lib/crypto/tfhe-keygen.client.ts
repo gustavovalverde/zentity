@@ -14,8 +14,6 @@ interface WorkerSuccess {
     serverKey: Uint8Array | ArrayBuffer;
     createdAt: string;
   };
-  publicKeyB64: string;
-  serverKeyB64: string;
   durationMs: number;
 }
 
@@ -32,8 +30,6 @@ export interface FheKeygenResult {
     serverKey: Uint8Array;
     createdAt: string;
   };
-  publicKeyB64: string;
-  serverKeyB64: string;
   durationMs: number;
 }
 
@@ -78,8 +74,6 @@ function getWorker(): Worker {
           serverKey: toUint8Array(message.storedKeys.serverKey),
           createdAt: message.storedKeys.createdAt,
         },
-        publicKeyB64: message.publicKeyB64,
-        serverKeyB64: message.serverKeyB64,
         durationMs: message.durationMs,
       });
     };

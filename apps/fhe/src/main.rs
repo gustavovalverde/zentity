@@ -39,7 +39,10 @@ async fn main() {
 
     // Initialize crypto keys (loads persisted server keys if available)
     tracing::info!("Initializing FHE server key store...");
-    crypto::init_keys();
+    if let Err(error) = crypto::init_keys() {
+        tracing::error!(error = %error, "Failed to initialize FHE keys");
+        std::process::exit(1);
+    }
     tracing::info!("FHE keys initialized successfully");
 
     if settings.internal_token().is_some() {

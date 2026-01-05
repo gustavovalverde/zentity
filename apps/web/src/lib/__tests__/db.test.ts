@@ -97,7 +97,7 @@ describe("ZK proofs and encrypted attributes", () => {
       userId,
       source: "web2_tfhe",
       attributeType: "birth_year_offset",
-      ciphertext: "ciphertext",
+      ciphertext: Buffer.from("ciphertext"),
       keyId: "key-1",
       encryptionTimeMs: 123,
     });
@@ -109,7 +109,7 @@ describe("ZK proofs and encrypted attributes", () => {
       userId,
       "birth_year_offset"
     );
-    expect(latest?.ciphertext).toBe("ciphertext");
+    expect(latest?.ciphertext).toEqual(Buffer.from("ciphertext"));
     expect(latest?.keyId).toBe("key-1");
     expect(latest?.encryptionTimeMs).toBe(123);
   });

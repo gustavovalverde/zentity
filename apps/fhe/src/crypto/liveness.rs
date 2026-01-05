@@ -3,7 +3,7 @@
 //! Provides FHE-based liveness score encryption and threshold verification.
 //! Scores are floats from 0.0 to 1.0, stored as u16 (0-10000) for 4 decimal precision.
 
-use super::{decode_bincode_base64, encode_bincode_base64, setup_for_verification};
+use super::{decode_tfhe_binary, encode_tfhe_binary, setup_for_verification};
 use crate::error::FheError;
 use tfhe::prelude::*;
 use tfhe::{CompressedPublicKey, FheUint16};
@@ -48,38 +48,38 @@ pub fn threshold_to_u16(threshold: f64) -> Result<u16, FheError> {
 ///   public_key: Compressed public key
 ///
 /// Returns:
-///   Base64-encoded ciphertext of the score (stored as u16 0-10000)
+///   Binary ciphertext of the score (stored as u16 0-10000)
 pub fn encrypt_liveness_score(
     score: f64,
     public_key: &CompressedPublicKey,
-) -> Result<String, FheError> {
+) -> Result<Vec<u8>, FheError> {
     let scaled_score = score_to_u16(score)?;
     let encrypted = FheUint16::try_encrypt(scaled_score, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     // Serialize to bytes using bincode
-    encode_bincode_base64(&encrypted)
+    encode_tfhe_binary(&encrypted)
 }
 
 /// Verify if encrypted liveness score meets a threshold.
-/// Returns an encrypted boolean (base64) that must be decrypted by the client.
+/// Returns an encrypted boolean (binary) that must be decrypted by the client.
 ///
 /// Performs homomorphic comparison: encrypted_score >= threshold
 /// Only reveals whether the threshold was met, not the actual score.
 pub fn verify_liveness_threshold(
-    ciphertext_b64: &str,
+    ciphertext: &[u8],
     threshold: f64,
     key_id: &str,
-) -> Result<String, FheError> {
+) -> Result<Vec<u8>, FheError> {
     let threshold_scaled = threshold_to_u16(threshold)?;
     setup_for_verification(key_id)?;
 
-    let encrypted_score: FheUint16 = decode_bincode_base64(ciphertext_b64)?;
+    let encrypted_score: FheUint16 = decode_tfhe_binary(ciphertext)?;
 
     // Check if score >= threshold (homomorphic comparison)
     let encrypted_passes = encrypted_score.ge(threshold_scaled);
 
-    encode_bincode_base64(&encrypted_passes)
+    encode_tfhe_binary(&encrypted_passes)
 }
 
 #[cfg(test)]
@@ -211,7 +211,7 @@ mod tests {
         let ciphertext = encrypt_liveness_score(0.85, &public_key).unwrap();
         let result_ciphertext = verify_liveness_threshold(&ciphertext, 0.3, &key_id).unwrap();
 
-        let encrypted: FheBool = decode_bincode_base64(&result_ciphertext).unwrap();
+        let encrypted: FheBool = decode_tfhe_binary(&result_ciphertext).unwrap();
         let passes = encrypted.decrypt(&client_key);
 
         assert!(passes);

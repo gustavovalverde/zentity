@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  blob,
   index,
   integer,
   sqliteTable,
@@ -49,7 +50,7 @@ export const encryptedAttributes = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     source: text("source").notNull(),
     attributeType: text("attribute_type").notNull(),
-    ciphertext: text("ciphertext").notNull(),
+    ciphertext: blob("ciphertext", { mode: "buffer" }).notNull(),
     keyId: text("key_id"),
     encryptionTimeMs: integer("encryption_time_ms"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),

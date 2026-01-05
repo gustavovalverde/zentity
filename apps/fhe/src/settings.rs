@@ -2,9 +2,13 @@
 
 use std::env;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::time::Duration;
 
 const DEFAULT_PORT: u16 = 5001;
 const DEFAULT_BODY_LIMIT_MB: usize = 64;
+const DEFAULT_CONCURRENCY_LIMIT: usize = 4;
+const DEFAULT_REQUEST_TIMEOUT_MS: u64 = 60_000;
+const DEFAULT_TEST_TIMEOUT_MS: u64 = 180_000;
 
 fn env_trim(name: &str) -> String {
     env::var(name).unwrap_or_default().trim().to_string()
@@ -26,6 +30,9 @@ pub struct Settings {
     body_limit_bytes: usize,
     internal_token: Option<String>,
     internal_token_required: bool,
+    concurrency_limit: usize,
+    cpu_concurrency_limit: usize,
+    request_timeout_ms: u64,
 }
 
 impl Settings {
@@ -55,6 +62,23 @@ impl Settings {
             .parse::<usize>()
             .unwrap_or(DEFAULT_BODY_LIMIT_MB);
         let body_limit_bytes = body_limit_mb.saturating_mul(1024 * 1024);
+        let concurrency_limit = env_trim("FHE_CONCURRENCY_LIMIT")
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|value| value.get())
+                    .unwrap_or(DEFAULT_CONCURRENCY_LIMIT)
+            });
+        let cpu_concurrency_limit = env_trim("FHE_CPU_CONCURRENCY_LIMIT")
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or(concurrency_limit);
+        let request_timeout_ms = env_trim("FHE_REQUEST_TIMEOUT_MS")
+            .parse::<u64>()
+            .unwrap_or(DEFAULT_REQUEST_TIMEOUT_MS);
 
         Self {
             port,
@@ -63,6 +87,9 @@ impl Settings {
             body_limit_bytes,
             internal_token,
             internal_token_required,
+            concurrency_limit,
+            cpu_concurrency_limit,
+            request_timeout_ms,
         }
     }
 
@@ -74,6 +101,9 @@ impl Settings {
             body_limit_bytes: DEFAULT_BODY_LIMIT_MB.saturating_mul(1024 * 1024),
             internal_token: None,
             internal_token_required: false,
+            concurrency_limit: 32,
+            cpu_concurrency_limit: 32,
+            request_timeout_ms: DEFAULT_TEST_TIMEOUT_MS,
         }
     }
 
@@ -115,5 +145,21 @@ Set INTERNAL_SERVICE_TOKEN or INTERNAL_SERVICE_TOKEN_REQUIRED=0."
         self.body_limit_bytes = bytes;
         self.body_limit_mb = bytes / (1024 * 1024);
         self
+    }
+
+    pub fn concurrency_limit(&self) -> usize {
+        self.concurrency_limit
+    }
+
+    pub fn cpu_concurrency_limit(&self) -> usize {
+        self.cpu_concurrency_limit
+    }
+
+    pub fn request_timeout(&self) -> Duration {
+        Duration::from_millis(self.request_timeout_ms)
+    }
+
+    pub fn request_timeout_ms(&self) -> u64 {
+        self.request_timeout_ms
     }
 }

@@ -10,7 +10,16 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http::fixtures::country_code_boundaries::*;
+use serde::Deserialize;
 use tower::ServiceExt;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptCountryCodeResponse {
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
+    country_code: u16,
+}
 
 // ============================================================================
 // Happy Path Tests
@@ -38,11 +47,10 @@ async fn encrypt_country_code_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert!(json["ciphertext"].is_string());
-    assert!(!json["ciphertext"].as_str().unwrap().is_empty());
+    let body: EncryptCountryCodeResponse = http::parse_msgpack_body(response).await;
+    assert!(!body.ciphertext.is_empty());
     // Country code is echoed back for confirmation
-    assert_eq!(json["countryCode"], USA);
+    assert_eq!(body.country_code, USA);
 }
 
 /// Encrypt with minimum code (0) succeeds.
@@ -67,8 +75,8 @@ async fn encrypt_country_code_boundary_zero() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["countryCode"], MIN_CODE);
+    let body: EncryptCountryCodeResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.country_code, MIN_CODE);
 }
 
 /// Encrypt with maximum code (999) succeeds.
@@ -93,8 +101,8 @@ async fn encrypt_country_code_boundary_max() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["countryCode"], MAX_CODE);
+    let body: EncryptCountryCodeResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.country_code, MAX_CODE);
 }
 
 /// Encrypt with Germany code (276) - another valid ISO code.
@@ -119,8 +127,8 @@ async fn encrypt_country_code_germany() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["countryCode"], GERMANY);
+    let body: EncryptCountryCodeResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.country_code, GERMANY);
 }
 
 // ============================================================================

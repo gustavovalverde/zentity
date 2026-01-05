@@ -1,5 +1,7 @@
 "use client";
 
+import { decode, encode } from "@msgpack/msgpack";
+
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
@@ -38,13 +40,10 @@ let cached:
     }
   | undefined;
 
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
 export function uploadSecretBlobWithToken(params: {
   secretId: string;
   secretType: string;
-  payload: Uint8Array;
+  payload: string;
   registrationToken: string;
 }): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
   return uploadSecretBlob({
@@ -56,29 +55,28 @@ export function uploadSecretBlobWithToken(params: {
 }
 
 function serializeKeys(keys: StoredFheKeys): Uint8Array {
-  const payload = JSON.stringify({
-    clientKey: bytesToBase64(keys.clientKey),
-    publicKey: bytesToBase64(keys.publicKey),
-    serverKey: bytesToBase64(keys.serverKey),
+  return encode({
+    clientKey: keys.clientKey,
+    publicKey: keys.publicKey,
+    serverKey: keys.serverKey,
     createdAt: keys.createdAt,
   });
-  return textEncoder.encode(payload);
 }
 
 function deserializeKeys(
   payload: Uint8Array,
   metadata?: Record<string, unknown> | null
 ): StoredFheKeys {
-  const parsed = JSON.parse(textDecoder.decode(payload)) as {
-    clientKey: string;
-    publicKey: string;
-    serverKey: string;
+  const parsed = decode(payload) as {
+    clientKey: Uint8Array;
+    publicKey: Uint8Array;
+    serverKey: Uint8Array;
     createdAt: string;
   };
   return {
-    clientKey: base64ToBytes(parsed.clientKey),
-    publicKey: base64ToBytes(parsed.publicKey),
-    serverKey: base64ToBytes(parsed.serverKey),
+    clientKey: parsed.clientKey,
+    publicKey: parsed.publicKey,
+    serverKey: parsed.serverKey,
     createdAt: parsed.createdAt,
     keyId: typeof metadata?.keyId === "string" ? metadata.keyId : undefined,
   };
@@ -131,7 +129,7 @@ export async function storeFheKeys(params: {
   const blobMetadata = await uploadSecretBlob({
     secretId: envelope.secretId,
     secretType: SECRET_TYPE,
-    payload: textEncoder.encode(envelope.encryptedBlob),
+    payload: envelope.encryptedBlob,
   });
 
   await trpc.secrets.storeSecret.mutate({

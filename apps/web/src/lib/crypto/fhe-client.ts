@@ -40,9 +40,7 @@ export type FheOperation =
   | "encrypt_birth_year_offset"
   | "encrypt_country_code"
   | "encrypt_compliance_level"
-  | "encrypt_liveness"
-  | "verify_age_offset"
-  | "verify_liveness_threshold";
+  | "verify_age_offset";
 
 export class FheServiceError extends Error {
   readonly operation: FheOperation;
@@ -92,12 +90,12 @@ interface FetchMsgpackOptions extends RequestInit {
 
 async function fetchMsgpack<T>(
   url: string,
-  payload: unknown,
+  payload: unknown | Uint8Array,
   init?: FetchMsgpackOptions
 ): Promise<T> {
   const { timeoutMs = 60_000, ...fetchInit } = init ?? {};
 
-  const encoded = encode(payload);
+  const encoded = payload instanceof Uint8Array ? payload : encode(payload);
   const compressed = gzipSync(encoded);
 
   const controller = new AbortController();
@@ -223,27 +221,18 @@ async function withFheError<T>(
 }
 
 interface FheCiphertextResult {
-  ciphertext: string;
+  ciphertext: Uint8Array;
 }
 
 interface FheBatchEncryptResponse {
-  birthYearOffsetCiphertext?: string | null;
-  countryCodeCiphertext?: string | null;
-  complianceLevelCiphertext?: string | null;
-  livenessScoreCiphertext?: string | null;
-}
-
-interface FheEncryptLivenessResult extends FheCiphertextResult {
-  score: number;
+  birthYearOffsetCiphertext?: Uint8Array | null;
+  countryCodeCiphertext?: Uint8Array | null;
+  complianceLevelCiphertext?: Uint8Array | null;
+  livenessScoreCiphertext?: Uint8Array | null;
 }
 
 interface FheVerifyAgeResult {
-  resultCiphertext: string;
-}
-
-interface FheVerifyLivenessThresholdResult {
-  passesCiphertext: string;
-  threshold: number;
+  resultCiphertext: Uint8Array;
 }
 
 interface FheRegisterKeyResult {
@@ -279,7 +268,8 @@ export function encryptBatchFhe(args: {
     complianceLevel: args.complianceLevel,
     livenessScore: args.livenessScore,
   };
-  const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
+  const encoded = encode(payload);
+  const payloadBytes = encoded.byteLength;
   recordFhePayloadBytes(payloadBytes, { operation: "encrypt_batch" });
   return withFheError("encrypt_batch", () =>
     withSpan(
@@ -290,7 +280,7 @@ export function encryptBatchFhe(args: {
         "fhe.key_id_hash": hashIdentifier(args.keyId),
       },
       () =>
-        fetchMsgpack<FheBatchEncryptResponse>(url, payload, {
+        fetchMsgpack<FheBatchEncryptResponse>(url, encoded, {
           method: "POST",
           headers: buildMsgpackHeaders(
             getInternalServiceAuthHeaders(args.requestId, args.flowId)
@@ -323,32 +313,9 @@ export async function encryptBirthYearOffsetFhe(args: {
   return { ciphertext };
 }
 
-export async function encryptLivenessScoreFhe(args: {
-  score: number;
-  keyId: string;
-  requestId?: string;
-  flowId?: string;
-}): Promise<FheEncryptLivenessResult> {
-  const result = await encryptBatchFhe({
-    keyId: args.keyId,
-    livenessScore: args.score,
-    requestId: args.requestId,
-    flowId: args.flowId,
-  });
-  const ciphertext = result.livenessScoreCiphertext;
-  if (!ciphertext) {
-    throw new FheServiceError({
-      operation: "encrypt_liveness",
-      message: "Missing liveness ciphertext from FHE batch response",
-      kind: "unknown",
-    });
-  }
-  return { ciphertext, score: args.score };
-}
-
 export function registerFheKey(args: {
-  serverKey: string;
-  publicKey: string;
+  serverKey: Uint8Array;
+  publicKey: Uint8Array;
   requestId?: string;
   flowId?: string;
 }): Promise<FheRegisterKeyResult> {
@@ -357,9 +324,10 @@ export function registerFheKey(args: {
     serverKey: args.serverKey,
     publicKey: args.publicKey,
   };
-  const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
-  const serverKeyBytes = Buffer.byteLength(args.serverKey);
-  const publicKeyBytes = Buffer.byteLength(args.publicKey);
+  const encoded = encode(payload);
+  const payloadBytes = encoded.byteLength;
+  const serverKeyBytes = args.serverKey.byteLength;
+  const publicKeyBytes = args.publicKey.byteLength;
   recordFhePayloadBytes(payloadBytes, { operation: "register_key" });
   return withFheError("register_key", () =>
     withSpan(
@@ -371,7 +339,7 @@ export function registerFheKey(args: {
         "fhe.public_key_bytes": publicKeyBytes,
       },
       () =>
-        fetchMsgpack<FheRegisterKeyResult>(url, payload, {
+        fetchMsgpack<FheRegisterKeyResult>(url, encoded, {
           method: "POST",
           headers: buildMsgpackHeaders(
             getInternalServiceAuthHeaders(args.requestId, args.flowId)
@@ -382,7 +350,7 @@ export function registerFheKey(args: {
 }
 
 export function verifyAgeFhe(args: {
-  ciphertext: string;
+  ciphertext: Uint8Array;
   currentYear: number;
   minAge: number;
   keyId: string;
@@ -396,8 +364,9 @@ export function verifyAgeFhe(args: {
     minAge: args.minAge,
     keyId: args.keyId,
   };
-  const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
-  const ciphertextBytes = Buffer.byteLength(args.ciphertext);
+  const encoded = encode(payload);
+  const payloadBytes = encoded.byteLength;
+  const ciphertextBytes = args.ciphertext.byteLength;
   recordFhePayloadBytes(payloadBytes, { operation: "verify_age_offset" });
   return withFheError("verify_age_offset", () =>
     withSpan(
@@ -409,45 +378,7 @@ export function verifyAgeFhe(args: {
         "fhe.key_id_hash": hashIdentifier(args.keyId),
       },
       () =>
-        fetchMsgpack<FheVerifyAgeResult>(url, payload, {
-          method: "POST",
-          headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId, args.flowId)
-          ),
-        })
-    )
-  );
-}
-
-export function verifyLivenessThresholdFhe(args: {
-  ciphertext: string;
-  threshold: number;
-  keyId: string;
-  requestId?: string;
-  flowId?: string;
-}): Promise<FheVerifyLivenessThresholdResult> {
-  const url = `${getFheServiceUrl()}/verify-liveness-threshold`;
-  const payload = {
-    ciphertext: args.ciphertext,
-    threshold: args.threshold,
-    keyId: args.keyId,
-  };
-  const payloadBytes = Buffer.byteLength(JSON.stringify(payload));
-  const ciphertextBytes = Buffer.byteLength(args.ciphertext);
-  recordFhePayloadBytes(payloadBytes, {
-    operation: "verify_liveness_threshold",
-  });
-  return withFheError("verify_liveness_threshold", () =>
-    withSpan(
-      "fhe.verify_liveness_threshold",
-      {
-        "fhe.operation": "verify_liveness_threshold",
-        "fhe.request_bytes": payloadBytes,
-        "fhe.ciphertext_bytes": ciphertextBytes,
-        "fhe.key_id_hash": hashIdentifier(args.keyId),
-      },
-      () =>
-        fetchMsgpack<FheVerifyLivenessThresholdResult>(url, payload, {
+        fetchMsgpack<FheVerifyAgeResult>(url, encoded, {
           method: "POST",
           headers: buildMsgpackHeaders(
             getInternalServiceAuthHeaders(args.requestId, args.flowId)

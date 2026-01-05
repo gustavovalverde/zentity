@@ -45,7 +45,7 @@ function ResultBadge({ result }: { result: VerificationResult }) {
 interface ProofData {
   proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
-  birthYearOffsetCiphertext: string | null;
+  birthYearOffsetCiphertextBytes: number | null;
   fheKeyId: string | null;
 }
 
@@ -60,7 +60,7 @@ export function VerificationActions() {
 
   const loadProofData = async () => {
     const hasCachedFheData =
-      Boolean(proofData?.birthYearOffsetCiphertext) &&
+      Boolean(proofData?.birthYearOffsetCiphertextBytes) &&
       Boolean(proofData?.fheKeyId);
     if (hasCachedFheData) {
       return proofData;
@@ -75,7 +75,8 @@ export function VerificationActions() {
       const loaded = {
         proof: data.proof || "",
         publicSignals: data.publicSignals || [],
-        birthYearOffsetCiphertext: data.birthYearOffsetCiphertext || null,
+        birthYearOffsetCiphertextBytes:
+          data.birthYearOffsetCiphertextBytes ?? null,
         fheKeyId: data.fheKeyId || null,
       };
       setProofData(loaded);
@@ -121,16 +122,13 @@ export function VerificationActions() {
 
     try {
       const data = await loadProofData();
-      if (!(data?.birthYearOffsetCiphertext && data.fheKeyId)) {
+      if (!(data?.birthYearOffsetCiphertextBytes && data.fheKeyId)) {
         throw new Error(
           "FHE ciphertext or key is missing. Complete identity verification with FHE enabled."
         );
       }
 
-      const result = await verifyAgeViaFHE(
-        data.birthYearOffsetCiphertext,
-        data.fheKeyId
-      );
+      const result = await verifyAgeViaFHE(data.fheKeyId);
 
       setFheResult({
         method: "fhe",

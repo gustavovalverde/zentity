@@ -3,8 +3,6 @@
 //! Tests FHE-based birth year offset encryption and age verification operations.
 
 mod common;
-
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use fhe_service::crypto::{encrypt_birth_year_offset, verify_age_offset};
 use tfhe::prelude::FheDecrypt;
 use tfhe::FheBool;
@@ -18,8 +16,7 @@ fn encrypt_and_verify_age_adult() {
     let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
-    let result_bytes = BASE64.decode(result_ciphertext).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_ciphertext).unwrap();
     let is_adult = encrypted.decrypt(&client_key);
 
     assert!(is_adult, "Person born in 2000 should be adult in 2025");
@@ -34,8 +31,7 @@ fn encrypt_and_verify_age_underage() {
     let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
-    let result_bytes = BASE64.decode(result_ciphertext).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_ciphertext).unwrap();
     let is_adult = encrypted.decrypt(&client_key);
 
     assert!(!is_adult, "Person born in 2010 should NOT be adult in 2025");
@@ -50,8 +46,7 @@ fn encrypt_and_verify_age_exactly_18() {
     let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
-    let result_bytes = BASE64.decode(result_ciphertext).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_ciphertext).unwrap();
     let is_adult = encrypted.decrypt(&client_key);
 
     assert!(is_adult, "Person born in 2007 should be exactly 18 in 2025");
@@ -66,8 +61,7 @@ fn encrypt_and_verify_age_just_under_18() {
     let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
     let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
-    let result_bytes = BASE64.decode(result_ciphertext).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&result_bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_ciphertext).unwrap();
     let is_adult = encrypted.decrypt(&client_key);
 
     assert!(
@@ -86,20 +80,17 @@ fn encrypt_and_verify_age_different_min_ages() {
 
     // Should pass age 18 check
     let result_18 = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
-    let bytes = BASE64.decode(result_18).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_18).unwrap();
     assert!(encrypted.decrypt(&client_key), "Should be >= 18");
 
     // Should pass age 21 check
     let result_21 = verify_age_offset(&ciphertext, 2025, 21, &key_id).unwrap();
-    let bytes = BASE64.decode(result_21).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_21).unwrap();
     assert!(encrypted.decrypt(&client_key), "Should be >= 21");
 
     // Should fail age 25 check
     let result_25 = verify_age_offset(&ciphertext, 2025, 25, &key_id).unwrap();
-    let bytes = BASE64.decode(result_25).unwrap();
-    let encrypted: FheBool = bincode::deserialize(&bytes).unwrap();
+    let encrypted: FheBool = bincode::deserialize(&result_25).unwrap();
     assert!(!encrypted.decrypt(&client_key), "Should NOT be >= 25");
 }
 
@@ -109,17 +100,15 @@ fn encrypt_birth_year_offset_produces_valid_ciphertext() {
     let offset = 1990u16 - 1900;
     let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
 
-    // Ciphertext should be valid base64
-    assert!(BASE64.decode(&ciphertext).is_ok());
-
-    // Should be non-empty
+    // Should be non-empty bytes
     assert!(!ciphertext.is_empty());
 }
 
 #[test]
 fn verify_age_with_invalid_key_id_fails() {
     // Must initialize key store before verification (even with invalid key)
-    fhe_service::crypto::init_keys();
+    fhe_service::test_support::init_test_env();
+    fhe_service::crypto::init_keys().expect("Failed to initialize FHE keys for tests");
 
     let public_key = common::get_public_key();
 
@@ -142,8 +131,7 @@ fn verify_age_with_invalid_key_id_fails() {
 fn verify_age_with_invalid_ciphertext_fails() {
     let (_, _, key_id) = common::get_test_keys();
 
-    // Invalid base64 that decodes but isn't a valid ciphertext
-    let invalid_ciphertext = BASE64.encode(b"not a valid ciphertext");
+    let invalid_ciphertext = b"not a valid ciphertext".to_vec();
 
     let result = verify_age_offset(&invalid_ciphertext, 2025, 18, &key_id);
 
@@ -152,8 +140,8 @@ fn verify_age_with_invalid_ciphertext_fails() {
 
 #[test]
 fn decode_invalid_public_key_fails() {
-    let invalid_public_key = BASE64.encode(b"not a valid public key");
-    let result = fhe_service::crypto::decode_compressed_public_key(&invalid_public_key);
+    let invalid_public_key = b"not a valid public key";
+    let result = fhe_service::crypto::decode_compressed_public_key(invalid_public_key);
 
     assert!(result.is_err(), "Should fail with invalid public key");
 }

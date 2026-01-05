@@ -47,13 +47,13 @@ Build metadata for deployment verification.
 
 Register a client-generated server key + public key.
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
-{ "serverKey": "base64-encoded-key", "publicKey": "base64-encoded-key" }
+{ "serverKey": "<bytes>", "publicKey": "<bytes>" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
 { "keyId": "uuid" }
@@ -63,103 +63,103 @@ Register a client-generated server key + public key.
 
 Encrypt birth year offset (years since 1900).
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 { "birthYearOffset": 90, "keyId": "uuid" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
-{ "ciphertext": "base64-encoded-ciphertext" }
+{ "ciphertext": "<bytes>" }
 ```
 
 ### `POST /verify-age-offset`
 
 Verify age threshold on encrypted birth year offset.
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 { "ciphertext": "...", "currentYear": 2025, "minAge": 18, "keyId": "uuid" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
-{ "resultCiphertext": "base64-encoded-ciphertext" }
+{ "resultCiphertext": "<bytes>" }
 ```
 
 ### `POST /encrypt-country-code`
 
 Encrypt ISO 3166-1 numeric country code.
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 { "countryCode": 840, "keyId": "uuid" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
-{ "ciphertext": "...", "countryCode": 840 }
+{ "ciphertext": "<bytes>", "countryCode": 840 }
 ```
 
 ### `POST /encrypt-compliance-level`
 
 Encrypt a compliance tier (0-10).
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 { "complianceLevel": 3, "keyId": "uuid" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
-{ "ciphertext": "...", "complianceLevel": 3 }
+{ "ciphertext": "<bytes>", "complianceLevel": 3 }
 ```
 
 ### `POST /encrypt-liveness`
 
 Encrypt a liveness score (0.0-1.0).
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 { "score": 0.85, "keyId": "uuid" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
-{ "ciphertext": "...", "score": 0.85 }
+{ "ciphertext": "<bytes>", "score": 0.85 }
 ```
 
 ### `POST /verify-liveness-threshold`
 
 Verify a liveness threshold on encrypted score.
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 { "ciphertext": "...", "threshold": 0.35, "keyId": "uuid" }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
-{ "passesCiphertext": "base64-encoded-ciphertext", "threshold": 0.35 }
+{ "passesCiphertext": "<bytes>", "threshold": 0.35 }
 ```
 
 ### `POST /encrypt-batch`
 
 Batch-encrypt multiple attributes in one request to reduce overhead.
 
-**Request:**
+**Request (MessagePack):**
 
 ```json
 {
@@ -171,14 +171,14 @@ Batch-encrypt multiple attributes in one request to reduce overhead.
 }
 ```
 
-**Response:**
+**Response (MessagePack):**
 
 ```json
 {
-  "birthYearOffsetCiphertext": "...",
-  "countryCodeCiphertext": "...",
-  "complianceLevelCiphertext": "...",
-  "livenessScoreCiphertext": "..."
+  "birthYearOffsetCiphertext": "<bytes>",
+  "countryCodeCiphertext": "<bytes>",
+  "complianceLevelCiphertext": "<bytes>",
+  "livenessScoreCiphertext": "<bytes>"
 }
 ```
 
@@ -189,8 +189,10 @@ Batch-encrypt multiple attributes in one request to reduce overhead.
 | `INTERNAL_SERVICE_TOKEN` | Require auth for non-public endpoints | (optional) |
 | `INTERNAL_SERVICE_TOKEN_REQUIRED` | Force auth even if token missing | `false` |
 | `FHE_BODY_LIMIT_MB` | Max request body size (MB) | `64` |
-| `FHE_PERSIST_KEYS` | Persist server keys to default disk path | `false` |
-| `FHE_KEYS_DIR` | Persist server keys to this directory | (optional) |
+| `FHE_KEYS_DIR` | Directory for persisted server keys | `/var/lib/zentity/fhe` |
+| `FHE_CONCURRENCY_LIMIT` | Max concurrent requests | CPU count (fallback 4) |
+| `FHE_CPU_CONCURRENCY_LIMIT` | Max concurrent CPU-bound tasks | `FHE_CONCURRENCY_LIMIT` |
+| `FHE_REQUEST_TIMEOUT_MS` | Request timeout (milliseconds) | `60000` |
 
 ## Development
 
@@ -212,3 +214,7 @@ cargo run
 ```
 
 The service listens on `http://localhost:5001` by default.
+
+### Persistence
+
+Server and public keys are persisted in a ReDB database at `$FHE_KEYS_DIR/keystore.redb` (default: `/var/lib/zentity/fhe/keystore.redb`). This enables horizontal scaling and crash recovery without re-registering keys.

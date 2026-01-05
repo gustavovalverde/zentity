@@ -2,7 +2,7 @@
 //!
 //! Provides FHE-based encryption for compliance level values.
 
-use super::encode_bincode_base64;
+use super::encode_tfhe_binary;
 use crate::error::FheError;
 use tfhe::prelude::*;
 use tfhe::{CompressedPublicKey, FheUint8};
@@ -15,7 +15,7 @@ const MAX_COMPLIANCE_LEVEL: u8 = 10;
 pub fn encrypt_compliance_level(
     compliance_level: u8,
     public_key: &CompressedPublicKey,
-) -> Result<String, FheError> {
+) -> Result<Vec<u8>, FheError> {
     if compliance_level > MAX_COMPLIANCE_LEVEL {
         return Err(FheError::InvalidInput(format!(
             "Compliance level must be 0-{} (got {})",
@@ -26,20 +26,20 @@ pub fn encrypt_compliance_level(
     let encrypted = FheUint8::try_encrypt(compliance_level, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
-    encode_bincode_base64(&encrypted)
+    encode_tfhe_binary(&encrypted)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::decode_bincode_base64;
+    use crate::crypto::decode_tfhe_binary;
     use crate::crypto::test_helpers::get_test_keys;
 
     #[test]
-    fn encrypt_compliance_level_roundtrip_base64() {
+    fn encrypt_compliance_level_roundtrip() {
         let (_client_key, public_key, _key_id) = get_test_keys();
         let ciphertext = encrypt_compliance_level(3, &public_key).unwrap();
-        let decoded: Result<FheUint8, _> = decode_bincode_base64(&ciphertext);
+        let decoded: Result<FheUint8, _> = decode_tfhe_binary(&ciphertext);
         assert!(decoded.is_ok());
     }
 

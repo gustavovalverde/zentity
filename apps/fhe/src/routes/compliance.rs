@@ -5,6 +5,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 
+use super::run_cpu_bound;
 use crate::crypto;
 use crate::error::FheError;
 use crate::transport;
@@ -20,7 +21,8 @@ pub struct EncryptComplianceLevelRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptComplianceLevelResponse {
-    ciphertext: String,
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
     compliance_level: u8,
 }
 
@@ -30,14 +32,21 @@ pub async fn encrypt_compliance_level(
     body: Bytes,
 ) -> Result<Response, FheError> {
     let payload: EncryptComplianceLevelRequest = transport::decode_msgpack(&headers, body)?;
-    let public_key = crypto::get_public_key_for_encryption(&payload.key_id)?;
-    let ciphertext = crypto::encrypt_compliance_level(payload.compliance_level, &public_key)?;
+    let EncryptComplianceLevelRequest {
+        compliance_level,
+        key_id,
+    } = payload;
+    let ciphertext = run_cpu_bound(move || {
+        let public_key = crypto::get_public_key_for_encryption(&key_id)?;
+        crypto::encrypt_compliance_level(compliance_level, &public_key)
+    })
+    .await?;
 
     transport::encode_msgpack(
         &headers,
         &EncryptComplianceLevelResponse {
             ciphertext,
-            compliance_level: payload.compliance_level,
+            compliance_level,
         },
     )
 }

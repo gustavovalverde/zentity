@@ -9,11 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock server-only before any imports
 vi.mock("server-only", () => ({}));
-const registerFheKeyMock = vi.fn();
-
-vi.mock("@/lib/crypto/fhe-client", () => ({
-  registerFheKey: registerFheKeyMock,
-}));
 
 import { getExpectedOrigin, getRelyingPartyId } from "@/lib/auth/passkey-auth";
 import { storeRegistrationBlob } from "@/lib/auth/registration-token";
@@ -59,7 +54,6 @@ describe("passkey-auth router", () => {
     await resetDatabase();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-15T12:00:00Z"));
-    registerFheKeyMock.mockResolvedValue({ keyId: "fhe-key-1" });
   });
 
   afterEach(() => {
@@ -148,8 +142,7 @@ describe("passkey-auth router", () => {
           wrappedDek: "wrapped-dek",
           prfSalt: "prf-salt",
           credentialId: "new-cred-id",
-          publicKey: "public-key",
-          serverKey: "server-key",
+          keyId: "fhe-key-1",
           version: "v2",
           kekVersion: "v1",
         },
@@ -158,7 +151,7 @@ describe("passkey-auth router", () => {
       expect(result.success).toBe(true);
       expect(result.userId).toBeDefined();
       expect(result.sessionToken).toBeDefined();
-      expect(result.keyId).toBeDefined();
+      expect(result.keyId).toBe("fhe-key-1");
     });
 
     it("registers additional credential for existing user", async () => {
@@ -196,8 +189,7 @@ describe("passkey-auth router", () => {
           wrappedDek: "wrapped-dek",
           prfSalt: "prf-salt",
           credentialId: "second-cred-id",
-          publicKey: "public-key",
-          serverKey: "server-key",
+          keyId: "fhe-key-1",
           version: "v2",
           kekVersion: "v1",
         },
@@ -239,8 +231,7 @@ describe("passkey-auth router", () => {
           wrappedDek: "wrapped-dek",
           prfSalt: "prf-salt",
           credentialId: "session-cred-id",
-          publicKey: "public-key",
-          serverKey: "server-key",
+          keyId: "fhe-key-1",
           version: "v2",
           kekVersion: "v1",
         },
@@ -248,7 +239,7 @@ describe("passkey-auth router", () => {
 
       expect(result.sessionToken).toBeDefined();
       expect(result.expiresAt).toBeDefined();
-      expect(result.keyId).toBeDefined();
+      expect(result.keyId).toBe("fhe-key-1");
       // Verify cookie was set via resHeaders
       const setCookie = testResHeaders.get("Set-Cookie");
       expect(setCookie).toContain("better-auth.session_token=");
@@ -295,8 +286,7 @@ describe("passkey-auth router", () => {
             wrappedDek: "wrapped-dek",
             prfSalt: "prf-salt",
             credentialId: "existing-cred",
-            publicKey: "public-key",
-            serverKey: "server-key",
+            keyId: "fhe-key-1",
             version: "v2",
             kekVersion: "v1",
           },

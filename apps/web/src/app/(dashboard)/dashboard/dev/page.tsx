@@ -58,7 +58,6 @@ export default function DevViewPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [proofOpen, setProofOpen] = useState(false);
   const [signalsOpen, setSignalsOpen] = useState(false);
-  const [ciphertextOpen, setCiphertextOpen] = useState(false);
 
   useEffect(() => {
     async function fetchProof() {
@@ -82,8 +81,10 @@ export default function DevViewPage() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const formatBytes = (str: string): string => {
-    const bytes = new Blob([str]).size;
+  const formatBytes = (bytes: number | null | undefined): string => {
+    if (bytes === null || bytes === undefined) {
+      return "N/A";
+    }
     if (bytes < 1024) {
       return `${bytes} B`;
     }
@@ -198,15 +199,13 @@ export default function DevViewPage() {
             <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">Proof Size</p>
               <p className="truncate font-bold font-mono text-2xl">
-                {proofJson ? formatBytes(proofJson) : "N/A"}
+                {proofJson ? formatBytes(proofJson.length) : "N/A"}
               </p>
             </div>
             <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">Ciphertext Size</p>
               <p className="truncate font-bold font-mono text-2xl">
-                {proofData.birthYearOffsetCiphertext
-                  ? formatBytes(proofData.birthYearOffsetCiphertext)
-                  : "N/A"}
+                {formatBytes(proofData.birthYearOffsetCiphertextBytes)}
               </p>
             </div>
           </div>
@@ -312,7 +311,7 @@ export default function DevViewPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {proofData.birthYearOffsetCiphertext ? (
+          {proofData.birthYearOffsetCiphertextBytes ? (
             <>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">TFHE-rs</Badge>
@@ -322,45 +321,37 @@ export default function DevViewPage() {
                 </Badge>
               </div>
 
-              <Collapsible
-                onOpenChange={setCiphertextOpen}
-                open={ciphertextOpen}
-              >
-                <CollapsibleTrigger asChild>
-                  <Button className="w-full justify-between" variant="outline">
-                    <span>View Ciphertext (truncated)</span>
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform ${ciphertextOpen ? "rotate-180" : ""}`}
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2">
-                  <div className="relative">
+              <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs">
+                <div className="flex items-center justify-between">
+                  <span>Ciphertext size</span>
+                  <span>
+                    {formatBytes(proofData.birthYearOffsetCiphertextBytes)}
+                  </span>
+                </div>
+                {proofData.birthYearOffsetCiphertextHash ? (
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="break-all">
+                      sha256: {proofData.birthYearOffsetCiphertextHash}
+                    </span>
                     <Button
-                      className="absolute top-2 right-2 z-10"
                       onClick={() =>
                         copyToClipboard(
-                          proofData.birthYearOffsetCiphertext || "",
-                          "ciphertext"
+                          proofData.birthYearOffsetCiphertextHash || "",
+                          "ciphertext-hash"
                         )
                       }
                       size="sm"
                       variant="ghost"
                     >
-                      {copiedField === "ciphertext" ? (
+                      {copiedField === "ciphertext-hash" ? (
                         <Check className="h-4 w-4 text-success" />
                       ) : (
                         <Copy className="h-4 w-4" />
                       )}
                     </Button>
-                    <pre className="max-h-48 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
-                      {proofData.birthYearOffsetCiphertext.length > 500
-                        ? `${proofData.birthYearOffsetCiphertext.slice(0, 500)}...`
-                        : proofData.birthYearOffsetCiphertext}
-                    </pre>
                   </div>
-                </CollapsibleContent>
-              </Collapsible>
+                ) : null}
+              </div>
 
               <Alert>
                 <Database className="h-4 w-4" />

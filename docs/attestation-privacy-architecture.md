@@ -34,7 +34,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | **Web2 (off-chain)** | TFHE encryption via FHE service using client public key | **User only** (client key in browser) | Server can compute on ciphertext without decryption. |
 | **Web3 (on-chain)** | FHEVM encryption in browser via SDK | **User only** (wallet signature auth) | On-chain compliance checks operate on ciphertext. |
 
-**Important**: The server persists **encrypted key bundles** (passkey-wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
+**Important**: The server persists **encrypted key bundles** (passkey-wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser. The FHE service uses MessagePack + gzip binary transport and persists keys in ReDB.
 
 ### Integrity controls
 
@@ -91,7 +91,7 @@ SQLite is accessed via the libSQL client (Turso optional for hosted environments
 **`encrypted_attributes`**
 
 - `attribute_type`: birth_year_offset | country_code | compliance_level | liveness_score
-- `ciphertext`, `key_id`, `encryption_time_ms`
+- `ciphertext` (binary blob), `key_id`, `encryption_time_ms`
 
 **`signed_claims`**
 

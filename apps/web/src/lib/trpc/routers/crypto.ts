@@ -5,7 +5,6 @@
  * and challenge-response anti-replay protection.
  *
  * Key operations:
- * - encryptLiveness: Encrypt sensitive data via TFHE-rs backend
  * - verifyProof: Verify Noir ZK proofs with policy enforcement
  * - createChallenge: Issue nonces for replay-resistant proof generation
  * - storeProof: Persist verified ZK proofs for authenticated users
@@ -33,12 +32,6 @@ import {
   createChallenge,
   getActiveChallengeCount,
 } from "@/lib/crypto/challenge-store";
-import {
-  encryptLivenessScoreFhe,
-  registerFheKey,
-  verifyAgeFhe,
-  verifyLivenessThresholdFhe,
-} from "@/lib/crypto/fhe-client";
 import { scheduleFheEncryption } from "@/lib/crypto/fhe-encryption";
 import {
   type FaceMatchClaimData,
@@ -47,7 +40,6 @@ import {
 } from "@/lib/crypto/signed-claims";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
-  getEncryptedSecretByUserAndType,
   getLatestSignedClaimByUserTypeAndDocument,
   getProofHashesByUserAndDocument,
   getUserAgeProof,
@@ -60,7 +52,7 @@ import {
   updateIdentityBundleStatus,
 } from "@/lib/db/queries/identity";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
-import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
+import { withSpan } from "@/lib/observability/telemetry";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import { getTodayAsInt } from "@/lib/zk/noir-prover";
 import {
@@ -522,121 +514,6 @@ export const cryptoRouter = router({
       allHealthy,
     };
   }),
-
-  registerFheKey: protectedProcedure
-    .input(
-      z.object({
-        serverKey: z.string().min(1, "serverKey is required"),
-        publicKey: z.string().min(1, "publicKey is required"),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const serverKeyBytes = Buffer.byteLength(input.serverKey);
-      const publicKeyBytes = Buffer.byteLength(input.publicKey);
-      ctx.span?.setAttribute("fhe.server_key_bytes", serverKeyBytes);
-      ctx.span?.setAttribute("fhe.public_key_bytes", publicKeyBytes);
-
-      const existingSecret = await getEncryptedSecretByUserAndType(
-        ctx.userId,
-        "fhe_keys"
-      );
-      const existingKeyId =
-        existingSecret?.metadata &&
-        typeof existingSecret.metadata.keyId === "string"
-          ? existingSecret.metadata.keyId
-          : null;
-      ctx.span?.setAttribute("fhe.key_already_present", Boolean(existingKeyId));
-      if (existingKeyId) {
-        ctx.span?.setAttribute(
-          "fhe.key_id_hash",
-          hashIdentifier(existingKeyId)
-        );
-        ctx.span?.setAttribute("fhe.key_reused", true);
-        return { keyId: existingKeyId };
-      }
-
-      ctx.span?.setAttribute("fhe.key_reused", false);
-      return await registerFheKey({
-        serverKey: input.serverKey,
-        publicKey: input.publicKey,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-      });
-    }),
-
-  /**
-   * Verifies age threshold on FHE-encrypted birth year offset.
-   * Computation happens on ciphertext; result is returned encrypted for client decryption.
-   */
-  verifyAgeFhe: publicProcedure
-    .input(
-      z.object({
-        ciphertext: z.string().min(1, "ciphertext is required"),
-        currentYear: z.number().optional(),
-        minAge: z.number().optional(),
-        keyId: z.string().min(1, "keyId is required"),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const startTime = Date.now();
-      const data = await verifyAgeFhe({
-        ciphertext: input.ciphertext,
-        currentYear: input.currentYear || new Date().getFullYear(),
-        minAge: input.minAge ?? 18,
-        keyId: input.keyId,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-      });
-
-      return {
-        resultCiphertext: data.resultCiphertext,
-        computationTimeMs: Date.now() - startTime,
-      };
-    }),
-
-  encryptLiveness: protectedProcedure
-    .input(
-      z.object({
-        score: z.number().min(0).max(1),
-        keyId: z.string().min(1, "keyId is required"),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const result = await encryptLivenessScoreFhe({
-        score: input.score,
-        keyId: input.keyId,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-      });
-
-      return {
-        ciphertext: result.ciphertext,
-        score: result.score,
-      };
-    }),
-
-  verifyLivenessThreshold: protectedProcedure
-    .input(
-      z.object({
-        ciphertext: z.string().min(1, "ciphertext is required"),
-        threshold: z.number().min(0).max(1).optional(),
-        keyId: z.string().min(1, "keyId is required"),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const result = await verifyLivenessThresholdFhe({
-        ciphertext: input.ciphertext,
-        threshold: input.threshold ?? 0.3,
-        keyId: input.keyId,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-      });
-
-      return {
-        passesCiphertext: result.passesCiphertext,
-        threshold: result.threshold,
-      };
-    }),
 
   /**
    * Verifies a Noir ZK proof using UltraHonk (Barretenberg).

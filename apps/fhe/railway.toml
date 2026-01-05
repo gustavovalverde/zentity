@@ -7,7 +7,6 @@
 #   PORT=5001
 #   HOST=0.0.0.0  (IPv4 required for Railway healthchecks)
 #   INTERNAL_SERVICE_TOKEN=<secret>
-#   FHE_PERSIST_KEYS=1
 #   FHE_KEYS_DIR=/var/lib/zentity/fhe
 #
 # Required volumes (create via Railway dashboard):

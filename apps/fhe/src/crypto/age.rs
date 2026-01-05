@@ -4,7 +4,7 @@
 //! (years since 1900). This avoids storing full DOB while still supporting
 //! age threshold checks.
 
-use super::{decode_bincode_base64, encode_bincode_base64, setup_for_verification};
+use super::{decode_tfhe_binary, encode_tfhe_binary, setup_for_verification};
 use crate::error::FheError;
 use tfhe::prelude::*;
 use tfhe::{CompressedPublicKey, FheUint16};
@@ -26,25 +26,25 @@ fn validate_offset(offset: u16) -> Result<(), FheError> {
 pub fn encrypt_birth_year_offset(
     birth_year_offset: u16,
     public_key: &CompressedPublicKey,
-) -> Result<String, FheError> {
+) -> Result<Vec<u8>, FheError> {
     validate_offset(birth_year_offset)?;
 
     let encrypted = FheUint16::try_encrypt(birth_year_offset, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
     // Serialize to bytes using bincode
-    encode_bincode_base64(&encrypted)
+    encode_tfhe_binary(&encrypted)
 }
 
 /// Verify age on encrypted birth year offset.
 ///
-/// Returns an encrypted boolean (base64) that must be decrypted by the client.
+/// Returns an encrypted boolean (binary) that must be decrypted by the client.
 pub fn verify_age_offset(
-    ciphertext_b64: &str,
+    ciphertext: &[u8],
     current_year: u16,
     min_age: u16,
     key_id: &str,
-) -> Result<String, FheError> {
+) -> Result<Vec<u8>, FheError> {
     if current_year < BASE_YEAR {
         return Err(FheError::InvalidInput(format!(
             "Current year must be >= {} (got {})",
@@ -62,7 +62,7 @@ pub fn verify_age_offset(
 
     setup_for_verification(key_id)?;
 
-    let encrypted_birth_year_offset: FheUint16 = decode_bincode_base64(ciphertext_b64)?;
+    let encrypted_birth_year_offset: FheUint16 = decode_tfhe_binary(ciphertext)?;
 
     // Compute max allowed offset for the min age (older => smaller offset)
     let min_offset = current_offset - min_age;
@@ -71,7 +71,7 @@ pub fn verify_age_offset(
     let encrypted_is_adult = encrypted_birth_year_offset.le(min_offset);
 
     // Serialize encrypted boolean result (client will decrypt)
-    encode_bincode_base64(&encrypted_is_adult)
+    encode_tfhe_binary(&encrypted_is_adult)
 }
 
 #[cfg(test)]
@@ -87,7 +87,7 @@ mod tests {
         let ciphertext = encrypt_birth_year_offset(offset, &public_key).unwrap();
         let result_ciphertext = verify_age_offset(&ciphertext, 2025, 18, &key_id).unwrap();
 
-        let encrypted: FheBool = decode_bincode_base64(&result_ciphertext).unwrap();
+        let encrypted: FheBool = decode_tfhe_binary(&result_ciphertext).unwrap();
         let is_adult = encrypted.decrypt(&client_key);
 
         assert!(is_adult);

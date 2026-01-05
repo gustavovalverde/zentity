@@ -14,8 +14,6 @@ interface WorkerSuccess {
     serverKey: Uint8Array;
     createdAt: string;
   };
-  publicKeyB64: string;
-  serverKeyB64: string;
   durationMs: number;
 }
 
@@ -63,16 +61,6 @@ interface TfheModuleStatic {
 type TfheModule = TfheModuleStatic;
 
 let tfheInitPromise: Promise<TfheModule> | null = null;
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x80_00;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
 
 function loadTfhe(): Promise<TfheModule> {
   if (!tfheInitPromise) {
@@ -134,8 +122,6 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
       id: message.id,
       type: "result",
       storedKeys,
-      publicKeyB64: bytesToBase64(storedKeys.publicKey),
-      serverKeyB64: bytesToBase64(storedKeys.serverKey),
       durationMs: performance.now() - start,
     };
 

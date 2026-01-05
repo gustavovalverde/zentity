@@ -10,7 +10,16 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http::fixtures::compliance_boundaries::*;
+use serde::Deserialize;
 use tower::ServiceExt;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptComplianceLevelResponse {
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
+    compliance_level: u8,
+}
 
 // ============================================================================
 // Happy Path Tests
@@ -38,11 +47,10 @@ async fn encrypt_compliance_level_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert!(json["ciphertext"].is_string());
-    assert!(!json["ciphertext"].as_str().unwrap().is_empty());
+    let body: EncryptComplianceLevelResponse = http::parse_msgpack_body(response).await;
+    assert!(!body.ciphertext.is_empty());
     // Compliance level is echoed back for confirmation
-    assert_eq!(json["complianceLevel"], TYPICAL_LEVEL);
+    assert_eq!(body.compliance_level, TYPICAL_LEVEL);
 }
 
 /// Encrypt with minimum level (0) succeeds.
@@ -67,8 +75,8 @@ async fn encrypt_compliance_level_boundary_zero() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["complianceLevel"], MIN_LEVEL);
+    let body: EncryptComplianceLevelResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.compliance_level, MIN_LEVEL);
 }
 
 /// Encrypt with maximum level (10) succeeds.
@@ -93,8 +101,8 @@ async fn encrypt_compliance_level_boundary_max() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert_eq!(json["complianceLevel"], MAX_LEVEL);
+    let body: EncryptComplianceLevelResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.compliance_level, MAX_LEVEL);
 }
 
 /// All valid levels (0-10) succeed.

@@ -9,8 +9,15 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use serde::Deserialize;
 use tower::ServiceExt;
 use uuid::Uuid;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegisterKeyResponse {
+    key_id: String,
+}
 
 // ============================================================================
 // Happy Path Tests
@@ -23,10 +30,10 @@ async fn register_key_returns_uuid() {
 
     // Get a valid server key from test utilities
     let (_, _, _) = common::get_test_keys(); // This registers a key internally
-    let server_key_b64 = get_server_key_b64();
-    let public_key_b64 = common::get_public_key_b64();
+    let server_key = get_server_key_bytes();
+    let public_key = common::get_public_key_bytes();
 
-    let body = http::fixtures::register_key_request(&server_key_b64, &public_key_b64);
+    let body = http::fixtures::register_key_request(&server_key, &public_key);
 
     let response = app
         .oneshot(
@@ -42,13 +49,12 @@ async fn register_key_returns_uuid() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert!(json["keyId"].is_string());
+    let body: RegisterKeyResponse = http::parse_msgpack_body(response).await;
 
     // Verify it's a valid UUID
-    let key_id = json["keyId"].as_str().unwrap();
+    let key_id = body.key_id;
     assert!(
-        Uuid::parse_str(key_id).is_ok(),
+        Uuid::parse_str(&key_id).is_ok(),
         "keyId should be a valid UUID"
     );
 }
@@ -56,13 +62,13 @@ async fn register_key_returns_uuid() {
 /// Multiple key registrations return unique UUIDs.
 #[tokio::test]
 async fn register_key_unique_ids() {
-    let server_key_b64 = get_server_key_b64();
-    let public_key_b64 = common::get_public_key_b64();
+    let server_key = get_server_key_bytes();
+    let public_key = common::get_public_key_bytes();
     let mut key_ids = Vec::new();
 
     for _ in 0..3 {
         let app = http::test_app();
-        let body = http::fixtures::register_key_request(&server_key_b64, &public_key_b64);
+        let body = http::fixtures::register_key_request(&server_key, &public_key);
 
         let response = app
             .oneshot(
@@ -78,8 +84,8 @@ async fn register_key_unique_ids() {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let json = http::parse_msgpack_body(response).await;
-        key_ids.push(json["keyId"].as_str().unwrap().to_string());
+        let body: RegisterKeyResponse = http::parse_msgpack_body(response).await;
+        key_ids.push(body.key_id);
     }
 
     // All key IDs should be unique
@@ -91,18 +97,16 @@ async fn register_key_unique_ids() {
 }
 
 // ============================================================================
-// Invalid Base64 Tests
+// Invalid Key Byte Tests
 // ============================================================================
 
-/// Invalid base64 string returns 400.
+/// Invalid server key bytes return 400.
 #[tokio::test]
-async fn register_key_invalid_base64() {
+async fn register_key_invalid_bytes() {
     let app = http::test_app();
 
-    let body = serde_json::json!({
-        "serverKey": "not-valid-base64!!!",
-        "publicKey": common::get_public_key_b64()
-    });
+    let body =
+        http::fixtures::register_key_request(b"not-valid-key", &common::get_public_key_bytes());
 
     let response = app
         .oneshot(
@@ -119,16 +123,13 @@ async fn register_key_invalid_base64() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Valid base64 but invalid bincode content returns 400.
+/// Invalid bincode content returns 400.
 #[tokio::test]
 async fn register_key_invalid_bincode() {
     let app = http::test_app();
 
-    // "Hello World!" in base64 - valid base64 but not a server key
-    let body = serde_json::json!({
-        "serverKey": "SGVsbG8gV29ybGQh",
-        "publicKey": common::get_public_key_b64()
-    });
+    let body =
+        http::fixtures::register_key_request(b"hello world", &common::get_public_key_bytes());
 
     let response = app
         .oneshot(
@@ -145,15 +146,12 @@ async fn register_key_invalid_bincode() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Empty base64 string returns 400.
+/// Empty server key bytes return 400.
 #[tokio::test]
 async fn register_key_empty_string() {
     let app = http::test_app();
 
-    let body = serde_json::json!({
-        "serverKey": "",
-        "publicKey": common::get_public_key_b64()
-    });
+    let body = http::fixtures::register_key_request(&[], &common::get_public_key_bytes());
 
     let response = app
         .oneshot(
@@ -180,7 +178,7 @@ async fn register_key_missing_field() {
     let app = http::test_app();
 
     let body = serde_json::json!({
-        "publicKey": common::get_public_key_b64()
+        "publicKey": common::get_public_key_bytes()
     });
 
     let response = app
@@ -211,7 +209,7 @@ async fn register_key_null_field() {
 
     let body = serde_json::json!({
         "serverKey": null,
-        "publicKey": common::get_public_key_b64()
+        "publicKey": common::get_public_key_bytes()
     });
 
     let response = app
@@ -241,7 +239,7 @@ async fn register_key_wrong_type() {
 
     let body = serde_json::json!({
         "serverKey": 12345,
-        "publicKey": common::get_public_key_b64()
+        "publicKey": common::get_public_key_bytes()
     });
 
     let response = app
@@ -372,10 +370,8 @@ async fn register_key_rejects_get() {
 async fn register_key_error_format() {
     let app = http::test_app();
 
-    let body = serde_json::json!({
-        "serverKey": "invalid-base64!!!",
-        "publicKey": common::get_public_key_b64()
-    });
+    let body =
+        http::fixtures::register_key_request(b"invalid-key", &common::get_public_key_bytes());
 
     let response = app
         .oneshot(
@@ -402,8 +398,8 @@ async fn register_key_error_format() {
 // Helper Functions
 // ============================================================================
 
-/// Get a valid server key for testing (base64 encoded).
+/// Get a valid server key for testing (serialized bytes).
 /// Uses the cached key from common module for performance.
-fn get_server_key_b64() -> String {
-    common::get_server_key_b64()
+fn get_server_key_bytes() -> Vec<u8> {
+    common::get_server_key_bytes()
 }

@@ -39,6 +39,7 @@ import {
   getProofChallenge,
   getSignedClaims,
   prepareFheKeyEnrollment,
+  registerFheKeyForEnrollment,
   storeProof,
 } from "@/lib/crypto/crypto-client";
 import {
@@ -502,8 +503,13 @@ export function StepCreateAccount() {
       await uploadSecretBlobWithToken({
         secretId: fheEnrollment.secretId,
         secretType: FHE_SECRET_TYPE,
-        payload: new TextEncoder().encode(fheEnrollment.encryptedBlob),
+        payload: fheEnrollment.encryptedBlob,
         registrationToken: registrationOptions.registrationToken,
+      });
+      const fheRegistration = await registerFheKeyForEnrollment({
+        registrationToken: registrationOptions.registrationToken,
+        publicKeyBytes: fheEnrollment.publicKeyBytes,
+        serverKeyBytes: fheEnrollment.serverKeyBytes,
       });
 
       // Step 4: Complete registration on server (creates user + stores secrets + session)
@@ -526,8 +532,7 @@ export function StepCreateAccount() {
             wrappedDek: fheEnrollment.wrappedDek,
             prfSalt: fheEnrollment.prfSalt,
             credentialId,
-            publicKey: fheEnrollment.publicKeyB64,
-            serverKey: fheEnrollment.serverKeyB64,
+            keyId: fheRegistration.keyId,
             version: PASSKEY_VAULT_VERSION,
             kekVersion: WRAP_VERSION,
           },

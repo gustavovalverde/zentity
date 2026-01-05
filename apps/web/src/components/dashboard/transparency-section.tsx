@@ -20,7 +20,8 @@ import {
 interface TransparencySectionProps {
   documentHash?: string;
   nameCommitment?: string;
-  birthYearOffsetCiphertext?: string;
+  birthYearOffsetCiphertextHash?: string | null;
+  birthYearOffsetCiphertextBytes?: number | null;
   hasAgeProof: boolean;
   proofTypes?: string[];
   encryptedAttributes?: string[];
@@ -30,7 +31,8 @@ interface TransparencySectionProps {
 export function TransparencySection({
   documentHash,
   nameCommitment,
-  birthYearOffsetCiphertext,
+  birthYearOffsetCiphertextHash,
+  birthYearOffsetCiphertextBytes,
   hasAgeProof,
   proofTypes = [],
   encryptedAttributes = [],
@@ -119,10 +121,15 @@ export function TransparencySection({
                     </Badge>
                   </div>
                   <code className="block font-mono text-muted-foreground text-xs">
-                    {birthYearOffsetCiphertext
-                      ? truncateHash(birthYearOffsetCiphertext)
+                    {birthYearOffsetCiphertextBytes
+                      ? `${birthYearOffsetCiphertextBytes} bytes`
                       : "Not encrypted"}
                   </code>
+                  {birthYearOffsetCiphertextHash ? (
+                    <code className="block font-mono text-muted-foreground text-xs">
+                      sha256: {truncateHash(birthYearOffsetCiphertextHash)}
+                    </code>
+                  ) : null}
                   <p className="text-muted-foreground text-xs">
                     Homomorphically encrypted birth year offset
                   </p>

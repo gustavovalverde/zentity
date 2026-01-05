@@ -7,17 +7,20 @@
 #   BETTER_AUTH_SECRET=<secret>
 #   BETTER_AUTH_URL=https://app.zentity.xyz
 #   NEXT_PUBLIC_APP_URL=https://app.zentity.xyz
-#   NEXT_PUBLIC_COOP=same-origin-allow-popups
+#   NEXT_PUBLIC_COOP=same-origin
 #   INTERNAL_SERVICE_TOKEN=<secret>
 #   TURSO_DATABASE_URL=libsql://<db>.turso.io
 #   TURSO_AUTH_TOKEN=<secret>
 #   BB_CRS_PATH=/var/lib/zentity/bb-crs
+#   SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
 #   FHE_SERVICE_URL=http://fhe.railway.internal:5001
 #   OCR_SERVICE_URL=http://ocr.railway.internal:5004
 #
 # Optional volumes (create via Railway dashboard):
 #   bb-crs-cache → /var/lib/zentity/bb-crs
 #     - Persists BB CRS cache across restarts
+#   web-data → /var/lib/zentity/web
+#     - Persists secret blobs and SQLite (if using file: DB)
 #
 # Schema apply (run from CI/local machine):
 #   TURSO_DATABASE_URL=libsql://<db>.turso.io TURSO_AUTH_TOKEN=<secret> bun run db:push

@@ -23,12 +23,14 @@ import {
 import { verifyAgeViaFHE } from "@/lib/crypto/crypto-client";
 
 interface FheVerificationDemoProps {
-  birthYearOffsetCiphertext?: string;
+  birthYearOffsetCiphertextHash?: string | null;
+  birthYearOffsetCiphertextBytes?: number | null;
   fheKeyId?: string;
 }
 
 export function FheVerificationDemo({
-  birthYearOffsetCiphertext,
+  birthYearOffsetCiphertextHash,
+  birthYearOffsetCiphertextBytes,
   fheKeyId,
 }: FheVerificationDemoProps) {
   const [computing, setComputing] = useState(false);
@@ -39,7 +41,7 @@ export function FheVerificationDemo({
   const [error, setError] = useState<string | null>(null);
 
   const handleFheVerification = async () => {
-    if (!(birthYearOffsetCiphertext && fheKeyId)) {
+    if (!(birthYearOffsetCiphertextBytes && fheKeyId)) {
       return;
     }
 
@@ -48,14 +50,7 @@ export function FheVerificationDemo({
     setResult(null);
 
     try {
-      setResult(
-        await verifyAgeViaFHE(
-          birthYearOffsetCiphertext,
-          fheKeyId,
-          new Date().getFullYear(),
-          18
-        )
-      );
+      setResult(await verifyAgeViaFHE(fheKeyId, new Date().getFullYear(), 18));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Computation failed");
     } finally {
@@ -63,11 +58,11 @@ export function FheVerificationDemo({
     }
   };
 
-  const truncateCiphertext = (ct: string) => {
-    if (ct.length <= 60) {
-      return ct;
+  const truncateHash = (hash: string) => {
+    if (hash.length <= 16) {
+      return hash;
     }
-    return `${ct.substring(0, 30)}...${ct.substring(ct.length - 30)}`;
+    return `${hash.slice(0, 8)}...${hash.slice(-8)}`;
   };
 
   return (
@@ -82,7 +77,7 @@ export function FheVerificationDemo({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {birthYearOffsetCiphertext && fheKeyId ? (
+        {birthYearOffsetCiphertextBytes && fheKeyId ? (
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -95,9 +90,14 @@ export function FheVerificationDemo({
                 </Badge>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
-                <code className="break-all">
-                  {truncateCiphertext(birthYearOffsetCiphertext)}
-                </code>
+                <div className="flex flex-col gap-1">
+                  <span>{birthYearOffsetCiphertextBytes} bytes</span>
+                  {birthYearOffsetCiphertextHash ? (
+                    <span>
+                      sha256: {truncateHash(birthYearOffsetCiphertextHash)}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
 

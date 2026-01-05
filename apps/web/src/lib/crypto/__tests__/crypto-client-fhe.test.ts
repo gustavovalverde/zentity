@@ -1,3 +1,4 @@
+import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tfheMocks = vi.hoisted(() => ({
@@ -9,81 +10,114 @@ const tfheMocks = vi.hoisted(() => ({
 vi.mock("@/lib/crypto/tfhe-browser", () => tfheMocks);
 
 const trpcMocks = vi.hoisted(() => ({
-  registerFheKey: { mutate: vi.fn() },
-  verifyAgeFhe: { mutate: vi.fn() },
+  crypto: {
+    createChallenge: { mutate: vi.fn() },
+  },
 }));
 
 vi.mock("@/lib/trpc/client", () => ({
-  trpc: {
-    crypto: {
-      registerFheKey: trpcMocks.registerFheKey,
-      verifyAgeFhe: trpcMocks.verifyAgeFhe,
-    },
-  },
+  trpc: trpcMocks,
 }));
+
+const fetchMock = vi.fn();
+vi.stubGlobal("fetch", fetchMock);
 
 import {
   ensureFheKeyRegistration,
   verifyAgeViaFHE,
 } from "@/lib/crypto/crypto-client";
 
+const makeMsgpackResponse = (payload: unknown) => {
+  const encoded = encode(payload);
+  const buffer = encoded.buffer.slice(
+    encoded.byteOffset,
+    encoded.byteOffset + encoded.byteLength
+  );
+  return {
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: new Headers(),
+    arrayBuffer: async () => buffer,
+    text: async () => "",
+  };
+};
+
 describe("crypto-client FHE", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    fetchMock.mockReset();
   });
 
   it("returns existing key id without re-registering", async () => {
     tfheMocks.getOrCreateFheKeyRegistrationMaterial.mockResolvedValue({
       keyId: "existing-key",
-      publicKeyB64: "public-key",
-      serverKeyB64: "server-key",
+      publicKeyBytes: new Uint8Array([1, 2, 3]),
+      serverKeyBytes: new Uint8Array([4, 5, 6]),
     });
 
     const result = await ensureFheKeyRegistration();
 
     expect(result).toEqual({ keyId: "existing-key" });
-    expect(trpcMocks.registerFheKey.mutate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(tfheMocks.persistFheKeyId).not.toHaveBeenCalled();
   });
 
   it("registers server key and persists key id when missing", async () => {
     tfheMocks.getOrCreateFheKeyRegistrationMaterial.mockResolvedValue({
-      publicKeyB64: "public-key",
-      serverKeyB64: "server-key",
+      publicKeyBytes: new Uint8Array([9]),
+      serverKeyBytes: new Uint8Array([8]),
     });
-    trpcMocks.registerFheKey.mutate.mockResolvedValue({ keyId: "new-key" });
+    fetchMock.mockResolvedValue(makeMsgpackResponse({ keyId: "new-key" }));
 
     const result = await ensureFheKeyRegistration();
 
-    expect(trpcMocks.registerFheKey.mutate).toHaveBeenCalledWith({
-      serverKey: "server-key",
-      publicKey: "public-key",
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/fhe/keys/register",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/msgpack",
+          Accept: "application/msgpack",
+        }),
+      })
+    );
+
+    const payload = decode(
+      fetchMock.mock.calls[0]?.[1]?.body as Uint8Array
+    ) as {
+      serverKey: Uint8Array;
+      publicKey: Uint8Array;
+    };
+    expect(payload.serverKey).toEqual(new Uint8Array([8]));
+    expect(payload.publicKey).toEqual(new Uint8Array([9]));
+
     expect(tfheMocks.persistFheKeyId).toHaveBeenCalledWith("new-key");
     expect(result).toEqual({ keyId: "new-key" });
   });
 
   it("dedupes concurrent key registrations", async () => {
     tfheMocks.getOrCreateFheKeyRegistrationMaterial.mockResolvedValue({
-      publicKeyB64: "public-key",
-      serverKeyB64: "server-key",
+      publicKeyBytes: new Uint8Array([1]),
+      serverKeyBytes: new Uint8Array([2]),
     });
-    let resolveRegister: ((value: { keyId: string }) => void) | undefined;
-    const registerPromise = new Promise<{ keyId: string }>((resolve) => {
-      resolveRegister = resolve;
-    });
-    trpcMocks.registerFheKey.mutate.mockReturnValue(registerPromise);
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    fetchMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      })
+    );
 
     const first = ensureFheKeyRegistration();
     const second = ensureFheKeyRegistration();
 
-    resolveRegister?.({ keyId: "shared-key" });
+    resolveFetch?.(makeMsgpackResponse({ keyId: "shared-key" }));
 
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
     expect(firstResult).toEqual({ keyId: "shared-key" });
     expect(secondResult).toEqual({ keyId: "shared-key" });
-    expect(trpcMocks.registerFheKey.mutate).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(tfheMocks.persistFheKeyId).toHaveBeenCalledTimes(1);
   });
 
@@ -114,20 +148,27 @@ describe("crypto-client FHE", () => {
   });
 
   it("decrypts FHE verification result", async () => {
-    trpcMocks.verifyAgeFhe.mutate.mockResolvedValue({
-      resultCiphertext: "cipher",
-    });
+    const resultCiphertext = new Uint8Array([7, 7, 7]);
+    fetchMock.mockResolvedValue(makeMsgpackResponse({ resultCiphertext }));
     tfheMocks.decryptFheBool.mockResolvedValue(true);
 
-    const result = await verifyAgeViaFHE("ciphertext", "key-1", 2025, 18);
+    const result = await verifyAgeViaFHE("key-1", 2025, 18);
 
-    expect(trpcMocks.verifyAgeFhe.mutate).toHaveBeenCalledWith({
-      ciphertext: "ciphertext",
-      currentYear: 2025,
-      minAge: 18,
-      keyId: "key-1",
-    });
-    expect(tfheMocks.decryptFheBool).toHaveBeenCalledWith("cipher");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/fhe/verify-age",
+      expect.objectContaining({
+        method: "POST",
+      })
+    );
+    const payload = decode(
+      fetchMock.mock.calls[0]?.[1]?.body as Uint8Array
+    ) as {
+      keyId: string;
+      currentYear: number;
+      minAge: number;
+    };
+    expect(payload).toEqual({ keyId: "key-1", currentYear: 2025, minAge: 18 });
+    expect(tfheMocks.decryptFheBool).toHaveBeenCalledWith(resultCiphertext);
     expect(result.isOver18).toBe(true);
   });
 });

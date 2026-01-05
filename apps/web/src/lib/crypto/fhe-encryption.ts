@@ -216,7 +216,7 @@ async function runFheEncryption(
               userId,
               source: "web2_tfhe",
               attributeType: "birth_year_offset",
-              ciphertext: result.birthYearOffsetCiphertext,
+              ciphertext: Buffer.from(result.birthYearOffsetCiphertext),
               keyId,
               encryptionTimeMs: durationMs,
             });
@@ -232,7 +232,7 @@ async function runFheEncryption(
               userId,
               source: "web2_tfhe",
               attributeType: "country_code",
-              ciphertext: result.countryCodeCiphertext,
+              ciphertext: Buffer.from(result.countryCodeCiphertext),
               keyId,
               encryptionTimeMs: durationMs,
             });
@@ -248,7 +248,7 @@ async function runFheEncryption(
               userId,
               source: "web2_tfhe",
               attributeType: "liveness_score",
-              ciphertext: result.livenessScoreCiphertext,
+              ciphertext: Buffer.from(result.livenessScoreCiphertext),
               keyId,
               encryptionTimeMs: durationMs,
             });
@@ -264,7 +264,7 @@ async function runFheEncryption(
               userId,
               source: "web2_tfhe",
               attributeType: "compliance_level",
-              ciphertext: result.complianceLevelCiphertext,
+              ciphertext: Buffer.from(result.complianceLevelCiphertext),
               keyId,
               encryptionTimeMs: durationMs,
             });

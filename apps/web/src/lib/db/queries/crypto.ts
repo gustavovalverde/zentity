@@ -10,6 +10,8 @@ import type {
   ZkProofRecord,
 } from "../schema/crypto";
 
+import crypto from "node:crypto";
+
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "../connection";
@@ -57,6 +59,17 @@ function parseSecretMetadata(
   }
 }
 
+function getCiphertextInfo(ciphertext: Buffer | null | undefined): {
+  hash: string | null;
+  byteLength: number | null;
+} {
+  if (!ciphertext || ciphertext.byteLength === 0) {
+    return { hash: null, byteLength: null };
+  }
+  const hash = crypto.createHash("sha256").update(ciphertext).digest("hex");
+  return { hash, byteLength: ciphertext.byteLength };
+}
+
 export async function getUserAgeProof(
   userId: string
 ): Promise<AgeProofSummary | null> {
@@ -87,13 +100,15 @@ export async function getUserAgeProof(
     userId,
     "birth_year_offset"
   );
+  const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   return {
     proofId: proof.id,
     isOver18: Boolean(proof.isOver18),
     generationTimeMs: proof.generationTimeMs ?? null,
     createdAt: proof.createdAt,
-    birthYearOffsetCiphertext: encrypted?.ciphertext ?? null,
+    birthYearOffsetCiphertextHash: ciphertextInfo.hash,
+    birthYearOffsetCiphertextBytes: ciphertextInfo.byteLength,
     fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
   };
 }
@@ -134,6 +149,7 @@ export async function getUserAgeProofFull(
     userId,
     "birth_year_offset"
   );
+  const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   let publicSignals: string[] | null = null;
   if (row.publicInputs) {
@@ -152,7 +168,8 @@ export async function getUserAgeProofFull(
     isOver18: Boolean(row.isOver18),
     generationTimeMs: row.generationTimeMs ?? null,
     createdAt: row.createdAt,
-    birthYearOffsetCiphertext: encrypted?.ciphertext ?? null,
+    birthYearOffsetCiphertextHash: ciphertextInfo.hash,
+    birthYearOffsetCiphertextBytes: ciphertextInfo.byteLength,
     fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
     proof: row.proofPayload ?? null,
     publicSignals,
@@ -450,7 +467,7 @@ export async function getLatestEncryptedAttributeByUserAndType(
   userId: string,
   attributeType: string
 ): Promise<{
-  ciphertext: string;
+  ciphertext: Buffer;
   keyId: string | null;
   encryptionTimeMs: number | null;
   createdAt: string;

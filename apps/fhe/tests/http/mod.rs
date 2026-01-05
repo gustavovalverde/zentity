@@ -6,7 +6,7 @@
 
 use axum::{http::StatusCode, response::Response, Router};
 use flate2::read::GzDecoder;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::io::Read;
 
 use fhe_service::{app::build_router, crypto, settings::Settings};
@@ -28,7 +28,8 @@ impl TestAppBuilder {
     /// Create a new test app builder with default settings.
     pub fn new() -> Self {
         // Initialize crypto keys once for all tests
-        crypto::init_keys();
+        fhe_service::test_support::init_test_env();
+        crypto::init_keys().expect("Failed to initialize FHE keys for tests");
 
         Self {
             settings: Settings::for_tests(),
@@ -71,7 +72,7 @@ pub async fn parse_json_body(response: Response) -> serde_json::Value {
 }
 
 /// Helper to parse msgpack response body.
-pub async fn parse_msgpack_body(response: Response) -> serde_json::Value {
+pub async fn parse_msgpack_body<T: DeserializeOwned>(response: Response) -> T {
     use http_body_util::BodyExt;
 
     let headers = response.headers().clone();

@@ -9,7 +9,18 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use serde::Deserialize;
+use serde_bytes::ByteBuf;
 use tower::ServiceExt;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptBatchResponse {
+    birth_year_offset_ciphertext: Option<ByteBuf>,
+    country_code_ciphertext: Option<ByteBuf>,
+    compliance_level_ciphertext: Option<ByteBuf>,
+    liveness_score_ciphertext: Option<ByteBuf>,
+}
 
 /// Batch encryption returns ciphertexts for provided fields.
 #[tokio::test]
@@ -39,11 +50,11 @@ async fn encrypt_batch_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert!(json["birthYearOffsetCiphertext"].is_string());
-    assert!(json["countryCodeCiphertext"].is_string());
-    assert!(json["complianceLevelCiphertext"].is_string());
-    assert!(json["livenessScoreCiphertext"].is_string());
+    let body: EncryptBatchResponse = http::parse_msgpack_body(response).await;
+    assert!(body.birth_year_offset_ciphertext.is_some());
+    assert!(body.country_code_ciphertext.is_some());
+    assert!(body.compliance_level_ciphertext.is_some());
+    assert!(body.liveness_score_ciphertext.is_some());
 }
 
 /// Empty batch payload returns 400.

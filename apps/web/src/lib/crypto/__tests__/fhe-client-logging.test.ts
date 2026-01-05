@@ -21,15 +21,19 @@ import { encryptBirthYearOffsetFhe } from "../fhe-client";
 describe("fhe-client request logging", () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    const encoded = encode({
+      birthYearOffsetCiphertext: new Uint8Array([1, 2, 3]),
+    });
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
       statusText: "OK",
       headers: new Headers(),
       arrayBuffer: async () =>
-        encode({
-          birthYearOffsetCiphertext: "cipher",
-        }),
+        encoded.buffer.slice(
+          encoded.byteOffset,
+          encoded.byteOffset + encoded.byteLength
+        ),
       text: async () => "",
     });
   });

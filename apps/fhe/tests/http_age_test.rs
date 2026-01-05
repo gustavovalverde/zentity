@@ -10,7 +10,22 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http::fixtures::age_boundaries::*;
+use serde::Deserialize;
 use tower::ServiceExt;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptBirthYearOffsetResponse {
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifyAgeOffsetResponse {
+    #[serde(with = "serde_bytes")]
+    result_ciphertext: Vec<u8>,
+}
 
 // ============================================================================
 // Encrypt Birth Year Offset - Happy Path Tests
@@ -38,9 +53,8 @@ async fn encrypt_birth_year_offset_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(response).await;
-    assert!(json["ciphertext"].is_string());
-    assert!(!json["ciphertext"].as_str().unwrap().is_empty());
+    let body: EncryptBirthYearOffsetResponse = http::parse_msgpack_body(response).await;
+    assert!(!body.ciphertext.is_empty());
 }
 
 /// Encrypt with minimum offset (0) succeeds.
@@ -116,12 +130,12 @@ async fn encrypt_birth_year_offset_over_max() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Invalid key id returns 400.
+/// Invalid key id returns 404.
 #[tokio::test]
 async fn encrypt_birth_year_offset_invalid_key_id() {
     let app = http::test_app();
 
-    let body = http::fixtures::with_invalid_base64_key();
+    let body = http::fixtures::with_invalid_key_id_format();
 
     let response = app
         .oneshot(
@@ -138,7 +152,7 @@ async fn encrypt_birth_year_offset_invalid_key_id() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-/// Valid base64 but invalid key content returns 400.
+/// Valid key ID format but unregistered key returns 404.
 #[tokio::test]
 async fn encrypt_birth_year_offset_invalid_key_content() {
     let app = http::test_app();
@@ -244,12 +258,14 @@ async fn verify_age_offset_success() {
         .unwrap();
 
     assert_eq!(encrypt_response.status(), StatusCode::OK);
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Now verify age
     let verify_body = http::fixtures::verify_age_offset_request(
-        ciphertext, 2025, // Current year
+        &ciphertext,
+        2025, // Current year
         18,   // Min age
         &key_id,
     );
@@ -269,9 +285,8 @@ async fn verify_age_offset_success() {
 
     assert_eq!(verify_response.status(), StatusCode::OK);
 
-    let json = http::parse_msgpack_body(verify_response).await;
-    assert!(json["resultCiphertext"].is_string());
-    assert!(!json["resultCiphertext"].as_str().unwrap().is_empty());
+    let verify_body: VerifyAgeOffsetResponse = http::parse_msgpack_body(verify_response).await;
+    assert!(!verify_body.result_ciphertext.is_empty());
 }
 
 /// Verify age with default minAge (18) works.
@@ -296,12 +311,13 @@ async fn verify_age_offset_default_min_age() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Verify without minAge field (should use default 18)
     let verify_body =
-        http::fixtures::verify_age_offset_request_default_min_age(ciphertext, 2025, &key_id);
+        http::fixtures::verify_age_offset_request_default_min_age(&ciphertext, 2025, &key_id);
 
     let app = http::test_app();
     let verify_response = app
@@ -341,12 +357,15 @@ async fn verify_age_offset_custom_min_age() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Verify with minAge = 21
     let verify_body = http::fixtures::verify_age_offset_request(
-        ciphertext, 2025, 21, // Legal drinking age in US
+        &ciphertext,
+        2025,
+        21, // Legal drinking age in US
         &key_id,
     );
 
@@ -392,11 +411,12 @@ async fn verify_age_offset_invalid_key_id() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Try to verify with invalid key ID
-    let verify_body = http::fixtures::with_invalid_key_id(ciphertext);
+    let verify_body = http::fixtures::with_invalid_key_id(&ciphertext);
 
     let app = http::test_app();
     let verify_response = app
@@ -459,16 +479,17 @@ async fn verify_age_offset_year_before_1900() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Try to verify with year before base year
-    let verify_body = serde_json::json!({
-        "ciphertext": ciphertext,
-        "currentYear": 1800,  // Before base year 1900
-        "minAge": 18,
-        "keyId": key_id
-    });
+    let verify_body = http::fixtures::VerifyAgeOffsetRequest {
+        ciphertext: ciphertext.clone(),
+        current_year: 1800,
+        min_age: 18,
+        key_id: key_id.clone(),
+    };
 
     let app = http::test_app();
     let verify_response = app
@@ -508,17 +529,18 @@ async fn verify_age_offset_min_age_exceeds_offset() {
         .await
         .unwrap();
 
-    let encrypt_json = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_json["ciphertext"].as_str().unwrap();
+    let encrypt_body: EncryptBirthYearOffsetResponse =
+        http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
 
     // Try to verify with min age greater than possible offset
     // currentYear=1920 gives offset=20, but minAge=25 > 20
-    let verify_body = serde_json::json!({
-        "ciphertext": ciphertext,
-        "currentYear": 1920,
-        "minAge": 25,  // Greater than current_year - 1900 (1920-1900=20)
-        "keyId": key_id
-    });
+    let verify_body = http::fixtures::VerifyAgeOffsetRequest {
+        ciphertext: ciphertext.clone(),
+        current_year: 1920,
+        min_age: 25,
+        key_id: key_id.clone(),
+    };
 
     let app = http::test_app();
     let verify_response = app

@@ -12,7 +12,6 @@
 //! - Run with `cargo test -- --test-threads=1` to ensure key caching works optimally
 #![allow(dead_code)]
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use std::sync::OnceLock;
 use tfhe::{generate_keys, ClientKey, CompressedPublicKey, CompressedServerKey, ConfigBuilder};
 
@@ -23,12 +22,8 @@ struct TestKeyMaterial {
     client_key_bytes: Vec<u8>,
     /// Serialized compressed public key for encryption
     public_key_bytes: Vec<u8>,
-    /// Base64-encoded public key for registration tests
-    public_key_b64: String,
     /// Serialized compressed server key for registration
     server_key_bytes: Vec<u8>,
-    /// Base64-encoded server key for registration tests
-    server_key_b64: String,
 }
 
 /// Global cache for test keys - initialized once per test session.
@@ -50,17 +45,13 @@ fn init_test_keys() -> &'static TestKeyMaterial {
         let server_key = CompressedServerKey::new(&client_key);
 
         let public_key_bytes = bincode::serialize(&public_key).unwrap();
-        let public_key_b64 = BASE64.encode(&public_key_bytes);
         let client_key_bytes = bincode::serialize(&client_key).unwrap();
         let server_key_bytes = bincode::serialize(&server_key).unwrap();
-        let server_key_b64 = BASE64.encode(&server_key_bytes);
 
         TestKeyMaterial {
             client_key_bytes,
             public_key_bytes,
-            public_key_b64,
             server_key_bytes,
-            server_key_b64,
         }
     })
 }
@@ -80,7 +71,8 @@ fn init_test_keys() -> &'static TestKeyMaterial {
 /// The same key_id is returned for all subsequent calls within the test session.
 pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
     // Initialize the FHE service's key store
-    fhe_service::crypto::init_keys();
+    fhe_service::test_support::init_test_env();
+    fhe_service::crypto::init_keys().expect("Failed to initialize FHE keys for tests");
 
     let material = init_test_keys();
 
@@ -95,7 +87,8 @@ pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
             let server_key: CompressedServerKey =
                 bincode::deserialize(&material.server_key_bytes).unwrap();
             fhe_service::crypto::get_key_store()
-                .register_key(public_key.clone(), server_key.decompress())
+                .register_key(public_key.clone(), server_key)
+                .expect("Failed to register test keys")
         })
         .clone();
 
@@ -114,19 +107,16 @@ pub fn get_public_key() -> CompressedPublicKey {
     bincode::deserialize(&material.public_key_bytes).unwrap()
 }
 
-/// Get the base64-encoded server key for registration tests.
-///
-/// This returns the raw server key bytes, which can be used to test
-/// the key registration endpoint directly.
-pub fn get_server_key_b64() -> String {
+/// Get the serialized server key for registration tests.
+pub fn get_server_key_bytes() -> Vec<u8> {
     let material = init_test_keys();
-    material.server_key_b64.clone()
+    material.server_key_bytes.clone()
 }
 
-/// Get the base64-encoded public key for registration tests.
-pub fn get_public_key_b64() -> String {
+/// Get the serialized public key for registration tests.
+pub fn get_public_key_bytes() -> Vec<u8> {
     let material = init_test_keys();
-    material.public_key_b64.clone()
+    material.public_key_bytes.clone()
 }
 
 /// Get the cached registered key id.

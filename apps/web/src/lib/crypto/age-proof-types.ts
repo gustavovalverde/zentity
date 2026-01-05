@@ -3,7 +3,8 @@ export interface AgeProofSummary {
   isOver18: boolean;
   generationTimeMs: number | null;
   createdAt: string;
-  birthYearOffsetCiphertext: string | null;
+  birthYearOffsetCiphertextHash: string | null;
+  birthYearOffsetCiphertextBytes: number | null;
   fheEncryptionTimeMs: number | null;
 }
 

@@ -19,7 +19,6 @@ import {
   storeFheKeys,
 } from "@/lib/crypto/fhe-key-store";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import { generateFheKeyMaterialInWorker } from "./tfhe-keygen.client";
 
@@ -75,8 +74,8 @@ export interface FheKeyMaterial {
   clientKey: TfheClientKey;
   publicKey: TfheCompressedPublicKey;
   serverKey: TfheCompressedServerKey;
-  publicKeyB64: string;
-  serverKeyB64: string;
+  publicKeyBytes: Uint8Array;
+  serverKeyBytes: Uint8Array;
   keyId?: string;
 }
 
@@ -145,8 +144,8 @@ export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
       clientKey: tfhe.TfheClientKey.deserialize(existing.clientKey),
       publicKey: tfhe.TfheCompressedPublicKey.deserialize(existing.publicKey),
       serverKey: tfhe.TfheCompressedServerKey.deserialize(existing.serverKey),
-      publicKeyB64: bytesToBase64(existing.publicKey),
-      serverKeyB64: bytesToBase64(existing.serverKey),
+      publicKeyBytes: existing.publicKey,
+      serverKeyBytes: existing.serverKey,
       keyId: existing.keyId,
     };
   }
@@ -158,8 +157,6 @@ export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
 
 export async function generateFheKeyMaterialForStorage(): Promise<{
   storedKeys: StoredFheKeys;
-  publicKeyB64: string;
-  serverKeyB64: string;
   durationMs: number;
 }> {
   const start = performance.now();
@@ -182,15 +179,15 @@ export async function generateFheKeyMaterialForStorage(): Promise<{
 export async function getOrCreateFheKeyRegistrationMaterial(params?: {
   enrollment?: PasskeyEnrollmentContext;
 }): Promise<{
-  publicKeyB64: string;
-  serverKeyB64: string;
+  publicKeyBytes: Uint8Array;
+  serverKeyBytes: Uint8Array;
   keyId?: string;
 }> {
   const existing = await getStoredFheKeys();
   if (existing) {
     return {
-      publicKeyB64: bytesToBase64(existing.publicKey),
-      serverKeyB64: bytesToBase64(existing.serverKey),
+      publicKeyBytes: existing.publicKey,
+      serverKeyBytes: existing.serverKey,
       keyId: existing.keyId,
     };
   }
@@ -201,20 +198,21 @@ export async function getOrCreateFheKeyRegistrationMaterial(params?: {
     );
   }
 
-  const { storedKeys, publicKeyB64, serverKeyB64 } =
-    await generateFheKeyMaterialForStorage();
+  const { storedKeys } = await generateFheKeyMaterialForStorage();
   await storeFheKeys({ keys: storedKeys, enrollment: params.enrollment });
-  return { publicKeyB64, serverKeyB64 };
+  return {
+    publicKeyBytes: storedKeys.publicKey,
+    serverKeyBytes: storedKeys.serverKey,
+  };
 }
 
 export async function persistFheKeyId(keyId: string) {
   await persistFheKeyIdInStore(keyId);
 }
 
-export async function decryptFheBool(ciphertextB64: string): Promise<boolean> {
+export async function decryptFheBool(ciphertext: Uint8Array): Promise<boolean> {
   const tfhe = await loadTfhe();
   const keyMaterial = await getOrCreateFheKeyMaterial();
-  const bytes = base64ToBytes(ciphertextB64);
-  const encrypted = tfhe.FheBool.deserialize(bytes);
+  const encrypted = tfhe.FheBool.deserialize(ciphertext);
   return encrypted.decrypt(keyMaterial.clientKey);
 }

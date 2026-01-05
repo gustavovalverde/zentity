@@ -140,7 +140,7 @@ describe("identity queries", () => {
       userId,
       source: "web2_tfhe",
       attributeType: "birth_year_offset",
-      ciphertext: "ciphertext",
+      ciphertext: Buffer.from("ciphertext"),
       keyId: "key-1",
       encryptionTimeMs: 123,
     });

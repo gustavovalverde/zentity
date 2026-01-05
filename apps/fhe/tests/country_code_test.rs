@@ -1,8 +1,6 @@
 //! Country Code Encryption Integration Tests
 
 mod common;
-
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use fhe_service::crypto::encrypt_country_code;
 
 #[test]
@@ -10,7 +8,6 @@ fn encrypt_country_code_produces_valid_ciphertext() {
     let public_key = common::get_public_key();
     let ciphertext = encrypt_country_code(840, &public_key).unwrap();
 
-    assert!(BASE64.decode(&ciphertext).is_ok());
     assert!(!ciphertext.is_empty());
 }
 

@@ -3,12 +3,11 @@
 //! Tests FHE key encoding, decoding, registration, and retrieval.
 
 mod common;
-
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use fhe_service::crypto::{
-    decode_compressed_public_key, decode_compressed_server_key, decode_server_key, get_key_store,
-    init_keys, setup_for_verification,
+    decode_compressed_public_key, decode_compressed_server_key, get_key_store, init_keys,
+    setup_for_verification,
 };
+use fhe_service::test_support;
 use tfhe::{generate_keys, CompressedPublicKey, CompressedServerKey, ConfigBuilder};
 
 // ===================
@@ -23,7 +22,7 @@ fn decode_compressed_public_key_valid() {
     let public_key = CompressedPublicKey::new(&client_key);
 
     // Encode it
-    let encoded = BASE64.encode(bincode::serialize(&public_key).unwrap());
+    let encoded = bincode::serialize(&public_key).unwrap();
 
     // Decode it back
     let result = decode_compressed_public_key(&encoded);
@@ -32,27 +31,22 @@ fn decode_compressed_public_key_valid() {
 }
 
 #[test]
-fn decode_compressed_public_key_invalid_base64() {
-    let result = decode_compressed_public_key("not valid base64!!!");
+fn decode_compressed_public_key_invalid_bytes() {
+    let result = decode_compressed_public_key(b"not valid key bytes");
 
     assert!(result.is_err());
 }
 
 #[test]
 fn decode_compressed_public_key_invalid_content() {
-    // Valid base64 but not a valid public key
-    let invalid = BASE64.encode(b"this is not a public key");
-
-    let result = decode_compressed_public_key(&invalid);
+    let result = decode_compressed_public_key(b"this is not a public key");
 
     assert!(result.is_err());
 }
 
 #[test]
 fn decode_compressed_public_key_empty() {
-    let empty = BASE64.encode(b"");
-
-    let result = decode_compressed_public_key(&empty);
+    let result = decode_compressed_public_key(&[]);
 
     assert!(result.is_err());
 }
@@ -65,7 +59,7 @@ fn decode_compressed_server_key_valid() {
     let server_key = CompressedServerKey::new(&client_key);
 
     // Encode it
-    let encoded = BASE64.encode(bincode::serialize(&server_key).unwrap());
+    let encoded = bincode::serialize(&server_key).unwrap();
 
     // Decode it back
     let result = decode_compressed_server_key(&encoded);
@@ -74,8 +68,8 @@ fn decode_compressed_server_key_valid() {
 }
 
 #[test]
-fn decode_compressed_server_key_invalid_base64() {
-    let result = decode_compressed_server_key("not valid base64!!!");
+fn decode_compressed_server_key_invalid_bytes() {
+    let result = decode_compressed_server_key(b"not valid key bytes");
 
     assert!(result.is_err());
 }
@@ -88,15 +82,11 @@ fn decode_server_key_decompresses() {
     let server_key = CompressedServerKey::new(&client_key);
 
     // Encode it
-    let encoded = BASE64.encode(bincode::serialize(&server_key).unwrap());
+    let encoded = bincode::serialize(&server_key).unwrap();
 
     // Decode and decompress
-    let result = decode_server_key(&encoded);
-
-    assert!(
-        result.is_ok(),
-        "Should decode and decompress valid server key"
-    );
+    let decoded = decode_compressed_server_key(&encoded).unwrap();
+    let _decompressed = decoded.decompress();
 }
 
 // ===================
@@ -105,17 +95,20 @@ fn decode_server_key_decompresses() {
 
 #[test]
 fn key_store_register_and_retrieve() {
-    init_keys();
+    test_support::init_test_env();
+    init_keys().expect("Failed to initialize FHE keys");
 
     // Generate a keypair
     let config = ConfigBuilder::default().build();
     let (client_key, _) = generate_keys(config);
     let public_key = CompressedPublicKey::new(&client_key);
-    let server_key = CompressedServerKey::new(&client_key).decompress();
+    let server_key = CompressedServerKey::new(&client_key);
 
     // Register it
     let key_store = get_key_store();
-    let key_id = key_store.register_key(public_key, server_key);
+    let key_id = key_store
+        .register_key(public_key, server_key)
+        .expect("Failed to register FHE keys");
 
     // Key ID should be a valid UUID
     assert!(!key_id.is_empty());
@@ -128,7 +121,8 @@ fn key_store_register_and_retrieve() {
 
 #[test]
 fn key_store_get_nonexistent_key() {
-    init_keys();
+    test_support::init_test_env();
+    init_keys().expect("Failed to initialize FHE keys");
 
     let key_store = get_key_store();
     let result = key_store.get_server_key("definitely-not-a-real-key-id");
@@ -138,22 +132,27 @@ fn key_store_get_nonexistent_key() {
 
 #[test]
 fn key_store_unique_key_ids() {
-    init_keys();
+    test_support::init_test_env();
+    init_keys().expect("Failed to initialize FHE keys");
 
     // Generate two keypairs
     let config = ConfigBuilder::default().build();
-    let (client_key1, _) = generate_keys(config.clone());
+    let (client_key1, _) = generate_keys(config);
     let (client_key2, _) = generate_keys(config);
 
     let public_key1 = CompressedPublicKey::new(&client_key1);
     let public_key2 = CompressedPublicKey::new(&client_key2);
-    let server_key1 = CompressedServerKey::new(&client_key1).decompress();
-    let server_key2 = CompressedServerKey::new(&client_key2).decompress();
+    let server_key1 = CompressedServerKey::new(&client_key1);
+    let server_key2 = CompressedServerKey::new(&client_key2);
 
     // Register both
     let key_store = get_key_store();
-    let id1 = key_store.register_key(public_key1, server_key1);
-    let id2 = key_store.register_key(public_key2, server_key2);
+    let id1 = key_store
+        .register_key(public_key1, server_key1)
+        .expect("Failed to register FHE keys");
+    let id2 = key_store
+        .register_key(public_key2, server_key2)
+        .expect("Failed to register FHE keys");
 
     // IDs should be unique
     assert_ne!(id1, id2, "Each registration should get unique ID");
@@ -174,7 +173,8 @@ fn setup_for_verification_with_valid_key() {
 
 #[test]
 fn setup_for_verification_with_invalid_key() {
-    init_keys();
+    test_support::init_test_env();
+    init_keys().expect("Failed to initialize FHE keys");
 
     let result = setup_for_verification("nonexistent-key-id");
 

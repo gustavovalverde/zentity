@@ -5,6 +5,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 
+use super::run_cpu_bound;
 use crate::crypto;
 use crate::error::FheError;
 use crate::transport;
@@ -21,7 +22,8 @@ pub struct EncryptBirthYearOffsetRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptBirthYearOffsetResponse {
-    ciphertext: String,
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
 }
 
 #[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
@@ -30,8 +32,15 @@ pub async fn encrypt_birth_year_offset(
     body: Bytes,
 ) -> Result<Response, FheError> {
     let payload: EncryptBirthYearOffsetRequest = transport::decode_msgpack(&headers, body)?;
-    let public_key = crypto::get_public_key_for_encryption(&payload.key_id)?;
-    let ciphertext = crypto::encrypt_birth_year_offset(payload.birth_year_offset, &public_key)?;
+    let EncryptBirthYearOffsetRequest {
+        birth_year_offset,
+        key_id,
+    } = payload;
+    let ciphertext = run_cpu_bound(move || {
+        let public_key = crypto::get_public_key_for_encryption(&key_id)?;
+        crypto::encrypt_birth_year_offset(birth_year_offset, &public_key)
+    })
+    .await?;
 
     transport::encode_msgpack(&headers, &EncryptBirthYearOffsetResponse { ciphertext })
 }
@@ -39,7 +48,8 @@ pub async fn encrypt_birth_year_offset(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyAgeOffsetRequest {
-    ciphertext: String,
+    #[serde(with = "serde_bytes")]
+    ciphertext: Vec<u8>,
     current_year: u16,
     #[serde(default = "default_min_age")]
     min_age: u16,
@@ -53,18 +63,23 @@ fn default_min_age() -> u16 {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyAgeOffsetResponse {
-    result_ciphertext: String,
+    #[serde(with = "serde_bytes")]
+    result_ciphertext: Vec<u8>,
 }
 
 #[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
 pub async fn verify_age_offset(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
     let payload: VerifyAgeOffsetRequest = transport::decode_msgpack(&headers, body)?;
-    let result_ciphertext = crypto::verify_age_offset(
-        &payload.ciphertext,
-        payload.current_year,
-        payload.min_age,
-        &payload.key_id,
-    )?;
+    let VerifyAgeOffsetRequest {
+        ciphertext,
+        current_year,
+        min_age,
+        key_id,
+    } = payload;
+    let result_ciphertext = run_cpu_bound(move || {
+        crypto::verify_age_offset(&ciphertext, current_year, min_age, &key_id)
+    })
+    .await?;
 
     transport::encode_msgpack(&headers, &VerifyAgeOffsetResponse { result_ciphertext })
 }

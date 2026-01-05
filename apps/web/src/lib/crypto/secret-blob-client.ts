@@ -1,11 +1,12 @@
 "use client";
 
+const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 export async function uploadSecretBlob(params: {
   secretId: string;
   secretType: string;
-  payload: Uint8Array;
+  payload: string;
   registrationToken?: string;
 }): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
   const headers = new Headers({
@@ -17,10 +18,11 @@ export async function uploadSecretBlob(params: {
     headers.set("Authorization", `Bearer ${params.registrationToken}`);
   }
 
+  const data = textEncoder.encode(params.payload);
   const response = await fetch("/api/secrets/blob", {
     method: "POST",
     headers,
-    body: params.payload.buffer as ArrayBuffer,
+    body: data,
     credentials: "same-origin",
   });
 
@@ -41,7 +43,9 @@ export async function uploadSecretBlob(params: {
   return result;
 }
 
-export async function downloadSecretBlob(secretId: string): Promise<string> {
+export async function downloadSecretBlob(
+  secretId: string
+): Promise<string> {
   const response = await fetch(`/api/secrets/blob?secretId=${secretId}`, {
     method: "GET",
     credentials: "same-origin",
