@@ -83,7 +83,10 @@ type SecureStatus =
   | "idle"
   | "registering-passkey"
   | "unlocking-prf"
-  | "securing-keys"
+  | "generating-keys"
+  | "encrypting-keys"
+  | "uploading-keys"
+  | "registering-keys"
   | "creating-account"
   | "finalizing-identity"
   | "generating-proofs"
@@ -360,7 +363,10 @@ export function StepCreateAccount() {
     const steps: SecureStatus[] = [
       "registering-passkey",
       "unlocking-prf",
-      "securing-keys",
+      "generating-keys",
+      "encrypting-keys",
+      "uploading-keys",
+      "registering-keys",
       "creating-account",
       "finalizing-identity",
       "generating-proofs",
@@ -368,11 +374,15 @@ export function StepCreateAccount() {
       "complete",
     ];
     const currentIndex = steps.indexOf(status);
-    const stepStatus = (index: number, active: SecureStatus) => {
+    const stepStatus = (
+      index: number,
+      active: SecureStatus | SecureStatus[]
+    ) => {
+      const activeSteps = Array.isArray(active) ? active : [active];
       if (currentIndex > index) {
         return "complete";
       }
-      if (status === active) {
+      if (activeSteps.includes(status)) {
         return "active";
       }
       return "pending";
@@ -380,12 +390,44 @@ export function StepCreateAccount() {
     return {
       passkey: stepStatus(0, "registering-passkey"),
       prf: stepStatus(1, "unlocking-prf"),
-      secure: stepStatus(2, "securing-keys"),
-      account: stepStatus(3, "creating-account"),
-      verify: stepStatus(4, "finalizing-identity"),
-      proofs: stepStatus(5, "generating-proofs"),
-      store: stepStatus(6, "storing-proofs"),
+      secure: stepStatus(5, [
+        "generating-keys",
+        "encrypting-keys",
+        "uploading-keys",
+        "registering-keys",
+      ]),
+      account: stepStatus(6, "creating-account"),
+      verify: stepStatus(7, "finalizing-identity"),
+      proofs: stepStatus(8, "generating-proofs"),
+      store: stepStatus(9, "storing-proofs"),
     };
+  }, [status]);
+
+  const statusMessage = useMemo(() => {
+    switch (status) {
+      case "registering-passkey":
+        return "Creating your passkey…";
+      case "unlocking-prf":
+        return "Deriving encryption keys from your passkey…";
+      case "generating-keys":
+        return "Generating FHE keys locally…";
+      case "encrypting-keys":
+        return "Encrypting FHE keys on-device…";
+      case "uploading-keys":
+        return "Uploading encrypted keys…";
+      case "registering-keys":
+        return "Registering keys with the FHE service…";
+      case "creating-account":
+        return "Creating your account and storing secrets…";
+      case "finalizing-identity":
+        return "Finalizing your identity data…";
+      case "generating-proofs":
+        return "Generating privacy proofs…";
+      case "storing-proofs":
+        return "Storing proofs securely…";
+      default:
+        return null;
+    }
   }, [status]);
 
   const handleSaveName = () => {
@@ -491,7 +533,6 @@ export function StepCreateAccount() {
       }
 
       // Step 3: Secure FHE keys locally before account creation
-      setStatus("securing-keys");
       const enrollment = {
         credentialId,
         prfOutput,
@@ -499,13 +540,20 @@ export function StepCreateAccount() {
       };
       const fheEnrollment = await prepareFheKeyEnrollment({
         enrollment,
+        onStage: (stage) => {
+          setStatus(
+            stage === "generate-keys" ? "generating-keys" : "encrypting-keys"
+          );
+        },
       });
+      setStatus("uploading-keys");
       await uploadSecretBlobWithToken({
         secretId: fheEnrollment.secretId,
         secretType: FHE_SECRET_TYPE,
         payload: fheEnrollment.encryptedBlob,
         registrationToken: registrationOptions.registrationToken,
       });
+      setStatus("registering-keys");
       const fheRegistration = await registerFheKeyForEnrollment({
         registrationToken: registrationOptions.registrationToken,
         publicKeyBytes: fheEnrollment.publicKeyBytes,
@@ -1198,6 +1246,9 @@ export function StepCreateAccount() {
             <ShieldCheck className="h-5 w-5" />
             <span className="font-medium">Creating your secure account</span>
           </div>
+          {statusMessage ? (
+            <p className="text-info/80 text-sm">{statusMessage}</p>
+          ) : null}
 
           <div className="space-y-3">
             <StepIndicator
@@ -1212,7 +1263,7 @@ export function StepCreateAccount() {
             />
             <StepIndicator
               icon={<ShieldCheck className="h-4 w-4" />}
-              label="Encrypt FHE keys"
+              label="Secure FHE keys"
               status={progressStatus.secure}
             />
             <StepIndicator

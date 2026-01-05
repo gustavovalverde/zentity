@@ -472,6 +472,7 @@ export async function ensureFheKeyRegistration(params?: {
 
 export async function prepareFheKeyEnrollment(params: {
   enrollment: PasskeyEnrollmentContext;
+  onStage?: (stage: "generate-keys" | "encrypt-keys") => void;
 }): Promise<{
   secretId: string;
   encryptedBlob: Uint8Array;
@@ -482,7 +483,9 @@ export async function prepareFheKeyEnrollment(params: {
   serverKeyBytes: Uint8Array;
   storedKeys: StoredFheKeys;
 }> {
+  params.onStage?.("generate-keys");
   const { storedKeys } = await generateFheKeyMaterialForStorage();
+  params.onStage?.("encrypt-keys");
   const envelope = await createFheKeyEnvelope({
     keys: storedKeys,
     enrollment: params.enrollment,
