@@ -29,6 +29,8 @@ export const zkProofs = sqliteTable(
     circuitType: text("circuit_type"),
     noirVersion: text("noir_version"),
     circuitHash: text("circuit_hash"),
+    verificationKeyHash: text("verification_key_hash"),
+    verificationKeyPoseidonHash: text("verification_key_poseidon_hash"),
     bbVersion: text("bb_version"),
     verified: integer("verified", { mode: "boolean" }).default(false),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),

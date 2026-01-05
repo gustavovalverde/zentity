@@ -252,6 +252,7 @@ export function StepCreateAccount() {
   const [faceMatchResult, setFaceMatchResult] =
     useState<FaceMatchResult | null>(null);
   const faceMatchAttemptedRef = useRef(false);
+  const noirIsolationWarningRef = useRef(false);
 
   // Passkey/secure keys state
   const [supportStatus, setSupportStatus] = useState<{
@@ -263,6 +264,23 @@ export function StepCreateAccount() {
 
   const hasIdentityDocs = Boolean(data.identityDraftId);
   const hasDob = Boolean(data.extractedDOB);
+
+  const warnIfNoirIsolation = () => {
+    if (noirIsolationWarningRef.current) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (window.crossOriginIsolated) {
+      return;
+    }
+    noirIsolationWarningRef.current = true;
+    toast.warning("ZK proofs may be slower in this session", {
+      description:
+        "Your browser is not cross-origin isolated, so multi-threaded proving is disabled. Proofs may take longer. If possible, refresh the page without blockers/VPN.",
+    });
+  };
 
   // Check PRF support on mount
   useEffect(() => {
@@ -682,6 +700,7 @@ export function StepCreateAccount() {
 
         // Step 6: Generate proofs
         setStatus("generating-proofs");
+        warnIfNoirIsolation();
         const activeDocumentId =
           identityResult.documentId ?? data.identityDocumentId;
         if (!activeDocumentId) {

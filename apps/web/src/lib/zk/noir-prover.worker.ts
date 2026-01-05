@@ -508,6 +508,70 @@ async function poseidon2Hash(values: bigint[]): Promise<bigint> {
   return BigInt(result.toString());
 }
 
+interface MerkleCacheEntry {
+  levels: bigint[][];
+  indexByCode: Map<number, number>;
+}
+
+const merkleCache = new Map<string, Promise<MerkleCacheEntry>>();
+
+async function buildMerkleCacheForGroup(
+  groupName: string
+): Promise<MerkleCacheEntry> {
+  const upperGroup = groupName.toUpperCase();
+  const countries = COUNTRY_GROUPS[upperGroup];
+  if (!countries) {
+    throw new Error(`Unknown country group: ${groupName}`);
+  }
+
+  const codes = countries.map((c) => COUNTRY_CODES[c]);
+  const treeSize = 2 ** TREE_DEPTH;
+  const paddedCodes = [...codes];
+  while (paddedCodes.length < treeSize) {
+    paddedCodes.push(0);
+  }
+
+  const levels: bigint[][] = [];
+  const leaves: bigint[] = [];
+  const indexByCode = new Map<number, number>();
+
+  for (let i = 0; i < paddedCodes.length; i++) {
+    const code = paddedCodes[i];
+    const leafHash = await poseidon2Hash([BigInt(code)]);
+    leaves.push(leafHash);
+    if (code !== 0) {
+      indexByCode.set(code, i);
+    }
+  }
+  levels.push(leaves);
+
+  let currentLevel = leaves;
+  while (currentLevel.length > 1) {
+    const nextLevel: bigint[] = [];
+    for (let i = 0; i < currentLevel.length; i += 2) {
+      const left = currentLevel[i];
+      const right = currentLevel[i + 1];
+      const parent = await poseidon2Hash([left, right]);
+      nextLevel.push(parent);
+    }
+    levels.push(nextLevel);
+    currentLevel = nextLevel;
+  }
+
+  return { levels, indexByCode };
+}
+
+function getMerkleCache(groupName: string): Promise<MerkleCacheEntry> {
+  const upperGroup = groupName.toUpperCase();
+  const cached = merkleCache.get(upperGroup);
+  if (cached) {
+    return cached;
+  }
+  const promise = buildMerkleCacheForGroup(upperGroup);
+  merkleCache.set(upperGroup, promise);
+  return promise;
+}
+
 /**
  * Compute Merkle path for nationality proof (CLIENT-SIDE)
  * Nationality code NEVER leaves this worker.
@@ -538,48 +602,10 @@ async function computeMerklePath(
     throw new Error(`${nationalityCode} is not a member of ${groupName}`);
   }
 
-  // Get numeric codes for all countries in group
-  const codes = countries.map((c) => COUNTRY_CODES[c]);
-
-  // Pad to power of 2 size (2^TREE_DEPTH = 256)
-  const treeSize = 2 ** TREE_DEPTH;
-  const paddedCodes = [...codes];
-  while (paddedCodes.length < treeSize) {
-    paddedCodes.push(0);
-  }
-
-  // Build all levels of the Merkle tree
-  const levels: bigint[][] = [];
-
-  // Level 0: leaf hashes
-  const leaves: bigint[] = [];
-  let leafIndex = -1;
-  for (let i = 0; i < paddedCodes.length; i++) {
-    const code = paddedCodes[i];
-    const leafHash = await poseidon2Hash([BigInt(code)]);
-    leaves.push(leafHash);
-    if (code === numericCode) {
-      leafIndex = i;
-    }
-  }
-  levels.push(leaves);
-
-  if (leafIndex === -1) {
+  const { levels, indexByCode } = await getMerkleCache(upperGroup);
+  const leafIndex = indexByCode.get(numericCode);
+  if (leafIndex === undefined) {
     throw new Error(`Country code ${numericCode} not found in tree`);
-  }
-
-  // Build higher levels
-  let currentLevel = leaves;
-  while (currentLevel.length > 1) {
-    const nextLevel: bigint[] = [];
-    for (let i = 0; i < currentLevel.length; i += 2) {
-      const left = currentLevel[i];
-      const right = currentLevel[i + 1];
-      const parent = await poseidon2Hash([left, right]);
-      nextLevel.push(parent);
-    }
-    levels.push(nextLevel);
-    currentLevel = nextLevel;
   }
 
   // Extract path elements and indices

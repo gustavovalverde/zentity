@@ -21,7 +21,7 @@
     "lint:md:check": "markdownlint \"**/*.md\" --ignore \"node_modules/**/*.md\"",
     "typecheck": "tsc --noEmit",
     "type-check": "tsc --noEmit",
-    "check-all": "bun run type-check && bun run lint:check && bun run lint:md:check",
+    "check-all": "bun run type-check && bun run lint:check && bun run lint:md:check && bun run circuits:check-versions",
     "fix-all": "bun run type-check && bun run lint && bun run lint:md",
     "knip": "knip",
     "knip:fix": "knip --fix",
@@ -40,6 +40,7 @@
     "circuits:profile:opcodes": "bun scripts/noir-profile.ts opcodes",
     "circuits:profile:gates": "bun scripts/noir-profile.ts gates",
     "circuits:profile:execution": "bun scripts/noir-profile.ts execution-opcodes",
+    "circuits:check-versions": "bun scripts/check-noir-versions.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -86,6 +87,7 @@
     "@walletconnect/ethereum-provider": "2.23.1",
     "@zama-fhe/relayer-sdk": "0.3.0-8",
     "@zentity/fhevm-contracts": "0.2.0",
+    "@zkpassport/poseidon2": "0.6.2",
     "better-auth": "1.4.10",
     "better-call": "1.1.7",
     "buffer": "6.0.3",

@@ -248,6 +248,7 @@ async function verifyProofInternal(args: {
       circuitHash: circuitMeta.circuitHash,
       circuitId: null,
       verificationKeyHash: null,
+      verificationKeyPoseidonHash: null,
       bbVersion,
     },
     nonceHex,
@@ -746,6 +747,8 @@ export const cryptoRouter = router({
             circuitType: result.circuitType,
             noirVersion: result.noirVersion,
             circuitHash: result.circuitHash,
+            verificationKeyHash: result.verificationKeyHash,
+            verificationKeyPoseidonHash: result.verificationKeyPoseidonHash,
             bbVersion: result.bbVersion,
             verified: true,
           })
@@ -796,6 +799,8 @@ export const cryptoRouter = router({
         circuitType: result.circuitType,
         noirVersion: result.noirVersion,
         circuitHash: result.circuitHash,
+        verificationKeyHash: result.verificationKeyHash,
+        verificationKeyPoseidonHash: result.verificationKeyPoseidonHash,
         bbVersion: result.bbVersion,
       };
     }),

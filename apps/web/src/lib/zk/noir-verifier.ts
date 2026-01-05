@@ -48,12 +48,14 @@ interface NoirVerifyInput {
 
 interface NoirVerifyResult {
   isValid: boolean;
+  reason?: string;
   verificationTimeMs: number;
   circuitType: CircuitType;
   noirVersion: string | null;
   circuitHash: string | null;
   circuitId: string | null;
   verificationKeyHash: string | null;
+  verificationKeyPoseidonHash: string | null;
   bbVersion: string | null;
 }
 
@@ -383,6 +385,8 @@ const vkeyCache = new Map<
   Promise<{
     verificationKey: string;
     verificationKeyHash: string;
+    verificationKeyPoseidonHash: string;
+    publicInputCount: number;
     size: number;
   }>
 >();
@@ -394,6 +398,8 @@ interface CircuitIdentity {
   bbVersion: string | null;
   bytecodeHash: string | null;
   verificationKeyHash: string | null;
+  verificationKeyPoseidonHash: string | null;
+  publicInputCount: number | null;
   circuitId: string | null;
 }
 
@@ -404,6 +410,8 @@ function sha256Hex(input: Uint8Array | string): string {
 export function getCircuitVerificationKey(circuitType: CircuitType): Promise<{
   verificationKey: string;
   verificationKeyHash: string;
+  verificationKeyPoseidonHash: string;
+  publicInputCount: number;
   size: number;
 }> {
   const existing = vkeyCache.get(circuitType);
@@ -414,6 +422,8 @@ export function getCircuitVerificationKey(circuitType: CircuitType): Promise<{
   const promise = callBbWorker<{
     verificationKey: string;
     verificationKeyHash: string;
+    verificationKeyPoseidonHash: string;
+    publicInputCount: number;
     size: number;
   }>("getVerificationKey", {
     circuitType,
@@ -503,6 +513,8 @@ export function getCircuitIdentity(
     try {
       const vk = await getCircuitVerificationKey(circuitType);
       const verificationKeyHash = vk.verificationKeyHash;
+      const verificationKeyPoseidonHash = vk.verificationKeyPoseidonHash;
+      const publicInputCount = vk.publicInputCount;
       const bytecodeHash = bytecode ? sha256Hex(bytecode) : null;
       const circuitId = `ultrahonk:${verificationKeyHash}`;
 
@@ -513,6 +525,8 @@ export function getCircuitIdentity(
         bbVersion,
         bytecodeHash,
         verificationKeyHash,
+        verificationKeyPoseidonHash,
+        publicInputCount,
         circuitId,
       };
     } catch {
@@ -523,6 +537,8 @@ export function getCircuitIdentity(
         bbVersion,
         bytecodeHash: bytecode ? sha256Hex(bytecode) : null,
         verificationKeyHash: null,
+        verificationKeyPoseidonHash: null,
+        publicInputCount: null,
         circuitId: null,
       };
     }
@@ -551,6 +567,7 @@ export async function verifyNoirProof(
     const workerResult = await callBbWorker<{
       isValid: boolean;
       verificationTimeMs: number;
+      reason?: string;
     }>("verifyProof", {
       circuitType: input.circuitType,
       bytecode: getCircuitBytecode(input.circuitType),
@@ -565,12 +582,14 @@ export async function verifyNoirProof(
 
     return {
       isValid: workerResult.isValid,
+      reason: workerResult.reason,
       verificationTimeMs: workerResult.verificationTimeMs,
       circuitType: input.circuitType,
       noirVersion: identity.noirVersion,
       circuitHash: identity.circuitHash,
       circuitId: identity.circuitId,
       verificationKeyHash: identity.verificationKeyHash,
+      verificationKeyPoseidonHash: identity.verificationKeyPoseidonHash,
       bbVersion,
     };
   } catch (error) {

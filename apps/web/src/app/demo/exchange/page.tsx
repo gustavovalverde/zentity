@@ -12,7 +12,8 @@
  * Shows clearly what each party stores vs receives.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -121,6 +122,7 @@ export default function ExchangeSimulatorPage() {
     useState<VerificationResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
+  const noirIsolationWarningRef = useRef(false);
 
   // Step 1: Exchange generates keypair
   const handleGenerateKeypair = async () => {
@@ -206,6 +208,18 @@ export default function ExchangeSimulatorPage() {
         setFlowError("Missing face match score for demo proofs");
         return;
       }
+      if (!noirIsolationWarningRef.current) {
+        const isIsolated =
+          typeof window !== "undefined" && window.crossOriginIsolated === true;
+        if (!isIsolated) {
+          noirIsolationWarningRef.current = true;
+          toast.warning("ZK proofs may be slower in this session", {
+            description:
+              "Your browser is not cross-origin isolated, so multi-threaded proving is disabled. Proofs may take longer.",
+          });
+        }
+      }
+
       const [ageChallenge, faceChallenge, docChallenge] = await Promise.all([
         getProofChallenge("age_verification"),
         getProofChallenge("face_match"),

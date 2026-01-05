@@ -117,9 +117,18 @@ interface ProofOutput {
   publicInputs: string[];
 }
 
-// Singleton worker instance
-let worker: Worker | null = null;
-let workerInitPromise: Promise<Worker> | null = null;
+const DEFAULT_WORKER_COUNT = 1;
+const MAX_WORKER_COUNT = 4;
+
+interface WorkerState {
+  index: number;
+  worker: Worker;
+  inflight: number;
+}
+
+// Worker pool (optional parallelism)
+let workerPool: WorkerState[] = [];
+let workerPoolInitPromise: Promise<WorkerState[]> | null = null;
 
 // Pending request callbacks
 const pendingRequests = new Map<
@@ -127,6 +136,7 @@ const pendingRequests = new Map<
   {
     resolve: (value: ProofOutput) => void;
     reject: (error: Error) => void;
+    workerState: WorkerState;
   }
 >();
 
@@ -141,79 +151,116 @@ interface WorkerLogMessage {
   [key: string]: unknown;
 }
 
-/**
- * Initialize the worker (lazy, singleton)
- */
-function getWorker(): Promise<Worker> {
-  if (worker) {
-    return Promise.resolve(worker);
+function getDesiredWorkerCount(): number {
+  const configured = Number.parseInt(
+    process.env.NEXT_PUBLIC_NOIR_WORKERS ?? "",
+    10
+  );
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.min(configured, MAX_WORKER_COUNT);
   }
-  if (workerInitPromise) {
-    return workerInitPromise;
+  return DEFAULT_WORKER_COUNT;
+}
+
+function createWorkerState(index: number): WorkerState {
+  const newWorker = new Worker(
+    new URL("./noir-prover.worker.ts", import.meta.url),
+    { type: "module" }
+  );
+  if (typeof window !== "undefined") {
+    newWorker.postMessage({
+      type: "init",
+      origin: window.location.origin,
+    } satisfies WorkerInitMessage);
   }
 
-  workerInitPromise = new Promise((resolve, reject) => {
-    try {
-      // Create worker from the worker file
-      const newWorker = new Worker(
-        new URL("./noir-prover.worker.ts", import.meta.url),
-        { type: "module" }
-      );
-      if (typeof window !== "undefined") {
-        newWorker.postMessage({
-          type: "init",
-          origin: window.location.origin,
-        } satisfies WorkerInitMessage);
+  const state: WorkerState = {
+    index,
+    worker: newWorker,
+    inflight: 0,
+  };
+
+  newWorker.onmessage = (
+    event: MessageEvent<WorkerResponse | WorkerLogMessage>
+  ) => {
+    const data = event.data;
+
+    // Handle log messages from worker (for diagnostics)
+    if ("type" in data && data.type === "log") {
+      if (ENABLE_WORKER_LOGS) {
+        console.log(`[noir-worker:${data.stage}]`, data.msg, data);
       }
+      return;
+    }
 
-      newWorker.onmessage = (
-        event: MessageEvent<WorkerResponse | WorkerLogMessage>
-      ) => {
-        const data = event.data;
+    // Handle proof response messages
+    const response = data as WorkerResponse;
+    const { id, success, result, error } = response;
+    const pending = pendingRequests.get(id);
 
-        // Handle log messages from worker (for diagnostics)
-        if ("type" in data && data.type === "log") {
-          if (ENABLE_WORKER_LOGS) {
-            console.log(`[noir-worker:${data.stage}]`, data.msg, data);
-          }
-          return;
-        }
+    if (pending) {
+      pendingRequests.delete(id);
+      pending.workerState.inflight = Math.max(
+        0,
+        pending.workerState.inflight - 1
+      );
+      if (success && result) {
+        pending.resolve({
+          proof: new Uint8Array(result.proof),
+          publicInputs: result.publicInputs,
+        });
+      } else {
+        pending.reject(new Error(error || "Unknown worker error"));
+      }
+    }
+  };
 
-        // Handle proof response messages
-        const response = data as WorkerResponse;
-        const { id, success, result, error } = response;
-        const pending = pendingRequests.get(id);
+  newWorker.onerror = (error) => {
+    console.error("[noir-worker] Uncaught error:", error.message);
+    for (const [id, pending] of pendingRequests) {
+      if (pending.workerState.index !== state.index) {
+        continue;
+      }
+      pending.reject(new Error(`Worker error: ${error.message}`));
+      pendingRequests.delete(id);
+    }
+    state.inflight = 0;
+  };
 
-        if (pending) {
-          pendingRequests.delete(id);
-          if (success && result) {
-            pending.resolve({
-              proof: new Uint8Array(result.proof),
-              publicInputs: result.publicInputs,
-            });
-          } else {
-            pending.reject(new Error(error || "Unknown worker error"));
-          }
-        }
-      };
+  return state;
+}
 
-      newWorker.onerror = (error) => {
-        console.error("[noir-worker] Uncaught error:", error.message);
-        // Reject all pending requests
-        for (const [id, pending] of pendingRequests) {
-          pending.reject(new Error(`Worker error: ${error.message}`));
-          pendingRequests.delete(id);
-        }
-      };
+/**
+ * Initialize the worker pool (lazy)
+ */
+function getWorkerPool(): Promise<WorkerState[]> {
+  if (workerPool.length > 0) {
+    return Promise.resolve(workerPool);
+  }
+  if (workerPoolInitPromise) {
+    return workerPoolInitPromise;
+  }
 
-      worker = newWorker;
-      resolve(newWorker);
+  workerPoolInitPromise = new Promise((resolve, reject) => {
+    try {
+      const desired = getDesiredWorkerCount();
+      workerPool = Array.from({ length: desired }, (_, index) =>
+        createWorkerState(index)
+      );
+      resolve(workerPool);
     } catch (error) {
       reject(error);
     }
   });
 
-  return workerInitPromise;
+  return workerPoolInitPromise;
+}
+
+async function getLeastBusyWorker(): Promise<WorkerState> {
+  const pool = await getWorkerPool();
+  return pool.reduce((best, current) =>
+    current.inflight < best.inflight ? current : best
+  );
 }
 
 /**
@@ -223,18 +270,18 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
-/**
- * Generate an age proof using the Web Worker
- */
-export async function generateAgeProofWorker(
-  payload: AgeProofPayload
+async function sendProofRequest(
+  type: Exclude<ProofType, "health_check">,
+  payload: WorkerRequest["payload"]
 ): Promise<ProofOutput> {
-  const w = await getWorker();
+  const workerState = await getLeastBusyWorker();
   const id = generateId();
 
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
-      pendingRequests.delete(id);
+      if (pendingRequests.delete(id)) {
+        workerState.inflight = Math.max(0, workerState.inflight - 1);
+      }
       reject(
         new Error(
           `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
@@ -243,6 +290,7 @@ export async function generateAgeProofWorker(
     }, WORKER_TIMEOUT_MS);
 
     pendingRequests.set(id, {
+      workerState,
       resolve: (value) => {
         clearTimeout(timeoutId);
         resolve(value);
@@ -253,132 +301,51 @@ export async function generateAgeProofWorker(
       },
     });
 
-    const request: WorkerRequest = {
-      id,
-      type: "age",
-      payload,
-    };
-
-    w.postMessage(request);
+    workerState.inflight += 1;
+    try {
+      workerState.worker.postMessage({ id, type, payload });
+    } catch (error) {
+      if (pendingRequests.delete(id)) {
+        workerState.inflight = Math.max(0, workerState.inflight - 1);
+      }
+      clearTimeout(timeoutId);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
   });
 }
 
-export async function generateFaceMatchProofWorker(
+/**
+ * Generate an age proof using the Web Worker
+ */
+export function generateAgeProofWorker(
+  payload: AgeProofPayload
+): Promise<ProofOutput> {
+  return sendProofRequest("age", payload);
+}
+
+export function generateFaceMatchProofWorker(
   payload: FaceMatchPayload
 ): Promise<ProofOutput> {
-  const w = await getWorker();
-  const id = generateId();
-
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      pendingRequests.delete(id);
-      reject(
-        new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
-        )
-      );
-    }, WORKER_TIMEOUT_MS);
-
-    pendingRequests.set(id, {
-      resolve: (value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      },
-      reject: (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      },
-    });
-
-    const request: WorkerRequest = {
-      id,
-      type: "face_match",
-      payload,
-    };
-
-    w.postMessage(request);
-  });
+  return sendProofRequest("face_match", payload);
 }
 
 /**
  * Generate a document validity proof using the Web Worker
  */
-export async function generateDocValidityProofWorker(
+export function generateDocValidityProofWorker(
   payload: DocValidityPayload
 ): Promise<ProofOutput> {
-  const w = await getWorker();
-  const id = generateId();
-
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      pendingRequests.delete(id);
-      reject(
-        new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
-        )
-      );
-    }, WORKER_TIMEOUT_MS);
-
-    pendingRequests.set(id, {
-      resolve: (value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      },
-      reject: (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      },
-    });
-
-    const request: WorkerRequest = {
-      id,
-      type: "doc_validity",
-      payload,
-    };
-
-    w.postMessage(request);
-  });
+  return sendProofRequest("doc_validity", payload);
 }
 
 /**
  * Generate a nationality membership proof using the Web Worker
  * (with pre-computed Merkle path)
  */
-async function _generateNationalityProofWorker(
+function _generateNationalityProofWorker(
   payload: NationalityProofPayload
 ): Promise<ProofOutput> {
-  const w = await getWorker();
-  const id = generateId();
-
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      pendingRequests.delete(id);
-      reject(
-        new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
-        )
-      );
-    }, WORKER_TIMEOUT_MS);
-
-    pendingRequests.set(id, {
-      resolve: (value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      },
-      reject: (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      },
-    });
-
-    const request: WorkerRequest = {
-      id,
-      type: "nationality",
-      payload,
-    };
-
-    w.postMessage(request);
-  });
+  return sendProofRequest("nationality", payload);
 }
 
 /**
@@ -391,53 +358,22 @@ async function _generateNationalityProofWorker(
  * @param payload.groupName - Group to prove membership (e.g., "EU", "SCHENGEN")
  * @param payload.nonce - Hex string for replay resistance
  */
-export async function generateNationalityProofClientWorker(
+export function generateNationalityProofClientWorker(
   payload: NationalityClientPayload
 ): Promise<ProofOutput> {
-  const w = await getWorker();
-  const id = generateId();
-
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      pendingRequests.delete(id);
-      reject(
-        new Error(
-          `ZK proof generation timed out after ${WORKER_TIMEOUT_MS / 1000}s. This may indicate WASM loading issues in your browser.`
-        )
-      );
-    }, WORKER_TIMEOUT_MS);
-
-    pendingRequests.set(id, {
-      resolve: (value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      },
-      reject: (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      },
-    });
-
-    const request: WorkerRequest = {
-      id,
-      type: "nationality_client",
-      payload,
-    };
-
-    w.postMessage(request);
-  });
+  return sendProofRequest("nationality_client", payload);
 }
 
 /**
  * Terminate the worker (cleanup)
  */
 function _terminateWorker(): void {
-  if (worker) {
-    worker.terminate();
-    worker = null;
-    workerInitPromise = null;
-    pendingRequests.clear();
+  for (const state of workerPool) {
+    state.worker.terminate();
   }
+  workerPool = [];
+  workerPoolInitPromise = null;
+  pendingRequests.clear();
 }
 
 /**
@@ -455,12 +391,14 @@ export interface WorkerHealthStatus {
  */
 export async function checkWorkerHealth(): Promise<WorkerHealthStatus> {
   try {
-    const w = await getWorker();
+    const workerState = await getLeastBusyWorker();
     const id = generateId();
 
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
-        pendingRequests.delete(id);
+        if (pendingRequests.delete(id)) {
+          workerState.inflight = Math.max(0, workerState.inflight - 1);
+        }
         resolve({
           workerReady: true,
           modulesLoaded: false,
@@ -469,6 +407,7 @@ export async function checkWorkerHealth(): Promise<WorkerHealthStatus> {
       }, HEALTH_CHECK_TIMEOUT_MS);
 
       pendingRequests.set(id, {
+        workerState,
         resolve: () => {
           clearTimeout(timeoutId);
           resolve({ workerReady: true, modulesLoaded: true });
@@ -483,7 +422,25 @@ export async function checkWorkerHealth(): Promise<WorkerHealthStatus> {
         },
       });
 
-      w.postMessage({ id, type: "health_check", payload: {} });
+      workerState.inflight += 1;
+      try {
+        workerState.worker.postMessage({
+          id,
+          type: "health_check",
+          payload: {},
+        });
+      } catch (error) {
+        if (pendingRequests.delete(id)) {
+          workerState.inflight = Math.max(0, workerState.inflight - 1);
+        }
+        clearTimeout(timeoutId);
+        resolve({
+          workerReady: false,
+          modulesLoaded: false,
+          error:
+            error instanceof Error ? error.message : "Worker creation failed",
+        });
+      }
     });
   } catch (error) {
     return {

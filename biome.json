@@ -15,6 +15,7 @@
       "!!**/build",
       "!!**/coverage",
       "!!**/.synpress-wallet-setup-dist",
+      "!!apps/web/noir-circuits",
       "!!apps/web/public/fhevm"
     ]
   },

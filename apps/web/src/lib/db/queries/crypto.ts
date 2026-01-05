@@ -39,6 +39,8 @@ export interface ZkProofInsert {
   circuitType?: string | null;
   noirVersion?: string | null;
   circuitHash?: string | null;
+  verificationKeyHash?: string | null;
+  verificationKeyPoseidonHash?: string | null;
   bbVersion?: string | null;
 }
 
@@ -127,6 +129,8 @@ export async function getUserAgeProofFull(
       circuitType: zkProofs.circuitType,
       noirVersion: zkProofs.noirVersion,
       circuitHash: zkProofs.circuitHash,
+      verificationKeyHash: zkProofs.verificationKeyHash,
+      verificationKeyPoseidonHash: zkProofs.verificationKeyPoseidonHash,
       bbVersion: zkProofs.bbVersion,
     })
     .from(zkProofs)
@@ -177,6 +181,8 @@ export async function getUserAgeProofFull(
     circuitType: row.circuitType ?? null,
     noirVersion: row.noirVersion ?? null,
     circuitHash: row.circuitHash ?? null,
+    verificationKeyHash: row.verificationKeyHash ?? null,
+    verificationKeyPoseidonHash: row.verificationKeyPoseidonHash ?? null,
     bbVersion: row.bbVersion ?? null,
   };
 }
@@ -551,6 +557,8 @@ export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
       circuitType: data.circuitType ?? null,
       noirVersion: data.noirVersion ?? null,
       circuitHash: data.circuitHash ?? null,
+      verificationKeyHash: data.verificationKeyHash ?? null,
+      verificationKeyPoseidonHash: data.verificationKeyPoseidonHash ?? null,
       bbVersion: data.bbVersion ?? null,
       verified: data.verified ?? false,
     })

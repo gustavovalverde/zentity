@@ -33,7 +33,8 @@
       "!!**/public/fhevm",
       "!!**/public/bb",
       "!!**/public/workerHelpers.js",
-      "!!**/public/*.wasm"
+      "!!**/public/*.wasm",
+      "!!**/noir-circuits"
     ]
   },
   "overrides": [

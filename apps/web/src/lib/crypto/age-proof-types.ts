@@ -15,5 +15,7 @@ export interface AgeProofFull extends AgeProofSummary {
   circuitType: string | null;
   noirVersion: string | null;
   circuitHash: string | null;
+  verificationKeyHash: string | null;
+  verificationKeyPoseidonHash: string | null;
   bbVersion: string | null;
 }

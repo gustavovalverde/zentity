@@ -4,7 +4,8 @@ import { cpus } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
-import { UltraHonkBackend } from "@aztec/bb.js";
+import { UltraHonkBackend, UltraHonkVerifierBackend } from "@aztec/bb.js";
+import { poseidon2HashAsync } from "@zkpassport/poseidon2";
 
 /** Matches decimal numbers only */
 const DECIMAL_NUMBER_PATTERN = /^[0-9]+$/;
@@ -13,6 +14,35 @@ const HEX_CHARS_PATTERN = /^[0-9a-fA-F]+$/;
 
 function sha256Hex(input) {
   return createHash("sha256").update(input).digest("hex");
+}
+
+function toFieldHex(bytes) {
+  return Buffer.from(bytes).toString("hex").padStart(64, "0");
+}
+
+function vkBytesToFields(vkBytes) {
+  const fields = [];
+  for (let offset = 0; offset < vkBytes.length; offset += 32) {
+    const chunk = vkBytes.slice(offset, offset + 32);
+    fields.push(BigInt(`0x${toFieldHex(chunk)}`));
+  }
+  return fields;
+}
+
+function getPublicInputCountFromVkey(vkBytes) {
+  if (vkBytes.length < 64) {
+    throw new Error("Verification key too small to parse public input count");
+  }
+  const countHex = toFieldHex(vkBytes.slice(32, 64));
+  const count = BigInt(`0x${countHex}`) - 16n;
+  if (count < 0n) {
+    throw new Error("Invalid public input count in verification key");
+  }
+  const asNumber = Number(count);
+  if (!Number.isSafeInteger(asNumber)) {
+    throw new Error("Public input count exceeds safe integer range");
+  }
+  return asNumber;
 }
 
 function normalizePublicInput(input) {
@@ -34,6 +64,8 @@ function normalizePublicInput(input) {
 
 const backendCache = new Map();
 const vkeyCache = new Map();
+let verifierBackend = null;
+let verifierBackendPromise = null;
 const crsPath =
   process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
 
@@ -83,6 +115,8 @@ function clearCrsCache(reason) {
   }
   backendCache.clear();
   vkeyCache.clear();
+  verifierBackend = null;
+  verifierBackendPromise = null;
   process.stderr.write(
     `[bb-worker] Cleared CRS cache at ${crsPath} (${reason})\n`
   );
@@ -136,6 +170,30 @@ function getBackend(circuitType, bytecode) {
   return backend;
 }
 
+async function getVerifierBackend() {
+  if (verifierBackend) {
+    return verifierBackend;
+  }
+  if (!verifierBackendPromise) {
+    const parsedThreads = Number.parseInt(process.env.BB_THREADS || "", 10);
+    const cpuCount = Math.max(1, cpus()?.length ?? 1);
+    const defaultThreads = Math.max(2, Math.min(4, cpuCount));
+    const threads =
+      Number.isFinite(parsedThreads) && parsedThreads > 0
+        ? parsedThreads
+        : defaultThreads;
+
+    verifierBackendPromise = Promise.resolve(
+      new UltraHonkVerifierBackend({
+        threads,
+        crsPath,
+      })
+    );
+  }
+  verifierBackend = await verifierBackendPromise;
+  return verifierBackend;
+}
+
 async function getVerificationKeyResult(circuitType, bytecode) {
   const cacheKey = getCacheKey(circuitType, bytecode);
   const cached = vkeyCache.get(cacheKey);
@@ -156,9 +214,13 @@ async function getVerificationKeyResult(circuitType, bytecode) {
     vkBytes = await backend.getVerificationKey();
   }
   const vkHash = sha256Hex(vkBytes);
+  const vkeyPoseidonHash = await poseidon2HashAsync(vkBytesToFields(vkBytes));
+  const publicInputCount = getPublicInputCountFromVkey(vkBytes);
   const result = {
     verificationKey: Buffer.from(vkBytes).toString("base64"),
     verificationKeyHash: vkHash,
+    verificationKeyPoseidonHash: `0x${vkeyPoseidonHash.toString(16).padStart(64, "0")}`,
+    publicInputCount,
     size: vkBytes.length,
   };
   vkeyCache.set(cacheKey, result);
@@ -172,24 +234,37 @@ async function handle(method, params) {
 
   if (method === "verifyProof") {
     const start = Date.now();
-    let backend = await getBackend(params.circuitType, params.bytecode);
     const proofBytes = Buffer.from(params.proof, "base64");
     const publicInputs = (params.publicInputs || []).map(normalizePublicInput);
+    const vkResult = await getVerificationKeyResult(
+      params.circuitType,
+      params.bytecode
+    );
+    if (publicInputs.length !== vkResult.publicInputCount) {
+      return {
+        isValid: false,
+        verificationTimeMs: Date.now() - start,
+        reason: `Public input length mismatch (expected ${vkResult.publicInputCount}, got ${publicInputs.length})`,
+      };
+    }
     let isValid;
     try {
-      isValid = await backend.verifyProof({
+      const verifier = await getVerifierBackend();
+      isValid = await verifier.verifyProof({
         proof: new Uint8Array(proofBytes),
         publicInputs,
+        verificationKey: Buffer.from(vkResult.verificationKey, "base64"),
       });
     } catch (error) {
       if (!isInvalidCrsError(error)) {
         throw error;
       }
       clearCrsCache("invalid CRS identity");
-      backend = await getBackend(params.circuitType, params.bytecode);
-      isValid = await backend.verifyProof({
+      const verifier = await getVerifierBackend();
+      isValid = await verifier.verifyProof({
         proof: new Uint8Array(proofBytes),
         publicInputs,
+        verificationKey: Buffer.from(vkResult.verificationKey, "base64"),
       });
     }
     return {
