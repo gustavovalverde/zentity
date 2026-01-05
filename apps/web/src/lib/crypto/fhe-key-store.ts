@@ -231,6 +231,11 @@ export async function persistFheKeyId(keyId: string): Promise<void> {
   }
 }
 
-export function resetFheKeyStoreForTests() {
+/**
+ * Clear the FHE key store cache.
+ * Call this during sign-out and before sign-in to ensure clean state
+ * when users switch on shared browsers.
+ */
+export function resetFheKeyStoreCache(): void {
   cached = undefined;
 }

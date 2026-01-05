@@ -38,3 +38,12 @@ export function getOnboardingFlowId(): string | null {
   }
   return null;
 }
+
+/**
+ * Clear the onboarding flow ID cache.
+ * Call this during sign-out and before sign-in to ensure clean state
+ * when users switch on shared browsers.
+ */
+export function resetOnboardingFlowId(): void {
+  setOnboardingFlowId(null);
+}

@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { prepareForNewSession } from "@/lib/auth/session-manager";
 import {
   authenticateWithPasskey,
   checkPrfSupport,
@@ -43,6 +44,9 @@ export function PasskeySignInForm() {
   const handleSignIn = async () => {
     setStatus("checking");
     setError(null);
+
+    // Clear any stale caches from previous session
+    prepareForNewSession();
 
     try {
       // Step 1: Get authentication options from server

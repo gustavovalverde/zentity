@@ -250,3 +250,14 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
 
   return pendingGetStoredProfile;
 }
+
+/**
+ * Clear the profile secret cache.
+ * Call this during sign-out and before sign-in to ensure clean state
+ * when users switch on shared browsers.
+ */
+export function resetProfileSecretCache(): void {
+  cached = undefined;
+  pendingGetStoredProfile = null;
+  notifyListeners();
+}

@@ -674,6 +674,20 @@ export async function createPasskeySession(
   );
   resHeaders.append("Set-Cookie", cookieValue);
 
+  // Clear the session_data cache cookie to force fresh lookup.
+  // This prevents stale cached user data (e.g., wrong email) when
+  // switching users on shared browsers.
+  if (cookies.sessionData) {
+    const clearCacheCookie = [
+      `${cookies.sessionData.name}=`,
+      "Max-Age=0",
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Lax",
+    ].join("; ");
+    resHeaders.append("Set-Cookie", clearCacheCookie);
+  }
+
   return {
     sessionToken,
     expiresAt,

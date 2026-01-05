@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getStoredFheKeys,
   persistFheKeyId,
-  resetFheKeyStoreForTests,
+  resetFheKeyStoreCache,
   storeFheKeys,
 } from "@/lib/crypto/fhe-key-store";
 
@@ -36,7 +36,7 @@ const makeEnrollment = () => ({
 const fetchMock = vi.fn();
 
 beforeEach(() => {
-  resetFheKeyStoreForTests();
+  resetFheKeyStoreCache();
   vi.clearAllMocks();
   fetchMock.mockReset();
   // @ts-expect-error - test global override

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/tanstack-form";
 import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
 import { signIn } from "@/lib/auth/auth-client";
+import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { makeFieldValidator } from "@/lib/utils/validation";
 
 export function SignInForm() {
@@ -31,6 +32,9 @@ export function SignInForm() {
     onSubmit: async ({ value }) => {
       setIsLoading(true);
       setError(null);
+
+      // Clear any stale caches from previous session
+      prepareForNewSession();
 
       try {
         const result = await signIn.email({

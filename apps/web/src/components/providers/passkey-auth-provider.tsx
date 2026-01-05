@@ -4,6 +4,7 @@ import {
   createContext,
   type ReactNode,
   useCallback,
+  useContext,
   useMemo,
   useRef,
   useState,
@@ -148,4 +149,16 @@ export function PasskeyAuthProvider({ children }: PasskeyAuthProviderProps) {
       {children}
     </PasskeyAuthContext.Provider>
   );
+}
+
+/**
+ * Hook to access passkey authentication context.
+ * Must be used within a PasskeyAuthProvider.
+ */
+export function usePasskeyAuth(): PasskeyAuthContextValue {
+  const context = useContext(PasskeyAuthContext);
+  if (!context) {
+    throw new Error("usePasskeyAuth must be used within PasskeyAuthProvider");
+  }
+  return context;
 }

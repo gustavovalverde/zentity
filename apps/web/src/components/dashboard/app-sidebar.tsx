@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Code,
   Coins,
@@ -16,6 +17,7 @@ import { usePathname } from "next/navigation";
 
 import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { Logo } from "@/components/logo";
+import { usePasskeyAuth } from "@/components/providers/passkey-auth-provider";
 import {
   Sidebar,
   SidebarContent,
@@ -29,7 +31,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { signOut } from "@/lib/auth/auth-client";
+import { completeSignOut } from "@/lib/auth/session-manager";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
 interface NavItem {
@@ -96,10 +98,14 @@ const developmentNavItems: NavItem[] = [
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const web3Enabled = isWeb3Enabled();
+  const queryClient = useQueryClient();
+  const { clear: clearPrfOutput } = usePasskeyAuth();
 
   const handleSignOut = async () => {
-    await signOut();
-    window.location.assign("/");
+    await completeSignOut({
+      queryClient,
+      onClearPrf: clearPrfOutput,
+    });
   };
 
   const isActive = (url: string) => {
