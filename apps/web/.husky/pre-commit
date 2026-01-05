@@ -1,5 +1,3 @@
-bun test
-
 #!/bin/sh
 # Exit on any error
 set -e
@@ -67,4 +65,10 @@ if [ "$STAGED_HASH" != "$NEW_STAGED_HASH" ]; then
   echo "✨ Files formatted by Ultracite"
 fi
 
-exit $FORMAT_EXIT_CODE
+if [ $FORMAT_EXIT_CODE -ne 0 ]; then
+  exit $FORMAT_EXIT_CODE
+fi
+
+# Typecheck + unit tests (Vitest)
+bun run type-check
+bun ./node_modules/vitest/vitest.mjs run --pool=forks --maxWorkers=1 --no-file-parallelism

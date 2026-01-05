@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchBinary } from "@/lib/crypto/binary-transport";
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -19,7 +21,7 @@ export async function uploadSecretBlob(params: {
   }
 
   const data = textEncoder.encode(params.payload);
-  const response = await fetch("/api/secrets/blob", {
+  const response = await fetchBinary("/api/secrets/blob", {
     method: "POST",
     headers,
     body: data,
@@ -43,10 +45,8 @@ export async function uploadSecretBlob(params: {
   return result;
 }
 
-export async function downloadSecretBlob(
-  secretId: string
-): Promise<string> {
-  const response = await fetch(`/api/secrets/blob?secretId=${secretId}`, {
+export async function downloadSecretBlob(secretId: string): Promise<string> {
+  const response = await fetchBinary(`/api/secrets/blob?secretId=${secretId}`, {
     method: "GET",
     credentials: "same-origin",
   });

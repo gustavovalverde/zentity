@@ -18,8 +18,7 @@ import type {
 } from "@/lib/crypto/fhe-key-store";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
-import { decode, encode } from "@msgpack/msgpack";
-
+import { fetchMsgpack } from "@/lib/crypto/binary-transport";
 import { createFheKeyEnvelope } from "@/lib/crypto/fhe-key-store";
 import {
   decryptFheBool,
@@ -413,32 +412,6 @@ export async function getUserProof(
 // FHE (Fully Homomorphic Encryption) Functions
 // ============================================================================
 
-async function fetchFheApiMsgpack<T>(
-  path: string,
-  payload: unknown
-): Promise<T> {
-  const encoded = encode(payload);
-  const response = await fetch(path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/msgpack",
-      Accept: "application/msgpack",
-    },
-    body: encoded,
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const bodyText = await response.text().catch(() => "");
-    throw new Error(
-      bodyText || `Request failed: ${response.status} ${response.statusText}`
-    );
-  }
-
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  return decode(bytes) as T;
-}
-
 export async function ensureFheKeyRegistration(params?: {
   enrollment?: PasskeyEnrollmentContext;
   registrationToken?: string;
@@ -471,7 +444,7 @@ export async function ensureFheKeyRegistration(params?: {
         resolvePromise?.({ keyId: keyMaterial.keyId });
         return;
       }
-      const response = await fetchFheApiMsgpack<{ keyId: string }>(
+      const response = await fetchMsgpack<{ keyId: string }>(
         "/api/fhe/keys/register",
         {
           serverKey: keyMaterial.serverKeyBytes,
@@ -479,7 +452,8 @@ export async function ensureFheKeyRegistration(params?: {
           ...(params?.registrationToken
             ? { registrationToken: params.registrationToken }
             : {}),
-        }
+        },
+        { credentials: "include" }
       );
       await persistFheKeyId(response.keyId);
       resolvePromise?.({ keyId: response.keyId });
@@ -527,11 +501,15 @@ export async function registerFheKeyForEnrollment(params: {
   publicKeyBytes: Uint8Array;
   serverKeyBytes: Uint8Array;
 }): Promise<{ keyId: string }> {
-  return await fetchFheApiMsgpack<{ keyId: string }>("/api/fhe/keys/register", {
-    registrationToken: params.registrationToken,
-    publicKey: params.publicKeyBytes,
-    serverKey: params.serverKeyBytes,
-  });
+  return await fetchMsgpack<{ keyId: string }>(
+    "/api/fhe/keys/register",
+    {
+      registrationToken: params.registrationToken,
+      publicKey: params.publicKeyBytes,
+      serverKey: params.serverKeyBytes,
+    },
+    { credentials: "include" }
+  );
 }
 
 /**
@@ -549,14 +527,18 @@ export async function verifyAgeViaFHE(
 ): Promise<VerifyAgeFHEResult> {
   try {
     const start = Date.now();
-    const result = await fetchFheApiMsgpack<{
+    const result = await fetchMsgpack<{
       resultCiphertext: Uint8Array;
       computationTimeMs?: number;
-    }>("/api/fhe/verify-age", {
-      keyId,
-      currentYear,
-      minAge,
-    });
+    }>(
+      "/api/fhe/verify-age",
+      {
+        keyId,
+        currentYear,
+        minAge,
+      },
+      { credentials: "include" }
+    );
     const isOver18 = await decryptFheBool(result.resultCiphertext);
     return {
       isOver18,

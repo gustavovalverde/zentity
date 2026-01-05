@@ -72,20 +72,20 @@ describe("crypto-client FHE", () => {
 
     const result = await ensureFheKeyRegistration();
 
+    const options = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/fhe/keys/register",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({
-          "Content-Type": "application/msgpack",
-          Accept: "application/msgpack",
-        }),
       })
     );
+    const headers = options?.headers as Headers;
+    expect(headers).toBeInstanceOf(Headers);
+    expect(headers.get("Content-Type")).toBe("application/msgpack");
+    expect(headers.get("Accept")).toBe("application/msgpack");
 
-    const payload = decode(
-      fetchMock.mock.calls[0]?.[1]?.body as Uint8Array
-    ) as {
+    const body = fetchMock.mock.calls[0]?.[1]?.body as ArrayBuffer;
+    const payload = decode(new Uint8Array(body)) as {
       serverKey: Uint8Array;
       publicKey: Uint8Array;
     };
@@ -160,9 +160,8 @@ describe("crypto-client FHE", () => {
         method: "POST",
       })
     );
-    const payload = decode(
-      fetchMock.mock.calls[0]?.[1]?.body as Uint8Array
-    ) as {
+    const body = fetchMock.mock.calls[0]?.[1]?.body as ArrayBuffer;
+    const payload = decode(new Uint8Array(body)) as {
       keyId: string;
       currentYear: number;
       minAge: number;
