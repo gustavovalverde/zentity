@@ -3,12 +3,11 @@
 import { fetchBinary } from "@/lib/crypto/binary-transport";
 
 const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
 
 export async function uploadSecretBlob(params: {
   secretId: string;
   secretType: string;
-  payload: string;
+  payload: string | Uint8Array;
   registrationToken?: string;
 }): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
   const headers = new Headers({
@@ -20,11 +19,16 @@ export async function uploadSecretBlob(params: {
     headers.set("Authorization", `Bearer ${params.registrationToken}`);
   }
 
-  const data = textEncoder.encode(params.payload);
+  const payloadBytes =
+    typeof params.payload === "string"
+      ? textEncoder.encode(params.payload)
+      : params.payload;
+  const body = new Uint8Array(payloadBytes.byteLength);
+  body.set(payloadBytes);
   const response = await fetchBinary("/api/secrets/blob", {
     method: "POST",
     headers,
-    body: data,
+    body: body.buffer,
     credentials: "same-origin",
   });
 
@@ -45,7 +49,9 @@ export async function uploadSecretBlob(params: {
   return result;
 }
 
-export async function downloadSecretBlob(secretId: string): Promise<string> {
+export async function downloadSecretBlob(
+  secretId: string
+): Promise<Uint8Array> {
   const response = await fetchBinary(`/api/secrets/blob?secretId=${secretId}`, {
     method: "GET",
     credentials: "same-origin",
@@ -61,6 +67,5 @@ export async function downloadSecretBlob(secretId: string): Promise<string> {
     throw new Error("Failed to download encrypted secret blob.");
   }
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  return textDecoder.decode(bytes);
+  return new Uint8Array(await response.arrayBuffer());
 }

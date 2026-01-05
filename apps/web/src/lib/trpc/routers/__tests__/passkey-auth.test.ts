@@ -145,6 +145,7 @@ describe("passkey-auth router", () => {
           keyId: "fhe-key-1",
           version: "v2",
           kekVersion: "v1",
+          envelopeFormat: "msgpack",
         },
       });
 
@@ -192,6 +193,7 @@ describe("passkey-auth router", () => {
           keyId: "fhe-key-1",
           version: "v2",
           kekVersion: "v1",
+          envelopeFormat: "msgpack",
         },
       });
 
@@ -234,6 +236,7 @@ describe("passkey-auth router", () => {
           keyId: "fhe-key-1",
           version: "v2",
           kekVersion: "v1",
+          envelopeFormat: "msgpack",
         },
       });
 
@@ -289,6 +292,7 @@ describe("passkey-auth router", () => {
             keyId: "fhe-key-1",
             version: "v2",
             kekVersion: "v1",
+            envelopeFormat: "msgpack",
           },
         })
       ).rejects.toMatchObject({

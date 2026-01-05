@@ -58,6 +58,7 @@ const fheEnrollmentSchema = z.object({
   keyId: z.string().min(1),
   version: z.string().min(1),
   kekVersion: z.string().min(1),
+  envelopeFormat: z.enum(["json", "msgpack"]),
 });
 
 const assertionSchema = z.object({
@@ -126,6 +127,12 @@ export const passkeyAuthRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Passkey credential mismatch.",
+        });
+      }
+      if (input.fhe.envelopeFormat !== "msgpack") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Unsupported FHE envelope format.",
         });
       }
 
@@ -203,7 +210,7 @@ export const passkeyAuthRouter = router({
         blobRef: blobMeta.blobRef,
         blobHash: blobMeta.blobHash,
         blobSize: blobMeta.blobSize,
-        metadata: null,
+        metadata: { envelopeFormat: input.fhe.envelopeFormat },
         version: input.fhe.version,
       });
 
@@ -222,7 +229,7 @@ export const passkeyAuthRouter = router({
       await updateEncryptedSecretMetadata({
         userId: user.id,
         secretType,
-        metadata: { keyId },
+        metadata: { envelopeFormat: input.fhe.envelopeFormat, keyId },
       });
 
       // Create session and set cookie via resHeaders

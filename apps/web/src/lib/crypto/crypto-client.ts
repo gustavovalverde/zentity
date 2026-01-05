@@ -12,10 +12,9 @@ import type {
   AgeProofFull,
   AgeProofSummary,
 } from "@/lib/crypto/age-proof-types";
-import type {
-  PasskeyEnrollmentContext,
-  StoredFheKeys,
-} from "@/lib/crypto/fhe-key-store";
+import type { StoredFheKeys } from "@/lib/crypto/fhe-key-store";
+import type { EnvelopeFormat } from "@/lib/crypto/passkey-vault";
+import type { PasskeyEnrollmentContext } from "@/lib/crypto/secret-vault";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
 import { fetchMsgpack } from "@/lib/crypto/binary-transport";
@@ -475,9 +474,10 @@ export async function prepareFheKeyEnrollment(params: {
   enrollment: PasskeyEnrollmentContext;
 }): Promise<{
   secretId: string;
-  encryptedBlob: string;
+  encryptedBlob: Uint8Array;
   wrappedDek: string;
   prfSalt: string;
+  envelopeFormat: EnvelopeFormat;
   publicKeyBytes: Uint8Array;
   serverKeyBytes: Uint8Array;
   storedKeys: StoredFheKeys;

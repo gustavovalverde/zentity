@@ -8,10 +8,8 @@
  * the npm package by scripts/setup-coep-assets.ts.
  */
 
-import type {
-  PasskeyEnrollmentContext,
-  StoredFheKeys,
-} from "@/lib/crypto/fhe-key-store";
+import type { StoredFheKeys } from "@/lib/crypto/fhe-key-store";
+import type { PasskeyEnrollmentContext } from "@/lib/crypto/secret-vault";
 
 import {
   getStoredFheKeys,

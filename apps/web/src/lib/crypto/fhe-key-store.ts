@@ -3,16 +3,14 @@
 import { decode, encode } from "@msgpack/msgpack";
 
 import { trpc } from "@/lib/trpc/client";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
+import { createSecretEnvelope, type EnvelopeFormat } from "./passkey-vault";
+import { uploadSecretBlob } from "./secret-blob-client";
 import {
-  createSecretEnvelope,
-  decryptSecretEnvelope,
-  PASSKEY_VAULT_VERSION,
-  WRAP_VERSION,
-} from "./passkey-vault";
-import { downloadSecretBlob, uploadSecretBlob } from "./secret-blob-client";
-import { evaluatePrf } from "./webauthn-prf";
+  loadSecret,
+  type PasskeyEnrollmentContext,
+  storeSecret,
+} from "./secret-vault";
 
 export interface StoredFheKeys {
   clientKey: Uint8Array;
@@ -22,14 +20,9 @@ export interface StoredFheKeys {
   keyId?: string;
 }
 
-export interface PasskeyEnrollmentContext {
-  credentialId: string;
-  prfOutput: Uint8Array;
-  prfSalt: Uint8Array;
-}
-
 export const FHE_SECRET_TYPE = "fhe_keys";
 const SECRET_TYPE = FHE_SECRET_TYPE;
+const FHE_ENVELOPE_FORMAT: EnvelopeFormat = "msgpack";
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
 let cached:
@@ -43,7 +36,7 @@ let cached:
 export function uploadSecretBlobWithToken(params: {
   secretId: string;
   secretType: string;
-  payload: string;
+  payload: Uint8Array;
   registrationToken: string;
 }): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
   return uploadSecretBlob({
@@ -91,9 +84,10 @@ export async function createFheKeyEnvelope(params: {
   enrollment: PasskeyEnrollmentContext;
 }): Promise<{
   secretId: string;
-  encryptedBlob: string;
+  encryptedBlob: Uint8Array;
   wrappedDek: string;
   prfSalt: string;
+  envelopeFormat: EnvelopeFormat;
 }> {
   const secretPayload = serializeKeys(params.keys);
   return await createSecretEnvelope({
@@ -102,6 +96,7 @@ export async function createFheKeyEnvelope(params: {
     prfOutput: params.enrollment.prfOutput,
     credentialId: params.enrollment.credentialId,
     prfSalt: params.enrollment.prfSalt,
+    envelopeFormat: FHE_ENVELOPE_FORMAT,
   });
 }
 
@@ -124,31 +119,17 @@ export async function storeFheKeys(params: {
   keys: StoredFheKeys;
   enrollment: PasskeyEnrollmentContext;
 }): Promise<{ secretId: string }> {
-  const envelope = await createFheKeyEnvelope(params);
-
-  const blobMetadata = await uploadSecretBlob({
-    secretId: envelope.secretId,
+  const secretPayload = serializeKeys(params.keys);
+  const result = await storeSecret({
     secretType: SECRET_TYPE,
-    payload: envelope.encryptedBlob,
+    plaintext: secretPayload,
+    enrollment: params.enrollment,
+    envelopeFormat: FHE_ENVELOPE_FORMAT,
   });
 
-  await trpc.secrets.storeSecret.mutate({
-    secretId: envelope.secretId,
-    secretType: SECRET_TYPE,
-    blobRef: blobMetadata.blobRef,
-    blobHash: blobMetadata.blobHash,
-    blobSize: blobMetadata.blobSize,
-    wrappedDek: envelope.wrappedDek,
-    prfSalt: bytesToBase64(params.enrollment.prfSalt),
-    credentialId: params.enrollment.credentialId,
-    metadata: null,
-    version: PASSKEY_VAULT_VERSION,
-    kekVersion: WRAP_VERSION,
-  });
+  cacheKeys(result.secretId, params.keys);
 
-  cacheKeys(envelope.secretId, params.keys);
-
-  return { secretId: envelope.secretId };
+  return { secretId: result.secretId };
 }
 
 export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
@@ -157,66 +138,18 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
     return cachedKeys;
   }
 
-  const bundle = await trpc.secrets.getSecretBundle.query({
+  const result = await loadSecret({
     secretType: SECRET_TYPE,
+    expectedEnvelopeFormat: FHE_ENVELOPE_FORMAT,
+    secretLabel: "encryption keys",
   });
 
-  if (!bundle?.secret) {
+  if (!result) {
     return null;
   }
 
-  if (bundle.secret.version !== PASSKEY_VAULT_VERSION) {
-    throw new Error(
-      "Unsupported secret version. Please re-secure your encryption keys."
-    );
-  }
-
-  if (!bundle.wrappers?.length) {
-    throw new Error("No passkeys are registered for this secret.");
-  }
-
-  if (!bundle.secret.blobRef) {
-    throw new Error("Encrypted secret blob is missing.");
-  }
-
-  const encryptedBlob = await downloadSecretBlob(bundle.secret.id);
-
-  const saltByCredential: Record<string, Uint8Array> = {};
-  for (const wrapper of bundle.wrappers) {
-    saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
-  }
-
-  const { prfOutputs, selectedCredentialId } = await evaluatePrf({
-    credentialIdToSalt: saltByCredential,
-  });
-
-  const selectedWrapper =
-    bundle.wrappers.find((w) => w.credentialId === selectedCredentialId) ??
-    bundle.wrappers[0];
-  if (selectedWrapper.kekVersion !== WRAP_VERSION) {
-    throw new Error(
-      "Unsupported key wrapper version. Please re-add your passkey."
-    );
-  }
-  const prfOutput =
-    prfOutputs.get(selectedWrapper.credentialId) ??
-    prfOutputs.values().next().value;
-
-  if (!prfOutput) {
-    throw new Error("PRF output missing for selected passkey.");
-  }
-
-  const plaintext = await decryptSecretEnvelope({
-    secretId: bundle.secret.id,
-    secretType: SECRET_TYPE,
-    encryptedBlob,
-    wrappedDek: selectedWrapper.wrappedDek,
-    credentialId: selectedWrapper.credentialId,
-    prfOutput,
-  });
-
-  const keys = deserializeKeys(plaintext, bundle.secret.metadata);
-  cacheKeys(bundle.secret.id, keys);
+  const keys = deserializeKeys(result.plaintext, result.metadata);
+  cacheKeys(result.secretId, keys);
   return keys;
 }
 

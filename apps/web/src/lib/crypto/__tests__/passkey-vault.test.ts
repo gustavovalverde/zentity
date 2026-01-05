@@ -17,6 +17,7 @@ describe("passkey-vault", () => {
       prfOutput,
       credentialId: "cred-1",
       prfSalt,
+      envelopeFormat: "json",
     });
 
     const decrypted = await decryptSecretEnvelope({
@@ -26,6 +27,7 @@ describe("passkey-vault", () => {
       wrappedDek: envelope.wrappedDek,
       credentialId: "cred-1",
       prfOutput,
+      envelopeFormat: envelope.envelopeFormat,
     });
 
     expect(new TextDecoder().decode(decrypted)).toBe("vault-secret");
@@ -42,6 +44,7 @@ describe("passkey-vault", () => {
       prfOutput,
       credentialId: "cred-1",
       prfSalt,
+      envelopeFormat: "json",
     });
 
     await expect(
@@ -52,6 +55,7 @@ describe("passkey-vault", () => {
         wrappedDek: envelope.wrappedDek,
         credentialId: "cred-2",
         prfOutput,
+        envelopeFormat: envelope.envelopeFormat,
       })
     ).rejects.toThrow();
   });

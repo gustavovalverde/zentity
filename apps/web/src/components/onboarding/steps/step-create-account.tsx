@@ -535,6 +535,7 @@ export function StepCreateAccount() {
             keyId: fheRegistration.keyId,
             version: PASSKEY_VAULT_VERSION,
             kekVersion: WRAP_VERSION,
+            envelopeFormat: fheEnrollment.envelopeFormat,
           },
         });
 
