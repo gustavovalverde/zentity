@@ -9,8 +9,11 @@ The landing site reflects the current architecture:
 - **ZK proofs** for eligibility (age, document validity, nationality membership, face match threshold)
 - **FHE encryption** for sensitive attributes (birth_year_offset, country_code, compliance_level, liveness score)
 - **Evidence pack** (`policy_hash` + `proof_set_hash`) for auditability without exposing PII
-- **User‑only decryption** (client keys stay in the browser)
+- **Passkeys (auth + key custody)** for passwordless login and PRF-derived profile sealing
+- **User‑only decryption** (client keys stay in the browser; FHE keys are passkey-wrapped)
 - **Multi‑document identity model** (document‑scoped proofs + claims)
+
+These are the four cryptographic pillars of the product: passkeys, ZK proofs, FHE, and commitments.
 
 For the technical details, see:
 

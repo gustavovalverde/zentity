@@ -6,56 +6,39 @@ import {
 } from "@tabler/icons-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { colorStyles, type SemanticColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 
-const colorStyles = {
-  orange: {
-    bg: "bg-orange-500/10",
-    border: "border-orange-500/20",
-    text: "text-orange-400",
-  },
-  pink: {
-    bg: "bg-pink-500/10",
-    border: "border-pink-500/20",
-    text: "text-pink-400",
-  },
-  blue: {
-    bg: "bg-blue-500/10",
-    border: "border-blue-500/20",
-    text: "text-blue-400",
-  },
-  emerald: {
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/20",
-    text: "text-emerald-400",
-  },
-};
-
-const useCases = [
+const useCases: Array<{
+  icon: typeof IconCurrencyBitcoin;
+  color: SemanticColor;
+  title: string;
+  description: string;
+}> = [
   {
     icon: IconCurrencyBitcoin,
-    color: "orange" as const,
+    color: "orange",
     title: "Crypto Exchanges",
     description:
       "Comply with MiCA & FATF Travel Rule using proofs, with passkey-consented disclosure when required.",
   },
   {
     icon: IconGlass,
-    color: "pink" as const,
+    color: "pink",
     title: "Age-Restricted Services",
     description:
       "Verify age for alcohol, gambling, or adult content while learning nothing else about the user.",
   },
   {
     icon: IconBriefcase,
-    color: "blue" as const,
+    color: "blue",
     title: "Cross-Border Hire",
     description:
       "Verify right-to-work status without storing passport scans or plaintext data.",
   },
   {
     icon: IconWorld,
-    color: "emerald" as const,
+    color: "emerald",
     title: "EU Residency",
     description: "Prove EU residency while keeping exact country private.",
   },
@@ -81,7 +64,7 @@ export function UseCases() {
             return (
               <Card
                 key={useCase.title}
-                className="h-full border-border bg-card/50 transition-colors hover:bg-card"
+                className="h-full border-border bg-card/50"
               >
                 <CardHeader className="flex flex-row items-center gap-4">
                   <div
@@ -91,7 +74,7 @@ export function UseCases() {
                       styles.border,
                     )}
                   >
-                    <useCase.icon className={cn("h-6 w-6", styles.text)} />
+                    <useCase.icon className={cn("h-6 w-6", styles.iconText)} />
                   </div>
                   <CardTitle className="text-lg">{useCase.title}</CardTitle>
                 </CardHeader>

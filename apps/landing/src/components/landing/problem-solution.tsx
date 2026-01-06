@@ -4,7 +4,7 @@ const categories = [
   {
     label: "PII STORAGE",
     problem: "Stores full names, addresses, birthdays",
-    solution: "Stores passkey-sealed profile + hashed commitments",
+    solution: "Stores passkey-vault profile + hashed commitments",
   },
   {
     label: "IMAGES",
@@ -66,7 +66,7 @@ export function ProblemSolution() {
           <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 lg:p-8">
             <div className="mb-8 flex items-center gap-2">
               <IconCheck className="size-5 text-emerald-400" />
-              <h3 className="font-semibold text-emerald-400 text-xl">
+              <h3 className="font-semibold text-emerald-600 text-xl">
                 Zentity Approach
               </h3>
             </div>
@@ -89,10 +89,14 @@ export function ProblemSolution() {
         <div className="mt-12 text-center">
           <p className="font-medium text-lg">
             Breaches expose only{" "}
-            <span className="text-emerald-400">
+            <span className="text-emerald-600">
               encrypted data, hashes, and proofs
             </span>
             —not readable documents or plaintext PII.
+          </p>
+          <p className="mt-3 text-muted-foreground text-sm">
+            Zentity plugs into existing auth systems; it does not replace your
+            IdP.
           </p>
         </div>
       </div>

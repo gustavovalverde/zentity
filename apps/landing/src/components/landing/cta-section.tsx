@@ -6,7 +6,9 @@ import {
 } from "@tabler/icons-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ColoredIconBox } from "@/components/ui/colored-icon-box";
+import { colorStyles } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 
 const trustPoints = [
   {
@@ -48,7 +50,12 @@ export function CTASection() {
         <div className="mx-auto mt-10 grid max-w-3xl gap-6 sm:grid-cols-3">
           {trustPoints.map((point) => (
             <div key={point.title} className="flex items-start gap-3">
-              <IconCheck className="mt-0.5 size-5 shrink-0 text-emerald-400" />
+              <IconCheck
+                className={cn(
+                  "mt-0.5 size-5 shrink-0",
+                  colorStyles.emerald.iconText,
+                )}
+              />
               <div>
                 <div className="font-medium">{point.title}</div>
                 <div className="mt-0.5 text-muted-foreground text-sm">
@@ -66,18 +73,24 @@ export function CTASection() {
             href="https://app.zentity.xyz/sign-up?fresh=1"
             target="_blank"
             rel="noopener noreferrer"
-            className="group"
+            className={cn(
+              "group block rounded-xl border border-border bg-card p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "hover:border-purple-500/50",
+            )}
           >
-            <div className="flex h-full flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-purple-500/50">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-purple-500/20 bg-purple-500/10 transition-colors group-hover:bg-purple-500/20">
-                <IconPlayerPlay className="size-6 text-purple-400" />
-              </div>
-              <h3 className="mb-2 font-semibold">Try the Demo</h3>
-              <p className="flex-grow text-muted-foreground text-sm">
-                Full verification flow in 60 seconds.
-              </p>
-              <Button className="mt-4 w-full">Launch Demo</Button>
-            </div>
+            <ColoredIconBox
+              icon={IconPlayerPlay}
+              color="purple"
+              size="lg"
+              className="mb-4 h-12 w-12 group-hover:bg-purple-500/20"
+            />
+            <h3 className="mb-2 font-semibold">Try the Demo</h3>
+            <p className="grow text-muted-foreground text-sm">
+              Full verification flow in 60 seconds.
+            </p>
+            <span className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground text-sm">
+              Launch Demo
+            </span>
           </a>
 
           {/* Star on GitHub */}
@@ -85,41 +98,47 @@ export function CTASection() {
             href="https://github.com/gustavovalverde/zentity"
             target="_blank"
             rel="noopener noreferrer"
-            className="group"
+            className={cn(
+              "group block rounded-xl border border-border bg-card p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "hover:border-blue-500/50",
+            )}
           >
-            <div className="flex h-full flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-blue-500/50">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
-                <IconBrandGithub className="size-6 text-blue-400" />
-              </div>
-              <h3 className="mb-2 font-semibold">View Source</h3>
-              <p className="flex-grow text-muted-foreground text-sm">
-                Star the repo, fork it, or deploy your own.
-              </p>
-              <Button variant="outline" className="mt-4 w-full">
-                GitHub
-              </Button>
-            </div>
+            <ColoredIconBox
+              icon={IconBrandGithub}
+              color="blue"
+              size="lg"
+              className="mb-4 h-12 w-12 group-hover:bg-blue-500/20"
+            />
+            <h3 className="mb-2 font-semibold">View Source</h3>
+            <p className="grow text-muted-foreground text-sm">
+              Star the repo, fork it, or deploy your own.
+            </p>
+            <span className="mt-4 inline-flex w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 font-medium text-sm hover:bg-accent hover:text-accent-foreground">
+              GitHub
+            </span>
           </a>
 
           {/* Read the Docs */}
           <a
-            href="https://github.com/gustavovalverde/zentity/tree/main/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group"
+            href="/docs"
+            className={cn(
+              "group block rounded-xl border border-border bg-card p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "hover:border-emerald-500/50",
+            )}
           >
-            <div className="flex h-full flex-col rounded-xl border border-border bg-card p-6 transition-colors hover:border-emerald-500/50">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 transition-colors group-hover:bg-emerald-500/20">
-                <IconExternalLink className="size-6 text-emerald-400" />
-              </div>
-              <h3 className="mb-2 font-semibold">Read the Docs</h3>
-              <p className="flex-grow text-muted-foreground text-sm">
-                Understand the architecture in depth.
-              </p>
-              <Button variant="outline" className="mt-4 w-full">
-                Documentation
-              </Button>
-            </div>
+            <ColoredIconBox
+              icon={IconExternalLink}
+              color="emerald"
+              size="lg"
+              className="mb-4 h-12 w-12 group-hover:bg-emerald-500/20"
+            />
+            <h3 className="mb-2 font-semibold">Read the Docs</h3>
+            <p className="grow text-muted-foreground text-sm">
+              Understand the architecture in depth.
+            </p>
+            <span className="mt-4 inline-flex w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 font-medium text-sm hover:bg-accent hover:text-accent-foreground">
+              Documentation
+            </span>
           </a>
         </div>
       </div>

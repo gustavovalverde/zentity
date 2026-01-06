@@ -6,7 +6,7 @@ export function OrganizationSchema() {
     url: "https://zentity.xyz",
     logo: "https://zentity.xyz/favicon.svg",
     description:
-      "Privacy-preserving identity verification platform using zero-knowledge proofs, homomorphic encryption, and cryptographic commitments.",
+      "Privacy-preserving KYC layer using zero-knowledge proofs, fully homomorphic encryption (FHE), cryptographic commitments, and passkey authentication with vaults.",
     sameAs: [
       "https://github.com/gustavovalverde/zentity",
       "https://x.com/gustavovalverde",
@@ -34,13 +34,14 @@ export function SoftwareApplicationSchema() {
       priceCurrency: "USD",
     },
     description:
-      "Privacy-first compliance/KYC platform using zero-knowledge proofs and homomorphic encryption. Verify identity without storing personal data.",
+      "Privacy-first compliance/KYC layer that plugs into existing auth. Verify identity without storing personal data.",
     featureList: [
       "Age verification with zero-knowledge proofs",
       "Document verification with OCR",
       "Liveness detection with multi-gesture challenges",
       "Face matching without biometric storage",
       "Nationality proofs with Merkle trees",
+      "Passkey vault encryption with PRF-derived keys",
       "GDPR-compliant data erasure",
     ],
     license: "https://osaasy.dev/",
@@ -59,7 +60,7 @@ export function FAQSchema() {
     {
       question: "What is Zentity?",
       answer:
-        "Zentity is a privacy-preserving identity verification platform that uses zero-knowledge proofs, homomorphic encryption, and cryptographic commitments to verify identity without storing personal data.",
+        "Zentity is a privacy-preserving KYC layer that plugs into existing auth. It uses zero-knowledge proofs, fully homomorphic encryption (FHE), cryptographic commitments, and passkey authentication with vaults to verify identity without storing personal data.",
     },
     {
       question: "How does zero-knowledge proof work for age verification?",

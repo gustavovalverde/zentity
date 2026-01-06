@@ -87,7 +87,7 @@ export function Nav() {
   return (
     <header
       className={cn(
-        "fixed top-0 right-0 left-0 z-50 transition-all duration-300",
+        "fixed top-0 right-0 left-0 z-50 transition-[color,background-color,box-shadow,border-color] duration-300",
         isScrolled
           ? "border-border border-b bg-background/80 shadow-sm backdrop-blur-md"
           : "bg-transparent",
@@ -95,7 +95,7 @@ export function Nav() {
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          <a href="/" className="flex items-center">
+          <a href="/" className="flex items-center" aria-label="Zentity Home">
             <Logo variant="full" size="sm" />
           </a>
           <Badge variant="secondary" className="hidden sm:inline-flex">
@@ -110,7 +110,7 @@ export function Nav() {
               <Link
                 key={link.href}
                 to={link.href}
-                className="font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+                className="rounded-sm font-medium text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {link.label}
               </Link>
@@ -118,7 +118,7 @@ export function Nav() {
               <a
                 key={link.href}
                 href={link.href}
-                className="font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+                className="rounded-sm font-medium text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {link.label}
               </a>
@@ -128,23 +128,36 @@ export function Nav() {
 
         <div className="hidden items-center gap-3 md:flex">
           <ThemeToggle />
-          <a
-            href="https://github.com/gustavovalverde/zentity"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+              <a
+                href="https://github.com/gustavovalverde/zentity"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub"
+              />
+            }
           >
-            <Button variant="outline" size="sm">
-              <IconBrandGithub className="mr-2 size-4" />
-              GitHub
-            </Button>
-          </a>
-          <a
-            href="https://app.zentity.xyz/sign-up?fresh=1"
-            target="_blank"
-            rel="noopener noreferrer"
+            <IconBrandGithub className="mr-2 size-4" />
+            GitHub
+          </Button>
+          <Button
+            size="sm"
+            render={
+              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+              <a
+                href="https://app.zentity.xyz/sign-up?fresh=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Try Demo"
+              />
+            }
           >
-            <Button size="sm">Try Demo</Button>
-          </a>
+            Try Demo
+          </Button>
         </div>
 
         {/* Mobile Menu */}
@@ -169,7 +182,7 @@ export function Nav() {
                       key={link.href}
                       to={link.href}
                       onClick={() => setIsSheetOpen(false)}
-                      className="block rounded-md px-2 py-2 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+                      className="block rounded-md px-2 py-2 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {link.label}
                     </Link>
@@ -178,7 +191,7 @@ export function Nav() {
                       key={link.href}
                       href={link.href}
                       onClick={() => setIsSheetOpen(false)}
-                      className="block rounded-md px-2 py-2 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground"
+                      className="block rounded-md px-2 py-2 font-medium text-muted-foreground text-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {link.label}
                     </a>
@@ -186,23 +199,36 @@ export function Nav() {
                 )}
               </nav>
               <div className="mt-6 flex flex-col gap-2 border-border border-t pt-4">
-                <a
-                  href="https://github.com/gustavovalverde/zentity"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  render={
+                    /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+                    <a
+                      href="https://github.com/gustavovalverde/zentity"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="View on GitHub"
+                    />
+                  }
                 >
-                  <Button variant="outline" className="w-full">
-                    <IconBrandGithub className="mr-2 size-4" />
-                    View on GitHub
-                  </Button>
-                </a>
-                <a
-                  href="https://app.zentity.xyz/sign-up?fresh=1"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  <IconBrandGithub className="mr-2 size-4" />
+                  View on GitHub
+                </Button>
+                <Button
+                  className="w-full"
+                  render={
+                    /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+                    <a
+                      href="https://app.zentity.xyz/sign-up?fresh=1"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Try Demo"
+                    />
+                  }
                 >
-                  <Button className="w-full">Try Demo</Button>
-                </a>
+                  Try Demo
+                </Button>
               </div>
             </SheetContent>
           </Sheet>

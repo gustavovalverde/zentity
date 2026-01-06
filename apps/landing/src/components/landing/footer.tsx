@@ -9,8 +9,7 @@ const footerLinks = {
   developers: [
     {
       label: "Documentation",
-      href: "https://github.com/gustavovalverde/zentity/tree/main/docs",
-      external: true,
+      href: "/docs",
     },
     {
       label: "GitHub",
@@ -19,8 +18,7 @@ const footerLinks = {
     },
     {
       label: "Architecture",
-      href: "https://github.com/gustavovalverde/zentity/blob/main/docs/architecture.md",
-      external: true,
+      href: "/docs/architecture",
     },
   ],
   legal: [
@@ -41,12 +39,12 @@ export function Footer() {
               Privacy-first identity verification powered by zero-knowledge
               cryptography.
             </p>
-            <div className="mt-4 flex gap-4">
+            <div className="mt-4 flex gap-2">
               <a
                 href="https://github.com/gustavovalverde/zentity"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-muted-foreground transition-colors hover:text-foreground"
+                className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="GitHub"
               >
                 <IconBrandGithub className="size-5" />
@@ -55,7 +53,7 @@ export function Footer() {
                 href="https://x.com/gustavovalverde"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-muted-foreground transition-colors hover:text-foreground"
+                className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="X (Twitter)"
               >
                 <IconBrandX className="size-5" />
@@ -71,7 +69,7 @@ export function Footer() {
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
+                    className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     {link.label}
                   </a>
@@ -88,7 +86,7 @@ export function Footer() {
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
+                    className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     {...(link.external && {
                       target: "_blank",
                       rel: "noopener noreferrer",
@@ -109,7 +107,7 @@ export function Footer() {
                 <li key={link.href}>
                   <a
                     href={link.href}
-                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
+                    className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     {link.label}
                   </a>
@@ -126,7 +124,7 @@ export function Footer() {
               href="https://osaasy.dev/"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline transition-colors hover:text-foreground"
+              className="rounded-sm underline transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               O'Saasy License
             </a>

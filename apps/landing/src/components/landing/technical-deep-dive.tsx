@@ -1,12 +1,20 @@
 import {
   IconCircleCheck,
   IconCpu,
+  IconDatabase,
   IconDeviceDesktop,
   IconFileCode,
+  IconFingerprint,
+  IconKey,
+  IconLock,
   IconServer,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 
+import { ColoredIconBox } from "@/components/ui/colored-icon-box";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { colorStyles } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 
 export function TechnicalDeepDive() {
   return (
@@ -25,27 +33,39 @@ export function TechnicalDeepDive() {
         </div>
 
         <div className="mx-auto max-w-6xl">
-          <Tabs defaultValue="architecture" className="w-full">
+          <Tabs defaultValue="dataflow" className="w-full">
             {/* Pill-shaped Tabs */}
             <div className="mb-12 flex justify-center">
-              <TabsList className="h-auto w-fit rounded-full border border-border bg-muted p-1">
-                <TabsTrigger
-                  value="architecture"
-                  className="rounded-full px-6 py-2"
-                >
-                  Architecture
-                </TabsTrigger>
+              <TabsList className="h-auto w-fit flex-wrap justify-center gap-1 rounded-2xl border border-border bg-muted p-1 md:rounded-full">
                 <TabsTrigger
                   value="dataflow"
-                  className="rounded-full px-6 py-2"
+                  className="rounded-full px-4 py-2 text-sm md:px-6"
                 >
                   Data Flow
                 </TabsTrigger>
                 <TabsTrigger
+                  value="passkeys"
+                  className="rounded-full px-4 py-2 text-sm md:px-6"
+                >
+                  Passkeys
+                </TabsTrigger>
+                <TabsTrigger
+                  value="fhe"
+                  className="rounded-full px-4 py-2 text-sm md:px-6"
+                >
+                  FHE
+                </TabsTrigger>
+                <TabsTrigger
                   value="circuits"
-                  className="rounded-full px-6 py-2"
+                  className="rounded-full px-4 py-2 text-sm md:px-6"
                 >
                   ZK Circuits
+                </TabsTrigger>
+                <TabsTrigger
+                  value="architecture"
+                  className="rounded-full px-4 py-2 text-sm md:px-6"
+                >
+                  Architecture
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -58,7 +78,7 @@ export function TechnicalDeepDive() {
                 <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
                 <div className="h-3 w-3 rounded-full bg-green-500/80" />
                 <div className="ml-4 font-mono text-muted-foreground text-xs">
-                  zentity-architecture.v1
+                  privacy-stack
                 </div>
               </div>
 
@@ -69,33 +89,39 @@ export function TechnicalDeepDive() {
                     <div className="space-y-8">
                       <div>
                         <h3 className="mb-2 font-bold text-2xl">
-                          3-Service Monorepo
+                          Core Service Stack
                         </h3>
                         <p className="text-muted-foreground">
-                          Detailed breakdown of the system components.
+                          Web app plus dedicated OCR and FHE services.
                         </p>
                       </div>
 
                       <div className="space-y-6">
                         <div className="flex gap-4">
-                          <div className="h-fit rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-blue-400">
-                            <IconDeviceDesktop className="h-6 w-6" />
-                          </div>
+                          <ColoredIconBox
+                            icon={IconDeviceDesktop}
+                            color="blue"
+                            size="lg"
+                            className="h-fit"
+                          />
                           <div>
                             <h4 className="font-semibold text-foreground">
                               Web Client (Next.js)
                             </h4>
                             <p className="mt-1 text-muted-foreground text-sm">
-                              Handles UI, passkey-sealed profile unlock, and ZK
-                              proof generation (Noir/WASM) tied to verified
-                              docs.
+                              Handles UI, passkey authentication, vault unlock
+                              with passkey-derived keys, and ZK proof generation
+                              (Noir/WASM) tied to verified docs.
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-4">
-                          <div className="h-fit rounded-xl border border-orange-500/20 bg-orange-500/10 p-3 text-orange-400">
-                            <IconServer className="h-6 w-6" />
-                          </div>
+                          <ColoredIconBox
+                            icon={IconServer}
+                            color="orange"
+                            size="lg"
+                            className="h-fit"
+                          />
                           <div>
                             <h4 className="font-semibold text-foreground">
                               FHE Service (Rust)
@@ -107,9 +133,12 @@ export function TechnicalDeepDive() {
                           </div>
                         </div>
                         <div className="flex gap-4">
-                          <div className="h-fit rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-yellow-400">
-                            <IconCpu className="h-6 w-6" />
-                          </div>
+                          <ColoredIconBox
+                            icon={IconCpu}
+                            color="yellow"
+                            size="lg"
+                            className="h-fit"
+                          />
                           <div>
                             <h4 className="font-semibold text-foreground">
                               OCR Service (Python)
@@ -124,44 +153,125 @@ export function TechnicalDeepDive() {
                     </div>
 
                     {/* Architecture Diagram */}
-                    <div className="relative flex h-full min-h-[300px] flex-col justify-between rounded-xl border border-border bg-muted/20 p-6">
-                      {/* Client Box */}
-                      <div className="z-10 flex items-center justify-between rounded-lg border border-border bg-background p-4 shadow-sm">
-                        <div className="font-mono font-semibold text-foreground text-sm">
-                          Client
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                      {/* User + Passkey Box */}
+                      {/* biome-ignore lint/a11y/useSemanticElements: Diagram element, not a form fieldset */}
+                      <div
+                        role="group"
+                        className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm"
+                        aria-label="User authenticates with passkey to unlock identity vault"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            User + Passkey
+                          </div>
+                          <IconKey
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.amber.iconText,
+                            )}
+                          />
                         </div>
-                        <IconDeviceDesktop className="h-4 w-4 text-muted-foreground" />
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Unlocks identity vault
+                        </div>
                       </div>
 
-                      {/* Connection Line */}
-                      <div className="relative my-4 flex flex-1 flex-col items-center justify-center">
-                        <div className="absolute inset-y-0 left-1/2 -ml-[0.5px] w-px border-border border-l border-dashed" />
-                        <div className="z-10 rounded-full border border-border bg-background px-3 py-1 font-mono text-[10px] text-muted-foreground">
+                      {/* User → Client Connection */}
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
+
+                      {/* Client Box */}
+                      {/* biome-ignore lint/a11y/useSemanticElements: Diagram element, not a form fieldset */}
+                      <div
+                        role="group"
+                        className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm"
+                        aria-label="Client browser generates ZK proofs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Client (Browser)
+                          </div>
+                          <IconDeviceDesktop
+                            className={cn("h-4 w-4", colorStyles.blue.iconText)}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          ZK proof generation
+                        </div>
+                      </div>
+
+                      {/* Client → Gateway Connection */}
+                      <div className="flex flex-col items-center">
+                        <div className="h-2 w-px border-muted-foreground/40 border-l border-dashed" />
+                        <div className="rounded-full border border-muted-foreground/30 bg-background px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
                           HTTPS / WSS
                         </div>
+                        <div className="h-2 w-px border-muted-foreground/40 border-l border-dashed" />
                       </div>
 
                       {/* Gateway Box */}
-                      <div className="z-10 mb-4 rounded-lg border border-border bg-background p-4 shadow-sm">
+                      {/* biome-ignore lint/a11y/useSemanticElements: Diagram element, not a form fieldset */}
+                      <div
+                        role="group"
+                        className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm"
+                        aria-label="API Gateway routes to FHE and OCR services"
+                      >
                         <div className="mb-2 flex items-center justify-between">
                           <div className="font-mono font-semibold text-foreground text-sm">
                             API Gateway
                           </div>
                           <IconServer className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-3">
-                          <div className="rounded border border-orange-500/20 bg-orange-500/10 p-2 text-center font-medium text-orange-400 text-xs">
-                            FHE Service
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center justify-center gap-1.5 rounded border border-border bg-muted/50 p-2 font-medium text-foreground text-xs">
+                            <IconServer
+                              className={cn(
+                                "h-3 w-3",
+                                colorStyles.orange.iconText,
+                              )}
+                            />
+                            FHE
                           </div>
-                          <div className="rounded border border-yellow-500/20 bg-yellow-500/10 p-2 text-center font-medium text-xs text-yellow-400">
-                            OCR Service
+                          <div className="flex items-center justify-center gap-1.5 rounded border border-border bg-muted/50 p-2 font-medium text-foreground text-xs">
+                            <IconCpu
+                              className={cn(
+                                "h-3 w-3",
+                                colorStyles.yellow.iconText,
+                              )}
+                            />
+                            OCR
                           </div>
                         </div>
                       </div>
 
+                      {/* Gateway → DB Connection */}
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
+
                       {/* DB Box */}
-                      <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-center font-mono text-blue-400 text-xs">
-                        Encrypted DB (Proofs + Sealed Data)
+                      {/* biome-ignore lint/a11y/useSemanticElements: Diagram element, not a form fieldset */}
+                      <div
+                        role="group"
+                        className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm"
+                        aria-label="Database stores only proofs and sealed data"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Encrypted DB
+                          </div>
+                          <IconDatabase
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.emerald.iconText,
+                            )}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Proofs + sealed data
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -179,7 +289,12 @@ export function TechnicalDeepDive() {
                       <div className="absolute top-8 bottom-8 left-[27px] -z-10 w-0.5 bg-border" />
 
                       <div className="flex items-start gap-6">
-                        <div className="z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold text-red-500 shadow-sm">
+                        <div
+                          className={cn(
+                            "z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold shadow-sm",
+                            colorStyles.red.iconText,
+                          )}
+                        >
                           1
                         </div>
                         <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -197,7 +312,12 @@ export function TechnicalDeepDive() {
                       </div>
 
                       <div className="flex items-start gap-6 pt-8">
-                        <div className="z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold text-purple-400 shadow-sm">
+                        <div
+                          className={cn(
+                            "z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold shadow-sm",
+                            colorStyles.purple.iconText,
+                          )}
+                        >
                           2
                         </div>
                         <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -205,17 +325,22 @@ export function TechnicalDeepDive() {
                             Proof Generation
                           </h4>
                           <p className="mb-2 text-muted-foreground text-sm">
-                            Client unlocks profile with passkey, then proves
-                            eligibility with ZK.
+                            Client unlocks profile with passkey-derived keys,
+                            then proves eligibility with ZK.
                           </p>
                           <div className="rounded border border-border bg-muted px-3 py-2 font-mono text-foreground text-xs">
-                            Generate(private inputs, nonce) → Proof_0x8f2...
+                            Generate(private inputs, nonce) → Proof_0x8f2…
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-start gap-6 pt-8">
-                        <div className="z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold text-emerald-400 shadow-sm">
+                        <div
+                          className={cn(
+                            "z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold shadow-sm",
+                            colorStyles.emerald.iconText,
+                          )}
+                        >
                           3
                         </div>
                         <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -226,7 +351,12 @@ export function TechnicalDeepDive() {
                             Server verifies proofs and stores encrypted
                             artifacts. Disclosure requires user consent.
                           </p>
-                          <div className="flex items-center gap-2 font-semibold text-emerald-400 text-xs">
+                          <div
+                            className={cn(
+                              "flex items-center gap-2 font-semibold text-xs",
+                              colorStyles.emerald.text,
+                            )}
+                          >
                             <IconCircleCheck className="h-3 w-3" /> VERIFIED:
                             Age ≥ 18
                           </div>
@@ -236,15 +366,325 @@ export function TechnicalDeepDive() {
                   </div>
                 </TabsContent>
 
+                {/* Passkeys Tab */}
+                <TabsContent value="passkeys" className="mt-0">
+                  <div className="grid items-center gap-12 md:grid-cols-2">
+                    <div className="space-y-6">
+                      <div>
+                        <h3 className="mb-2 font-bold text-2xl">
+                          Passkey Architecture
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Authentication + key custody in one tap.
+                        </p>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconFingerprint
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.amber.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Biometric Authentication
+                            </h4>
+                          </div>
+                          <p className="text-muted-foreground text-sm">
+                            Face ID, Touch ID, or Windows Hello. No passwords to
+                            remember or steal.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconKey
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.amber.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Key Derivation
+                            </h4>
+                          </div>
+                          <p className="text-muted-foreground text-sm">
+                            Your passkey derives encryption keys that unlock
+                            your vault. Server never sees these keys.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconLock
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.amber.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Encrypted Vault
+                            </h4>
+                          </div>
+                          <p className="text-muted-foreground text-sm">
+                            Your profile and FHE keys are wrapped. Only your
+                            passkey can unwrap them—locally.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconDeviceDesktop
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.amber.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Multi-Device Sync
+                            </h4>
+                          </div>
+                          <p className="text-muted-foreground text-sm">
+                            Add passkeys from multiple devices. Each wraps the
+                            same secrets independently.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Passkey Flow Diagram */}
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                      {/* Device Box */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Your Device
+                          </div>
+                          <IconFingerprint
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.amber.iconText,
+                            )}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Biometric unlocks encryption key
+                        </div>
+                      </div>
+
+                      {/* Connection */}
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
+
+                      {/* Server Box */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Server
+                          </div>
+                          <IconServer className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Stores encrypted blobs only
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-2 flex items-center gap-2 text-xs",
+                            colorStyles.red.iconText,
+                          )}
+                        >
+                          <IconShieldCheck className="h-3 w-3" />
+                          Cannot decrypt without passkey
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                {/* FHE Tab */}
+                <TabsContent value="fhe" className="mt-0">
+                  <div className="grid items-center gap-12 md:grid-cols-2">
+                    <div className="space-y-6">
+                      <div>
+                        <h3 className="mb-2 font-bold text-2xl">
+                          Fully Homomorphic Encryption
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Compute on encrypted data—without decrypting.
+                        </p>
+                      </div>
+
+                      <p className="text-muted-foreground text-sm">
+                        The server runs compliance checks on your encrypted
+                        values—age thresholds, nationality allowlists—without
+                        ever decrypting them. Only you see the actual data.
+                      </p>
+
+                      <div className="space-y-4">
+                        <h4 className="font-semibold text-foreground text-sm">
+                          What Gets Encrypted
+                        </h4>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                            <div className="flex items-center gap-2">
+                              <IconLock
+                                className={cn(
+                                  "h-3.5 w-3.5",
+                                  colorStyles.blue.iconText,
+                                )}
+                              />
+                              <span className="font-medium text-foreground text-sm">
+                                Birth Year Offset
+                              </span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground text-xs">
+                              For age threshold checks
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                            <div className="flex items-center gap-2">
+                              <IconLock
+                                className={cn(
+                                  "h-3.5 w-3.5",
+                                  colorStyles.blue.iconText,
+                                )}
+                              />
+                              <span className="font-medium text-foreground text-sm">
+                                Country Code
+                              </span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground text-xs">
+                              For nationality allowlists
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                            <div className="flex items-center gap-2">
+                              <IconLock
+                                className={cn(
+                                  "h-3.5 w-3.5",
+                                  colorStyles.blue.iconText,
+                                )}
+                              />
+                              <span className="font-medium text-foreground text-sm">
+                                Compliance Level
+                              </span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground text-xs">
+                              For policy gating
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                            <div className="flex items-center gap-2">
+                              <IconLock
+                                className={cn(
+                                  "h-3.5 w-3.5",
+                                  colorStyles.blue.iconText,
+                                )}
+                              />
+                              <span className="font-medium text-foreground text-sm">
+                                Liveness Score
+                              </span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground text-xs">
+                              For anti-spoofing
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* FHE Flow Diagram */}
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                      {/* Browser Box - Encrypt */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Your Browser
+                          </div>
+                          <IconDeviceDesktop
+                            className={cn("h-4 w-4", colorStyles.blue.iconText)}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Generates keys & encrypts data
+                        </div>
+                      </div>
+
+                      {/* Connection */}
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
+
+                      {/* FHE Service */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            FHE Service
+                          </div>
+                          <IconServer
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.orange.iconText,
+                            )}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Computes without decrypting
+                        </div>
+                      </div>
+
+                      {/* Connection */}
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
+
+                      {/* Browser Box - Decrypt */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Your Browser
+                          </div>
+                          <IconDeviceDesktop
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.emerald.iconText,
+                            )}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Decrypts result with your key
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-2 flex items-center gap-2 text-xs",
+                            colorStyles.emerald.text,
+                          )}
+                        >
+                          <IconCircleCheck className="h-3 w-3" />
+                          Only you see the answer
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
                 {/* ZK Circuits Tab */}
                 <TabsContent value="circuits" className="mt-0">
-                  <div className="grid gap-12 md:grid-cols-2">
+                  <div className="grid items-center gap-12 md:grid-cols-2">
                     <div>
                       <h3 className="mb-6 font-bold text-2xl">Noir Circuits</h3>
                       <ul className="space-y-4">
-                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                        <li className="rounded-xl border border-border bg-card/50 p-4">
                           <div className="mb-2 flex items-center gap-3">
-                            <IconFileCode className="h-5 w-5 text-purple-400" />
+                            <IconFileCode
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.purple.iconText,
+                              )}
+                            />
                             <h4 className="font-semibold text-foreground">
                               age_verification.nr
                             </h4>
@@ -254,9 +694,14 @@ export function TechnicalDeepDive() {
                             birth date.
                           </p>
                         </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                        <li className="rounded-xl border border-border bg-card/50 p-4">
                           <div className="mb-2 flex items-center gap-3">
-                            <IconFileCode className="h-5 w-5 text-purple-400" />
+                            <IconFileCode
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.purple.iconText,
+                              )}
+                            />
                             <h4 className="font-semibold text-foreground">
                               doc_validity.nr
                             </h4>
@@ -265,9 +710,14 @@ export function TechnicalDeepDive() {
                             Proves document expiration is valid.
                           </p>
                         </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                        <li className="rounded-xl border border-border bg-card/50 p-4">
                           <div className="mb-2 flex items-center gap-3">
-                            <IconFileCode className="h-5 w-5 text-purple-400" />
+                            <IconFileCode
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.purple.iconText,
+                              )}
+                            />
                             <h4 className="font-semibold text-foreground">
                               face_match.nr
                             </h4>
@@ -277,9 +727,14 @@ export function TechnicalDeepDive() {
                             biometrics.
                           </p>
                         </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-card">
+                        <li className="rounded-xl border border-border bg-card/50 p-4">
                           <div className="mb-2 flex items-center gap-3">
-                            <IconFileCode className="h-5 w-5 text-purple-400" />
+                            <IconFileCode
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.purple.iconText,
+                              )}
+                            />
                             <h4 className="font-semibold text-foreground">
                               nationality_membership.nr
                             </h4>

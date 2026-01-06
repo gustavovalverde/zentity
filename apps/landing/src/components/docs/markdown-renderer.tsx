@@ -26,8 +26,21 @@ function transformHref(href: string | undefined): {
 
   // Markdown file links (e.g., "zk-architecture.md" or "../README.md")
   if (href.endsWith(".md")) {
-    // Handle relative paths like "../README.md" - link to GitHub
-    if (href.includes("..")) {
+    let normalized = href;
+
+    // Normalize "./" and "../" prefixes to resolve against docs root
+    normalized = normalized.replace(/^\.\/+/, "");
+    while (normalized.startsWith("../")) {
+      normalized = normalized.slice(3);
+    }
+
+    // Strip leading "docs/" when linking from README or other files
+    if (normalized.startsWith("docs/")) {
+      normalized = normalized.slice(5);
+    }
+
+    // Special-case root README
+    if (normalized.toLowerCase() === "readme.md") {
       return {
         href: "https://github.com/gustavovalverde/zentity/blob/main/README.md",
         isInternal: false,
@@ -36,7 +49,7 @@ function transformHref(href: string | undefined): {
     }
 
     // Transform "filename.md" to "/docs/filename"
-    const slug = href.replace(/\.md$/, "");
+    const slug = normalized.replace(/\.md$/, "");
     const availableSlugs = getAllDocSlugs();
 
     // Only link if the doc exists in our system
@@ -46,7 +59,7 @@ function transformHref(href: string | undefined): {
 
     // Doc doesn't exist - link to GitHub docs folder
     return {
-      href: `https://github.com/gustavovalverde/zentity/blob/main/docs/${href}`,
+      href: `https://github.com/gustavovalverde/zentity/blob/main/docs/${normalized}`,
       isInternal: false,
       isExternal: true,
     };

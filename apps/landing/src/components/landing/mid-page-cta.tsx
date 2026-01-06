@@ -14,16 +14,22 @@ export function MidPageCTA() {
             Experience the full verification flow in under 60 seconds.
           </p>
           <div className="mt-6">
-            <a
-              href="https://app.zentity.xyz/sign-up?fresh=1"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              size="lg"
+              className="px-8"
+              render={
+                /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+                <a
+                  href="https://app.zentity.xyz/sign-up?fresh=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Try Live Demo"
+                />
+              }
             >
-              <Button size="lg" className="px-8">
-                <IconPlayerPlay className="mr-2 size-5" />
-                Try Live Demo
-              </Button>
-            </a>
+              <IconPlayerPlay className="mr-2 size-5" />
+              Try Live Demo
+            </Button>
           </div>
         </div>
       </div>

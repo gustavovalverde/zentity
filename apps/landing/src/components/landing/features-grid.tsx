@@ -1,3 +1,5 @@
+import type { SemanticColor } from "@/lib/colors";
+
 import {
   IconCalendar,
   IconFileText,
@@ -9,58 +11,18 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 
-import { cn } from "@/lib/utils";
-
-const colorStyles = {
-  purple: {
-    bg: "bg-purple-500/10",
-    border: "border-purple-500/20",
-    text: "text-purple-400",
-  },
-  blue: {
-    bg: "bg-blue-500/10",
-    border: "border-blue-500/20",
-    text: "text-blue-400",
-  },
-  orange: {
-    bg: "bg-orange-500/10",
-    border: "border-orange-500/20",
-    text: "text-orange-400",
-  },
-  pink: {
-    bg: "bg-pink-500/10",
-    border: "border-pink-500/20",
-    text: "text-pink-400",
-  },
-  emerald: {
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/20",
-    text: "text-emerald-400",
-  },
-  yellow: {
-    bg: "bg-yellow-500/10",
-    border: "border-yellow-500/20",
-    text: "text-yellow-400",
-  },
-  red: {
-    bg: "bg-red-500/10",
-    border: "border-red-500/20",
-    text: "text-red-400",
-  },
-};
-
-type ColorKey = keyof typeof colorStyles;
+import { ColoredIconBox } from "@/components/ui/colored-icon-box";
 
 interface Feature {
   icon: React.ComponentType<{ className?: string }>;
-  color: ColorKey;
+  color: SemanticColor;
   title: string;
   description: string;
 }
 
 interface Category {
   title: string;
-  color: ColorKey;
+  color: SemanticColor;
   features: Feature[];
 }
 
@@ -99,7 +61,7 @@ const categories: Category[] = [
         color: "blue",
         title: "Encrypted Storage",
         description:
-          "Passkey-sealed profile + secrets. Only the user can decrypt.",
+          "Your passkey locks your vault. Server stores encrypted blobs it can't read.",
       },
       {
         icon: IconUserCheck,
@@ -109,7 +71,7 @@ const categories: Category[] = [
       },
       {
         icon: IconWorld,
-        color: "emerald",
+        color: "purple",
         title: "Nationality Proofs",
         description: "Prove EU membership without revealing your country.",
       },
@@ -142,33 +104,27 @@ function CategoryColumn({ category }: { category: Category }) {
         {category.title}
       </h3>
       <div className="space-y-3">
-        {category.features.map((feature) => {
-          const featureStyles = colorStyles[feature.color];
-          return (
-            <div
-              key={feature.title}
-              className="rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50"
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
-                    featureStyles.bg,
-                    featureStyles.border,
-                  )}
-                >
-                  <feature.icon className={cn("size-4", featureStyles.text)} />
-                </div>
-                <div>
-                  <h4 className="font-medium">{feature.title}</h4>
-                  <p className="mt-0.5 text-muted-foreground text-sm">
-                    {feature.description}
-                  </p>
-                </div>
+        {category.features.map((feature) => (
+          <div
+            key={feature.title}
+            className="rounded-lg border border-border bg-card p-4"
+          >
+            <div className="flex items-start gap-3">
+              <ColoredIconBox
+                icon={feature.icon}
+                color={feature.color}
+                size="sm"
+                className="h-9 w-9"
+              />
+              <div>
+                <h4 className="font-medium">{feature.title}</h4>
+                <p className="mt-0.5 text-muted-foreground text-sm">
+                  {feature.description}
+                </p>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );

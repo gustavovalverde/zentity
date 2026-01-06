@@ -2,12 +2,14 @@ import {
   IconBrandGithub,
   IconExternalLink,
   IconFileCheck,
+  IconKey,
   IconLock,
   IconShield,
 } from "@tabler/icons-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ColoredIconBox } from "@/components/ui/colored-icon-box";
 
 export function Hero() {
   return (
@@ -22,7 +24,13 @@ export function Hero() {
           variant="outline"
           className="mb-6 border-border bg-background/50 px-4 py-1.5 text-sm backdrop-blur-sm"
         >
-          <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-green-500" />
+          <span className="mr-2 inline-flex items-center">
+            <span
+              className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-500"
+              aria-hidden="true"
+            />
+            <span className="sr-only">Status: Active</span>
+          </span>
           Open Source Alpha
         </Badge>
 
@@ -32,86 +40,97 @@ export function Hero() {
           Reveal nothing.
         </h1>
 
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-8 sm:text-xl">
-          Privacy-first identity verification for banks, exchanges, and
-          Web3—prove age, nationality, and liveness without exposing or storing
-          plaintext personal data.
+        <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-7 sm:text-xl">
+          Privacy-first KYC and onboarding layer that plugs into existing auth.
+          Prove age, nationality, and liveness without storing plaintext PII.
         </p>
 
-        <p className="mt-4 text-muted-foreground text-sm">
-          Passkey-sealed profiles + zero-knowledge proofs + homomorphic
-          encryption. 100% open source.
-        </p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-muted-foreground text-xs">
+          <span>
+            <span className="font-medium text-foreground">Compliance</span> —
+            minimize PII exposure
+          </span>
+          <span>
+            <span className="font-medium text-foreground">Product</span> —
+            drop-in verification
+          </span>
+          <span>
+            <span className="font-medium text-foreground">Engineering</span> —
+            open source stack
+          </span>
+        </div>
 
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-          <a
-            href="https://app.zentity.xyz/sign-up?fresh=1"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Button
+            size="lg"
+            className="w-full px-8 text-base sm:w-auto"
+            render={
+              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+              <a
+                href="https://app.zentity.xyz/sign-up?fresh=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Try Live Demo"
+              />
+            }
           >
-            <Button size="lg" className="w-full px-8 text-base sm:w-auto">
-              Try Live Demo
-            </Button>
-          </a>
-          <a
-            href="https://github.com/gustavovalverde/zentity"
-            target="_blank"
-            rel="noopener noreferrer"
+            Try Live Demo
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full px-8 text-base sm:w-auto"
+            render={
+              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+              <a
+                href="https://github.com/gustavovalverde/zentity"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View on GitHub"
+              />
+            }
           >
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full px-8 text-base sm:w-auto"
-            >
-              <IconBrandGithub className="mr-2 size-5" />
-              View on GitHub
-            </Button>
-          </a>
-          <a
-            href="https://github.com/gustavovalverde/zentity/tree/main/docs"
-            target="_blank"
-            rel="noopener noreferrer"
+            <IconBrandGithub className="mr-2 size-5" />
+            View on GitHub
+          </Button>
+          <Button
+            variant="ghost"
+            size="lg"
+            className="w-full text-base sm:w-auto"
+            render={
+              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
+              <a href="/docs" aria-label="Read documentation" />
+            }
           >
-            <Button
-              variant="ghost"
-              size="lg"
-              className="w-full text-base sm:w-auto"
-            >
-              Read Docs
-              <IconExternalLink className="ml-2 size-4" />
-            </Button>
-          </a>
+            Read Docs
+            <IconExternalLink className="ml-2 size-4" />
+          </Button>
         </div>
 
         {/* Trust Signal */}
         <div className="mt-16 flex flex-col items-center gap-4">
-          <p className="text-muted-foreground text-sm">
-            Built with privacy-preserving cryptography
-          </p>
           <div className="flex flex-wrap justify-center gap-6">
             <div className="flex items-center gap-2 text-sm">
-              <div className="rounded-md border border-purple-500/20 bg-purple-500/10 p-1.5">
-                <IconShield className="size-4 text-purple-400" />
-              </div>
+              <ColoredIconBox icon={IconShield} color="purple" size="sm" />
               <span className="text-muted-foreground">
                 Zero-Knowledge Proofs
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <div className="rounded-md border border-blue-500/20 bg-blue-500/10 p-1.5">
-                <IconLock className="size-4 text-blue-400" />
-              </div>
+              <ColoredIconBox icon={IconLock} color="blue" size="sm" />
               <span className="text-muted-foreground">
-                Homomorphic Encryption
+                Fully Homomorphic Encryption
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-1.5">
-                <IconFileCheck className="size-4 text-emerald-400" />
-              </div>
+              <ColoredIconBox icon={IconFileCheck} color="emerald" size="sm" />
               <span className="text-muted-foreground">
                 Cryptographic Commitments
               </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <ColoredIconBox icon={IconKey} color="amber" size="sm" />
+              <span className="text-muted-foreground">Passkey Vaults</span>
             </div>
           </div>
         </div>

@@ -5,13 +5,13 @@ import {
   CTASection,
   FeaturesGrid,
   Footer,
+  FourPillars,
   Hero,
   MidPageCTA,
   Nav,
   PocDisclaimer,
   ProblemSolution,
   TechnicalDeepDive,
-  ThreePillars,
   UseCases,
 } from "@/components/landing";
 import {
@@ -35,7 +35,7 @@ function LandingPage() {
         <main>
           <Hero />
           <ProblemSolution />
-          <ThreePillars />
+          <FourPillars />
           <UseCases />
           <MidPageCTA />
           <FeaturesGrid />
