@@ -13,6 +13,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  RUST_TOOLCHAIN: "1.92.0"
+
 jobs:
   # ============================================
   # Pre-commit (runs all hooks with caching)
@@ -30,7 +33,7 @@ jobs:
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
       - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # master
         with:
-          toolchain: "1.85.0"
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
       - name: Install bun dependencies (web)
         run: bun install --frozen-lockfile
@@ -78,6 +81,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+      - run: bun install --frozen-lockfile
+        working-directory: apps/web
       - run: bun install --frozen-lockfile
         working-directory: apps/landing
       - run: bun run lint:check
@@ -167,7 +172,7 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # master
         with:
-          toolchain: "1.85.0"
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
       - run: cargo fmt --manifest-path apps/fhe/Cargo.toml -- --check
       - run: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
@@ -182,7 +187,7 @@ jobs:
       # Set up Rust toolchain with caching
       - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
         with:
-          toolchain: "1.85.0"
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       # cargo-deny for banned crates and source restrictions
       - uses: EmbarkStudios/cargo-deny-action@76cd80eb775d7bbbd2d80292136d74d39e1b4918 # v2.0.14
         with:
