@@ -1,10 +1,8 @@
-# System Architecture & Data Flow (PoC)
+# System Architecture & Data Flow
 
-> **Related docs:** [ZK Architecture](zk-architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md) | [Web3 Architecture](web3-architecture.md) | [README](../README.md)
+This document describes **how Zentity's services connect**, **how data flows through the system**, and **what is (and isn't) persisted**. It stays high-level and points to deeper docs for cryptography, privacy boundaries, and integrity controls.
 
-This document describes **how Zentity's services connect**, **how data flows through the system**, and **what is (and isn't) persisted**.
-
-## Scope & Non‑Goals
+## Scope & Non-Goals
 
 This is a **PoC**. Breaking changes are expected.
 
@@ -18,13 +16,18 @@ Non-goals (current state):
 
 ## Architecture
 
-### Components
+### Components and Key Technologies
 
-| Service | Stack | Role |
-|---------|-------|------|
-| `apps/web` | Next.js 16, React 19 | UI, ZK proving (Web Worker), API routes, SQLite (libSQL/Turso), server-side proof verification via Node bb-worker |
-| `apps/ocr` | Python, FastAPI | OCR + document parsing (no image persistence) |
-| `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | Homomorphic encryption operations (binary transport) |
+| Area | Technologies | Responsibility / Notes |
+|---|---|---|
+| Web UI + API | Next.js 16 (App Router), React 19, Bun, tRPC | Primary UI and orchestration layer with type-safe API routes. |
+| ZK proofs | Noir, bb.js (Barretenberg), UltraHonk | Client-side proving in Web Workers; server-side verification. |
+| Liveness + face match | Human.js + tfjs-node | Multi-gesture liveness and face match; real-time guidance on client, verification on server. |
+| OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
+| FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
+| Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
+| Auth + key custody | WebAuthn + PRF | Passkey-based authentication and key derivation for sealing secrets. |
+| Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
 ### System Diagram
 
@@ -32,13 +35,13 @@ Non-goals (current state):
 flowchart LR
   subgraph B["User Browser"]
     UI["Web UI"]
-    W["Web Worker<br/>Noir Prover"]
+    W["Web Worker\nZK Prover"]
     UI <--> W
   end
 
   subgraph WEB["Next.js Server :3000"]
     API[/"API Routes"/]
-    BB["Node bb-worker<br/>UltraHonkVerifierBackend"]
+    BB["ZK Verifier\n(bb-worker)"]
     DB[("SQLite")]
     API <--> BB
   end
@@ -46,262 +49,112 @@ flowchart LR
   OCR["OCR Service :5004"]
   FHE["FHE Service :5001"]
 
-  UI -->|doc + selfie| API
-  API -->|image| OCR
-  OCR -->|extracted fields| API
-  API -->|results| UI
+  UI -->|"doc + selfie"| API
+  API -->|"image"| OCR
+  OCR -->|"extracted fields"| API
+  API -->|"results"| UI
 
-  UI -->|request nonce| API
-  API -->|persist nonce| DB
-  UI -->|birthYear + nonce| W
-  W -->|proof| UI
-  UI -->|submit proof| API
-  API -->|verify UltraHonk| BB
-  BB -->|result| API
-  API -->|consume nonce| DB
+  UI -->|"request nonce"| API
+  API -->|"persist nonce"| DB
+  UI -->|"private inputs"| W
+  W -->|"proof"| UI
+  UI -->|"submit proof"| API
+  API -->|"verify"| BB
+  BB -->|"result"| API
+  API -->|"consume nonce"| DB
 
-  API -->|encrypt| FHE
-  FHE -->|ciphertext| API
+  API -->|"encrypt"| FHE
+  FHE -->|"ciphertext"| API
 ```
 
 ---
 
-## Observability (2025+)
+## Cryptographic Pillars
 
-- **Distributed tracing** via OpenTelemetry OTLP across Web, FHE, and OCR services
-- **Onboarding spans** capture step transitions, async finalization timing, and duplicate work signals
-- **Payload sizing** attributes on FHE/OCR calls highlight large transfers (e.g., server key uploads)
-- **Privacy-safe** telemetry: hashed identifiers only, no PII in span attributes
+Zentity combines **passkeys (auth + PRF key custody)**, **zero-knowledge proofs**, **FHE**, and **commitments** to minimize plaintext data handling. This document focuses on flow and system boundaries. For cryptographic details, see:
 
-Enable with `OTEL_ENABLED=true` and `OTEL_EXPORTER_OTLP_ENDPOINT` (collector recommended).
-
----
-
-## Cryptographic Techniques
-
-Zentity uses three complementary techniques:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    ZERO-KNOWLEDGE PROOFS                        │
-│         Prove claims without revealing underlying data          │
-│    "I am over 18" • "I am EU citizen" • "Document not expired"  │
-├─────────────────────────────────────────────────────────────────┤
-│              FULLY HOMOMORPHIC ENCRYPTION (FHE)                 │
-│           Perform computations on encrypted data                │
-│  Birth year offset • Country code • Compliance level • Liveness │
-├─────────────────────────────────────────────────────────────────┤
-│               CRYPTOGRAPHIC COMMITMENTS                         │
-│           One-way hashes for identity verification              │
-│              Name commitment (expandable to more fields)         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Why Three Techniques?
-
-| Problem | Solution | How It Works |
-|---------|----------|--------------|
-| "Verify my name without storing it" | **Commitment** | SHA256(name + salt); verify by recomputing |
-| "Check if I'm over 18 without seeing my DOB" | **FHE** | Encrypted birth year offset compared homomorphically |
-| "Prove I'm EU citizen without revealing country" | **ZK Proof** | Merkle tree membership proof |
-| "Delete my data for GDPR" | **Passkey-sealed profile** | Delete the encrypted profile secret (and account) → server has no plaintext PII to recover |
-
-### Commitments
-
-A commitment is a one-way hash that binds you to a value without revealing it.
-
-1. During verification: `commitment = SHA256("John Doe" + user_salt)`
-2. Commitment stored in database (hash only)
-3. `user_salt` is stored **client-side** in the passkey-sealed profile (`profile_v1`)
-4. Later verification: Client supplies claimed name + salt → server recomputes commitment
-5. Match = verified. Server never stores name or salt.
-
-**Privacy note:** Deleting the passkey-sealed profile breaks future name verification; commitments remain non-reversible.
-
-### FHE
-
-FHE allows computations on encrypted data without decryption.
-
-1. Encrypt: `encrypted_birth_year_offset = FHE.encrypt(90)` (years since 1900)
-2. Compute: `is_adult = encrypted_birth_year_offset <= (current_year - 1900 - 18)`
-3. Decrypt result only: `true`
-4. Server never sees the full birth date
-
-**Library:** [TFHE-rs](https://github.com/zama-ai/tfhe-rs) (Rust)
-
-**Transport:** The FHE service uses MessagePack + gzip compression for all POST endpoints. Keys are persisted in ReDB.
-
-### Passkey-Wrapped Client Key Ownership
-
-The FHE architecture uses passkey-wrapped client-side key ownership for user-controlled privacy and multi-device access:
-
-| Aspect | Implementation |
-|--------|----------------|
-| Key generation | Browser (TFHE-rs WASM via `tfhe-browser.ts`) |
-| Key storage | SQLite stores encrypted secrets + passkey wrappers (no plaintext keys) |
-| Key protection | PRF-derived KEK wraps a random DEK (WebAuthn PRF + HKDF + AES-GCM) |
-| Who can decrypt | Only user (passkey presence + PRF unlocks DEK) |
-| Server receives | Encrypted key blob + wrappers; registers public + server keys with FHE service (key_id) |
-
-**Privacy guarantee:** The server can compute on encrypted data (via the FHE service) but cannot decrypt results—only the user can. Plaintext client keys exist only in memory during an active session.
-
-**Planned enhancements**:
-
-- Passkey rotation UX (add/remove passkeys, revoke wrappers)
-- Optional recovery key escrow for enterprise deployments (opt-in only)
-- See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for roadmap details.
+- [Cryptographic Pillars](cryptographic-pillars.md)
+- [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
+- [ZK Architecture](zk-architecture.md)
+- [Web3 Architecture](web3-architecture.md)
 
 ---
 
-## Data Model
+## Data Handling
 
-### What We Store
+We persist **only the minimum** required for verification and auditability:
 
-| Data | Form | Purpose |
-|------|------|---------|
-| Account email | Plaintext | Authentication + recovery |
-| Document metadata (type, issuer country, document hash) | Plaintext | UX + dedup context |
-| Commitments (name) | Salted SHA256 | Dedup + integrity checks |
-| ZK proof payloads + public inputs | Proof bytes | Disclosure + verification |
-| ZK proof metadata (noir/bb versions, verification key hashes) | Strings | Provenance + verifier binding |
-| Evidence pack (policy_hash, proof_set_hash) | Hashes | Audit trail |
-| Signed claims (OCR, liveness, face match) | Signed hashes + metadata (no raw PII fields) | Tamper-resistant measurements |
-| FHE ciphertexts (birth_year_offset, country_code, compliance_level, liveness_score) | TFHE ciphertext (binary blob) | Policy checks without decrypting |
-| Passkey-sealed profile (`profile_v1`) | Encrypted blob | UX + resume + consented disclosure (client decrypt only) |
-| Encrypted secrets + wrappers (`fhe_keys`) | AES-GCM + PRF-wrapped DEK | Passkey-protected FHE key storage |
+- Commitments and hashes for integrity and deduplication
+- Encrypted attributes (FHE ciphertexts)
+- Proof payloads + public inputs
+- Passkey-sealed profile (encrypted blob; client-decrypt only)
+- Verification status + non-sensitive metadata
 
-### What We NEVER Store
-
-| Data | Handling |
-|------|----------|
-| Document images | Request body only → discarded |
-| Selfie images | Request body only → discarded |
-| Face embeddings | Memory only → discarded |
-| Plaintext DOB (YYYYMMDD) | Stored only in passkey-sealed profile (encrypted) |
-| User salt | Stored only in passkey-sealed profile (client-controlled) |
-| Plaintext name | Stored only in passkey-sealed profile (encrypted) |
-| Plaintext nationality | Stored only in passkey-sealed profile (encrypted) |
-| Document number | Stored only in passkey-sealed profile (encrypted) |
-| Plaintext client FHE keys | Decrypted only in memory; encrypted at rest with passkey PRF |
-
-**Key guarantee:** Application-level persistence never includes plaintext PII or biometric data.
-
-### Consent-Based Disclosure (Portable KYC)
-
-Zentity supports **on-demand disclosure** for banks, exchanges, and regulated RPs:
-
-- The server stores **only encrypted profile data** (`profile_v1`) and signed claims.
-- When a relying party requests disclosure, the **user must authorize with a passkey**.
-- The client decrypts the profile locally and **re-encrypts it to the RP** (OIDC/OAuth-style consent).
-- Zentity can provide **auditable artifacts** (signed claims + evidence pack) without ever seeing plaintext PII.
-
-This keeps the platform useful for compliance while preserving a strict privacy boundary.
-
-### State Durability & Shared Devices
-
-Onboarding uses **cookies + local storage** for short‑lived progress and OCR previews. These can be deleted by:
-
-- Clearing browser data
-- Using shared devices or private windows
-- Aggressive privacy settings
-
-If that happens, the user may need to **restart onboarding**. The only durable, user‑controlled source of profile data is the **passkey‑sealed profile**. This tradeoff is intentional: we favor privacy over server‑side caching of PII.
-
-### Privacy Guarantees
-
-1. **Transient image processing** — Images exist only in request bodies; discarded after verification
-2. **One-way commitments** — SHA256 + user salt (kept client-side); cannot derive original values
-3. **FHE for sensitive numerics** — Server computes on ciphertext without decryption
-4. **Claim-hash binding** — Proofs are tied to server-signed claims + document hashes
-5. **Client-side ZK proving** — Birth year and nationality are not persisted; only proofs are stored
-6. **User-controlled erasure** — Delete the passkey-sealed profile (and account) → server retains no decryptable PII
-7. **No biometric storage** — Face embeddings computed transiently, never persisted
+We **never store** raw document images, selfies, plaintext PII, or biometric templates. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
 
 ---
 
-## Two-Tier Architecture
+## Regulated vs Non-Regulated Usage
 
-### Tier 1: Non-Regulated (Age-Gated Services)
+Zentity supports two usage modes that share the same core cryptography but differ in what is disclosed.
 
-```text
-User → Zentity: "Verify me"
-Zentity → User: age proof + liveness result
-User → Retailer: "Here's my proof"
-Retailer: verify(proof) → true/false
+**Non-regulated (age-gated / consumer apps)**
 
-No PII shared. Relying party only learns "over 18" + liveness passed.
-```
+- The relying party receives **proofs only** (e.g., "over 18", "document valid").
+- No PII is shared. Verification is local to the relying party.
 
-### Tier 2: Regulated Entities (Banks, Exchanges)
+**Regulated (banks / exchanges)**
 
-```text
-User → Zentity: Complete verification
-User → Exchange: "I want to onboard"
-Exchange → Zentity: Request PII disclosure
-Zentity → Exchange: Encrypted package (RSA-OAEP + AES-GCM) + public proofs
-  - Name, DOB, Nationality, Document number (E2E encrypted)
-  - ZK proofs (age/doc validity/nationality/face match)
-  - Signed claims (liveness + face match)
-  - Evidence pack (policy_hash + proof_set_hash)
-
-Exchange stores: PII (regulatory requirement)
-Zentity stores: Cryptographic artifacts only
-Biometrics: NEVER stored by either party
-```
+- The user authorizes disclosure with a passkey.
+- The client decrypts the sealed profile and **re-encrypts to the relying party**.
+- The relying party receives **PII + proofs + evidence pack** as required by regulation.
+- Zentity retains **cryptographic artifacts only**, not plaintext PII.
 
 ---
 
 ## Data Flows
 
-### Onboarding (happy path)
+### Onboarding
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant U as User (Browser)
   participant UI as Web UI
-  participant W as Web Worker (Noir Prover)
-  participant API as Web API (tRPC)
+  participant W as Web Worker (ZK Prover)
+  participant API as Web API
   participant OCR as OCR Service
   participant DB as SQLite
   participant FHE as FHE Service
 
   U->>UI: Upload ID
-  UI->>API: tRPC identity.prepareDocument
-  API->>OCR: OCR + parse doc (transient)
-  OCR-->>API: extracted fields + commitment inputs
-  API->>DB: UPSERT identity_verification_drafts (OCR + commitments)
-  API-->>UI: document verified + draftId
+  UI->>API: Submit document
+  API->>OCR: OCR + parse (transient)
+  OCR-->>API: Extracted fields
+  API->>DB: Store draft + commitments
+  API-->>UI: Document verified
 
-  U->>UI: Complete liveness + selfie
-  UI->>API: tRPC identity.prepareLiveness
-  API->>DB: UPDATE identity_verification_drafts (liveness + face match)
-  API-->>UI: liveness + face match flags
+  U->>UI: Complete liveness
+  UI->>API: Submit liveness data
+  API->>DB: Store liveness + face match result
+  API-->>UI: Liveness confirmed
 
-  UI->>API: tRPC identity.finalizeAsync (draftId + fheKeyId + FHE inputs)
-  API->>DB: INSERT identity_verification_jobs (queued)
-  API->>FHE: encrypt birth_year_offset / country_code / liveness
-  FHE-->>API: ciphertexts
-  API->>DB: INSERT identity_documents + encrypted_attributes + signed_claims
-  UI->>API: tRPC identity.finalizeStatus (poll)
-  API-->>UI: verified + documentId
+  UI->>API: Finalize verification
+  API->>FHE: Encrypt sensitive attributes
+  FHE-->>API: Ciphertexts
+  API->>DB: Persist encrypted attrs + claims + evidence
+  API-->>UI: Verified
 
-  Note over UI: ZK proofs bound to claim_hash + document_hash
-  UI->>API: tRPC crypto.createChallenge (age_verification)
-  API->>DB: INSERT zk_challenges (nonce, ttl, user_id)
-  API-->>UI: nonce + expiresAt
-
-  UI->>W: generate proof (circuitType, inputs, nonce, claim_hash)
-  W-->>UI: proof + publicSignals
-
-  UI->>API: tRPC crypto.storeProof (circuitType, proof, publicSignals, documentId)
-  API->>API: Verify proof (UltraHonk)
-  API->>DB: Consume nonce (one-time)
-  API->>DB: INSERT zk_proofs + attestation_evidence
-  API-->>UI: success + proofId
+  UI->>API: Request ZK challenge
+  API->>DB: Store nonce
+  UI->>W: Generate proof
+  W-->>UI: Proof + public inputs
+  UI->>API: Submit proof
+  API->>DB: Consume nonce + store proof
+  API-->>UI: Proof accepted
 ```
 
-### Disclosure (Relying Party)
+### Disclosure
 
 ```mermaid
 sequenceDiagram
@@ -312,92 +165,58 @@ sequenceDiagram
   participant RP as Relying Party
 
   UI->>UI: Decrypt passkey-sealed profile
-  UI->>UI: Encrypt to RP (RSA-OAEP + AES-GCM)
-  UI->>API: Request disclosure package (encrypted payload + consent scope)
+  UI->>UI: Re-encrypt to RP
+  UI->>API: Request disclosure bundle
   API->>DB: Read commitments / proofs / evidence
-  API-->>UI: Disclosure bundle (encrypted payload + proofs + evidence pack)
-  UI-->>RP: Send disclosure bundle
-  RP->>RP: Verify ZK proof(s)
-  RP-->>UI: Accept / reject
+  API-->>UI: Disclosure bundle
+  UI-->>RP: Send bundle
+  RP->>RP: Verify proofs
 ```
 
 ---
 
-## Web3 Layer (Optional)
+## OCR + Liveness
 
-For users who want on-chain identity attestation, Zentity supports FHEVM (Fully Homomorphic Encryption for EVM):
+**Document OCR**
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant User
-  participant UI as Zentity UI
-  participant API as Zentity API
-  participant BC as Blockchain (fhEVM)
+- The **OCR service** extracts fields (name, DOB, document number, country) and validates formats.
+- Images are processed **transiently** and never stored.
+- Only derived claims and commitments return to the web app.
 
-  Note over User,API: After Web2 verification is complete
-  User->>UI: Click "Register on Blockchain"
-  UI->>UI: Unlock passkey to read birthYearOffset
-  UI->>API: attestation.submit(networkId, walletAddress, birthYearOffset)
-  API->>API: Encrypt identity attributes (server-side relayer SDK)
-  API->>BC: attestIdentity(user, handles, proof)
-  BC-->>API: txHash
-  API-->>UI: Attestation pending
-  Note over BC: Identity stored as encrypted ciphertext handles
-```
+**Liveness + face match**
 
-**Key capabilities:**
+- The **client** runs Human.js for real-time detection and gesture guidance (smile, head turns).
+- The **server** re-verifies frames with Human.js (tfjs-node) and issues signed liveness/face-match claims.
+- This split keeps UX responsive while preserving server-side integrity.
 
-- Encrypted identity attributes stored in smart contracts (birth_year_offset, country_code, compliance_level)
-- Attestation metadata includes policy_hash + proof_set_hash for auditability
-- Compliance checks run on encrypted data—contracts never see plaintext
-- User controls access grants via ACL (`grantAccessTo()`)
-- Silent failure pattern prevents information leakage
-- Attestation transactions are submitted by a backend registrar wallet; users authorize by unlocking the passkey to supply birthYearOffset
-
-**tRPC router:** `trpc.attestation.*` (submit, refresh, networks)
-
-See [Web3 Architecture](web3-architecture.md) and [Web2 to Web3 Transition](web2-to-web3-transition.md) for complete details.
+For detailed liveness policy and integrity guarantees, see [Tamper Model](tamper-model.md) and [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
 
 ---
 
-## Storage Model (SQLite)
+## Web3 Layer
 
-SQLite is accessed via the libSQL client (Turso optional for hosted environments).
+Zentity can **attest verified identity on-chain** using fhEVM while keeping attributes encrypted. The server (registrar) encrypts identity attributes and submits attestation; users authorize access with explicit grants.
 
-Tables (via `better-auth` + custom):
-
-**Authentication (better-auth):**
-
-- `user`, `session`, `account`, `verification`, `passkey_credentials`
-
-**Identity verification (Web2):**
-
-- `identity_bundles` — User-level bundle metadata (status, policy version)
-- `identity_documents` — Per-document commitments + verification metadata
-- `identity_verification_drafts` — Precomputed OCR + liveness results (pre-account)
-- `identity_verification_jobs` — DB-backed async finalization queue
-- `zk_proofs` — Proof payloads + public signals + metadata
-- `encrypted_attributes` — TFHE ciphertexts + metadata
-- `signed_claims` — Server-signed scores + metadata (no raw PII fields)
-- `attestation_evidence` — Policy hash + proof set hash + consent receipt (audit trail)
-- `zk_challenges` — Server-issued one-time nonces
-- `encrypted_secrets` / `secret_wrappers` — Passkey-sealed secrets (`profile_v1`, `fhe_keys`)
-- `onboarding_sessions` — Short-lived wizard state (no PII; progress flags only)
-
-**Blockchain attestation (Web3):**
-
-- `blockchain_attestations` — Per-network attestation records (status, txHash, networkId, walletAddress)
-
-**Third-party integrations:**
-
-- `rp_authorization_codes` — OAuth-style RP flow
+See [Web3 Architecture](web3-architecture.md).
 
 ---
 
-## Notes for Cryptography Reviewers
+## State Durability & Shared Devices
 
-- Commitments are **per-attribute** (salted SHA256), not a single identity commitment.
-- ZK proofs are bound to server-signed claims + document hash, but not yet bound to cryptographic document signatures.
-- Challenge nonces are server-issued and one-time-use; they mitigate replay attacks.
-- Verification enforces public-input count derived from the circuit verification key; both SHA-256 and Poseidon2 vkey hashes are stored alongside proofs.
+Onboarding uses **cookies + local storage** for short-lived progress and previews. If that state is cleared (shared devices, private windows), the user may need to restart onboarding. The only durable, user-controlled source of profile data is the **passkey-sealed profile**.
+
+---
+
+## Observability
+
+- Distributed tracing via OpenTelemetry across Web, FHE, and OCR
+- Onboarding spans for step timing + duplicate-work signals
+- Privacy-safe telemetry (hashed IDs only; no PII)
+
+See [RFC: Observability](rfcs/0006-observability.md) for configuration details.
+
+---
+
+## Storage Model
+
+Database schema and table relationships are documented in [Attestation & Privacy Architecture](attestation-privacy-architecture.md) and the Drizzle schema under `apps/web/src/lib/db/schema/`.

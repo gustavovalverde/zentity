@@ -18,7 +18,7 @@ Every database is a breach waiting to happen. The model itself is broken.
 ---
 
 **Zentity** proves you can verify identity claims without storing plaintext underlying data.
-Built with zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
+Built with passkeys for authentication and key custody, zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
 
 </div>
 
@@ -59,7 +59,8 @@ Zentity is building a **privacy-first user management and KYC onboarding layer**
 
 ### What this project demonstrates
 
-- ZK proofs, FHE, commitments, Merkle trees, and passkeys with PRF can work together in a real flow.
+- Four cryptographic pillars—passkeys (auth + PRF key custody), ZK proofs, FHE, and commitments—work together in a real flow.
+- Merkle trees extend those pillars for private group membership proofs.
 - Privacy-preserving compliance can be practical without sacrificing usability.
 
 ### How the pieces connect
@@ -67,6 +68,7 @@ Zentity is building a **privacy-first user management and KYC onboarding layer**
 1. **Onboarding and KYC**:
    - Document capture and selfie/liveness flows run in the app.
    - OCR and liveness checks produce verified attributes and scores.
+   - Passkey registration creates the account and enables passwordless sign-in.
 2. **Encryption and storage**:
    - Sensitive attributes are encrypted before storage.
    - Passkey vaults use PRF-derived keys to seal profiles and wrap FHE keys.
@@ -83,21 +85,30 @@ Zentity is building a **privacy-first user management and KYC onboarding layer**
 |---|---|---|---|
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
-| Client-held secrets | Passkey vaults + PRF-derived keys | Keep decryption capability with the user, support multi-device, and avoid server-held secrets | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md) |
+| Passkey auth + key custody | Passkey vaults + PRF-derived keys | Passwordless authentication and user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md) |
 | Data integrity and dedup | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
 | KYC extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
 
-### Where to go next
+### Documentation map
 
-- **System map and data flow**: [docs/architecture.md](docs/architecture.md)
-- **Attestation and privacy boundaries**: [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)
-- **ZK circuits and proofs**: [docs/zk-architecture.md](docs/zk-architecture.md)
-- **FHE and on-chain flow**: [docs/web3-architecture.md](docs/web3-architecture.md)
-- **Threat model and integrity controls**: [docs/tamper-model.md](docs/tamper-model.md)
-- **Architectural Decision Records**: [docs/adr/README.md](docs/adr/README.md)
-- **Additional deep dives**: [docs/zk-nationality-proofs.md](docs/zk-nationality-proofs.md), [docs/web2-to-web3-transition.md](docs/web2-to-web3-transition.md), [docs/password-security.md](docs/password-security.md), [docs/rp-redirect-flow.md](docs/rp-redirect-flow.md), [docs/blockchain-setup.md](docs/blockchain-setup.md), [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md)
+**Start here (recommended order)**:
 
-If you are new, start with the **System Architecture** and then follow ADRs for the rationale behind each major decision.
+1. [docs/architecture.md](docs/architecture.md) - system map and data flow
+2. [docs/cryptographic-pillars.md](docs/cryptographic-pillars.md) - what we use and why
+3. [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md) - data classification and privacy boundaries
+4. [docs/tamper-model.md](docs/tamper-model.md) - integrity controls and threat model
+
+**Deep dives (pick what you need)**:
+
+- [docs/zk-architecture.md](docs/zk-architecture.md) - Noir circuits and proof system
+- [docs/zk-nationality-proofs.md](docs/zk-nationality-proofs.md) - Merkle membership proofs
+- [docs/web3-architecture.md](docs/web3-architecture.md) - Web2-to-Web3 transition and on-chain flow
+- [docs/blockchain-setup.md](docs/blockchain-setup.md) - fhEVM envs and deployment
+- [docs/rp-redirect-flow.md](docs/rp-redirect-flow.md) - RP integration flow
+- [docs/password-security.md](docs/password-security.md) - Argon2id settings
+- [docs/verification.md](docs/verification.md) - deployment verification
+- [docs/adr/README.md](docs/adr/README.md) - decision records
+- [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md) - API collection
 
 ## TL;DR run and test
 
@@ -221,7 +232,7 @@ The PoC stores a mix of auth data and cryptographic artifacts; it does **not** s
 
 **User-controlled privacy:** The passkey vault derives encryption keys using WebAuthn PRF. Those PRF-derived keys seal the profile and wrap FHE keys, so the server never holds a decryption secret. FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets with per-credential wrappers. The server registers only public + server keys (evaluation keys) for computation and cannot decrypt user data. Only the user can decrypt their own encrypted attributes after an explicit passkey unlock.
 
-Details: `docs/architecture.md` | `docs/attestation-privacy-architecture.md`
+Details: [docs/architecture.md](docs/architecture.md) | [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)
 
 ## Services and ports
 

@@ -1,7 +1,5 @@
 # ZK Nationality Membership Proofs
 
-> **Related docs:** [System Architecture](architecture.md) | [ZK Architecture](zk-architecture.md) | [README](../README.md)
-
 ## The Problem
 
 In traditional KYC/AML systems, when a service needs to verify that a user is from an EU country, they must:
@@ -87,11 +85,11 @@ If it matches → your country IS in the set (but verifier doesn't know which on
 
 ---
 
-## Implementation Notes (Zentity)
+## Implementation Notes
 
-- **Claim binding**: `claim_hash` is Poseidon2(`nationality_code`, `document_hash`) and must match the **server-signed OCR claim hash**. This prevents client tampering.
-- **Public input order**: `[merkle_root, nonce, claim_hash, is_member]` (see `apps/web/src/lib/zk/zk-circuit-spec.ts`).
-- **Merkle roots** are computed with Poseidon2 using Barretenberg and cached in the client worker for repeat proofs.
+- **Claim binding**: proofs are bound to a server‑signed claim hash to prevent client tampering.
+- **Public inputs**: include the Merkle root, nonce, and claim hash; see [ZK Architecture](zk-architecture.md) for the proof structure.
+- **Merkle roots** are computed with Poseidon2 and cached client‑side for repeat proofs.
 
 ## Why Poseidon Hash Instead of SHA256?
 
@@ -124,57 +122,7 @@ Poseidon hash was specifically designed for ZK circuits:
 
 ---
 
-## The Noir Circuit
-
-### File: `apps/web/noir-circuits/nationality_membership/src/main.nr`
-
-```noir
-use nodash::poseidon2;
-
-global TREE_DEPTH: u32 = 8;
-
-fn main(
-    nationality_code: Field,                    // Private: actual nationality code
-    document_hash: Field,                       // Private: document commitment
-    path_elements: [Field; TREE_DEPTH],         // Private: Merkle path siblings
-    path_indices: [u1; TREE_DEPTH],             // Private: path directions
-    merkle_root: pub Field,                     // Public: identifies the country group
-    nonce: pub Field,                           // Public: challenge nonce (replay resistance)
-    claim_hash: pub Field                       // Public: claim hash binding to OCR data
-) -> pub bool {
-    // Nonce is included as public input for replay resistance
-    let _ = nonce;
-
-    // Bind proof to signed OCR claim
-    let computed_hash = poseidon2([nationality_code, document_hash]);
-    assert(computed_hash == claim_hash, "Claim hash mismatch");
-
-    // Hash the nationality code to get the leaf
-    let leaf = poseidon2([nationality_code]);
-
-    // Compute the root by traversing up the tree
-    let mut current = leaf;
-
-    for i in 0..TREE_DEPTH {
-        let sibling = path_elements[i];
-
-        // Order the pair based on path index (0=current is left, 1=current is right)
-        let (left, right) = if path_indices[i] == 0 {
-            (current, sibling)
-        } else {
-            (sibling, current)
-        };
-
-        // Hash the pair to get parent
-        current = poseidon2([left, right]);
-    }
-
-    // Check if computed root matches expected root
-    current == merkle_root
-}
-```
-
-### Why 8 Levels?
+## Tree Depth
 
 ```text
 Levels | Max Countries | Use Case
@@ -186,69 +134,7 @@ Levels | Max Countries | Use Case
 
 8 levels supports up to 256 countries per group, which is more than enough for any country group (EU has 27, SCHENGEN has 26, etc.).
 
----
-
-## TypeScript Integration
-
-### Client-Side Proof Generation
-
-Proofs are generated entirely in the browser using Web Workers:
-
-```typescript
-// apps/web/src/lib/zk/noir-prover.ts
-
-import {
-  generateNationalityProofClientWorker,
-} from "./noir-worker-manager";
-
-export async function generateNationalityProofNoir(
-  input: NationalityProofInput,
-): Promise<NoirProofResult> {
-  if (typeof window === "undefined") {
-    throw new Error("ZK proofs can only be generated in the browser");
-  }
-
-  const startTime = performance.now();
-
-  const result = await generateNationalityProofClientWorker({
-    nationalityCode: input.nationalityCode,
-    groupName: input.groupName,
-    nonce: input.nonce,
-    documentHashField: input.documentHashField,
-    claimHash: input.claimHash,
-  });
-
-  return {
-    proof: result.proof,
-    publicInputs: result.publicInputs,
-    generationTimeMs: performance.now() - startTime,
-  };
-}
-```
-
-### Server-Side Verification
-
-```typescript
-// apps/web/src/lib/trpc/routers/crypto.ts
-
-const verificationResult = await verifyNoirProof({
-  proof: input.proof,
-  publicInputs: input.publicInputs,
-  circuitType: "nationality_membership",
-});
-
-return {
-  isValid: verificationResult.isValid,
-  verificationTimeMs: verificationResult.verificationTimeMs,
-  circuitType: verificationResult.circuitType,
-  noirVersion: verificationResult.noirVersion,
-  circuitHash: verificationResult.circuitHash,
-  verificationKeyHash: verificationResult.verificationKeyHash,
-  verificationKeyPoseidonHash: verificationResult.verificationKeyPoseidonHash,
-  circuitId: verificationResult.circuitId,
-  bbVersion: verificationResult.bbVersion,
-};
-```
+Implementation details (circuit code and client prover wiring) live in [ZK Architecture](zk-architecture.md).
 
 ---
 
@@ -266,18 +152,7 @@ return {
 
 ### Each Group Has a Unique Root
 
-```typescript
-// apps/web/src/lib/zk/nationality-data.ts
-
-export const COUNTRY_GROUPS: Record<string, string[]> = {
-  EU: ["AUT", "BEL", "BGR", "HRV", "CYP", ...],
-  SCHENGEN: ["AUT", "BEL", "CZE", "DNK", ...],
-  LATAM: ["ARG", "BOL", "BRA", "CHL", ...],
-  FIVE_EYES: ["AUS", "CAN", "NZL", "GBR", "USA"],
-};
-```
-
-The Merkle root is computed from each group's country codes and uniquely identifies the set.
+The Merkle root is computed from each group’s country codes and uniquely identifies the set. The verifier only needs the root; the group membership itself stays private.
 
 ---
 
@@ -314,27 +189,6 @@ In Zentity's flow:
 3. Face match verifies it's your passport
 4. ZK nationality proof is generated **client-side** in the browser, bound to `claim_hash`
 5. Only the proof + public inputs are sent to the server and stored, never "DEU"
-
----
-
-## Files Reference
-
-```text
-apps/web/
-├── noir-circuits/
-│   └── nationality_membership/
-│       ├── Nargo.toml
-│       ├── src/main.nr           # Noir circuit source
-│       └── artifacts/
-│           └── nationality_membership.json  # Compiled ACIR
-├── src/lib/zk/
-│   ├── nationality-data.ts       # Country codes and group definitions
-│   ├── nationality-merkle.ts     # Merkle tree construction (Poseidon2)
-│   ├── noir-prover.ts            # Client-side proof generation API
-│   ├── noir-prover.worker.ts     # Web Worker for proof generation
-│   ├── noir-worker-manager.ts    # Worker pool management
-│   └── noir-verifier.ts          # Server-side verification
-```
 
 ---
 

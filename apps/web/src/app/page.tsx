@@ -37,8 +37,9 @@ export default function Home() {
           </h1>
           <p className="mt-6 text-lg text-muted-foreground leading-8">
             Prove who you are without revealing your personal data. Zentity uses
-            zero-knowledge proofs and homomorphic encryption to verify your
-            identity while keeping your information private.
+            passkey-based authentication and key custody, zero-knowledge proofs,
+            fully homomorphic encryption, and cryptographic commitments to
+            verify your identity while keeping your information private.
           </p>
 
           <Alert className="mt-8 text-left" variant="warning">

@@ -9,7 +9,7 @@ and proving backend gate breakdowns.
 - `nargo` + `noir-profiler` installed (via `noirup`).
 - For gate profiling, the Barretenberg CLI (`bb`) must be available on `PATH`.
 
-## Scripts (recommended)
+## Scripts
 
 Run from `apps/web`:
 

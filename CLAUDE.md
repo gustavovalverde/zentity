@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zentity is a privacy-preserving compliance/KYC platform using zero-knowledge proofs (ZK), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
+Zentity is a privacy-preserving compliance/KYC platform using passkeys for authentication and key custody, zero-knowledge proofs (ZKPs), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
 
 ## Key Documentation
 

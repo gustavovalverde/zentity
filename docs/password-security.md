@@ -1,4 +1,4 @@
-# Password security (breach checks + UX)
+# Password security
 
 This repo includes password-based authentication (via Better Auth) and additional checks to reduce account takeover risk from credential stuffing.
 
@@ -8,7 +8,7 @@ This repo includes password-based authentication (via Better Auth) and additiona
 - **Keep requirements understandable** with live feedback
 - **Minimize exposure** of password material during breach checks
 
-## Password policy summary (current)
+## Password policy summary
 
 Authoritative (server-enforced via Better Auth):
 
@@ -21,7 +21,7 @@ UX-only guidance (client):
 - Avoid containing the document number (when available in the flow)
 - Recommended diversity: upper/lower/number/symbol (not enforced)
 
-## What enforces the rules (authoritative)
+## What enforces the rules
 
 The server enforces breached-password blocking using Better Auth’s `haveIBeenPwned()` plugin. This runs during:
 
@@ -41,7 +41,7 @@ Relevant code:
 - `apps/web/src/lib/auth/better-auth-errors.ts` (shared error mapping for UX copy)
 - `apps/web/src/lib/auth/password-policy.ts` (min/max + similarity checks)
 
-## UX pre-check (optional, non-authoritative)
+## UX pre-check
 
 To reduce frustration, the UI performs a **pre-check** after the user completes both password fields:
 

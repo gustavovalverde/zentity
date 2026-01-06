@@ -1,4 +1,4 @@
-# Relying Party (RP) Redirect Flow (OAuth-style)
+# Relying Party Redirect Flow
 
 This document explains the **RP redirect flow** implemented in `apps/web`.
 
@@ -12,7 +12,7 @@ It is intentionally **OAuth-like** (authorization code + server-to-server exchan
 
 **Note:** PII disclosure is a separate, passkey‑consented flow (OIDC‑style). This doc only covers verification flags.
 
-## Why this exists (in addition to Better Auth)
+## Why this exists
 
 Better Auth powers **authentication inside Zentity** (sessions, login, magic links, account creation).
 
@@ -99,7 +99,7 @@ Defined in `.env` / `.env.example`.
 - Comma-separated list of **exact** allowed external redirect URIs.
 - Internal redirects (starting with `/`) are allowed for local testing and first-party flows.
 
-## Current limitations (important)
+## Current limitations
 
 This is an MVP-style flow suitable for **closed beta** integrations, not a public open OAuth provider:
 

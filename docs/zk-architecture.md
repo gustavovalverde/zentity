@@ -1,16 +1,10 @@
 # ZK Proof Architecture
 
-> **Related docs:** [System Architecture](architecture.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md) | [Nationality Proofs](zk-nationality-proofs.md) | [README](../README.md)
-
-This document describes Zentity's zero-knowledge proof system using Noir and UltraHonk.
+This document describes Zentity’s zero‑knowledge proof system using **Noir** circuits with **UltraHonk** proofs. It focuses on **architecture and trust boundaries**, not implementation details.
 
 ## Overview
 
-Zentity uses client-side ZK proof generation so the **private inputs to proofs stay in the browser during proving**. Private inputs come from a mix of **passkey-sealed profile data** (e.g., birth year, nationality) and **server-signed claim payloads** (e.g., face match scores) that the client verifies locally before proving. The server never sees plaintext values. The architecture consists of:
-
-1. **Noir Circuits** - ZK logic written in Noir language
-2. **Client-Side Prover** - Browser-based proof generation using Noir.js + bb.js
-3. **Server-Side Verifier** - Proof verification using bb.js (UltraHonk verifier backend)
+Zentity generates proofs **client‑side** so private inputs stay in the browser. Proofs are verified **server‑side** and stored with metadata for auditability. Private inputs are derived from passkey‑sealed profile data (e.g., birth year, nationality) and server‑signed claim payloads (e.g., face match score). The server never sees plaintext values.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -26,418 +20,85 @@ Zentity uses client-side ZK proof generation so the **private inputs to proofs s
                                                         ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                              Server                                 │
-│  ┌──────────────────────────┐    ┌───────────────────────────────┐ │
-│  │     bb.js Verifier       │───▶│   Store: proof + metadata     │ │
-│  │ (UltraHonk verifier)     │    │   (never raw PII)             │ │
-│  └──────────────────────────┘    └───────────────────────────────┘ │
+│  ┌──────────────────────────┐    ┌───────────────────────────────┐  │
+│  │     bb.js Verifier       │───▶│   Store: proof + metadata     │  │
+│  │ (UltraHonk verifier)     │    │   (never raw PII)             │  │
+│  └──────────────────────────┘    └───────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Circuits
 
-Four ZK circuits are implemented:
+| Circuit | Purpose | Private Inputs | Public Inputs |
+|---------|---------|----------------|---------------|
+| `age_verification` | Prove age >= threshold | Birth year + document commitment | Current year, min age, nonce, claim hash |
+| `doc_validity` | Prove document not expired | Expiry date + document commitment | Current date, nonce, claim hash |
+| `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
+| `face_match` | Prove similarity >= threshold | Similarity score + document commitment | Threshold, nonce, claim hash |
 
-| Circuit | Purpose | Private Inputs | Public Inputs → Output |
-|---------|---------|----------------|------------------------|
-| `age_verification` | Prove age >= threshold | birth_year, document_hash | current_year, min_age, nonce, claim_hash → is_old_enough |
-| `doc_validity` | Prove document not expired | expiry_date, document_hash | current_date, nonce, claim_hash → is_valid |
-| `nationality_membership` | Prove country in group | nationality_code, document_hash | merkle_root, nonce, claim_hash → is_member |
-| `face_match` | Prove face similarity >= threshold | similarity_score, document_hash | threshold, nonce, claim_hash → is_match |
+**Why this matters:** The verifier learns only the boolean outcome (e.g., “over 18”), never the underlying PII.
 
-All circuits include a `nonce` public input for replay resistance and a `claim_hash` that binds the proof to server-signed OCR claims.
+## Proof Binding & Integrity
 
-### Directory Structure
+- **Nonces** (server‑issued) prevent replay.
+- **Claim hashes** bind proofs to server‑signed OCR/liveness claims.
+- **Verifier metadata** stores circuit/version identifiers for audit.
 
-```text
-apps/web/noir-circuits/
-├── age_verification/
-│   ├── Nargo.toml
-│   ├── src/main.nr
-│   └── artifacts/age_verification.json
-├── doc_validity/
-│   ├── Nargo.toml
-│   ├── src/main.nr
-│   └── artifacts/doc_validity.json
-├── face_match/
-│   ├── Nargo.toml
-│   ├── src/main.nr
-│   └── artifacts/face_match.json
-└── nationality_membership/
-    ├── Nargo.toml
-    ├── src/main.nr
-    └── artifacts/nationality_membership.json
-```
+See [Tamper Model](tamper-model.md) for integrity rules and [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification.
 
----
+## Performance & UX Notes
 
-## Circuit Details
+- Proof generation runs in a **Web Worker** to avoid UI blocking.
+- Circuits are optimized for **Poseidon2** hashing (cheaper in ZK than SHA‑256).
+- Detailed profiling and timing guidance live in [Noir Profiling](noir-profiling.md).
+- Proof times are device- and circuit-dependent; treat any numbers as guidance.
 
-### Age Verification
+## Security Notes
 
-Proves age meets a minimum threshold without revealing birth year.
+- **Nonce binding** prevents proof replay.
+- **Claim binding** ties proofs to server‑signed measurements (OCR, liveness, face match).
+- **Range checks** avoid wrap‑around and invalid inputs (dates, scores, thresholds).
 
-```noir
-use nodash::poseidon2;
+## Implementation Notes
 
-fn main(
-    birth_year: Field,        // Private: actual birth year
-    document_hash: Field,     // Private: document commitment
-    current_year: pub Field,  // Public: current year
-    min_age: pub Field,       // Public: minimum age (18, 21, 25)
-    nonce: pub Field,         // Public: replay resistance
-    claim_hash: pub Field     // Public: claim hash binding to OCR data
-) -> pub bool {
-    let _ = nonce;
-    let computed_hash = poseidon2([birth_year, document_hash]);
-    assert(computed_hash == claim_hash, "Claim hash mismatch");
-    let age = current_year as u32 - birth_year as u32;
-    age >= min_age as u32
-}
-```
-
-### Document Validity
-
-Proves document hasn't expired without revealing the expiry date.
-
-```noir
-use nodash::poseidon2;
-
-fn main(
-    expiry_date: Field,       // Private: YYYYMMDD
-    document_hash: Field,     // Private: document commitment
-    current_date: pub Field,  // Public: YYYYMMDD
-    nonce: pub Field,         // Public: replay resistance
-    claim_hash: pub Field     // Public: claim hash binding to OCR data
-) -> pub bool {
-    let _ = nonce;
-    let computed_hash = poseidon2([expiry_date, document_hash]);
-    assert(computed_hash == claim_hash, "Claim hash mismatch");
-    expiry_date as u32 >= current_date as u32
-}
-```
-
-### Nationality Membership
-
-Proves nationality is in a group (EU, SCHENGEN, etc.) using Merkle tree membership.
-
-```noir
-use nodash::poseidon2;
-
-fn main(
-    nationality_code: Field,            // Private: ISO numeric code
-    document_hash: Field,               // Private: document commitment
-    path_elements: [Field; 8],          // Private: Merkle path
-    path_indices: [u1; 8],              // Private: path directions
-    merkle_root: pub Field,             // Public: group identifier
-    nonce: pub Field,                   // Public: replay resistance
-    claim_hash: pub Field               // Public: claim hash binding to OCR data
-) -> pub bool {
-    let _ = nonce;
-    let computed_hash = poseidon2([nationality_code, document_hash]);
-    assert(computed_hash == claim_hash, "Claim hash mismatch");
-    // Verify Merkle path from leaf to root
-}
-```
-
-### Face Match
-
-Proves face similarity score meets threshold without revealing exact score.
-
-```noir
-use nodash::poseidon2;
-
-fn main(
-    similarity_score: Field, // Private: 0-10000 (0.00%-100.00%)
-    document_hash: Field,    // Private: document commitment
-    threshold: pub Field,    // Public: minimum threshold
-    nonce: pub Field,        // Public: replay resistance
-    claim_hash: pub Field    // Public: claim hash binding to OCR data
-) -> pub bool {
-    let _ = nonce;
-    let computed_hash = poseidon2([similarity_score, document_hash]);
-    assert(computed_hash == claim_hash, "Claim hash mismatch");
-    similarity_score as u32 >= threshold as u32
-}
-```
-
----
-
-## Client-Side Implementation
-
-### Proof Generation API
-
-```typescript
-// apps/web/src/lib/zk/noir-prover.ts
-
-// Age proof
-const ageResult = await generateAgeProofNoir({
-  birthYear: 1990,
-  currentYear: 2025,
-  minAge: 18,
-  nonce: challengeNonce,
-  documentHashField,
-  claimHash
-});
-
-// Document validity proof
-const docResult = await generateDocValidityProofNoir({
-  expiryDate: 20271231,
-  currentDate: 20251212,
-  nonce: challengeNonce,
-  documentHashField,
-  claimHash
-});
-
-// Nationality proof
-const natResult = await generateNationalityProofNoir({
-  nationalityCode: "DEU",
-  groupName: "EU",
-  nonce: challengeNonce,
-  documentHashField,
-  claimHash
-});
-```
-
-### Web Worker Architecture
-
-Proof generation runs in a Web Worker to keep the UI responsive:
+### Proving flow (Web Worker)
 
 ```text
 Main Thread                    Web Worker
-     │                              │
-     │─── postMessage(inputs) ─────▶│
-     │                              │ 1. Load Noir.js
-     │                              │ 2. Load circuit JSON
-     │                              │ 3. Execute witness
-     │                              │ 4. Generate proof (bb.js)
-     │◀── postMessage(proof) ───────│
-     │                              │
+  |                                |
+  |--- postMessage(inputs) ------->|
+  |                                | 1. Load Noir.js
+  |                                | 2. Load circuit JSON
+  |                                | 3. Execute witness
+  |                                | 4. Generate proof (bb.js)
+  |<-- postMessage(proof) ---------|
+  |                                |
 ```
 
-Key files (apps/web/src/lib/zk):
-
-- `noir-prover.ts` - Public API for proof generation
-- `noir-worker-manager.ts` - Worker pool management
-- `noir-prover.worker.ts` - Worker implementation
-- `noir-verifier.ts` - Server verifier orchestration
-- `bb-worker.mjs` - Node worker for bb.js verification
-
----
-
-## Server-Side Verification
-
-Server-side verification uses a **child process delegation pattern** to isolate bb.js operations:
+### Verification flow (bb-worker isolation)
 
 ```text
 Next.js API Route              bb-worker.mjs (child process)
-       │                              │
-       │─── spawn Node.js process ───▶│ Initialize once
-       │                              │
-       │─── JSON-RPC over stdin  ────▶│
-       │    (verify request)          │ Load circuit, verify proof
-       │                              │
-       │◀─── JSON-RPC over stdout ────│
-       │     (result)                 │
+  |                                |
+  |--- spawn Node.js process ----->| Initialize once
+  |                                |
+  |--- send request (JSON-RPC) --->| Load circuit, verify proof
+  |                                |
+  |<-- result (JSON-RPC) ----------|
 ```
 
-**Why delegation?**
+This isolates bb.js work from the request thread and supports timeouts.
 
-- **Isolation**: WASM/native operations run in separate process memory
-- **Timeout handling**: Main thread can kill stale workers (configurable via `BB_WORKER_TIMEOUT_MS`)
-- **Backend caching**: Worker caches `UltraHonkBackend` instances for VK derivation and uses `UltraHonkVerifierBackend` for verification
+### Proof metadata (stored for auditability)
 
-**Key files (apps/web/src/lib/zk):**
+- `noirVersion`
+- `bbVersion`
+- `circuitHash`
+- `verificationKeyHash`
+- `verificationKeyPoseidonHash`
+- `circuitId` (derived from the verification key hash)
 
-- `noir-verifier.ts` - Spawns and communicates with worker
-- `bb-worker.mjs` - Standalone Node.js script with JSON-RPC interface
+## Implementation References
 
-### Verifier API
-
-```typescript
-// apps/web/src/lib/zk/noir-verifier.ts
-
-const result = await verifyNoirProof({
-  proof: proofBase64,
-  publicInputs: ["1", "2025", "18", "12345"],
-  circuitType: "age_verification"
-});
-
-// result: {
-//   isValid: true,
-//   verificationTimeMs: 45,
-//   circuitType: "age_verification",
-//   noirVersion: "1.0.0-beta.17",
-//   circuitHash: "abc123...",
-//   verificationKeyHash: "def456...",
-//   verificationKeyPoseidonHash: "0xabc...def",
-//   circuitId: "ultrahonk:def456...",
-//   bbVersion: "0.82.2"
-// }
-```
-
-### Proof Metadata
-
-Each verification returns circuit metadata for audit trails:
-
-- `noirVersion` - Noir compiler version
-- `circuitHash` - Hash of compiled circuit
-- `verificationKeyHash` - Verification key hash (audit + caching)
-- `verificationKeyPoseidonHash` - Registry-compatible VK hash (Poseidon2)
-- `circuitId` - Stable circuit identifier derived from the verification key
-- `bbVersion` - Barretenberg verifier version
-
-**Validation notes**:
-
-- Public input length is **validated against the VK** before verification.
-- Verification runs in a **dedicated Node.js worker** for Bun stability.
-
-### Performance and Isolation
-
-- **COEP/COOP + COI service worker** enable multithreaded WASM (faster proofs).
-- A **worker pool** can be enabled for parallel proof generation when needed.
-
----
-
-## Adding New Circuits
-
-### 1. Create Circuit Directory
-
-```bash
-cd apps/web/noir-circuits
-mkdir -p new_circuit/src
-```
-
-### 2. Write Nargo.toml
-
-```toml
-[package]
-name = "new_circuit"
-type = "bin"
-authors = ["Zentity"]
-compiler_version = ">=1.0.0"
-
-[dependencies]
-nodash = { git = "https://github.com/noir-lang/nodash", tag = "v1.0.0" }
-```
-
-### 3. Write Circuit (src/main.nr)
-
-```noir
-fn main(
-    private_input: Field,
-    public_input: pub Field,
-    nonce: pub Field
-) -> pub bool {
-    let _ = nonce; // For replay resistance
-    // Your circuit logic
-    private_input == public_input
-}
-
-#[test]
-fn test_circuit() {
-    let result = main(42, 42, 12345);
-    assert(result == true);
-}
-```
-
-### 4. Compile
-
-```bash
-cd apps/web
-bun run circuits:compile
-```
-
-### 5. Add to TypeScript
-
-Update these files:
-
-- `src/lib/zk/zk-circuit-spec.ts` - Add circuit type
-- `src/lib/zk/noir-verifier.ts` - Import compiled JSON
-- `src/lib/zk/noir-prover.worker.ts` - Add worker handler
-- `src/lib/zk/noir-prover.ts` - Add public API function
-
----
-
-## Development Commands
-
-```bash
-# Compile all circuits
-cd apps/web
-bun run circuits:compile
-
-# Run circuit tests
-bun run circuits:test
-
-# Test specific circuit
-cd noir-circuits/age_verification
-nargo test
-```
-
----
-
-## Performance
-
-Proof generation and verification times are **device- and circuit-dependent**.
-Treat any numbers as **order-of-magnitude guidance**, not SLAs.
-
----
-
-## Security Considerations
-
-### Universal Setup
-
-UltraHonk uses a universal trusted setup (SRS/CRS) that:
-
-- Is circuit-agnostic (no per-circuit ceremony)
-- Is downloaded and cached automatically by bb.js
-- Can be verified against public ceremonies
-
-### Replay Resistance
-
-All circuits require a `nonce` public input:
-
-- Server issues challenge nonces via tRPC (`crypto.createChallenge` on `/api/trpc/*`)
-- Nonce is bound to the authenticated user when issued via protected routes
-- Same proof cannot be replayed with different nonce
-
-### Input Validation
-
-Circuits include range checks:
-
-- **Age**: birth year cannot be in the future (`birth_year <= current_year`)
-- **Face match**: scores validated 0-10000 range, threshold validated 0-10000 range
-- **Dates**: treated as YYYYMMDD integers; server enforces `current_date == today`
-
-### Nonce Format
-
-Challenge nonces are 128-bit hex strings issued by the server via `crypto.createChallenge`. They are:
-
-- Bound to the user session
-- One-time use (consumed on proof submission)
-- Normalized to Field elements before circuit execution
-
----
-
-## Files Reference
-
-```text
-apps/web/
-├── noir-circuits/           # Noir circuit sources
-│   ├── age_verification/
-│   ├── doc_validity/
-│   ├── face_match/
-│   └── nationality_membership/
-├── src/lib/zk/
-│   ├── noir-prover.ts       # Client-side API
-│   ├── noir-prover.worker.ts # Browser Web Worker
-│   ├── noir-worker-manager.ts # Worker pool
-│   ├── noir-verifier.ts     # Server-side verification (spawns bb-worker)
-│   ├── bb-worker.mjs        # Child process for bb.js isolation
-│   ├── zk-circuit-spec.ts   # Circuit type definitions
-│   ├── nationality-data.ts  # Country codes
-│   └── nationality-merkle.ts # Merkle tree utils
-├── src/lib/trpc/
-│   ├── routers/crypto.ts      # Nonce generation + proof verification procedures
-│   └── server.ts              # Context + auth middleware
-└── src/app/api/trpc/[trpc]/route.ts # tRPC HTTP handler
-```
+- **ADR:** [Client‑side ZK proving](adr/zk/0001-client-side-zk-proving.md)
+- **Deep dive:** [Nationality proofs](zk-nationality-proofs.md)

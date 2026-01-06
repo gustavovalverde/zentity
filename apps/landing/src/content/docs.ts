@@ -6,10 +6,7 @@ import cryptographicPillars from "../../../../docs/cryptographic-pillars.md?raw"
 import passwordSecurity from "../../../../docs/password-security.md?raw";
 import rpRedirectFlow from "../../../../docs/rp-redirect-flow.md?raw";
 import tamperModel from "../../../../docs/tamper-model.md?raw";
-import web3Implementation from "../../../../docs/technical/web3-implementation.md?raw";
-import zkImplementation from "../../../../docs/technical/zk-implementation.md?raw";
 import verification from "../../../../docs/verification.md?raw";
-import web2ToWeb3 from "../../../../docs/web2-to-web3-transition.md?raw";
 import web3Architecture from "../../../../docs/web3-architecture.md?raw";
 import zkArchitecture from "../../../../docs/zk-architecture.md?raw";
 import zkNationalityProofs from "../../../../docs/zk-nationality-proofs.md?raw";
@@ -50,11 +47,6 @@ export const docs: Record<string, DocMeta> = {
       "Zero-knowledge proof system using Noir and UltraHonk for privacy-preserving verification",
     content: zkArchitecture,
   },
-  "zk-implementation": {
-    title: "ZK Implementation Notes",
-    description: "Circuit inventory, proving/verification flows, and metadata",
-    content: zkImplementation,
-  },
   "zk-nationality-proofs": {
     title: "Nationality Proofs",
     description:
@@ -72,16 +64,6 @@ export const docs: Record<string, DocMeta> = {
     description:
       "fhEVM module, encryption/decryption flows, and on-chain attestations",
     content: web3Architecture,
-  },
-  "web3-implementation": {
-    title: "Web3 Implementation Notes",
-    description: "Provider hierarchy, attestation flow, and SDK wiring",
-    content: web3Implementation,
-  },
-  "web2-to-web3-transition": {
-    title: "Web2 → Web3 Transition",
-    description: "End-to-end flow from verification to on-chain attestation",
-    content: web2ToWeb3,
   },
   "rp-redirect-flow": {
     title: "RP Redirect Flow",
@@ -107,6 +89,7 @@ export const docsNav = [
     title: "Start Here",
     items: [
       { title: "System Overview", slug: "architecture" },
+      { title: "Cryptographic Pillars", slug: "cryptographic-pillars" },
       { title: "Attestation & Privacy", slug: "attestation-privacy" },
       { title: "Tamper Model", slug: "tamper-model" },
     ],
@@ -114,9 +97,7 @@ export const docsNav = [
   {
     title: "Cryptography",
     items: [
-      { title: "Cryptographic Pillars", slug: "cryptographic-pillars" },
       { title: "ZK Architecture", slug: "zk-architecture" },
-      { title: "ZK Implementation Notes", slug: "zk-implementation" },
       { title: "Nationality Proofs", slug: "zk-nationality-proofs" },
       { title: "Password Security", slug: "password-security" },
     ],
@@ -125,8 +106,6 @@ export const docsNav = [
     title: "Web3",
     items: [
       { title: "Web3 Architecture", slug: "web3-architecture" },
-      { title: "Web3 Implementation Notes", slug: "web3-implementation" },
-      { title: "Web2 → Web3 Transition", slug: "web2-to-web3-transition" },
       { title: "Blockchain Setup", slug: "blockchain-setup" },
     ],
   },

@@ -7,7 +7,7 @@ This guide explains how to verify that deployed Zentity services match the publi
 ### Using GitHub CLI
 
 ```bash
-# Verify container attestations (SLSA Level 3 provenance)
+# Verify container attestations
 gh attestation verify oci://ghcr.io/gustavovalverde/zentity/fhe-service:latest --owner gustavovalverde
 gh attestation verify oci://ghcr.io/gustavovalverde/zentity/ocr-service:latest --owner gustavovalverde
 gh attestation verify oci://ghcr.io/gustavovalverde/zentity/web:latest --owner gustavovalverde
@@ -70,7 +70,7 @@ Every Zentity release provides:
 - **Reproducible Build Configuration** - Pinned dependencies, deterministic build IDs, and SOURCE_DATE_EPOCH timestamps
 - **Software Bill of Materials (SBOM)** - Complete dependency inventory for each container image
 
-## What We Cannot Guarantee (Without TEEs)
+## What We Cannot Guarantee
 
 > **Important:** While we can prove *what* was built from *which* source code, we cannot cryptographically prove that deployment platforms (Vercel, Railway) are running the exact signed artifacts.
 

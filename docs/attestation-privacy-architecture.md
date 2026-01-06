@@ -1,16 +1,15 @@
-# Attestation & Privacy Architecture (Web2 + Web3)
+# Attestation & Privacy Architecture
 
-> **Related docs:** [System Architecture](architecture.md) | [ZK Architecture](zk-architecture.md) | [Web3 Architecture](web3-architecture.md) | [Tamper Model](tamper-model.md) | [README](../README.md)
->
 > **Purpose**: Single source of truth for attestation schema, data classification, and privacy boundaries.
 
 ## Executive Summary
 
-Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, and **audit metadata (hashes + signatures)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**.
+Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **passkey-held keys (WebAuthn + PRF)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These four cryptographic pillars are used together throughout the system.
 
 - **ZK proofs**: age, document validity, nationality membership, face match threshold.
 - **FHE encryption**: birth year offset, country code, compliance level, liveness score.
 - **Commitments + hashes**: document hash, name commitment, proof hashes.
+- **Passkeys (auth + key custody)**: authenticate users and derive PRF keys that seal profiles and wrap FHE keys.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
 - **User-only decryption**: client keys are stored server-side as passkey-wrapped encrypted secrets—only the user with their passkey can unwrap them in the browser.
 
@@ -23,7 +22,8 @@ This model supports **multi-document identities**, **revocable attestations**, a
 ### Core trust model
 
 - **Browser is untrusted for integrity** (users can tamper with client code).
-- **Browser is best for privacy** (ZK proofs + client key ownership).
+- **Browser is best for privacy** (ZK proofs + passkey-based key custody).
+- **Passkeys are the auth + key custody anchor** (WebAuthn signatures prove user presence; PRF outputs derive KEKs locally and never leave the client).
 - **Server is trusted for integrity** (verification, signing, policy enforcement).
 - **Server is not trusted for plaintext access** (only commitments + ciphertext).
 
@@ -34,7 +34,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | **Web2 (off-chain)** | TFHE encryption via FHE service using client public key | **User only** (client key in browser) | Server can compute on ciphertext without decryption. |
 | **Web3 (on-chain)** | Attestation encryption via registrar (server relayer SDK); client SDK used for wallet-initiated ops (transfers, decrypt) | **User only** (wallet signature auth) | On-chain compliance checks operate on ciphertext; decryption is user-authorized. |
 
-**Important**: The server persists **encrypted key bundles** (passkey-wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser. The FHE service uses MessagePack + gzip binary transport and persists keys in ReDB.
+**Important**: The server persists **encrypted key bundles** (passkey‑wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
 
 ### Integrity controls
 
@@ -42,75 +42,169 @@ This model supports **multi-document identities**, **revocable attestations**, a
 - Proofs are **verified server-side**; on-chain InputVerifier validates FHE input proofs.
 - High-risk measurements (OCR results, liveness, face match) are **server-signed claims**.
 - Proofs are **bound to a claim hash** to prevent client tampering.
+- Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
+- Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
 
 ---
 
-## Data Classification (ZK vs FHE vs Commitments)
+## Data Classification Matrix
 
-| Data / Claim | ZK Proof | FHE Encrypt | Commitment / Hash | Rationale |
-|---|---|---|---|---|
-| Age >= threshold | ✅ | Optional | Proof hash | Eligibility fact; no need to store DOB. |
-| Document validity | ✅ | ❌ | Proof hash | Binary eligibility, no expiry disclosure. |
-| Nationality in allowlist | ✅ | Optional | Merkle root | Membership proof avoids country disclosure. |
-| Face match >= threshold | ✅ | ❌ | Proof hash | Share only pass/fail. |
-| Liveness score | ❌ | ✅ | **Signed claim** | Score should stay private; server attests. |
-| Compliance level | ❌ | ✅ | Server-derived | Computed from verification status for policy gating. |
-| Birth year offset | Optional | ✅ | None | Enables on-chain compliance checks. |
-| Country code (numeric) | Optional | ✅ | None | Enables on-chain allowlist checks. |
-| Name (full name) | ❌ | ❌ | ✅ | Commitment enables dedup + audit. |
-| Raw images / biometrics | ❌ | ❌ | ❌ | Never stored; transient only. |
+**Legend:** ✅ primary form, ◐ optional/derived, — not used.
+**Vault** = passkey‑sealed profile or passkey‑wrapped encrypted secrets **stored in the server DB as encrypted blobs** and only decryptable client‑side after a passkey PRF unlock.
 
-**Note:** The current PoC does **not** store plaintext birth year offset—only encrypted attributes and claim hashes.
+| Data / Claim | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
+| Age >= threshold | ✅ | ◐ | Proof hash | — | Boolean eligibility; no DOB stored. |
+| Document validity | ✅ | — | Proof hash | — | Binary eligibility; no expiry disclosure. |
+| Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only. |
+| Face match >= threshold | ✅ | — | Proof hash | — | Pass/fail only. |
+| Liveness score | — | ✅ | Signed claim | — | Score stays private; server attests. |
+| Compliance level | — | ✅ | Server-derived | — | Policy gating input. |
+| Birth year offset | ◐ | ✅ | — | — | Enables encrypted checks. |
+| Country code (numeric) | ◐ | ✅ | — | — | Enables encrypted allowlist checks. |
+| Name (full name) | — | — | ✅ | ✅ | Commitment for audit; plaintext only in vault. |
+| Profile PII (DOB, document #, nationality) | — | — | — | ✅ | Stored only in vault. |
+| User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
+| FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
+| Passkey credential metadata | — | — | — | — | Stored server-side for WebAuthn verification. |
+| Raw images / biometrics | — | — | — | — | Never stored; transient only. |
 
----
-
-## Attestation Schema (Web2 - Off-Chain)
-
-### Core tables (SQLite)
-
-SQLite is accessed via the libSQL client (Turso optional for hosted environments).
-
-**`identity_bundles`** (user-level)
-
-- `status`: pending | verified | revoked
-- `policy_version`, `issuer_id`
-- FHE key registration status (key id, status, error state)
-
-**`identity_documents`** (per document)
-
-- `document_hash`, `name_commitment`
-- `issuer_country`, `document_type`
-- `verified_at`, `confidence_score`, `status`
-
-**`zk_proofs`**
-
-- `proof_type`: age_verification | doc_validity | nationality_membership | face_match
-- `proof_hash`, `public_inputs`, `nonce`, `policy_version`
-- Proof metadata (`noir_version`, `circuit_hash`, `verification_key_hash`, `verification_key_poseidon_hash`, `circuit_id`, `bb_version`)
-
-**`encrypted_attributes`**
-
-- `attribute_type`: birth_year_offset | country_code | compliance_level | liveness_score
-- `ciphertext` (binary blob), `key_id`, `encryption_time_ms`
-
-**`signed_claims`**
-
-- `claim_type`: ocr_result | face_match_score | liveness_score
-- `claim_payload`, `signature`, `issued_at` (scores + metadata; no raw PII fields)
-
-**`attestation_evidence`**
-
-- `policy_version`, `policy_hash`, `proof_set_hash`
-- `consent_receipt`, `consent_scope`, `consented_at`, `consent_rp_id`
-- Unique per `(user_id, document_id)`
-
-**`blockchain_attestations`**
-
-- On-chain status, network id, tx metadata
+**Note:** Passkey credential metadata (public keys, counters, transports) is stored for authentication and key custody.
 
 ---
 
-## Evidence Pack (Audit Commitment)
+## Storage Boundaries
+
+This system intentionally splits data across **server storage** and **client‑only access** suggesting “vault” does **not** mean “local‑only.” The vault is **stored server‑side in encrypted form**, but only the user can decrypt it using their passkey.
+
+### Summary view
+
+| Location | What lives there | Access & encryption | Why |
+|---|---|---|---|
+| **Server DB (plaintext)** | Account email, document metadata (type, issuer), status fields | Server readable | Required for basic UX and workflow state |
+| **Server DB (encrypted)** | Passkey‑sealed profile, passkey‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑derived keys) | User‑controlled privacy + encrypted computation |
+| **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
+| **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
+| **On‑chain (optional)** | Encrypted attestations + public metadata | User‑decrypt only | Auditable compliance checks without PII |
+
+### Why some data exists in two forms
+
+- **Commitment + vault plaintext** is intentional: the server can **verify/dedup** using commitments, while the user retains **full control** of disclosure via the passkey vault.
+- **Encrypted secrets + wrappers** live in the DB for **multi‑device access**, but the **decrypting key never leaves the user’s authenticator**.
+
+### What “vault” means here
+
+The vault is **not** a separate storage system. It is a **server‑stored encrypted blob** (`encrypted_secrets` + `secret_wrappers`) that can **only be decrypted client‑side** after WebAuthn + PRF.
+
+---
+
+## Privacy Guarantees
+
+1. **Transient media** - document and selfie images are processed in memory and discarded.
+2. **No plaintext PII at rest** - sensitive attributes live only in the passkey-sealed profile or as ciphertext.
+3. **One-way commitments** - hash commitments allow integrity checks without storing values.
+4. **Client-side proving** - private inputs remain in the browser during ZK proof generation.
+5. **User-controlled erasure** - deleting the passkey-sealed profile breaks access to PII and salts.
+6. **No biometric storage** - liveness and face match scores are stored as signed claims, not raw biometrics.
+
+## Attestation Schema
+
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+  direction LR
+
+  USERS ||--|| IDENTITY_BUNDLES : owns
+  USERS ||--o{ IDENTITY_DOCUMENTS : submits
+  USERS ||--o{ ENCRYPTED_ATTRIBUTES : stores
+  USERS ||--o{ ENCRYPTED_SECRETS : owns
+  USERS ||--o{ PASSKEY_CREDENTIALS : registers
+  USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : submits
+  USERS ||--o{ RP_AUTHORIZATION_CODES : issues
+
+  IDENTITY_DOCUMENTS ||--o{ ZK_PROOFS : proves
+  IDENTITY_DOCUMENTS ||--o{ SIGNED_CLAIMS : claims
+  IDENTITY_DOCUMENTS ||--o{ ATTESTATION_EVIDENCE : evidences
+  IDENTITY_DOCUMENTS ||--o{ IDENTITY_VERIFICATION_DRAFTS : drafts
+
+  ONBOARDING_SESSIONS ||--o{ IDENTITY_VERIFICATION_DRAFTS : tracks
+  IDENTITY_VERIFICATION_DRAFTS ||--o{ IDENTITY_VERIFICATION_JOBS : spawns
+
+  ENCRYPTED_SECRETS ||--o{ SECRET_WRAPPERS : wrapped_by
+  PASSKEY_CREDENTIALS ||--o{ SECRET_WRAPPERS : unlocks
+
+  USERS {
+    text id PK
+    text email
+  }
+  IDENTITY_BUNDLES {
+    text user_id PK
+    text status
+  }
+  IDENTITY_DOCUMENTS {
+    text id PK
+    text user_id FK
+    text document_hash
+  }
+  IDENTITY_VERIFICATION_DRAFTS {
+    text id PK
+    text document_id
+  }
+  IDENTITY_VERIFICATION_JOBS {
+    text id PK
+    text draft_id
+  }
+  ONBOARDING_SESSIONS {
+    text id PK
+    text step
+  }
+  ZK_PROOFS {
+    text id PK
+    text document_id
+  }
+  SIGNED_CLAIMS {
+    text id PK
+    text document_id
+  }
+  ATTESTATION_EVIDENCE {
+    text id PK
+    text document_id
+  }
+  ENCRYPTED_ATTRIBUTES {
+    text id PK
+    text attribute_type
+  }
+  ENCRYPTED_SECRETS {
+    text id PK
+    text secret_type
+  }
+  SECRET_WRAPPERS {
+    text id PK
+    text secret_id FK
+    text credential_id
+  }
+  PASSKEY_CREDENTIALS {
+    text id PK
+    text credential_id
+  }
+  BLOCKCHAIN_ATTESTATIONS {
+    text id PK
+    text network_id
+  }
+  RP_AUTHORIZATION_CODES {
+    text code PK
+    text user_id FK
+  }
+```
+
+### Core tables
+
+SQLite is accessed via the libSQL client (Turso optional for hosted environments). The ER diagram above is the canonical overview of core tables and relationships. For readability, some user_id relationships are implied but not drawn (e.g., proofs and claims are also user-scoped).
+
+---
+
+## Evidence Pack
 
 The evidence pack binds **policy + proof set** into a durable, auditable commitment.
 
@@ -121,12 +215,7 @@ The evidence pack binds **policy + proof set** into a durable, auditable commitm
 - **`consent_receipt_hash`**: hash of the receipt (computed when building disclosure payloads)
 - **`consent_scope`**: explicit fields the user approved for disclosure
 
-Canonical form (current implementation):
-
-```text
-proof_hash = SHA256(proof_bytes || JSON.stringify(public_inputs) || policy_version)
-proof_set_hash = SHA256(JSON.stringify(sorted(proof_hashes)) || policy_hash)
-```
+Hash composition and canonicalization rules are described in the evidence bundle RFC. See [RFC: verification UX evidence bundle](rfcs/0013-verification-ux-evidence-bundle.md).
 
 **Where it appears:**
 
@@ -148,34 +237,16 @@ This supports upgrades and re-verification without overwriting previous evidence
 
 ---
 
-## Web3 Attestation Schema (On-Chain)
+## Web3 Attestation Schema
 
-Encrypted attributes stored in `IdentityRegistry` (fhEVM):
+Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **birth year offset**, **country code**, **compliance level**, and optional flags.
+Public metadata includes **proofSetHash**, **policyHash**, **issuerId**, and timestamps for auditability.
 
-```solidity
-mapping(address => euint8)  birthYearOffset;   // years since 1900
-mapping(address => euint16) countryCode;       // ISO 3166-1 numeric
-mapping(address => euint8)  complianceLevel;   // 0-10
-mapping(address => ebool)   isBlacklisted;     // optional
-```
-
-Public metadata for auditability:
-
-```solidity
-struct AttestationMeta {
-  bytes32 proofSetHash;   // commitment to proof set
-  bytes32 policyHash;     // commitment to policy version
-  bytes32 issuerId;       // verifier identifier
-  uint64 issuedAt;
-  uint64 expiresAt;
-}
-```
-
-The encrypted attributes allow compliance checks **under encryption**. The public metadata enables audits without revealing PII.
+The encrypted attributes allow compliance checks **under encryption**. The public metadata enables audits without revealing PII. See [Web3 Architecture](web3-architecture.md) for the implementation details.
 
 ---
 
-## Disclosure Payload (Relying Parties)
+## Disclosure Payload
 
 A relying party receives:
 
@@ -206,6 +277,5 @@ This enables a bank or exchange to:
 
 ## Implementation Notes
 
-- **FHE keys** are generated in the browser and stored server-side as passkey-wrapped encrypted secrets (no plaintext at rest).
-- **Passkey-wrapped key storage** uses a two-table design: `encrypted_secrets` (stores the encrypted data) and `secret_wrappers` (stores per-passkey DEK wrappers for multi-passkey access). See `docs/rfcs/0001-passkey-wrapped-fhe-keys.md` for the full design.
-- **INTERNAL_SERVICE_TOKEN** should be required in production for OCR/FHE endpoints.
+- **FHE keys** are generated in the browser and stored server‑side as passkey‑wrapped encrypted secrets (no plaintext at rest).
+- **Passkey‑wrapped key storage** uses `encrypted_secrets` + `secret_wrappers` for multi‑passkey access. See [RFC: passkey‑wrapped FHE keys](rfcs/0001-passkey-wrapped-fhe-keys.md).

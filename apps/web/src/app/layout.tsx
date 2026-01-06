@@ -22,19 +22,19 @@ export const metadata: Metadata = {
   ),
   title: "Zentity - Privacy-First Identity Verification",
   description:
-    "Verify your identity without exposing personal data using zero-knowledge proofs and homomorphic encryption.",
+    "Verify identity without exposing personal data using passkeys, zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.",
   openGraph: {
     type: "website",
     siteName: "Zentity",
     title: "Zentity - Prove everything. Reveal nothing.",
     description:
-      "Privacy-first identity verification using zero-knowledge proofs. Verify without storing plaintext personal data.",
+      "Privacy-first identity verification using passkeys, zero-knowledge proofs, fully homomorphic encryption, and commitments.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Zentity - Prove everything. Reveal nothing.",
     description:
-      "Privacy-first identity verification using zero-knowledge proofs. Verify without storing plaintext personal data.",
+      "Privacy-first identity verification using passkeys, zero-knowledge proofs, fully homomorphic encryption, and commitments.",
   },
 };
 

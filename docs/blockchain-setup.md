@@ -1,7 +1,5 @@
 # Blockchain Setup Guide
 
-> **Related docs:** [Web3 Architecture](web3-architecture.md) | [Web2 → Web3 Transition](web2-to-web3-transition.md) | [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
-
 This guide explains how to configure blockchain-related environment variables for Zentity's on-chain attestation feature.
 
 ---
@@ -96,7 +94,7 @@ The registrar wallet is a server-side wallet that signs attestation transactions
 Use per-network keys so testnet and local workflows don't conflict. If you only use one
 network, you can still set `REGISTRAR_PRIVATE_KEY` as a global fallback.
 
-### Option A: Using MetaMask (Recommended for beginners)
+### Option A: Using MetaMask
 
 1. **Install MetaMask**: <https://metamask.io/download/>
 
@@ -123,7 +121,7 @@ network, you can still set `REGISTRAR_PRIVATE_KEY` as a global fallback.
 
 **Reference**: [MetaMask: How to export a private key](https://support.metamask.io/configure/accounts/how-to-export-an-accounts-private-key/)
 
-### Option B: Using Foundry Cast (Recommended for developers)
+### Option B: Using Foundry Cast
 
 ```bash
 # Generate a new wallet
@@ -212,7 +210,7 @@ You need Sepolia ETH to pay for gas fees. Get free testnet ETH from these faucet
 
 **Tip**: Fund your registrar wallet address with 0.1-0.5 SepoliaETH.
 
-### FHEVM Protocol Contracts (Reference)
+### FHEVM Protocol Contracts
 
 These are the provider's core infrastructure contracts (you don't need to deploy these). The addresses below are for the current Zama fhEVM deployment:
 
@@ -263,7 +261,7 @@ FHEVM_IDENTITY_REGISTRY=0x05c6FB879BbF0Cab2B0206523583F94E49Ba62e2  # From deplo
 FHEVM_COMPLIANCE_RULES=0x78dE340fc7A6ba470a5dD8b0a5f5933cD48dC164   # From deploy output
 ```
 
-### Verify Contracts (Optional)
+### Verify Contracts
 
 ```bash
 npx hardhat verify --network fhevmSepolia 0x1234...
@@ -271,7 +269,7 @@ npx hardhat verify --network fhevmSepolia 0x1234...
 
 ---
 
-## 5. Local Development (Optional)
+## 5. Local Development
 
 For local development without testnet, you can use Hardhat.
 
@@ -306,11 +304,11 @@ LOCAL_COMPLIANCE_RULES=0x...   # From deploy output
 # Blockchain Configuration
 # =============================================================================
 
-# Reown AppKit (Wallet Connection)
+# Reown AppKit
 # Get from: https://cloud.reown.com
 NEXT_PUBLIC_PROJECT_ID=c4f79cc821944d9680842e34466bfb
 
-# Registrar Wallet (server-side signing)
+# Registrar Wallet
 # Export from MetaMask or generate with: cast wallet new
 FHEVM_REGISTRAR_PRIVATE_KEY=<your_private_key_here>  # gitleaks:allow
 LOCAL_REGISTRAR_PRIVATE_KEY=<your_private_key_here>  # gitleaks:allow
