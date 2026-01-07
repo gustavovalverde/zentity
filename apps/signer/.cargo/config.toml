@@ -1,0 +1,60 @@
+# Cargo configuration for Signer service
+# Compiler flags for code safety and quality (crypto-critical)
+
+[target.'cfg(all())']
+rustflags = [
+    # High-risk code - DENY (critical for threshold signing)
+    "-Dunsafe_code",
+    "-Dnon_ascii_idents",
+
+    # Lint groups (beyond default warn groups: correctness, suspicious, style, complexity, perf)
+    "-Wclippy::pedantic",
+    "-Wclippy::nursery",
+    "-Wclippy::cargo",
+
+    # Compatibility warnings
+    "-Wrust_2024_compatibility",
+    "-Wnonstandard_style",
+    "-Wfuture_incompatible",
+
+    # Async code safety (Actix handlers)
+    "-Wclippy::await_holding_lock",
+    "-Wclippy::await_holding_refcell_ref",
+
+    # Integer safety (critical for participant IDs, thresholds)
+    "-Wclippy::checked_conversions",
+    "-Wclippy::implicit_saturating_sub",
+    "-Wclippy::invalid_upcast_comparisons",
+    "-Wclippy::cast_possible_truncation",
+    "-Wclippy::cast_sign_loss",
+    "-Wclippy::cast_possible_wrap",
+
+    # Incomplete code markers
+    "-Wclippy::dbg_macro",
+    "-Wclippy::todo",
+    "-Wclippy::unimplemented",
+
+    # Manual debug output (use tracing instead)
+    "-Wclippy::print_stdout",
+    "-Wclippy::print_stderr",
+
+    # Panic safety (moderate - only warn in Result-returning functions)
+    "-Wclippy::fallible_impl_from",
+    "-Wclippy::unwrap_in_result",
+
+    # Error handling
+    "-Wclippy::map_err_ignore",
+    "-Wclippy::result_large_err",
+
+    # Code clarity
+    "-Wclippy::needless_pass_by_value",
+    "-Wclippy::redundant_closure_for_method_calls",
+]
+
+[build]
+rustdocflags = [
+    "-Arustdoc::private_intra_doc_links",
+]
+
+[env]
+RUST_BACKTRACE = "1"

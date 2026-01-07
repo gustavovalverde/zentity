@@ -120,17 +120,35 @@ repos:
   # ===========================================
   - repo: local
     hooks:
-      - id: cargo-fmt
-        name: cargo fmt
+      - id: cargo-fmt-fhe
+        name: cargo fmt (fhe)
         entry: cargo fmt --manifest-path apps/fhe/Cargo.toml --
         language: system
         files: ^apps/fhe/.*\.rs$
         pass_filenames: false
-      - id: cargo-clippy
-        name: cargo clippy
+      - id: cargo-clippy-fhe
+        name: cargo clippy (fhe)
         entry: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
         language: system
         files: ^apps/fhe/.*\.rs$
+        pass_filenames: false
+
+  # ===========================================
+  # Rust (apps/signer)
+  # ===========================================
+  - repo: local
+    hooks:
+      - id: cargo-fmt-signer
+        name: cargo fmt (signer)
+        entry: cargo fmt --manifest-path apps/signer/Cargo.toml --
+        language: system
+        files: ^apps/signer/.*\.rs$
+        pass_filenames: false
+      - id: cargo-clippy-signer
+        name: cargo clippy (signer)
+        entry: cargo clippy --manifest-path apps/signer/Cargo.toml -- -D warnings
+        language: system
+        files: ^apps/signer/.*\.rs$
         pass_filenames: false
 
   # ===========================================
