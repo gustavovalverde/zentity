@@ -1,0 +1,142 @@
+[package]
+name = "signer-service"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+authors = ["Zentity Team"]
+description = "FROST threshold signing service for Zentity"
+license = "SEE LICENSE IN LICENSE"
+repository = "https://github.com/gustavovalverde/zentity"
+readme = "README.md"
+keywords = ["frost", "threshold-signatures", "cryptography", "signing"]
+categories = ["cryptography", "authentication"]
+
+[[bin]]
+name = "coordinator"
+path = "src/bin/coordinator.rs"
+
+[[bin]]
+name = "signer"
+path = "src/bin/signer.rs"
+
+[lib]
+name = "signer_service"
+path = "src/lib.rs"
+
+[dependencies]
+# FROST ciphersuites (v2.2.0 - supports DKG, refresh, no-std)
+frost-secp256k1 = { version = "2.2.0", features = ["serialization"] }
+frost-ed25519 = { version = "2.2.0", features = ["serialization"] }
+
+# Web framework (Actix for native mTLS client cert extraction)
+actix-web = { version = "4.12.1", features = ["rustls-0_23"] }
+actix-rt = "2.11"
+actix-tls = "3.5.0"
+
+# Rate limiting
+actix-governor = "0.10.0"
+governor = "0.10.4"
+
+# Async runtime
+tokio = { version = "1.49.0", features = ["full"] }
+
+# mTLS
+rustls = { version = "0.23.36", default-features = false, features = [
+    "std",
+    "ring",
+] }
+rustls-pemfile = "2.2"
+webpki-roots = "1.0.4"
+
+# Storage
+redb = "3.1.0"
+
+# Serialization
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+
+# Crypto - HPKE for DKG round-2 encryption
+hpke = { version = "0.12.0", features = ["x25519"] }
+aes-gcm = "0.10.3"
+hkdf = "0.12.4"
+argon2 = "0.5.3"
+# Note: hpke 0.12.0 and frost-secp256k1 both use rand_core 0.6.4
+# Each crate re-exports rand_core::OsRng for RNG needs
+zeroize = { version = "1.8.2", features = ["derive"] }
+
+# Audit log (hash-chained, tamper-evident)
+ed25519-dalek = { version = "2.2.0", features = ["serde"] }
+sha2 = "0.10.9"
+
+# JWT verification (guardian assertions)
+# Using rust_crypto backend for consistency with other RustCrypto crates
+jsonwebtoken = { version = "10.2.0", default-features = false, features = [
+    "rust_crypto",
+] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# ID generation
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+# Observability
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
+tracing-actix-web = "0.7"
+
+# OpenTelemetry (optional) - v0.30+ has stable Metrics-SDK
+# Note: tracing-opentelemetry 0.31 requires opentelemetry 0.30
+opentelemetry = { version = "0.30", optional = true }
+opentelemetry_sdk = { version = "0.30", features = [
+    "rt-tokio",
+], optional = true }
+opentelemetry-otlp = { version = "0.30", features = [
+    "http-proto",
+    "reqwest-client",
+], optional = true }
+tracing-opentelemetry = { version = "0.31", optional = true }
+
+# Error handling
+thiserror = "2.0.17"
+anyhow = "1.0.100"
+
+# HTTP client (for coordinator -> signer communication)
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+
+# Base64 encoding for API payloads
+base64 = "0.22"
+
+# Hex encoding for keys/signatures
+hex = "0.4"
+
+[features]
+default = []
+otel = [
+    "opentelemetry",
+    "opentelemetry_sdk",
+    "opentelemetry-otlp",
+    "tracing-opentelemetry",
+]
+
+[build-dependencies]
+chrono = "0.4"
+
+[dev-dependencies]
+# Certificate generation for mTLS testing
+rcgen = "0.14.6"
+
+# Test utilities
+tokio-test = "0.4"
+tempfile = "3.24"
+
+# Actix test utilities
+actix-test = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

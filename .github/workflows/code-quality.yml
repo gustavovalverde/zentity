@@ -174,8 +174,12 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
+      # FHE service
       - run: cargo fmt --manifest-path apps/fhe/Cargo.toml -- --check
       - run: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
+      # Signer service
+      - run: cargo fmt --manifest-path apps/signer/Cargo.toml -- --check
+      - run: cargo clippy --manifest-path apps/signer/Cargo.toml -- -D warnings
 
   rust-security:
     name: Rust (Security Audit)

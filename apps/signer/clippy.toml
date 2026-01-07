@@ -1,0 +1,26 @@
+# Clippy configuration for Signer service (FROST threshold signing)
+
+# MSRV - match Cargo.toml's rust-version
+msrv = "1.91"
+
+# Complexity thresholds (higher for crypto generics)
+cognitive-complexity-threshold = 30
+type-complexity-threshold = 500        # FROST has complex generic types
+too-many-arguments-threshold = 8       # DKG functions have many params
+too-many-lines-threshold = 100
+
+# Size limits
+pass-by-value-size-limit = 256
+array-size-threshold = 16384
+
+# Test strictness
+allow-dbg-in-tests = false
+allow-expect-in-tests = true           # Acceptable in tests
+allow-unwrap-in-tests = true           # Acceptable in tests
+allow-print-in-tests = true            # Useful for debugging
+
+# API stability
+avoid-breaking-exported-api = true
+
+# Documentation
+check-private-items = false
