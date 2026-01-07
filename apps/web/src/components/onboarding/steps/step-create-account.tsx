@@ -345,6 +345,7 @@ export function StepCreateAccount() {
     useState<FaceMatchResult | null>(null);
   const faceMatchAttemptedRef = useRef(false);
   const noirIsolationWarningRef = useRef(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Passkey/secure keys state
   const [supportStatus, setSupportStatus] = useState<{
@@ -958,8 +959,10 @@ export function StepCreateAccount() {
 
       // Complete!
       setStatus("complete");
-      reset();
-
+      setIsRedirecting(true);
+      reset().catch(() => {
+        // Ignore reset errors during redirect.
+      });
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
@@ -984,6 +987,17 @@ export function StepCreateAccount() {
   const hasIdentityImages = Boolean(
     data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage)
   );
+
+  if (isRedirecting) {
+    return (
+      <div className="rounded-lg border p-6">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Finalizing your account…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
