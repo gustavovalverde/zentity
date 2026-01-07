@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import {
   getPasswordRequirementStatus,
   PASSWORD_MIN_LENGTH,
@@ -245,7 +246,7 @@ export function PasswordRequirements({
     if (pwned.state === "checking") {
       return (
         <div className="flex items-center gap-2 text-muted-foreground text-xs">
-          <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
+          <Spinner aria-hidden className="size-3" />
           <span>Checking known breaches…</span>
         </div>
       );

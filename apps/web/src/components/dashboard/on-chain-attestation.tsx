@@ -13,7 +13,6 @@ import {
   CheckCircle,
   ChevronDown,
   ExternalLink,
-  Loader2,
   Lock,
   RefreshCw,
   Shield,
@@ -513,8 +512,8 @@ function NetworkCard({
   };
 
   const statusIcons = {
-    pending: <Loader2 className="h-3 w-3 animate-spin" />,
-    submitted: <Loader2 className="h-3 w-3 animate-spin" />,
+    pending: <Spinner className="size-3" />,
+    submitted: <Spinner className="size-3" />,
     confirmed: <CheckCircle className="h-3 w-3" />,
     failed: <AlertTriangle className="h-3 w-3" />,
   };
@@ -655,7 +654,7 @@ function NetworkActions({
             variant="outline"
           >
             {isSubmitting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner className="mr-2" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
@@ -683,7 +682,7 @@ function NetworkActions({
     return (
       <div className="space-y-3">
         <Alert variant="info">
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <Spinner className="size-5" />
           <AlertTitle>Transaction Pending</AlertTitle>
           <AlertDescription>
             Your attestation is being confirmed on {network.name}
@@ -703,7 +702,7 @@ function NetworkActions({
             variant="outline"
           >
             {isRefreshing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner className="mr-2" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
@@ -747,7 +746,7 @@ function NetworkActions({
         ) : null}
         <Button disabled={isSubmitting} onClick={onSubmit} size="sm">
           {isSubmitting ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" />
           ) : (
             <RefreshCw className="mr-2 h-4 w-4" />
           )}
@@ -791,7 +790,7 @@ function NetworkActions({
       <Button className="w-full" disabled={isSubmitting} onClick={onSubmit}>
         {isSubmitting ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" />
             Submitting...
           </>
         ) : (

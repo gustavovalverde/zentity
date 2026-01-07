@@ -1,5 +1,7 @@
 "use client";
 
+import "client-only";
+
 import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 
 import { recordClientMetric } from "@/lib/observability/client-metrics";

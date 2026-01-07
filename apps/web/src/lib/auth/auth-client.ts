@@ -1,5 +1,7 @@
 "use client";
 
+import "client-only";
+
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { passkeyClient } from "@better-auth/passkey/client";
 import {
@@ -8,8 +10,11 @@ import {
   lastLoginMethodClient,
   magicLinkClient,
   siweClient,
+  twoFactorClient,
 } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+
+import { getSafeRedirectPath } from "@/lib/utils/navigation";
 
 // Use current origin in browser to avoid IPv4/IPv6 localhost mismatch
 // Node.js v17+ prefers IPv6, so browser may be at [::1] while env says localhost
@@ -31,7 +36,23 @@ export const authClient = createAuthClient({
     genericOAuthClient(),
     lastLoginMethodClient(),
     oauthProviderClient(),
+    twoFactorClient({
+      // Redirect to 2FA verification page when TOTP is required
+      onTwoFactorRedirect: () => {
+        if (typeof window !== "undefined") {
+          // Preserve intended destination in URL
+          const redirectTo = new URLSearchParams(window.location.search).get(
+            "redirectTo"
+          );
+          const safeRedirect = getSafeRedirectPath(redirectTo, "");
+          const url = safeRedirect
+            ? `/verify-2fa?redirectTo=${encodeURIComponent(safeRedirect)}`
+            : "/verify-2fa";
+          window.location.href = url;
+        }
+      },
+    }),
   ],
 });
 
-export const { signIn, signOut, useSession } = authClient;
+export const { signOut, useSession } = authClient;

@@ -1,15 +1,15 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 
-import { Input } from "@/components/ui/input";
 import {
   Field,
-  FieldControl,
+  FieldError,
+  FieldGroup,
   FieldLabel,
-  FieldMessage,
-} from "@/components/ui/tanstack-form";
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
 import { makeFieldValidator } from "@/lib/utils/validation";
 
@@ -28,6 +28,7 @@ import { useWizard } from "../wizard-provider";
 export function StepEmail() {
   const { state, updateData, nextStep, startFresh } = useWizard();
   const inputRef = useRef<HTMLInputElement>(null);
+  const emailId = useId();
   const validateEmail = makeFieldValidator(
     emailSchema,
     "email",
@@ -79,36 +80,41 @@ export function StepEmail() {
         </p>
       </div>
 
-      <form.Field
-        name="email"
-        validators={{
-          onBlur: ({ value }) => validateEmailIfPresent(value),
-          onSubmit: ({ value }) => validateEmail(value),
-        }}
-      >
-        {(field) => (
-          <Field
-            errors={field.state.meta.errors as string[]}
-            isTouched={field.state.meta.isTouched}
-            isValidating={field.state.meta.isValidating}
-            name={field.name}
-          >
-            <FieldLabel>Email Address</FieldLabel>
-            <FieldControl>
-              <Input
-                autoComplete="email"
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="you@example.com"
-                ref={inputRef}
-                type="email"
-                value={field.state.value}
-              />
-            </FieldControl>
-            <FieldMessage />
-          </Field>
-        )}
-      </form.Field>
+      <FieldGroup>
+        <form.Field
+          name="email"
+          validators={{
+            onBlur: ({ value }) => validateEmailIfPresent(value),
+            onSubmit: ({ value }) => validateEmail(value),
+          }}
+        >
+          {(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid;
+            const errorMessage = isInvalid
+              ? (field.state.meta.errors?.[0] as string | undefined)
+              : undefined;
+            return (
+              <Field data-invalid={isInvalid}>
+                <FieldLabel htmlFor={emailId}>Email Address</FieldLabel>
+                <Input
+                  aria-invalid={isInvalid}
+                  autoComplete="email"
+                  id={emailId}
+                  name={field.name}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="you@example.com"
+                  ref={inputRef}
+                  type="email"
+                  value={field.state.value}
+                />
+                <FieldError>{errorMessage}</FieldError>
+              </Field>
+            );
+          }}
+        </form.Field>
+      </FieldGroup>
 
       <p className="text-muted-foreground text-xs">
         We&apos;ll use this email to contact you if needed and for account

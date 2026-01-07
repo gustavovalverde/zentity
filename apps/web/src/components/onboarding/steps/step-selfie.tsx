@@ -8,7 +8,6 @@ import {
   Camera,
   CameraOff,
   CheckCircle2,
-  Loader2,
   RotateCcw,
   Smile,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import { STABILITY_FRAMES } from "@/hooks/liveness/constants";
 import { useSelfieLivenessFlow } from "@/hooks/liveness/use-selfie-liveness-flow";
 import { useHumanLiveness } from "@/hooks/use-human-liveness";
@@ -452,10 +452,7 @@ export function StepSelfie() {
               className="block rounded-lg bg-background/90 px-4 py-3 shadow-lg backdrop-blur"
             >
               <div className="flex items-center gap-3">
-                <Loader2
-                  aria-hidden="true"
-                  className="h-5 w-5 animate-spin text-primary"
-                />
+                <Spinner aria-hidden="true" className="size-5 text-primary" />
                 <div>
                   <p className="font-medium">{statusMessage}</p>
                   <Progress
@@ -640,10 +637,7 @@ export function StepSelfie() {
               className="block rounded-lg bg-background/95 px-6 py-4 shadow-lg"
             >
               <div className="flex items-center gap-3">
-                <Loader2
-                  aria-hidden="true"
-                  className="h-6 w-6 animate-spin text-primary"
-                />
+                <Spinner aria-hidden="true" className="size-6 text-primary" />
                 <p className="font-medium">Verifying your identity...</p>
               </div>
             </output>

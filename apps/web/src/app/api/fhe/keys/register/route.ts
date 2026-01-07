@@ -71,10 +71,11 @@ export async function POST(req: Request) {
     if (!session?.user?.id) {
       return jsonError("Authentication required.", 401);
     }
-    userId = session.user.id;
+    const sessionUserId = session.user.id;
+    userId = sessionUserId;
 
     const existingSecret = await getEncryptedSecretByUserAndType(
-      userId,
+      sessionUserId,
       "fhe_keys"
     );
     const existingKeyId =

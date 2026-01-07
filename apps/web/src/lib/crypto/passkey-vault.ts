@@ -1,5 +1,7 @@
 "use client";
 
+import "client-only";
+
 import { decode, encode } from "@msgpack/msgpack";
 
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";

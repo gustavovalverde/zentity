@@ -10,16 +10,14 @@ import {
 /**
  * Web3 Provider with Reown AppKit
  *
- * Wraps the application with wagmi, AppKit, and tRPC providers.
+ * Wraps the application with wagmi and AppKit providers.
  * Uses cookie-based storage for SSR compatibility.
  * Includes FhevmProvider for client-side FHE operations.
  */
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo } from "react";
 import { type Config, cookieToInitialState, WagmiProvider } from "wagmi";
 
 import { InMemoryStorageProvider } from "@/hooks/fhevm/use-in-memory-storage";
-import { getTrpcClientConfig, trpcReact } from "@/lib/trpc/client";
 import {
   createWagmiAdapter,
   fhevmSepolia,
@@ -184,24 +182,6 @@ export function Web3Provider({
       isCancelled = true;
     };
   }, [storageKey, wagmiAdapter]);
-  // Create QueryClient once per component instance (shared by wagmi and tRPC)
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 60 * 1000, // 1 minute
-            refetchOnWindowFocus: false,
-          },
-        },
-      })
-  );
-
-  // Create tRPC client once per component instance
-  const [trpcClient] = useState(() =>
-    trpcReact.createClient(getTrpcClientConfig())
-  );
-
   // Get initial state from cookies for SSR hydration
   const initialState = cookieToInitialState(
     wagmiAdapter.wagmiConfig as Config,
@@ -209,18 +189,14 @@ export function Web3Provider({
   );
 
   return (
-    <trpcReact.Provider client={trpcClient} queryClient={queryClient}>
-      <WagmiProvider
-        config={wagmiAdapter.wagmiConfig as Config}
-        initialState={initialState}
-      >
-        <QueryClientProvider client={queryClient}>
-          <InMemoryStorageProvider>
-            <SiweBridge />
-            <FhevmProvider>{children}</FhevmProvider>
-          </InMemoryStorageProvider>
-        </QueryClientProvider>
-      </WagmiProvider>
-    </trpcReact.Provider>
+    <WagmiProvider
+      config={wagmiAdapter.wagmiConfig as Config}
+      initialState={initialState}
+    >
+      <InMemoryStorageProvider>
+        <SiweBridge />
+        <FhevmProvider>{children}</FhevmProvider>
+      </InMemoryStorageProvider>
+    </WagmiProvider>
   );
 }

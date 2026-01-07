@@ -1,9 +1,8 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 
 /** Basic email format validation pattern */
@@ -11,17 +10,19 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Field,
-  FieldControl,
+  FieldError,
+  FieldGroup,
   FieldLabel,
-  FieldMessage,
-} from "@/components/ui/tanstack-form";
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 
 export function ForgotPasswordForm() {
   const router = useRouter();
+  const emailId = useId();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -83,7 +84,7 @@ export function ForgotPasswordForm() {
         </Alert>
       ) : null}
 
-      <div className="space-y-4">
+      <FieldGroup>
         <form.Field
           name="email"
           validators={{
@@ -91,35 +92,39 @@ export function ForgotPasswordForm() {
             onSubmit: ({ value }) => validateEmail(value),
           }}
         >
-          {(field) => (
-            <Field
-              errors={field.state.meta.errors as string[]}
-              isTouched={field.state.meta.isTouched}
-              isValidating={field.state.meta.isValidating}
-              name={field.name}
-            >
-              <FieldLabel>Email</FieldLabel>
-              <FieldControl>
+          {(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid;
+            const errorMessage = isInvalid
+              ? (field.state.meta.errors?.[0] as string | undefined)
+              : undefined;
+
+            return (
+              <Field data-invalid={isInvalid}>
+                <FieldLabel htmlFor={emailId}>Email</FieldLabel>
                 <Input
+                  aria-invalid={isInvalid}
                   autoComplete="email"
                   disabled={isLoading}
+                  id={emailId}
+                  name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="you@example.com"
                   type="email"
                   value={field.state.value}
                 />
-              </FieldControl>
-              <FieldMessage />
-            </Field>
-          )}
+                <FieldError>{errorMessage}</FieldError>
+              </Field>
+            );
+          }}
         </form.Field>
-      </div>
+      </FieldGroup>
 
       <Button className="w-full" disabled={isLoading} type="submit">
         {isLoading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" />
             Sending...
           </>
         ) : (

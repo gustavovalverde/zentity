@@ -1,11 +1,10 @@
 "use client";
 
+import { AuthView } from "@daveyplate/better-auth-ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { MagicLinkForm } from "@/components/auth/magic-link-form";
 import { PasskeySignInForm } from "@/components/auth/passkey-sign-in-form";
-import { SignInForm } from "@/components/auth/sign-in-form";
 import {
   Card,
   CardContent,
@@ -16,36 +15,41 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth/auth-client";
 
-type SignInTab = "passkey" | "magic-link" | "password";
+type SignInTab = "passkey" | "other";
 
-const resolveLastUsedInfo = (
-  method: string | null
-): { tab: SignInTab; label: string } | null => {
-  if (method === "passkey") {
-    return { tab: "passkey", label: "Passkey" };
+/**
+ * Returns a human-readable label for the last used login method.
+ */
+function getLastUsedLabel(method: string | null): string | null {
+  if (!method) {
+    return null;
   }
-  if (method === "email" || method === "credential") {
-    return { tab: "password", label: "Password" };
+  if (method === "passkey") {
+    return "Passkey";
+  }
+  if (method === "credential" || method === "email") {
+    return "Email/Password";
   }
   if (method === "magic-link" || method === "magiclink") {
-    return { tab: "magic-link", label: "Magic Link" };
+    return "Magic Link";
   }
-  return null;
-};
-
-const resolveDefaultTab = (method: string | null): SignInTab =>
-  resolveLastUsedInfo(method)?.tab ?? "passkey";
+  return method;
+}
 
 export default function SignInPage() {
   const [activeTab, setActiveTab] = useState<SignInTab>("passkey");
   const [lastUsedMethod, setLastUsedMethod] = useState<string | null>(null);
-  const lastUsedInfo = resolveLastUsedInfo(lastUsedMethod);
 
   useEffect(() => {
     const lastUsed = authClient.getLastUsedLoginMethod?.() ?? null;
     setLastUsedMethod(lastUsed);
-    setActiveTab(resolveDefaultTab(lastUsed));
+    // Default to passkey tab, but switch to "other" if last method wasn't passkey
+    if (lastUsed && lastUsed !== "passkey") {
+      setActiveTab("other");
+    }
   }, []);
+
+  const lastUsedLabel = getLastUsedLabel(lastUsedMethod);
 
   return (
     <Card className="w-full max-w-md">
@@ -54,12 +58,10 @@ export default function SignInPage() {
         <CardDescription>Sign in to your Zentity account</CardDescription>
       </CardHeader>
       <CardContent>
-        {lastUsedInfo ? (
+        {lastUsedLabel ? (
           <p className="mb-3 text-center text-muted-foreground text-xs">
             Last used:{" "}
-            <span className="font-medium text-foreground">
-              {lastUsedInfo.label}
-            </span>
+            <span className="font-medium text-foreground">{lastUsedLabel}</span>
           </p>
         ) : null}
         <Tabs
@@ -67,19 +69,17 @@ export default function SignInPage() {
           onValueChange={(value) => setActiveTab(value as SignInTab)}
           value={activeTab}
         >
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="passkey">Passkey</TabsTrigger>
-            <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
-            <TabsTrigger value="password">Password</TabsTrigger>
+            <TabsTrigger value="other">Email / OAuth</TabsTrigger>
           </TabsList>
           <TabsContent className="mt-4" value="passkey">
+            {/* Custom passkey form with PRF support for FHE key derivation */}
             <PasskeySignInForm />
           </TabsContent>
-          <TabsContent className="mt-4" value="magic-link">
-            <MagicLinkForm />
-          </TabsContent>
-          <TabsContent className="mt-4" value="password">
-            <SignInForm />
+          <TabsContent className="mt-4" value="other">
+            {/* Better Auth UI handles email/password, magic link, and OAuth */}
+            <AuthView view="SIGN_IN" />
           </TabsContent>
         </Tabs>
         <div className="mt-6 text-center text-muted-foreground text-sm">

@@ -1,21 +1,21 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 
 import { PasswordRequirements } from "@/components/auth/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Field,
-  FieldControl,
+  FieldError,
+  FieldGroup,
   FieldLabel,
-  FieldMessage,
-} from "@/components/ui/tanstack-form";
+} from "@/components/ui/field";
+import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   getBetterAuthErrorMessage,
@@ -33,6 +33,8 @@ interface ResetPasswordFormProps {
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const router = useRouter();
+  const passwordId = useId();
+  const confirmPasswordId = useId();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [breachCheckKey, setBreachCheckKey] = useState(0);
@@ -145,7 +147,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         </Alert>
       ) : null}
 
-      <div className="space-y-4">
+      <FieldGroup>
         <form.Field
           name="password"
           validators={{
@@ -153,33 +155,38 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             onSubmit: ({ value }) => validatePassword(value),
           }}
         >
-          {(field) => (
-            <Field
-              errors={field.state.meta.errors as string[]}
-              isTouched={field.state.meta.isTouched}
-              isValidating={field.state.meta.isValidating}
-              name={field.name}
-            >
-              <FieldLabel>New Password</FieldLabel>
-              <FieldControl>
-                <Input
-                  autoComplete="new-password"
-                  disabled={isLoading}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="Enter new password"
-                  type="password"
-                  value={field.state.value}
+          {(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid;
+            const errorMessage = isInvalid
+              ? (field.state.meta.errors?.[0] as string | undefined)
+              : undefined;
+            return (
+              <Field data-invalid={isInvalid}>
+                <FieldLabel htmlFor={passwordId}>New Password</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    aria-invalid={isInvalid}
+                    autoComplete="new-password"
+                    disabled={isLoading}
+                    id={passwordId}
+                    name={field.name}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="Enter new password"
+                    type="password"
+                    value={field.state.value}
+                  />
+                </InputGroup>
+                <FieldError>{errorMessage}</FieldError>
+                <PasswordRequirements
+                  breachCheckKey={breachCheckKey}
+                  onBreachStatusChange={(status) => setBreachStatus(status)}
+                  password={field.state.value}
                 />
-              </FieldControl>
-              <FieldMessage />
-              <PasswordRequirements
-                breachCheckKey={breachCheckKey}
-                onBreachStatusChange={(status) => setBreachStatus(status)}
-                password={field.state.value}
-              />
-            </Field>
-          )}
+              </Field>
+            );
+          }}
         </form.Field>
 
         <form.Field
@@ -189,33 +196,40 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             onSubmit: ({ value }) => validateConfirmPassword(value),
           }}
         >
-          {(field) => (
-            <Field
-              errors={field.state.meta.errors as string[]}
-              isTouched={field.state.meta.isTouched}
-              isValidating={field.state.meta.isValidating}
-              name={field.name}
-            >
-              <FieldLabel>Confirm Password</FieldLabel>
-              <FieldControl>
-                <Input
-                  autoComplete="new-password"
-                  disabled={isLoading}
-                  onBlur={() => {
-                    field.handleBlur();
-                    triggerBreachCheckIfConfirmed();
-                  }}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="Confirm new password"
-                  type="password"
-                  value={field.state.value}
-                />
-              </FieldControl>
-              <FieldMessage />
-            </Field>
-          )}
+          {(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid;
+            const errorMessage = isInvalid
+              ? (field.state.meta.errors?.[0] as string | undefined)
+              : undefined;
+            return (
+              <Field data-invalid={isInvalid}>
+                <FieldLabel htmlFor={confirmPasswordId}>
+                  Confirm Password
+                </FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    aria-invalid={isInvalid}
+                    autoComplete="new-password"
+                    disabled={isLoading}
+                    id={confirmPasswordId}
+                    name={field.name}
+                    onBlur={() => {
+                      field.handleBlur();
+                      triggerBreachCheckIfConfirmed();
+                    }}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="Confirm new password"
+                    type="password"
+                    value={field.state.value}
+                  />
+                </InputGroup>
+                <FieldError>{errorMessage}</FieldError>
+              </Field>
+            );
+          }}
         </form.Field>
-      </div>
+      </FieldGroup>
 
       <p className="text-muted-foreground text-xs">
         Password must be at least {PASSWORD_MIN_LENGTH} characters. We block
@@ -233,7 +247,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       >
         {isLoading ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner className="mr-2" />
             Resetting...
           </>
         ) : (

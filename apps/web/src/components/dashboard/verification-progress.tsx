@@ -6,7 +6,6 @@ import {
   Circle,
   FileCheck,
   Key,
-  Loader2,
   Shield,
   User,
   XCircle,
@@ -16,6 +15,7 @@ import { useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
 interface VerificationCheck {
@@ -230,7 +230,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
         </div>
         {!(effectiveChecks.fheEncryption || effectiveChecks.fheError) && (
           <p className="flex items-center gap-1.5 text-muted-foreground text-xs">
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Spinner className="size-3" />
             Encrypting data securely... This may take a moment.
           </p>
         )}

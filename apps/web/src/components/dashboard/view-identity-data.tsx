@@ -9,7 +9,7 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * Self-contained: fetches attestation status via tRPC to determine which
  * contract to read from.
  */
-import { Eye, EyeOff, KeyRound, Loader2, Lock, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Lock, RefreshCw } from "lucide-react";
 
 /** Matches a valid hex string with 0x prefix */
 const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
@@ -28,6 +28,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
@@ -111,7 +112,7 @@ function DecryptButtonContent({
   if (isDecrypting) {
     return (
       <>
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <Spinner className="mr-2" />
         Decrypting...
       </>
     );
@@ -413,7 +414,7 @@ export function ViewIdentityData() {
     return (
       <Card className="border-dashed">
         <CardContent className="flex items-center justify-center py-6">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Spinner className="size-5 text-muted-foreground" />
         </CardContent>
       </Card>
     );
@@ -447,7 +448,7 @@ export function ViewIdentityData() {
             <AlertDescription>
               {fhevmStatus === "loading" && (
                 <span className="flex items-center gap-2">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner className="size-3" />
                   Initializing FHEVM SDK...
                 </span>
               )}

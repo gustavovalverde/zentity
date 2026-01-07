@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, KeyRound, Loader2, Mail, TriangleAlert } from "lucide-react";
+import { Check, KeyRound, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
 import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
@@ -174,7 +175,7 @@ export default function RecoverPasskeyPage() {
     return (
       <Card className="w-full max-w-md">
         <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
         </CardContent>
       </Card>
     );
@@ -230,7 +231,7 @@ export default function RecoverPasskeyPage() {
             >
               {phase === "sending" ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner className="mr-2" />
                   Sending...
                 </>
               ) : (

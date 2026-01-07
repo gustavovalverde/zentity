@@ -7,7 +7,7 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * Requests the user to grant the ComplianceRules contract access
  * to their encrypted identity data in IdentityRegistry.
  */
-import { AlertTriangle, CheckCircle, Loader2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle, ShieldCheck } from "lucide-react";
 
 /** Matches error reason text (e.g., "reason: Some error message") */
 const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
@@ -32,6 +32,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { IdentityRegistryABI } from "@/lib/contracts";
 import { useDevFaucet } from "@/lib/wagmi/use-dev-faucet";
 
@@ -270,7 +271,7 @@ export function ComplianceAccessCard({
                     : "Granting Access...";
                   return (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Spinner className="mr-2" />
                       {label}
                     </>
                   );
