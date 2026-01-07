@@ -194,7 +194,7 @@ interface WizardContextType {
   cancelPendingNavigation: () => void;
   updateData: (data: Partial<WizardData>) => void;
   setSubmitting: (isSubmitting: boolean) => void;
-  reset: () => void;
+  reset: () => Promise<void>;
   /** Start fresh session (clears any existing session) */
   startFresh: (email?: string | null) => Promise<void>;
   /** Skip liveness verification and advance to next step */
