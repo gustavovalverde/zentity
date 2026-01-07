@@ -11,6 +11,10 @@ import {
 } from "react";
 
 import {
+  cachePasskeyUnlock,
+  resetPasskeyUnlockCache,
+} from "@/lib/crypto/secret-vault";
+import {
   checkPrfSupport,
   type PrfSupportStatus,
 } from "@/lib/crypto/webauthn-prf";
@@ -92,6 +96,7 @@ export function PasskeyAuthProvider({ children }: PasskeyAuthProviderProps) {
 
   const setPrfOutput = useCallback(
     (output: Uint8Array, credentialId: string) => {
+      cachePasskeyUnlock({ credentialId, prfOutput: output });
       setState((prev) => ({
         ...prev,
         prfOutput: output,
@@ -113,6 +118,7 @@ export function PasskeyAuthProvider({ children }: PasskeyAuthProviderProps) {
   }, []);
 
   const clear = useCallback(() => {
+    resetPasskeyUnlockCache();
     setState({
       prfSupport: state.prfSupport, // Keep PRF support status
       prfOutput: null,

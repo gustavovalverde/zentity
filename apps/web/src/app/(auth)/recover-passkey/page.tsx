@@ -19,16 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { authClient, useSession } from "@/lib/auth/auth-client";
+import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
 import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
 import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
 import { addWrapperForSecretType } from "@/lib/crypto/secret-vault";
-import {
-  buildPrfExtension,
-  checkPrfSupport,
-  evaluatePrf,
-  extractPrfOutputFromClientResults,
-} from "@/lib/crypto/webauthn-prf";
+import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
 
@@ -128,59 +124,16 @@ export default function RecoverPasskeyPage() {
     try {
       const prfSalt = generatePrfSalt();
 
-      const registration = await authClient.passkey.addPasskey({
+      const registration = await registerPasskeyWithPrf({
         name: "Recovery Passkey",
-        returnWebAuthnResponse: true,
-        extensions: buildPrfExtension(prfSalt),
+        prfSalt,
       });
 
-      if (!registration || registration.error || !registration.data) {
-        throw new Error(
-          registration?.error?.message || "Failed to register passkey."
-        );
+      if (!registration.ok) {
+        throw new Error(registration.message);
       }
 
-      const webauthn =
-        "webauthn" in registration ? registration.webauthn : null;
-
-      const credentialId =
-        registration.data.credentialID ||
-        webauthn?.response?.id ||
-        webauthn?.response?.rawId;
-
-      if (!credentialId) {
-        throw new Error("Missing passkey credential ID.");
-      }
-
-      let prfOutput = extractPrfOutputFromClientResults({
-        clientExtensionResults: webauthn?.clientExtensionResults,
-        credentialId,
-      });
-
-      if (!prfOutput) {
-        const transports =
-          webauthn?.response && "transports" in webauthn.response
-            ? (webauthn.response.transports as AuthenticatorTransport[])
-            : undefined;
-        const { prfOutputs } = await evaluatePrf({
-          credentialIdToSalt: { [credentialId]: prfSalt },
-          credentialTransports: transports
-            ? {
-                [credentialId]: transports,
-              }
-            : undefined,
-        });
-        prfOutput =
-          prfOutputs.get(credentialId) ??
-          prfOutputs.values().next().value ??
-          null;
-      }
-
-      if (!prfOutput) {
-        throw new Error(
-          "This passkey did not return PRF output. Please try a different authenticator."
-        );
-      }
+      const { credentialId, prfOutput } = registration;
 
       await addWrapperForSecretType({
         secretType: FHE_SECRET_TYPE,

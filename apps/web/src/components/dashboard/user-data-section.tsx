@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { getStoredProfile } from "@/lib/crypto/profile-secret";
+import { hasCachedPasskeyUnlock } from "@/lib/crypto/secret-vault";
 import { trpcReact } from "@/lib/trpc/client";
 
 function VerificationBadge({
@@ -114,6 +115,9 @@ export function UserDataSection() {
       return;
     }
     if (profileName) {
+      return;
+    }
+    if (!hasCachedPasskeyUnlock()) {
       return;
     }
     loadProfile().catch(() => {

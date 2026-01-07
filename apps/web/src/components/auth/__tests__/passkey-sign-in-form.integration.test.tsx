@@ -11,16 +11,12 @@ const sessionMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/session-manager", () => sessionMocks);
 
-const authMocks = vi.hoisted(() => ({
-  passkeySignIn: vi.fn(),
+const passkeyMocks = vi.hoisted(() => ({
+  signInWithPasskey: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/auth-client", () => ({
-  authClient: {
-    signIn: {
-      passkey: authMocks.passkeySignIn,
-    },
-  },
+vi.mock("@/lib/auth/passkey", () => ({
+  signInWithPasskey: passkeyMocks.signInWithPasskey,
 }));
 
 vi.mock("@/lib/crypto/webauthn-prf", () => ({
@@ -44,7 +40,8 @@ import { PasskeySignInForm } from "@/components/auth/passkey-sign-in-form";
 
 describe("PasskeySignInForm integration", () => {
   it("signs in with passkey and redirects", async () => {
-    authMocks.passkeySignIn.mockResolvedValue({
+    passkeyMocks.signInWithPasskey.mockResolvedValue({
+      ok: true,
       data: { user: { id: "user-1" } },
     });
 
@@ -54,7 +51,7 @@ describe("PasskeySignInForm integration", () => {
 
     await waitFor(() => {
       expect(sessionMocks.prepareForNewSession).toHaveBeenCalled();
-      expect(authMocks.passkeySignIn).toHaveBeenCalled();
+      expect(passkeyMocks.signInWithPasskey).toHaveBeenCalled();
       expect(navigationMocks.redirectTo).toHaveBeenCalledWith("/dashboard");
     });
   });
