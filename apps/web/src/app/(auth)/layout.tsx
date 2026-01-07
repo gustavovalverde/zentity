@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Logo } from "@/components/logo";
 import { ModeToggle } from "@/components/mode-toggle";
+import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
 
 export default function AuthLayout({
   children,
@@ -19,7 +20,7 @@ export default function AuthLayout({
         </nav>
       </header>
       <main className="flex flex-1 items-center justify-center px-4 py-12">
-        {children}
+        <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
       </main>
     </div>
   );

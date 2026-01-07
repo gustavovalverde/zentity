@@ -12,10 +12,11 @@ import {
   ArrowRight,
   CheckCircle,
   ExternalLink,
-  Loader2,
   Lock,
   Send,
 } from "lucide-react";
+
+import { Spinner } from "@/components/ui/spinner";
 
 /** Matches a valid Ethereum address (0x followed by 40 hex characters) */
 const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
@@ -313,7 +314,7 @@ export function TransferForm({
               >
                 {isPending ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Spinner className="mr-2" />
                     Encrypting & Sending...
                   </>
                 ) : (

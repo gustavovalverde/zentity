@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   getProfileSnapshot,
   getServerProfileSnapshot,
@@ -23,6 +24,8 @@ export function ProfileGreetingName({
   readonly fallback?: string;
 }) {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [lastLoginMethod, setLastLoginMethod] = useState<string | null>(null);
+  const attemptedUnlockRef = useRef(false);
 
   // Subscribe to profile cache changes - all instances share the same cache
   const profile = useSyncExternalStore(
@@ -40,12 +43,22 @@ export function ProfileGreetingName({
 
   // Trigger a fetch on mount if no profile is cached
   useEffect(() => {
+    if (!lastLoginMethod) {
+      const lastUsed = authClient.getLastUsedLoginMethod?.() ?? "unknown";
+      setLastLoginMethod(lastUsed);
+      return;
+    }
     if (!profile) {
-      const shouldAutoUnlock = hasCachedPasskeyUnlock();
+      const shouldAutoUnlock =
+        hasCachedPasskeyUnlock() || lastLoginMethod === "passkey";
       if (!shouldAutoUnlock) {
         setIsInitialLoad(false);
         return;
       }
+      if (attemptedUnlockRef.current) {
+        return;
+      }
+      attemptedUnlockRef.current = true;
       let isCancelled = false;
       // Fire and forget - the subscription will pick up the result
       getStoredProfile()
@@ -63,7 +76,7 @@ export function ProfileGreetingName({
         isCancelled = true;
       };
     }
-  }, [profile]);
+  }, [profile, lastLoginMethod]);
 
   // Show skeleton during initial load to avoid "User" flash
   if (isInitialLoad && !profile) {

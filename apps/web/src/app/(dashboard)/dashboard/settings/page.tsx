@@ -2,10 +2,10 @@ import { Key, Shield, User } from "lucide-react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { AuthMethodsSection } from "@/components/dashboard/auth-methods-section";
-import { ChangePasswordSection } from "@/components/dashboard/change-password-section";
 import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
 import { PasskeyManagementSection } from "@/components/dashboard/passkey-management-section";
+import { PasswordSection } from "@/components/dashboard/password-section";
+import { SecurityCards } from "@/components/dashboard/security-cards";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { auth } from "@/lib/auth/auth";
@@ -22,10 +22,6 @@ export default async function SettingsPage() {
 
   // Check if user has a password set (for passwordless users)
   const hasPassword = await userHasPassword(session.user.id);
-
-  // Get linked accounts from session/database
-  // For now, we'll show a simplified view
-  const linkedAccounts: { provider: string; providerId: string }[] = [];
 
   return (
     <div className="space-y-6">
@@ -53,13 +49,12 @@ export default async function SettingsPage() {
         </TabsList>
 
         <TabsContent className="mt-6 space-y-6" value="security">
+          {/* Custom passkey section with PRF support for FHE key derivation */}
           <PasskeyManagementSection />
-          <AuthMethodsSection
-            email={session.user.email}
-            hasPassword={hasPassword}
-            linkedAccounts={linkedAccounts}
-          />
-          <ChangePasswordSection hasPassword={hasPassword} />
+          {/* Better Auth UI components for OAuth, session, and 2FA management */}
+          <SecurityCards hasPassword={hasPassword} />
+          {/* Password section: ChangePasswordCard or SetPasswordSection */}
+          <PasswordSection hasPassword={hasPassword} />
         </TabsContent>
 
         <TabsContent className="mt-6 space-y-6" value="data">

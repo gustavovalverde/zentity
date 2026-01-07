@@ -7,7 +7,6 @@ import {
   Check,
   Edit2,
   KeyRound,
-  Loader2,
   ShieldCheck,
   TriangleAlert,
   UserCheck,
@@ -31,6 +30,7 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import { authClient } from "@/lib/auth/auth-client";
 import {
@@ -115,7 +115,7 @@ function StepIndicatorIcon({
     return <Check className="h-4 w-4" />;
   }
   if (status === "active") {
-    return <Loader2 className="h-4 w-4 animate-spin" />;
+    return <Spinner />;
   }
   return icon;
 }
@@ -992,7 +992,7 @@ export function StepCreateAccount() {
     return (
       <div className="rounded-lg border p-6">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Spinner />
           <span>Finalizing your account…</span>
         </div>
       </div>
@@ -1201,7 +1201,7 @@ export function StepCreateAccount() {
               {faceMatchStatus === "matching" && (
                 <div className="fade-in flex animate-in flex-col items-center gap-1 duration-300">
                   <div className="relative">
-                    <Loader2 className="h-6 w-6 animate-spin text-info" />
+                    <Spinner className="size-6 text-info" />
                     <div className="absolute inset-0 h-6 w-6 animate-ping rounded-full bg-info/20" />
                   </div>
                   <Skeleton className="mt-1 h-3 w-16" />
@@ -1331,7 +1331,7 @@ export function StepCreateAccount() {
               status={progressStatus.passkey}
             />
             <StepIndicator
-              icon={<Loader2 className="h-4 w-4" />}
+              icon={<Spinner />}
               label="Derive encryption key"
               status={progressStatus.prf}
             />

@@ -6,7 +6,7 @@
  * Allows attested users to request token minting.
  * Tokens are minted by the server (owner) to the user's wallet.
  */
-import { CheckCircle, Coins, ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle, Coins, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 import { parseTokenAmount } from "@/lib/utils/token";
 
@@ -96,11 +97,7 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
               }
               onClick={handleMint}
             >
-              {mintMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Mint"
-              )}
+              {mintMutation.isPending ? <Spinner /> : "Mint"}
             </Button>
           </div>
           <p className="text-muted-foreground text-xs">

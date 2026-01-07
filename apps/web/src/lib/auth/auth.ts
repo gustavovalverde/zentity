@@ -11,6 +11,7 @@ import {
   lastLoginMethod,
   magicLink,
   siwe,
+  twoFactor,
 } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 import { SiweMessage } from "siwe";
@@ -22,6 +23,7 @@ import {
   accounts,
   passkeys,
   sessions,
+  twoFactor as twoFactorTable,
   users,
   verifications,
   walletAddresses,
@@ -39,6 +41,7 @@ const betterAuthSchema = {
   session: sessions,
   account: accounts,
   verification: verifications,
+  twoFactor: twoFactorTable,
   passkey: passkeys,
   walletAddress: walletAddresses,
   oauthClient: oauthClients,
@@ -293,6 +296,11 @@ export const auth = betterAuth({
         const verification = await getVerificationStatus(user.id);
         return { verification };
       },
+    }),
+    // Two-factor authentication (TOTP) as optional backup for password users
+    // Note: TOTP cannot replace passkey for FHE key access
+    twoFactor({
+      issuer: "Zentity",
     }),
   ],
 });

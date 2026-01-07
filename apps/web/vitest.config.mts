@@ -13,6 +13,10 @@ export default defineConfig({
         "./noir-circuits"
       ),
       "@": resolve(fileURLToPath(new URL(".", import.meta.url)), "./src"),
+      "client-only": resolve(
+        fileURLToPath(new URL(".", import.meta.url)),
+        "./src/test/client-only.ts"
+      ),
       "server-only": resolve(
         fileURLToPath(new URL(".", import.meta.url)),
         "./src/test/server-only.ts"

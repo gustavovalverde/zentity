@@ -23,7 +23,6 @@ import {
   CheckCircle2,
   CreditCard,
   FileText,
-  Loader2,
   Upload,
   X,
 } from "lucide-react";
@@ -33,6 +32,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
@@ -357,7 +357,7 @@ export function StepIdUpload() {
         <div className="fade-in animate-in space-y-4 duration-300">
           {/* Status header */}
           <div className="flex items-center gap-3 rounded-lg border border-info/30 bg-info/10 p-4 text-info">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Spinner className="size-5" />
             <div>
               <p className="font-medium">
                 {processingState === "converting"

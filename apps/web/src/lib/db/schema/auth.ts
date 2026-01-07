@@ -19,6 +19,9 @@ export const users = sqliteTable("user", {
   isAnonymous: integer("is_anonymous", { mode: "boolean" })
     .notNull()
     .default(false),
+  twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
 });
@@ -78,6 +81,22 @@ export const verifications = sqliteTable(
   },
   (table) => ({
     identifierIdx: index("verification_identifier_idx").on(table.identifier),
+  })
+);
+
+export const twoFactor = sqliteTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    secretIdx: index("twoFactor_secret_idx").on(table.secret),
+    userIdIdx: index("twoFactor_userId_idx").on(table.userId),
   })
 );
 
@@ -145,6 +164,9 @@ export type NewAccount = typeof accounts.$inferInsert;
 
 export type Verification = typeof verifications.$inferSelect;
 export type NewVerification = typeof verifications.$inferInsert;
+
+export type TwoFactor = typeof twoFactor.$inferSelect;
+export type NewTwoFactor = typeof twoFactor.$inferInsert;
 
 export type Passkey = typeof passkeys.$inferSelect;
 export type NewPasskey = typeof passkeys.$inferInsert;
