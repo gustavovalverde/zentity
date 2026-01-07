@@ -29,6 +29,7 @@ import {
 } from "@/lib/wagmi/config";
 
 import { FhevmProvider } from "./fhevm-provider";
+import { SiweBridge } from "./siwe-bridge";
 
 // App metadata for wallet connection
 const metadata = {
@@ -215,6 +216,7 @@ export function Web3Provider({
       >
         <QueryClientProvider client={queryClient}>
           <InMemoryStorageProvider>
+            <SiweBridge />
             <FhevmProvider>{children}</FhevmProvider>
           </InMemoryStorageProvider>
         </QueryClientProvider>

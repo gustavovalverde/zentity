@@ -4,7 +4,7 @@ const STORAGE_KEY = "zentity-onboarding-draft-v1";
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
 export interface OnboardingDraft {
-  email?: string;
+  email?: string | null;
   extractedName?: string | null;
   extractedDOB?: string | null;
   extractedDocNumber?: string | null;

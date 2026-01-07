@@ -1,10 +1,37 @@
+import { oauthProvider } from "@better-auth/oauth-provider";
+import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { setSessionCookie } from "better-auth/cookies";
 import { nextCookies } from "better-auth/next-js";
-import { haveIBeenPwned, magicLink } from "better-auth/plugins";
+import {
+  anonymous,
+  genericOAuth,
+  haveIBeenPwned,
+  lastLoginMethod,
+  magicLink,
+  siwe,
+} from "better-auth/plugins";
+import { eq } from "drizzle-orm";
+import { SiweMessage } from "siwe";
 
+import { getOnboardingContext } from "@/lib/auth/onboarding-context";
 import { db } from "@/lib/db/connection";
-import { accounts, sessions, users, verifications } from "@/lib/db/schema/auth";
+import { getVerificationStatus } from "@/lib/db/queries/identity";
+import {
+  accounts,
+  passkeys,
+  sessions,
+  users,
+  verifications,
+  walletAddresses,
+} from "@/lib/db/schema/auth";
+import {
+  oauthAccessTokens,
+  oauthClients,
+  oauthConsents,
+  oauthRefreshTokens,
+} from "@/lib/db/schema/oauth-provider";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 const betterAuthSchema = {
@@ -12,6 +39,12 @@ const betterAuthSchema = {
   session: sessions,
   account: accounts,
   verification: verifications,
+  passkey: passkeys,
+  walletAddress: walletAddresses,
+  oauthClient: oauthClients,
+  oauthRefreshToken: oauthRefreshTokens,
+  oauthAccessToken: oauthAccessTokens,
+  oauthConsent: oauthConsents,
 };
 
 // Build trusted origins based on environment
@@ -50,6 +83,42 @@ const getTrustedOrigins = (): string[] => {
   return origins;
 };
 
+const parseGenericOAuthConfig = () => {
+  const raw = process.env.GENERIC_OAUTH_PROVIDERS;
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const resolveLastLoginMethod = (ctx: { path?: string }): string | null => {
+  const path = ctx.path ?? "";
+  if (
+    path.startsWith("/sign-in/magic-link") ||
+    path.startsWith("/magic-link/verify")
+  ) {
+    return "magic-link";
+  }
+  return null;
+};
+
+const getAuthDomain = (): string => {
+  const base =
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+  try {
+    return new URL(base).host;
+  } catch {
+    return "localhost:3000";
+  }
+};
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -66,6 +135,11 @@ export const auth = betterAuth({
     sendResetPassword: async ({ user: _user, url: _url }) => {
       // TODO: Implement email sending when SMTP is configured
       // For now, silently succeed - the user won't receive an email but can retry
+    },
+  },
+  user: {
+    deleteUser: {
+      enabled: true,
     },
   },
   // OAuth providers for account linking (users must complete identity verification first)
@@ -90,6 +164,7 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // Update session every 24 hours
+    storeSessionInDatabase: true,
     // Cookie caching with JWE encryption for better performance.
     // Reduces database queries by caching session in encrypted cookies.
     // NOTE: Our passkey session creation now signs cookies correctly (HMAC-SHA256),
@@ -102,12 +177,122 @@ export const auth = betterAuth({
   plugins: [
     nextCookies(),
     haveIBeenPwned(),
+    anonymous({
+      emailDomainName: process.env.ANONYMOUS_EMAIL_DOMAIN || "anon.zentity.app",
+    }),
     magicLink({
       sendMagicLink: async ({ email: _email, url: _url }) => {
         // TODO: Implement email sending when SMTP is configured
         // For now, silently succeed - the user won't receive an email but can retry
       },
       expiresIn: 300, // 5 minutes
+    }),
+    passkey({
+      origin: getTrustedOrigins(),
+      registration: {
+        requireSession: false,
+        resolveUser: async ({ context }) => {
+          if (!context) {
+            throw new Error("Missing onboarding context token.");
+          }
+          const onboardingContext = await getOnboardingContext(context);
+          if (!onboardingContext?.userId) {
+            throw new Error("Onboarding context expired or invalid.");
+          }
+          const user = await db.query.users.findFirst({
+            where: eq(users.id, onboardingContext.userId),
+          });
+          if (!user) {
+            throw new Error("Onboarding user not found.");
+          }
+          const name = onboardingContext.email || user.email || user.id;
+          return { id: user.id, name, displayName: name };
+        },
+        afterVerification: async ({ ctx, user, context }) => {
+          if (!context) {
+            throw new Error("Missing onboarding context token.");
+          }
+          const onboardingContext = await getOnboardingContext(context);
+          if (!onboardingContext) {
+            throw new Error("Onboarding context expired or invalid.");
+          }
+          if (onboardingContext.userId !== user.id) {
+            throw new Error("Onboarding context user mismatch.");
+          }
+
+          if (onboardingContext.email) {
+            await ctx.context.internalAdapter.updateUser(user.id, {
+              email: onboardingContext.email,
+              isAnonymous: false,
+            });
+          } else {
+            await ctx.context.internalAdapter.updateUser(user.id, {
+              isAnonymous: false,
+            });
+          }
+
+          const session = await ctx.context.internalAdapter.createSession(
+            user.id
+          );
+          if (!session) {
+            throw new Error("Failed to create session.");
+          }
+          const storedUser = await ctx.context.internalAdapter.findUserById(
+            user.id
+          );
+          if (!storedUser) {
+            throw new Error("User not found.");
+          }
+          await setSessionCookie(ctx, { session, user: storedUser });
+          return { userId: user.id };
+        },
+      },
+    }),
+    siwe({
+      domain: getAuthDomain(),
+      emailDomainName: process.env.SIWE_EMAIL_DOMAIN || "wallet.zentity.app",
+      anonymous: true,
+      getNonce: async () => crypto.randomUUID(),
+      verifyMessage: async ({
+        message,
+        signature,
+        address,
+        chainId,
+        cacao,
+      }) => {
+        const siweMessage = new SiweMessage(message);
+        const result = await siweMessage.verify({
+          signature,
+          domain: cacao?.p?.domain || getAuthDomain(),
+          nonce: cacao?.p?.nonce || siweMessage.nonce,
+        });
+        return (
+          result.success &&
+          siweMessage.address?.toLowerCase() === address.toLowerCase() &&
+          (siweMessage.chainId ? siweMessage.chainId === chainId : true)
+        );
+      },
+    }),
+    genericOAuth({
+      config: parseGenericOAuthConfig(),
+    }),
+    lastLoginMethod({
+      customResolveMethod: resolveLastLoginMethod,
+    }),
+    oauthProvider({
+      scopes: ["openid", "verification"],
+      disableJwtPlugin: true,
+      allowDynamicClientRegistration: false,
+      allowUnauthenticatedClientRegistration: false,
+      loginPage: "/sign-in",
+      consentPage: "/oauth/consent",
+      customUserInfoClaims: async ({ user, scopes }) => {
+        if (!scopes.includes("verification")) {
+          return {};
+        }
+        const verification = await getVerificationStatus(user.id);
+        return { verification };
+      },
     }),
   ],
 });

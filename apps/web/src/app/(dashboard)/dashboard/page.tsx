@@ -89,9 +89,6 @@ export default async function DashboardPage() {
                 <Link href="/dashboard/verification">View Proofs</Link>
               </Button>
               <Button asChild size="sm" variant="ghost">
-                <Link href="/dashboard/dev/rp">RP Integration</Link>
-              </Button>
-              <Button asChild size="sm" variant="ghost">
                 <Link href="/dashboard/dev">Debug Tools</Link>
               </Button>
             </div>

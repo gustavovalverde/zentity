@@ -29,6 +29,8 @@ WORKDIR ${APP_HOME}
 
 # Copy package files first for dependency caching
 COPY --link package.json bun.lock ./
+# Include patches needed for bun patchedDependencies resolution
+COPY --link patches ./patches
 
 # Install dependencies with BuildKit cache mount for Bun
 # Cache persists across builds, significantly speeds up installs

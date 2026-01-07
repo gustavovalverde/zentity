@@ -38,6 +38,7 @@ import {
   defaultWizardData,
   type WizardData,
 } from "@/features/auth/schemas/sign-up.schema";
+import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
 import {
   clearOnboardingDraft,
@@ -195,7 +196,7 @@ interface WizardContextType {
   setSubmitting: (isSubmitting: boolean) => void;
   reset: () => void;
   /** Start fresh session (clears any existing session) */
-  startFresh: (email: string) => Promise<void>;
+  startFresh: (email?: string | null) => Promise<void>;
   /** Skip liveness verification and advance to next step */
   skipLiveness: () => Promise<boolean>;
   /** Update verification progress on server */
@@ -268,6 +269,7 @@ export function WizardProvider({
           } catch {
             /* Ignore clear errors - may not have a session to clear */
           }
+          prepareForNewSession();
 
           dispatch({ type: "RESET" });
           lastSavedStepRef.current = 1;
@@ -450,10 +452,6 @@ export function WizardProvider({
       keysSecured?: boolean;
       identityDraftId?: string | null;
     }) => {
-      if (!state.data.email) {
-        return;
-      }
-
       try {
         await trpc.onboarding.saveSession.mutate({
           step: updates.step ?? state.currentStep,
@@ -481,7 +479,7 @@ export function WizardProvider({
         /* Ignore progress update errors - non-critical for wizard flow */
       }
     },
-    [state.data.email, state.currentStep]
+    [state.currentStep]
   );
 
   const nextStep = useCallback(() => dispatch({ type: "NEXT_STEP" }), []);
@@ -514,10 +512,11 @@ export function WizardProvider({
   }, []);
 
   // Start fresh session (clears any existing session to prevent session bleeding)
-  const startFresh = useCallback(async (email: string) => {
+  const startFresh = useCallback(async (email?: string | null) => {
+    prepareForNewSession();
     hasLocalSessionRef.current = true;
     clearOnboardingDraft();
-    saveOnboardingDraft({ email });
+    saveOnboardingDraft({ email: email ?? null });
 
     // Reset local state first
     dispatch({ type: "RESET" });
@@ -537,7 +536,7 @@ export function WizardProvider({
         state: {
           sessionId: result.sessionId,
           currentStep: 1,
-          data: { email },
+          data: { email: email ?? null },
           serverState: {
             documentProcessed: false,
             livenessPassed: false,
@@ -553,7 +552,7 @@ export function WizardProvider({
         type: "LOAD_STATE",
         state: {
           currentStep: 1,
-          data: { email },
+          data: { email: email ?? null },
           serverState: {
             documentProcessed: false,
             livenessPassed: false,

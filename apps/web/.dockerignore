@@ -9,6 +9,7 @@
 # Include package manifests
 !package.json
 !bun.lock
+!patches/
 
 # Include source code
 !src/

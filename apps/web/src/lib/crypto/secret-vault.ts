@@ -1,14 +1,16 @@
 "use client";
 
 import { trpc } from "@/lib/trpc/client";
-import { base64ToBytes } from "@/lib/utils/base64";
+import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import {
   createSecretEnvelope,
   decryptSecretEnvelope,
   type EnvelopeFormat,
   PASSKEY_VAULT_VERSION,
+  unwrapDekWithPrf,
   WRAP_VERSION,
+  wrapDekWithPrf,
 } from "./passkey-vault";
 import { downloadSecretBlob, uploadSecretBlob } from "./secret-blob-client";
 import { evaluatePrf } from "./webauthn-prf";
@@ -175,4 +177,67 @@ export async function loadSecret(params: {
     metadata: bundle.secret.metadata,
     envelopeFormat,
   };
+}
+
+export async function addWrapperForSecretType(params: {
+  secretType: string;
+  newCredentialId: string;
+  newPrfOutput: Uint8Array;
+  newPrfSalt: Uint8Array;
+  kekVersion?: string;
+}): Promise<boolean> {
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: params.secretType,
+  });
+
+  if (!(bundle.secret && bundle.wrappers?.length)) {
+    return false;
+  }
+
+  const saltByCredential: Record<string, Uint8Array> = {};
+  for (const wrapper of bundle.wrappers) {
+    saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
+  }
+
+  const { prfOutputs, selectedCredentialId } = await evaluatePrf({
+    credentialIdToSalt: saltByCredential,
+  });
+
+  const selectedWrapper =
+    bundle.wrappers.find(
+      (wrapper) => wrapper.credentialId === selectedCredentialId
+    ) ?? bundle.wrappers[0];
+
+  const selectedOutput =
+    prfOutputs.get(selectedWrapper.credentialId) ??
+    prfOutputs.values().next().value;
+
+  if (!selectedOutput) {
+    throw new Error("PRF output missing for existing passkey.");
+  }
+
+  const dek = await unwrapDekWithPrf({
+    secretId: bundle.secret.id,
+    credentialId: selectedWrapper.credentialId,
+    wrappedDek: selectedWrapper.wrappedDek,
+    prfOutput: selectedOutput,
+  });
+
+  const wrappedDek = await wrapDekWithPrf({
+    secretId: bundle.secret.id,
+    credentialId: params.newCredentialId,
+    dek,
+    prfOutput: params.newPrfOutput,
+  });
+
+  await trpc.secrets.addWrapper.mutate({
+    secretId: bundle.secret.id,
+    secretType: params.secretType,
+    credentialId: params.newCredentialId,
+    wrappedDek,
+    prfSalt: bytesToBase64(params.newPrfSalt),
+    kekVersion: params.kekVersion ?? WRAP_VERSION,
+  });
+
+  return true;
 }

@@ -15,11 +15,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
 import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
-import {
-  deleteUserById,
-  getUserCreatedAt,
-  userHasPassword,
-} from "@/lib/db/queries/auth";
+import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
 import {
   deleteIdentityData,
   getSelectedIdentityDocumentByUserId,
@@ -97,7 +93,28 @@ export const accountRouter = router({
 
       // 3. Delete user from better-auth (cascades to sessions, accounts)
       // This also invalidates the current session
-      await deleteUserById(userId);
+      let result: { success?: boolean } | null = null;
+      try {
+        result = await auth.api.deleteUser({
+          headers: ctx.req.headers,
+          body: {},
+        });
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to delete account. Please try again.",
+        });
+      }
+
+      if (!result?.success) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete account. Please try again.",
+        });
+      }
 
       return { success: true };
     }),

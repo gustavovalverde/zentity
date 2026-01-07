@@ -7,6 +7,7 @@ import { resetFheKeyStoreCache } from "@/lib/crypto/fhe-key-store";
 import { resetProfileSecretCache } from "@/lib/crypto/profile-secret";
 import { resetOnboardingFlowId } from "@/lib/observability/flow-client";
 import { clearOnboardingDraft } from "@/lib/onboarding/wizard-storage";
+import { redirectTo as navigateTo } from "@/lib/utils/navigation";
 
 /**
  * Cookie names to clear during session transitions.
@@ -84,7 +85,7 @@ export interface CompleteSignOutOptions {
 export async function completeSignOut(
   options: CompleteSignOutOptions = {}
 ): Promise<void> {
-  const { queryClient, onClearPrf, redirectTo = "/" } = options;
+  const { queryClient, onClearPrf, redirectTo: redirectToPath = "/" } = options;
 
   // 1. Clear client-side caches immediately
   clearClientCaches();
@@ -104,7 +105,7 @@ export async function completeSignOut(
   clearSessionCookies();
 
   // 6. Redirect
-  window.location.assign(redirectTo);
+  navigateTo(redirectToPath);
 }
 
 /**

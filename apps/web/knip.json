@@ -20,7 +20,10 @@
     "tfhe",
     "@walletconnect/ethereum-provider",
     "pino-pretty",
-    "lint-staged"
+    "lint-staged",
+    "better-auth",
+    "@better-auth/passkey",
+    "@better-auth/oauth-provider"
   ],
   "ignoreBinaries": ["nargo"],
   "entry": [

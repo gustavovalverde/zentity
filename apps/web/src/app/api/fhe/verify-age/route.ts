@@ -1,6 +1,6 @@
 import { decode, encode } from "@msgpack/msgpack";
 
-import { auth } from "@/lib/auth/auth";
+import { requireSession } from "@/lib/auth/api-auth";
 import { verifyAgeFhe } from "@/lib/crypto/fhe-client";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
 
@@ -29,10 +29,11 @@ function jsonError(message: string, status = 400): Response {
 }
 
 export async function POST(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user?.id) {
+  const authResult = await requireSession();
+  if (!authResult.ok) {
     return jsonError("Authentication required.", 401);
   }
+  const userId = authResult.session.user.id;
 
   let payload: VerifyAgePayload = {};
   const raw = new Uint8Array(await req.arrayBuffer());
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
   }
 
   const encrypted = await getLatestEncryptedAttributeByUserAndType(
-    session.user.id,
+    userId,
     "birth_year_offset"
   );
   if (!encrypted?.ciphertext) {

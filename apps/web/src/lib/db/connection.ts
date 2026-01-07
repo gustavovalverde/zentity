@@ -14,9 +14,9 @@ import * as cryptoSchema from "./schema/crypto";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as identitySchema from "./schema/identity";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as onboardingSchema from "./schema/onboarding";
+import * as oauthProviderSchema from "./schema/oauth-provider";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as rpSchema from "./schema/rp";
+import * as onboardingSchema from "./schema/onboarding";
 
 const schema = {
   ...attestationSchema,
@@ -24,7 +24,7 @@ const schema = {
   ...cryptoSchema,
   ...identitySchema,
   ...onboardingSchema,
-  ...rpSchema,
+  ...oauthProviderSchema,
 };
 
 function isBuildTime() {

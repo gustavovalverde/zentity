@@ -157,7 +157,7 @@ export function StepSelfie() {
       await updateServerProgress({
         livenessPassed: response.livenessPassed,
         faceMatchPassed: response.faceMatchPassed,
-        step: 3,
+        step: 4,
       });
 
       nextStep();
@@ -219,7 +219,7 @@ export function StepSelfie() {
       await updateServerProgress({
         livenessPassed: response.livenessPassed,
         faceMatchPassed: response.faceMatchPassed,
-        step: 3,
+        step: 4,
       });
       await skipLiveness();
     } catch {

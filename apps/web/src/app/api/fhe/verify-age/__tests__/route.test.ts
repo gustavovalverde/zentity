@@ -2,11 +2,11 @@ import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
+  requireSession: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/auth", () => ({
-  auth: { api: { getSession: authMocks.getSession } },
+vi.mock("@/lib/auth/api-auth", () => ({
+  requireSession: authMocks.requireSession,
 }));
 
 const fheMocks = vi.hoisted(() => ({
@@ -32,7 +32,10 @@ const makeRequest = (payload?: unknown) =>
 describe("fhe verify-age route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMocks.getSession.mockResolvedValue(null);
+    authMocks.requireSession.mockResolvedValue({
+      ok: false,
+      response: new Response("Unauthorized", { status: 401 }),
+    });
     dbMocks.getLatestEncryptedAttributeByUserAndType.mockResolvedValue(null);
   });
 
@@ -45,7 +48,10 @@ describe("fhe verify-age route", () => {
   });
 
   it("rejects invalid msgpack", async () => {
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    authMocks.requireSession.mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    });
     const req = new Request("http://localhost/api/fhe/verify-age", {
       method: "POST",
       body: new Uint8Array([0xc1]),
@@ -59,7 +65,10 @@ describe("fhe verify-age route", () => {
   });
 
   it("returns 404 when ciphertext is missing", async () => {
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    authMocks.requireSession.mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    });
 
     const response = await POST(makeRequest());
     expect(response.status).toBe(404);
@@ -69,7 +78,10 @@ describe("fhe verify-age route", () => {
   });
 
   it("rejects mismatched key id", async () => {
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    authMocks.requireSession.mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    });
     dbMocks.getLatestEncryptedAttributeByUserAndType.mockResolvedValue({
       ciphertext: Buffer.from([1, 2, 3]),
       keyId: "key-1",
@@ -83,7 +95,10 @@ describe("fhe verify-age route", () => {
   });
 
   it("verifies age with stored ciphertext", async () => {
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    authMocks.requireSession.mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    });
     dbMocks.getLatestEncryptedAttributeByUserAndType.mockResolvedValue({
       ciphertext: Buffer.from([1, 2, 3]),
       keyId: "key-1",

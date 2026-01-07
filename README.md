@@ -1,7 +1,11 @@
 # Zentity
 
 <p align="center">
-  <img src="assets/logo.jpeg" alt="Zentity" width="280">
+  <img
+    src="assets/logo.jpeg"
+    alt="Zentity"
+    width="280"
+  >
 </p>
 
 <div align="center">
@@ -17,15 +21,18 @@ Every database is a breach waiting to happen. The model itself is broken.
 
 ---
 
-**Zentity** proves you can verify identity claims without storing plaintext underlying data.
-Built with passkeys for authentication and key custody, zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.
+**Zentity** proves you can verify identity claims without storing plaintext
+underlying data. Built with passkeys for authentication and key custody,
+zero-knowledge proofs, fully homomorphic encryption, and cryptographic
+commitments.
 
 </div>
 
 > [!CAUTION]
 > **Proof of Concept - Active Development**
 >
-> Zentity is a PoC demonstrating privacy-preserving compliance and identity verification. While we apply best-effort security practices:
+> Zentity is a PoC demonstrating privacy-preserving compliance and identity
+> verification. While we apply best-effort security practices:
 >
 > - **Breaking changes expected** - Backward compatibility is not a goal
 > - **Cryptographic validation in progress** - Our ZK/FHE approach is still being validated
@@ -47,7 +54,10 @@ Built with passkeys for authentication and key custody, zero-knowledge proofs, f
 
 ## Project Guide
 
-Zentity is building a **privacy-first user management and KYC onboarding layer** that sits **alongside** existing authentication systems. It lets users prove things like age, residency, and verification status **without exposing raw PII**.
+Zentity is building a **privacy-first user management and KYC onboarding layer**
+that sits **alongside** existing authentication systems. It lets users prove
+things like age, residency, and verification status **without exposing raw
+PII**.
 
 ### Why we are building this
 
@@ -59,7 +69,8 @@ Zentity is building a **privacy-first user management and KYC onboarding layer**
 
 ### What this project demonstrates
 
-- Four cryptographic pillars—passkeys (auth + PRF key custody), ZK proofs, FHE, and commitments—work together in a real flow.
+- Four cryptographic pillars—passkeys (auth + PRF key custody), ZK proofs, FHE,
+  and commitments—work together in a real flow.
 - Merkle trees extend those pillars for private group membership proofs.
 - Privacy-preserving compliance can be practical without sacrificing usability.
 
@@ -82,7 +93,7 @@ Zentity is building a **privacy-first user management and KYC onboarding layer**
 ### Tech choices and rationale
 
 | Capability | Tech | Why we chose it | Deep dive |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
 | Passkey auth + key custody | Passkey vaults + PRF-derived keys | Passwordless authentication and user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md) |
@@ -145,7 +156,8 @@ docker build -t zentity-fhe apps/fhe
 docker build -t zentity-ocr apps/ocr
 ```
 
-**Why?** Secrets are never baked into image layers. The build fails without the secret to prevent running with insecure defaults.
+**Why?** Secrets are never baked into image layers. The build fails without the
+secret to prevent running with insecure defaults.
 
 </details>
 
@@ -162,7 +174,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 
 Quick manual test (happy path):
 
-- Go to `/sign-up` → complete the 4-step wizard (email → upload ID → liveness → create account)
+- Go to `/sign-up` → complete the 4-step wizard (email → upload ID → liveness →
+  create account)
 - After completion, open `/dashboard` and check verification + proof status
 
 ## Architecture
@@ -197,15 +210,20 @@ This is a proof of concept and will change quickly.
 
 - 4-step onboarding wizard: email → upload ID → liveness → create account
 - Server-side OCR/liveness/face match with signed claims for tamper resistance
-- Client-side ZK proving (Web Worker) + server-side verification (Node bb-worker):
+- Client-side ZK proving (Web Worker) + server-side verification (Node
+  bb-worker):
   - age, doc validity, nationality membership, face-match threshold proofs
 - Multi-document identity model with document-scoped proofs + evidence packs
-- Salted SHA256 commitments for dedup + later integrity checks (name, document number, nationality)
-- FHE key registration + encryption for birth_year_offset, country_code, compliance_level, liveness score
-- Passkey-first auth + passkey-sealed profile secret for user-controlled PII (client decrypt only)
-- Passkey-wrapped FHE key storage (multi-device support; explicit user unlock required)
+- Salted SHA256 commitments for dedup + later integrity checks (name, document
+  number, nationality)
+- FHE key registration + encryption for birth_year_offset, country_code,
+  compliance_level, liveness score
+- Passkey-first auth + passkey-sealed profile secret for user-controlled PII
+  (client decrypt only)
+- Passkey-wrapped FHE key storage (multi-device support; explicit user unlock
+  required)
 - Disclosure demo flow (client decrypt → re-encrypt to RP + consent receipt)
-- OAuth-style RP redirect flow (clean URL + one-time authorization code exchange)
+- OAuth 2.1 provider flow (authorize → consent → token exchange)
 
 ## Use cases
 
@@ -224,31 +242,46 @@ This is a proof of concept and will change quickly.
 
 The PoC stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
 
-- Plaintext at rest: account email; document metadata (type, issuer country, document hash)
-- Encrypted at rest: passkey-sealed profile (full name, DOB, document number, nationality), passkey-wrapped FHE key blobs
+- Plaintext at rest: account email; document metadata (type, issuer country,
+  document hash)
+- Encrypted at rest: passkey-sealed profile (full name, DOB, document number,
+  nationality), passkey-wrapped FHE key blobs
 - Non-reversible at rest: salted commitments (SHA256)
-- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
-- On-chain (optional): encrypted identity attestation via FHEVM—registrar encrypts, only user can decrypt
+- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes,
+  evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
+- On-chain (optional): encrypted identity attestation via FHEVM—registrar
+  encrypts, only user can decrypt
 
-**User-controlled privacy:** The passkey vault derives encryption keys using WebAuthn PRF. Those PRF-derived keys seal the profile and wrap FHE keys, so the server never holds a decryption secret. FHE keys are generated in the browser and stored server-side as passkey-wrapped encrypted secrets with per-credential wrappers. The server registers only public + server keys (evaluation keys) for computation and cannot decrypt user data. Only the user can decrypt their own encrypted attributes after an explicit passkey unlock.
+**User-controlled privacy:** The passkey vault derives encryption keys using
+WebAuthn PRF. Those PRF-derived keys seal the profile and wrap FHE keys, so the
+server never holds a decryption secret. FHE keys are generated in the browser
+and stored server-side as passkey-wrapped encrypted secrets with per-credential
+wrappers. The server registers only public + server keys (evaluation keys) for
+computation and cannot decrypt user data. Only the user can decrypt their own
+encrypted attributes after an explicit passkey unlock.
 
-Details: [docs/architecture.md](docs/architecture.md) | [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)
+Details: [docs/architecture.md](docs/architecture.md) |
+[docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)
 
 ## Services and ports
 
 | Service | Stack | Port |
-|---------|-------|------|
+| --- | --- | --- |
 | Web Frontend | Next.js 16, React 19, Noir.js, bb.js, Human.js | 3000 |
 | FHE Service | Rust, Axum, TFHE-rs | 5001 |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
 
 ## License
 
-This project is licensed under the [O'Saasy License](LICENSE) ([osaasy.dev](https://osaasy.dev/)) - a permissive source-available license based on MIT.
+This project is licensed under the [O'Saasy License](LICENSE)
+([osaasy.dev](https://osaasy.dev/)) - a permissive source-available license
+based on MIT.
 
 **You may:** use, copy, modify, distribute, sublicense, and sell the software.
 
-**Restriction:** You may not offer this software (or derivatives) as a competing hosted SaaS/cloud service where the primary value is the functionality of the software itself.
+**Restriction:** You may not offer this software (or derivatives) as a
+competing hosted SaaS/cloud service where the primary value is the
+functionality of the software itself.
 
 See the [LICENSE](LICENSE) file for full terms.
 

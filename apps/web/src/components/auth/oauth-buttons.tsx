@@ -38,11 +38,39 @@ interface OAuthButtonsProps {
   onSuccess?: () => void;
 }
 
+interface GenericOAuthProvider {
+  providerId: string;
+  label?: string;
+}
+
+const parseGenericProviders = (): GenericOAuthProvider[] => {
+  const raw = process.env.NEXT_PUBLIC_GENERIC_OAUTH_PROVIDERS;
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return false;
+      }
+      const providerId = (entry as GenericOAuthProvider).providerId;
+      return typeof providerId === "string" && providerId.length > 0;
+    }) as GenericOAuthProvider[];
+  } catch {
+    return [];
+  }
+};
+
 export function OAuthButtons({
   mode = "signin",
   onSuccess,
 }: OAuthButtonsProps) {
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  const genericProviders = parseGenericProviders();
 
   const handleOAuth = async (provider: "google" | "github") => {
     setLoadingProvider(provider);
@@ -98,17 +126,68 @@ export function OAuthButtons({
     }
   };
 
+  const handleGenericOAuth = async (provider: GenericOAuthProvider) => {
+    setLoadingProvider(provider.providerId);
+
+    try {
+      if (mode === "link") {
+        const result = await authClient.oauth2.link({
+          providerId: provider.providerId,
+          callbackURL: "/dashboard/settings",
+          errorCallbackURL: "/dashboard/settings?error=oauth_failed",
+        });
+
+        if (result.error) {
+          toast.error(
+            `Failed to link ${provider.label || provider.providerId}`,
+            {
+              description: result.error.message,
+            }
+          );
+        } else {
+          toast.success(
+            `${provider.label || provider.providerId} account linked successfully`
+          );
+          onSuccess?.();
+        }
+      } else {
+        const result = await authClient.signIn.oauth2({
+          providerId: provider.providerId,
+          callbackURL: "/dashboard",
+          errorCallbackURL: "/sign-in?error=oauth_failed",
+        });
+
+        if (result.error) {
+          toast.error(
+            `Failed to sign in with ${provider.label || provider.providerId}`,
+            {
+              description: result.error.message,
+            }
+          );
+        }
+      }
+    } catch (error) {
+      toast.error("An error occurred", {
+        description:
+          error instanceof Error ? error.message : "Please try again",
+      });
+    } finally {
+      setLoadingProvider(null);
+    }
+  };
+
   const isGoogleConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CONFIGURED);
   const isGitHubConfigured = Boolean(process.env.NEXT_PUBLIC_GITHUB_CONFIGURED);
+  const hasGenericProviders = genericProviders.length > 0;
 
   // If no providers configured, show a message
-  if (!(isGoogleConfigured || isGitHubConfigured)) {
+  if (!(isGoogleConfigured || isGitHubConfigured || hasGenericProviders)) {
     return (
       <Alert>
         <Info className="h-4 w-4" />
         <AlertTitle>OAuth providers not configured</AlertTitle>
         <AlertDescription className="text-xs">
-          Add GOOGLE_CLIENT_ID/SECRET or GITHUB_CLIENT_ID/SECRET to enable.
+          Configure social or generic OAuth providers to enable.
         </AlertDescription>
       </Alert>
     );
@@ -147,6 +226,23 @@ export function OAuthButtons({
           {mode === "link" ? "Link GitHub Account" : "Continue with GitHub"}
         </Button>
       ) : null}
+
+      {genericProviders.map((provider) => (
+        <Button
+          className="w-full"
+          disabled={loadingProvider !== null}
+          key={provider.providerId}
+          onClick={() => handleGenericOAuth(provider)}
+          variant="outline"
+        >
+          {loadingProvider === provider.providerId ? (
+            <Spinner className="mr-2" size="sm" />
+          ) : null}
+          {mode === "link"
+            ? `Link ${provider.label || provider.providerId} Account`
+            : `Continue with ${provider.label || provider.providerId}`}
+        </Button>
+      ))}
     </div>
   );
 }

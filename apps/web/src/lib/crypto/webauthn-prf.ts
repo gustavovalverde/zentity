@@ -1,5 +1,7 @@
 "use client";
 
+import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
+
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
 
@@ -21,18 +23,6 @@ export interface CredentialRegistrationData {
   transports: AuthenticatorTransport[];
 }
 
-/**
- * Assertion data returned from authentication.
- * This is what gets sent to the server for verification.
- */
-export interface AuthenticationAssertionData {
-  credentialId: string;
-  clientDataJSON: string; // Base64URL-encoded
-  authenticatorData: string; // Base64URL-encoded
-  signature: string; // Base64URL-encoded
-  userHandle: string | null; // Base64URL-encoded user ID
-}
-
 const PRF_OUTPUT_LENGTH = 32;
 
 interface PrfExtensionResults {
@@ -45,6 +35,18 @@ interface PrfExtensionResults {
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return Uint8Array.from(bytes).buffer;
+}
+
+export function buildPrfExtension(
+  prfSalt: Uint8Array
+): AuthenticationExtensionsClientInputs {
+  return {
+    prf: {
+      eval: {
+        first: toArrayBuffer(prfSalt),
+      },
+    },
+  } as AuthenticationExtensionsClientInputs;
 }
 
 function assertUserActivation() {
@@ -66,6 +68,58 @@ function toPrfOutput(output?: ArrayBuffer): Uint8Array | null {
     throw new Error("Unexpected PRF output length.");
   }
   return bytes;
+}
+
+export function extractPrfOutputFromClientResults(params: {
+  clientExtensionResults: unknown;
+  credentialId?: string;
+}): Uint8Array | null {
+  if (
+    !params.clientExtensionResults ||
+    typeof params.clientExtensionResults !== "object"
+  ) {
+    return null;
+  }
+
+  const prf = (
+    params.clientExtensionResults as {
+      prf?: {
+        results?: { first?: unknown };
+        resultsByCredential?: Record<string, unknown>;
+      };
+    }
+  ).prf;
+
+  if (!prf) {
+    return null;
+  }
+
+  const candidate =
+    prf.results?.first ??
+    (params.credentialId
+      ? prf.resultsByCredential?.[params.credentialId]
+      : null);
+
+  if (!candidate) {
+    return null;
+  }
+
+  if (candidate instanceof ArrayBuffer) {
+    return toPrfOutput(candidate);
+  }
+  if (candidate instanceof Uint8Array) {
+    const bytes = new Uint8Array(candidate);
+    return toPrfOutput(bytes.buffer);
+  }
+  if (typeof candidate === "string") {
+    const bytes = base64UrlToBytes(candidate);
+    if (bytes.byteLength !== PRF_OUTPUT_LENGTH) {
+      throw new Error("Unexpected PRF output length.");
+    }
+    return bytes;
+  }
+
+  return null;
 }
 
 function getCredentialBucket(count: number): "1" | "2-3" | "4+" {
@@ -131,69 +185,8 @@ export async function checkPrfSupport(): Promise<PrfSupportStatus> {
   return { supported: true };
 }
 
-export async function createCredentialWithPrf(
-  options: PublicKeyCredentialCreationOptions
-): Promise<{
-  credential: PublicKeyCredential;
-  credentialId: string;
-  prfEnabled: boolean;
-  prfOutput: Uint8Array | null;
-}> {
-  if (!navigator.credentials?.create) {
-    throw new Error("WebAuthn credential creation is unavailable.");
-  }
-
-  assertUserActivation();
-
-  const prfOptions: PublicKeyCredentialCreationOptions = {
-    ...options,
-    extensions: {
-      ...options.extensions,
-      prf: options.extensions?.prf ?? {},
-    },
-  };
-
-  const start = performance.now();
-  try {
-    const credential = (await navigator.credentials.create({
-      publicKey: prfOptions,
-    })) as PublicKeyCredential;
-
-    const extensionResults = credential.getClientExtensionResults() as
-      | PrfExtensionResults
-      | undefined;
-    const prfEnabled = extensionResults?.prf?.enabled === true;
-    const prfOutput = toPrfOutput(extensionResults?.prf?.results?.first);
-
-    recordClientMetric({
-      name: "client.passkey.duration",
-      value: performance.now() - start,
-      attributes: {
-        operation: "create",
-        result: "ok",
-        prf_enabled: prfEnabled,
-      },
-    });
-
-    return {
-      credential,
-      credentialId: bytesToBase64Url(new Uint8Array(credential.rawId)),
-      prfEnabled,
-      prfOutput,
-    };
-  } catch (error) {
-    recordClientMetric({
-      name: "client.passkey.duration",
-      value: performance.now() - start,
-      attributes: { operation: "create", result: "error" },
-    });
-    throw error;
-  }
-}
-
 /**
  * Extract registration data from a credential for server-side storage.
- * Call this after createCredentialWithPrf() to get the data needed for auth.
  */
 export function extractCredentialRegistrationData(
   credential: PublicKeyCredential
@@ -273,81 +266,6 @@ export function extractCredentialRegistrationData(
     backedUp,
     transports,
   };
-}
-
-/**
- * Authenticate with a passkey (without PRF).
- * Use this for simple login when you don't need to unlock FHE keys.
- */
-export async function authenticateWithPasskey(params: {
-  challenge: Uint8Array;
-  allowCredentials?: { id: string; transports?: AuthenticatorTransport[] }[];
-  userVerification?: UserVerificationRequirement;
-  timeoutMs?: number;
-}): Promise<{
-  assertion: AuthenticationAssertionData;
-  selectedCredentialId: string;
-}> {
-  if (!navigator.credentials?.get) {
-    throw new Error("WebAuthn authentication is unavailable.");
-  }
-
-  assertUserActivation();
-
-  const allowCredentials = params.allowCredentials?.map((cred) => ({
-    type: "public-key" as const,
-    id: toArrayBuffer(base64UrlToBytes(cred.id)),
-    transports: cred.transports,
-  }));
-
-  const options: PublicKeyCredentialRequestOptions = {
-    challenge: toArrayBuffer(params.challenge),
-    allowCredentials,
-    userVerification: params.userVerification ?? "required",
-    timeout: params.timeoutMs,
-  };
-
-  const start = performance.now();
-  try {
-    const credential = (await navigator.credentials.get({
-      publicKey: options,
-    })) as PublicKeyCredential;
-
-    const response = credential.response as AuthenticatorAssertionResponse;
-    const selectedCredentialId = bytesToBase64Url(
-      new Uint8Array(credential.rawId)
-    );
-
-    recordClientMetric({
-      name: "client.passkey.duration",
-      value: performance.now() - start,
-      attributes: { operation: "authenticate", result: "ok" },
-    });
-
-    return {
-      assertion: {
-        credentialId: selectedCredentialId,
-        clientDataJSON: bytesToBase64Url(
-          new Uint8Array(response.clientDataJSON)
-        ),
-        authenticatorData: bytesToBase64Url(
-          new Uint8Array(response.authenticatorData)
-        ),
-        signature: bytesToBase64Url(new Uint8Array(response.signature)),
-        userHandle: response.userHandle
-          ? bytesToBase64Url(new Uint8Array(response.userHandle))
-          : null,
-      },
-      selectedCredentialId,
-    };
-  } catch (error) {
-    recordClientMetric({
-      name: "client.passkey.duration",
-      value: performance.now() - start,
-      attributes: { operation: "authenticate", result: "error" },
-    });
-    throw error;
-  }
 }
 
 export async function evaluatePrf(params: {

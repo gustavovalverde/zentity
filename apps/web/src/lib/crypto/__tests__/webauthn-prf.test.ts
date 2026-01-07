@@ -4,9 +4,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { bytesToBase64Url } from "@/lib/utils/base64url";
+
 // We'll dynamically import to test with different global configurations
 let checkPrfSupport: typeof import("../webauthn-prf").checkPrfSupport;
 let extractCredentialRegistrationData: typeof import("../webauthn-prf").extractCredentialRegistrationData;
+let extractPrfOutputFromClientResults: typeof import("../webauthn-prf").extractPrfOutputFromClientResults;
 
 describe("webauthn-prf", () => {
   beforeEach(() => {
@@ -349,6 +352,55 @@ describe("webauthn-prf", () => {
       const result = extractCredentialRegistrationData(mockCredential);
 
       expect(result.transports).toEqual([]);
+    });
+  });
+
+  describe("extractPrfOutputFromClientResults", () => {
+    it("returns null when no extension results", async () => {
+      const module = await import("../webauthn-prf");
+      extractPrfOutputFromClientResults =
+        module.extractPrfOutputFromClientResults;
+
+      const result = extractPrfOutputFromClientResults({
+        clientExtensionResults: null,
+        credentialId: "cred",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("parses PRF output from ArrayBuffer", async () => {
+      const module = await import("../webauthn-prf");
+      extractPrfOutputFromClientResults =
+        module.extractPrfOutputFromClientResults;
+
+      const output = new Uint8Array(32).map((_, idx) => idx);
+      const result = extractPrfOutputFromClientResults({
+        clientExtensionResults: {
+          prf: { results: { first: output.buffer } },
+        },
+        credentialId: "cred",
+      });
+
+      expect(result).toEqual(output);
+    });
+
+    it("parses PRF output from resultsByCredential base64url", async () => {
+      const module = await import("../webauthn-prf");
+      extractPrfOutputFromClientResults =
+        module.extractPrfOutputFromClientResults;
+
+      const output = new Uint8Array(32).map((_, idx) => 255 - idx);
+      const encoded = bytesToBase64Url(output);
+
+      const result = extractPrfOutputFromClientResults({
+        clientExtensionResults: {
+          prf: { resultsByCredential: { cred: encoded } },
+        },
+        credentialId: "cred",
+      });
+
+      expect(result).toEqual(output);
     });
   });
 });

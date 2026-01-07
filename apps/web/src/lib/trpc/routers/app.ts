@@ -11,7 +11,6 @@
  * - identity: Full identity verification (document + selfie + liveness)
  * - liveness: Multi-gesture liveness detection sessions
  * - onboarding: Wizard state management and step validation
- * - passkeyAuth: Passkey-first authentication
  * - secrets: Passkey-wrapped secret storage
  * - token: CompliantERC20 token operations (DeFi demo)
  */
@@ -24,7 +23,6 @@ import { cryptoRouter } from "./crypto";
 import { identityRouter } from "./identity";
 import { livenessRouter } from "./liveness";
 import { onboardingRouter } from "./onboarding";
-import { passkeyAuthRouter } from "./passkey-auth";
 import { secretsRouter } from "./secrets";
 import { tokenRouter } from "./token";
 
@@ -35,7 +33,6 @@ export const appRouter = router({
   identity: identityRouter,
   liveness: livenessRouter,
   onboarding: onboardingRouter,
-  passkeyAuth: passkeyAuthRouter,
   secrets: secretsRouter,
   token: tokenRouter,
 });

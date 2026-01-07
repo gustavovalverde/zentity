@@ -9,10 +9,14 @@ import {
 
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
+  name: text("name").notNull().default(""),
   email: text("email").notNull().unique(),
   emailVerified: integer("emailVerified", { mode: "boolean" }).notNull(),
   image: text("image"),
   passwordlessSignup: integer("passwordless_signup", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  isAnonymous: integer("is_anonymous", { mode: "boolean" })
     .notNull()
     .default(false),
   createdAt: text("createdAt").notNull(),
@@ -82,37 +86,51 @@ export const verifications = sqliteTable(
  * Stores WebAuthn public keys and metadata for passkey-first auth.
  * Each credential can be used for both authentication and FHE key custody.
  */
-export const passkeyCredentials = sqliteTable(
-  "passkey_credentials",
+export const passkeys = sqliteTable(
+  "passkey",
   {
     id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("publicKey").notNull(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credentialID: text("credentialID").notNull(),
+    counter: integer("counter").notNull().default(0),
+    deviceType: text("deviceType").notNull(),
+    backedUp: integer("backedUp", { mode: "boolean" }).notNull().default(false),
+    transports: text("transports"),
+    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+    aaguid: text("aaguid"),
+  },
+  (table) => ({
+    userIdIdx: index("passkey_user_id_idx").on(table.userId),
+    credentialIdUnique: uniqueIndex("passkey_credential_id_unique").on(
+      table.credentialID
+    ),
+  })
+);
+
+export const walletAddresses = sqliteTable(
+  "wallet_address",
+  {
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** Base64URL-encoded credential ID from WebAuthn */
-    credentialId: text("credential_id").notNull().unique(),
-    /** Base64URL-encoded COSE public key */
-    publicKey: text("public_key").notNull(),
-    /** Signature counter for replay attack protection */
-    counter: integer("counter").notNull().default(0),
-    /** 'platform' (built-in) or 'cross-platform' (security key) */
-    deviceType: text("device_type"),
-    /** Whether credential is synced across devices (iCloud/Google) */
-    backedUp: integer("backed_up", { mode: "boolean" })
+    address: text("address").notNull(),
+    chainId: integer("chain_id").notNull(),
+    isPrimary: integer("is_primary", { mode: "boolean" })
       .notNull()
       .default(false),
-    /** JSON array of supported transports (usb, nfc, ble, internal) */
-    transports: text("transports"),
-    /** User-friendly name for this passkey */
-    name: text("name"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    lastUsedAt: text("last_used_at"),
   },
   (table) => ({
-    userIdIdx: index("idx_passkey_credentials_user_id").on(table.userId),
-    credentialIdUnique: uniqueIndex(
-      "passkey_credentials_credential_id_unique"
-    ).on(table.credentialId),
+    userIdIdx: index("wallet_address_user_id_idx").on(table.userId),
+    addressIdx: index("wallet_address_address_idx").on(table.address),
+    addressChainUnique: uniqueIndex("wallet_address_address_chain_unique").on(
+      table.address,
+      table.chainId
+    ),
   })
 );
 
@@ -128,5 +146,8 @@ export type NewAccount = typeof accounts.$inferInsert;
 export type Verification = typeof verifications.$inferSelect;
 export type NewVerification = typeof verifications.$inferInsert;
 
-export type PasskeyCredential = typeof passkeyCredentials.$inferSelect;
-export type NewPasskeyCredential = typeof passkeyCredentials.$inferInsert;
+export type Passkey = typeof passkeys.$inferSelect;
+export type NewPasskey = typeof passkeys.$inferInsert;
+
+export type WalletAddress = typeof walletAddresses.$inferSelect;
+export type NewWalletAddress = typeof walletAddresses.$inferInsert;
