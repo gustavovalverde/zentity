@@ -33,7 +33,10 @@ export function setup(): void {
         TURSO_DATABASE_URL: TEST_DB_URL,
         TURSO_AUTH_TOKEN: undefined,
       },
-      stdio: "pipe",
+      // Stream output to console instead of buffering (prevents hangs)
+      stdio: "inherit",
+      // Timeout after 60 seconds to prevent indefinite hanging
+      timeout: 60_000,
     });
     console.log("Test database schema initialized.");
   } catch (error) {

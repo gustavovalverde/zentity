@@ -85,7 +85,14 @@ afterAll(async () => {
 });
 
 // === Unhandled Rejection Handler ===
-// Log unhandled rejections for debugging (now that we removed dangerouslyIgnoreUnhandledErrors)
-process.on("unhandledRejection", (reason) => {
+// Log unhandled rejections for debugging
+// Note: Only register once to avoid EventEmitter memory leak warning
+const unhandledRejectionHandler = (reason: unknown) => {
   console.error("Unhandled Rejection in test:", reason);
-});
+};
+
+// Check if we've already registered this listener (prevents duplicate listeners in isolate: false mode)
+const listenerCount = process.listenerCount("unhandledRejection");
+if (listenerCount === 0) {
+  process.on("unhandledRejection", unhandledRejectionHandler);
+}
