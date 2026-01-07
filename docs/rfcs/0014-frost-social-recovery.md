@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2025-01-06 |
-| **Updated** | 2025-01-06 |
+| **Updated** | 2025-01-07 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
@@ -29,6 +29,30 @@ Currently, if a user loses all their passkeys, they have no way to recover their
 - Async signing (no real-time coordination required)
 - Support multiple guardian types with different security properties
 
+## Onboarding Integration
+
+Recovery setup is **mandatory** during account creation to prevent lockout scenarios.
+
+### Setup Flow
+
+After passkey registration (Step 4), users must complete recovery setup (Step 5):
+
+1. **Explanation Screen**: Why recovery matters, data-at-risk warning
+2. **Add Primary Guardian**: Email guardian (recommended) or device
+3. **Add Secondary Guardian**: Device (TOTP) or second email
+4. **Optional Third Guardian**: Wallet or additional email
+5. **DKG Completion**: Threshold keys generated and distributed
+6. **Confirmation**: Summary + reminder to inform guardians
+
+### Skip Behavior
+
+Users who attempt to skip receive:
+
+- **Warning**: "Your encrypted data will be permanently lost if you lose all passkeys"
+- **Grace period**: 7 days to complete setup before restrictions apply
+- **Reminder**: Dashboard banner until setup complete
+- **Lockdown**: After grace period, write operations disabled until setup complete
+
 ## Design Decisions
 
 | Decision | Choice | Rationale |
@@ -36,6 +60,9 @@ Currently, if a user loses all their passkeys, they have no way to recover their
 | **Threshold scheme** | FROST (t-of-n) | RFC 9591 standard, NCC audited, supports async signing |
 | **FROST library** | ZcashFoundation/frost (frost-secp256k1) | Production-ready, Ethereum-compatible curve, WASM compilable |
 | **Guardian model** | Four-tier (email, device, wallet, on-chain) | Balance accessibility with security; user choice |
+| **Minimum threshold** | 2-of-3 enforced | Prevents single point of failure; balances security with practicality |
+| **Maximum guardians** | 5 | Limits DKG complexity; covers enterprise needs |
+| **Device guardian weight** | Full guardian (counts as 1) | Simplifies setup - user can do 2-of-3 with 1 device + 2 emails |
 | **Key share storage** | Downloaded OR Server (passkey-wrapped) | Browser IndexedDB excluded as too fragile |
 | **Recovery model** | FROST-authorized server-held wrapper | Server holds DEK wrapper; FROST signature authorizes release |
 | **Device auth** | TOTP (RFC 6238) via `@better-auth/utils/otp` | User-controlled factor; reuses existing Better Auth utils |
@@ -184,6 +211,30 @@ ON-CHAIN GUARDIAN FLOW:
 | **Downloaded** | AES-256-GCM + PBKDF2 (100k iterations) | Portable; guardian responsibility |
 | **Server (passkey-wrapped)** | PRF-derived KEK (RFC-0001 pattern) | Multi-device; requires passkey |
 | **Wallet-encrypted** | AES-256-GCM + wallet-derived key | No server storage; requires wallet |
+
+## Guardian Management
+
+### Removing a Guardian
+
+Removing a guardian requires DKG regeneration:
+
+1. User initiates removal from settings
+2. Remaining guardians must re-sign to authorize removal
+3. New DKG round generates fresh shares for remaining guardians
+4. Old group public key rotated, new wrapped recovery DEK created
+5. Removed guardian's share becomes cryptographically useless
+
+**Minimum constraint**: Cannot remove guardian if it would drop below 2-of-3.
+
+### Key Rotation
+
+Triggered when:
+
+- Guardian reports compromise
+- Periodic rotation (optional, user-configured)
+- Guardian removal
+
+Rotation creates new FROST group key without changing underlying DEK.
 
 ## Database Schema
 
@@ -355,6 +406,45 @@ User (lost passkey)      Server                  Guardian(s)
   │                        ├─ Notify all guardians ─►│
 ```
 
+## Re-verification Fallback
+
+When all guardians are unavailable (e.g., user and guardians all lose access):
+
+### Eligibility
+
+- User proves email ownership (magic link)
+- All guardian recovery attempts exhausted or expired
+- 30-day cooling period from last recovery attempt
+
+### Flow
+
+1. **Identity Re-verification**: User re-submits identity documents + liveness check
+2. **Signature Matching**: Server compares new signed claims against stored attestations
+3. **Match Requirements**: **Exact match required** on:
+   - Full name (from OCR)
+   - Date of birth
+   - Document number
+   - Nationality
+4. **If Match**: New FHE keys generated, new recovery setup required
+5. **If Mismatch**: Recovery denied, manual support review
+
+### Data Impact
+
+| Data Type | After Re-verification |
+|-----------|----------------------|
+| Account | Preserved |
+| Attestations/ZK Proofs | Preserved (signed, not encrypted) |
+| FHE Keys | **New keys generated** |
+| Encrypted Attributes | **Lost** (old DEK unrecoverable) |
+
+### Security Rationale
+
+Re-verification is intentionally difficult:
+
+- Prevents social engineering attacks
+- Maintains zero-knowledge property (server never holds plaintext keys)
+- Ensures user understands data loss consequences
+
 ## Security Considerations
 
 ### Rate Limiting
@@ -385,6 +475,72 @@ All recovery events are logged:
 | **Device** | TOTP code + server encryption |
 
 All transit: TLS 1.3 minimum. At rest: Only encrypted forms stored.
+
+## Recovery Testing
+
+Users should verify recovery works before they need it.
+
+### Dry-Run Verification
+
+Available in settings after setup complete:
+
+1. User initiates "Test Recovery"
+2. System creates test challenge (not real recovery)
+3. One guardian receives test notification
+4. Guardian signs (or user uses device guardian)
+5. System verifies signature would aggregate correctly
+6. Confirmation: "Recovery setup verified working"
+
+Test does NOT:
+
+- Trigger cooldown
+- Notify all guardians
+- Create audit trail (marked as test)
+- Release actual DEK
+
+**Recommended**: Test annually or after guardian changes.
+
+## Cryptographic Architecture
+
+### How FROST Unlocks PRF-Wrapped DEK
+
+The recovery DEK is wrapped twice for defense-in-depth:
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                     DUAL-WRAP ARCHITECTURE                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  FHE Keys (plaintext)                                               │
+│       │                                                             │
+│       ├── Wrapped by DEK ─────────────────────────────────────┐     │
+│       │                                                       │     │
+│       │   DEK                                                 │     │
+│       │    │                                                  │     │
+│       │    ├── Wrapped by PRF-KEK (passkey) ─── [normal use]  │     │
+│       │    │   └── secret_wrappers.wrapped_dek               │     │
+│       │    │                                                  │     │
+│       │    └── Wrapped by FROST-KEK ─────────── [recovery]    │     │
+│       │        └── recovery_configs.wrapped_recovery_dek      │     │
+│       │                                                       │     │
+│       └── encrypted_secrets.encrypted_blob ───────────────────┘     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Recovery DEK Release Flow
+
+1. **Setup**: During onboarding, DEK is wrapped with FROST group public key
+2. **Storage**: `wrapped_recovery_dek` stored in `recovery_configs`
+3. **Recovery**: t guardians produce FROST aggregate signature
+4. **Verification**: Server verifies signature against `frost_group_pubkey`
+5. **Release**: If valid, server uses FROST signature to derive FROST-KEK
+6. **Unwrap**: FROST-KEK unwraps DEK
+7. **Re-wrap**: User's new passkey PRF wraps DEK, stored in `secret_wrappers`
+
+### Key Insight
+
+FROST signature doesn't directly contain DEK - it authorizes the server to perform unwrap operation. Server holds `wrapped_recovery_dek` but cannot unwrap without valid FROST signature.
 
 ## Implementation Files
 
@@ -426,6 +582,15 @@ All transit: TLS 1.3 minimum. At rest: Only encrypted forms stored.
 
 - [SIM Swap Statistics 2025](https://deepstrike.io/blog/sim-swap-scam-statistics-2025)
 - [AuthQuake: Microsoft MFA Vulnerability](https://workos.com/blog/authquake-microsofts-mfa-system-vulnerable-to-totp-brute-force-attack)
+
+### Passkey Recovery Research
+
+- [FIDO Credential Exchange Format (CXF)](https://fidoalliance.org/specifications-credential-exchange-specifications/) - Draft standard for passkey portability
+- [Signal Secure Backups](https://signal.org/blog/introducing-secure-backups/) - 64-char recovery key model
+- [ProtonMail Data Recovery](https://proton.me/blog/data-recovery-end-to-end-encryption) - Recovery phrase + file approach
+- [Bitwarden PRF Implementation](https://bitwarden.com/blog/prf-webauthn-and-its-role-in-passkeys/) - WebAuthn PRF for vault encryption
+- [Corbado: Passkeys & PRF](https://www.corbado.com/blog/passkeys-prf-webauthn) - PRF for E2E encryption
+- [Authsignal: Passkey Recovery](https://www.authsignal.com/blog/articles/passkey-recovery-fallback) - Recovery patterns overview
 
 ### Internal References
 
