@@ -6,7 +6,7 @@ This document describes **how Zentity's services connect**, **how data flows thr
 
 This is a **PoC**. Breaking changes are expected.
 
-Non-goals (current state):
+Non-goals:
 
 - Cryptographically binding all claims to a signed passport/ID credential inside a single "identity commitment" circuit.
 - Production-grade liveness attestation (device attestation / anti-replay guarantees).
@@ -26,7 +26,7 @@ Non-goals (current state):
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
 | FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
-| Auth + key custody | WebAuthn + PRF | Passkey-based authentication and key derivation for sealing secrets. |
+| Auth + key custody | Better Auth + WebAuthn + PRF | Passkey-based authentication and key derivation for sealing secrets. |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
 ### System Diagram
@@ -121,37 +121,40 @@ sequenceDiagram
   autonumber
   participant U as User (Browser)
   participant UI as Web UI
-  participant W as Web Worker (ZK Prover)
+  participant AUTH as Better Auth (/api/auth)
   participant API as Web API
-  participant OCR as OCR Service
   participant DB as SQLite
   participant FHE as FHE Service
+  participant OCR as OCR Service
 
-  U->>UI: Upload ID
-  UI->>API: Submit document
+  Note over U,OCR: Phase 1 - Verification (OCR + liveness + proofs)
+  U->>UI: Upload ID + selfie
+  UI->>API: Submit document + liveness
   API->>OCR: OCR + parse (transient)
   OCR-->>API: Extracted fields
-  API->>DB: Store draft + commitments
-  API-->>UI: Document verified
+  API->>DB: Store commitments + signed claims
+  API-->>UI: Verification complete
 
-  U->>UI: Complete liveness
-  UI->>API: Submit liveness data
-  API->>DB: Store liveness + face match result
-  API-->>UI: Liveness confirmed
+  Note over UI,AUTH: Phase 2 - Passkey + key custody
+  UI->>AUTH: signIn.anonymous (if needed)
+  UI->>API: POST /api/onboarding/context
+  API->>DB: Store context + registration tokens
+  API-->>UI: contextToken + registrationToken
 
-  UI->>API: Finalize verification
-  API->>FHE: Encrypt sensitive attributes
-  FHE-->>API: Ciphertexts
-  API->>DB: Persist encrypted attrs + claims + evidence
-  API-->>UI: Verified
+  UI->>AUTH: GET /api/auth/passkey/generate-register-options?context=...
+  UI->>UI: Create passkey + PRF output
+  UI->>AUTH: POST /api/auth/passkey/verify-registration
+  AUTH-->>UI: Session cookie set
 
-  UI->>API: Request ZK challenge
-  API->>DB: Store nonce
-  UI->>W: Generate proof
-  W-->>UI: Proof + public inputs
-  UI->>API: Submit proof
-  API->>DB: Consume nonce + store proof
-  API-->>UI: Proof accepted
+  UI->>UI: Generate FHE keys + encrypt bundle
+  UI->>API: POST /api/secrets/blob (Bearer registrationToken)
+  API->>DB: Store encrypted blob metadata
+
+  UI->>API: POST /api/fhe/enrollment/complete
+  API->>FHE: Register keys
+  FHE-->>API: key_id
+  API->>DB: Attach encrypted secret + wrapper
+  API-->>UI: Enrollment complete
 ```
 
 ### Disclosure
@@ -203,7 +206,7 @@ See [Web3 Architecture](web3-architecture.md).
 
 ## State Durability & Shared Devices
 
-Onboarding uses **cookies + local storage** for short-lived progress and previews. If that state is cleared (shared devices, private windows), the user may need to restart onboarding. The only durable, user-controlled source of profile data is the **passkey-sealed profile**.
+Onboarding uses **cookies + local storage** for short-lived progress and previews. Pre-auth onboarding context and registration tokens are stored in the Better Auth verification table with a short TTL to support the passkey-first flow. If local state is cleared (shared devices, private windows), the user may need to restart onboarding. The only durable, user-controlled source of profile data is the **passkey-sealed profile**.
 
 ---
 

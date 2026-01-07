@@ -19,15 +19,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { authClient, useSession } from "@/lib/auth/auth-client";
+import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
+import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
+import { addWrapperForSecretType } from "@/lib/crypto/secret-vault";
 import {
+  buildPrfExtension,
   checkPrfSupport,
-  createCredentialWithPrf,
   evaluatePrf,
-  extractCredentialRegistrationData,
+  extractPrfOutputFromClientResults,
 } from "@/lib/crypto/webauthn-prf";
-import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils/base64url";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
 
@@ -43,9 +44,6 @@ function getPhaseDescription(phase: RecoveryPhase): string {
   }
   return "Your new passkey is ready to use!";
 }
-
-const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  Uint8Array.from(bytes).buffer;
 
 export default function RecoverPasskeyPage() {
   const router = useRouter();
@@ -128,91 +126,75 @@ export default function RecoverPasskeyPage() {
     setError(null);
 
     try {
-      // Get registration options
-      const options = await trpc.passkeyAuth.getAddCredentialOptions.query();
       const prfSalt = generatePrfSalt();
 
-      // Build WebAuthn options
-      const webAuthnOptions: PublicKeyCredentialCreationOptions = {
-        rp: {
-          id: options.rp.id,
-          name: options.rp.name,
-        },
-        user: {
-          id: Uint8Array.from(new TextEncoder().encode(options.user.id)),
-          name: options.user.email,
-          displayName: options.user.name,
-        },
-        challenge: Uint8Array.from(base64UrlToBytes(options.challenge)),
-        pubKeyCredParams: [
-          { type: "public-key" as const, alg: -8 },
-          { type: "public-key" as const, alg: -7 },
-          { type: "public-key" as const, alg: -257 },
-        ],
-        authenticatorSelection: {
-          residentKey: "required" as const,
-          userVerification: "required" as const,
-        },
-        timeout: 60_000,
-        attestation: "none" as const,
-        excludeCredentials: options.excludeCredentials?.map((cred) => ({
-          type: "public-key" as const,
-          id: toArrayBuffer(base64UrlToBytes(cred.id)),
-          transports: cred.transports as AuthenticatorTransport[],
-        })),
-        extensions: {
-          prf: {
-            eval: {
-              first: toArrayBuffer(prfSalt),
-            },
-          },
-        },
-      };
+      const registration = await authClient.passkey.addPasskey({
+        name: "Recovery Passkey",
+        returnWebAuthnResponse: true,
+        extensions: buildPrfExtension(prfSalt),
+      });
 
-      // Create passkey
-      const {
-        credential,
+      if (!registration || registration.error || !registration.data) {
+        throw new Error(
+          registration?.error?.message || "Failed to register passkey."
+        );
+      }
+
+      const webauthn =
+        "webauthn" in registration ? registration.webauthn : null;
+
+      const credentialId =
+        registration.data.credentialID ||
+        webauthn?.response?.id ||
+        webauthn?.response?.rawId;
+
+      if (!credentialId) {
+        throw new Error("Missing passkey credential ID.");
+      }
+
+      let prfOutput = extractPrfOutputFromClientResults({
+        clientExtensionResults: webauthn?.clientExtensionResults,
         credentialId,
-        prfOutput: initialPrfOutput,
-      } = await createCredentialWithPrf(webAuthnOptions);
+      });
 
-      // Evaluate PRF if not available during creation
-      let prfOutput = initialPrfOutput;
       if (!prfOutput) {
+        const transports =
+          webauthn?.response && "transports" in webauthn.response
+            ? (webauthn.response.transports as AuthenticatorTransport[])
+            : undefined;
         const { prfOutputs } = await evaluatePrf({
           credentialIdToSalt: { [credentialId]: prfSalt },
+          credentialTransports: transports
+            ? {
+                [credentialId]: transports,
+              }
+            : undefined,
         });
         prfOutput =
           prfOutputs.get(credentialId) ??
           prfOutputs.values().next().value ??
           null;
       }
+
       if (!prfOutput) {
         throw new Error(
           "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
 
-      // Extract credential data
-      const credentialData = extractCredentialRegistrationData(credential);
-
-      // Register with server
-      await trpc.passkeyAuth.addCredential.mutate({
-        challengeId: options.challengeId,
-        credential: {
-          credentialId: credentialData.credentialId,
-          publicKey: credentialData.publicKey,
-          counter: credentialData.counter,
-          deviceType: credentialData.deviceType,
-          backedUp: credentialData.backedUp,
-          transports: credentialData.transports,
-          name: "Recovery Passkey",
-        },
+      await addWrapperForSecretType({
+        secretType: FHE_SECRET_TYPE,
+        newCredentialId: credentialId,
+        newPrfOutput: prfOutput,
+        newPrfSalt: prfSalt,
       });
 
-      // Note: We don't automatically re-wrap FHE keys here because
-      // we may not have the original PRF output. User can do this
-      // from settings if needed.
+      await addWrapperForSecretType({
+        secretType: PROFILE_SECRET_TYPE,
+        newCredentialId: credentialId,
+        newPrfOutput: prfOutput,
+        newPrfSalt: prfSalt,
+      });
 
       setPhase("complete");
       toast.success("Passkey registered successfully!");
@@ -361,9 +343,10 @@ export default function RecoverPasskeyPage() {
 
             <Alert>
               <AlertDescription className="text-sm">
-                <strong>Note:</strong> If you had FHE encryption keys protected
-                by your old passkey, you may need to re-verify your identity to
-                generate new keys.
+                <strong>Note:</strong> We&apos;ll try to re-secure your existing
+                encrypted keys with this new passkey. If that isn&apos;t
+                possible, you may need to re-verify your identity to generate
+                fresh keys.
               </AlertDescription>
             </Alert>
 

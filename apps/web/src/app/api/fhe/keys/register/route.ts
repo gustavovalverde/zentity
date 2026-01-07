@@ -1,7 +1,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 
 import { auth } from "@/lib/auth/auth";
-import { isRegistrationTokenValid } from "@/lib/auth/registration-token";
+import { isRegistrationTokenValid } from "@/lib/auth/onboarding-context";
 import { registerFheKey } from "@/lib/crypto/fhe-client";
 import {
   getEncryptedSecretByUserAndType,
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
   let userId: string | null = null;
   if (registrationToken) {
-    if (!isRegistrationTokenValid(registrationToken)) {
+    if (!(await isRegistrationTokenValid(registrationToken))) {
       return jsonError("Invalid or expired registration token.", 400);
     }
   } else {

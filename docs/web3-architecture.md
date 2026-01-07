@@ -25,6 +25,12 @@ This doc moves from **high-level system context**, to **transition flow**, and t
 - **User-controlled access**: decryption and access are gated by user-authorized grants.
 - **FHE-based compliance**: contracts evaluate policies on encrypted data.
 
+### Auth & session gating
+
+- **Wallet connection ≠ session**: Reown AppKit connects a wallet, but it does not create a server session.
+- **SIWE bridge**: the UI performs Sign‑In With Ethereum via Better Auth (`/api/auth/siwe/*`) to mint a session and link the wallet address.
+- **Server gating**: Web3/FHE APIs should require a Better Auth session and only proceed when the user has explicitly unlocked passkey‑sealed data (PRF unlock) for any encrypted payloads.
+
 ---
 
 ## Web2 to Web3 Transition
@@ -74,6 +80,8 @@ sequenceDiagram
   BE-->>UI: Verification complete
 
   Note over UI,IR: Phase 2 - Web3 Attestation
+  UI->>UI: Connect wallet (Reown)
+  UI->>BE: SIWE sign-in (Better Auth session)
   Note over UI: User unlocks passkey to authorize attributes
   UI->>BE: Request on-chain attestation
   BE->>Registrar: Encrypt identity attributes
@@ -177,6 +185,8 @@ UI implications:
 
 - Verify Web2 proofs and signed claims before enabling Web3 attestation.
 - Ensure the wallet is connected to the target network with gas available.
+- Ensure SIWE has established a Better Auth session for the wallet address.
+- Require a passkey PRF unlock before generating or decrypting encrypted payloads.
 - Confirm the registrar keys and contract addresses are configured.
 - Confirm ACL grants are issued for required contracts.
 - Validate disclosure flows against the evidence pack schema.

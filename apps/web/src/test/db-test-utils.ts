@@ -7,7 +7,7 @@ import {
 } from "@/lib/db/schema/attestation";
 import {
   accounts,
-  passkeyCredentials,
+  passkeys,
   sessions,
   users,
   verifications,
@@ -27,7 +27,6 @@ import {
   identityVerificationJobs,
 } from "@/lib/db/schema/identity";
 import { onboardingSessions } from "@/lib/db/schema/onboarding";
-import { rpAuthorizationCodes } from "@/lib/db/schema/rp";
 
 export interface CreateUserInput {
   id?: string;
@@ -51,13 +50,12 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(identityVerificationDrafts).run();
     await tx.delete(identityDocuments).run();
     await tx.delete(identityBundles).run();
-    await tx.delete(rpAuthorizationCodes).run();
     await tx.delete(zkChallenges).run();
     await tx.delete(accounts).run();
     await tx.delete(sessions).run();
     await tx.delete(verifications).run();
     await tx.delete(onboardingSessions).run();
-    await tx.delete(passkeyCredentials).run();
+    await tx.delete(passkeys).run();
     await tx.delete(users).run();
   });
 }

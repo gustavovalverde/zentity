@@ -1,116 +1,62 @@
-# Relying Party Redirect Flow
+# OAuth Provider Flow (Better Auth)
 
-This document explains the **RP redirect flow** implemented in `apps/web`.
+This document describes **Better Auth’s OAuth 2.1 Provider**. Zentity acts as a standards‑based authorization server for partners who need **verification flags** (not raw PII).
 
-Implementation note: `/api/rp/*` is implemented as a Hono router mounted inside Next.js (App Router route handler).
-
-It is intentionally **OAuth-like** (authorization code + server-to-server exchange), but it is **not** a full OAuth/OIDC provider implementation. The goal is to provide:
-
-- A safe way to **return the user to the relying party** after verification
-- A safe way to **avoid putting sensitive data in the URL**
-- A minimal way for the RP to retrieve **non-PII verification flags** via a one-time code
-
-**Note:** PII disclosure is a separate, passkey‑consented flow (OIDC‑style). This doc only covers verification flags.
+Implementation note: OAuth provider endpoints are implemented by the Better Auth plugin (`@better-auth/oauth-provider`) and exposed under `/api/auth/oauth2/*` plus `/api/auth/.well-known/*` metadata.
 
 ## Why this exists
 
-Better Auth powers **authentication inside Zentity** (sessions, login, magic links, account creation).
+- Uses a **standardized OAuth 2.1 / OIDC‑compatible** flow
+- Avoids custom redirect handling or cookie‑signed flow state
+- Allows partners to integrate with existing OAuth libraries
+- Keeps verification results **minimal and non‑PII**
 
-This RP flow solves a separate problem: **how a third party requests verification and gets a result back** without exposing raw personal data or proofs via browser redirects.
+## High‑level sequence
 
-## High-level sequence
+1. **Partner redirects the user to Zentity**
+   - `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20verification&state=...`
+2. **User authenticates** (if not already signed in)
+   - Redirects to `/sign-in` (Better Auth login page)
+3. **User consents**
+   - Redirects to `/oauth/consent` (UI page in `apps/web/src/app/oauth/consent`)
+   - Consent page calls `POST /api/auth/oauth2/consent` with `accept: true`
+4. **Authorization code is returned**
+   - Redirects back to partner with `code` + `state`
+5. **Partner exchanges code for tokens**
+   - `POST /api/auth/oauth2/token`
+6. **Partner retrieves verification flags**
+   - `GET /api/auth/oauth2/userinfo` (requires `openid`)
 
-1. RP redirects the user to Zentity:
-   - `GET /api/rp/authorize?client_id=...&redirect_uri=...&state=...`
-2. Zentity validates and replaces those params with a short-lived `flow` (UUID, ~2 min TTL):
-   - Redirects user to `/rp/verify?flow=...`
-   - Stores flow data in an **httpOnly signed cookie** (short TTL, tamper-resistant)
-3. User completes onboarding/verification in Zentity
-4. Zentity returns user back to RP:
-   - `GET /api/rp/complete?flow=...` (requires user session)
-   - Issues a **one-time authorization code**
-   - Redirects user to `redirect_uri?code=...&state=...`
-5. RP exchanges the code server-to-server:
-   - `POST /api/rp/exchange { code, client_id? }`
-   - Receives **verification flags only** (no raw PII): `verified`, `level`, `checks`
+## Key endpoints
 
-## Endpoints and responsibilities
-
-### `GET /api/rp/authorize`
-
-File: `apps/web/src/app/api/rp/[...path]/route.ts`
-
-Responsibilities:
-
-- Validate request parameters (`client_id`, `redirect_uri`, optional `state`)
-- Enforce redirect allowlist for **external** redirect URIs (`RP_ALLOWED_REDIRECT_URIS`)
-- Create a short-lived `flow` ID (UUID) and store flow state in an **httpOnly signed cookie**
-- Redirect to a clean URL: `/rp/verify?flow=...`
-
-Security value:
-
-- Prevents sensitive params from persisting in the browser address bar, history, analytics, or referer headers.
-- Signed cookies prevent tampering with `client_id` / `redirect_uri` / `state` stored in the flow.
-
-### `GET /rp/verify`
-
-File: `apps/web/src/app/rp/verify/page.tsx`
-
-Responsibilities:
-
-- Read and verify flow state from the signed cookie using `flow`
-- Display a minimal “handoff” confirmation screen
-- Route user into onboarding at `/sign-up?rp_flow=...`
-
-### `GET /api/rp/complete`
-
-File: `apps/web/src/app/api/rp/[...path]/route.ts`
-
-Responsibilities:
-
-- Require an authenticated user session
-- Load and validate the `flow`
-- Issue a one-time authorization `code` (UUID, ~5 min TTL) bound to `(client_id, redirect_uri, user_id)`
-- Redirect back to the relying party with `code` (+ `state`)
-
-Security value:
-
-- A one-time code is safer than redirecting with verification results directly.
-
-### `POST /api/rp/exchange`
-
-File: `apps/web/src/app/api/rp/[...path]/route.ts`
-
-Responsibilities:
-
-- Consume the one-time code (single-use + expiry enforced in DB)
-- Return minimal **verification status and checks** for the user associated with the code
-
-Privacy value:
-
-- Returns only coarse flags (e.g., `verified`, `level`, `checks`)—not DOB, document images, selfies, embeddings, or raw ZK proof payloads.
+- `GET /api/auth/.well-known/oauth-authorization-server`
+- `GET /api/auth/.well-known/openid-configuration` (if OpenID scope enabled)
+- `GET /api/auth/oauth2/authorize`
+- `POST /api/auth/oauth2/consent`
+- `POST /api/auth/oauth2/continue`
+- `POST /api/auth/oauth2/token`
+- `POST /api/auth/oauth2/introspect`
+- `POST /api/auth/oauth2/revoke`
+- `GET /api/auth/oauth2/userinfo`
+- `GET /api/auth/oauth2/end-session`
 
 ## Configuration
 
-### `RP_ALLOWED_REDIRECT_URIS`
+- OAuth clients are stored in the **Better Auth oauth client tables**.
+- Redirect URIs are **defined per client**, not via env allowlists.
+- Login page: `/sign-in`
+- Consent page: `/oauth/consent`
+- Scopes are limited to the verification domain (e.g. `verification`).
 
-Defined in `.env` / `.env.example`.
+## Privacy boundaries
 
-- Comma-separated list of **exact** allowed external redirect URIs.
-- Internal redirects (starting with `/`) are allowed for local testing and first-party flows.
+- The OAuth provider returns **verification flags only** (e.g., verified, level, checks).
+- **PII disclosure remains a separate, passkey‑consented flow.**
+- Encrypted data is never returned without PRF‑based unlock on the client.
 
-## Current limitations
+**Userinfo claims**: when the access token includes the `verification` scope, `/oauth2/userinfo` includes a `verification` object with `verified`, `level`, and `checks`.
 
-This is an MVP-style flow suitable for **closed beta** integrations, not a public open OAuth provider:
+## Related
 
-- No client registration UI or client secret management
-- No PKCE or client authentication at exchange time
-- No scopes/consent screen per RP
-- The `/api/rp/complete` endpoint currently issues a code via `GET` (production systems typically use POST + CSRF)
-- No signed verification token/JWT yet
-
-If we want to productionize this for third-party partners at scale, we should add:
-
-- A client registry (stored + managed), per-client keys/secrets, and metadata (name/logo)
-- PKCE and redirect_uri binding checks on exchange
-- Rate limiting, audit logging, and signed verification assertions
+- For partner integrations, create OAuth clients via Better Auth admin APIs or direct DB setup.
+- For external identity providers (Generic OAuth), see `docs/oauth-integrations.md`.

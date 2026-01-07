@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   generateAgeProof,
   generateDocValidityProof,
@@ -57,10 +58,10 @@ import {
   storeProfileSecret,
 } from "@/lib/crypto/profile-secret";
 import {
+  buildPrfExtension,
   checkPrfSupport,
-  createCredentialWithPrf,
   evaluatePrf,
-  extractCredentialRegistrationData,
+  extractPrfOutputFromClientResults,
 } from "@/lib/crypto/webauthn-prf";
 import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
 import { countryCodeToNumeric } from "@/lib/identity/compliance";
@@ -70,8 +71,8 @@ import {
 } from "@/lib/liveness/face-detection";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils/base64url";
 import { getFirstPart } from "@/lib/utils/name-utils";
+import { redirectTo } from "@/lib/utils/navigation";
 import { cn } from "@/lib/utils/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
@@ -101,9 +102,6 @@ interface StepIndicatorProps {
   status: "pending" | "active" | "complete";
   icon: React.ReactNode;
 }
-
-const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  Uint8Array.from(bytes).buffer;
 
 function StepIndicatorIcon({
   status,
@@ -170,6 +168,111 @@ function parseDateToInt(value: string | null | undefined): number | null {
   }
   const dateInt = Number(digits.slice(0, 8));
   return Number.isFinite(dateInt) ? dateInt : null;
+}
+
+type PasskeyErrorLike = { code?: string; message?: string } | null | undefined;
+
+function isPasskeyAlreadyRegistered(error: PasskeyErrorLike): boolean {
+  if (!error) {
+    return false;
+  }
+  if (error.code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") {
+    return true;
+  }
+  const message = error.message?.toLowerCase();
+  return Boolean(message?.includes("previously registered"));
+}
+
+interface OnboardingContextResponse {
+  contextToken: string;
+  registrationToken: string;
+  expiresAt: string;
+}
+
+interface FheEnrollmentCompleteResponse {
+  success: boolean;
+  keyId: string;
+}
+
+async function ensureAuthSession() {
+  const existing = await authClient.getSession();
+  const existingSession = existing.data;
+  if (existingSession?.user?.id) {
+    return existingSession;
+  }
+
+  const anonymous = await authClient.signIn.anonymous();
+  if (anonymous?.error) {
+    throw new Error(
+      anonymous.error.message || "Unable to start anonymous session."
+    );
+  }
+
+  const updated = await authClient.getSession();
+  const updatedSession = updated.data;
+  if (!updatedSession?.user?.id) {
+    throw new Error("Unable to start anonymous session.");
+  }
+
+  return updatedSession;
+}
+
+async function requestOnboardingContext(
+  email?: string | null
+): Promise<OnboardingContextResponse> {
+  const response = await fetch("/api/onboarding/context", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(email ? { email } : {}),
+  });
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!(response.ok && payload) || typeof payload !== "object") {
+    throw new Error("Unable to start onboarding.");
+  }
+
+  if ("error" in payload && payload.error) {
+    throw new Error(String(payload.error));
+  }
+
+  return payload as OnboardingContextResponse;
+}
+
+async function completeFheEnrollment(enrollmentPayload: {
+  registrationToken: string;
+  wrappedDek: string;
+  prfSalt: string;
+  credentialId: string;
+  keyId: string;
+  version: string;
+  kekVersion: string;
+  envelopeFormat: "json" | "msgpack";
+}): Promise<FheEnrollmentCompleteResponse> {
+  const response = await fetch("/api/fhe/enrollment/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(enrollmentPayload),
+  });
+
+  const data = (await response.json().catch(() => null)) as unknown;
+
+  if (!(response.ok && data) || typeof data !== "object") {
+    throw new Error("Failed to finalize FHE enrollment.");
+  }
+
+  if ("error" in data && data.error) {
+    throw new Error(String(data.error));
+  }
+
+  const responsePayload = data as FheEnrollmentCompleteResponse;
+  if (!responsePayload.keyId) {
+    throw new Error("Missing FHE key registration. Please try again.");
+  }
+
+  return responsePayload;
 }
 
 function buildProfilePayload(args: {
@@ -475,82 +578,110 @@ export function StepCreateAccount() {
         userSalt: data.userSalt,
       });
 
-      // Step 1: Register passkey and create user account
-      setStatus("registering-passkey");
+      // Step 1: Ensure we have a session (anonymous or existing)
+      await ensureAuthSession();
       const prfSalt = generatePrfSalt();
 
-      // Get registration options from server
-      const registrationOptions =
-        await trpc.passkeyAuth.getRegistrationOptions.mutate({
-          email: data.email,
+      // Step 2: Create onboarding context for pre-auth passkey registration
+      const onboardingContext = await requestOnboardingContext(data.email);
+
+      // Step 3: Register passkey with PRF extension (Better Auth handles verification)
+      setStatus("registering-passkey");
+      const registration = await authClient.passkey.addPasskey({
+        name: "Primary Passkey",
+        returnWebAuthnResponse: true,
+        extensions: buildPrfExtension(prfSalt),
+        context: onboardingContext.contextToken,
+      } as unknown as Parameters<typeof authClient.passkey.addPasskey>[0]);
+
+      let credentialId: string | null = null;
+      let prfOutput: Uint8Array | null = null;
+      let transports: AuthenticatorTransport[] | undefined;
+
+      if (
+        registration?.error &&
+        isPasskeyAlreadyRegistered(registration.error)
+      ) {
+        setStatus("unlocking-prf");
+        const authResult = await authClient.signIn.passkey({
+          returnWebAuthnResponse: true,
+          extensions: buildPrfExtension(prfSalt),
         });
+        if (!authResult || authResult.error || !authResult.data) {
+          const authError = authResult?.error as
+            | { code?: string; message?: string }
+            | undefined;
+          const message =
+            authError?.code === "AUTH_CANCELLED"
+              ? "Passkey sign-in was cancelled."
+              : authError?.message ||
+                "This passkey is already registered. Please sign in to continue.";
+          throw new Error(message);
+        }
 
-      // Build WebAuthn options with PRF
-      const options: PublicKeyCredentialCreationOptions = {
-        rp: {
-          id: registrationOptions.rp.id,
-          name: registrationOptions.rp.name,
-        },
-        user: {
-          id: Uint8Array.from(
-            new TextEncoder().encode(registrationOptions.user.id)
-          ),
-          name: registrationOptions.user.email,
-          displayName: registrationOptions.user.name,
-        },
-        challenge: Uint8Array.from(
-          base64UrlToBytes(registrationOptions.challenge)
-        ),
-        pubKeyCredParams: [
-          { type: "public-key" as const, alg: -8 },
-          { type: "public-key" as const, alg: -7 },
-          { type: "public-key" as const, alg: -257 },
-        ],
-        authenticatorSelection: {
-          residentKey: "required" as const,
-          userVerification: "required" as const,
-        },
-        timeout: 60_000,
-        attestation: "none" as const,
-        extensions: {
-          prf: {
-            eval: {
-              first: toArrayBuffer(prfSalt),
-            },
-          },
-        },
-      };
+        const authWebauthn =
+          "webauthn" in authResult ? authResult.webauthn : null;
+        credentialId =
+          authWebauthn?.response?.id || authWebauthn?.response?.rawId || null;
 
-      // Create passkey with PRF
-      const {
-        credential,
-        credentialId,
-        prfOutput: initialPrfOutput,
-      } = await createCredentialWithPrf(options);
+        prfOutput = extractPrfOutputFromClientResults({
+          clientExtensionResults: authWebauthn?.clientExtensionResults,
+          credentialId: credentialId ?? undefined,
+        });
+      } else {
+        if (!registration || registration.error || !registration.data) {
+          throw new Error(
+            registration?.error?.message || "Failed to register passkey."
+          );
+        }
 
-      // Extract credential data for server storage
-      const credentialData = extractCredentialRegistrationData(credential);
+        const webauthn =
+          "webauthn" in registration ? registration.webauthn : null;
 
-      // Step 2: If PRF wasn't available during registration, evaluate it now
-      let prfOutput = initialPrfOutput;
+        credentialId =
+          registration.data.credentialID ||
+          webauthn?.response?.id ||
+          webauthn?.response?.rawId ||
+          null;
+
+        transports =
+          webauthn?.response && "transports" in webauthn.response
+            ? (webauthn.response.transports as AuthenticatorTransport[])
+            : undefined;
+
+        prfOutput = extractPrfOutputFromClientResults({
+          clientExtensionResults: webauthn?.clientExtensionResults,
+          credentialId: credentialId ?? undefined,
+        });
+      }
+
+      if (!credentialId) {
+        throw new Error("Missing passkey credential ID.");
+      }
+
       if (!prfOutput) {
         setStatus("unlocking-prf");
         const { prfOutputs } = await evaluatePrf({
           credentialIdToSalt: { [credentialId]: prfSalt },
-          credentialTransports: { [credentialId]: credentialData.transports },
+          credentialTransports: transports
+            ? {
+                [credentialId]: transports,
+              }
+            : undefined,
         });
         prfOutput =
           prfOutputs.get(credentialId) ??
           prfOutputs.values().next().value ??
           null;
       }
+
       if (!prfOutput) {
         throw new Error(
           "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
 
-      // Step 3: Secure FHE keys locally before account creation
+      // Step 4: Secure FHE keys locally before account creation
       const enrollment = {
         credentialId,
         prfOutput,
@@ -569,57 +700,35 @@ export function StepCreateAccount() {
         secretId: fheEnrollment.secretId,
         secretType: FHE_SECRET_TYPE,
         payload: fheEnrollment.encryptedBlob,
-        registrationToken: registrationOptions.registrationToken,
+        registrationToken: onboardingContext.registrationToken,
       });
       setStatus("registering-keys");
       const fheRegistration = await registerFheKeyForEnrollment({
-        registrationToken: registrationOptions.registrationToken,
+        registrationToken: onboardingContext.registrationToken,
         publicKeyBytes: fheEnrollment.publicKeyBytes,
         serverKeyBytes: fheEnrollment.serverKeyBytes,
       });
 
-      // Step 4: Complete registration on server (creates user + stores secrets + session)
+      // Step 5: Finalize enrollment (stores wrappers + metadata)
       setStatus("creating-account");
-      const registrationResult =
-        await trpc.passkeyAuth.completeRegistration.mutate({
-          challengeId: registrationOptions.challengeId,
-          email: data.email,
-          credential: {
-            credentialId: credentialData.credentialId,
-            publicKey: credentialData.publicKey,
-            counter: credentialData.counter,
-            deviceType: credentialData.deviceType,
-            backedUp: credentialData.backedUp,
-            transports: credentialData.transports,
-            name: "Primary Passkey",
-          },
-          fhe: {
-            registrationToken: registrationOptions.registrationToken,
-            wrappedDek: fheEnrollment.wrappedDek,
-            prfSalt: fheEnrollment.prfSalt,
-            credentialId,
-            keyId: fheRegistration.keyId,
-            version: PASSKEY_VAULT_VERSION,
-            kekVersion: WRAP_VERSION,
-            envelopeFormat: fheEnrollment.envelopeFormat,
-          },
-        });
-
-      if (!registrationResult.success) {
-        throw new Error("Failed to create account. Please try again.");
-      }
-
-      if (!registrationResult.keyId) {
-        throw new Error("Missing FHE key registration. Please try again.");
-      }
+      const completion = await completeFheEnrollment({
+        registrationToken: onboardingContext.registrationToken,
+        wrappedDek: fheEnrollment.wrappedDek,
+        prfSalt: fheEnrollment.prfSalt,
+        credentialId,
+        keyId: fheRegistration.keyId,
+        version: PASSKEY_VAULT_VERSION,
+        kekVersion: WRAP_VERSION,
+        envelopeFormat: fheEnrollment.envelopeFormat,
+      });
 
       if (profilePayload) {
         await storeProfileSecret({ profile: profilePayload, enrollment });
       }
 
-      fheEnrollment.storedKeys.keyId = registrationResult.keyId;
+      const fheKeyId = completion.keyId || fheRegistration.keyId;
+      fheEnrollment.storedKeys.keyId = fheKeyId;
       cacheFheKeys(fheEnrollment.secretId, fheEnrollment.storedKeys);
-      const fheKeyId = registrationResult.keyId;
 
       await updateServerProgress({ keysSecured: true });
 
@@ -912,15 +1021,7 @@ export function StepCreateAccount() {
       setStatus("complete");
       reset();
 
-      // Check for RP flow redirect
-      const rpFlow = new URLSearchParams(window.location.search).get("rp_flow");
-      if (rpFlow) {
-        window.location.assign(
-          `/api/rp/complete?flow=${encodeURIComponent(rpFlow)}`
-        );
-        return;
-      }
-      window.location.assign("/dashboard");
+      redirectTo("/dashboard");
     } catch (err) {
       const message =
         err instanceof Error

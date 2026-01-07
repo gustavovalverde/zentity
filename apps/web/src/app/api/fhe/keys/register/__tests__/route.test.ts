@@ -9,11 +9,11 @@ vi.mock("@/lib/auth/auth", () => ({
   auth: { api: { getSession: authMocks.getSession } },
 }));
 
-const tokenMocks = vi.hoisted(() => ({
+const onboardingMocks = vi.hoisted(() => ({
   isRegistrationTokenValid: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/registration-token", () => tokenMocks);
+vi.mock("@/lib/auth/onboarding-context", () => onboardingMocks);
 
 const fheMocks = vi.hoisted(() => ({
   registerFheKey: vi.fn(),
@@ -40,7 +40,7 @@ describe("fhe keys/register route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMocks.getSession.mockResolvedValue(null);
-    tokenMocks.isRegistrationTokenValid.mockReturnValue(false);
+    onboardingMocks.isRegistrationTokenValid.mockResolvedValue(false);
     dbMocks.getEncryptedSecretByUserAndType.mockResolvedValue(null);
   });
 
@@ -103,6 +103,23 @@ describe("fhe keys/register route", () => {
     };
     expect(payload).toEqual({ keyId: "existing-key" });
     expect(fheMocks.registerFheKey).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid registration token", async () => {
+    onboardingMocks.isRegistrationTokenValid.mockResolvedValue(false);
+
+    const response = await POST(
+      makeRequest({
+        serverKey: new Uint8Array([1]),
+        publicKey: new Uint8Array([2]),
+        registrationToken: "bad-token",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid or expired registration token.",
+    });
   });
 
   it("registers key and updates metadata for authenticated users", async () => {

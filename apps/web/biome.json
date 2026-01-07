@@ -113,7 +113,6 @@
     },
     {
       "includes": [
-        "src/lib/auth/passkey-auth.ts",
         "src/lib/crypto/webauthn-prf.ts",
         "src/lib/zk/*.ts",
         "src/lib/blockchain/providers/*.ts",

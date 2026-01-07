@@ -5,7 +5,6 @@ import {
   Code,
   Coins,
   LayoutDashboard,
-  Link as LinkIcon,
   LogOut,
   Settings,
   Shield,
@@ -78,11 +77,6 @@ const blockchainNavItems: NavItem[] = [
 ];
 
 const developmentNavItems: NavItem[] = [
-  {
-    title: "RP Integration",
-    url: "/dashboard/dev/rp",
-    icon: LinkIcon,
-  },
   {
     title: "Exchange Demo",
     url: "/dashboard/dev/exchange",

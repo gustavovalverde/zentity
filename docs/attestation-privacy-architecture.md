@@ -66,10 +66,10 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | Profile PII (DOB, document #, nationality) | — | — | — | ✅ | Stored only in vault. |
 | User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
 | FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
-| Passkey credential metadata | — | — | — | — | Stored server-side for WebAuthn verification. |
+| Passkey credential metadata | — | — | — | — | Stored in the `passkey` table for WebAuthn verification. |
 | Raw images / biometrics | — | — | — | — | Never stored; transient only. |
 
-**Note:** Passkey credential metadata (public keys, counters, transports) is stored for authentication and key custody.
+**Note:** Passkey credential metadata (public keys, counters, transports) is stored in the `passkey` table for authentication and key custody.
 
 ---
 
@@ -81,7 +81,7 @@ This system intentionally splits data across **server storage** and **client‑o
 
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
-| **Server DB (plaintext)** | Account email, document metadata (type, issuer), status fields | Server readable | Required for basic UX and workflow state |
+| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OAuth operational metadata (client/consent/token records), document metadata (type, issuer), status fields | Server readable | Required for basic UX, auth, and workflow state |
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑derived keys) | User‑controlled privacy + encrypted computation |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
@@ -119,9 +119,17 @@ erDiagram
   USERS ||--o{ IDENTITY_DOCUMENTS : submits
   USERS ||--o{ ENCRYPTED_ATTRIBUTES : stores
   USERS ||--o{ ENCRYPTED_SECRETS : owns
-  USERS ||--o{ PASSKEY_CREDENTIALS : registers
+  USERS ||--o{ PASSKEY : registers
+  USERS ||--o{ WALLET_ADDRESS : links
+  USERS ||--o{ OAUTH_CLIENT : owns
+  USERS ||--o{ OAUTH_ACCESS_TOKEN : authorizes
+  USERS ||--o{ OAUTH_REFRESH_TOKEN : authorizes
+  USERS ||--o{ OAUTH_CONSENT : grants
   USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : submits
-  USERS ||--o{ RP_AUTHORIZATION_CODES : issues
+
+  OAUTH_CLIENT ||--o{ OAUTH_ACCESS_TOKEN : issues
+  OAUTH_CLIENT ||--o{ OAUTH_REFRESH_TOKEN : issues
+  OAUTH_CLIENT ||--o{ OAUTH_CONSENT : requests
 
   IDENTITY_DOCUMENTS ||--o{ ZK_PROOFS : proves
   IDENTITY_DOCUMENTS ||--o{ SIGNED_CLAIMS : claims
@@ -132,7 +140,7 @@ erDiagram
   IDENTITY_VERIFICATION_DRAFTS ||--o{ IDENTITY_VERIFICATION_JOBS : spawns
 
   ENCRYPTED_SECRETS ||--o{ SECRET_WRAPPERS : wrapped_by
-  PASSKEY_CREDENTIALS ||--o{ SECRET_WRAPPERS : unlocks
+  PASSKEY ||--o{ SECRET_WRAPPERS : unlocks
 
   USERS {
     text id PK
@@ -184,16 +192,36 @@ erDiagram
     text secret_id FK
     text credential_id
   }
-  PASSKEY_CREDENTIALS {
+  PASSKEY {
     text id PK
-    text credential_id
+    text userId FK
+    text credentialID
+  }
+  WALLET_ADDRESS {
+    text user_id FK
+    text address
   }
   BLOCKCHAIN_ATTESTATIONS {
     text id PK
     text network_id
   }
-  RP_AUTHORIZATION_CODES {
-    text code PK
+  OAUTH_CLIENT {
+    text client_id PK
+    text user_id FK
+  }
+  OAUTH_ACCESS_TOKEN {
+    text id PK
+    text client_id FK
+    text user_id FK
+  }
+  OAUTH_REFRESH_TOKEN {
+    text id PK
+    text client_id FK
+    text user_id FK
+  }
+  OAUTH_CONSENT {
+    text id PK
+    text client_id FK
     text user_id FK
   }
 ```

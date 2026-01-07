@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/api-auth";
 import {
   isRegistrationTokenValid,
   storeRegistrationBlob,
-} from "@/lib/auth/registration-token";
+} from "@/lib/auth/onboarding-context";
 import {
   readSecretBlob,
   writeSecretBlob,
@@ -42,7 +42,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!registrationToken && authResult && !authResult.ok) {
     return authResult.response;
   }
-  if (registrationToken && !isRegistrationTokenValid(registrationToken)) {
+  if (
+    registrationToken &&
+    !(await isRegistrationTokenValid(registrationToken))
+  ) {
     return NextResponse.json(
       { error: "Invalid or expired registration token." },
       { status: 401 }
@@ -70,7 +73,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   if (registrationToken) {
     try {
-      storeRegistrationBlob(registrationToken, {
+      await storeRegistrationBlob(registrationToken, {
         secretId,
         secretType,
         ...blobMeta,

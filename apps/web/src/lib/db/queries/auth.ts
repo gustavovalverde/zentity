@@ -13,10 +13,6 @@ export async function getUserCreatedAt(userId: string): Promise<string | null> {
   return row?.createdAt ?? null;
 }
 
-export async function deleteUserById(userId: string): Promise<void> {
-  await db.delete(users).where(eq(users.id, userId)).run();
-}
-
 /**
  * Check if a user has a credential account with a password set.
  * Users who signed up with passkey-only or OAuth won't have a password.

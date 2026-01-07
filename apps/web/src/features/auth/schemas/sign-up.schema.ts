@@ -1,6 +1,6 @@
 import z from "zod";
 
-// Step 1: Email only (minimal friction)
+// Step 1: Email (optional for anonymous onboarding)
 export const emailSchema = z.object({
   email: z.email({ message: "Please enter a valid email address" }),
 });
@@ -47,7 +47,7 @@ type DocumentResultData = z.infer<typeof documentResultSchema>;
  */
 export interface WizardData {
   // Step 1: Email only
-  email: string;
+  email: string | null;
 
   // Step 2: ID Upload - file and extracted data
   idDocument: File | null;
@@ -75,7 +75,7 @@ export interface WizardData {
 
 export const defaultWizardData: WizardData = {
   // Step 1
-  email: "",
+  email: null,
   // Step 2
   idDocument: null,
   idDocumentBase64: null,

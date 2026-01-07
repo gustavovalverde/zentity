@@ -52,34 +52,35 @@ import {
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { authClient } from "@/lib/auth/auth-client";
+import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
+import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
+import { addWrapperForSecretType } from "@/lib/crypto/secret-vault";
 import {
+  buildPrfExtension,
   checkPrfSupport,
-  createCredentialWithPrf,
   evaluatePrf,
-  extractCredentialRegistrationData,
+  extractPrfOutputFromClientResults,
 } from "@/lib/crypto/webauthn-prf";
-import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils/base64url";
 
 interface PasskeyCredential {
   id: string;
-  credentialId: string;
-  name: string | null;
-  deviceType: string | null;
-  backedUp: boolean | null;
-  createdAt: string;
-  lastUsedAt: string | null;
+  credentialID: string;
+  name?: string | null;
+  deviceType?: string | null;
+  backedUp?: boolean;
+  createdAt?: string | Date | null;
 }
 
-const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
-  Uint8Array.from(bytes).buffer;
-
-function formatDate(dateString: string | null): string {
-  if (!dateString) {
+function formatDate(dateValue: string | Date | null | undefined): string {
+  if (!dateValue) {
     return "Never";
   }
-  const date = new Date(dateString);
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
@@ -87,16 +88,16 @@ function formatDate(dateString: string | null): string {
   });
 }
 
-function DeviceIcon({ deviceType }: { deviceType: string | null }) {
-  if (deviceType === "platform") {
+function DeviceIcon({ deviceType }: { deviceType?: string | null }) {
+  if (deviceType === "platform" || deviceType === "singleDevice") {
     return <Monitor className="h-4 w-4" />;
   }
   return <Smartphone className="h-4 w-4" />;
 }
 
 type OptimisticAction =
-  | { type: "delete"; credentialId: string }
-  | { type: "rename"; credentialId: string; name: string };
+  | { type: "delete"; id: string }
+  | { type: "rename"; id: string; name: string };
 
 export function PasskeyManagementSection() {
   const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([]);
@@ -113,13 +114,11 @@ export function PasskeyManagementSection() {
     passkeys,
     (currentPasskeys, action: OptimisticAction) => {
       if (action.type === "delete") {
-        return currentPasskeys.filter(
-          (p) => p.credentialId !== action.credentialId
-        );
+        return currentPasskeys.filter((p) => p.id !== action.id);
       }
       // Rename
       return currentPasskeys.map((p) =>
-        p.credentialId === action.credentialId ? { ...p, name: action.name } : p
+        p.id === action.id ? { ...p, name: action.name } : p
       );
     }
   );
@@ -128,8 +127,11 @@ export function PasskeyManagementSection() {
     setIsLoading(true);
     setError(null);
     try {
-      const credentials = await trpc.passkeyAuth.listCredentials.query();
-      setPasskeys(credentials);
+      const result = await authClient.passkey.listUserPasskeys();
+      if (result.error || !result.data) {
+        throw new Error(result.error?.message || "Failed to load passkeys");
+      }
+      setPasskeys(result.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load passkeys");
     } finally {
@@ -159,86 +161,73 @@ export function PasskeyManagementSection() {
     setError(null);
 
     try {
-      // Get registration options
-      const options = await trpc.passkeyAuth.getAddCredentialOptions.query();
       const prfSalt = generatePrfSalt();
+      const registration = await authClient.passkey.addPasskey({
+        name: `Passkey ${optimisticPasskeys.length + 1}`,
+        returnWebAuthnResponse: true,
+        extensions: buildPrfExtension(prfSalt),
+      });
 
-      // Build WebAuthn options
-      const webAuthnOptions: PublicKeyCredentialCreationOptions = {
-        rp: {
-          id: options.rp.id,
-          name: options.rp.name,
-        },
-        user: {
-          id: Uint8Array.from(new TextEncoder().encode(options.user.id)),
-          name: options.user.email,
-          displayName: options.user.name,
-        },
-        challenge: Uint8Array.from(base64UrlToBytes(options.challenge)),
-        pubKeyCredParams: [
-          { type: "public-key" as const, alg: -8 },
-          { type: "public-key" as const, alg: -7 },
-          { type: "public-key" as const, alg: -257 },
-        ],
-        authenticatorSelection: {
-          residentKey: "required" as const,
-          userVerification: "required" as const,
-        },
-        timeout: 60_000,
-        attestation: "none" as const,
-        excludeCredentials: options.excludeCredentials?.map((cred) => ({
-          type: "public-key" as const,
-          id: toArrayBuffer(base64UrlToBytes(cred.id)),
-          transports: cred.transports as AuthenticatorTransport[],
-        })),
-        extensions: {
-          prf: {
-            eval: {
-              first: toArrayBuffer(prfSalt),
-            },
-          },
-        },
-      };
+      if (!registration || registration.error || !registration.data) {
+        throw new Error(
+          registration?.error?.message || "Failed to add passkey."
+        );
+      }
 
-      // Create passkey
-      const {
-        credential,
+      const webauthn =
+        "webauthn" in registration ? registration.webauthn : null;
+
+      const credentialId =
+        registration.data.credentialID ||
+        webauthn?.response?.id ||
+        webauthn?.response?.rawId;
+
+      if (!credentialId) {
+        throw new Error("Missing passkey credential ID.");
+      }
+
+      let prfOutput = extractPrfOutputFromClientResults({
+        clientExtensionResults: webauthn?.clientExtensionResults,
         credentialId,
-        prfOutput: initialPrfOutput,
-      } = await createCredentialWithPrf(webAuthnOptions);
+      });
 
-      // Evaluate PRF if not available during creation
-      let prfOutput = initialPrfOutput;
       if (!prfOutput) {
+        const transports =
+          webauthn?.response && "transports" in webauthn.response
+            ? (webauthn.response.transports as AuthenticatorTransport[])
+            : undefined;
         const { prfOutputs } = await evaluatePrf({
           credentialIdToSalt: { [credentialId]: prfSalt },
+          credentialTransports: transports
+            ? {
+                [credentialId]: transports,
+              }
+            : undefined,
         });
         prfOutput =
           prfOutputs.get(credentialId) ??
           prfOutputs.values().next().value ??
           null;
       }
+
       if (!prfOutput) {
         throw new Error(
           "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
 
-      // Extract credential data
-      const credentialData = extractCredentialRegistrationData(credential);
+      await addWrapperForSecretType({
+        secretType: FHE_SECRET_TYPE,
+        newCredentialId: credentialId,
+        newPrfOutput: prfOutput,
+        newPrfSalt: prfSalt,
+      });
 
-      // Register with server
-      await trpc.passkeyAuth.addCredential.mutate({
-        challengeId: options.challengeId,
-        credential: {
-          credentialId: credentialData.credentialId,
-          publicKey: credentialData.publicKey,
-          counter: credentialData.counter,
-          deviceType: credentialData.deviceType,
-          backedUp: credentialData.backedUp,
-          transports: credentialData.transports,
-          name: `Passkey ${optimisticPasskeys.length + 1}`,
-        },
+      await addWrapperForSecretType({
+        secretType: PROFILE_SECRET_TYPE,
+        newCredentialId: credentialId,
+        newPrfOutput: prfOutput,
+        newPrfSalt: prfSalt,
       });
 
       toast.success("Passkey added successfully!");
@@ -264,15 +253,18 @@ export function PasskeyManagementSection() {
     }
   };
 
-  const handleDeletePasskey = async (credentialId: string) => {
+  const handleDeletePasskey = async (id: string) => {
     // Close dialog immediately for instant feedback
     setDeleteConfirm(null);
 
     // Apply optimistic update - item disappears instantly
-    applyOptimistic({ type: "delete", credentialId });
+    applyOptimistic({ type: "delete", id });
 
     try {
-      await trpc.passkeyAuth.removeCredential.mutate({ credentialId });
+      const result = await authClient.passkey.deletePasskey({ id });
+      if (result.error) {
+        throw new Error(result.error.message || "Failed to remove passkey");
+      }
       toast.success("Passkey removed successfully");
       await loadPasskeys();
     } catch (err) {
@@ -285,7 +277,7 @@ export function PasskeyManagementSection() {
   };
 
   const handleStartEdit = (passkey: PasskeyCredential) => {
-    setEditingId(passkey.credentialId);
+    setEditingId(passkey.id);
     setEditName(passkey.name || "");
   };
 
@@ -299,7 +291,7 @@ export function PasskeyManagementSection() {
       return;
     }
 
-    const credentialId = editingId;
+    const passkeyId = editingId;
     const newName = editName.trim();
 
     // Close edit mode immediately for instant feedback
@@ -307,13 +299,16 @@ export function PasskeyManagementSection() {
     setEditName("");
 
     // Apply optimistic update - name changes instantly
-    applyOptimistic({ type: "rename", credentialId, name: newName });
+    applyOptimistic({ type: "rename", id: passkeyId, name: newName });
 
     try {
-      await trpc.passkeyAuth.renameCredential.mutate({
-        credentialId,
+      const result = await authClient.passkey.updatePasskey({
+        id: passkeyId,
         name: newName,
       });
+      if (result.error) {
+        throw new Error(result.error.message || "Failed to rename passkey");
+      }
       toast.success("Passkey renamed successfully");
       await loadPasskeys();
     } catch (err) {
@@ -377,7 +372,7 @@ export function PasskeyManagementSection() {
                     <DeviceIcon deviceType={passkey.deviceType} />
                   </ItemMedia>
                   <ItemContent>
-                    {editingId === passkey.credentialId ? (
+                    {editingId === passkey.id ? (
                       <div className="flex items-center gap-2">
                         <Input
                           autoFocus
@@ -426,9 +421,6 @@ export function PasskeyManagementSection() {
                     )}
                     <p className="text-muted-foreground text-xs">
                       Added {formatDate(passkey.createdAt)}
-                      {passkey.lastUsedAt
-                        ? ` · Last used ${formatDate(passkey.lastUsedAt)}`
-                        : null}
                     </p>
                   </ItemContent>
                   <ItemActions>
@@ -440,7 +432,7 @@ export function PasskeyManagementSection() {
                     <Button
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       disabled={optimisticPasskeys.length <= 1}
-                      onClick={() => setDeleteConfirm(passkey.credentialId)}
+                      onClick={() => setDeleteConfirm(passkey.id)}
                       size="sm"
                       title={
                         optimisticPasskeys.length <= 1

@@ -18,6 +18,7 @@ import {
 import { signInSchema } from "@/features/auth/schemas/sign-in.schema";
 import { signIn } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { redirectTo } from "@/lib/utils/navigation";
 import { makeFieldValidator } from "@/lib/utils/validation";
 
 export function SignInForm() {
@@ -50,7 +51,7 @@ export function SignInForm() {
         }
 
         toast.success("Signed in successfully!");
-        window.location.assign("/dashboard");
+        redirectTo("/dashboard");
       } catch {
         const errorMsg = "An unexpected error occurred. Please try again.";
         setError(errorMsg);

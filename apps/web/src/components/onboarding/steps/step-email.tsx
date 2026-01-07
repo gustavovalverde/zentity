@@ -33,6 +33,13 @@ export function StepEmail() {
     "email",
     (value: string) => ({ email: value })
   );
+  const validateEmailIfPresent = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    return validateEmail(trimmed);
+  };
 
   // Focus input after mount to avoid autoFocus triggering blur during hydration
   useEffect(() => {
@@ -45,13 +52,14 @@ export function StepEmail() {
 
   const form = useForm({
     defaultValues: {
-      email: state.data.email || "",
+      email: state.data.email ?? "",
     },
     onSubmit: async ({ value }) => {
+      const trimmed = value.email.trim();
       // SECURITY: Always start fresh session when submitting email
       // This clears any existing session to prevent session bleeding
-      await startFresh(value.email);
-      updateData(value);
+      await startFresh(trimmed);
+      updateData({ email: trimmed });
       nextStep();
     },
   });
@@ -67,14 +75,14 @@ export function StepEmail() {
       <div className="space-y-2">
         <h3 className="font-medium text-lg">Get Started</h3>
         <p className="text-muted-foreground text-sm">
-          Enter your email to begin identity verification.
+          Enter an email to enable account recovery, or continue anonymously.
         </p>
       </div>
 
       <form.Field
         name="email"
         validators={{
-          onBlur: ({ value }) => validateEmail(value),
+          onBlur: ({ value }) => validateEmailIfPresent(value),
           onSubmit: ({ value }) => validateEmail(value),
         }}
       >
@@ -107,7 +115,16 @@ export function StepEmail() {
         recovery.
       </p>
 
-      <WizardNavigation />
+      <WizardNavigation
+        onSkip={async () => {
+          form.reset();
+          await startFresh(null);
+          updateData({ email: null });
+          nextStep();
+        }}
+        showSkip
+        skipLabel="Continue without email"
+      />
     </form>
   );
 }

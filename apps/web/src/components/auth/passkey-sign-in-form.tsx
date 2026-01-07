@@ -9,15 +9,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import {
-  authenticateWithPasskey,
-  checkPrfSupport,
-} from "@/lib/crypto/webauthn-prf";
-import { trpc } from "@/lib/trpc/client";
-import { base64UrlToBytes } from "@/lib/utils/base64url";
+import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
+import { redirectTo } from "@/lib/utils/navigation";
 
-type AuthStatus = "idle" | "checking" | "authenticating" | "verifying";
+type AuthStatus = "idle" | "authenticating";
 
 export function PasskeySignInForm() {
   const [error, setError] = useState<string | null>(null);
@@ -42,41 +39,23 @@ export function PasskeySignInForm() {
   }, []);
 
   const handleSignIn = async () => {
-    setStatus("checking");
+    setStatus("authenticating");
     setError(null);
 
     // Clear any stale caches from previous session
     prepareForNewSession();
 
     try {
-      // Step 1: Get authentication options from server
-      const options = await trpc.passkeyAuth.getAuthenticationOptions.query({});
+      const result = await authClient.signIn.passkey();
 
-      // Step 2: Authenticate with passkey
-      setStatus("authenticating");
-      const { assertion } = await authenticateWithPasskey({
-        challenge: base64UrlToBytes(options.challenge),
-        allowCredentials: options.allowCredentials?.map((cred) => ({
-          id: cred.id,
-          transports: cred.transports as AuthenticatorTransport[],
-        })),
-        userVerification: "required",
-        timeoutMs: 60_000,
-      });
-
-      // Step 3: Verify assertion on server
-      setStatus("verifying");
-      const result = await trpc.passkeyAuth.verifyAuthentication.mutate({
-        challengeId: options.challengeId,
-        assertion,
-      });
-
-      if (!result.success) {
-        throw new Error("Authentication failed. Please try again.");
+      if (result.error || !result.data) {
+        throw new Error(
+          result.error?.message || "Authentication failed. Please try again."
+        );
       }
 
       toast.success("Signed in successfully!");
-      window.location.assign("/dashboard");
+      redirectTo("/dashboard");
     } catch (err) {
       const message =
         err instanceof Error
@@ -129,19 +108,7 @@ export function PasskeySignInForm() {
         size="lg"
         type="button"
       >
-        {status === "checking" && (
-          <>
-            <Spinner className="mr-2" size="sm" />
-            Getting options...
-          </>
-        )}
         {status === "authenticating" && (
-          <>
-            <Spinner className="mr-2" size="sm" />
-            Waiting for passkey...
-          </>
-        )}
-        {status === "verifying" && (
           <>
             <Spinner className="mr-2" size="sm" />
             Signing in...
