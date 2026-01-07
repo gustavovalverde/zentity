@@ -52,17 +52,17 @@ import {
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { authClient } from "@/lib/auth/auth-client";
+import {
+  deletePasskey,
+  listUserPasskeys,
+  registerPasskeyWithPrf,
+  renamePasskey,
+} from "@/lib/auth/passkey";
 import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
 import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
 import { addWrapperForSecretType } from "@/lib/crypto/secret-vault";
-import {
-  buildPrfExtension,
-  checkPrfSupport,
-  evaluatePrf,
-  extractPrfOutputFromClientResults,
-} from "@/lib/crypto/webauthn-prf";
+import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
 
 interface PasskeyCredential {
   id: string;
@@ -127,7 +127,7 @@ export function PasskeyManagementSection() {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await authClient.passkey.listUserPasskeys();
+      const result = await listUserPasskeys();
       if (result.error || !result.data) {
         throw new Error(result.error?.message || "Failed to load passkeys");
       }
@@ -162,59 +162,16 @@ export function PasskeyManagementSection() {
 
     try {
       const prfSalt = generatePrfSalt();
-      const registration = await authClient.passkey.addPasskey({
+      const registration = await registerPasskeyWithPrf({
         name: `Passkey ${optimisticPasskeys.length + 1}`,
-        returnWebAuthnResponse: true,
-        extensions: buildPrfExtension(prfSalt),
+        prfSalt,
       });
 
-      if (!registration || registration.error || !registration.data) {
-        throw new Error(
-          registration?.error?.message || "Failed to add passkey."
-        );
+      if (!registration.ok) {
+        throw new Error(registration.message);
       }
 
-      const webauthn =
-        "webauthn" in registration ? registration.webauthn : null;
-
-      const credentialId =
-        registration.data.credentialID ||
-        webauthn?.response?.id ||
-        webauthn?.response?.rawId;
-
-      if (!credentialId) {
-        throw new Error("Missing passkey credential ID.");
-      }
-
-      let prfOutput = extractPrfOutputFromClientResults({
-        clientExtensionResults: webauthn?.clientExtensionResults,
-        credentialId,
-      });
-
-      if (!prfOutput) {
-        const transports =
-          webauthn?.response && "transports" in webauthn.response
-            ? (webauthn.response.transports as AuthenticatorTransport[])
-            : undefined;
-        const { prfOutputs } = await evaluatePrf({
-          credentialIdToSalt: { [credentialId]: prfSalt },
-          credentialTransports: transports
-            ? {
-                [credentialId]: transports,
-              }
-            : undefined,
-        });
-        prfOutput =
-          prfOutputs.get(credentialId) ??
-          prfOutputs.values().next().value ??
-          null;
-      }
-
-      if (!prfOutput) {
-        throw new Error(
-          "This passkey did not return PRF output. Please try a different authenticator."
-        );
-      }
+      const { credentialId, prfOutput } = registration;
 
       await addWrapperForSecretType({
         secretType: FHE_SECRET_TYPE,
@@ -261,7 +218,7 @@ export function PasskeyManagementSection() {
     applyOptimistic({ type: "delete", id });
 
     try {
-      const result = await authClient.passkey.deletePasskey({ id });
+      const result = await deletePasskey(id);
       if (result.error) {
         throw new Error(result.error.message || "Failed to remove passkey");
       }
@@ -302,10 +259,7 @@ export function PasskeyManagementSection() {
     applyOptimistic({ type: "rename", id: passkeyId, name: newName });
 
     try {
-      const result = await authClient.passkey.updatePasskey({
-        id: passkeyId,
-        name: newName,
-      });
+      const result = await renamePasskey(passkeyId, newName);
       if (result.error) {
         throw new Error(result.error.message || "Failed to rename passkey");
       }

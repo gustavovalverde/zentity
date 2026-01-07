@@ -13,6 +13,7 @@ import {
   UserCheck,
   XCircle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +33,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { NATIONALITY_GROUP } from "@/lib/attestation/policy";
 import { authClient } from "@/lib/auth/auth-client";
+import {
+  isPasskeyAlreadyRegistered,
+  registerPasskeyWithPrf,
+  signInWithPasskey,
+} from "@/lib/auth/passkey";
 import {
   generateAgeProof,
   generateDocValidityProof,
@@ -57,12 +63,8 @@ import {
   type ProfileSecretPayload,
   storeProfileSecret,
 } from "@/lib/crypto/profile-secret";
-import {
-  buildPrfExtension,
-  checkPrfSupport,
-  evaluatePrf,
-  extractPrfOutputFromClientResults,
-} from "@/lib/crypto/webauthn-prf";
+import { cachePasskeyUnlock } from "@/lib/crypto/secret-vault";
+import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
 import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
 import { countryCodeToNumeric } from "@/lib/identity/compliance";
 import {
@@ -72,7 +74,6 @@ import {
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 import { getFirstPart } from "@/lib/utils/name-utils";
-import { redirectTo } from "@/lib/utils/navigation";
 import { cn } from "@/lib/utils/utils";
 
 import { WizardNavigation } from "../wizard-navigation";
@@ -168,19 +169,6 @@ function parseDateToInt(value: string | null | undefined): number | null {
   }
   const dateInt = Number(digits.slice(0, 8));
   return Number.isFinite(dateInt) ? dateInt : null;
-}
-
-type PasskeyErrorLike = { code?: string; message?: string } | null | undefined;
-
-function isPasskeyAlreadyRegistered(error: PasskeyErrorLike): boolean {
-  if (!error) {
-    return false;
-  }
-  if (error.code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") {
-    return true;
-  }
-  const message = error.message?.toLowerCase();
-  return Boolean(message?.includes("previously registered"));
 }
 
 interface OnboardingContextResponse {
@@ -341,6 +329,7 @@ function buildProfilePayload(args: {
  * - Privacy proof generation
  */
 export function StepCreateAccount() {
+  const router = useRouter();
   const { state, updateData, setSubmitting, reset, updateServerProgress } =
     useWizard();
   const { data } = state;
@@ -587,72 +576,36 @@ export function StepCreateAccount() {
 
       // Step 3: Register passkey with PRF extension (Better Auth handles verification)
       setStatus("registering-passkey");
-      const registration = await authClient.passkey.addPasskey({
+      const registration = await registerPasskeyWithPrf({
         name: "Primary Passkey",
-        returnWebAuthnResponse: true,
-        extensions: buildPrfExtension(prfSalt),
+        prfSalt,
         context: onboardingContext.contextToken,
-      } as unknown as Parameters<typeof authClient.passkey.addPasskey>[0]);
+      });
 
       let credentialId: string | null = null;
       let prfOutput: Uint8Array | null = null;
-      let transports: AuthenticatorTransport[] | undefined;
 
-      if (
-        registration?.error &&
-        isPasskeyAlreadyRegistered(registration.error)
-      ) {
+      if (!registration.ok && isPasskeyAlreadyRegistered(registration.error)) {
         setStatus("unlocking-prf");
-        const authResult = await authClient.signIn.passkey({
-          returnWebAuthnResponse: true,
-          extensions: buildPrfExtension(prfSalt),
-        });
-        if (!authResult || authResult.error || !authResult.data) {
-          const authError = authResult?.error as
-            | { code?: string; message?: string }
-            | undefined;
+        const authResult = await signInWithPasskey({ prfSalt });
+        if (!authResult.ok) {
           const message =
-            authError?.code === "AUTH_CANCELLED"
+            authResult.error?.code === "AUTH_CANCELLED"
               ? "Passkey sign-in was cancelled."
-              : authError?.message ||
+              : authResult.message ||
                 "This passkey is already registered. Please sign in to continue.";
           throw new Error(message);
         }
 
-        const authWebauthn =
-          "webauthn" in authResult ? authResult.webauthn : null;
-        credentialId =
-          authWebauthn?.response?.id || authWebauthn?.response?.rawId || null;
-
-        prfOutput = extractPrfOutputFromClientResults({
-          clientExtensionResults: authWebauthn?.clientExtensionResults,
-          credentialId: credentialId ?? undefined,
-        });
+        credentialId = authResult.credentialId ?? null;
+        prfOutput = authResult.prfOutput ?? null;
       } else {
-        if (!registration || registration.error || !registration.data) {
-          throw new Error(
-            registration?.error?.message || "Failed to register passkey."
-          );
+        if (!registration.ok) {
+          throw new Error(registration.message);
         }
 
-        const webauthn =
-          "webauthn" in registration ? registration.webauthn : null;
-
-        credentialId =
-          registration.data.credentialID ||
-          webauthn?.response?.id ||
-          webauthn?.response?.rawId ||
-          null;
-
-        transports =
-          webauthn?.response && "transports" in webauthn.response
-            ? (webauthn.response.transports as AuthenticatorTransport[])
-            : undefined;
-
-        prfOutput = extractPrfOutputFromClientResults({
-          clientExtensionResults: webauthn?.clientExtensionResults,
-          credentialId: credentialId ?? undefined,
-        });
+        credentialId = registration.credentialId;
+        prfOutput = registration.prfOutput;
       }
 
       if (!credentialId) {
@@ -660,26 +613,12 @@ export function StepCreateAccount() {
       }
 
       if (!prfOutput) {
-        setStatus("unlocking-prf");
-        const { prfOutputs } = await evaluatePrf({
-          credentialIdToSalt: { [credentialId]: prfSalt },
-          credentialTransports: transports
-            ? {
-                [credentialId]: transports,
-              }
-            : undefined,
-        });
-        prfOutput =
-          prfOutputs.get(credentialId) ??
-          prfOutputs.values().next().value ??
-          null;
-      }
-
-      if (!prfOutput) {
         throw new Error(
           "This passkey did not return PRF output. Please try a different authenticator."
         );
       }
+
+      cachePasskeyUnlock({ credentialId, prfOutput });
 
       // Step 4: Secure FHE keys locally before account creation
       const enrollment = {
@@ -1021,7 +960,8 @@ export function StepCreateAccount() {
       setStatus("complete");
       reset();
 
-      redirectTo("/dashboard");
+      router.push("/dashboard");
+      router.refresh();
     } catch (err) {
       const message =
         err instanceof Error

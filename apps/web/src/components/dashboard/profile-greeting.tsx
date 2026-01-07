@@ -9,6 +9,7 @@ import {
   getStoredProfile,
   subscribeToProfileCache,
 } from "@/lib/crypto/profile-secret";
+import { hasCachedPasskeyUnlock } from "@/lib/crypto/secret-vault";
 
 /**
  * Displays the user's first name from their passkey-encrypted profile.
@@ -40,6 +41,11 @@ export function ProfileGreetingName({
   // Trigger a fetch on mount if no profile is cached
   useEffect(() => {
     if (!profile) {
+      const shouldAutoUnlock = hasCachedPasskeyUnlock();
+      if (!shouldAutoUnlock) {
+        setIsInitialLoad(false);
+        return;
+      }
       let isCancelled = false;
       // Fire and forget - the subscription will pick up the result
       getStoredProfile()

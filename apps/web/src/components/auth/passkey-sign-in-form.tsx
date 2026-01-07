@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { authClient } from "@/lib/auth/auth-client";
+import { signInWithPasskey } from "@/lib/auth/passkey";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
 import { redirectTo } from "@/lib/utils/navigation";
@@ -46,12 +46,10 @@ export function PasskeySignInForm() {
     prepareForNewSession();
 
     try {
-      const result = await authClient.signIn.passkey();
+      const result = await signInWithPasskey();
 
-      if (result.error || !result.data) {
-        throw new Error(
-          result.error?.message || "Authentication failed. Please try again."
-        );
+      if (!result.ok) {
+        throw new Error(result.message);
       }
 
       toast.success("Signed in successfully!");

@@ -22,6 +22,126 @@ export interface PasskeyEnrollmentContext {
 }
 
 export const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
+const PASSKEY_CACHE_TTL_MS = 15 * 60 * 1000;
+
+interface CachedPasskeyUnlock {
+  credentialId: string;
+  prfOutput: Uint8Array;
+  cachedAt: number;
+}
+
+let cachedUnlock: CachedPasskeyUnlock | null = null;
+let pendingUnlock: Promise<CachedPasskeyUnlock> | null = null;
+let pendingUnlockKey: string | null = null;
+
+function getCachedUnlock(
+  allowedCredentialIds: string[]
+): CachedPasskeyUnlock | null {
+  if (!cachedUnlock) {
+    return null;
+  }
+  if (Date.now() - cachedUnlock.cachedAt > PASSKEY_CACHE_TTL_MS) {
+    cachedUnlock = null;
+    return null;
+  }
+  if (!allowedCredentialIds.includes(cachedUnlock.credentialId)) {
+    return null;
+  }
+  return cachedUnlock;
+}
+
+export function cachePasskeyUnlock(params: {
+  credentialId: string;
+  prfOutput: Uint8Array;
+}): void {
+  cachedUnlock = {
+    credentialId: params.credentialId,
+    prfOutput: params.prfOutput,
+    cachedAt: Date.now(),
+  };
+}
+
+export function resetPasskeyUnlockCache(): void {
+  cachedUnlock = null;
+  pendingUnlock = null;
+  pendingUnlockKey = null;
+}
+
+export function hasCachedPasskeyUnlock(): boolean {
+  if (!cachedUnlock) {
+    return false;
+  }
+  if (Date.now() - cachedUnlock.cachedAt > PASSKEY_CACHE_TTL_MS) {
+    cachedUnlock = null;
+    return false;
+  }
+  return true;
+}
+
+async function resolvePasskeyUnlock(params: {
+  credentialIdToSalt: Record<string, Uint8Array>;
+  credentialTransports?: Record<string, AuthenticatorTransport[]>;
+}): Promise<CachedPasskeyUnlock> {
+  const credentialIds = Object.keys(params.credentialIdToSalt);
+  if (credentialIds.length === 0) {
+    throw new Error("No passkeys are registered for this secret.");
+  }
+
+  const cached = getCachedUnlock(credentialIds);
+  if (cached) {
+    return cached;
+  }
+
+  const pendingKey = [...credentialIds].sort().join("|");
+  if (pendingUnlock && pendingUnlockKey === pendingKey) {
+    return pendingUnlock;
+  }
+
+  const unlockPromise = (async () => {
+    const { prfOutputs, selectedCredentialId } = await evaluatePrf({
+      credentialIdToSalt: params.credentialIdToSalt,
+      credentialTransports: params.credentialTransports,
+    });
+
+    const resolvedCredentialId =
+      (selectedCredentialId && prfOutputs.has(selectedCredentialId)
+        ? selectedCredentialId
+        : null) ??
+      credentialIds.find((id) => prfOutputs.has(id)) ??
+      prfOutputs.keys().next().value;
+
+    const prfOutput = resolvedCredentialId
+      ? prfOutputs.get(resolvedCredentialId)
+      : null;
+
+    if (!(resolvedCredentialId && prfOutput)) {
+      throw new Error("PRF output missing for selected passkey.");
+    }
+
+    cachePasskeyUnlock({
+      credentialId: resolvedCredentialId,
+      prfOutput,
+    });
+
+    return {
+      credentialId: resolvedCredentialId,
+      prfOutput,
+      cachedAt: Date.now(),
+    };
+  })();
+
+  pendingUnlock = unlockPromise;
+  pendingUnlockKey = pendingKey;
+
+  try {
+    return await unlockPromise;
+  } finally {
+    if (pendingUnlock === unlockPromise) {
+      pendingUnlock = null;
+      pendingUnlockKey = null;
+    }
+  }
+}
 
 export function readEnvelopeFormat(
   metadata: Record<string, unknown> | null | undefined
@@ -141,24 +261,21 @@ export async function loadSecret(params: {
     saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
   }
 
-  const { prfOutputs, selectedCredentialId } = await evaluatePrf({
-    credentialIdToSalt: saltByCredential,
-  });
+  const { credentialId: unlockedCredentialId, prfOutput } =
+    await resolvePasskeyUnlock({
+      credentialIdToSalt: saltByCredential,
+    });
 
-  const selectedWrapper =
-    bundle.wrappers.find((w) => w.credentialId === selectedCredentialId) ??
-    bundle.wrappers[0];
+  const selectedWrapper = bundle.wrappers.find(
+    (wrapper) => wrapper.credentialId === unlockedCredentialId
+  );
+  if (!selectedWrapper) {
+    throw new Error("Selected passkey is not registered for this secret.");
+  }
   if (selectedWrapper.kekVersion !== WRAP_VERSION) {
     throw new Error(
       "Unsupported key wrapper version. Please re-add your passkey."
     );
-  }
-  const prfOutput =
-    prfOutputs.get(selectedWrapper.credentialId) ??
-    prfOutputs.values().next().value;
-
-  if (!prfOutput) {
-    throw new Error("PRF output missing for selected passkey.");
   }
 
   const plaintext = await decryptSecretEnvelope({
@@ -199,21 +316,16 @@ export async function addWrapperForSecretType(params: {
     saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
   }
 
-  const { prfOutputs, selectedCredentialId } = await evaluatePrf({
-    credentialIdToSalt: saltByCredential,
-  });
+  const { credentialId: unlockedCredentialId, prfOutput: selectedOutput } =
+    await resolvePasskeyUnlock({
+      credentialIdToSalt: saltByCredential,
+    });
 
-  const selectedWrapper =
-    bundle.wrappers.find(
-      (wrapper) => wrapper.credentialId === selectedCredentialId
-    ) ?? bundle.wrappers[0];
-
-  const selectedOutput =
-    prfOutputs.get(selectedWrapper.credentialId) ??
-    prfOutputs.values().next().value;
-
-  if (!selectedOutput) {
-    throw new Error("PRF output missing for existing passkey.");
+  const selectedWrapper = bundle.wrappers.find(
+    (wrapper) => wrapper.credentialId === unlockedCredentialId
+  );
+  if (!selectedWrapper) {
+    throw new Error("Selected passkey is not registered for this secret.");
   }
 
   const dek = await unwrapDekWithPrf({
