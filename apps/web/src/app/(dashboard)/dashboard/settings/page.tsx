@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
 import { PasskeyManagementSection } from "@/components/dashboard/passkey-management-section";
 import { PasswordSection } from "@/components/dashboard/password-section";
+import { RecoverySetupSection } from "@/components/dashboard/recovery-setup-section";
 import { SecurityCards } from "@/components/dashboard/security-cards";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,6 +52,7 @@ export default async function SettingsPage() {
         <TabsContent className="mt-6 space-y-6" value="security">
           {/* Custom passkey section with PRF support for FHE key derivation */}
           <PasskeyManagementSection />
+          <RecoverySetupSection />
           {/* Better Auth UI components for OAuth, session, and 2FA management */}
           <SecurityCards hasPassword={hasPassword} />
           {/* Password section: ChangePasswordCard or SetPasswordSection */}

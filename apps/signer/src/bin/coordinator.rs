@@ -21,7 +21,7 @@ use actix_web::{App, HttpServer, middleware, web};
 use signer_service::{
     config::{Role, Settings},
     frost::Coordinator,
-    middleware::{RateLimitConfig, general_limiter},
+    middleware::{InternalAuth, RateLimitConfig, general_limiter},
     routes,
     storage::Storage,
     telemetry,
@@ -94,7 +94,9 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            // Rate limiting (applied first)
+            // Internal auth (health/build-info exempt)
+            .wrap(InternalAuth::new(&settings))
+            // Rate limiting
             .wrap(general_limiter())
             // Request tracing
             .wrap(TracingLogger::default())

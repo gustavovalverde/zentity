@@ -431,6 +431,10 @@ impl Settings {
         self.internal_token.as_deref()
     }
 
+    pub fn internal_token_required(&self) -> bool {
+        self.internal_token_required
+    }
+
     pub fn request_timeout(&self) -> Duration {
         Duration::from_millis(self.request_timeout_ms)
     }

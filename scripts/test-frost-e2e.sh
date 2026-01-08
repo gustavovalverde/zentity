@@ -14,12 +14,9 @@
 #   1 - Test failed
 #   2 - Prerequisites not met
 #
-# Note: When running from outside Docker, the coordinator cannot orchestrate
-# signers via localhost URLs (they need Docker network names). This test uses
-# a client-driven flow where we call each signer directly and submit results
-# to the coordinator. The coordinator's finalize_dkg may warn about unreachable
-# signers - this is expected and the test still passes because signers have
-# their key shares.
+# Note: The coordinator now orchestrates signer finalization. Ensure that
+# SIGNER_ENDPOINTS points to addresses reachable from the coordinator (the
+# docker-compose setup uses Docker DNS names).
 
 set -euo pipefail
 
@@ -28,6 +25,13 @@ COORD_URL="${COORD_URL:-http://localhost:5002}"
 SIGNER1_URL="${SIGNER1_URL:-http://localhost:5101}"
 SIGNER2_URL="${SIGNER2_URL:-http://localhost:5102}"
 SIGNER3_URL="${SIGNER3_URL:-http://localhost:5103}"
+CIPHERSUITE="${FROST_CIPHERSUITE:-secp256k1}"
+INTERNAL_TOKEN="${INTERNAL_SERVICE_TOKEN:-}"
+if [[ -z "$INTERNAL_TOKEN" && -f ".env" ]]; then
+    INTERNAL_TOKEN=$(grep -E '^INTERNAL_SERVICE_TOKEN=' .env | head -n1 | cut -d= -f2-)
+fi
+INTERNAL_TOKEN="${INTERNAL_TOKEN:-dev-token}"
+AUTH_HEADER="X-Internal-Token: ${INTERNAL_TOKEN}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -162,9 +166,11 @@ test_dkg() {
     # This allows coordinator to use Docker DNS names (signer-1:5101) while test uses localhost
     INIT_RESP=$(curl -sf -X POST "$COORD_URL/dkg/init" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{
             \"threshold\": 2,
             \"total_participants\": 3,
+            \"ciphersuite\": \"$CIPHERSUITE\",
             \"participant_hpke_pubkeys\": {\"1\": \"$HPKE1\", \"2\": \"$HPKE2\", \"3\": \"$HPKE3\"}
         }")
 
@@ -177,19 +183,19 @@ test_dkg() {
 
     R1_1=$(curl -sf -X POST "$SIGNER1_URL/signer/dkg/round1" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 1, \"threshold\": 2, \"total_participants\": 3}")
+        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 1, \"ciphersuite\": \"$CIPHERSUITE\", \"threshold\": 2, \"total_participants\": 3}")
     PKG1=$(echo "$R1_1" | jq -r '.package')
     assert_not_empty "$PKG1" "Signer 1 produced round1 package"
 
     R1_2=$(curl -sf -X POST "$SIGNER2_URL/signer/dkg/round1" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 2, \"threshold\": 2, \"total_participants\": 3}")
+        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 2, \"ciphersuite\": \"$CIPHERSUITE\", \"threshold\": 2, \"total_participants\": 3}")
     PKG2=$(echo "$R1_2" | jq -r '.package')
     assert_not_empty "$PKG2" "Signer 2 produced round1 package"
 
     R1_3=$(curl -sf -X POST "$SIGNER3_URL/signer/dkg/round1" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 3, \"threshold\": 2, \"total_participants\": 3}")
+        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 3, \"ciphersuite\": \"$CIPHERSUITE\", \"threshold\": 2, \"total_participants\": 3}")
     PKG3=$(echo "$R1_3" | jq -r '.package')
     assert_not_empty "$PKG3" "Signer 3 produced round1 package"
 
@@ -198,14 +204,17 @@ test_dkg() {
 
     curl -sf -X POST "$COORD_URL/dkg/round1" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 1, \"package\": \"$PKG1\"}" > /dev/null
 
     curl -sf -X POST "$COORD_URL/dkg/round1" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 2, \"package\": \"$PKG2\"}" > /dev/null
 
     R1_SUBMIT=$(curl -sf -X POST "$COORD_URL/dkg/round1" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 3, \"package\": \"$PKG3\"}")
 
     assert_json_field "$R1_SUBMIT" "state" "awaiting_round2" "DKG advanced to awaiting_round2"
@@ -218,17 +227,17 @@ test_dkg() {
 
     R2_1=$(curl -sf -X POST "$SIGNER1_URL/signer/dkg/round2" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 1, \"round1_packages\": $R1_PKGS, \"participant_hpke_pubkeys\": $HPKE_PUBKEYS}")
+        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 1, \"ciphersuite\": \"$CIPHERSUITE\", \"round1_packages\": $R1_PKGS, \"participant_hpke_pubkeys\": $HPKE_PUBKEYS}")
     assert_not_empty "$(echo "$R2_1" | jq -r '.packages')" "Signer 1 produced round2 packages"
 
     R2_2=$(curl -sf -X POST "$SIGNER2_URL/signer/dkg/round2" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 2, \"round1_packages\": $R1_PKGS, \"participant_hpke_pubkeys\": $HPKE_PUBKEYS}")
+        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 2, \"ciphersuite\": \"$CIPHERSUITE\", \"round1_packages\": $R1_PKGS, \"participant_hpke_pubkeys\": $HPKE_PUBKEYS}")
     assert_not_empty "$(echo "$R2_2" | jq -r '.packages')" "Signer 2 produced round2 packages"
 
     R2_3=$(curl -sf -X POST "$SIGNER3_URL/signer/dkg/round2" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 3, \"round1_packages\": $R1_PKGS, \"participant_hpke_pubkeys\": $HPKE_PUBKEYS}")
+        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 3, \"ciphersuite\": \"$CIPHERSUITE\", \"round1_packages\": $R1_PKGS, \"participant_hpke_pubkeys\": $HPKE_PUBKEYS}")
     assert_not_empty "$(echo "$R2_3" | jq -r '.packages')" "Signer 3 produced round2 packages"
 
     # 5. Submit round 2 packages to coordinator
@@ -243,57 +252,32 @@ test_dkg() {
     PKG_3_TO_2=$(echo "$R2_3" | jq -r '.packages["2"]')
 
     # Submit all round2 packages
-    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" \
+    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"from_participant_id\": 1, \"to_participant_id\": 2, \"encrypted_package\": \"$PKG_1_TO_2\"}" > /dev/null
-    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" \
+    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"from_participant_id\": 1, \"to_participant_id\": 3, \"encrypted_package\": \"$PKG_1_TO_3\"}" > /dev/null
-    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" \
+    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"from_participant_id\": 2, \"to_participant_id\": 1, \"encrypted_package\": \"$PKG_2_TO_1\"}" > /dev/null
-    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" \
+    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"from_participant_id\": 2, \"to_participant_id\": 3, \"encrypted_package\": \"$PKG_2_TO_3\"}" > /dev/null
-    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" \
+    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"from_participant_id\": 3, \"to_participant_id\": 1, \"encrypted_package\": \"$PKG_3_TO_1\"}" > /dev/null
-    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" \
+    curl -sf -X POST "$COORD_URL/dkg/round2" -H "Content-Type: application/json" -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\", \"from_participant_id\": 3, \"to_participant_id\": 2, \"encrypted_package\": \"$PKG_3_TO_2\"}" > /dev/null
 
     log_ok "All round2 packages submitted"
 
-    # 6. Finalize DKG on each signer
-    log_info "Finalizing DKG on signers..."
-
-    R2_FOR_1="{\"2\": \"$PKG_2_TO_1\", \"3\": \"$PKG_3_TO_1\"}"
-    R2_FOR_2="{\"1\": \"$PKG_1_TO_2\", \"3\": \"$PKG_3_TO_2\"}"
-    R2_FOR_3="{\"1\": \"$PKG_1_TO_3\", \"2\": \"$PKG_2_TO_3\"}"
-
-    FIN1=$(curl -sf -X POST "$SIGNER1_URL/signer/dkg/finalize" \
-        -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 1, \"round1_packages\": $R1_PKGS, \"round2_packages\": $R2_FOR_1}")
-    GROUP_PUBKEY=$(echo "$FIN1" | jq -r '.group_pubkey')
-    assert_not_empty "$GROUP_PUBKEY" "Signer 1 finalized, got group pubkey"
-
-    FIN2=$(curl -sf -X POST "$SIGNER2_URL/signer/dkg/finalize" \
-        -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 2, \"round1_packages\": $R1_PKGS, \"round2_packages\": $R2_FOR_2}")
-    GROUP_PUBKEY2=$(echo "$FIN2" | jq -r '.group_pubkey')
-    assert_eq "$GROUP_PUBKEY" "$GROUP_PUBKEY2" "Signer 2 derived same group pubkey"
-
-    FIN3=$(curl -sf -X POST "$SIGNER3_URL/signer/dkg/finalize" \
-        -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SESSION_ID\", \"participant_id\": 3, \"round1_packages\": $R1_PKGS, \"round2_packages\": $R2_FOR_3}")
-    GROUP_PUBKEY3=$(echo "$FIN3" | jq -r '.group_pubkey')
-    assert_eq "$GROUP_PUBKEY" "$GROUP_PUBKEY3" "Signer 3 derived same group pubkey"
-
-    # 7. Finalize on coordinator
+    # 6. Finalize DKG on coordinator (orchestrates signer finalization)
     log_info "Finalizing DKG on coordinator..."
-    COORD_FIN=$(curl -s -X POST "$COORD_URL/dkg/finalize" \
+    COORD_FIN=$(curl -sf -X POST "$COORD_URL/dkg/finalize" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SESSION_ID\"}")
 
-    COORD_FIN_STATE=$(echo "$COORD_FIN" | jq -r '.state // "error"')
-    if [[ "$COORD_FIN_STATE" == "error" ]] || [[ -z "$COORD_FIN_STATE" ]]; then
-        log_warn "Coordinator finalize returned: $COORD_FIN"
-        # This is acceptable - coordinator may not have full context, signers are the source of truth
-    fi
+    assert_json_field "$COORD_FIN" "state" "completed" "DKG finalized successfully"
+
+    GROUP_PUBKEY=$(echo "$COORD_FIN" | jq -r '.group_pubkey')
+    assert_not_empty "$GROUP_PUBKEY" "Coordinator returned group pubkey"
 
     log_ok "DKG completed successfully"
     log_info "Group public key: ${GROUP_PUBKEY:0:64}..."
@@ -319,6 +303,7 @@ test_signing() {
     log_info "Initializing signing session..."
     SIGN_INIT=$(curl -sf -X POST "$COORD_URL/signing/init" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"group_pubkey\": \"$group_pubkey\", \"message\": \"$message\", \"selected_signers\": [1, 2]}")
 
     SIGN_SESSION=$(echo "$SIGN_INIT" | jq -r '.session_id')
@@ -330,13 +315,13 @@ test_signing() {
 
     COMMIT1=$(curl -sf -X POST "$SIGNER1_URL/signer/sign/commit" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\"}")
+        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\", \"ciphersuite\": \"$CIPHERSUITE\"}")
     COMMIT1_VAL=$(echo "$COMMIT1" | jq -r '.commitment')
     assert_not_empty "$COMMIT1_VAL" "Signer 1 generated commitment"
 
     COMMIT2=$(curl -sf -X POST "$SIGNER2_URL/signer/sign/commit" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\"}")
+        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\", \"ciphersuite\": \"$CIPHERSUITE\"}")
     COMMIT2_VAL=$(echo "$COMMIT2" | jq -r '.commitment')
     assert_not_empty "$COMMIT2_VAL" "Signer 2 generated commitment"
 
@@ -345,10 +330,12 @@ test_signing() {
 
     curl -sf -X POST "$COORD_URL/signing/commit" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SIGN_SESSION\", \"participant_id\": 1, \"commitment\": \"$COMMIT1_VAL\"}" > /dev/null
 
     SUB_COMMIT=$(curl -sf -X POST "$COORD_URL/signing/commit" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SIGN_SESSION\", \"participant_id\": 2, \"commitment\": \"$COMMIT2_VAL\"}")
 
     assert_json_field "$SUB_COMMIT" "state" "awaiting_partials" "Signing advanced to awaiting_partials"
@@ -360,13 +347,13 @@ test_signing() {
 
     PARTIAL1=$(curl -sf -X POST "$SIGNER1_URL/signer/sign/partial" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\", \"message\": \"$message\", \"all_commitments\": $ALL_COMMITS}")
+        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\", \"ciphersuite\": \"$CIPHERSUITE\", \"message\": \"$message\", \"all_commitments\": $ALL_COMMITS}")
     PARTIAL1_VAL=$(echo "$PARTIAL1" | jq -r '.partial_signature')
     assert_not_empty "$PARTIAL1_VAL" "Signer 1 generated partial signature"
 
     PARTIAL2=$(curl -sf -X POST "$SIGNER2_URL/signer/sign/partial" \
         -H "Content-Type: application/json" \
-        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\", \"message\": \"$message\", \"all_commitments\": $ALL_COMMITS}")
+        -d "{\"session_id\": \"$SIGN_SESSION\", \"group_pubkey\": \"$group_pubkey\", \"ciphersuite\": \"$CIPHERSUITE\", \"message\": \"$message\", \"all_commitments\": $ALL_COMMITS}")
     PARTIAL2_VAL=$(echo "$PARTIAL2" | jq -r '.partial_signature')
     assert_not_empty "$PARTIAL2_VAL" "Signer 2 generated partial signature"
 
@@ -375,11 +362,13 @@ test_signing() {
 
     PSUB1=$(curl -sf -X POST "$COORD_URL/signing/partial" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SIGN_SESSION\", \"participant_id\": 1, \"partial_signature\": \"$PARTIAL1_VAL\"}")
     assert_json_field "$PSUB1" "partials_collected" "1" "First partial collected"
 
     PSUB2=$(curl -sf -X POST "$COORD_URL/signing/partial" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SIGN_SESSION\", \"participant_id\": 2, \"partial_signature\": \"$PARTIAL2_VAL\"}")
     assert_json_field "$PSUB2" "partials_complete" "true" "All partials collected"
 
@@ -388,6 +377,7 @@ test_signing() {
 
     AGG_RESP=$(curl -sf -X POST "$COORD_URL/signing/aggregate" \
         -H "Content-Type: application/json" \
+        -H "$AUTH_HEADER" \
         -d "{\"session_id\": \"$SIGN_SESSION\"}")
 
     assert_json_field "$AGG_RESP" "state" "completed" "Signing completed"

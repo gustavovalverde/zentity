@@ -10,19 +10,18 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-use frost_secp256k1::{
-    Identifier, SigningPackage, keys::PublicKeyPackage, round1::SigningCommitments,
-    round2::SignatureShare,
-};
+use frost_ed25519 as frost_ed;
+use frost_secp256k1 as frost_secp;
 use reqwest::Client;
 
 use crate::audit::{AuditActor, AuditEventType, AuditLogger, AuditOutcome};
 use crate::config::Settings;
 use crate::error::{SignerError, SignerResult};
+use crate::frost::key_format::secp256k1_x_parity_from_group_pubkey_hex;
 use crate::frost::types::{
     DkgFinalizeRequest, DkgFinalizeResponse, DkgInitRequest, DkgInitResponse, DkgRound1Request,
-    DkgRound1Response, DkgRound2Request, DkgRound2Response, DkgSession, DkgState, ParticipantId,
-    SessionId, SignerCommitRequest, SignerCommitResponse, SignerDkgFinalizeRequest,
+    DkgRound1Response, DkgRound2Request, DkgRound2Response, DkgSession, DkgState, GroupKeyRecord,
+    ParticipantId, SessionId, SignerCommitRequest, SignerCommitResponse, SignerDkgFinalizeRequest,
     SignerDkgFinalizeResponse, SignerDkgRound1Request, SignerDkgRound1Response,
     SignerDkgRound2Request, SignerDkgRound2Response, SignerPartialSignRequest,
     SignerPartialSignResponse, SigningAggregateRequest, SigningAggregateResponse,
@@ -418,6 +417,7 @@ impl Coordinator {
 
         // Call each signer to finalize
         let mut group_pubkey: Option<String> = None;
+        let mut public_key_package: Option<String> = None;
         let mut verifying_shares: HashMap<ParticipantId, String> = HashMap::new();
 
         for &participant_id in &session.participant_ids {
@@ -443,6 +443,7 @@ impl Coordinator {
             let finalize_req = SignerDkgFinalizeRequest {
                 session_id: request.session_id,
                 participant_id,
+                ciphersuite: session.ciphersuite,
                 round2_packages: round2_for_participant,
                 round1_packages: session.round1_packages.clone(),
             };
@@ -472,7 +473,7 @@ impl Coordinator {
                 ))
             })?;
 
-            // Verify all signers agree on group public key
+            // Verify all signers agree on group public key and public key package
             if let Some(ref existing_pubkey) = group_pubkey {
                 if existing_pubkey != &finalize_resp.group_pubkey {
                     session.fail("Signers disagree on group public key".to_string());
@@ -485,14 +486,40 @@ impl Coordinator {
                 group_pubkey = Some(finalize_resp.group_pubkey.clone());
             }
 
+            if let Some(ref existing_package) = public_key_package {
+                if existing_package != &finalize_resp.public_key_package {
+                    session.fail("Signers disagree on public key package".to_string());
+                    self.storage.put_dkg_session(&session_key, &session)?;
+                    return Err(SignerError::DkgFailed(
+                        "Signers produced different public key packages".to_string(),
+                    ));
+                }
+            } else {
+                public_key_package = Some(finalize_resp.public_key_package.clone());
+            }
+
             verifying_shares.insert(participant_id, finalize_resp.verifying_share);
         }
 
         // Update session
         session.state = DkgState::Completed;
         session.group_pubkey.clone_from(&group_pubkey);
+        session.public_key_package.clone_from(&public_key_package);
         session.verifying_shares.clone_from(&verifying_shares);
         self.storage.put_dkg_session(&session_key, &session)?;
+
+        if let (Some(group_pubkey), Some(public_key_package)) = (&group_pubkey, &public_key_package)
+        {
+            let record = GroupKeyRecord {
+                group_pubkey: group_pubkey.clone(),
+                public_key_package: public_key_package.clone(),
+                ciphersuite: session.ciphersuite,
+                threshold: session.threshold,
+                total_participants: session.total_participants,
+                created_at: chrono::Utc::now(),
+            };
+            self.storage.put_group_key(group_pubkey, &record)?;
+        }
 
         tracing::info!(
             session_id = %request.session_id,
@@ -511,10 +538,24 @@ impl Coordinator {
             })),
         );
 
+        let (group_pubkey_x, group_pubkey_parity) =
+            match (group_pubkey.as_deref(), session.ciphersuite) {
+                (Some(pubkey_hex), crate::config::Ciphersuite::Secp256k1) => {
+                    match secp256k1_x_parity_from_group_pubkey_hex(pubkey_hex) {
+                        Ok((x, parity)) => (Some(x), Some(parity)),
+                        Err(_) => (None, None),
+                    }
+                }
+                _ => (None, None),
+            };
+
         Ok(DkgFinalizeResponse {
             session_id: request.session_id,
             state: DkgState::Completed,
             group_pubkey,
+            public_key_package,
+            group_pubkey_x,
+            group_pubkey_parity,
             verifying_shares,
         })
     }
@@ -533,6 +574,11 @@ impl Coordinator {
         &self,
         request: SigningInitRequest,
     ) -> SignerResult<SigningInitResponse> {
+        let group_key = self
+            .storage
+            .get_group_key::<GroupKeyRecord>(&request.group_pubkey)?
+            .ok_or_else(|| SignerError::InvalidInput("Unknown group_pubkey".to_string()))?;
+
         // Determine which signers to use
         // For now, map participant IDs to signer endpoints based on order
         // Safety: signer_endpoints.len() is typically small (< 100)
@@ -557,10 +603,28 @@ impl Coordinator {
             ));
         }
 
+        if selected_signers.len() < group_key.threshold as usize {
+            return Err(SignerError::InsufficientSignatures {
+                needed: group_key.threshold as usize,
+                have: selected_signers.len(),
+            });
+        }
+
+        if selected_signers
+            .iter()
+            .any(|id| *id > group_key.total_participants)
+        {
+            return Err(SignerError::InvalidParticipant(
+                "Selected signer out of range for group".to_string(),
+            ));
+        }
+
         // Create session
         let session = SigningSession::new(
             request.group_pubkey,
-            crate::config::Ciphersuite::Secp256k1, // TODO: determine from group_pubkey
+            group_key.public_key_package.clone(),
+            group_key.ciphersuite,
+            group_key.threshold,
             request.message,
             selected_signers.clone(),
             signer_endpoints,
@@ -723,6 +787,7 @@ impl Coordinator {
     }
 
     /// Aggregate partial signatures into final signature.
+    #[allow(clippy::too_many_lines)]
     pub async fn aggregate_signatures(
         &self,
         request: SigningAggregateRequest,
@@ -755,71 +820,172 @@ impl Coordinator {
             .decode(&session.message)
             .map_err(|e| SignerError::InvalidInput(format!("Invalid message base64: {e}")))?;
 
-        // Decode group public key
-        let group_pubkey_bytes = hex::decode(&session.group_pubkey)
-            .map_err(|e| SignerError::InvalidInput(format!("Invalid group pubkey hex: {e}")))?;
-        let pubkey_package: PublicKeyPackage = PublicKeyPackage::deserialize(&group_pubkey_bytes)
-            .map_err(|e| {
-            SignerError::Deserialization(format!("Invalid public key package: {e}"))
-        })?;
+        let signature_hex = match session.ciphersuite {
+            crate::config::Ciphersuite::Secp256k1 => {
+                let public_key_package_bytes =
+                    hex::decode(&session.public_key_package).map_err(|e| {
+                        SignerError::InvalidInput(format!("Invalid public key package hex: {e}"))
+                    })?;
+                let pubkey_package: frost_secp::keys::PublicKeyPackage =
+                    frost_secp::keys::PublicKeyPackage::deserialize(&public_key_package_bytes)
+                        .map_err(|e| {
+                            SignerError::Deserialization(format!("Invalid public key package: {e}"))
+                        })?;
 
-        // Decode commitments
-        let mut commitments_map: BTreeMap<Identifier, SigningCommitments> = BTreeMap::new();
-        for (&participant_id, commitment_b64) in &session.commitments {
-            let commitment_bytes = BASE64.decode(commitment_b64).map_err(|e| {
-                SignerError::Deserialization(format!(
-                    "Invalid commitment base64 for {participant_id}: {e}"
-                ))
-            })?;
-            let identifier = Identifier::try_from(participant_id).map_err(|e| {
-                SignerError::InvalidParticipant(format!("Invalid identifier {participant_id}: {e}"))
-            })?;
-            let commitment = SigningCommitments::deserialize(&commitment_bytes).map_err(|e| {
-                SignerError::Deserialization(format!(
-                    "Invalid commitment for {participant_id}: {e}"
-                ))
-            })?;
-            commitments_map.insert(identifier, commitment);
-        }
+                let mut commitments_map: BTreeMap<
+                    frost_secp::Identifier,
+                    frost_secp::round1::SigningCommitments,
+                > = BTreeMap::new();
+                for (&participant_id, commitment_b64) in &session.commitments {
+                    let commitment_bytes = BASE64.decode(commitment_b64).map_err(|e| {
+                        SignerError::Deserialization(format!(
+                            "Invalid commitment base64 for {participant_id}: {e}"
+                        ))
+                    })?;
+                    let identifier =
+                        frost_secp::Identifier::try_from(participant_id).map_err(|e| {
+                            SignerError::InvalidParticipant(format!(
+                                "Invalid identifier {participant_id}: {e}"
+                            ))
+                        })?;
+                    let commitment =
+                        frost_secp::round1::SigningCommitments::deserialize(&commitment_bytes)
+                            .map_err(|e| {
+                                SignerError::Deserialization(format!(
+                                    "Invalid commitment for {participant_id}: {e}"
+                                ))
+                            })?;
+                    commitments_map.insert(identifier, commitment);
+                }
 
-        // Create signing package
-        let signing_package = SigningPackage::new(commitments_map, &message);
+                let signing_package = frost_secp::SigningPackage::new(commitments_map, &message);
 
-        // Decode partial signatures
-        let mut signature_shares: BTreeMap<Identifier, SignatureShare> = BTreeMap::new();
-        for (&participant_id, partial_b64) in &session.partial_signatures {
-            let partial_bytes = BASE64.decode(partial_b64).map_err(|e| {
-                SignerError::Deserialization(format!(
-                    "Invalid partial signature base64 for {participant_id}: {e}"
-                ))
-            })?;
-            let identifier = Identifier::try_from(participant_id).map_err(|e| {
-                SignerError::InvalidParticipant(format!("Invalid identifier {participant_id}: {e}"))
-            })?;
-            let signature_share = SignatureShare::deserialize(&partial_bytes).map_err(|e| {
-                SignerError::Deserialization(format!(
-                    "Invalid signature share for {participant_id}: {e}"
-                ))
-            })?;
-            signature_shares.insert(identifier, signature_share);
-        }
+                let mut signature_shares: BTreeMap<
+                    frost_secp::Identifier,
+                    frost_secp::round2::SignatureShare,
+                > = BTreeMap::new();
+                for (&participant_id, partial_b64) in &session.partial_signatures {
+                    let partial_bytes = BASE64.decode(partial_b64).map_err(|e| {
+                        SignerError::Deserialization(format!(
+                            "Invalid partial signature base64 for {participant_id}: {e}"
+                        ))
+                    })?;
+                    let identifier =
+                        frost_secp::Identifier::try_from(participant_id).map_err(|e| {
+                            SignerError::InvalidParticipant(format!(
+                                "Invalid identifier {participant_id}: {e}"
+                            ))
+                        })?;
+                    let signature_share = frost_secp::round2::SignatureShare::deserialize(
+                        &partial_bytes,
+                    )
+                    .map_err(|e| {
+                        SignerError::Deserialization(format!(
+                            "Invalid signature share for {participant_id}: {e}"
+                        ))
+                    })?;
+                    signature_shares.insert(identifier, signature_share);
+                }
 
-        // Aggregate signatures
-        let signature =
-            frost_secp256k1::aggregate(&signing_package, &signature_shares, &pubkey_package)
-                .map_err(|e| SignerError::AggregationFailed(format!("Aggregation failed: {e}")))?;
+                let signature =
+                    frost_secp::aggregate(&signing_package, &signature_shares, &pubkey_package)
+                        .map_err(|e| {
+                            SignerError::AggregationFailed(format!("Aggregation failed: {e}"))
+                        })?;
 
-        // Verify signature
-        let verifying_key = pubkey_package.verifying_key();
-        verifying_key
-            .verify(&message, &signature)
-            .map_err(|e| SignerError::InvalidSignature(format!("Verification failed: {e}")))?;
+                let verifying_key = pubkey_package.verifying_key();
+                verifying_key.verify(&message, &signature).map_err(|e| {
+                    SignerError::InvalidSignature(format!("Verification failed: {e}"))
+                })?;
 
-        // Encode final signature
-        let signature_bytes = signature.serialize().map_err(|e| {
-            SignerError::Serialization(format!("Failed to serialize signature: {e}"))
-        })?;
-        let signature_hex = hex::encode(signature_bytes);
+                let signature_bytes = signature.serialize().map_err(|e| {
+                    SignerError::Serialization(format!("Failed to serialize signature: {e}"))
+                })?;
+                Ok::<String, SignerError>(hex::encode(signature_bytes))
+            }
+            crate::config::Ciphersuite::Ed25519 => {
+                let public_key_package_bytes =
+                    hex::decode(&session.public_key_package).map_err(|e| {
+                        SignerError::InvalidInput(format!("Invalid public key package hex: {e}"))
+                    })?;
+                let pubkey_package: frost_ed::keys::PublicKeyPackage =
+                    frost_ed::keys::PublicKeyPackage::deserialize(&public_key_package_bytes)
+                        .map_err(|e| {
+                            SignerError::Deserialization(format!("Invalid public key package: {e}"))
+                        })?;
+
+                let mut commitments_map: BTreeMap<
+                    frost_ed::Identifier,
+                    frost_ed::round1::SigningCommitments,
+                > = BTreeMap::new();
+                for (&participant_id, commitment_b64) in &session.commitments {
+                    let commitment_bytes = BASE64.decode(commitment_b64).map_err(|e| {
+                        SignerError::Deserialization(format!(
+                            "Invalid commitment base64 for {participant_id}: {e}"
+                        ))
+                    })?;
+                    let identifier =
+                        frost_ed::Identifier::try_from(participant_id).map_err(|e| {
+                            SignerError::InvalidParticipant(format!(
+                                "Invalid identifier {participant_id}: {e}"
+                            ))
+                        })?;
+                    let commitment =
+                        frost_ed::round1::SigningCommitments::deserialize(&commitment_bytes)
+                            .map_err(|e| {
+                                SignerError::Deserialization(format!(
+                                    "Invalid commitment for {participant_id}: {e}"
+                                ))
+                            })?;
+                    commitments_map.insert(identifier, commitment);
+                }
+
+                let signing_package = frost_ed::SigningPackage::new(commitments_map, &message);
+
+                let mut signature_shares: BTreeMap<
+                    frost_ed::Identifier,
+                    frost_ed::round2::SignatureShare,
+                > = BTreeMap::new();
+                for (&participant_id, partial_b64) in &session.partial_signatures {
+                    let partial_bytes = BASE64.decode(partial_b64).map_err(|e| {
+                        SignerError::Deserialization(format!(
+                            "Invalid partial signature base64 for {participant_id}: {e}"
+                        ))
+                    })?;
+                    let identifier =
+                        frost_ed::Identifier::try_from(participant_id).map_err(|e| {
+                            SignerError::InvalidParticipant(format!(
+                                "Invalid identifier {participant_id}: {e}"
+                            ))
+                        })?;
+                    let signature_share = frost_ed::round2::SignatureShare::deserialize(
+                        &partial_bytes,
+                    )
+                    .map_err(|e| {
+                        SignerError::Deserialization(format!(
+                            "Invalid signature share for {participant_id}: {e}"
+                        ))
+                    })?;
+                    signature_shares.insert(identifier, signature_share);
+                }
+
+                let signature =
+                    frost_ed::aggregate(&signing_package, &signature_shares, &pubkey_package)
+                        .map_err(|e| {
+                            SignerError::AggregationFailed(format!("Aggregation failed: {e}"))
+                        })?;
+
+                let verifying_key = pubkey_package.verifying_key();
+                verifying_key.verify(&message, &signature).map_err(|e| {
+                    SignerError::InvalidSignature(format!("Verification failed: {e}"))
+                })?;
+
+                let signature_bytes = signature.serialize().map_err(|e| {
+                    SignerError::Serialization(format!("Failed to serialize signature: {e}"))
+                })?;
+                Ok::<String, SignerError>(hex::encode(signature_bytes))
+            }
+        }?;
 
         // Update session
         session.state = SigningState::Completed;
@@ -998,7 +1164,9 @@ mod tests {
 
         let session = SigningSession::new(
             "deadbeef".to_string(),
+            "beadfeed".to_string(),
             crate::config::Ciphersuite::Secp256k1,
+            2,
             BASE64.encode("test message"),
             vec![1, 2],
             endpoints,

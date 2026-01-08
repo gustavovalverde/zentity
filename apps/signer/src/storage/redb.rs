@@ -19,6 +19,7 @@ use crate::error::{SignerError, SignerResult};
 // Using string keys and byte values (JSON serialized)
 const DKG_SESSIONS: TableDefinition<&str, &[u8]> = TableDefinition::new("dkg_sessions");
 const SIGNING_SESSIONS: TableDefinition<&str, &[u8]> = TableDefinition::new("signing_sessions");
+const GROUP_KEYS: TableDefinition<&str, &[u8]> = TableDefinition::new("group_keys");
 const KEY_SHARES: TableDefinition<&str, &[u8]> = TableDefinition::new("key_shares");
 const AUDIT_LOG: TableDefinition<u64, &[u8]> = TableDefinition::new("audit_log");
 
@@ -48,6 +49,7 @@ impl Storage {
             // Just opening the tables creates them if they don't exist
             let _ = write_txn.open_table(DKG_SESSIONS)?;
             let _ = write_txn.open_table(SIGNING_SESSIONS)?;
+            let _ = write_txn.open_table(GROUP_KEYS)?;
             let _ = write_txn.open_table(KEY_SHARES)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
@@ -69,6 +71,7 @@ impl Storage {
         {
             let _ = write_txn.open_table(DKG_SESSIONS)?;
             let _ = write_txn.open_table(SIGNING_SESSIONS)?;
+            let _ = write_txn.open_table(GROUP_KEYS)?;
             let _ = write_txn.open_table(KEY_SHARES)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
@@ -177,6 +180,40 @@ impl Storage {
             tracing::debug!(session_id, "Deleted signing session");
         }
         Ok(deleted)
+    }
+
+    // =========================================================================
+    // Group Keys (Coordinator)
+    // =========================================================================
+
+    /// Store a group key record keyed by group public key.
+    pub fn put_group_key<T: Serialize>(&self, group_pubkey: &str, record: &T) -> SignerResult<()> {
+        let value = serde_json::to_vec(record)?;
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(GROUP_KEYS)?;
+            table.insert(group_pubkey, value.as_slice())?;
+        }
+        write_txn.commit()?;
+        tracing::debug!(group_pubkey, "Stored group key record");
+        Ok(())
+    }
+
+    /// Get a group key record by group public key.
+    pub fn get_group_key<T: DeserializeOwned>(
+        &self,
+        group_pubkey: &str,
+    ) -> SignerResult<Option<T>> {
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(GROUP_KEYS)?;
+
+        match table.get(group_pubkey)? {
+            Some(value) => {
+                let record: T = serde_json::from_slice(value.value())?;
+                Ok(Some(record))
+            }
+            None => Ok(None),
+        }
     }
 
     // =========================================================================

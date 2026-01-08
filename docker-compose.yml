@@ -60,6 +60,11 @@ services:
       - FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY:-}
       - FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES:-}
       - FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20:-}
+      # Local email delivery (Mailpit)
+      - MAILPIT_BASE_URL=http://mailpit:8025
+      - MAILPIT_SEND_API_URL=http://mailpit:8025/api/v1/send
+      - MAIL_FROM_EMAIL=${MAIL_FROM_EMAIL:-no-reply@zentity.local}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Zentity}
     depends_on:
       fhe-service:
         condition: service_healthy
@@ -112,6 +117,22 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-ocr
+    restart: unless-stopped
+    networks:
+      - zentity-network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      - MP_UI_BIND_ADDR=0.0.0.0:8025
+      - MP_SMTP_BIND_ADDR=0.0.0.0:1025
+      - MP_DATABASE=/data/mailpit.db
+      - MP_MAX_MESSAGES=5000
+    volumes:
+      - ./apps/web/.data/mailpit:/data
     restart: unless-stopped
     networks:
       - zentity-network

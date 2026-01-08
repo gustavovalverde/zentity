@@ -17,6 +17,8 @@ import * as identitySchema from "./schema/identity";
 import * as oauthProviderSchema from "./schema/oauth-provider";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as onboardingSchema from "./schema/onboarding";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as recoverySchema from "./schema/recovery";
 
 const schema = {
   ...attestationSchema,
@@ -25,6 +27,7 @@ const schema = {
   ...identitySchema,
   ...onboardingSchema,
   ...oauthProviderSchema,
+  ...recoverySchema,
 };
 
 function isBuildTime() {

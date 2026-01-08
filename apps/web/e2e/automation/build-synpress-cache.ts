@@ -16,6 +16,7 @@ import ts from "typescript";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
 const TS_JS_MJS_EXTENSION_PATTERN = /\.(ts|js|mjs)$/;
+const WALLET_SETUP_CALL_PATTERN = /defineWalletSetup\s*\(/;
 
 const webRoot = process.cwd();
 const repoRoot = path.resolve(webRoot, "..", "..");
@@ -81,14 +82,11 @@ function stopHardhat() {
 }
 
 function extractWalletSetupFunction(sourceCode: string): string {
-  const callIndex = sourceCode.indexOf("defineWalletSetup");
-  if (callIndex === -1) {
+  const callMatch = sourceCode.match(WALLET_SETUP_CALL_PATTERN);
+  if (!callMatch || callMatch.index === undefined) {
     throw new Error("Could not find defineWalletSetup call");
   }
-  const openParen = sourceCode.indexOf("(", callIndex);
-  if (openParen === -1) {
-    throw new Error("Could not find defineWalletSetup opening paren");
-  }
+  const openParen = callMatch.index + callMatch[0].lastIndexOf("(");
 
   let depth = 1;
   let commaIndex = -1;

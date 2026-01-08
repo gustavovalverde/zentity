@@ -4,9 +4,10 @@ import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import {
-  createSecretEnvelope,
   decryptSecretEnvelope,
   type EnvelopeFormat,
+  encryptSecretWithDek,
+  generateDek,
   PASSKEY_VAULT_VERSION,
   unwrapDekWithPrf,
   WRAP_VERSION,
@@ -33,6 +34,7 @@ interface CachedPasskeyUnlock {
 let cachedUnlock: CachedPasskeyUnlock | null = null;
 let pendingUnlock: Promise<CachedPasskeyUnlock> | null = null;
 let pendingUnlockKey: string | null = null;
+let cachedRecoveryKey: { keyId: string; cryptoKey: CryptoKey } | null = null;
 
 function getCachedUnlock(
   allowedCredentialIds: string[]
@@ -160,6 +162,45 @@ export function mergeSecretMetadata(params: {
   };
 }
 
+async function getRecoveryEncryptionKey(): Promise<{
+  keyId: string;
+  cryptoKey: CryptoKey;
+}> {
+  if (cachedRecoveryKey) {
+    return cachedRecoveryKey;
+  }
+
+  const { keyId, jwk } = await trpc.recovery.publicKey.query();
+  const cryptoKey = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "RSA-OAEP",
+      hash: "SHA-256",
+    },
+    false,
+    ["encrypt"]
+  );
+
+  cachedRecoveryKey = { keyId, cryptoKey };
+  return cachedRecoveryKey;
+}
+
+async function encryptDekForRecovery(dek: Uint8Array): Promise<{
+  wrappedDek: string;
+  keyId: string;
+}> {
+  const { keyId, cryptoKey } = await getRecoveryEncryptionKey();
+  const dekCopy = new Uint8Array(dek.byteLength);
+  dekCopy.set(dek);
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    cryptoKey,
+    dekCopy
+  );
+  return { wrappedDek: bytesToBase64(new Uint8Array(encrypted)), keyId };
+}
+
 export async function storeSecret(params: {
   secretType: string;
   plaintext: Uint8Array;
@@ -167,14 +208,22 @@ export async function storeSecret(params: {
   envelopeFormat: EnvelopeFormat;
   metadata?: Record<string, unknown> | null;
 }): Promise<{ secretId: string; envelopeFormat: EnvelopeFormat }> {
-  const envelope = await createSecretEnvelope({
+  const secretId = crypto.randomUUID();
+  const dek = generateDek();
+  const envelope = await encryptSecretWithDek({
+    secretId,
     secretType: params.secretType,
     plaintext: params.plaintext,
-    prfOutput: params.enrollment.prfOutput,
-    credentialId: params.enrollment.credentialId,
-    prfSalt: params.enrollment.prfSalt,
+    dek,
     envelopeFormat: params.envelopeFormat,
   });
+  const wrappedDek = await wrapDekWithPrf({
+    secretId,
+    credentialId: params.enrollment.credentialId,
+    dek,
+    prfOutput: params.enrollment.prfOutput,
+  });
+  const prfSalt = bytesToBase64(params.enrollment.prfSalt);
 
   const blobMetadata = await uploadSecretBlob({
     secretId: envelope.secretId,
@@ -183,13 +232,13 @@ export async function storeSecret(params: {
   });
 
   await trpc.secrets.storeSecret.mutate({
-    secretId: envelope.secretId,
+    secretId,
     secretType: params.secretType,
     blobRef: blobMetadata.blobRef,
     blobHash: blobMetadata.blobHash,
     blobSize: blobMetadata.blobSize,
-    wrappedDek: envelope.wrappedDek,
-    prfSalt: envelope.prfSalt,
+    wrappedDek,
+    prfSalt,
     credentialId: params.enrollment.credentialId,
     metadata: mergeSecretMetadata({
       envelopeFormat: params.envelopeFormat,
@@ -199,7 +248,18 @@ export async function storeSecret(params: {
     kekVersion: WRAP_VERSION,
   });
 
-  return { secretId: envelope.secretId, envelopeFormat: params.envelopeFormat };
+  try {
+    const recovery = await encryptDekForRecovery(dek);
+    await trpc.recovery.storeSecretWrapper.mutate({
+      secretId,
+      wrappedDek: recovery.wrappedDek,
+      keyId: recovery.keyId,
+    });
+  } catch {
+    // Recovery wrappers are optional until recovery is enabled.
+  }
+
+  return { secretId, envelopeFormat: params.envelopeFormat };
 }
 
 export async function loadSecret(params: {
@@ -349,6 +409,58 @@ export async function addWrapperForSecretType(params: {
     wrappedDek,
     prfSalt: bytesToBase64(params.newPrfSalt),
     kekVersion: params.kekVersion ?? WRAP_VERSION,
+  });
+
+  return true;
+}
+
+export async function addRecoveryWrapperForSecretType(params: {
+  secretType: string;
+}): Promise<boolean> {
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: params.secretType,
+  });
+
+  if (!(bundle.secret && bundle.wrappers?.length)) {
+    return false;
+  }
+
+  const saltByCredential: Record<string, Uint8Array> = {};
+  for (const wrapper of bundle.wrappers) {
+    saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
+  }
+
+  const { credentialId: unlockedCredentialId, prfOutput } =
+    await resolvePasskeyUnlock({
+      credentialIdToSalt: saltByCredential,
+    });
+
+  const selectedWrapper = bundle.wrappers.find(
+    (wrapper) => wrapper.credentialId === unlockedCredentialId
+  );
+  if (!selectedWrapper) {
+    throw new Error("Selected passkey is not registered for this secret.");
+  }
+
+  if (selectedWrapper.kekVersion !== WRAP_VERSION) {
+    throw new Error(
+      "Unsupported key wrapper version. Please re-add your passkey."
+    );
+  }
+
+  const dek = await unwrapDekWithPrf({
+    secretId: bundle.secret.id,
+    credentialId: selectedWrapper.credentialId,
+    wrappedDek: selectedWrapper.wrappedDek,
+    prfOutput,
+  });
+
+  const recovery = await encryptDekForRecovery(dek);
+
+  await trpc.recovery.storeSecretWrapper.mutate({
+    secretId: bundle.secret.id,
+    wrappedDek: recovery.wrappedDek,
+    keyId: recovery.keyId,
   });
 
   return true;
