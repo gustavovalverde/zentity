@@ -1,0 +1,540 @@
+import "server-only";
+
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+import {
+  consumeOnboardingContext,
+  createOnboardingContext,
+  getOnboardingContext,
+} from "@/lib/auth/onboarding-context";
+import {
+  RECOVERY_WRAP_VERSION,
+  wrapDekWithPrfServer,
+} from "@/lib/crypto/passkey-wrap.server";
+import {
+  getEncryptedSecretById,
+  listEncryptedSecretsByUserId,
+  upsertSecretWrapper,
+} from "@/lib/db/queries/crypto";
+import {
+  completeRecoveryChallenge,
+  countApprovalsForChallenge,
+  createGuardianApprovalToken,
+  createRecoveryChallenge,
+  createRecoveryConfig,
+  createRecoveryGuardian,
+  getApprovalByToken,
+  getRecoveryChallengeById,
+  getRecoveryConfigById,
+  getRecoveryConfigByUserId,
+  getRecoveryGuardianByEmail,
+  getRecoverySecretWrapperBySecretId,
+  getUserByEmail,
+  listApprovalsForChallenge,
+  listRecoveryGuardiansByConfigId,
+  listRecoveryWrappersByUserId,
+  markApprovalUsed,
+  markRecoveryChallengeApplied,
+  upsertRecoverySecretWrapper,
+} from "@/lib/db/queries/recovery";
+import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
+import {
+  createRecoveryKeySet,
+  signRecoveryChallenge,
+} from "@/lib/recovery/frost-service";
+import {
+  decryptRecoveryWrappedDek,
+  getRecoveryPublicKey,
+} from "@/lib/recovery/recovery-keys";
+import { base64ToBytes } from "@/lib/utils/base64";
+
+import { protectedProcedure, publicProcedure, router } from "../server";
+
+const ciphersuiteSchema = z.enum(["secp256k1", "ed25519"]).default("secp256k1");
+
+function isExpired(value: string): boolean {
+  const date = new Date(value);
+  return !Number.isNaN(date.valueOf()) && date < new Date();
+}
+
+function buildRecoveryMessage(params: {
+  challengeId: string;
+  challengeNonce: string;
+}): string {
+  return `recovery:${params.challengeId}:${params.challengeNonce}`;
+}
+
+export const recoveryRouter = router({
+  publicKey: publicProcedure.query(() => getRecoveryPublicKey()),
+
+  config: protectedProcedure.query(async ({ ctx }) => {
+    const config = await getRecoveryConfigByUserId(ctx.userId);
+    return { config };
+  }),
+
+  setup: protectedProcedure
+    .input(
+      z.object({
+        threshold: z.number().int().min(2).max(5).optional(),
+        totalGuardians: z.number().int().min(2).max(5).optional(),
+        ciphersuite: ciphersuiteSchema.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await getRecoveryConfigByUserId(ctx.userId);
+      if (existing) {
+        return { config: existing, created: false };
+      }
+
+      const keySet = await createRecoveryKeySet({
+        threshold: input.threshold,
+        totalGuardians: input.totalGuardians,
+        ciphersuite: input.ciphersuite,
+      });
+
+      const config = await createRecoveryConfig({
+        id: crypto.randomUUID(),
+        userId: ctx.userId,
+        threshold: keySet.threshold,
+        totalGuardians: keySet.totalGuardians,
+        frostGroupPubkey: keySet.groupPubkey,
+        frostPublicKeyPackage: keySet.publicKeyPackage,
+        frostCiphersuite: keySet.ciphersuite,
+        status: "active",
+      });
+
+      return { config, created: true };
+    }),
+
+  listGuardians: protectedProcedure.query(async ({ ctx }) => {
+    const config = await getRecoveryConfigByUserId(ctx.userId);
+    if (!config) {
+      return { guardians: [] };
+    }
+    const guardians = await listRecoveryGuardiansByConfigId(config.id);
+    return { guardians };
+  }),
+
+  addGuardianEmail: protectedProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ ctx, input }) => {
+      const config = await getRecoveryConfigByUserId(ctx.userId);
+      if (!config) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Enable recovery before adding guardians.",
+        });
+      }
+
+      const normalizedEmail = input.email.trim().toLowerCase();
+      const existing = await getRecoveryGuardianByEmail({
+        recoveryConfigId: config.id,
+        email: normalizedEmail,
+      });
+      if (existing) {
+        return { guardian: existing, created: false };
+      }
+
+      const guardians = await listRecoveryGuardiansByConfigId(config.id);
+      if (guardians.length >= config.totalGuardians) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "All guardian slots are already filled.",
+        });
+      }
+
+      const assignedIndices = new Set(guardians.map((g) => g.participantIndex));
+      let participantIndex = 1;
+      while (
+        participantIndex <= config.totalGuardians &&
+        assignedIndices.has(participantIndex)
+      ) {
+        participantIndex += 1;
+      }
+
+      if (participantIndex > config.totalGuardians) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No guardian slots available.",
+        });
+      }
+
+      const guardian = await createRecoveryGuardian({
+        id: crypto.randomUUID(),
+        recoveryConfigId: config.id,
+        email: normalizedEmail,
+        participantIndex,
+      });
+
+      return { guardian, created: true };
+    }),
+
+  wrappersStatus: protectedProcedure.query(async ({ ctx }) => {
+    const secrets = await listEncryptedSecretsByUserId(ctx.userId);
+    const wrappers = await listRecoveryWrappersByUserId(ctx.userId);
+    const wrappedIds = new Set(wrappers.map((wrapper) => wrapper.secretId));
+
+    const entries = secrets.map((secret) => ({
+      secretId: secret.id,
+      secretType: secret.secretType,
+      hasWrapper: wrappedIds.has(secret.id),
+    }));
+
+    const wrappedCount = entries.filter((entry) => entry.hasWrapper).length;
+
+    return {
+      totalSecrets: entries.length,
+      wrappedCount,
+      secrets: entries,
+    };
+  }),
+
+  storeSecretWrapper: protectedProcedure
+    .input(
+      z.object({
+        secretId: z.string().min(1),
+        wrappedDek: z.string().min(1),
+        keyId: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const secret = await getEncryptedSecretById(ctx.userId, input.secretId);
+      if (!secret) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Secret not found for user.",
+        });
+      }
+
+      const config = await getRecoveryConfigByUserId(ctx.userId);
+      if (!config) {
+        return { stored: false };
+      }
+
+      const wrapper = await upsertRecoverySecretWrapper({
+        id: crypto.randomUUID(),
+        userId: ctx.userId,
+        secretId: secret.id,
+        wrappedDek: input.wrappedDek,
+        keyId: input.keyId,
+      });
+
+      return { stored: true, wrapper };
+    }),
+
+  start: publicProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      const user = await getUserByEmail(input.email);
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No account found for that email.",
+        });
+      }
+
+      const config = await getRecoveryConfigByUserId(user.id);
+      if (!config) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Recovery is not enabled for this account.",
+        });
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+      const challenge = await createRecoveryChallenge({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        recoveryConfigId: config.id,
+        challengeNonce: crypto.randomUUID(),
+        status: "pending",
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      const guardians = await listRecoveryGuardiansByConfigId(config.id);
+      if (guardians.length < config.threshold) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Not enough guardians configured for recovery.",
+        });
+      }
+
+      const approvalTokens = await Promise.all(
+        guardians.map(async (guardian) => {
+          const token = crypto.randomUUID();
+          const approval = await createGuardianApprovalToken({
+            id: crypto.randomUUID(),
+            challengeId: challenge.id,
+            guardianId: guardian.id,
+            token,
+            tokenExpiresAt: expiresAt.toISOString(),
+          });
+
+          return {
+            guardianId: guardian.id,
+            email: guardian.email,
+            token,
+            tokenExpiresAt: approval.tokenExpiresAt,
+          };
+        })
+      );
+
+      const delivery = await sendRecoveryGuardianEmails({
+        accountEmail: user.email,
+        approvals: approvalTokens.map((approval) => ({
+          email: approval.email,
+          token: approval.token,
+        })),
+      });
+
+      const onboarding = await createOnboardingContext({
+        userId: user.id,
+        email: user.email,
+      });
+
+      return {
+        challengeId: challenge.id,
+        contextToken: onboarding.contextToken,
+        expiresAt: onboarding.expiresAt,
+        approvals: approvalTokens,
+        threshold: config.threshold,
+        delivery: delivery.mode,
+        deliveredCount: delivery.delivered,
+      };
+    }),
+
+  status: publicProcedure
+    .input(z.object({ challengeId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const challenge = await getRecoveryChallengeById(input.challengeId);
+      if (!challenge) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Recovery challenge not found.",
+        });
+      }
+
+      const config = await getRecoveryConfigById(challenge.recoveryConfigId);
+      if (!config) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Recovery configuration not found.",
+        });
+      }
+
+      const approvals = await countApprovalsForChallenge(challenge.id);
+      return {
+        status: challenge.status,
+        approvals,
+        threshold: config.threshold,
+        expiresAt: challenge.expiresAt,
+        completedAt: challenge.completedAt,
+      };
+    }),
+
+  approveGuardian: publicProcedure
+    .input(z.object({ token: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const approval = await getApprovalByToken(input.token);
+      if (!approval) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Approval token not found.",
+        });
+      }
+
+      if (isExpired(approval.tokenExpiresAt)) {
+        throw new TRPCError({
+          code: "TIMEOUT",
+          message: "Approval token has expired.",
+        });
+      }
+
+      if (approval.guardian.status !== "active") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Guardian is not active.",
+        });
+      }
+
+      const challenge = await getRecoveryChallengeById(approval.challengeId);
+      if (!challenge) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Recovery challenge not found.",
+        });
+      }
+
+      if (isExpired(challenge.expiresAt)) {
+        throw new TRPCError({
+          code: "TIMEOUT",
+          message: "Recovery challenge has expired.",
+        });
+      }
+
+      const config = await getRecoveryConfigById(challenge.recoveryConfigId);
+      if (!config) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Recovery configuration not found.",
+        });
+      }
+
+      if (!approval.approvedAt) {
+        await markApprovalUsed({
+          id: approval.id,
+          approvedAt: new Date().toISOString(),
+        });
+      }
+
+      const approvals = await listApprovalsForChallenge(challenge.id);
+      const approved = approvals.filter((entry) => entry.approvedAt);
+      const approvalsCount = approved.length;
+
+      if (
+        challenge.status === "pending" &&
+        approvalsCount >= config.threshold
+      ) {
+        const sortedApproved = approved
+          .sort((a, b) => {
+            const timeA = new Date(a.approvedAt ?? 0).getTime();
+            const timeB = new Date(b.approvedAt ?? 0).getTime();
+            return timeA - timeB;
+          })
+          .slice(0, config.threshold);
+
+        const participantIds = sortedApproved.map(
+          (entry) => entry.guardian.participantIndex
+        );
+
+        if (participantIds.length < config.threshold) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Not enough guardian approvals to sign.",
+          });
+        }
+
+        const message = buildRecoveryMessage({
+          challengeId: challenge.id,
+          challengeNonce: challenge.challengeNonce,
+        });
+
+        const { signature, signaturesCollected } = await signRecoveryChallenge({
+          groupPubkey: config.frostGroupPubkey,
+          ciphersuite: config.frostCiphersuite as "secp256k1" | "ed25519",
+          threshold: config.threshold,
+          message,
+          participantIds,
+          totalParticipants: config.totalGuardians,
+        });
+
+        const completedAt = new Date().toISOString();
+        await completeRecoveryChallenge({
+          id: challenge.id,
+          signature,
+          signaturesCollected,
+          completedAt,
+        });
+
+        return {
+          status: "completed",
+          approvals: approvalsCount,
+          threshold: config.threshold,
+          signaturesCollected,
+        };
+      }
+
+      return {
+        status: challenge.status,
+        approvals: approvalsCount,
+        threshold: config.threshold,
+      };
+    }),
+
+  finalize: publicProcedure
+    .input(
+      z.object({
+        challengeId: z.string().min(1),
+        contextToken: z.string().min(1),
+        credentialId: z.string().min(1),
+        prfSalt: z.string().min(1),
+        prfOutput: z.string().min(1),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const challenge = await getRecoveryChallengeById(input.challengeId);
+      if (!challenge) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Recovery challenge not found.",
+        });
+      }
+
+      if (challenge.status !== "completed") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Recovery challenge is not approved.",
+        });
+      }
+
+      if (isExpired(challenge.expiresAt)) {
+        throw new TRPCError({
+          code: "TIMEOUT",
+          message: "Recovery challenge has expired.",
+        });
+      }
+
+      const context = await getOnboardingContext(input.contextToken);
+      if (!context || context.userId !== challenge.userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Recovery context is invalid.",
+        });
+      }
+
+      const secrets = await listEncryptedSecretsByUserId(challenge.userId);
+      const prfOutput = base64ToBytes(input.prfOutput);
+
+      let rewrappedCount = 0;
+      for (const secret of secrets) {
+        const recoveryWrapper = await getRecoverySecretWrapperBySecretId(
+          secret.id
+        );
+        if (!recoveryWrapper) {
+          continue;
+        }
+
+        const dek = decryptRecoveryWrappedDek({
+          wrappedDek: recoveryWrapper.wrappedDek,
+          keyId: recoveryWrapper.keyId,
+        });
+
+        const wrappedDek = await wrapDekWithPrfServer({
+          secretId: secret.id,
+          credentialId: input.credentialId,
+          dek,
+          prfOutput,
+        });
+
+        await upsertSecretWrapper({
+          id: crypto.randomUUID(),
+          secretId: secret.id,
+          userId: challenge.userId,
+          credentialId: input.credentialId,
+          wrappedDek,
+          prfSalt: input.prfSalt,
+          kekVersion: RECOVERY_WRAP_VERSION,
+        });
+
+        rewrappedCount += 1;
+      }
+
+      await markRecoveryChallengeApplied({ id: challenge.id });
+      await consumeOnboardingContext(input.contextToken);
+
+      return { rewrappedCount };
+    }),
+});

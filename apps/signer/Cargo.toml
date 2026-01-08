@@ -32,6 +32,7 @@ frost-ed25519 = { version = "2.2.0", features = ["serialization"] }
 actix-web = { version = "4.12.1", features = ["rustls-0_23"] }
 actix-rt = "2.11"
 actix-tls = "3.5.0"
+futures-util = "0.3.31"
 
 # Rate limiting
 actix-governor = "0.10.0"

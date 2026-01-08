@@ -23,6 +23,7 @@ import { cryptoRouter } from "./crypto";
 import { identityRouter } from "./identity";
 import { livenessRouter } from "./liveness";
 import { onboardingRouter } from "./onboarding";
+import { recoveryRouter } from "./recovery";
 import { secretsRouter } from "./secrets";
 import { tokenRouter } from "./token";
 
@@ -33,6 +34,7 @@ export const appRouter = router({
   identity: identityRouter,
   liveness: livenessRouter,
   onboarding: onboardingRouter,
+  recovery: recoveryRouter,
   secrets: secretsRouter,
   token: tokenRouter,
 });

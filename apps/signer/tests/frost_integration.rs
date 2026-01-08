@@ -13,29 +13,36 @@ use tempfile::TempDir;
 
 use signer_service::config::{Ciphersuite, Settings};
 use signer_service::frost::{
-    Coordinator, DkgInitRequest, DkgRound1Request, DkgRound2Request, SignerService,
+    Coordinator, DkgInitRequest, DkgRound1Request, DkgRound2Request, GroupKeyRecord, SignerService,
     SigningAggregateRequest, SigningCommitRequest, SigningInitRequest, SigningSubmitPartialRequest,
 };
 use signer_service::storage::Storage;
 
 /// Create a test coordinator with temporary storage.
-fn create_test_coordinator(temp_dir: &TempDir) -> Coordinator {
+fn create_test_coordinator(temp_dir: &TempDir) -> (Coordinator, Storage) {
     let db_path = temp_dir.path().join("coordinator.redb");
     let storage = Storage::open(&db_path).expect("Failed to create storage");
     let settings = Settings::for_coordinator_tests();
-    Coordinator::new(storage, &settings).expect("Failed to create coordinator")
+    (
+        Coordinator::new(storage.clone(), &settings).expect("Failed to create coordinator"),
+        storage,
+    )
 }
 
 /// Create a test signer with temporary storage.
-fn create_test_signer(temp_dir: &TempDir, signer_id: &str, participant_id: u16) -> SignerService {
+fn create_test_signer(
+    temp_dir: &TempDir,
+    signer_id: &str,
+    participant_id: u16,
+    ciphersuite: Ciphersuite,
+) -> SignerService {
     let db_path = temp_dir.path().join(format!("{signer_id}.redb"));
     let storage = Storage::open(&db_path).expect("Failed to create storage");
-    SignerService::new(storage, signer_id.to_string(), participant_id)
+    SignerService::new(storage, signer_id.to_string(), participant_id, ciphersuite)
 }
 
-#[tokio::test]
 #[allow(clippy::too_many_lines)]
-async fn test_full_dkg_and_signing_flow() {
+async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     // Create temporary directories for storage
     let coord_dir = TempDir::new().unwrap();
     let signer1_dir = TempDir::new().unwrap();
@@ -43,10 +50,10 @@ async fn test_full_dkg_and_signing_flow() {
     let signer3_dir = TempDir::new().unwrap();
 
     // Create services
-    let coordinator = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3);
+    let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
+    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, ciphersuite);
+    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, ciphersuite);
+    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, ciphersuite);
 
     // Get HPKE public keys from signers
     let hpke1 = signer1.hpke_pubkey_base64();
@@ -70,7 +77,7 @@ async fn test_full_dkg_and_signing_flow() {
         .init_dkg(DkgInitRequest {
             threshold: 2,
             total_participants: 3,
-            ciphersuite: Ciphersuite::default(),
+            ciphersuite,
             participant_endpoints: Some(participant_endpoints),
             participant_hpke_pubkeys: participant_hpke_pubkeys.clone(),
         })
@@ -193,7 +200,26 @@ async fn test_full_dkg_and_signing_flow() {
     );
 
     let group_pubkey = fin1.group_pubkey;
+    let public_key_package = fin1.public_key_package.clone();
+
+    coordinator_storage
+        .put_group_key(
+            &group_pubkey,
+            &GroupKeyRecord {
+                group_pubkey: group_pubkey.clone(),
+                public_key_package: public_key_package.clone(),
+                ciphersuite,
+                threshold: 2,
+                total_participants: 3,
+                created_at: chrono::Utc::now(),
+            },
+        )
+        .expect("Failed to persist group key record");
     assert!(!group_pubkey.is_empty(), "Group pubkey should not be empty");
+    assert!(
+        !public_key_package.is_empty(),
+        "Public key package should not be empty"
+    );
 
     println!(
         "DKG completed. Group pubkey: {}...",
@@ -317,16 +343,26 @@ async fn test_full_dkg_and_signing_flow() {
 }
 
 #[tokio::test]
+async fn test_full_dkg_and_signing_flow() {
+    run_full_dkg_and_signing_flow(Ciphersuite::Secp256k1).await;
+}
+
+#[tokio::test]
+async fn test_full_dkg_and_signing_flow_ed25519() {
+    run_full_dkg_and_signing_flow(Ciphersuite::Ed25519).await;
+}
+
+#[tokio::test]
 async fn test_dkg_with_3_of_3_threshold() {
     let coord_dir = TempDir::new().unwrap();
     let signer1_dir = TempDir::new().unwrap();
     let signer2_dir = TempDir::new().unwrap();
     let signer3_dir = TempDir::new().unwrap();
 
-    let coordinator = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3);
+    let (coordinator, _coordinator_storage) = create_test_coordinator(&coord_dir);
+    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
+    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
+    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
 
     let mut participant_endpoints = HashMap::new();
     participant_endpoints.insert(1, "http://localhost:5101".to_string());
@@ -360,10 +396,10 @@ async fn test_invalid_participant_rejected() {
     let signer2_dir = TempDir::new().unwrap();
     let signer3_dir = TempDir::new().unwrap();
 
-    let coordinator = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3);
+    let (coordinator, _coordinator_storage) = create_test_coordinator(&coord_dir);
+    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
+    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
+    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
 
     let mut participant_endpoints = HashMap::new();
     participant_endpoints.insert(1, "http://localhost:5101".to_string());
@@ -412,10 +448,10 @@ async fn test_signing_with_different_signer_subset() {
     let signer2_dir = TempDir::new().unwrap();
     let signer3_dir = TempDir::new().unwrap();
 
-    let coordinator = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3);
+    let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
+    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
+    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
+    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
 
     // Setup participants
     let mut participant_endpoints = HashMap::new();
@@ -527,6 +563,21 @@ async fn test_signing_with_different_signer_subset() {
         .unwrap();
 
     let group_pubkey = fin1.group_pubkey;
+    let public_key_package = fin1.public_key_package.clone();
+
+    coordinator_storage
+        .put_group_key(
+            &group_pubkey,
+            &GroupKeyRecord {
+                group_pubkey: group_pubkey.clone(),
+                public_key_package: public_key_package.clone(),
+                ciphersuite: Ciphersuite::Secp256k1,
+                threshold: 2,
+                total_participants: 3,
+                created_at: chrono::Utc::now(),
+            },
+        )
+        .expect("Failed to persist group key record");
 
     // ===== Sign with signers 2 and 3 only =====
     let message = BASE64.encode("Signed by signers 2 and 3");

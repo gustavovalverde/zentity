@@ -79,6 +79,7 @@ async fn main() -> std::io::Result<()> {
             storage.clone(),
             signer_id.clone(),
             participant_id,
+            ciphersuite,
             jwks_url.to_string(),
         )
     } else {
@@ -86,7 +87,12 @@ async fn main() -> std::io::Result<()> {
             "JWT verification DISABLED for guardian assertions. \
              Set GUARDIAN_ASSERTION_JWKS_URL for production."
         );
-        SignerService::new(storage.clone(), signer_id.clone(), participant_id)
+        SignerService::new(
+            storage.clone(),
+            signer_id.clone(),
+            participant_id,
+            ciphersuite,
+        )
     };
 
     tracing::info!(

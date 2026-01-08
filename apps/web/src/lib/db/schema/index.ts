@@ -5,3 +5,4 @@ export * from "./crypto";
 export * from "./identity";
 export * from "./oauth-provider";
 export * from "./onboarding";
+export * from "./recovery";

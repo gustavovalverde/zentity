@@ -1,7 +1,7 @@
 //! FROST protocol types and session state management.
 //!
 //! This module defines serializable types for DKG and signing sessions,
-//! wrapping frost-secp256k1 types with JSON-serializable representations.
+//! wrapping FROST ciphersuite types with JSON-serializable representations.
 
 use std::collections::HashMap;
 
@@ -75,6 +75,8 @@ pub struct DkgSession {
     pub round2_packages: HashMap<ParticipantId, HashMap<ParticipantId, String>>,
     /// Group public key (set after successful DKG).
     pub group_pubkey: Option<String>,
+    /// Serialized public key package (hex, set after successful DKG).
+    pub public_key_package: Option<String>,
     /// Verifying shares for each participant (set after successful DKG).
     pub verifying_shares: HashMap<ParticipantId, String>,
     /// Session creation time.
@@ -110,6 +112,7 @@ impl DkgSession {
             round1_packages: HashMap::new(),
             round2_packages: HashMap::new(),
             group_pubkey: None,
+            public_key_package: None,
             verifying_shares: HashMap::new(),
             created_at: now,
             expires_at: now + chrono::Duration::hours(expiry_hours),
@@ -191,8 +194,12 @@ pub struct SigningSession {
     pub state: SigningState,
     /// Group public key (from DKG).
     pub group_pubkey: String,
+    /// Serialized public key package (hex).
+    pub public_key_package: String,
     /// Ciphersuite for this session.
     pub ciphersuite: Ciphersuite,
+    /// Threshold (t in t-of-n) for this key set.
+    pub threshold: u16,
     /// Message to sign (base64 encoded).
     pub message: String,
     /// Selected signer participant IDs (must have at least threshold).
@@ -217,7 +224,9 @@ impl SigningSession {
     /// Create a new signing session.
     pub fn new(
         group_pubkey: String,
+        public_key_package: String,
         ciphersuite: Ciphersuite,
+        threshold: u16,
         message: String,
         selected_signers: Vec<ParticipantId>,
         signer_endpoints: HashMap<ParticipantId, String>,
@@ -229,7 +238,9 @@ impl SigningSession {
             session_id: Uuid::new_v4(),
             state: SigningState::AwaitingCommitments,
             group_pubkey,
+            public_key_package,
             ciphersuite,
+            threshold,
             message,
             selected_signers,
             signer_endpoints,
@@ -373,8 +384,27 @@ pub struct DkgFinalizeResponse {
     pub state: DkgState,
     /// Group public key (hex encoded).
     pub group_pubkey: Option<String>,
+    /// Serialized public key package (hex encoded).
+    pub public_key_package: Option<String>,
+    /// Secp256k1 group pubkey X coordinate (hex, 32 bytes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_pubkey_x: Option<String>,
+    /// Secp256k1 group pubkey parity (27 or 28).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_pubkey_parity: Option<u8>,
     /// Verifying shares for each participant.
     pub verifying_shares: HashMap<ParticipantId, String>,
+}
+
+/// Persisted group key metadata (coordinator).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupKeyRecord {
+    pub group_pubkey: String,
+    pub public_key_package: String,
+    pub ciphersuite: Ciphersuite,
+    pub threshold: u16,
+    pub total_participants: u16,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Request to initialize a signing session.
@@ -478,6 +508,7 @@ pub struct SigningSubmitPartialResponse {
 pub struct SignerDkgRound1Request {
     pub session_id: SessionId,
     pub participant_id: ParticipantId,
+    pub ciphersuite: Ciphersuite,
     pub threshold: u16,
     pub total_participants: u16,
 }
@@ -496,6 +527,7 @@ pub struct SignerDkgRound1Response {
 pub struct SignerDkgRound2Request {
     pub session_id: SessionId,
     pub participant_id: ParticipantId,
+    pub ciphersuite: Ciphersuite,
     /// All round 1 packages (participant_id -> base64 package).
     pub round1_packages: HashMap<ParticipantId, String>,
     /// All participant HPKE public keys (participant_id -> base64 pubkey).
@@ -514,6 +546,7 @@ pub struct SignerDkgRound2Response {
 pub struct SignerDkgFinalizeRequest {
     pub session_id: SessionId,
     pub participant_id: ParticipantId,
+    pub ciphersuite: Ciphersuite,
     /// All round 2 packages received by this signer (from_id -> base64 encrypted package).
     pub round2_packages: HashMap<ParticipantId, String>,
     /// All round 1 packages for verification.
@@ -525,6 +558,8 @@ pub struct SignerDkgFinalizeRequest {
 pub struct SignerDkgFinalizeResponse {
     /// Group public key (hex encoded).
     pub group_pubkey: String,
+    /// Serialized public key package (hex encoded).
+    pub public_key_package: String,
     /// This signer's verifying share (hex encoded).
     pub verifying_share: String,
 }
@@ -534,6 +569,7 @@ pub struct SignerDkgFinalizeResponse {
 pub struct SignerCommitRequest {
     pub session_id: SessionId,
     pub group_pubkey: String,
+    pub ciphersuite: Ciphersuite,
     /// Guardian assertion JWT (required when JWT verification is enabled).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guardian_assertion: Option<String>,
@@ -551,6 +587,7 @@ pub struct SignerCommitResponse {
 pub struct SignerPartialSignRequest {
     pub session_id: SessionId,
     pub group_pubkey: String,
+    pub ciphersuite: Ciphersuite,
     /// Message to sign (base64 encoded).
     pub message: String,
     /// All commitments from participants (participant_id -> base64 commitment).
@@ -597,7 +634,9 @@ mod tests {
 
         let session = SigningSession::new(
             "deadbeef".to_string(),
+            "beadfeed".to_string(),
             Ciphersuite::Secp256k1,
+            2,
             "bWVzc2FnZQ==".to_string(),
             vec![1, 2],
             endpoints,

@@ -499,6 +499,20 @@ export async function getLatestEncryptedAttributeByUserAndType(
   return row ?? null;
 }
 
+export async function listEncryptedSecretsByUserId(
+  userId: string
+): Promise<EncryptedSecret[]> {
+  const rows = await db
+    .select()
+    .from(encryptedSecrets)
+    .where(eq(encryptedSecrets.userId, userId))
+    .all();
+  return rows.map((row) => ({
+    ...row,
+    metadata: parseSecretMetadata(row.metadata),
+  }));
+}
+
 export async function getSignedClaimTypesByUserAndDocument(
   userId: string,
   documentId: string

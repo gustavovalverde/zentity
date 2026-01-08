@@ -16,3 +16,20 @@ export function getFheServiceUrl(): string {
     process.env.FHE_SERVICE_URL || "http://localhost:5001"
   );
 }
+
+export function getSignerCoordinatorUrl(): string {
+  return normalizeServiceUrl(
+    process.env.SIGNER_COORDINATOR_URL || "http://localhost:5002"
+  );
+}
+
+export function getSignerEndpoints(): string[] {
+  const raw =
+    process.env.SIGNER_ENDPOINTS ||
+    "http://localhost:5101,http://localhost:5102,http://localhost:5103";
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => normalizeServiceUrl(entry));
+}

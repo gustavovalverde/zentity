@@ -190,7 +190,6 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
   const now = new Date().toISOString();
   const documentId = randomUUID();
   const bundleId = userId;
-  const salt = randomBytes(16).toString("hex");
   const docHash = `doc_${randomUUID().replace(/-/g, "")}`;
   const nameCommitment = `name_${randomUUID().replace(/-/g, "")}`;
   const policyVersion = "poc-v1";
@@ -221,8 +220,6 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
       issuer_country,
       document_hash,
       name_commitment,
-      user_salt,
-      birth_year_offset,
       verified_at,
       confidence_score,
       status,
@@ -235,8 +232,6 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
       'USA',
       '${docHash}',
       '${nameCommitment}',
-      '${salt}',
-      90,
       '${now}',
       0.99,
       'verified',

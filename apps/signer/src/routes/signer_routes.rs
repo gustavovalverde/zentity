@@ -6,10 +6,24 @@
 use actix_web::{HttpResponse, ResponseError, web};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 
+use crate::config::Ciphersuite;
 use crate::frost::{
     SignerCommitRequest, SignerDkgFinalizeRequest, SignerDkgRound1Request, SignerDkgRound2Request,
     SignerPartialSignRequest, SignerService,
 };
+
+fn validate_ciphersuite(
+    requested: Ciphersuite,
+    signer: &SignerService,
+) -> Result<(), HttpResponse> {
+    let expected = signer.ciphersuite();
+    if requested != expected {
+        return Err(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": format!("Ciphersuite mismatch: expected {expected}, got {requested}")
+        })));
+    }
+    Ok(())
+}
 
 /// POST /signer/dkg/round1
 ///
@@ -28,6 +42,10 @@ pub async fn dkg_round1(
                 request.participant_id
             )
         }));
+    }
+
+    if let Err(response) = validate_ciphersuite(request.ciphersuite, &signer) {
+        return response;
     }
 
     match signer.dkg_round1(
@@ -62,6 +80,10 @@ pub async fn dkg_round2(
         }));
     }
 
+    if let Err(response) = validate_ciphersuite(request.ciphersuite, &signer) {
+        return response;
+    }
+
     match signer.dkg_round2(
         &request.session_id,
         &request.round1_packages,
@@ -94,6 +116,10 @@ pub async fn dkg_finalize(
         }));
     }
 
+    if let Err(response) = validate_ciphersuite(request.ciphersuite, &signer) {
+        return response;
+    }
+
     match signer.dkg_finalize(
         &request.session_id,
         &request.round1_packages,
@@ -115,6 +141,10 @@ pub async fn sign_commit(
     signer: web::Data<SignerService>,
     request: web::Json<SignerCommitRequest>,
 ) -> HttpResponse {
+    if let Err(response) = validate_ciphersuite(request.ciphersuite, &signer) {
+        return response;
+    }
+
     match signer
         .sign_commit(
             &request.session_id,
@@ -148,6 +178,10 @@ pub async fn sign_partial(
             }));
         }
     };
+
+    if let Err(response) = validate_ciphersuite(request.ciphersuite, &signer) {
+        return response;
+    }
 
     match signer
         .sign_partial(

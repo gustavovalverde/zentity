@@ -10,6 +10,7 @@
 pub mod coordinator;
 pub mod hpke_crypto;
 pub mod jwt_verification;
+pub mod key_format;
 pub mod signer_logic;
 pub mod types;
 
