@@ -1,7 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -37,7 +37,6 @@ export function StepEmail() {
   const [hasHydrated, setHasHydrated] = useState(
     useOnboardingStore.persist?.hasHydrated?.() ?? true
   );
-  const inputRef = useRef<HTMLInputElement>(null);
   const emailId = useId();
 
   const validateEmail = makeFieldValidator(
@@ -53,12 +52,6 @@ export function StepEmail() {
     }
     return validateEmail(trimmed);
   };
-
-  // Focus input after mount
-  useEffect(() => {
-    const timer = setTimeout(() => inputRef.current?.focus(), 0);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     const persist = useOnboardingStore.persist;
@@ -195,7 +188,6 @@ export function StepEmail() {
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="you@example.com"
-                  ref={inputRef}
                   spellCheck={false}
                   type="email"
                   value={field.state.value}

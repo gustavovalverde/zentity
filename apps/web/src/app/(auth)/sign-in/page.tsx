@@ -78,8 +78,15 @@ export default function SignInPage() {
             <PasskeySignInForm />
           </TabsContent>
           <TabsContent className="mt-4" value="other">
-            {/* Better Auth UI handles email/password, magic link, and OAuth */}
-            <AuthView view="SIGN_IN" />
+            {/* AuthView with hidden card (transparent wrapper) - keeps magic link + social */}
+            <AuthView
+              classNames={{
+                base: "border-0 shadow-none bg-transparent p-0",
+                header: "hidden",
+                footer: "hidden",
+              }}
+              view="SIGN_IN"
+            />
           </TabsContent>
         </Tabs>
         <div className="mt-6 text-center text-muted-foreground text-sm">

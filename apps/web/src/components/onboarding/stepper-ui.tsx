@@ -1,9 +1,9 @@
 "use client";
 
-import type { StepId } from "./stepper-context";
+import type { Stepper } from "@stepperize/react";
 
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,49 +15,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/utils";
 
 import { type OnboardingStore, useOnboardingStore } from "./onboarding-store";
+import { type StepId, steps, utils } from "./stepper-context";
+
+/** Stepper instance type inferred from our step definitions */
+type OnboardingStepper = Stepper<typeof steps>;
 
 /**
- * Types for stepper from stepperize
+ * StepperNavigation - Step indicators following stepperize/shadcn pattern
  *
- * Uses StepId from stepper-context for type-safe navigation.
+ * Renders horizontal step indicators with numbered buttons and separators.
+ * Completed steps are clickable (with server validation).
  */
-interface Step {
-  id: StepId;
-  title: string;
-}
-
-interface StepperMethods {
-  current: Step;
-  isFirst: boolean;
-  isLast: boolean;
-  all: Step[];
-  goTo: (id: StepId) => void;
-  next: () => void;
-  prev: () => void;
-}
-
-/**
- * StepperHeader - Visual step indicators with progress bar
- */
-export function StepperHeader({ stepper }: { stepper: StepperMethods }) {
+export function StepperNavigation({ stepper }: { stepper: OnboardingStepper }) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [pendingBack, setPendingBack] = useState<{
     stepId: StepId;
     warning: string;
   } | null>(null);
 
-  const steps = stepper.all;
-  const currentIndex = steps.findIndex((s) => s.id === stepper.current.id);
-  const progress = ((currentIndex + 1) / steps.length) * 100;
+  const currentIndex = utils.getIndex(stepper.current.id);
 
   const handleStepClick = async (stepId: StepId) => {
-    const targetIndex = steps.findIndex((s) => s.id === stepId);
+    const targetIndex = utils.getIndex(stepId);
     if (targetIndex >= currentIndex || isNavigating) {
       return;
     }
@@ -95,7 +80,7 @@ export function StepperHeader({ stepper }: { stepper: StepperMethods }) {
     setIsNavigating(true);
 
     try {
-      const targetIndex = steps.findIndex((s) => s.id === pendingBack.stepId);
+      const targetIndex = utils.getIndex(pendingBack.stepId);
       await trpc.onboarding.resetToStep.mutate({
         step: (targetIndex + 1) as 1 | 2 | 3 | 4 | 5,
       });
@@ -147,82 +132,81 @@ export function StepperHeader({ stepper }: { stepper: StepperMethods }) {
 
   return (
     <div className="space-y-4">
-      <fieldset
-        aria-label={`Onboarding progress: step ${currentIndex + 1} of ${steps.length}`}
-        className="flex items-center justify-between rounded-md border-0 px-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      >
+      {/* Step counter */}
+      <div className="flex items-center justify-between text-sm">
         <span className="font-medium">
           Step {currentIndex + 1} of {steps.length}
         </span>
-        <span className="text-muted-foreground">{stepper.current.title}</span>
-      </fieldset>
-
-      <Progress className="h-2" value={progress} />
-
-      <div className="flex items-center justify-between">
-        {steps.map((step, index) => {
-          const isCompleted = index < currentIndex;
-          const isCurrent = index === currentIndex;
-          const canNavigate = isCompleted && !isNavigating;
-
-          const getStepStatus = () => {
-            if (isCompleted) {
-              return " (completed)";
-            }
-            if (isCurrent) {
-              return " (current)";
-            }
-            return "";
-          };
-          const stepStatus = getStepStatus();
-
-          return (
-            <Button
-              aria-current={isCurrent ? "step" : undefined}
-              aria-label={`${step.title} - Step ${index + 1}${stepStatus}`}
-              className={cn(
-                "group flex min-h-[44px] min-w-[44px] flex-col items-center gap-1 p-1 transition-transform duration-200",
-                canNavigate && "hover:scale-105",
-                isNavigating && "opacity-50"
-              )}
-              disabled={!canNavigate}
-              key={step.id}
-              onClick={() => canNavigate && handleStepClick(step.id)}
-              type="button"
-              variant="ghost"
-            >
-              <div
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full font-medium text-xs transition-all duration-300",
-                  isCompleted && "bg-primary text-primary-foreground",
-                  isCurrent &&
-                    "scale-110 bg-primary text-primary-foreground ring-4 ring-primary/20",
-                  !(isCompleted || isCurrent) &&
-                    "bg-muted text-muted-foreground",
-                  canNavigate &&
-                    "group-hover:ring-2 group-hover:ring-primary/30"
-                )}
-              >
-                {isCompleted ? (
-                  <Check aria-hidden="true" className="h-4 w-4" />
-                ) : (
-                  <span>{index + 1}</span>
-                )}
-              </div>
-              <span
-                className={cn(
-                  "hidden max-w-[60px] text-center text-[10px] leading-tight transition-colors duration-200 sm:block",
-                  isCurrent
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
-                )}
-              >
-                {step.title}
-              </span>
-            </Button>
-          );
-        })}
+        <span className="text-muted-foreground">
+          {stepper.current.description}
+        </span>
       </div>
+
+      {/* Step indicators - stepperize/shadcn pattern */}
+      <nav aria-label="Onboarding Steps">
+        <ol className="flex items-center justify-between gap-2">
+          {stepper.all.map((step, index, array) => {
+            const isCompleted = index < currentIndex;
+            const isCurrent = index === currentIndex;
+            const canNavigate = isCompleted && !isNavigating;
+
+            const getStepStatus = () => {
+              if (isCompleted) {
+                return " (completed)";
+              }
+              if (isCurrent) {
+                return " (current)";
+              }
+              return "";
+            };
+
+            return (
+              <Fragment key={step.id}>
+                <li className="flex shrink-0 items-center gap-2">
+                  <Button
+                    aria-current={isCurrent ? "step" : undefined}
+                    aria-label={`${step.title} - Step ${index + 1}${getStepStatus()}`}
+                    className={cn(
+                      "flex size-10 items-center justify-center rounded-full transition-all",
+                      canNavigate && "cursor-pointer hover:scale-105",
+                      isNavigating && "opacity-50"
+                    )}
+                    disabled={!(canNavigate || isCurrent)}
+                    onClick={() => canNavigate && handleStepClick(step.id)}
+                    size="icon"
+                    type="button"
+                    variant={isCompleted || isCurrent ? "default" : "secondary"}
+                  >
+                    {isCompleted ? (
+                      <Check aria-hidden="true" className="size-4" />
+                    ) : (
+                      <span>{index + 1}</span>
+                    )}
+                  </Button>
+                  <span
+                    className={cn(
+                      "hidden text-sm sm:block",
+                      isCurrent
+                        ? "font-medium text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {step.title}
+                  </span>
+                </li>
+                {index < array.length - 1 && (
+                  <Separator
+                    className={cn(
+                      "flex-1 transition-colors",
+                      index < currentIndex ? "bg-primary" : "bg-muted"
+                    )}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
+        </ol>
+      </nav>
 
       <BackConfirmDialog
         isNavigating={isNavigating}
@@ -236,7 +220,7 @@ export function StepperHeader({ stepper }: { stepper: StepperMethods }) {
 }
 
 /**
- * StepperControls - Next/Back/Skip buttons
+ * StepperControls - Navigation buttons following stepperize/shadcn pattern
  *
  * Handles forward and backward navigation with server validation.
  * Back navigation shows confirmation dialog and resets server progress.
@@ -251,7 +235,7 @@ export function StepperControls({
   disableNext = false,
   isSubmitting = false,
 }: {
-  stepper: StepperMethods;
+  stepper: OnboardingStepper;
   onNext?: () => void | Promise<void>;
   onSkip?: () => void | Promise<void>;
   showSkip?: boolean;
@@ -275,8 +259,7 @@ export function StepperControls({
 
     setIsNavigating(true);
     try {
-      const steps = stepper.all;
-      const currentIndex = steps.findIndex((s) => s.id === stepper.current.id);
+      const currentIndex = utils.getIndex(stepper.current.id);
       const targetIndex = currentIndex - 1;
       const targetStepId = steps[targetIndex].id;
 
@@ -311,8 +294,7 @@ export function StepperControls({
     setIsNavigating(true);
 
     try {
-      const steps = stepper.all;
-      const targetIndex = steps.findIndex((s) => s.id === pendingBack.stepId);
+      const targetIndex = utils.getIndex(pendingBack.stepId);
 
       await trpc.onboarding.resetToStep.mutate({
         step: (targetIndex + 1) as 1 | 2 | 3 | 4 | 5,
@@ -356,10 +338,7 @@ export function StepperControls({
         await onNext();
       } else {
         // Default: validate with server, then advance
-        const steps = stepper.all;
-        const currentIndex = steps.findIndex(
-          (s) => s.id === stepper.current.id
-        );
+        const currentIndex = utils.getIndex(stepper.current.id);
         const result = await trpc.onboarding.validateStep.mutate({
           targetStep: (currentIndex + 2) as 1 | 2 | 3 | 4 | 5,
         });
@@ -397,25 +376,13 @@ export function StepperControls({
 
   return (
     <>
-      <div className="space-y-3 pt-4">
-        {/* Primary actions row: Back + Next */}
-        <div className="flex items-center justify-between gap-4">
-          {/* Back button - only shown when not on first step */}
-          {stepper.isFirst ? (
-            <div />
-          ) : (
-            <Button
-              disabled={loading}
-              onClick={handleBack}
-              type="button"
-              variant="outline"
-            >
-              Back
-            </Button>
-          )}
-
-          {/* Next/Continue/Complete button */}
+      {/* Controls - stepperize/shadcn pattern */}
+      <div className="flex flex-col gap-3 pt-4">
+        {/* Primary actions */}
+        {stepper.isFirst ? (
+          /* First step: full-width primary button */
           <Button
+            className="w-full"
             disabled={disableNext || loading}
             onClick={handleNext}
             type="button"
@@ -423,9 +390,29 @@ export function StepperControls({
             {loading ? <Spinner className="mr-2" size="sm" /> : null}
             {label}
           </Button>
-        </div>
+        ) : (
+          /* Subsequent steps: Back + Next side by side */
+          <div className="flex justify-end gap-4">
+            <Button
+              disabled={loading}
+              onClick={handleBack}
+              type="button"
+              variant="secondary"
+            >
+              Back
+            </Button>
+            <Button
+              disabled={disableNext || loading}
+              onClick={handleNext}
+              type="button"
+            >
+              {loading ? <Spinner className="mr-2" size="sm" /> : null}
+              {label}
+            </Button>
+          </div>
+        )}
 
-        {/* Skip button - secondary variant, full width, stacked below */}
+        {/* Skip button - secondary, full width */}
         {showSkip && !!onSkip && (
           <Button
             className="w-full"

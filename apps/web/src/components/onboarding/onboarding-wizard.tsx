@@ -12,12 +12,12 @@ import { trpc } from "@/lib/trpc/client";
 import { useOnboardingStore } from "./onboarding-store";
 import { StepEmail } from "./step-email";
 import { Stepper, steps, useStepper } from "./stepper-context";
-import { StepperHeader } from "./stepper-ui";
+import { StepperNavigation } from "./stepper-ui";
 
 // Direct store access for effects (avoids dependency array issues)
 const getStoreState = () => useOnboardingStore.getState();
 
-// Dynamic imports for heavy step components
+// Dynamic imports for heavy step components (stepperize pattern with lazy loading)
 function StepLoading({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
@@ -41,15 +41,6 @@ const StepAccount = dynamic(
   () => import("./step-account").then((mod) => mod.StepAccount),
   { ssr: false, loading: () => <StepLoading label="Loading account step…" /> }
 );
-
-const STEP_COMPONENTS = {
-  email: StepEmail,
-  "id-upload": StepIdUpload,
-  liveness: StepLiveness,
-  account: StepAccount,
-} as const;
-
-type StepId = keyof typeof STEP_COMPONENTS;
 
 /**
  * WizardContent - Inner component that uses the stepper context
@@ -151,12 +142,17 @@ function WizardContent() {
     );
   }
 
-  const StepComponent = STEP_COMPONENTS[stepper.current.id as StepId];
-
   return (
     <div className="space-y-8">
-      <StepperHeader stepper={stepper} />
-      <StepComponent />
+      <StepperNavigation stepper={stepper} />
+
+      {/* Step content - stepperize switch pattern */}
+      {stepper.switch({
+        email: () => <StepEmail />,
+        "id-upload": () => <StepIdUpload />,
+        liveness: () => <StepLiveness />,
+        account: () => <StepAccount />,
+      })}
     </div>
   );
 }
