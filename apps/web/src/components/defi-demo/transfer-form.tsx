@@ -386,10 +386,9 @@ export function TransferForm({
               >
                 {isPending ? (
                   <Spinner aria-hidden="true" className="mr-2" />
-                ) : (
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                )}
+                ) : null}
                 Transfer
+                {isPending ? null : <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
 
               <p className="text-center text-muted-foreground text-xs">

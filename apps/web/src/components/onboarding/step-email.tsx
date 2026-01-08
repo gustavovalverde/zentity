@@ -1,7 +1,8 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import {
   Field,
@@ -11,10 +12,14 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
+import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { setOnboardingFlowId } from "@/lib/observability/flow-client";
+import { trpc } from "@/lib/trpc/client";
 import { makeFieldValidator } from "@/lib/utils/validation";
 
-import { WizardNavigation } from "../wizard-navigation";
-import { useWizard } from "../wizard-provider";
+import { useOnboardingStore } from "./onboarding-store";
+import { useStepper } from "./stepper-context";
+import { StepperControls } from "./stepper-ui";
 
 /**
  * Step 1: Email Only
@@ -26,14 +31,21 @@ import { useWizard } from "../wizard-provider";
  * where User B might see User A's previous progress.
  */
 export function StepEmail() {
-  const { state, updateData, nextStep, startFresh } = useWizard();
+  const stepper = useStepper();
+  const store = useOnboardingStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(
+    useOnboardingStore.persist?.hasHydrated?.() ?? true
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const emailId = useId();
+
   const validateEmail = makeFieldValidator(
     emailSchema,
     "email",
     (value: string) => ({ email: value })
   );
+
   const validateEmailIfPresent = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed) {
@@ -42,34 +54,110 @@ export function StepEmail() {
     return validateEmail(trimmed);
   };
 
-  // Focus input after mount to avoid autoFocus triggering blur during hydration
+  // Focus input after mount
   useEffect(() => {
-    // Small delay to ensure React's hydration/StrictMode cycles are complete
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 0);
+    const timer = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const persist = useOnboardingStore.persist;
+    if (!persist?.onFinishHydration) {
+      setHasHydrated(true);
+      return;
+    }
+
+    const unsubscribe = persist.onFinishHydration(() => {
+      setHasHydrated(true);
+    });
+    if (persist.hasHydrated?.()) {
+      setHasHydrated(true);
+    }
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  /**
+   * Start fresh session - clears existing and creates new
+   */
+  const startFresh = useCallback(
+    async (email: string | null) => {
+      prepareForNewSession();
+      store.reset();
+
+      try {
+        const result = await trpc.onboarding.startSession.mutate({
+          forceNew: true,
+        });
+
+        store.set({
+          sessionId: result.sessionId,
+          email,
+          documentProcessed: false,
+          livenessPassed: false,
+          faceMatchPassed: false,
+          keysSecured: false,
+        });
+
+        setOnboardingFlowId(result.sessionId);
+      } catch (error) {
+        store.set({ email });
+        setOnboardingFlowId(null);
+        throw error;
+      }
+    },
+    [store]
+  );
+
   const form = useForm({
     defaultValues: {
-      email: state.data.email ?? "",
+      email: store.email ?? "",
     },
     onSubmit: async ({ value }) => {
       const trimmed = value.email.trim();
-      // SECURITY: Always start fresh session when submitting email
-      // This clears any existing session to prevent session bleeding
-      await startFresh(trimmed);
-      updateData({ email: trimmed });
-      nextStep();
+      setIsSubmitting(true);
+
+      try {
+        await startFresh(trimmed);
+        stepper.next();
+      } catch {
+        toast.error("Failed to start session");
+      } finally {
+        setIsSubmitting(false);
+      }
     },
   });
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+    const savedEmail = store.email ?? "";
+    const currentEmail = form.getFieldValue("email");
+    if (!currentEmail && savedEmail) {
+      form.setFieldValue("email", savedEmail);
+    }
+  }, [form, hasHydrated, store.email]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
     form.handleSubmit();
   };
+
+  const handleSkip = useCallback(async () => {
+    setIsSubmitting(true);
+    try {
+      form.reset();
+      await startFresh(null);
+      stepper.next();
+    } catch {
+      toast.error("Failed to start session");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [form, stepper, startFresh]);
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
@@ -124,16 +212,13 @@ export function StepEmail() {
         recovery.
       </p>
 
-      <WizardNavigation
-        onSkip={async () => {
-          form.reset();
-          await startFresh(null);
-          updateData({ email: null });
-          nextStep();
-        }}
+      <StepperControls
+        isSubmitting={isSubmitting}
+        onNext={() => form.handleSubmit()}
+        onSkip={handleSkip}
         showSkip
         skipLabel="Continue without email"
-        skipVariant="outline"
+        stepper={stepper}
       />
     </form>
   );

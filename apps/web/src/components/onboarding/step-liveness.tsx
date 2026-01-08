@@ -11,7 +11,7 @@ import {
   RotateCcw,
   Smile,
 } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -31,25 +31,19 @@ import {
 } from "@/lib/liveness/liveness-policy";
 import { trpc } from "@/lib/trpc/client";
 
-/** Debug mode - shows detection overlay and metrics */
+import { useOnboardingStore } from "./onboarding-store";
+import { useStepper } from "./stepper-context";
+import { StepperControls } from "./stepper-ui";
+
 const debugEnabled = process.env.NEXT_PUBLIC_DEBUG === "1";
-
-import { WizardNavigation } from "../wizard-navigation";
-import { useWizard } from "../wizard-provider";
-
 const HEAD_TURN_YAW_THRESHOLD = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
 const HEAD_TURN_DELTA_THRESHOLD = TURN_YAW_SIGNIFICANT_DELTA_DEG;
 
-export function StepSelfie() {
-  const {
-    state,
-    updateData,
-    nextStep,
-    skipLiveness,
-    reset,
-    setSubmitting,
-    updateServerProgress,
-  } = useWizard();
+export function StepLiveness() {
+  const stepper = useStepper();
+  const store = useOnboardingStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const {
     videoRef,
     isStreaming,
@@ -71,7 +65,6 @@ export function StepSelfie() {
     error: humanError,
   } = useHumanLiveness(isStreaming);
 
-  // Memoize callbacks to prevent infinite re-render loops in the liveness flow hook
   const handleVerified = useCallback(
     ({
       selfieImage,
@@ -82,18 +75,23 @@ export function StepSelfie() {
       bestSelfieFrame: string;
       blinkCount: number | null;
     }) => {
-      updateData({ selfieImage, bestSelfieFrame, blinkCount });
+      store.set({ selfieImage, bestSelfieFrame, blinkCount });
     },
-    [updateData]
+    [store]
   );
 
   const handleReset = useCallback(() => {
-    updateData({
+    store.set({
       selfieImage: null,
       bestSelfieFrame: null,
       blinkCount: null,
     });
-  }, [updateData]);
+  }, [store]);
+
+  const handleSessionError = useCallback(() => {
+    store.reset();
+    stepper.goTo("email");
+  }, [store, stepper]);
 
   const {
     challengeState,
@@ -123,22 +121,23 @@ export function StepSelfie() {
     human,
     humanReady,
     debugEnabled,
-    initialSelfieImage: state.data.selfieImage || null,
+    initialSelfieImage: store.selfieImage || null,
     onVerified: handleVerified,
     onReset: handleReset,
-    onSessionError: reset,
+    onSessionError: handleSessionError,
   });
-  const handleSubmit = async () => {
+
+  const handleSubmit = useCallback(async () => {
     stopCamera();
 
-    const selfieToVerify = state.data.bestSelfieFrame || state.data.selfieImage;
+    const selfieToVerify = store.bestSelfieFrame || store.selfieImage;
     if (!selfieToVerify) {
       toast.error("Missing selfie", {
         description: "Please complete the selfie step before continuing.",
       });
       return;
     }
-    if (!(state.data.idDocumentBase64 && state.data.identityDraftId)) {
+    if (!(store.idDocumentBase64 && store.identityDraftId)) {
       toast.error("Missing document context", {
         description:
           "Please re-upload your ID so we can complete verification.",
@@ -146,21 +145,20 @@ export function StepSelfie() {
       return;
     }
 
-    setSubmitting(true);
+    setIsSubmitting(true);
     try {
       const response = await trpc.identity.prepareLiveness.mutate({
-        draftId: state.data.identityDraftId,
-        documentImage: state.data.idDocumentBase64,
+        draftId: store.identityDraftId,
+        documentImage: store.idDocumentBase64,
         selfieImage: selfieToVerify,
       });
 
-      await updateServerProgress({
+      store.set({
         livenessPassed: response.livenessPassed,
         faceMatchPassed: response.faceMatchPassed,
-        step: 4,
       });
 
-      nextStep();
+      stepper.next();
     } catch (error) {
       const message =
         error instanceof Error
@@ -168,13 +166,12 @@ export function StepSelfie() {
           : "Unable to prepare liveness verification.";
       toast.error("Verification failed", { description: message });
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
-  };
+  }, [stepper, stopCamera, store]);
 
-  const handleSkipChallenges = async () => {
+  const handleSkipChallenges = useCallback(async () => {
     try {
-      // Capture a single selfie frame (no challenge flow) and continue.
       if (!isStreaming) {
         await startCamera();
       }
@@ -196,13 +193,14 @@ export function StepSelfie() {
         return;
       }
 
-      updateData({
+      store.set({
         selfieImage: frame,
         bestSelfieFrame: frame,
         blinkCount: null,
       });
       stopCamera();
-      if (!(state.data.idDocumentBase64 && state.data.identityDraftId)) {
+
+      if (!(store.idDocumentBase64 && store.identityDraftId)) {
         toast.error("Missing document context", {
           description:
             "Please re-upload your ID so we can complete verification.",
@@ -210,27 +208,35 @@ export function StepSelfie() {
         return;
       }
 
-      setSubmitting(true);
+      setIsSubmitting(true);
       const response = await trpc.identity.prepareLiveness.mutate({
-        draftId: state.data.identityDraftId,
-        documentImage: state.data.idDocumentBase64,
+        draftId: store.identityDraftId,
+        documentImage: store.idDocumentBase64,
         selfieImage: frame,
       });
-      await updateServerProgress({
+
+      store.set({
         livenessPassed: response.livenessPassed,
         faceMatchPassed: response.faceMatchPassed,
-        step: 4,
       });
-      await skipLiveness();
+
+      stepper.goTo("account");
     } catch {
       toast.error("Camera unavailable", {
         description:
           "Please allow camera access to continue, or try again in a different browser.",
       });
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
-  };
+  }, [captureFrame, isStreaming, startCamera, stepper, stopCamera, store]);
+
+  const disableNext =
+    challengeState === "validating" ||
+    challengeState === "failed" ||
+    challengeState === "timeout" ||
+    challengeState === "loading_session" ||
+    (isStreaming && challengeState !== "all_passed");
 
   return (
     <div className="space-y-6">
@@ -249,11 +255,11 @@ export function StepSelfie() {
             Loading liveness models (first run may take up to a minute).
           </p>
         )}
-        {humanError ? (
+        {!!humanError && (
           <p className="text-muted-foreground text-xs">
             Liveness models failed to load. Please retry.
           </p>
-        ) : null}
+        )}
       </div>
 
       {/* Camera/Image display */}
@@ -284,15 +290,15 @@ export function StepSelfie() {
               playsInline
               ref={videoRef}
             />
-            {debugEnabled ? (
+            {!!debugEnabled && (
               <canvas
                 className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
                   isStreaming ? "" : "hidden"
                 }`}
                 ref={debugCanvasRef}
               />
-            ) : null}
-            {debugEnabled && debugFrame ? (
+            )}
+            {!!debugEnabled && !!debugFrame && (
               <div className="absolute top-2 left-2 z-10 max-w-[95%] rounded-md bg-black/70 px-2 py-1 text-[10px] text-white leading-snug">
                 <div className="font-mono">
                   <div>state: {debugFrame.state}</div>
@@ -321,23 +327,12 @@ export function StepSelfie() {
                     {Math.round(SMILE_HIGH_THRESHOLD * 100)}%; turn≥
                     {HEAD_TURN_YAW_THRESHOLD}° OR Δ≥{HEAD_TURN_DELTA_THRESHOLD}°
                   </div>
-                  {debugFrame.gesture.length > 0 && (
-                    <div className="opacity-80">
-                      gesture: {debugFrame.gesture.join(", ")}
-                    </div>
-                  )}
-                  {debugFrame.performance ? (
-                    <div className="opacity-80">
-                      perf: detect {debugFrame.performance.detect?.toFixed(0)}ms
-                      | total {debugFrame.performance.total?.toFixed(0)}ms
-                    </div>
-                  ) : null}
-                  {lastVerifyError ? (
+                  {!!lastVerifyError && (
                     <div className="mt-1 text-destructive/80">
                       verify: {lastVerifyError}
                     </div>
-                  ) : null}
-                  {Boolean(lastVerifyResponse) && (
+                  )}
+                  {lastVerifyResponse !== null && (
                     <details className="mt-1 opacity-80">
                       <summary className="cursor-pointer">
                         verify payload
@@ -349,7 +344,7 @@ export function StepSelfie() {
                   )}
                 </div>
               </div>
-            ) : null}
+            )}
             {!isStreaming && (
               <div className="absolute inset-0 flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
                 {permissionStatus === "denied" ? (
@@ -373,7 +368,7 @@ export function StepSelfie() {
           </>
         )}
 
-        {/* Face positioning guide - visible during detection and challenge states */}
+        {/* Face positioning guide */}
         {(challengeState === "detecting" ||
           challengeState === "waiting_challenge") && (
           <div className="pointer-events-none absolute inset-0">
@@ -385,7 +380,6 @@ export function StepSelfie() {
               viewBox="0 0 640 480"
             >
               <title>Face positioning guide</title>
-              {/* Semi-transparent overlay with face cutout */}
               <defs>
                 <mask id="face-mask">
                   <rect fill="white" height="480" width="640" x="0" y="0" />
@@ -400,7 +394,6 @@ export function StepSelfie() {
                 x="0"
                 y="0"
               />
-              {/* Face oval guide */}
               <ellipse
                 className={
                   challengeState === "detecting" ? "animate-pulse" : ""
@@ -420,7 +413,6 @@ export function StepSelfie() {
                 }
                 strokeWidth="3"
               />
-              {/* Corner guides */}
               <g
                 stroke={
                   challengeState === "waiting_challenge"
@@ -430,13 +422,9 @@ export function StepSelfie() {
                 strokeLinecap="round"
                 strokeWidth="3"
               >
-                {/* Top-left */}
                 <path d="M 170 50 L 170 90 M 170 50 L 210 50" fill="none" />
-                {/* Top-right */}
                 <path d="M 470 50 L 470 90 M 470 50 L 430 50" fill="none" />
-                {/* Bottom-left */}
                 <path d="M 170 400 L 170 360 M 170 400 L 210 400" fill="none" />
-                {/* Bottom-right */}
                 <path d="M 470 400 L 470 360 M 470 400 L 430 400" fill="none" />
               </g>
             </svg>
@@ -497,7 +485,6 @@ export function StepSelfie() {
               className="block rounded-lg bg-warning/90 px-6 py-4 shadow-lg backdrop-blur"
             >
               <div className="flex items-center gap-3 text-warning-foreground">
-                {/* Challenge-specific icon */}
                 {currentChallenge.challengeType === "smile" && (
                   <Smile aria-hidden="true" className="h-8 w-8" />
                 )}
@@ -511,7 +498,6 @@ export function StepSelfie() {
                   <p className="font-bold text-xl">
                     {currentChallenge.instruction}
                   </p>
-                  {/* Dual progress bars */}
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="w-14 text-xs">You:</span>
@@ -538,21 +524,11 @@ export function StepSelfie() {
                       </span>
                     </div>
                   </div>
-                  {/* Server hint */}
-                  {serverHint ? (
+                  {!!serverHint && (
                     <p className="mt-2 font-medium text-warning-foreground text-xs">
                       {serverHint}
                     </p>
-                  ) : null}
-                  {/* Fallback to status message for turn challenges */}
-                  {!serverHint &&
-                    statusMessage &&
-                    (currentChallenge.challengeType === "turn_left" ||
-                      currentChallenge.challengeType === "turn_right") && (
-                      <p className="mt-1 text-warning-foreground text-xs">
-                        {statusMessage}
-                      </p>
-                    )}
+                  )}
                   <p aria-hidden="true" className="mt-1 text-xs">
                     {currentChallenge.index + 1} of {currentChallenge.total}
                   </p>
@@ -579,7 +555,7 @@ export function StepSelfie() {
           </div>
         )}
 
-        {/* Challenge passed overlay (brief, before next challenge) */}
+        {/* Challenge passed overlay */}
         {challengeState === "challenge_passed" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <output
@@ -727,18 +703,14 @@ export function StepSelfie() {
         </AlertDescription>
       </Alert>
 
-      <WizardNavigation
-        disableNext={
-          challengeState === "validating" ||
-          challengeState === "failed" ||
-          challengeState === "timeout" ||
-          challengeState === "loading_session" ||
-          (isStreaming && challengeState !== "all_passed")
-        }
+      <StepperControls
+        disableNext={disableNext}
+        isSubmitting={isSubmitting}
         onNext={handleSubmit}
         onSkip={handleSkipChallenges}
         showSkip
         skipLabel="Skip challenges"
+        stepper={stepper}
       />
     </div>
   );

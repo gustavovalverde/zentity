@@ -7,8 +7,9 @@ import { resetFheKeyStoreCache } from "@/lib/crypto/fhe-key-store";
 import { resetProfileSecretCache } from "@/lib/crypto/profile-secret";
 import { resetPasskeyUnlockCache } from "@/lib/crypto/secret-vault";
 import { resetOnboardingFlowId } from "@/lib/observability/flow-client";
-import { clearOnboardingDraft } from "@/lib/onboarding/wizard-storage";
 import { redirectTo as navigateTo } from "@/lib/utils/navigation";
+
+const ONBOARDING_STORAGE_KEY = "zentity-onboarding";
 
 /**
  * Cookie names to clear during session transitions.
@@ -31,8 +32,14 @@ export function clearClientCaches(): void {
   resetProfileSecretCache();
   resetPasskeyUnlockCache();
 
-  // Clear localStorage (onboarding draft)
-  clearOnboardingDraft();
+  // Clear onboarding storage (sessionStorage only)
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures
+    }
+  }
 
   // Clear sessionStorage (flow ID)
   resetOnboardingFlowId();

@@ -23,7 +23,6 @@ import {
   type OnboardingStep,
   resetToStep,
   saveWizardState,
-  skipLiveness,
   updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
@@ -69,71 +68,54 @@ export const onboardingRouter = router({
   }),
 
   /**
-   * Creates or updates an onboarding session.
+   * Starts a new onboarding session.
    * If forceNew is true, clears any existing session first.
-   * PII is stored encrypted in the session.
-   *
-   * Returns the sessionId for client tracking.
    */
-  saveSession: publicProcedure
-    .input(
-      z.object({
-        step: stepSchema.default(1),
-        forceNew: z.boolean().optional(),
-        documentProcessed: z.boolean().optional(),
-        livenessPassed: z.boolean().optional(),
-        faceMatchPassed: z.boolean().optional(),
-        keysSecured: z.boolean().optional(),
-        documentHash: z.string().optional(),
-        identityDraftId: z.string().optional().nullable(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      // Get existing session from cookie (if any)
+  startSession: publicProcedure
+    .input(z.object({ forceNew: z.boolean().optional() }).optional())
+    .mutation(async ({ input, ctx }) => {
       const { state: existingState } = await loadWizardState();
       let sessionId = existingState?.sessionId;
 
-      // If forceNew, clear existing session and create new one
-      if (input.forceNew) {
-        if (sessionId) {
-          await completeOnboarding(sessionId);
-        }
-        sessionId = undefined; // Will generate new sessionId
+      if (input?.forceNew && sessionId) {
+        await completeOnboarding(sessionId, ctx.resHeaders);
+        sessionId = undefined;
       }
 
-      const updates = {
-        documentProcessed: input.documentProcessed,
-        livenessPassed: input.livenessPassed,
-        faceMatchPassed: input.faceMatchPassed,
-        keysSecured: input.keysSecured,
-        documentHash: input.documentHash,
-        identityDraftId: input.identityDraftId ?? undefined,
-      };
-
-      const hasUpdates =
-        updates.documentProcessed !== undefined ||
-        updates.livenessPassed !== undefined ||
-        updates.faceMatchPassed !== undefined ||
-        updates.keysSecured !== undefined ||
-        updates.documentHash !== undefined ||
-        updates.identityDraftId !== undefined;
-
-      if (hasUpdates && sessionId) {
-        // Update existing session
-        await updateWizardProgress(sessionId, {
-          step: input.step,
-          ...updates,
-        });
-        return { success: true, sessionId };
-      }
-
-      // Create new session or update basic fields
-      const session = await saveWizardState(sessionId, {
-        step: input.step ?? 1,
-      });
+      const session = await saveWizardState(
+        sessionId,
+        { step: 1 },
+        ctx.resHeaders
+      );
 
       return { success: true, sessionId: session.id };
     }),
+
+  /**
+   * Marks FHE keys as secured for the current session.
+   * Advances to step 5 (secure keys complete).
+   */
+  markKeysSecured: publicProcedure.mutation(async ({ ctx }) => {
+    const session = await getSessionFromCookie();
+    const validation = validateStepAccess(session, "secure-keys");
+    if (!(validation.valid && validation.session)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: validation.error || "Complete previous steps first",
+      });
+    }
+
+    await updateWizardProgress(
+      validation.session.id,
+      {
+        keysSecured: true,
+        step: 5,
+      },
+      ctx.resHeaders
+    );
+
+    return { success: true, newStep: 5 };
+  }),
 
   /**
    * Completes onboarding and clears the session.
@@ -147,7 +129,7 @@ export const onboardingRouter = router({
         })
         .optional()
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       // Try to get sessionId from input or from cookie
       let sessionId = input?.sessionId;
 
@@ -162,7 +144,7 @@ export const onboardingRouter = router({
         return { success: true, cleared: false };
       }
 
-      await completeOnboarding(sessionId);
+      await completeOnboarding(sessionId, ctx.resHeaders);
       return { success: true, cleared: true };
     }),
 
@@ -263,7 +245,7 @@ export const onboardingRouter = router({
    */
   resetToStep: publicProcedure
     .input(z.object({ step: stepSchema }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const session = await getSessionFromCookie();
       if (!session) {
         throw new TRPCError({
@@ -280,25 +262,7 @@ export const onboardingRouter = router({
         });
       }
 
-      await resetToStep(session.id, step);
+      await resetToStep(session.id, step, ctx.resHeaders);
       return { success: true, newStep: step };
     }),
-
-  /**
-   * Skips the liveness detection step (for accessibility/fallback).
-   * Only allowed when document verification is complete.
-   */
-  skipLiveness: publicProcedure.mutation(async () => {
-    const session = await getSessionFromCookie();
-    const validation = validateStepAccess(session, "skip-liveness");
-    if (!(validation.valid && validation.session)) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: validation.error || "Cannot skip liveness at this time",
-      });
-    }
-
-    await skipLiveness(validation.session.id);
-    return { success: true, newStep: 4 };
-  }),
 });

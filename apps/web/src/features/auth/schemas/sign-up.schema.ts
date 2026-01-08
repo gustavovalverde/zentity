@@ -73,7 +73,7 @@ export interface WizardData {
   identityDocumentId: string | null;
 }
 
-export const defaultWizardData: WizardData = {
+const _defaultWizardData: WizardData = {
   // Step 1
   email: null,
   // Step 2

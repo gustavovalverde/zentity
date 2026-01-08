@@ -869,10 +869,15 @@ export const identityRouter = router({
         documentResult?.extractedData?.nationalityCode ||
         null;
 
+      const hasExpiredDocument = Boolean(
+        documentResult?.validationIssues?.includes("document_expired")
+      );
       const isDocumentValid =
         documentProcessed &&
         (documentResult?.confidence ?? 0) > 0.3 &&
-        Boolean(documentResult?.extractedData?.documentNumber);
+        Boolean(documentResult?.extractedData?.documentNumber) &&
+        !isDuplicateDocument &&
+        !hasExpiredDocument;
 
       ctx.span?.setAttribute(
         "onboarding.document_processed",
@@ -904,12 +909,16 @@ export const identityRouter = router({
         ocrIssues: issues.length ? JSON.stringify(issues) : null,
       });
 
-      await updateWizardProgress(validation.session.id, {
-        documentProcessed: isDocumentValid,
-        documentHash: documentHash ?? undefined,
-        identityDraftId: draftId,
-        step: Math.max(validation.session.step ?? 1, 2),
-      });
+      await updateWizardProgress(
+        validation.session.id,
+        {
+          documentProcessed: isDocumentValid,
+          documentHash: documentHash ?? undefined,
+          identityDraftId: draftId,
+          step: Math.max(validation.session.step ?? 1, 2),
+        },
+        ctx.resHeaders
+      );
 
       return {
         success: true,
@@ -1087,11 +1096,15 @@ export const identityRouter = router({
         faceMatchPassed,
       });
 
-      await updateWizardProgress(stepValidation.session.id, {
-        livenessPassed,
-        faceMatchPassed,
-        step: Math.max(stepValidation.session.step ?? 1, 3),
-      });
+      await updateWizardProgress(
+        stepValidation.session.id,
+        {
+          livenessPassed,
+          faceMatchPassed,
+          step: Math.max(stepValidation.session.step ?? 1, 4),
+        },
+        ctx.resHeaders
+      );
 
       ctx.span?.setAttribute("onboarding.liveness_passed", livenessPassed);
       ctx.span?.setAttribute("onboarding.face_match_passed", faceMatchPassed);

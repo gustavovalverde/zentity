@@ -12,7 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -76,8 +76,9 @@ import { trpc } from "@/lib/trpc/client";
 import { getFirstPart } from "@/lib/utils/name-utils";
 import { cn } from "@/lib/utils/utils";
 
-import { WizardNavigation } from "../wizard-navigation";
-import { useWizard } from "../wizard-provider";
+import { useOnboardingStore } from "./onboarding-store";
+import { useStepper } from "./stepper-context";
+import { StepperControls } from "./stepper-ui";
 
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
@@ -96,53 +97,15 @@ type SecureStatus =
   | "complete"
   | "error";
 
-interface StepIndicatorProps {
-  label: string;
-  status: "pending" | "active" | "complete";
-  icon: React.ReactNode;
+interface OnboardingContextResponse {
+  contextToken: string;
+  registrationToken: string;
+  expiresAt: string;
 }
 
-function StepIndicatorIcon({
-  status,
-  icon,
-}: {
-  status: "pending" | "active" | "complete";
-  icon: React.ReactNode;
-}) {
-  if (status === "complete") {
-    return <Check className="h-4 w-4" />;
-  }
-  if (status === "active") {
-    return <Spinner />;
-  }
-  return icon;
-}
-
-function StepIndicator({ label, status, icon }: StepIndicatorProps) {
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full transition-all",
-          status === "complete" && "bg-success text-success-foreground",
-          status === "active" && "animate-pulse bg-info text-info-foreground",
-          status === "pending" && "bg-muted text-muted-foreground"
-        )}
-      >
-        <StepIndicatorIcon icon={icon} status={status} />
-      </div>
-      <span
-        className={cn(
-          "text-sm transition-colors",
-          status === "complete" && "font-medium text-success",
-          status === "active" && "font-medium text-info",
-          status === "pending" && "text-muted-foreground"
-        )}
-      >
-        {label}
-      </span>
-    </div>
-  );
+interface FheEnrollmentCompleteResponse {
+  success: boolean;
+  keyId: string;
 }
 
 function parseDateToInt(value: string | null | undefined): number | null {
@@ -157,22 +120,10 @@ function parseDateToInt(value: string | null | undefined): number | null {
   return Number.isFinite(dateInt) ? dateInt : null;
 }
 
-interface OnboardingContextResponse {
-  contextToken: string;
-  registrationToken: string;
-  expiresAt: string;
-}
-
-interface FheEnrollmentCompleteResponse {
-  success: boolean;
-  keyId: string;
-}
-
 async function ensureAuthSession() {
   const existing = await authClient.getSession();
-  const existingSession = existing.data;
-  if (existingSession?.user?.id) {
-    return existingSession;
+  if (existing.data?.user?.id) {
+    return existing.data;
   }
 
   const anonymous = await authClient.signIn.anonymous();
@@ -183,12 +134,10 @@ async function ensureAuthSession() {
   }
 
   const updated = await authClient.getSession();
-  const updatedSession = updated.data;
-  if (!updatedSession?.user?.id) {
+  if (!updated.data?.user?.id) {
     throw new Error("Unable to start anonymous session.");
   }
-
-  return updatedSession;
+  return updated.data;
 }
 
 async function requestOnboardingContext(
@@ -202,7 +151,6 @@ async function requestOnboardingContext(
   });
 
   const payload = (await response.json().catch(() => null)) as unknown;
-
   if (!(response.ok && payload) || typeof payload !== "object") {
     throw new Error("Unable to start onboarding.");
   }
@@ -232,7 +180,6 @@ async function completeFheEnrollment(enrollmentPayload: {
   });
 
   const data = (await response.json().catch(() => null)) as unknown;
-
   if (!(response.ok && data) || typeof data !== "object") {
     throw new Error("Failed to finalize FHE enrollment.");
   }
@@ -304,21 +251,83 @@ function buildProfilePayload(args: {
   };
 }
 
-/**
- * Step 4: Create Account with Passkey
- *
- * Merged step that combines:
- * - Review extracted data from document
- * - Face matching verification
- * - Passwordless account creation via passkey
- * - FHE key registration with PRF
- * - Privacy proof generation
- */
-export function StepCreateAccount() {
+function calculateAge(dob: string | null): number | null {
+  if (!dob) {
+    return null;
+  }
+  const birthDate = new Date(dob);
+  if (Number.isNaN(birthDate.getTime())) {
+    return null;
+  }
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (
+    monthDiff < 0 ||
+    (monthDiff === 0 && today.getDate() < birthDate.getDate())
+  ) {
+    age--;
+  }
+  return age;
+}
+
+function StepIndicatorIcon({
+  status,
+  icon,
+}: {
+  status: "pending" | "active" | "complete";
+  icon: React.ReactNode;
+}) {
+  if (status === "complete") {
+    return <Check className="h-4 w-4" />;
+  }
+  if (status === "active") {
+    return <Spinner />;
+  }
+  return icon;
+}
+
+function StepIndicator({
+  label,
+  status,
+  icon,
+}: {
+  label: string;
+  status: "pending" | "active" | "complete";
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-full transition-all",
+          status === "complete" && "bg-success text-success-foreground",
+          status === "active" && "animate-pulse bg-info text-info-foreground",
+          status === "pending" && "bg-muted text-muted-foreground"
+        )}
+      >
+        <StepIndicatorIcon icon={icon} status={status} />
+      </div>
+      <span
+        className={cn(
+          "text-sm transition-colors",
+          status === "complete" && "font-medium text-success",
+          status === "active" && "font-medium text-info",
+          status === "pending" && "text-muted-foreground"
+        )}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+export function StepAccount() {
   const router = useRouter();
-  const { state, updateData, setSubmitting, reset, updateServerProgress } =
-    useWizard();
-  const { data } = state;
+  const stepper = useStepper();
+  const store = useOnboardingStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Face matching state
   const [faceMatchStatus, setFaceMatchStatus] =
@@ -327,7 +336,6 @@ export function StepCreateAccount() {
     useState<FaceMatchResult | null>(null);
   const faceMatchAttemptedRef = useRef(false);
   const noirIsolationWarningRef = useRef(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Passkey/secure keys state
   const [supportStatus, setSupportStatus] = useState<{
@@ -337,10 +345,14 @@ export function StepCreateAccount() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<SecureStatus>("idle");
 
-  const hasIdentityDocs = Boolean(data.identityDraftId);
-  const hasDob = Boolean(data.extractedDOB);
+  const hasIdentityDocs = Boolean(store.identityDraftId);
+  const hasDob = Boolean(store.extractedDOB);
+  const selfieForMatching = store.bestSelfieFrame || store.selfieImage;
+  const hasIdentityImages = Boolean(
+    store.idDocumentBase64 && selfieForMatching
+  );
 
-  const warnIfNoirIsolation = () => {
+  const warnIfNoirIsolation = useCallback(() => {
     if (noirIsolationWarningRef.current) {
       return;
     }
@@ -353,9 +365,9 @@ export function StepCreateAccount() {
     noirIsolationWarningRef.current = true;
     toast.warning("ZK proofs may be slower in this session", {
       description:
-        "Your browser is not cross-origin isolated, so multi-threaded proving is disabled. Proofs may take longer. If possible, refresh the page without blockers/VPN.",
+        "Your browser is not cross-origin isolated, so multi-threaded proving is disabled.",
     });
-  };
+  }, []);
 
   // Check PRF support on mount
   useEffect(() => {
@@ -370,15 +382,12 @@ export function StepCreateAccount() {
     };
   }, []);
 
-  // Get the best selfie frame for face matching
-  const selfieForMatching = data.bestSelfieFrame || data.selfieImage;
-
   // Auto-trigger face matching when both ID and selfie are available
   useEffect(() => {
     if (faceMatchAttemptedRef.current) {
       return;
     }
-    if (!(data.idDocumentBase64 && selfieForMatching)) {
+    if (!(store.idDocumentBase64 && selfieForMatching)) {
       return;
     }
     if (faceMatchStatus !== "idle") {
@@ -388,14 +397,14 @@ export function StepCreateAccount() {
     faceMatchAttemptedRef.current = true;
 
     const performFaceMatch = async () => {
-      if (!(data.idDocumentBase64 && selfieForMatching)) {
+      if (!(store.idDocumentBase64 && selfieForMatching)) {
         return;
       }
 
       setFaceMatchStatus("matching");
       try {
         const result = await matchFaces(
-          data.idDocumentBase64,
+          store.idDocumentBase64,
           selfieForMatching
         );
         setFaceMatchResult(result);
@@ -422,37 +431,9 @@ export function StepCreateAccount() {
     };
 
     performFaceMatch();
-  }, [data.idDocumentBase64, selfieForMatching, faceMatchStatus]);
+  }, [store.idDocumentBase64, selfieForMatching, faceMatchStatus]);
 
-  const calculateAge = (dob: string | null): number | null => {
-    if (!dob) {
-      return null;
-    }
-    const birthDate = new Date(dob);
-    if (Number.isNaN(birthDate.getTime())) {
-      return null;
-    }
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birthDate.getDate())
-    ) {
-      age--;
-    }
-    return age;
-  };
-
-  const progressStatus = useMemo<{
-    passkey: StepIndicatorProps["status"];
-    prf: StepIndicatorProps["status"];
-    secure: StepIndicatorProps["status"];
-    account: StepIndicatorProps["status"];
-    verify: StepIndicatorProps["status"];
-    proofs: StepIndicatorProps["status"];
-    store: StepIndicatorProps["status"];
-  }>(() => {
+  const progressStatus = useMemo(() => {
     const steps: SecureStatus[] = [
       "registering-passkey",
       "unlocking-prf",
@@ -470,7 +451,7 @@ export function StepCreateAccount() {
     const stepStatus = (
       index: number,
       active: SecureStatus | SecureStatus[]
-    ) => {
+    ): "pending" | "active" | "complete" => {
       const activeSteps = Array.isArray(active) ? active : [active];
       if (currentIndex > index) {
         return "complete";
@@ -528,30 +509,35 @@ export function StepCreateAccount() {
       return;
     }
 
-    setSubmitting(true);
+    setIsSubmitting(true);
     setError(null);
 
     try {
+      const documentResult = store.documentResult as {
+        documentType?: string;
+        documentOrigin?: string;
+      } | null;
+
       const profilePayload = buildProfilePayload({
-        extractedName: data.extractedName,
-        extractedDOB: data.extractedDOB,
-        extractedDocNumber: data.extractedDocNumber,
-        extractedNationality: data.extractedNationality,
-        extractedExpirationDate: data.extractedExpirationDate,
-        extractedNationalityCode: data.extractedNationalityCode,
-        documentType: data.documentResult?.documentType ?? null,
-        documentOrigin: data.documentResult?.documentOrigin ?? null,
-        userSalt: data.userSalt,
+        extractedName: store.extractedName,
+        extractedDOB: store.extractedDOB,
+        extractedDocNumber: store.extractedDocNumber,
+        extractedNationality: store.extractedNationality,
+        extractedExpirationDate: store.extractedExpirationDate,
+        extractedNationalityCode: store.extractedNationalityCode,
+        documentType: documentResult?.documentType ?? null,
+        documentOrigin: documentResult?.documentOrigin ?? null,
+        userSalt: store.userSalt,
       });
 
-      // Step 1: Ensure we have a session (anonymous or existing)
+      // Step 1: Ensure we have a session
       await ensureAuthSession();
       const prfSalt = generatePrfSalt();
 
-      // Step 2: Create onboarding context for pre-auth passkey registration
-      const onboardingContext = await requestOnboardingContext(data.email);
+      // Step 2: Create onboarding context
+      const onboardingContext = await requestOnboardingContext(store.email);
 
-      // Step 3: Register passkey with PRF extension (Better Auth handles verification)
+      // Step 3: Register passkey with PRF extension
       setStatus("registering-passkey");
       const registration = await registerPasskeyWithPrf({
         name: "Primary Passkey",
@@ -580,7 +566,6 @@ export function StepCreateAccount() {
         if (!registration.ok) {
           throw new Error(registration.message);
         }
-
         credentialId = registration.credentialId;
         prfOutput = registration.prfOutput;
       }
@@ -588,7 +573,6 @@ export function StepCreateAccount() {
       if (!credentialId) {
         throw new Error("Missing passkey credential ID.");
       }
-
       if (!prfOutput) {
         throw new Error(
           "This passkey did not return PRF output. Please try a different authenticator."
@@ -597,12 +581,8 @@ export function StepCreateAccount() {
 
       cachePasskeyUnlock({ credentialId, prfOutput });
 
-      // Step 4: Secure FHE keys locally before account creation
-      const enrollment = {
-        credentialId,
-        prfOutput,
-        prfSalt,
-      };
+      // Step 4: Secure FHE keys locally
+      const enrollment = { credentialId, prfOutput, prfSalt };
       const fheEnrollment = await prepareFheKeyEnrollment({
         enrollment,
         onStage: (stage) => {
@@ -611,6 +591,7 @@ export function StepCreateAccount() {
           );
         },
       });
+
       setStatus("uploading-keys");
       await uploadSecretBlobWithToken({
         secretId: fheEnrollment.secretId,
@@ -618,6 +599,7 @@ export function StepCreateAccount() {
         payload: fheEnrollment.encryptedBlob,
         registrationToken: onboardingContext.registrationToken,
       });
+
       setStatus("registering-keys");
       const fheRegistration = await registerFheKeyForEnrollment({
         registrationToken: onboardingContext.registrationToken,
@@ -625,7 +607,7 @@ export function StepCreateAccount() {
         serverKeyBytes: fheEnrollment.serverKeyBytes,
       });
 
-      // Step 5: Finalize enrollment (stores wrappers + metadata)
+      // Step 5: Finalize enrollment
       setStatus("creating-account");
       const completion = await completeFheEnrollment({
         registrationToken: onboardingContext.registrationToken,
@@ -646,11 +628,12 @@ export function StepCreateAccount() {
       fheEnrollment.storedKeys.keyId = fheKeyId;
       cacheFheKeys(fheEnrollment.secretId, fheEnrollment.storedKeys);
 
-      await updateServerProgress({ keysSecured: true });
+      await trpc.onboarding.markKeysSecured.mutate();
+      store.set({ keysSecured: true });
 
-      // Step 5: Finalize identity and generate proofs if documents exist
+      // Step 6: Finalize identity and generate proofs if docs exist
       if (hasIdentityDocs) {
-        if (!data.identityDraftId) {
+        if (!store.identityDraftId) {
           throw new Error(
             "Missing identity draft. Please restart verification."
           );
@@ -659,25 +642,27 @@ export function StepCreateAccount() {
         setStatus("finalizing-identity");
         const profileBirthYear =
           profilePayload?.birthYear ??
-          parseBirthYearFromDob(data.extractedDOB ?? undefined) ??
+          parseBirthYearFromDob(store.extractedDOB ?? undefined) ??
           null;
         const birthYearOffset =
           calculateBirthYearOffsetFromYear(profileBirthYear);
         const profileNationalityCode =
           profilePayload?.nationalityCode ??
-          data.extractedNationalityCode ??
+          store.extractedNationalityCode ??
           null;
         const countryCodeNumeric = profileNationalityCode
           ? countryCodeToNumeric(profileNationalityCode)
           : 0;
+
         const job = await trpc.identity.finalizeAsync.mutate({
-          draftId: data.identityDraftId,
+          draftId: store.identityDraftId,
           fheKeyId,
           birthYearOffset: birthYearOffset ?? undefined,
           countryCodeNumeric:
             countryCodeNumeric > 0 ? countryCodeNumeric : undefined,
         });
 
+        // Wait for finalization
         const waitForFinalization = async () => {
           const start = Date.now();
           let attempt = 0;
@@ -722,14 +707,14 @@ export function StepCreateAccount() {
         }
 
         if (identityResult.documentId) {
-          updateData({ identityDocumentId: identityResult.documentId });
+          store.set({ identityDocumentId: identityResult.documentId });
         }
 
-        // Step 6: Generate proofs
+        // Step 7: Generate proofs
         setStatus("generating-proofs");
         warnIfNoirIsolation();
         const activeDocumentId =
-          identityResult.documentId ?? data.identityDocumentId;
+          identityResult.documentId ?? store.identityDocumentId;
         if (!activeDocumentId) {
           throw new Error(
             "Missing document context for proof generation. Please retry verification."
@@ -790,14 +775,14 @@ export function StepCreateAccount() {
           const nationalityClaimHash = ocrData.claimHashes?.nationality;
           const birthYear =
             profilePayload?.birthYear ??
-            parseBirthYearFromDob(data.extractedDOB ?? undefined) ??
+            parseBirthYearFromDob(store.extractedDOB ?? undefined) ??
             null;
           const expiryDateInt =
             profilePayload?.expiryDateInt ??
-            parseDateToInt(data.extractedExpirationDate);
+            parseDateToInt(store.extractedExpirationDate);
           const nationalityCode =
             profilePayload?.nationalityCode ??
-            data.extractedNationalityCode ??
+            store.extractedNationalityCode ??
             null;
 
           if (birthYear === null || birthYear === undefined || !ageClaimHash) {
@@ -817,6 +802,7 @@ export function StepCreateAccount() {
             throw new Error("Missing face match claim hash");
           }
 
+          // Age proof
           const ageChallenge = await getProofChallenge("age_verification");
           const ageProof = await generateAgeProof(
             birthYear,
@@ -828,11 +814,9 @@ export function StepCreateAccount() {
               claimHash: ageClaimHash,
             }
           );
-          enqueueStore({
-            circuitType: "age_verification",
-            ...ageProof,
-          });
+          enqueueStore({ circuitType: "age_verification", ...ageProof });
 
+          // Doc validity proof
           const docChallenge = await getProofChallenge("doc_validity");
           const now = new Date();
           const currentDateInt =
@@ -848,11 +832,9 @@ export function StepCreateAccount() {
               claimHash: docValidityClaimHash,
             }
           );
-          enqueueStore({
-            circuitType: "doc_validity",
-            ...docProof,
-          });
+          enqueueStore({ circuitType: "doc_validity", ...docProof });
 
+          // Nationality proof
           const nationalityChallenge = await getProofChallenge(
             "nationality_membership"
           );
@@ -870,6 +852,7 @@ export function StepCreateAccount() {
             ...nationalityProof,
           });
 
+          // Face match proof
           const similarityFixed = ((): number | null => {
             if (typeof faceData.confidenceFixed === "number") {
               return faceData.confidenceFixed;
@@ -906,10 +889,7 @@ export function StepCreateAccount() {
               claimHash: faceData.claimHash,
             }
           );
-          enqueueStore({
-            circuitType: "face_match",
-            ...faceProof,
-          });
+          enqueueStore({ circuitType: "face_match", ...faceProof });
         } catch (zkError) {
           const errorMessage =
             zkError instanceof Error ? zkError.message : "Unknown error";
@@ -931,7 +911,7 @@ export function StepCreateAccount() {
           throw new Error(friendlyMessage);
         }
 
-        // Step 7: Store proofs
+        // Step 8: Store proofs
         setStatus("storing-proofs");
         await Promise.all(storeTasks);
       }
@@ -939,9 +919,14 @@ export function StepCreateAccount() {
       // Complete!
       setStatus("complete");
       setIsRedirecting(true);
-      reset().catch(() => {
-        // Ignore reset errors during redirect.
-      });
+
+      // Clear session and redirect
+      try {
+        await trpc.onboarding.clearSession.mutate();
+      } catch {
+        // Ignore clear errors during redirect
+      }
+      store.reset();
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
@@ -953,7 +938,7 @@ export function StepCreateAccount() {
       setStatus("error");
       toast.error("Account creation failed", { description: message });
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -962,10 +947,6 @@ export function StepCreateAccount() {
       ? supportStatus.reason ||
         "PRF passkeys are not supported on this device or browser."
       : null;
-
-  const hasIdentityImages = Boolean(
-    data.idDocumentBase64 && (data.bestSelfieFrame || data.selfieImage)
-  );
 
   if (isRedirecting) {
     return (
@@ -994,7 +975,7 @@ export function StepCreateAccount() {
         )}
       </div>
 
-      {unsupportedMessage ? (
+      {!!unsupportedMessage && (
         <Alert variant="destructive">
           <TriangleAlert className="h-4 w-4" />
           <AlertDescription>
@@ -1006,13 +987,13 @@ export function StepCreateAccount() {
             </div>
           </AlertDescription>
         </Alert>
-      ) : null}
+      )}
 
-      {error ? (
+      {!!error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      ) : null}
+      )}
 
       {/* Extracted Information Review - only show when idle */}
       {status === "idle" && (
@@ -1022,36 +1003,33 @@ export function StepCreateAccount() {
           </h4>
 
           <ItemGroup>
-            {/* Email */}
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Email</ItemDescription>
-                <ItemTitle>{data.email}</ItemTitle>
+                <ItemTitle>{store.email || "Not provided"}</ItemTitle>
               </ItemContent>
             </Item>
 
             <ItemSeparator />
 
-            {/* Name */}
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Name</ItemDescription>
-                <ItemTitle>{data.extractedName || "Not extracted"}</ItemTitle>
+                <ItemTitle>{store.extractedName || "Not extracted"}</ItemTitle>
               </ItemContent>
             </Item>
 
             <ItemSeparator />
 
-            {/* Date of Birth */}
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Date of Birth</ItemDescription>
-                <ItemTitle>{data.extractedDOB || "Not extracted"}</ItemTitle>
+                <ItemTitle>{store.extractedDOB || "Not extracted"}</ItemTitle>
               </ItemContent>
-              {calculateAge(data.extractedDOB) !== null && (
+              {calculateAge(store.extractedDOB) !== null && (
                 <ItemActions>
                   <Badge variant="secondary">
-                    {calculateAge(data.extractedDOB)}+ years
+                    {calculateAge(store.extractedDOB)}+ years
                   </Badge>
                 </ItemActions>
               )}
@@ -1059,40 +1037,37 @@ export function StepCreateAccount() {
 
             <ItemSeparator />
 
-            {/* Nationality */}
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Nationality</ItemDescription>
                 <ItemTitle>
-                  {data.extractedNationality || "Not extracted"}
+                  {store.extractedNationality || "Not extracted"}
                 </ItemTitle>
               </ItemContent>
             </Item>
 
             <ItemSeparator />
 
-            {/* Document */}
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Document</ItemDescription>
               </ItemContent>
               <ItemActions>
-                <Badge variant={data.idDocument ? "default" : "outline"}>
-                  {data.idDocument ? "Uploaded" : "Skipped"}
+                <Badge variant={store.idDocument ? "default" : "outline"}>
+                  {store.idDocument ? "Uploaded" : "Skipped"}
                 </Badge>
               </ItemActions>
             </Item>
 
             <ItemSeparator />
 
-            {/* Liveness */}
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Liveness</ItemDescription>
               </ItemContent>
               <ItemActions>
-                <Badge variant={data.selfieImage ? "default" : "outline"}>
-                  {data.selfieImage ? "Verified" : "Skipped"}
+                <Badge variant={store.selfieImage ? "default" : "outline"}>
+                  {store.selfieImage ? "Verified" : "Skipped"}
                 </Badge>
               </ItemActions>
             </Item>
@@ -1118,10 +1093,10 @@ export function StepCreateAccount() {
                 )}
               >
                 {faceMatchStatus === "matching" &&
-                !faceMatchResult?.idFaceImage ? (
-                  <Skeleton className="h-full w-full" />
-                ) : null}
-                {faceMatchResult?.idFaceImage ? (
+                  !faceMatchResult?.idFaceImage && (
+                    <Skeleton className="h-full w-full" />
+                  )}
+                {!!faceMatchResult?.idFaceImage && (
                   <img
                     alt="Face extracted from your ID (preview)"
                     className={cn(
@@ -1132,7 +1107,7 @@ export function StepCreateAccount() {
                     src={faceMatchResult.idFaceImage}
                     width={80}
                   />
-                ) : null}
+                )}
                 {!faceMatchResult?.idFaceImage &&
                   faceMatchStatus !== "matching" && (
                     <div className="flex h-full w-full items-center justify-center text-muted-foreground text-xs">
@@ -1194,7 +1169,7 @@ export function StepCreateAccount() {
                 {faceMatchStatus === "matching" && !selfieForMatching && (
                   <Skeleton className="h-full w-full" />
                 )}
-                {selfieForMatching ? (
+                {!!selfieForMatching && (
                   <img
                     alt="Selfie"
                     className={cn(
@@ -1205,7 +1180,7 @@ export function StepCreateAccount() {
                     src={selfieForMatching}
                     width={80}
                   />
-                ) : null}
+                )}
               </div>
               <span className="text-muted-foreground text-xs">Selfie</span>
             </div>
@@ -1269,9 +1244,9 @@ export function StepCreateAccount() {
             <ShieldCheck className="h-5 w-5" />
             <span className="font-medium">Creating your secure account</span>
           </div>
-          {statusMessage ? (
+          {!!statusMessage && (
             <p className="text-info/80 text-sm">{statusMessage}</p>
-          ) : null}
+          )}
 
           <div className="space-y-3">
             <StepIndicator
@@ -1294,7 +1269,7 @@ export function StepCreateAccount() {
               label="Create account & store keys"
               status={progressStatus.account}
             />
-            {hasIdentityDocs ? (
+            {!!hasIdentityDocs && (
               <>
                 <StepIndicator
                   icon={<ShieldCheck className="h-4 w-4" />}
@@ -1312,27 +1287,18 @@ export function StepCreateAccount() {
                   status={progressStatus.store}
                 />
               </>
-            ) : null}
+            )}
           </div>
         </div>
       )}
 
-      {/* Navigation */}
-      {!state.isSubmitting && (
-        <WizardNavigation
-          disableNext={!supportStatus?.supported}
-          nextLabel="Create Account with Passkey"
-          onNext={handleCreateAccount}
-        />
-      )}
-
       {/* Privacy Info - only show when idle */}
-      {!state.isSubmitting && status === "idle" && (
+      {!isSubmitting && status === "idle" && (
         <Alert>
           <AlertDescription>
             <strong>Privacy-First Verification:</strong>
             <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-              {hasDob ? (
+              {!!hasDob && (
                 <>
                   <li>
                     Your birth year is encrypted using FHE (Fully Homomorphic
@@ -1343,8 +1309,8 @@ export function StepCreateAccount() {
                     revealing your age
                   </li>
                 </>
-              ) : null}
-              {hasIdentityImages ? (
+              )}
+              {!!hasIdentityImages && (
                 <>
                   <li>
                     Your ID document is processed to generate cryptographic
@@ -1355,7 +1321,7 @@ export function StepCreateAccount() {
                     both are deleted
                   </li>
                 </>
-              ) : null}
+              )}
               <li>
                 Only commitments, proofs, signed claims, encrypted attributes,
                 and a passkey-sealed profile are stored - no plaintext PII is
@@ -1364,6 +1330,17 @@ export function StepCreateAccount() {
             </ul>
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Only show controls when idle and not submitting */}
+      {status === "idle" && !isSubmitting && (
+        <StepperControls
+          disableNext={!supportStatus?.supported}
+          isSubmitting={isSubmitting}
+          nextLabel="Create Account with Passkey"
+          onNext={handleCreateAccount}
+          stepper={stepper}
+        />
       )}
     </div>
   );

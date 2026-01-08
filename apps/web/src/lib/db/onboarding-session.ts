@@ -93,9 +93,16 @@ interface WizardStateResult {
 }
 
 /**
- * Set wizard navigation cookie (sessionId + step only)
+ * Set wizard cookie.
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
+ * The Next.js cookies() API doesn't work in tRPC's fetch adapter context.
+ * See: src/app/api/trpc/__tests__/route.test.ts for details.
  */
-async function setWizardCookie(state: WizardNavState): Promise<void> {
+async function setWizardCookie(
+  state: WizardNavState,
+  resHeaders?: Headers
+): Promise<void> {
   const secret = await getSecret();
 
   const token = await new EncryptJWT({
@@ -107,20 +114,37 @@ async function setWizardCookie(state: WizardNavState): Promise<void> {
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .encrypt(secret);
 
-  const cookieStore = await cookies();
   // Only set Secure flag when using HTTPS. This allows running production builds
   // on localhost over HTTP for testing (e.g., docker-compose with NODE_ENV=production).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const isHttps = appUrl.startsWith("https://");
   const useSecureCookie = process.env.NODE_ENV === "production" && isHttps;
 
-  cookieStore.set(WIZARD_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: useSecureCookie,
-    sameSite: "lax",
-    maxAge: SESSION_TTL_SECONDS,
-    path: "/",
-  });
+  const cookieValue = [
+    `${WIZARD_COOKIE_NAME}=${token}`,
+    "HttpOnly",
+    useSecureCookie ? "Secure" : "",
+    "SameSite=Lax",
+    `Max-Age=${SESSION_TTL_SECONDS}`,
+    "Path=/",
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+  if (resHeaders) {
+    // tRPC context - use resHeaders which will be merged into response
+    resHeaders.append("Set-Cookie", cookieValue);
+  } else {
+    // Server Actions/Route Handlers - use Next.js cookies() API
+    const cookieStore = await cookies();
+    cookieStore.set(WIZARD_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: useSecureCookie,
+      sameSite: "lax",
+      maxAge: SESSION_TTL_SECONDS,
+      path: "/",
+    });
+  }
 }
 
 /**
@@ -173,11 +197,35 @@ async function getWizardNavStateFromCookieHeader(
 }
 
 /**
- * Clear wizard cookie
+ * Clear wizard cookie.
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
+ * The Next.js cookies() API doesn't work in tRPC's fetch adapter context.
  */
-export async function clearWizardCookie(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(WIZARD_COOKIE_NAME);
+export async function clearWizardCookie(resHeaders?: Headers): Promise<void> {
+  // Only set Secure flag when using HTTPS
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const isHttps = appUrl.startsWith("https://");
+  const useSecureCookie = process.env.NODE_ENV === "production" && isHttps;
+
+  if (resHeaders) {
+    // tRPC context - use resHeaders to expire the cookie
+    const cookieValue = [
+      `${WIZARD_COOKIE_NAME}=`,
+      "HttpOnly",
+      useSecureCookie ? "Secure" : "",
+      "SameSite=Lax",
+      "Max-Age=0", // Expire immediately
+      "Path=/",
+    ]
+      .filter(Boolean)
+      .join("; ");
+    resHeaders.append("Set-Cookie", cookieValue);
+  } else {
+    // Server Actions/Route Handlers - use Next.js cookies() API
+    const cookieStore = await cookies();
+    cookieStore.delete(WIZARD_COOKIE_NAME);
+  }
 }
 
 /**
@@ -185,12 +233,15 @@ export async function clearWizardCookie(): Promise<void> {
  *
  * @param sessionId - Session ID (generated if not provided)
  * @param state - Wizard state to save (step)
- * @param pii - Optional PII data to encrypt and store
+ * @param resHeaders - Response headers for tRPC context (required for cookie setting)
  * @returns The session including its ID
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
  */
 export async function saveWizardState(
   sessionId: string | undefined,
-  state: { step: number }
+  state: { step: number },
+  resHeaders?: Headers
 ): Promise<OnboardingSession> {
   // Save to database (generates sessionId if not provided)
   const session = await upsertOnboardingSession({
@@ -199,7 +250,10 @@ export async function saveWizardState(
   });
 
   // Set navigation cookie with sessionId
-  await setWizardCookie({ sessionId: session.id, step: state.step });
+  await setWizardCookie(
+    { sessionId: session.id, step: state.step },
+    resHeaders
+  );
 
   return session;
 }
@@ -241,6 +295,8 @@ export async function loadWizardState(): Promise<WizardStateResult> {
 
 /**
  * Update wizard step and verification flags
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
  */
 export async function updateWizardProgress(
   sessionId: string,
@@ -252,7 +308,8 @@ export async function updateWizardProgress(
     keysSecured?: boolean;
     documentHash?: string;
     identityDraftId?: string | null;
-  }
+  },
+  resHeaders?: Headers
 ): Promise<void> {
   const previousSession = await getOnboardingSessionById(sessionId);
   const previousStep = previousSession?.step ?? null;
@@ -288,17 +345,22 @@ export async function updateWizardProgress(
 
   // Update cookie if step changed
   if (step !== undefined) {
-    await setWizardCookie({ sessionId, step });
+    await setWizardCookie({ sessionId, step }, resHeaders);
   }
 }
 
 /**
  * Complete onboarding - delete session data
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
  */
-export async function completeOnboarding(sessionId: string): Promise<void> {
+export async function completeOnboarding(
+  sessionId: string,
+  resHeaders?: Headers
+): Promise<void> {
   await deleteOnboardingSessionById(sessionId);
   addSpanEvent("onboarding.complete", {});
-  await clearWizardCookie();
+  await clearWizardCookie(resHeaders);
 }
 
 // ============================================================================
@@ -334,8 +396,8 @@ const STEP_REQUIREMENTS: Record<string, StepRequirements> = {
   "process-document": { minStep: 1 },
   "liveness-session": { minStep: 2, requiredFields: ["documentProcessed"] },
   "liveness-verify": { minStep: 2, requiredFields: ["documentProcessed"] },
-  "skip-liveness": { minStep: 2, requiredFields: ["documentProcessed"] },
   "face-match": { minStep: 2, requiredFields: ["documentProcessed"] },
+  "secure-keys": { minStep: 4, requiredFields: ["documentProcessed"] },
   // Complete requires document, liveness can be verified OR skipped
   complete: {
     minStep: 5,
@@ -460,10 +522,14 @@ export async function getSessionFromCookieHeader(
  *
  * @param sessionId - Session ID
  * @param targetStep - Step to reset to (1-5)
+ * @param resHeaders - Response headers for tRPC context
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
  */
 export async function resetToStep(
   sessionId: string,
-  targetStep: OnboardingStep
+  targetStep: OnboardingStep,
+  resHeaders?: Headers
 ): Promise<void> {
   const updates: {
     step: number;
@@ -492,17 +558,15 @@ export async function resetToStep(
   }
   // Step 3+ doesn't reset anything else (liveness is the last verification)
 
-  await updateWizardProgress(sessionId, updates);
+  await updateWizardProgress(sessionId, updates, resHeaders);
 }
 
 /**
  * Mark liveness as skipped (alternative to completing liveness verification)
  *
  * @param sessionId - Session ID
+ * @param resHeaders - Response headers for tRPC context
+ *
+ * IMPORTANT: When called from tRPC handlers, you MUST pass resHeaders from ctx.
  */
-export async function skipLiveness(sessionId: string): Promise<void> {
-  await updateWizardProgress(sessionId, {
-    // Skip step 3 (liveness challenges) and proceed to the final review step.
-    step: 4,
-  });
-}
+// (No skipLiveness helper; liveness completion is recorded via identity.prepareLiveness.)

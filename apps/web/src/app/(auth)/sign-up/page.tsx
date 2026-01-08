@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-import { Wizard } from "@/components/onboarding/wizard";
-import { WizardProvider } from "@/components/onboarding/wizard-provider";
+import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import {
   Card,
   CardContent,
@@ -26,9 +25,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <WizardProvider forceReset={fresh === "1"}>
-          <Wizard />
-        </WizardProvider>
+        <OnboardingWizard forceReset={fresh === "1"} />
         <div className="mt-6 text-center text-muted-foreground text-sm">
           Already have an account?{" "}
           <Link

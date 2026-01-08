@@ -38,7 +38,7 @@ interface SidebarContextProps {
   setOpen: (open: boolean) => void;
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
-  isMobile: boolean;
+  isMobile: boolean | undefined;
   toggleSidebar: () => void;
 }
 
@@ -179,6 +179,27 @@ function Sidebar({
         {...props}
       >
         {children}
+      </div>
+    );
+  }
+
+  // During SSR/initial hydration, render skeleton to prevent layout flash
+  if (isMobile === undefined) {
+    return (
+      <div
+        className={cn(
+          "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
+          className
+        )}
+        data-slot="sidebar"
+        style={
+          {
+            "--sidebar-width": SIDEBAR_WIDTH,
+          } as React.CSSProperties
+        }
+        {...props}
+      >
+        <Skeleton className="h-full w-full" />
       </div>
     );
   }

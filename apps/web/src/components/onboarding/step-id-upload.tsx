@@ -7,12 +7,6 @@
  * - Sends to OCR service via tRPC for MRZ/visual zone extraction
  * - Displays extracted data for user verification
  * - Provides error recovery suggestions for common issues
- *
- * Processing flow:
- * 1. User uploads/drops image
- * 2. Image resized to max 1800px
- * 3. OCR extracts document data
- * 4. Display verification status with extracted fields
  */
 "use client";
 
@@ -41,8 +35,9 @@ import { trpc } from "@/lib/trpc/client";
 import { resizeImageFile } from "@/lib/utils/image";
 import { cn } from "@/lib/utils/utils";
 
-import { WizardNavigation } from "../wizard-navigation";
-import { useWizard } from "../wizard-provider";
+import { useOnboardingStore } from "./onboarding-store";
+import { useStepper } from "./stepper-context";
+import { StepperControls } from "./stepper-ui";
 
 type ProcessingState =
   | "idle"
@@ -51,10 +46,8 @@ type ProcessingState =
   | "verified"
   | "rejected";
 
-/** Timeout for OCR processing before showing error (45 seconds). */
 const PROCESSING_TIMEOUT = 45_000;
 
-/** User-friendly recovery suggestions keyed by validation issue. */
 const ERROR_RECOVERY_TIPS: Record<string, string> = {
   document_blurry:
     "Hold your camera steady and ensure the document is in focus before capturing.",
@@ -75,31 +68,30 @@ const ERROR_RECOVERY_TIPS: Record<string, string> = {
 };
 
 export function StepIdUpload() {
-  const { state, updateData, nextStep, updateServerProgress, reset } =
-    useWizard();
+  const stepper = useStepper();
+  const store = useOnboardingStore();
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(
-    state.data.idDocument?.name || null
+    store.idDocument?.name || null
   );
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>(
-    state.data.documentResult ? "verified" : "idle"
+    store.documentResult ? "verified" : "idle"
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Generate preview URL when file is selected
   useEffect(() => {
-    if (state.data.idDocument?.type.startsWith("image/")) {
-      const url = URL.createObjectURL(state.data.idDocument);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (store.idDocument?.type.startsWith("image/")) {
+      const url = URL.createObjectURL(store.idDocument);
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
     return;
-  }, [state.data.idDocument]);
+  }, [store.idDocument]);
 
-  // Timeout for long-running document processing
+  // Timeout for long-running processing
   useEffect(() => {
     if (processingState !== "converting" && processingState !== "processing") {
       return;
@@ -148,7 +140,6 @@ export function StepIdUpload() {
       }
 
       try {
-        // Resize + compress before upload to speed up OCR processing
         const { file: resizedFile, dataUrl } = await resizeImageFile(file, {
           maxWidth: 1800,
           maxHeight: 1800,
@@ -156,16 +147,15 @@ export function StepIdUpload() {
         });
 
         setFileName(resizedFile.name);
-        updateData({ idDocument: resizedFile, documentResult: null });
+        store.set({ idDocument: resizedFile, documentResult: null });
         setProcessingState("converting");
 
-        updateData({ idDocumentBase64: dataUrl });
+        store.set({ idDocumentBase64: dataUrl });
         setProcessingState("processing");
 
-        // Process with OCR + draft creation
         const response = await processDocument(dataUrl);
         const result = response.documentResult as DocumentResult;
-        updateData({
+        store.set({
           documentResult: result,
           identityDraftId: response.draftId,
           identityDocumentId: response.documentId ?? null,
@@ -178,13 +168,16 @@ export function StepIdUpload() {
           const errorMsg =
             "This document appears to be already in use. Please contact support if you believe this is a mistake.";
           setUploadError(errorMsg);
-          toast.error("Duplicate document detected", {
-            description: errorMsg,
-          });
-          await updateServerProgress({
+          toast.error("Duplicate document detected", { description: errorMsg });
+          store.set({
             documentProcessed: false,
-            step: 2,
-            identityDraftId: response.draftId,
+            userSalt: null,
+            extractedName: null,
+            extractedDOB: null,
+            extractedDocNumber: null,
+            extractedNationality: null,
+            extractedNationalityCode: null,
+            extractedExpirationDate: null,
           });
           return;
         }
@@ -194,15 +187,19 @@ export function StepIdUpload() {
           toast.error("Document expired", {
             description: ERROR_RECOVERY_TIPS.document_expired,
           });
-          await updateServerProgress({
+          store.set({
             documentProcessed: false,
-            step: 2,
-            identityDraftId: response.draftId,
+            userSalt: null,
+            extractedName: null,
+            extractedDOB: null,
+            extractedDocNumber: null,
+            extractedNationality: null,
+            extractedNationalityCode: null,
+            extractedExpirationDate: null,
           });
           return;
         }
 
-        // Check if document is valid (recognized type with extracted data)
         const isValid =
           response.isDocumentValid ??
           (result.documentType !== "unknown" &&
@@ -214,15 +211,9 @@ export function StepIdUpload() {
           toast.success("Document verified!", {
             description: `${DOCUMENT_TYPE_LABELS[result.documentType]} detected successfully.`,
           });
-          // Mark document as processed on server (required for step validation)
-          await updateServerProgress({
-            documentProcessed: true,
-            step: 2,
-            identityDraftId: response.draftId,
-          });
-          // Store extracted data in wizard state for later use
+          store.set({ documentProcessed: true });
           if (result.extractedData) {
-            updateData({
+            store.set({
               extractedName: result.extractedData.fullName || null,
               extractedDOB: result.extractedData.dateOfBirth || null,
               extractedDocNumber: result.extractedData.documentNumber || null,
@@ -236,6 +227,16 @@ export function StepIdUpload() {
           }
         } else {
           setProcessingState("rejected");
+          store.set({
+            documentProcessed: false,
+            userSalt: null,
+            extractedName: null,
+            extractedDOB: null,
+            extractedDocNumber: null,
+            extractedNationality: null,
+            extractedNationalityCode: null,
+            extractedExpirationDate: null,
+          });
           toast.error("Document not accepted", {
             description:
               result.documentType === "unknown"
@@ -247,25 +248,23 @@ export function StepIdUpload() {
         const errorMsg =
           error instanceof Error ? error.message : "Failed to process document";
 
-        // Check if this is a session error (FORBIDDEN = session expired)
         if (
           errorMsg.includes("onboarding session") ||
           errorMsg.includes("start from the beginning")
         ) {
           toast.info("Session expired. Starting fresh…");
           setProcessingState("idle");
-          reset();
+          store.reset();
+          stepper.goTo("email");
           return;
         }
 
         setUploadError(errorMsg);
-        toast.error("Processing failed", {
-          description: errorMsg,
-        });
+        toast.error("Processing failed", { description: errorMsg });
         setProcessingState("idle");
       }
     },
-    [updateData, processDocument, updateServerProgress, reset]
+    [processDocument, store, stepper]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -285,10 +284,8 @@ export function StepIdUpload() {
       setDragActive(false);
 
       if (e.dataTransfer.files?.[0]) {
-        const file = e.dataTransfer.files[0];
-        handleFile(file).catch(() => {
-          // Error handled via setOcrError() internally
-        });
+        // Errors handled internally by handleFile with toast notifications
+        handleFile(e.dataTransfer.files[0]).catch(() => undefined);
       }
     },
     [handleFile]
@@ -296,9 +293,8 @@ export function StepIdUpload() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      handleFile(e.target.files[0]).catch(() => {
-        // Error handled via setOcrError() internally
-      });
+      // Errors handled internally by handleFile with toast notifications
+      handleFile(e.target.files[0]).catch(() => undefined);
     }
   };
 
@@ -307,7 +303,7 @@ export function StepIdUpload() {
     setFileName(null);
     setPreviewUrl(null);
     setProcessingState("idle");
-    updateData({
+    store.set({
       idDocument: null,
       idDocumentBase64: null,
       documentResult: null,
@@ -321,18 +317,18 @@ export function StepIdUpload() {
     });
   };
 
-  const documentResult = state.data.documentResult;
+  const documentResult = store.documentResult as DocumentResult | null;
   const isVerified = processingState === "verified" && Boolean(documentResult);
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (!isVerified) {
       const errorMsg = "Please upload a clear photo of your ID to continue.";
       setUploadError(errorMsg);
       toast.error("ID required", { description: errorMsg });
       return;
     }
-    nextStep();
-  };
+    stepper.next();
+  }, [isVerified, stepper]);
 
   return (
     <div className="space-y-6">
@@ -351,11 +347,10 @@ export function StepIdUpload() {
         </Alert>
       ) : null}
 
-      {/* Processing indicator with skeleton */}
+      {/* Processing indicator */}
       {(processingState === "converting" ||
         processingState === "processing") && (
         <div className="fade-in animate-in space-y-4 duration-300">
-          {/* Status header */}
           <div className="flex items-center gap-3 rounded-lg border border-info/30 bg-info/10 p-4 text-info">
             <Spinner className="size-5" />
             <div>
@@ -371,12 +366,10 @@ export function StepIdUpload() {
             </div>
           </div>
 
-          {/* Document preview skeleton */}
           <div className="rounded-lg border bg-muted/30 p-4">
             <Skeleton className="mx-auto h-48 w-full max-w-xs rounded-lg" />
           </div>
 
-          {/* Extracted data skeleton */}
           <div className="space-y-4 rounded-lg border bg-card p-4">
             <div className="flex items-center gap-2">
               <CreditCard className="h-4 w-4 text-muted-foreground" />
@@ -387,16 +380,12 @@ export function StepIdUpload() {
               <Skeleton className="h-4 w-32" />
               <Skeleton className="h-3 w-24" />
               <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-4 w-20" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Verified document display */}
+      {/* Verified document */}
       {processingState === "verified" && documentResult && (
         <div className="space-y-4">
           <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-success">
@@ -418,8 +407,7 @@ export function StepIdUpload() {
             </Button>
           </div>
 
-          {/* Preview */}
-          {previewUrl ? (
+          {!!previewUrl && (
             <div className="rounded-lg border bg-muted/30 p-4">
               <img
                 alt="ID preview"
@@ -429,66 +417,65 @@ export function StepIdUpload() {
                 width={288}
               />
             </div>
-          ) : null}
+          )}
 
-          {/* Extracted data */}
-          {documentResult.extractedData ? (
+          {!!documentResult.extractedData && (
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-3 flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
                 <h4 className="font-medium">Extracted Information</h4>
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {documentResult.extractedData.fullName ? (
+                {!!documentResult.extractedData.fullName && (
                   <>
                     <dt className="text-muted-foreground">Full Name</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.fullName}
                     </dd>
                   </>
-                ) : null}
-                {documentResult.extractedData.documentNumber ? (
+                )}
+                {!!documentResult.extractedData.documentNumber && (
                   <>
                     <dt className="text-muted-foreground">Document Number</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.documentNumber}
                     </dd>
                   </>
-                ) : null}
-                {documentResult.extractedData.dateOfBirth ? (
+                )}
+                {!!documentResult.extractedData.dateOfBirth && (
                   <>
                     <dt className="text-muted-foreground">Date of Birth</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.dateOfBirth}
                     </dd>
                   </>
-                ) : null}
-                {documentResult.extractedData.expirationDate ? (
+                )}
+                {!!documentResult.extractedData.expirationDate && (
                   <>
                     <dt className="text-muted-foreground">Expiration Date</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.expirationDate}
                     </dd>
                   </>
-                ) : null}
-                {documentResult.extractedData.nationality ? (
+                )}
+                {!!documentResult.extractedData.nationality && (
                   <>
                     <dt className="text-muted-foreground">Nationality</dt>
                     <dd className="font-medium">
                       {documentResult.extractedData.nationality}
                     </dd>
                   </>
-                ) : null}
+                )}
               </dl>
               <p className="mt-3 text-muted-foreground text-xs">
                 Confidence: {Math.round(documentResult.confidence * 100)}%
               </p>
             </div>
-          ) : null}
+          )}
         </div>
       )}
 
-      {/* Rejected document display */}
+      {/* Rejected document */}
       {processingState === "rejected" && documentResult && (
         <div className="space-y-4">
           <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
@@ -522,15 +509,12 @@ export function StepIdUpload() {
                   ))}
                 </ul>
               </div>
-
-              {/* Error recovery suggestions */}
               <div className="border-t pt-3">
                 <h4 className="mb-2 font-medium text-primary text-sm">
                   How to fix:
                 </h4>
                 <ul className="space-y-2 text-muted-foreground text-sm">
                   {documentResult.validationIssues.map((issue) => {
-                    // Convert issue to key format (e.g., "Document is blurry" -> "document_blurry")
                     const issueKey = issue
                       .toLowerCase()
                       .replace(/\s+/g, "_")
@@ -554,7 +538,7 @@ export function StepIdUpload() {
             </div>
           )}
 
-          {previewUrl ? (
+          {!!previewUrl && (
             <div className="rounded-lg border bg-muted/30 p-4">
               <img
                 alt="ID preview"
@@ -564,7 +548,7 @@ export function StepIdUpload() {
                 width={192}
               />
             </div>
-          ) : null}
+          )}
 
           <Button className="w-full" onClick={handleRemove} variant="outline">
             Try a Different Document
@@ -572,7 +556,7 @@ export function StepIdUpload() {
         </div>
       )}
 
-      {/* PDF preview (not supported for AI) */}
+      {/* PDF preview (not supported) */}
       {fileName && !previewUrl && processingState === "idle" && (
         <div className="relative rounded-lg border bg-muted/30 p-4">
           <Button
@@ -594,7 +578,7 @@ export function StepIdUpload() {
         </div>
       )}
 
-      {/* Upload area - only show if no file selected or rejected */}
+      {/* Upload area */}
       {!fileName && processingState === "idle" && (
         <Button
           aria-describedby="id-upload-help"
@@ -637,7 +621,11 @@ export function StepIdUpload() {
         </AlertDescription>
       </Alert>
 
-      <WizardNavigation disableNext={!isVerified} onNext={handleSubmit} />
+      <StepperControls
+        disableNext={!isVerified}
+        onNext={handleSubmit}
+        stepper={stepper}
+      />
     </div>
   );
 }
