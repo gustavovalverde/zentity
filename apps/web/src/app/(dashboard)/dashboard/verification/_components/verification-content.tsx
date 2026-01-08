@@ -280,26 +280,30 @@ export async function VerificationContent({
               </div>
             </div>
 
-            <div className="rounded-lg border p-4">
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-info" />
-                <span className="font-medium">Proof Performance</span>
-              </div>
-              <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-                <div>
-                  <p className="text-muted-foreground">Generation Time</p>
-                  <p className="font-medium font-mono">
-                    {proof.generationTimeMs !== null
-                      ? `${proof.generationTimeMs}ms`
-                      : "N/A"}
-                  </p>
+            <Card className="shadow-none">
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-info" />
+                  <CardTitle className="text-base">Proof Performance</CardTitle>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Proof Type</p>
-                  <p className="font-medium">UltraHonk (zk-SNARK)</p>
+              </CardHeader>
+              <CardContent className="px-4 pt-0 pb-4">
+                <div className="grid gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <p className="text-muted-foreground">Generation Time</p>
+                    <p className="font-medium font-mono">
+                      {proof.generationTimeMs !== null
+                        ? `${proof.generationTimeMs}ms`
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Proof Type</p>
+                    <p className="font-medium">UltraHonk (zk-SNARK)</p>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </CardContent>
         </Card>
       ) : null}

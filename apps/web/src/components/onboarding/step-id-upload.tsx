@@ -351,20 +351,20 @@ export function StepIdUpload() {
       {(processingState === "converting" ||
         processingState === "processing") && (
         <div className="fade-in animate-in space-y-4 duration-300">
-          <div className="flex items-center gap-3 rounded-lg border border-info/30 bg-info/10 p-4 text-info">
+          <Alert variant="info">
             <Spinner className="size-5" />
-            <div>
+            <AlertDescription>
               <p className="font-medium">
                 {processingState === "converting"
                   ? "Preparing document…"
                   : "Analyzing document…"}
               </p>
-              <p className="text-info/80 text-sm">
+              <p className="text-sm">
                 {processingState === "processing" &&
                   "Verifying your document securely"}
               </p>
-            </div>
-          </div>
+            </AlertDescription>
+          </Alert>
 
           <div className="rounded-lg border bg-muted/30 p-4">
             <Skeleton className="mx-auto h-48 w-full max-w-xs rounded-lg" />
@@ -388,14 +388,14 @@ export function StepIdUpload() {
       {/* Verified document */}
       {processingState === "verified" && documentResult && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4 text-success">
+          <Alert className="flex items-center" variant="success">
             <CheckCircle2 className="h-5 w-5" />
-            <div>
+            <AlertDescription className="flex-1">
               <p className="font-medium">Document Verified</p>
-              <p className="text-sm text-success/80">
+              <p className="text-sm">
                 {DOCUMENT_TYPE_LABELS[documentResult.documentType]} detected
               </p>
-            </div>
+            </AlertDescription>
             <Button
               className="ml-auto h-8 w-8"
               onClick={handleRemove}
@@ -405,7 +405,7 @@ export function StepIdUpload() {
               <X className="h-4 w-4" />
               <span className="sr-only">Remove file</span>
             </Button>
-          </div>
+          </Alert>
 
           {!!previewUrl && (
             <div className="rounded-lg border bg-muted/30 p-4">
@@ -478,16 +478,16 @@ export function StepIdUpload() {
       {/* Rejected document */}
       {processingState === "rejected" && documentResult && (
         <div className="space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
+          <Alert className="flex items-center" variant="destructive">
             <AlertCircle className="h-5 w-5" />
-            <div className="flex-1">
+            <AlertDescription className="flex-1">
               <p className="font-medium">Document Not Accepted</p>
-              <p className="text-destructive/80 text-sm">
+              <p className="text-sm">
                 {documentResult.documentType === "unknown"
                   ? "Unable to identify document type"
                   : "Could not extract required information from document"}
               </p>
-            </div>
+            </AlertDescription>
             <Button
               className="h-8 w-8"
               onClick={handleRemove}
@@ -497,7 +497,7 @@ export function StepIdUpload() {
               <X className="h-4 w-4" />
               <span className="sr-only">Remove file</span>
             </Button>
-          </div>
+          </Alert>
 
           {documentResult.validationIssues.length > 0 && (
             <div className="space-y-4 rounded-lg border bg-muted/30 p-4">

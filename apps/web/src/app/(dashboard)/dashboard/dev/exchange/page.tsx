@@ -314,15 +314,19 @@ export default function ExchangeDemoPage() {
                   This demo simulates a crypto exchange requesting identity
                   verification from a Zentity user.
                 </p>
-                <div className="mb-4 rounded border bg-muted/40 p-4">
-                  <h3 className="mb-2 font-medium">The Flow:</h3>
-                  <ol className="list-inside list-decimal space-y-1 text-muted-foreground text-sm">
-                    <li>Exchange generates RSA keypair</li>
-                    <li>User consents to share data</li>
-                    <li>Client encrypts disclosure package to RP</li>
-                    <li>Exchange decrypts PII and verifies proofs</li>
-                  </ol>
-                </div>
+                <Card className="mb-4 bg-muted/40 shadow-none">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-base">The Flow:</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pt-0 pb-4">
+                    <ol className="list-inside list-decimal space-y-1 text-muted-foreground text-sm">
+                      <li>Exchange generates RSA keypair</li>
+                      <li>User consents to share data</li>
+                      <li>Client encrypts disclosure package to RP</li>
+                      <li>Exchange decrypts PII and verifies proofs</li>
+                    </ol>
+                  </CardContent>
+                </Card>
                 <Button
                   className="w-full"
                   disabled={isLoading}
@@ -347,12 +351,18 @@ export default function ExchangeDemoPage() {
                     Exchange keypair generated
                   </AlertDescription>
                 </Alert>
-                <div className="mb-4 rounded border bg-muted/40 p-4">
-                  <h3 className="mb-2 font-medium">Exchange Public Key:</h3>
-                  <code className="block break-all text-muted-foreground text-xs">
-                    {exchangeKeypair?.publicKey.substring(0, 100)}…
-                  </code>
-                </div>
+                <Card className="mb-4 bg-muted/40 shadow-none">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-base">
+                      Exchange Public Key:
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pt-0 pb-4">
+                    <code className="block break-all text-muted-foreground text-xs">
+                      {exchangeKeypair?.publicKey.substring(0, 100)}…
+                    </code>
+                  </CardContent>
+                </Card>
                 <p className="mb-4 text-muted-foreground text-sm">
                   The exchange sends their public key. The client encrypts the
                   disclosure package to this key after passkey consent.
@@ -476,9 +486,11 @@ export default function ExchangeDemoPage() {
                     PII decrypted successfully
                   </AlertDescription>
                 </Alert>
-                <div className="mb-4 rounded border bg-muted/40 p-4">
-                  <h3 className="mb-2 font-medium">Decrypted PII:</h3>
-                  <div className="space-y-1 text-sm">
+                <Card className="mb-4 bg-muted/40 shadow-none">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-base">Decrypted PII:</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1 px-4 pt-0 pb-4 text-sm">
                     <p>
                       <span className="text-muted-foreground">Name:</span>{" "}
                       {decryptedPii?.fullName}
@@ -497,8 +509,8 @@ export default function ExchangeDemoPage() {
                       <span className="text-muted-foreground">Document:</span>{" "}
                       {decryptedPii?.documentNumber}
                     </p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
                 <Button
                   className="w-full"
                   disabled={isLoading}
@@ -576,34 +588,36 @@ export default function ExchangeDemoPage() {
             {/* Zentity */}
             <div>
               <h3 className="mb-2 font-medium text-info">Zentity Stores:</h3>
-              <div className="space-y-1 rounded border bg-muted/40 p-3 text-sm">
-                <p className="text-success">
-                  SHA256(name + salt){" "}
-                  <span className="text-muted-foreground">commitment</span>
-                </p>
-                <p className="text-success">
-                  SHA256(doc_number + salt){" "}
-                  <span className="text-muted-foreground">commitment</span>
-                </p>
-                <p className="text-success">
-                  FHE(birth_year_offset){" "}
-                  <span className="text-muted-foreground">encrypted</span>
-                </p>
-                <p className="text-success">
-                  user_salt{" "}
-                  <span className="text-muted-foreground">
-                    used for GDPR erasure
-                  </span>
-                </p>
-                <p className="text-destructive line-through">
-                  Document image{" "}
-                  <span className="text-muted-foreground">never stored</span>
-                </p>
-                <p className="text-destructive line-through">
-                  Face embeddings{" "}
-                  <span className="text-muted-foreground">never stored</span>
-                </p>
-              </div>
+              <Card className="bg-muted/40 shadow-none">
+                <CardContent className="space-y-1 p-3 text-sm">
+                  <p className="text-success">
+                    SHA256(name + salt){" "}
+                    <span className="text-muted-foreground">commitment</span>
+                  </p>
+                  <p className="text-success">
+                    SHA256(doc_number + salt){" "}
+                    <span className="text-muted-foreground">commitment</span>
+                  </p>
+                  <p className="text-success">
+                    FHE(birth_year_offset){" "}
+                    <span className="text-muted-foreground">encrypted</span>
+                  </p>
+                  <p className="text-success">
+                    user_salt{" "}
+                    <span className="text-muted-foreground">
+                      used for GDPR erasure
+                    </span>
+                  </p>
+                  <p className="text-destructive line-through">
+                    Document image{" "}
+                    <span className="text-muted-foreground">never stored</span>
+                  </p>
+                  <p className="text-destructive line-through">
+                    Face embeddings{" "}
+                    <span className="text-muted-foreground">never stored</span>
+                  </p>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Exchange */}
@@ -611,36 +625,40 @@ export default function ExchangeDemoPage() {
               <h3 className="mb-2 font-medium text-info">
                 Exchange Receives & Stores:
               </h3>
-              <div className="space-y-1 rounded border bg-muted/40 p-3 text-sm">
-                <p className="text-warning">
-                  Full Name{" "}
-                  <span className="text-muted-foreground">
-                    regulatory requirement
-                  </span>
-                </p>
-                <p className="text-warning">
-                  Date of Birth{" "}
-                  <span className="text-muted-foreground">
-                    regulatory requirement
-                  </span>
-                </p>
-                <p className="text-warning">
-                  Nationality{" "}
-                  <span className="text-muted-foreground">
-                    regulatory requirement
-                  </span>
-                </p>
-                <p className="text-success">
-                  ZK Proofs{" "}
-                  <span className="text-muted-foreground">
-                    cryptographic verification
-                  </span>
-                </p>
-                <p className="text-destructive line-through">
-                  Biometrics{" "}
-                  <span className="text-muted-foreground">never disclosed</span>
-                </p>
-              </div>
+              <Card className="bg-muted/40 shadow-none">
+                <CardContent className="space-y-1 p-3 text-sm">
+                  <p className="text-warning">
+                    Full Name{" "}
+                    <span className="text-muted-foreground">
+                      regulatory requirement
+                    </span>
+                  </p>
+                  <p className="text-warning">
+                    Date of Birth{" "}
+                    <span className="text-muted-foreground">
+                      regulatory requirement
+                    </span>
+                  </p>
+                  <p className="text-warning">
+                    Nationality{" "}
+                    <span className="text-muted-foreground">
+                      regulatory requirement
+                    </span>
+                  </p>
+                  <p className="text-success">
+                    ZK Proofs{" "}
+                    <span className="text-muted-foreground">
+                      cryptographic verification
+                    </span>
+                  </p>
+                  <p className="text-destructive line-through">
+                    Biometrics{" "}
+                    <span className="text-muted-foreground">
+                      never disclosed
+                    </span>
+                  </p>
+                </CardContent>
+              </Card>
             </div>
 
             {/* Key insight */}
