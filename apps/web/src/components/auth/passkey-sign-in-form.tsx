@@ -106,18 +106,12 @@ export function PasskeySignInForm() {
         size="lg"
         type="button"
       >
-        {status === "authenticating" && (
-          <>
-            <Spinner className="mr-2" size="sm" />
-            Signing in...
-          </>
+        {isLoading ? (
+          <Spinner aria-hidden="true" className="mr-2" size="sm" />
+        ) : (
+          <KeyRound className="mr-2 h-4 w-4" />
         )}
-        {status === "idle" && (
-          <>
-            <KeyRound className="mr-2 h-4 w-4" />
-            Sign in with Passkey
-          </>
-        )}
+        Sign in with Passkey
       </Button>
 
       {prfSupported === false && (

@@ -403,7 +403,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
         errorMsg.includes("onboarding session") ||
         errorMsg.includes("start from the beginning")
       ) {
-        toast.info("Session expired. Starting fresh...");
+        toast.info("Session expired. Starting fresh…");
         setChallengeState("idle");
         onSessionErrorRef.current?.();
         return;
@@ -875,7 +875,7 @@ export function useSelfieLivenessFlow(args: UseSelfieLivenessFlowArgs) {
   useEffect(() => {
     if (challengeState === "challenge_passed" && currentChallenge) {
       toast.success(`${currentChallenge.title} passed!`, {
-        description: "Moving to next challenge...",
+        description: "Moving to next challenge…",
         duration: CHALLENGE_PASSED_DELAY,
       });
     }

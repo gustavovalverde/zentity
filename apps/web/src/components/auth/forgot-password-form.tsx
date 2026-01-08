@@ -104,13 +104,16 @@ export function ForgotPasswordForm() {
                 <FieldLabel htmlFor={emailId}>Email</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
+                  autoCapitalize="none"
                   autoComplete="email"
                   disabled={isLoading}
                   id={emailId}
+                  inputMode="email"
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="you@example.com"
+                  spellCheck={false}
                   type="email"
                   value={field.state.value}
                 />
@@ -122,14 +125,8 @@ export function ForgotPasswordForm() {
       </FieldGroup>
 
       <Button className="w-full" disabled={isLoading} type="submit">
-        {isLoading ? (
-          <>
-            <Spinner className="mr-2" />
-            Sending...
-          </>
-        ) : (
-          "Send Reset Link"
-        )}
+        {isLoading ? <Spinner aria-hidden="true" className="mr-2" /> : null}
+        Send Reset Link
       </Button>
     </form>
   );

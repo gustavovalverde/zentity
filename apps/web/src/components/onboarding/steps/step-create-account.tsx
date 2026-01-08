@@ -5,7 +5,6 @@
 import {
   ArrowLeftRight,
   Check,
-  Edit2,
   KeyRound,
   ShieldCheck,
   TriangleAlert,
@@ -18,8 +17,6 @@ import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Item,
   ItemActions,
@@ -65,7 +62,10 @@ import {
 } from "@/lib/crypto/profile-secret";
 import { cachePasskeyUnlock } from "@/lib/crypto/secret-vault";
 import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
-import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
+import {
+  calculateBirthYearOffsetFromYear,
+  parseBirthYearFromDob,
+} from "@/lib/identity/birth-year";
 import { countryCodeToNumeric } from "@/lib/identity/compliance";
 import {
   type FaceMatchResult,
@@ -95,8 +95,6 @@ type SecureStatus =
   | "storing-proofs"
   | "complete"
   | "error";
-
-const YEAR_PATTERN = /\b(\d{4})\b/;
 
 interface StepIndicatorProps {
   label: string;
@@ -145,18 +143,6 @@ function StepIndicator({ label, status, icon }: StepIndicatorProps) {
       </span>
     </div>
   );
-}
-
-function parseBirthYear(value: string | null | undefined): number | null {
-  if (!value) {
-    return null;
-  }
-  const match = value.match(YEAR_PATTERN);
-  if (!match) {
-    return null;
-  }
-  const year = Number(match[1]);
-  return Number.isFinite(year) ? year : null;
 }
 
 function parseDateToInt(value: string | null | undefined): number | null {
@@ -264,7 +250,6 @@ async function completeFheEnrollment(enrollmentPayload: {
 }
 
 function buildProfilePayload(args: {
-  editedName: string;
   extractedName: string | null;
   extractedDOB: string | null;
   extractedDocNumber: string | null;
@@ -275,11 +260,12 @@ function buildProfilePayload(args: {
   documentOrigin: string | null;
   userSalt: string | null;
 }): ProfileSecretPayload | null {
-  const firstName = getFirstPart(args.editedName || args.extractedName) || null;
-  const birthYear = parseBirthYear(args.extractedDOB);
+  const firstName = getFirstPart(args.extractedName) || null;
+  const birthYear =
+    parseBirthYearFromDob(args.extractedDOB ?? undefined) ?? null;
   const expiryDateInt = parseDateToInt(args.extractedExpirationDate);
   const nationalityCode = args.extractedNationalityCode || null;
-  const fullName = args.editedName || args.extractedName || null;
+  const fullName = args.extractedName || null;
   const dateOfBirth = args.extractedDOB || null;
   const documentNumber = args.extractedDocNumber || null;
   const nationality = args.extractedNationality || null;
@@ -333,10 +319,6 @@ export function StepCreateAccount() {
   const { state, updateData, setSubmitting, reset, updateServerProgress } =
     useWizard();
   const { data } = state;
-
-  // Review state
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState(data.extractedName || "");
 
   // Face matching state
   const [faceMatchStatus, setFaceMatchStatus] =
@@ -541,11 +523,6 @@ export function StepCreateAccount() {
     }
   }, [status]);
 
-  const handleSaveName = () => {
-    updateData({ extractedName: editedName || null });
-    setIsEditingName(false);
-  };
-
   const handleCreateAccount = async () => {
     if (!supportStatus?.supported) {
       return;
@@ -556,7 +533,6 @@ export function StepCreateAccount() {
 
     try {
       const profilePayload = buildProfilePayload({
-        editedName,
         extractedName: data.extractedName,
         extractedDOB: data.extractedDOB,
         extractedDocNumber: data.extractedDocNumber,
@@ -682,7 +658,9 @@ export function StepCreateAccount() {
 
         setStatus("finalizing-identity");
         const profileBirthYear =
-          profilePayload?.birthYear ?? parseBirthYear(data.extractedDOB);
+          profilePayload?.birthYear ??
+          parseBirthYearFromDob(data.extractedDOB ?? undefined) ??
+          null;
         const birthYearOffset =
           calculateBirthYearOffsetFromYear(profileBirthYear);
         const profileNationalityCode =
@@ -810,9 +788,10 @@ export function StepCreateAccount() {
           const ageClaimHash = ocrData.claimHashes?.age;
           const docValidityClaimHash = ocrData.claimHashes?.docValidity;
           const nationalityClaimHash = ocrData.claimHashes?.nationality;
-
           const birthYear =
-            profilePayload?.birthYear ?? parseBirthYear(data.extractedDOB);
+            profilePayload?.birthYear ??
+            parseBirthYearFromDob(data.extractedDOB ?? undefined) ??
+            null;
           const expiryDateInt =
             profilePayload?.expiryDateInt ??
             parseDateToInt(data.extractedExpirationDate);
@@ -1057,38 +1036,8 @@ export function StepCreateAccount() {
             <Item size="sm">
               <ItemContent>
                 <ItemDescription>Name</ItemDescription>
-                {isEditingName ? (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      className="h-8 w-48"
-                      onChange={(e) => setEditedName(e.target.value)}
-                      placeholder="Enter name"
-                      value={editedName}
-                    />
-                    <Button onClick={handleSaveName} size="sm" variant="ghost">
-                      <Check className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <ItemTitle>
-                    {editedName || data.extractedName || "Not extracted"}
-                  </ItemTitle>
-                )}
+                <ItemTitle>{data.extractedName || "Not extracted"}</ItemTitle>
               </ItemContent>
-              {!isEditingName && (
-                <ItemActions>
-                  <Button
-                    onClick={() => {
-                      setEditedName(data.extractedName || "");
-                      setIsEditingName(true);
-                    }}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                </ItemActions>
-              )}
             </Item>
 
             <ItemSeparator />
@@ -1264,7 +1213,7 @@ export function StepCreateAccount() {
 
           {faceMatchStatus === "matching" && (
             <p className="text-center text-muted-foreground text-sm">
-              Comparing faces...
+              Comparing faces…
             </p>
           )}
           {faceMatchStatus === "matched" && (

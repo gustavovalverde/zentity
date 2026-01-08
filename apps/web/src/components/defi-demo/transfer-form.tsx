@@ -33,8 +33,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useFheTransfer } from "@/hooks/fhevm/use-fhe-transfer";
 import { trpcReact } from "@/lib/trpc/client";
 import { getUserFriendlyError } from "@/lib/utils/error-messages";
@@ -55,6 +60,8 @@ export function TransferForm({
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [recipientChecked, setRecipientChecked] = useState(false);
+  const [recipientError, setRecipientError] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
   const { address } = useAppKitAccount();
   const walletAddress = address as `0x${string}` | undefined;
   const utils = trpcReact.useUtils();
@@ -98,8 +105,37 @@ export function TransferForm({
     balanceValue <= BigInt(0);
   const canTransfer = accessGranted && !insufficientFunds;
 
+  const validateRecipient = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "Recipient address is required";
+    }
+    if (!ETH_ADDRESS_PATTERN.test(trimmed)) {
+      return "Enter a valid wallet address";
+    }
+    return null;
+  };
+
+  const validateAmount = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "Amount is required";
+    }
+    const parsed = Number.parseFloat(trimmed);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      return "Amount must be greater than 0";
+    }
+    return null;
+  };
+
   const handleTransfer = async () => {
-    if (!(isValidAddress && amount) || Number.parseFloat(amount) <= 0) {
+    const trimmedRecipient = recipient.trim();
+    const trimmedAmount = amount.trim();
+    const recipientValidation = validateRecipient(trimmedRecipient);
+    const amountValidation = validateAmount(trimmedAmount);
+    setRecipientError(recipientValidation);
+    setAmountError(amountValidation);
+    if (recipientValidation || amountValidation) {
       return;
     }
     let hasFunds = !insufficientFunds;
@@ -115,7 +151,10 @@ export function TransferForm({
       return;
     }
 
-    await transfer(recipient as `0x${string}`, parseTokenAmount(amount));
+    await transfer(
+      trimmedRecipient as `0x${string}`,
+      parseTokenAmount(trimmedAmount)
+    );
   };
 
   // Reset form after successful transfer
@@ -137,6 +176,13 @@ export function TransferForm({
     reset();
     setRecipient("");
     setAmount("");
+    setRecipientError(null);
+    setAmountError(null);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await handleTransfer();
   };
 
   return (
@@ -185,7 +231,10 @@ export function TransferForm({
                     }}
                     variant="outline"
                   >
-                    {isFauceting ? "Topping Up..." : "Top Up Test ETH"}
+                    {isFauceting ? (
+                      <Spinner aria-hidden="true" className="mr-2" />
+                    ) : null}
+                    Top Up Test ETH
                   </Button>
                 ) : null}
               </div>
@@ -197,7 +246,7 @@ export function TransferForm({
               <Alert>
                 <Lock className="h-4 w-4" />
                 <AlertDescription>
-                  Initializing FHE encryption... Please wait.
+                  Initializing FHE encryption… Please wait.
                 </AlertDescription>
               </Alert>
             );
@@ -213,7 +262,7 @@ export function TransferForm({
                     <p className="mt-1 text-xs">
                       {isConfirmed
                         ? "Transaction confirmed. Note: If recipient is not attested, 0 tokens were transferred (silent failure)."
-                        : "Transaction sent. Waiting for confirmation..."}
+                        : "Transaction sent. Waiting for confirmation…"}
                     </p>
                     <a
                       className="mt-2 flex items-center gap-1 text-xs hover:underline"
@@ -238,49 +287,78 @@ export function TransferForm({
           }
 
           return (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="recipient">Recipient Address</Label>
-                <Input
-                  disabled={isPending || !canTransfer}
-                  id="recipient"
-                  onChange={(e) => setRecipient(e.target.value)}
-                  placeholder="0x..."
-                  type="text"
-                  value={recipient}
-                />
-                {isValidAddress && recipientChecked ? (
-                  <div className="flex items-center gap-1 text-xs">
-                    {recipientStatus?.isAttested ? (
-                      <span className="flex items-center gap-1 text-success">
-                        <CheckCircle className="h-3 w-3" />
-                        Recipient is attested
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-warning">
-                        <AlertTriangle className="h-3 w-3" />
-                        Recipient not attested - transfer will be 0
-                      </span>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="transfer-amount">Amount</Label>
-                <div className="flex gap-2">
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <FieldGroup>
+                <Field data-invalid={Boolean(recipientError)}>
+                  <FieldLabel htmlFor="recipient">Recipient Address</FieldLabel>
                   <Input
+                    aria-invalid={Boolean(recipientError)}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    disabled={isPending || !canTransfer}
+                    id="recipient"
+                    inputMode="text"
+                    name="recipient"
+                    onBlur={() =>
+                      setRecipientError(validateRecipient(recipient))
+                    }
+                    onChange={(e) => {
+                      setRecipient(e.target.value);
+                      if (recipientError) {
+                        setRecipientError(null);
+                      }
+                    }}
+                    placeholder="0x…"
+                    spellCheck={false}
+                    type="text"
+                    value={recipient}
+                  />
+                  <FieldError>{recipientError}</FieldError>
+                </Field>
+              </FieldGroup>
+              {isValidAddress && recipientChecked ? (
+                <div className="flex items-center gap-1 text-xs">
+                  {recipientStatus?.isAttested ? (
+                    <span className="flex items-center gap-1 text-success">
+                      <CheckCircle className="h-3 w-3" />
+                      Recipient is attested
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-warning">
+                      <AlertTriangle className="h-3 w-3" />
+                      Recipient not attested - transfer will be 0
+                    </span>
+                  )}
+                </div>
+              ) : null}
+
+              <FieldGroup>
+                <Field data-invalid={Boolean(amountError)}>
+                  <FieldLabel htmlFor="transfer-amount">Amount</FieldLabel>
+                  <Input
+                    aria-invalid={Boolean(amountError)}
+                    autoComplete="off"
                     disabled={isPending || !canTransfer}
                     id="transfer-amount"
+                    inputMode="decimal"
                     min="0"
-                    onChange={(e) => setAmount(e.target.value)}
+                    name="amount"
+                    onBlur={() => setAmountError(validateAmount(amount))}
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      if (amountError) {
+                        setAmountError(null);
+                      }
+                    }}
                     placeholder="10"
+                    spellCheck={false}
                     step="0.01"
                     type="number"
                     value={amount}
                   />
-                </div>
-              </div>
+                  <FieldError>{amountError}</FieldError>
+                </Field>
+              </FieldGroup>
 
               {recipientNotAttested ? (
                 <Alert variant="warning">
@@ -303,32 +381,21 @@ export function TransferForm({
 
               <Button
                 className="w-full"
-                disabled={
-                  isPending ||
-                  !canTransfer ||
-                  !isValidAddress ||
-                  !amount ||
-                  Number.parseFloat(amount) <= 0
-                }
-                onClick={handleTransfer}
+                disabled={isPending || !canTransfer}
+                type="submit"
               >
                 {isPending ? (
-                  <>
-                    <Spinner className="mr-2" />
-                    Encrypting & Sending...
-                  </>
+                  <Spinner aria-hidden="true" className="mr-2" />
                 ) : (
-                  <>
-                    Transfer
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
+                  <ArrowRight className="mr-2 h-4 w-4" />
                 )}
+                Transfer
               </Button>
 
               <p className="text-center text-muted-foreground text-xs">
                 Amount is encrypted using FHE before submission
               </p>
-            </>
+            </form>
           );
         })()}
       </CardContent>

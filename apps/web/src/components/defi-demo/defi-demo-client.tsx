@@ -258,7 +258,7 @@ export function DefiDemoClient({
         <CardContent className="flex flex-col items-center justify-center gap-3 py-8">
           <Spinner size="lg" />
           <p className="text-muted-foreground text-sm">
-            Verifying on-chain attestation...
+            Verifying on-chain attestation…
           </p>
         </CardContent>
       </Card>
@@ -359,7 +359,7 @@ export function DefiDemoClient({
               <CardContent className="flex flex-col items-center justify-center gap-3 py-8">
                 <Spinner size="lg" />
                 <p className="text-muted-foreground text-sm">
-                  Loading networks...
+                  Loading networks…
                 </p>
               </CardContent>
             </Card>

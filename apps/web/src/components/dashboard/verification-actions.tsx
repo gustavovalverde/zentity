@@ -172,13 +172,9 @@ export function VerificationActions() {
                 variant="outline"
               >
                 {isVerifyingZK ? (
-                  <>
-                    <Spinner className="mr-2" size="sm" />
-                    Refreshing...
-                  </>
-                ) : (
-                  "Refresh ZK Status"
-                )}
+                  <Spinner aria-hidden="true" className="mr-2" size="sm" />
+                ) : null}
+                Refresh ZK Status
               </Button>
               {zkResult ? <ResultBadge result={zkResult} /> : null}
             </CardContent>
@@ -201,13 +197,9 @@ export function VerificationActions() {
                 variant="outline"
               >
                 {isVerifyingFHE ? (
-                  <>
-                    <Spinner className="mr-2" size="sm" />
-                    Computing...
-                  </>
-                ) : (
-                  "Verify via FHE"
-                )}
+                  <Spinner aria-hidden="true" className="mr-2" size="sm" />
+                ) : null}
+                Verify via FHE
               </Button>
               {fheResult ? <ResultBadge result={fheResult} /> : null}
             </CardContent>

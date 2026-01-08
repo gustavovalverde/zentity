@@ -482,7 +482,7 @@ export function StepSelfie() {
                 {countdown}
               </output>
               <p className="font-medium text-lg text-white drop-shadow-lg">
-                Hold still...
+                Hold still…
               </p>
             </div>
           </div>
@@ -588,7 +588,7 @@ export function StepSelfie() {
             >
               <div className="flex items-center gap-2 text-success-foreground">
                 <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
-                <p className="font-medium">Great! Next challenge...</p>
+                <p className="font-medium">Great! Next challenge…</p>
               </div>
             </output>
           </div>
@@ -638,7 +638,7 @@ export function StepSelfie() {
             >
               <div className="flex items-center gap-3">
                 <Spinner aria-hidden="true" className="size-6 text-primary" />
-                <p className="font-medium">Verifying your identity...</p>
+                <p className="font-medium">Verifying your identity…</p>
               </div>
             </output>
           </div>
@@ -680,10 +680,12 @@ export function StepSelfie() {
               onClick={beginCamera}
               type="button"
             >
-              <Camera className="mr-2 h-4 w-4" />
-              {challengeState === "loading_session"
-                ? "Loading..."
-                : "Start Camera"}
+              {challengeState === "loading_session" ? (
+                <Spinner aria-hidden="true" className="mr-2" size="sm" />
+              ) : (
+                <Camera className="mr-2 h-4 w-4" />
+              )}
+              Start Camera
             </Button>
           )}
 
@@ -706,14 +708,14 @@ export function StepSelfie() {
           challengeState !== "failed" &&
           challengeState !== "timeout" && (
             <div className="flex-1 text-center text-muted-foreground text-sm">
-              {challengeState === "detecting" && "Looking for your face..."}
-              {challengeState === "countdown" && "Get ready..."}
-              {challengeState === "preparing_challenge" && "Get ready..."}
+              {challengeState === "detecting" && "Looking for your face…"}
+              {challengeState === "countdown" && "Get ready…"}
+              {challengeState === "preparing_challenge" && "Get ready…"}
               {challengeState === "waiting_challenge" &&
                 currentChallenge?.instruction}
-              {challengeState === "capturing" && "Capturing..."}
-              {challengeState === "validating" && "Verifying..."}
-              {challengeState === "challenge_passed" && "Moving to next..."}
+              {challengeState === "capturing" && "Capturing…"}
+              {challengeState === "validating" && "Verifying…"}
+              {challengeState === "challenge_passed" && "Moving to next…"}
             </div>
           )}
       </div>

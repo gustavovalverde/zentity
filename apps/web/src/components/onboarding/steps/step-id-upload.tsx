@@ -252,7 +252,7 @@ export function StepIdUpload() {
           errorMsg.includes("onboarding session") ||
           errorMsg.includes("start from the beginning")
         ) {
-          toast.info("Session expired. Starting fresh...");
+          toast.info("Session expired. Starting fresh…");
           setProcessingState("idle");
           reset();
           return;
@@ -361,8 +361,8 @@ export function StepIdUpload() {
             <div>
               <p className="font-medium">
                 {processingState === "converting"
-                  ? "Preparing document..."
-                  : "Analyzing document..."}
+                  ? "Preparing document…"
+                  : "Analyzing document…"}
               </p>
               <p className="text-info/80 text-sm">
                 {processingState === "processing" &&

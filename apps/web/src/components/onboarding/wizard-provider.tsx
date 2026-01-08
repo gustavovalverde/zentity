@@ -743,7 +743,7 @@ export function WizardProvider({
         <div className="flex items-center justify-center py-12">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Spinner size="sm" />
-            <span>Loading...</span>
+            <span>Loading…</span>
           </div>
         </div>
       </WizardContext.Provider>

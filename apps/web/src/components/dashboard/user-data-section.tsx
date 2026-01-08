@@ -194,7 +194,10 @@ export function UserDataSection() {
                     size="sm"
                     variant="outline"
                   >
-                    {profileLoading ? "Unlocking..." : "Unlock with passkey"}
+                    {profileLoading ? (
+                      <Spinner aria-hidden="true" className="mr-2" size="sm" />
+                    ) : null}
+                    Unlock with passkey
                   </Button>
                   {profileError ? (
                     <span className="text-destructive text-xs">

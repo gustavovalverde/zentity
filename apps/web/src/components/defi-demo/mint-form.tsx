@@ -18,8 +18,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 import { parseTokenAmount } from "@/lib/utils/token";
@@ -31,6 +36,7 @@ interface MintFormProps {
 
 export function MintForm({ networkId, walletAddress }: MintFormProps) {
   const [amount, setAmount] = useState("");
+  const [amountError, setAmountError] = useState<string | null>(null);
   const utils = trpcReact.useUtils();
 
   // Query token info for remaining supply
@@ -50,18 +56,39 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
   const remainingTokens = tokenInfo?.remainingTokens ?? 18.4;
   const isSupplyExhausted = remainingTokens <= 0;
 
+  const validateAmount = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "Amount is required";
+    }
+    const parsed = Number.parseFloat(trimmed);
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      return "Amount must be greater than 0";
+    }
+    return null;
+  };
+
   const handleMint = async () => {
-    if (!amount || Number.parseFloat(amount) <= 0) {
+    const trimmed = amount.trim();
+    const validationError = validateAmount(trimmed);
+    if (validationError) {
+      setAmountError(validationError);
       return;
     }
 
     await mintMutation.mutateAsync({
       networkId,
       walletAddress,
-      amount: parseTokenAmount(amount).toString(),
+      amount: parseTokenAmount(trimmed).toString(),
     });
 
     setAmount("");
+    setAmountError(null);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await handleMint();
   };
 
   return (
@@ -74,32 +101,46 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
         <CardDescription>Request test tokens for your wallet</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="mint-amount">Amount</Label>
-          <div className="flex gap-2">
-            <Input
-              disabled={mintMutation.isPending}
-              id="mint-amount"
-              max="10"
-              min="0"
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="5"
-              step="0.1"
-              type="number"
-              value={amount}
-            />
-            <Button
-              disabled={
-                mintMutation.isPending ||
-                !amount ||
-                Number.parseFloat(amount) <= 0 ||
-                isSupplyExhausted
-              }
-              onClick={handleMint}
-            >
-              {mintMutation.isPending ? <Spinner /> : "Mint"}
-            </Button>
-          </div>
+        <form className="space-y-2" onSubmit={handleSubmit}>
+          <FieldGroup>
+            <Field data-invalid={Boolean(amountError)}>
+              <FieldLabel htmlFor="mint-amount">Amount</FieldLabel>
+              <div className="flex gap-2">
+                <Input
+                  aria-invalid={Boolean(amountError)}
+                  autoComplete="off"
+                  disabled={mintMutation.isPending}
+                  id="mint-amount"
+                  inputMode="decimal"
+                  max="10"
+                  min="0"
+                  name="amount"
+                  onBlur={() => setAmountError(validateAmount(amount))}
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                    if (amountError) {
+                      setAmountError(null);
+                    }
+                  }}
+                  placeholder="5"
+                  spellCheck={false}
+                  step="0.1"
+                  type="number"
+                  value={amount}
+                />
+                <Button
+                  disabled={mintMutation.isPending || isSupplyExhausted}
+                  type="submit"
+                >
+                  {mintMutation.isPending ? (
+                    <Spinner aria-hidden="true" className="mr-2" />
+                  ) : null}
+                  Mint
+                </Button>
+              </div>
+              <FieldError>{amountError}</FieldError>
+            </Field>
+          </FieldGroup>
           <p className="text-muted-foreground text-xs">
             {isSupplyExhausted ? (
               <span className="text-destructive">
@@ -112,7 +153,7 @@ export function MintForm({ networkId, walletAddress }: MintFormProps) {
               </>
             )}
           </p>
-        </div>
+        </form>
 
         {mintMutation.isSuccess && mintMutation.data ? (
           <Alert variant="success">

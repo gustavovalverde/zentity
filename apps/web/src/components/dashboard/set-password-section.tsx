@@ -247,14 +247,8 @@ export function SetPasswordSection({ onPasswordSet }: SetPasswordSectionProps) {
             }
             type="submit"
           >
-            {isLoading ? (
-              <>
-                <Spinner className="mr-2" />
-                Setting...
-              </>
-            ) : (
-              "Set Password"
-            )}
+            {isLoading ? <Spinner aria-hidden="true" className="mr-2" /> : null}
+            Set Password
           </Button>
         </form>
       </CardContent>

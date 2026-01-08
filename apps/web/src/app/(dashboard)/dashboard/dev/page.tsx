@@ -106,7 +106,7 @@ export default function DevViewPage() {
       <div className="flex items-center justify-center py-12">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Spinner size="sm" />
-          <span>Loading proof data...</span>
+          <span>Loading proof data…</span>
         </div>
       </div>
     );

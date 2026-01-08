@@ -99,13 +99,16 @@ export function StepEmail() {
                 <FieldLabel htmlFor={emailId}>Email Address</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
+                  autoCapitalize="none"
                   autoComplete="email"
                   id={emailId}
+                  inputMode="email"
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder="you@example.com"
                   ref={inputRef}
+                  spellCheck={false}
                   type="email"
                   value={field.state.value}
                 />
@@ -130,6 +133,7 @@ export function StepEmail() {
         }}
         showSkip
         skipLabel="Continue without email"
+        skipVariant="outline"
       />
     </form>
   );

@@ -11,6 +11,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   InputOTP,
@@ -18,6 +24,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 
 interface VerifyTwoFactorClientProps {
@@ -33,8 +40,7 @@ export function VerifyTwoFactorClient({
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isCodeInvalid =
-    mode === "totp" ? code.trim().length !== 6 : code.trim().length < 6;
+  const fieldError = error;
 
   const handleVerify = async () => {
     const trimmed = code.trim();
@@ -98,47 +104,58 @@ export function VerifyTwoFactorClient({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {mode === "totp" ? (
-          <div className="flex justify-center">
-            <InputOTP
-              disabled={isVerifying}
-              maxLength={6}
-              onChange={(value) => {
-                setCode(value);
-                setError(null);
-              }}
-              value={code}
-            >
-              <InputOTPGroup>
-                <InputOTPSlot index={0} />
-                <InputOTPSlot index={1} />
-                <InputOTPSlot index={2} />
-                <InputOTPSlot index={3} />
-                <InputOTPSlot index={4} />
-                <InputOTPSlot index={5} />
-              </InputOTPGroup>
-            </InputOTP>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <Label htmlFor="backup-code">Backup code</Label>
-            <Input
-              autoComplete="one-time-code"
-              disabled={isVerifying}
-              id="backup-code"
-              onChange={(event) => {
-                setCode(event.target.value);
-                setError(null);
-              }}
-              placeholder="ABCDE-12345"
-              value={code}
-            />
-          </div>
-        )}
-
-        {error ? (
-          <p className="text-center text-destructive text-sm">{error}</p>
-        ) : null}
+        <FieldGroup>
+          <Field data-invalid={Boolean(fieldError)}>
+            <FieldLabel>
+              {mode === "totp" ? "Authentication code" : "Backup code"}
+            </FieldLabel>
+            {mode === "totp" ? (
+              <div className="flex justify-center">
+                <InputOTP
+                  aria-invalid={Boolean(fieldError)}
+                  aria-label="Authentication code"
+                  autoComplete="one-time-code"
+                  disabled={isVerifying}
+                  inputMode="numeric"
+                  maxLength={6}
+                  name="totpCode"
+                  onChange={(value) => {
+                    setCode(value);
+                    setError(null);
+                  }}
+                  value={code}
+                >
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} />
+                    <InputOTPSlot index={1} />
+                    <InputOTPSlot index={2} />
+                    <InputOTPSlot index={3} />
+                    <InputOTPSlot index={4} />
+                    <InputOTPSlot index={5} />
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+            ) : (
+              <Input
+                aria-invalid={Boolean(fieldError)}
+                autoCapitalize="characters"
+                autoComplete="one-time-code"
+                disabled={isVerifying}
+                id="backup-code"
+                inputMode="text"
+                name="backupCode"
+                onChange={(event) => {
+                  setCode(event.target.value);
+                  setError(null);
+                }}
+                placeholder="ABCDE-12345"
+                spellCheck={false}
+                value={code}
+              />
+            )}
+            <FieldError>{fieldError}</FieldError>
+          </Field>
+        </FieldGroup>
 
         <div className="flex items-center space-x-2">
           <Checkbox
@@ -154,10 +171,13 @@ export function VerifyTwoFactorClient({
         <div className="space-y-3">
           <Button
             className="w-full"
-            disabled={isVerifying || isCodeInvalid}
+            disabled={isVerifying}
             onClick={handleVerify}
           >
-            {isVerifying ? "Verifying..." : "Verify"}
+            {isVerifying ? (
+              <Spinner aria-hidden="true" className="mr-2" />
+            ) : null}
+            Verify
           </Button>
 
           <Button

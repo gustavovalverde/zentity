@@ -42,7 +42,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
             <Button asChild className="w-full">
               <Link href="/forgot-password">Request New Link</Link>
             </Button>
-            <Button asChild className="w-full" variant="ghost">
+            <Button asChild className="w-full" variant="outline">
               <Link href="/sign-in">Back to Sign In</Link>
             </Button>
           </div>

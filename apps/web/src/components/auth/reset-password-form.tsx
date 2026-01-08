@@ -245,14 +245,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         }
         type="submit"
       >
-        {isLoading ? (
-          <>
-            <Spinner className="mr-2" />
-            Resetting...
-          </>
-        ) : (
-          "Reset Password"
-        )}
+        {isLoading ? <Spinner aria-hidden="true" className="mr-2" /> : null}
+        Reset Password
       </Button>
     </form>
   );

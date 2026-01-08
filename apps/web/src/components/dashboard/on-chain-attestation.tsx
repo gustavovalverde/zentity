@@ -299,7 +299,15 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
               )}
             </div>
             <CollapsibleTrigger asChild>
-              <Button size="sm" variant="ghost">
+              <Button
+                aria-label={
+                  isOpen
+                    ? "Collapse on-chain attestation"
+                    : "Expand on-chain attestation"
+                }
+                size="sm"
+                variant="ghost"
+              >
                 <ChevronDown
                   className={`h-4 w-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
                 />
@@ -375,7 +383,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                         <strong>Wallet Changed</strong> - Attestation will be
                         linked to:{" "}
                         <code className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-xs">
-                          {address?.slice(0, 6)}...{address?.slice(-4)}
+                          {address?.slice(0, 6)}…{address?.slice(-4)}
                         </code>
                       </AlertDescription>
                     </Alert>
@@ -435,7 +443,7 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
                   {showComplianceAccess && isCheckingOnChain ? (
                     <div className="flex items-center gap-2 text-muted-foreground text-sm">
                       <Spinner size="sm" />
-                      <span>Verifying on-chain attestation...</span>
+                      <span>Verifying on-chain attestation…</span>
                     </div>
                   ) : null}
 
@@ -611,7 +619,7 @@ function NetworkActions({
               <ItemDescription>Attested Wallet</ItemDescription>
               <ItemTitle>
                 <code className="font-mono text-sm">
-                  {attestedWalletAddress.slice(0, 6)}...
+                  {attestedWalletAddress.slice(0, 6)}…
                   {attestedWalletAddress.slice(-4)}
                 </code>
               </ItemTitle>
@@ -632,10 +640,9 @@ function NetworkActions({
             <AlertDescription className="text-sm">
               <strong>Different Wallet Connected</strong>
               <div className="mt-1 text-xs">
-                Connected: {walletAddress.slice(0, 6)}...
-                {walletAddress.slice(-4)}
+                Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
                 <br />
-                Attested: {attestedWalletAddress.slice(0, 6)}...
+                Attested: {attestedWalletAddress.slice(0, 6)}…
                 {attestedWalletAddress.slice(-4)}
               </div>
               <div className="mt-2 text-xs">
@@ -764,7 +771,7 @@ function NetworkActions({
           <ItemDescription>Connected Wallet</ItemDescription>
           <ItemTitle>
             <code className="font-mono text-sm">
-              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
             </code>
           </ItemTitle>
           <p className="mt-1 text-muted-foreground text-xs">
@@ -789,16 +796,11 @@ function NetworkActions({
 
       <Button className="w-full" disabled={isSubmitting} onClick={onSubmit}>
         {isSubmitting ? (
-          <>
-            <Spinner className="mr-2" />
-            Submitting...
-          </>
+          <Spinner aria-hidden="true" className="mr-2" />
         ) : (
-          <>
-            <Shield className="mr-2 h-4 w-4" />
-            Register on {network.name}
-          </>
+          <Shield className="mr-2 h-4 w-4" />
         )}
+        Register on {network.name}
       </Button>
     </div>
   );

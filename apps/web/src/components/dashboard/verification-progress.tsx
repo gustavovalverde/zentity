@@ -231,7 +231,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
         {!(effectiveChecks.fheEncryption || effectiveChecks.fheError) && (
           <p className="flex items-center gap-1.5 text-muted-foreground text-xs">
             <Spinner className="size-3" />
-            Encrypting data securely... This may take a moment.
+            Encrypting data securely… This may take a moment.
           </p>
         )}
       </CardContent>

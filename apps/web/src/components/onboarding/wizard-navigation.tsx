@@ -1,6 +1,9 @@
 "use client";
 
+import type { ComponentProps } from "react";
+
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 import { useWizard } from "./wizard-provider";
 
@@ -9,6 +12,7 @@ interface WizardNavigationProps {
   onSkip?: () => void | Promise<void>;
   nextLabel?: string;
   skipLabel?: string;
+  skipVariant?: ComponentProps<typeof Button>["variant"];
   showSkip?: boolean;
   disableNext?: boolean;
 }
@@ -18,10 +22,12 @@ export function WizardNavigation({
   onSkip,
   nextLabel,
   skipLabel = "Skip for now",
+  skipVariant = "ghost",
   showSkip = false,
   disableNext = false,
 }: WizardNavigationProps) {
   const { prevStep, nextStep, canGoBack, isLastStep, state } = useWizard();
+  const primaryLabel = nextLabel ?? (isLastStep ? "Complete" : "Continue");
 
   const handleNext = async () => {
     if (onNext) {
@@ -59,18 +65,25 @@ export function WizardNavigation({
           onClick={onNext ? handleNext : undefined}
           type="submit"
         >
-          {state.isSubmitting
-            ? "Processing..."
-            : (nextLabel ?? (isLastStep ? "Complete" : "Continue"))}
+          {state.isSubmitting ? (
+            <>
+              <Spinner aria-hidden="true" className="mr-2" size="sm" />
+              {primaryLabel}
+            </>
+          ) : (
+            primaryLabel
+          )}
         </Button>
       </div>
       {showSkip ? (
         <Button
-          className="text-muted-foreground"
+          className={
+            skipVariant === "ghost" ? "text-muted-foreground" : undefined
+          }
           disabled={state.isSubmitting}
           onClick={handleSkip}
           type="button"
-          variant="ghost"
+          variant={skipVariant}
         >
           {skipLabel}
         </Button>

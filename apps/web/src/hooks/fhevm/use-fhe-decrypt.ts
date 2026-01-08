@@ -37,14 +37,14 @@
  *   ethersSigner,
  *   fhevmDecryptionSignatureStorage: storage,
  *   chainId,
- *   requests: [{ handle: "0x...", contractAddress: "0x..." }],
+ *   requests: [{ handle: "0x…", contractAddress: "0x…" }],
  * });
  *
  * // Trigger decryption
  * decrypt();
  *
  * // Results keyed by handle
- * console.log(results["0x..."]); // decrypted value
+ * console.log(results["0x…"]); // decrypted value
  * ```
  */
 import type { ethers } from "ethers";
@@ -151,7 +151,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
 
     isDecryptingRef.current = true;
     setIsDecrypting(true);
-    setMessage("Starting decryption...");
+    setMessage("Starting decryption…");
     setError(null);
 
     const run = async () => {
@@ -223,7 +223,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
           return;
         }
 
-        setMessage("Calling FHEVM userDecrypt...");
+        setMessage("Calling FHEVM userDecrypt…");
 
         // Convert readonly requests to mutable for SDK
         const mutableReqs = thisRequests.map((r) => ({
@@ -259,7 +259,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
             msg.toLowerCase().includes("invalid eip-712 signature");
 
           if (isInvalidSig) {
-            setMessage("Refreshing decryption signature...");
+            setMessage("Refreshing decryption signature…");
             const signatureForClear = sig;
             if (!signatureForClear) {
               setError(
@@ -316,7 +316,7 @@ export const useFHEDecrypt = (params: UseFHEDecryptParams) => {
                   : "Decryption failed";
               // Retry failed after an invalid signature; attempt instance refresh if available.
               if (refreshFhevmInstance) {
-                setMessage("Refreshing FHEVM instance...");
+                setMessage("Refreshing FHEVM instance…");
                 await refreshFhevmInstance();
 
                 // Wait for provider refresh to create a NEW non-null instance.

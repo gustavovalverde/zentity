@@ -23,8 +23,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { trpc } from "@/lib/trpc/client";
 
@@ -39,6 +44,10 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const isEmailMatch = confirmEmail.toLowerCase() === email.toLowerCase();
+  const emailError =
+    confirmEmail.trim().length > 0 && !isEmailMatch
+      ? "Email does not match"
+      : null;
 
   const handleDelete = async () => {
     if (!isEmailMatch) {
@@ -129,19 +138,30 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirm-email">
-                    Type{" "}
-                    <span className="font-mono font-semibold">{email}</span> to
-                    confirm
-                  </Label>
-                  <Input
-                    disabled={isDeleting}
-                    id="confirm-email"
-                    onChange={(e) => setConfirmEmail(e.target.value)}
-                    placeholder="Enter your email to confirm"
-                    type="email"
-                    value={confirmEmail}
-                  />
+                  <FieldGroup>
+                    <Field data-invalid={Boolean(emailError)}>
+                      <FieldLabel htmlFor="confirm-email">
+                        Type{" "}
+                        <span className="font-mono font-semibold">{email}</span>{" "}
+                        to confirm
+                      </FieldLabel>
+                      <Input
+                        aria-invalid={Boolean(emailError)}
+                        autoCapitalize="none"
+                        autoComplete="email"
+                        disabled={isDeleting}
+                        id="confirm-email"
+                        inputMode="email"
+                        name="confirmEmail"
+                        onChange={(e) => setConfirmEmail(e.target.value)}
+                        placeholder="Enter your email to confirm"
+                        spellCheck={false}
+                        type="email"
+                        value={confirmEmail}
+                      />
+                      <FieldError>{emailError}</FieldError>
+                    </Field>
+                  </FieldGroup>
                 </div>
               </div>
 
@@ -157,16 +177,11 @@ export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
                   variant="destructive"
                 >
                   {isDeleting ? (
-                    <>
-                      <Spinner className="mr-2" />
-                      Deleting...
-                    </>
+                    <Spinner aria-hidden="true" className="mr-2" />
                   ) : (
-                    <>
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete Forever
-                    </>
+                    <Trash2 className="mr-2 h-4 w-4" />
                   )}
+                  Delete Forever
                 </Button>
               </DialogFooter>
             </DialogContent>

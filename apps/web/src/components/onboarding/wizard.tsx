@@ -28,7 +28,7 @@ const StepIdUpload = dynamic(
   () => import("./steps/step-id-upload").then((mod) => mod.StepIdUpload),
   {
     ssr: false,
-    loading: () => <WizardStepLoading label="Loading document step..." />,
+    loading: () => <WizardStepLoading label="Loading document step…" />,
   }
 );
 
@@ -36,7 +36,7 @@ const StepSelfie = dynamic(
   () => import("./steps/step-selfie").then((mod) => mod.StepSelfie),
   {
     ssr: false,
-    loading: () => <WizardStepLoading label="Loading camera step..." />,
+    loading: () => <WizardStepLoading label="Loading camera step…" />,
   }
 );
 
@@ -45,7 +45,7 @@ const StepCreateAccount = dynamic(
     import("./steps/step-create-account").then((mod) => mod.StepCreateAccount),
   {
     ssr: false,
-    loading: () => <WizardStepLoading label="Loading account step..." />,
+    loading: () => <WizardStepLoading label="Loading account step…" />,
   }
 );
 

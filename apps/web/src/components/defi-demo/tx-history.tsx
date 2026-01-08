@@ -157,6 +157,7 @@ function TxHistoryContent({
             </div>
           </div>
           <a
+            aria-label="View transaction on Etherscan"
             className="text-muted-foreground transition-colors hover:text-foreground"
             href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
             rel="noopener noreferrer"
@@ -218,7 +219,7 @@ export function TxHistory({
     if (address === "0x0000000000000000000000000000000000000000") {
       return "Contract";
     }
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    return `${address.slice(0, 6)}…${address.slice(-4)}`;
   };
 
   return (

@@ -109,11 +109,12 @@ function DecryptButtonContent({
   isDecrypting: boolean;
   isVisible: boolean;
 }) {
+  const label = isVisible ? "Hide Data" : "Decrypt & View";
   if (isDecrypting) {
     return (
       <>
         <Spinner className="mr-2" />
-        Decrypting...
+        {label}
       </>
     );
   }
@@ -121,14 +122,14 @@ function DecryptButtonContent({
     return (
       <>
         <EyeOff className="mr-2 h-4 w-4" />
-        Hide Data
+        {label}
       </>
     );
   }
   return (
     <>
       <Eye className="mr-2 h-4 w-4" />
-      Decrypt & View
+      {label}
     </>
   );
 }
@@ -449,7 +450,7 @@ export function ViewIdentityData() {
               {fhevmStatus === "loading" && (
                 <span className="flex items-center gap-2">
                   <Spinner className="size-3" />
-                  Initializing FHEVM SDK...
+                  Initializing FHEVM SDK…
                 </span>
               )}
               {fhevmStatus === "error" && (
@@ -487,9 +488,9 @@ export function ViewIdentityData() {
                 created the attestation.
               </div>
               <div className="mt-2 font-mono text-xs">
-                Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
+                Connected: {address?.slice(0, 6)}…{address?.slice(-4)}
                 <br />
-                Required: {attestedWallet.slice(0, 6)}...
+                Required: {attestedWallet.slice(0, 6)}…
                 {attestedWallet.slice(-4)}
               </div>
             </AlertDescription>
@@ -575,6 +576,7 @@ export function ViewIdentityData() {
           </TooltipProvider>
 
           <Button
+            aria-label="Refresh identity data"
             disabled={isLoadingContract}
             onClick={() => refetch()}
             size="icon"

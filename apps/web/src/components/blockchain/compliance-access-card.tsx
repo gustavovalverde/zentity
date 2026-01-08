@@ -239,7 +239,7 @@ export function ComplianceAccessCard({
                       <>
                         {" "}
                         <span className="font-mono">
-                          {`${grantedTxHash.slice(0, 6)}...${grantedTxHash.slice(
+                          {`${grantedTxHash.slice(0, 6)}…${grantedTxHash.slice(
                             -4
                           )}`}
                         </span>
@@ -264,20 +264,10 @@ export function ComplianceAccessCard({
               disabled={isActionDisabled}
               onClick={handleGrant}
             >
-              {(() => {
-                if (isPending || txHash) {
-                  const label = txHash
-                    ? "Waiting for Confirmation..."
-                    : "Granting Access...";
-                  return (
-                    <>
-                      <Spinner className="mr-2" />
-                      {label}
-                    </>
-                  );
-                }
-                return "Grant Compliance Access";
-              })()}
+              {isPending || txHash ? (
+                <Spinner aria-hidden="true" className="mr-2" />
+              ) : null}
+              Grant Compliance Access
             </Button>
             {isChainMismatch ? (
               <Button
@@ -286,9 +276,10 @@ export function ComplianceAccessCard({
                 onClick={handleSwitchNetwork}
                 variant="outline"
               >
-                {isSwitching
-                  ? "Switching Network..."
-                  : `Switch to ${expectedNetworkName ?? "Network"}`}
+                {isSwitching ? (
+                  <Spinner aria-hidden="true" className="mr-2" />
+                ) : null}
+                Switch to {expectedNetworkName ?? "Network"}
               </Button>
             ) : null}
             {insufficientFunds && isFaucetSupported ? (
@@ -303,7 +294,10 @@ export function ComplianceAccessCard({
                 }}
                 variant="outline"
               >
-                {isFauceting ? "Topping Up..." : "Top Up Test ETH"}
+                {isFauceting ? (
+                  <Spinner aria-hidden="true" className="mr-2" />
+                ) : null}
+                Top Up Test ETH
               </Button>
             ) : null}
           </>
@@ -335,7 +329,7 @@ export function ComplianceAccessCard({
                 // Show error data if present
                 const dataMatch = msg.match(ERROR_DATA_PATTERN);
                 if (dataMatch) {
-                  return `Contract reverted with: ${dataMatch[1].slice(0, 10)}...`;
+                  return `Contract reverted with: ${dataMatch[1].slice(0, 10)}…`;
                 }
                 return msg.split("\n").slice(0, 3).join(" ").slice(0, 250);
               })()}

@@ -329,8 +329,10 @@ export function PasskeyManagementSection() {
                     {editingId === passkey.id ? (
                       <div className="flex items-center gap-2">
                         <Input
+                          aria-label="Passkey name"
                           autoFocus
                           className="h-7 w-40"
+                          name="passkeyName"
                           onChange={(e) => setEditName(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
@@ -345,6 +347,7 @@ export function PasskeyManagementSection() {
                           value={editName}
                         />
                         <Button
+                          aria-label="Save passkey name"
                           disabled={!editName.trim()}
                           onClick={handleSaveEdit}
                           size="sm"
@@ -353,6 +356,7 @@ export function PasskeyManagementSection() {
                           <Check className="h-3 w-3" />
                         </Button>
                         <Button
+                          aria-label="Cancel editing passkey name"
                           onClick={handleCancelEdit}
                           size="sm"
                           variant="ghost"
@@ -364,6 +368,7 @@ export function PasskeyManagementSection() {
                       <ItemTitle className="flex items-center gap-2">
                         {passkey.name || "Unnamed Passkey"}
                         <Button
+                          aria-label="Edit passkey name"
                           className="h-6 w-6 p-0"
                           onClick={() => handleStartEdit(passkey)}
                           size="sm"
@@ -384,6 +389,11 @@ export function PasskeyManagementSection() {
                       </Badge>
                     ) : null}
                     <Button
+                      aria-label={
+                        optimisticPasskeys.length <= 1
+                          ? "Cannot remove your only passkey"
+                          : "Remove passkey"
+                      }
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       disabled={optimisticPasskeys.length <= 1}
                       onClick={() => setDeleteConfirm(passkey.id)}
@@ -412,16 +422,11 @@ export function PasskeyManagementSection() {
           variant="outline"
         >
           {isAdding ? (
-            <>
-              <Spinner className="mr-2" size="sm" />
-              Creating passkey...
-            </>
+            <Spinner aria-hidden="true" className="mr-2" size="sm" />
           ) : (
-            <>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Passkey
-            </>
+            <Plus className="mr-2 h-4 w-4" />
           )}
+          Add Passkey
         </Button>
 
         {prfSupported === false && (

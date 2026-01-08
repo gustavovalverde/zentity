@@ -44,7 +44,7 @@ export function TransparencySection({
     if (hash.length <= 20) {
       return hash;
     }
-    return `${hash.slice(0, 10)}...${hash.slice(-10)}`;
+    return `${hash.slice(0, 10)}…${hash.slice(-10)}`;
   };
 
   return (

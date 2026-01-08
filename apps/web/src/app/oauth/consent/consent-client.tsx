@@ -115,13 +115,9 @@ export function OAuthConsentClient({
               type="button"
             >
               {isSubmitting ? (
-                <>
-                  <Spinner className="mr-2" size="sm" />
-                  Processing…
-                </>
-              ) : (
-                "Approve"
-              )}
+                <Spinner aria-hidden="true" className="mr-2" size="sm" />
+              ) : null}
+              Approve
             </Button>
             <Button
               disabled={isSubmitting}

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   generateAgeProof,
   generateDocValidityProof,
@@ -446,7 +447,10 @@ export default function ExchangeSimulatorPage() {
                   onClick={handleGenerateKeypair}
                   type="button"
                 >
-                  {isLoading ? "Loading..." : "Start Demo as Exchange"}
+                  {isLoading ? (
+                    <Spinner aria-hidden="true" className="mr-2" />
+                  ) : null}
+                  Start Demo as Exchange
                 </Button>
               </div>
             )}
@@ -464,7 +468,7 @@ export default function ExchangeSimulatorPage() {
                 <div className="mb-4 rounded border bg-muted/40 p-4">
                   <h3 className="mb-2 font-medium">Exchange Public Key:</h3>
                   <code className="block break-all text-muted-foreground text-xs">
-                    {exchangeKeypair?.publicKey.substring(0, 100)}...
+                    {exchangeKeypair?.publicKey.substring(0, 100)}…
                   </code>
                 </div>
                 <p className="mb-4 text-muted-foreground text-sm">
@@ -515,7 +519,10 @@ export default function ExchangeSimulatorPage() {
                     onClick={handleUserConsent}
                     type="button"
                   >
-                    {isLoading ? "Creating..." : "Approve"}
+                    {isLoading ? (
+                      <Spinner aria-hidden="true" className="mr-2" />
+                    ) : null}
+                    Approve
                   </Button>
                 </div>
               </div>
@@ -541,7 +548,7 @@ export default function ExchangeSimulatorPage() {
                         0,
                         50
                       )}
-                      ...
+                      …
                     </code>
                   </div>
                   <div>
@@ -573,7 +580,10 @@ export default function ExchangeSimulatorPage() {
                   onClick={handleDecryptPii}
                   type="button"
                 >
-                  {isLoading ? "Decrypting..." : "Exchange: Decrypt PII"}
+                  {isLoading ? (
+                    <Spinner aria-hidden="true" className="mr-2" />
+                  ) : null}
+                  Exchange: Decrypt PII
                 </Button>
               </div>
             )}
@@ -617,7 +627,10 @@ export default function ExchangeSimulatorPage() {
                   onClick={handleVerifyProofs}
                   type="button"
                 >
-                  {isLoading ? "Verifying..." : "Verify ZK Proofs"}
+                  {isLoading ? (
+                    <Spinner aria-hidden="true" className="mr-2" />
+                  ) : null}
+                  Verify ZK Proofs
                 </Button>
               </div>
             )}

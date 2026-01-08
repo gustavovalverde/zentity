@@ -15,8 +15,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
@@ -28,6 +33,8 @@ import { addWrapperForSecretType } from "@/lib/crypto/secret-vault";
 import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function getPhaseDescription(phase: RecoveryPhase): string {
   if (phase === "email" || phase === "sending") {
@@ -48,6 +55,7 @@ export default function RecoverPasskeyPage() {
 
   const [phase, setPhase] = useState<RecoveryPhase>("email");
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
 
@@ -78,17 +86,23 @@ export default function RecoverPasskeyPage() {
   }, []);
 
   const handleSendMagicLink = async () => {
-    if (!email) {
-      setError("Please enter your email address.");
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setEmailError("Email is required");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(trimmed)) {
+      setEmailError("Invalid email address");
       return;
     }
 
+    setEmailError(null);
     setPhase("sending");
     setError(null);
 
     try {
       const result = await authClient.signIn.magicLink({
-        email,
+        email: trimmed,
         callbackURL: "/recover-passkey",
       });
 
@@ -211,35 +225,46 @@ export default function RecoverPasskeyPage() {
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                autoComplete="email"
-                disabled={phase === "sending"}
-                id="email"
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                type="email"
-                value={email}
-              />
-            </div>
+            <FieldGroup>
+              <Field data-invalid={Boolean(emailError)}>
+                <FieldLabel htmlFor="recovery-email">Email</FieldLabel>
+                <Input
+                  aria-invalid={Boolean(emailError)}
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  disabled={phase === "sending"}
+                  id="recovery-email"
+                  inputMode="email"
+                  name="email"
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    if (emailError) {
+                      setEmailError(null);
+                    }
+                    if (error) {
+                      setError(null);
+                    }
+                  }}
+                  placeholder="you@example.com"
+                  spellCheck={false}
+                  type="email"
+                  value={email}
+                />
+                <FieldError>{emailError}</FieldError>
+              </Field>
+            </FieldGroup>
 
             <Button
               className="w-full"
-              disabled={phase === "sending" || !email}
+              disabled={phase === "sending"}
               onClick={handleSendMagicLink}
             >
               {phase === "sending" ? (
-                <>
-                  <Spinner className="mr-2" />
-                  Sending...
-                </>
+                <Spinner aria-hidden="true" className="mr-2" />
               ) : (
-                <>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Send Recovery Link
-                </>
+                <Mail className="mr-2 h-4 w-4" />
               )}
+              Send Recovery Link
             </Button>
           </div>
         )}
@@ -264,7 +289,7 @@ export default function RecoverPasskeyPage() {
             <Button
               className="text-sm"
               onClick={() => setPhase("email")}
-              variant="ghost"
+              variant="outline"
             >
               Use a different email
             </Button>
