@@ -137,6 +137,8 @@ COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
 # Copy bb.js (Noir/Barretenberg) assets + workers (server-side verification)
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@aztec ./node_modules/@aztec
+# Copy Poseidon2 dependency used by bb-worker (not traced into standalone output)
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@zkpassport ./node_modules/@zkpassport
 # Copy noir-lang WASM modules for client-side proof generation in Web Worker
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@noir-lang ./node_modules/@noir-lang
 COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
