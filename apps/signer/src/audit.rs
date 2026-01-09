@@ -11,7 +11,10 @@
 //! - **Non-repudiation**: Ed25519 signatures prove entry authenticity
 //! - **Ordered**: Sequence numbers prevent reordering attacks
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{SecretKey, Signer, SigningKey, Verifier, VerifyingKey};
@@ -179,6 +182,8 @@ pub struct AuditLogger {
     signing_key: SigningKey,
     /// Current sequence number (atomic for thread safety).
     current_seq: AtomicU64,
+    /// Serialize appends to preserve hash chain integrity.
+    append_lock: Mutex<()>,
 }
 
 impl AuditLogger {
@@ -199,6 +204,7 @@ impl AuditLogger {
             storage,
             signing_key,
             current_seq: AtomicU64::new(current_seq),
+            append_lock: Mutex::new(()),
         })
     }
 
@@ -210,6 +216,7 @@ impl AuditLogger {
             storage,
             signing_key,
             current_seq: AtomicU64::new(current_seq),
+            append_lock: Mutex::new(()),
         })
     }
 
@@ -234,8 +241,13 @@ impl AuditLogger {
         outcome: AuditOutcome,
         context: Option<serde_json::Value>,
     ) -> SignerResult<u64> {
+        let _append_guard = self
+            .append_lock
+            .lock()
+            .map_err(|_| SignerError::Storage("Audit append lock poisoned".to_string()))?;
+
         // Get next sequence number
-        let seq = self.current_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        let seq = self.current_seq.load(Ordering::SeqCst) + 1;
 
         // Get previous hash
         let prev_hash = if seq == 1 {
@@ -243,7 +255,8 @@ impl AuditLogger {
         } else {
             self.storage
                 .get_audit_entry(seq - 1)?
-                .map_or_else(|| GENESIS_HASH.to_string(), |e| e.hash())
+                .map(|entry| entry.hash())
+                .ok_or_else(|| SignerError::Storage(format!("Missing audit entry {}", seq - 1)))?
         };
 
         // Create entry (without signature)
@@ -266,6 +279,7 @@ impl AuditLogger {
 
         // Store entry
         self.storage.put_audit_entry(&entry)?;
+        self.current_seq.store(seq, Ordering::SeqCst);
 
         tracing::debug!(
             seq = seq,
