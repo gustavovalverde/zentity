@@ -6,27 +6,18 @@ import {
   TwoFactorCard,
 } from "@daveyplate/better-auth-ui";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-interface SecurityCardsProps {
-  readonly hasPassword?: boolean;
-}
-
 /**
  * Better Auth UI components for OAuth provider management and session management.
  * These components integrate with the AuthUIProvider to provide:
  * - ProvidersCard: Link/unlink OAuth accounts (Google, GitHub)
  * - SessionsCard: View and revoke active sessions across devices
- * - TwoFactorCard: TOTP 2FA setup (only for password users)
+ * - TwoFactorCard: TOTP 2FA setup (passwordless allowed)
  */
-export function SecurityCards({ hasPassword = false }: SecurityCardsProps) {
+interface SecurityCardsProps {
+  hasPassword: boolean;
+}
+
+export function SecurityCards({ hasPassword }: SecurityCardsProps) {
   return (
     <>
       <ProvidersCard
@@ -45,35 +36,18 @@ export function SecurityCards({ hasPassword = false }: SecurityCardsProps) {
           REVOKE: "Revoke",
         }}
       />
-      {/* Two-Factor Authentication - only available for password users */}
-      {hasPassword ? (
-        <TwoFactorCard
-          localization={{
-            TWO_FACTOR: "Backup Authentication (TOTP)",
-            TWO_FACTOR_DESCRIPTION:
-              "Add time-based one-time passwords as a backup sign-in method. Note: TOTP cannot replace your passkey for accessing encrypted data.",
-          }}
-        />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Backup Authentication</CardTitle>
-            <CardDescription>
-              Two-factor authentication is available for password-based
-              accounts.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Alert>
-              <AlertDescription>
-                Set a password in your account settings to enable TOTP backup
-                authentication. Note that passkeys remain the primary secure
-                method for accessing your encrypted data.
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-      )}
+      <TwoFactorCard
+        localization={{
+          TWO_FACTOR: "Two-factor authentication",
+          TWO_FACTOR_CARD_DESCRIPTION:
+            "Add an authenticator app to secure sign-in and approve recovery.",
+          TWO_FACTOR_ENABLE_INSTRUCTIONS:
+            "Scan a QR code with your authenticator app to enable two-factor authentication.",
+          TWO_FACTOR_DISABLE_INSTRUCTIONS:
+            "Disable two-factor authentication and remove your backup codes.",
+        }}
+        requirePassword={hasPassword}
+      />
     </>
   );
 }

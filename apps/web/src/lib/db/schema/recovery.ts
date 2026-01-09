@@ -130,6 +130,25 @@ export const recoverySecretWrappers = sqliteTable(
   })
 );
 
+export const recoveryIdentifiers = sqliteTable(
+  "recovery_identifiers",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recoveryId: text("recovery_id").notNull(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    userIdIdx: index("recovery_identifiers_user_id_idx").on(table.userId),
+    recoveryIdUnique: uniqueIndex("recovery_identifiers_recovery_id_unique").on(
+      table.recoveryId
+    ),
+  })
+);
+
 export type RecoveryConfig = typeof recoveryConfigs.$inferSelect;
 export type NewRecoveryConfig = typeof recoveryConfigs.$inferInsert;
 
@@ -147,3 +166,6 @@ export type NewRecoveryGuardianApproval =
 export type RecoverySecretWrapper = typeof recoverySecretWrappers.$inferSelect;
 export type NewRecoverySecretWrapper =
   typeof recoverySecretWrappers.$inferInsert;
+
+export type RecoveryIdentifier = typeof recoveryIdentifiers.$inferSelect;
+export type NewRecoveryIdentifier = typeof recoveryIdentifiers.$inferInsert;

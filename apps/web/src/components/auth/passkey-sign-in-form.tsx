@@ -129,9 +129,9 @@ export function PasskeySignInForm() {
           Lost your passkey?{" "}
           <Link
             className="font-medium text-primary hover:underline"
-            href="/recover-passkey"
+            href="/recover-social"
           >
-            Recover with magic link
+            Recover with guardians
           </Link>
         </p>
       </div>

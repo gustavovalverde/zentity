@@ -2,6 +2,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createAuthMiddleware } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { nextCookies } from "better-auth/next-js";
 import {
@@ -20,6 +21,11 @@ import { getOnboardingContext } from "@/lib/auth/onboarding-context";
 import { db } from "@/lib/db/connection";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 import {
+  deleteRecoveryGuardian,
+  getRecoveryConfigByUserId,
+  getRecoveryGuardianByType,
+} from "@/lib/db/queries/recovery";
+import {
   accounts,
   passkeys,
   sessions,
@@ -34,6 +40,7 @@ import {
   oauthConsents,
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
+import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 const betterAuthSchema = {
@@ -177,6 +184,28 @@ export const auth = betterAuth({
       maxAge: 5 * 60, // 5 minute cache
     },
   },
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/two-factor/disable") {
+        return;
+      }
+      const userId = ctx.context.session?.user?.id;
+      if (!userId) {
+        return;
+      }
+      const config = await getRecoveryConfigByUserId(userId);
+      if (!config) {
+        return;
+      }
+      const guardian = await getRecoveryGuardianByType({
+        recoveryConfigId: config.id,
+        guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+      });
+      if (guardian) {
+        await deleteRecoveryGuardian(guardian.id);
+      }
+    }),
+  },
   plugins: [
     nextCookies(),
     haveIBeenPwned(),
@@ -301,6 +330,7 @@ export const auth = betterAuth({
     // Note: TOTP cannot replace passkey for FHE key access
     twoFactor({
       issuer: "Zentity",
+      allowPasswordless: true,
     }),
   ],
 });

@@ -35,6 +35,9 @@
 # production
 /build
 
+# bun patch workaround (see https://github.com/oven-sh/bun/issues/13330)
+/dist/
+
 # misc
 .DS_Store
 *.pem
