@@ -208,7 +208,9 @@ impl Settings {
         };
         let db_path = env_trim("SIGNER_DB_PATH")
             .parse::<PathBuf>()
-            .unwrap_or_else(|_| PathBuf::from(format!("./.data/{default_db_name}")));
+            .ok()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| PathBuf::from(format!("./.data/{default_db_name}")));
 
         let internal_token = env_trim("INTERNAL_SERVICE_TOKEN");
         let internal_token = if internal_token.is_empty() {
