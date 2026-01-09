@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isMailpitConfigured, sendMailpitMessage } from "./mailpit";
+import { isResendConfigured, sendResendMessage } from "./resend";
 
 interface GuardianApprovalToken {
   email: string;
@@ -8,6 +9,13 @@ interface GuardianApprovalToken {
 }
 
 const TRAILING_SLASH_PATTERN = /\/$/;
+
+function isProduction(): boolean {
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.APP_ENV === "production"
+  );
+}
 
 function getAppUrl(): string {
   const appUrl =
@@ -33,7 +41,10 @@ export async function sendRecoveryGuardianEmails(params: {
     return { delivered: 0, attempted: 0, mode: "manual" };
   }
 
-  if (!isMailpitConfigured()) {
+  const useMailpit = !isProduction() && isMailpitConfigured();
+  const useResend = isResendConfigured() && !useMailpit;
+
+  if (!(useResend || useMailpit)) {
     return {
       delivered: 0,
       attempted: params.approvals.length,
@@ -49,14 +60,19 @@ export async function sendRecoveryGuardianEmails(params: {
       const link = buildApprovalLink(approval.token);
       const text = `You have been listed as a recovery guardian for ${accountLabel}.\n\nApprove the recovery: ${link}\n\nThis approval does not grant account access.`;
       const html = `<p>You have been listed as a recovery guardian for <strong>${accountLabel}</strong>.</p><p><a href="${link}">Approve the recovery</a></p><p style="color:#6b7280;">This approval does not grant account access.</p>`;
-
-      return await sendMailpitMessage({
+      const payload = {
         to: [approval.email],
         subject,
         text,
         html,
         tags: ["recovery", "guardian-approval"],
-      });
+      };
+
+      if (useResend) {
+        return await sendResendMessage(payload);
+      }
+
+      return await sendMailpitMessage(payload);
     })
   );
 

@@ -65,6 +65,7 @@ services:
       - MAILPIT_SEND_API_URL=http://mailpit:8025/api/v1/send
       - MAIL_FROM_EMAIL=${MAIL_FROM_EMAIL:-no-reply@zentity.local}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Zentity}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
     depends_on:
       fhe-service:
         condition: service_healthy
