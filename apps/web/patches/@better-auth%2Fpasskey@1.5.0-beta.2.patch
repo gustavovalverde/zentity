@@ -1,9 +1,3 @@
-diff --git a/node_modules/@better-auth/passkey/.bun-tag-5f51a79313979c9e b/.bun-tag-5f51a79313979c9e
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@better-auth/passkey/.bun-tag-a2d34b6bdc38f06f b/.bun-tag-a2d34b6bdc38f06f
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/client.d.mts b/dist/client.d.mts
 index 6954ab42ad237fd6701d9f63ce549f3dd01f7130..5fb5ac26ce671fd9ac83dc93be10d3bec98c2d07 100644
 --- a/dist/client.d.mts

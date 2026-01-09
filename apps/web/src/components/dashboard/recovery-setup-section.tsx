@@ -1,5 +1,6 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -14,9 +15,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useSession } from "@/lib/auth/auth-client";
 import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
 import { addRecoveryWrapperForSecretType } from "@/lib/crypto/secret-vault";
+import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 
 const SECRET_LABELS: Record<string, string> = {
@@ -27,7 +30,12 @@ const SECRET_LABELS: Record<string, string> = {
 export function RecoverySetupSection() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddingGuardian, setIsAddingGuardian] = useState(false);
+  const [isLinkingTwoFactor, setIsLinkingTwoFactor] = useState(false);
+  const [removingGuardianId, setRemovingGuardianId] = useState<string | null>(
+    null
+  );
   const [guardianEmail, setGuardianEmail] = useState("");
+  const [copiedRecoveryId, setCopiedRecoveryId] = useState(false);
 
   const configQuery = trpcReact.recovery.config.useQuery();
   const config = configQuery.data?.config ?? null;
@@ -36,6 +44,13 @@ export function RecoverySetupSection() {
     enabled: Boolean(config),
   });
   const guardians = guardiansQuery.data?.guardians ?? [];
+
+  const { data: sessionData } = useSession();
+
+  const recoveryIdQuery = trpcReact.recovery.identifier.useQuery();
+  const recoveryId = recoveryIdQuery.data?.recoveryId ?? null;
+
+  const isTwoFactorConfigured = Boolean(sessionData?.user?.twoFactorEnabled);
 
   const wrappersQuery = trpcReact.recovery.wrappersStatus.useQuery(undefined, {
     enabled: Boolean(config),
@@ -50,6 +65,62 @@ export function RecoverySetupSection() {
     }
     return { filled: guardians.length, total: config.totalGuardians };
   }, [config, guardians.length]);
+
+  const hasTwoFactorGuardian = useMemo(
+    () =>
+      guardians.some(
+        (guardian) =>
+          guardian.guardianType === RECOVERY_GUARDIAN_TYPE_TWO_FACTOR
+      ),
+    [guardians]
+  );
+
+  const twoFactorGuardianLabel = useMemo(() => {
+    if (hasTwoFactorGuardian) {
+      return "Authenticator guardian linked";
+    }
+    if (isLinkingTwoFactor) {
+      return "Linking authenticator guardian...";
+    }
+    return "Link authenticator guardian";
+  }, [hasTwoFactorGuardian, isLinkingTwoFactor]);
+
+  const downloadTextFile = (params: { filename: string; content: string }) => {
+    const blob = new Blob([params.content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = params.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyRecoveryId = async () => {
+    if (!recoveryId) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(recoveryId);
+      setCopiedRecoveryId(true);
+      setTimeout(() => setCopiedRecoveryId(false), 2000);
+    } catch {
+      toast.error("Could not copy Recovery ID.");
+    }
+  };
+
+  const handleDownloadRecoveryId = () => {
+    if (!recoveryId) {
+      return;
+    }
+    const content = `Zentity Recovery ID\n\n${recoveryId}\n\nKeep this ID safe. You can use it to start account recovery if you lose access to your passkey.`;
+    downloadTextFile({
+      filename: "zentity-recovery-id.txt",
+      content,
+    });
+    toast.success("Recovery ID downloaded.");
+  };
 
   const handleEnable = async () => {
     setIsSubmitting(true);
@@ -101,6 +172,55 @@ export function RecoverySetupSection() {
     }
   };
 
+  const handleLinkTwoFactorGuardian = async () => {
+    if (isLinkingTwoFactor) {
+      return;
+    }
+    setIsLinkingTwoFactor(true);
+    try {
+      const result = await trpc.recovery.addGuardianTwoFactor.mutate();
+      await guardiansQuery.refetch();
+      toast.success(
+        result.created
+          ? "Authenticator guardian linked"
+          : "Authenticator guardian already linked"
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to link authenticator guardian.";
+      toast.error("Could not link authenticator guardian", {
+        description: message,
+      });
+    } finally {
+      setIsLinkingTwoFactor(false);
+    }
+  };
+
+  const handleRemoveGuardian = async (params: {
+    guardianId: string;
+    guardianType: string;
+  }) => {
+    if (removingGuardianId) {
+      return;
+    }
+    setRemovingGuardianId(params.guardianId);
+    try {
+      await trpc.recovery.removeGuardian.mutate({
+        guardianId: params.guardianId,
+      });
+      await guardiansQuery.refetch();
+      toast.success("Guardian removed");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to remove guardian.";
+      toast.error("Could not remove guardian", { description: message });
+    } finally {
+      setRemovingGuardianId(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -111,6 +231,40 @@ export function RecoverySetupSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between font-medium text-sm">
+            <span>Recovery ID</span>
+            {recoveryId ? (
+              <Badge variant="outline">Saved</Badge>
+            ) : (
+              <Badge variant="outline">Generating</Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Keep this ID safe. You can use it to start a recovery if you lose
+            access to your passkey.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input readOnly value={recoveryId ?? "Loading..."} />
+            <Button
+              disabled={!recoveryId}
+              onClick={handleCopyRecoveryId}
+              type="button"
+              variant="secondary"
+            >
+              {copiedRecoveryId ? "Copied" : "Copy ID"}
+            </Button>
+            <Button
+              disabled={!recoveryId}
+              onClick={handleDownloadRecoveryId}
+              type="button"
+              variant="secondary"
+            >
+              Download ID
+            </Button>
+          </div>
+        </div>
+
         {!isEnabled && (
           <>
             <p className="text-muted-foreground text-sm">
@@ -167,12 +321,35 @@ export function RecoverySetupSection() {
                   key={guardian.id}
                 >
                   <div>
-                    <div className="font-medium">{guardian.email}</div>
+                    <div className="font-medium">
+                      {guardian.guardianType ===
+                      RECOVERY_GUARDIAN_TYPE_TWO_FACTOR
+                        ? "Authenticator app"
+                        : guardian.email}
+                    </div>
                     <div className="text-muted-foreground text-xs">
                       Participant {guardian.participantIndex}
                     </div>
                   </div>
-                  <Badge variant="secondary">{guardian.status}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{guardian.status}</Badge>
+                    <Button
+                      aria-label="Remove guardian"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={removingGuardianId === guardian.id}
+                      onClick={() =>
+                        handleRemoveGuardian({
+                          guardianId: guardian.id,
+                          guardianType: guardian.guardianType,
+                        })
+                      }
+                      size="sm"
+                      title="Remove guardian"
+                      variant="ghost"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -189,6 +366,31 @@ export function RecoverySetupSection() {
                   variant="secondary"
                 >
                   {isAddingGuardian ? "Adding..." : "Add guardian"}
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between font-medium text-sm">
+                  <span>Authenticator guardian</span>
+                  {hasTwoFactorGuardian ? (
+                    <Badge variant="outline">Linked</Badge>
+                  ) : null}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  {isTwoFactorConfigured
+                    ? "Use your authenticator app (2FA) as a recovery guardian."
+                    : "Enable two-factor authentication to link your authenticator as a guardian."}
+                </p>
+                <Button
+                  disabled={
+                    !isTwoFactorConfigured ||
+                    hasTwoFactorGuardian ||
+                    isLinkingTwoFactor
+                  }
+                  onClick={handleLinkTwoFactorGuardian}
+                  type="button"
+                  variant="secondary"
+                >
+                  {twoFactorGuardianLabel}
                 </Button>
               </div>
             </div>

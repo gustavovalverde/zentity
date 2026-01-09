@@ -83,6 +83,7 @@ export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
       social={{
         providers: ["google", "github"],
       }}
+      twoFactor={{ methods: ["totp"], allowPasswordless: true }}
       viewPaths={{
         SIGN_IN: "sign-in",
         SIGN_UP: "sign-up",

@@ -53,7 +53,7 @@ export default async function SettingsPage() {
           {/* Custom passkey section with PRF support for FHE key derivation */}
           <PasskeyManagementSection />
           <RecoverySetupSection />
-          {/* Better Auth UI components for OAuth, session, and 2FA management */}
+          {/* Security cards for OAuth, sessions, and two-factor authentication */}
           <SecurityCards hasPassword={hasPassword} />
           {/* Password section: ChangePasswordCard or SetPasswordSection */}
           <PasswordSection hasPassword={hasPassword} />

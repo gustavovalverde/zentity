@@ -21,17 +21,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
@@ -49,12 +49,42 @@ type RecoveryPhase =
   | "complete";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RECOVERY_ID_PREFIX = "rec_";
+const OTP_DIGITS = 6;
+const OTP_SLOT_KEYS = Array.from(
+  { length: OTP_DIGITS },
+  (_, index) => `otp-slot-${index}`
+);
+
+type GuardianType = "email" | "twoFactor";
 
 interface ApprovalToken {
   guardianId: string;
   email: string;
+  guardianType: GuardianType;
   token: string;
   tokenExpiresAt: string;
+}
+
+function isRecoveryIdentifier(value: string): boolean {
+  return value.trim().toLowerCase().startsWith(RECOVERY_ID_PREFIX);
+}
+
+function formatMinutesRemaining(expiresAt?: string | null): string | null {
+  if (!expiresAt) {
+    return null;
+  }
+  const now = Date.now();
+  const end = new Date(expiresAt).getTime();
+  if (Number.isNaN(end)) {
+    return null;
+  }
+  const remainingMs = end - now;
+  if (remainingMs <= 0) {
+    return "Expired";
+  }
+  const minutes = Math.ceil(remainingMs / 60_000);
+  return `${minutes} min${minutes === 1 ? "" : "s"} remaining`;
 }
 
 export default function RecoverSocialPage() {
@@ -69,6 +99,10 @@ export default function RecoverSocialPage() {
   const [threshold, setThreshold] = useState<number | null>(null);
   const [copiedGuardianId, setCopiedGuardianId] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
+  const [deviceCode, setDeviceCode] = useState("");
+  const [deviceError, setDeviceError] = useState<string | null>(null);
+  const [deviceSubmitting, setDeviceSubmitting] = useState(false);
+  const [deviceMode, setDeviceMode] = useState<"totp" | "backup">("totp");
   const [deliveryMode, setDeliveryMode] = useState<
     "email" | "mixed" | "manual" | null
   >(null);
@@ -85,6 +119,28 @@ export default function RecoverSocialPage() {
 
   const approvalsCollected = statusQuery.data?.approvals ?? 0;
   const approvalsThreshold = statusQuery.data?.threshold ?? threshold ?? 0;
+  const guardianApprovals = statusQuery.data?.guardianApprovals ?? [];
+
+  const approvalStatusById = useMemo(() => {
+    const entries = guardianApprovals.map((entry): [string, string | null] => [
+      entry.guardianId,
+      entry.approvedAt ?? null,
+    ]);
+    return new Map<string, string | null>(entries);
+  }, [guardianApprovals]);
+
+  const approvalEntries = useMemo(
+    () =>
+      approvalTokens.map((entry) => ({
+        ...entry,
+        approvedAt: approvalStatusById.get(entry.guardianId) ?? null,
+      })),
+    [approvalStatusById, approvalTokens]
+  );
+  const expiresLabel = useMemo(
+    () => formatMinutesRemaining(statusQuery.data?.expiresAt),
+    [statusQuery.data?.expiresAt]
+  );
 
   const step = useMemo(() => {
     if (phase === "pending") {
@@ -106,25 +162,84 @@ export default function RecoverSocialPage() {
     if (phase === "complete") {
       return "Done";
     }
-    return "Step 1 of 3 · Verify your email";
+    return "Step 1 of 3 · Verify your account";
   }, [phase]);
 
   const approvalLinks = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return approvalTokens.map((approval) => ({
-      ...approval,
-      url: origin
-        ? `${origin}/recover-guardian?token=${approval.token}`
-        : `/recover-guardian?token=${approval.token}`,
-    }));
-  }, [approvalTokens]);
+    return approvalEntries
+      .filter((approval) => approval.guardianType === "email")
+      .map((approval) => ({
+        ...approval,
+        url: origin
+          ? `${origin}/recover-guardian?token=${approval.token}`
+          : `/recover-guardian?token=${approval.token}`,
+      }));
+  }, [approvalEntries]);
+  const approvalLinkByGuardianId = useMemo(
+    () =>
+      new Map(approvalLinks.map((approval) => [approval.guardianId, approval])),
+    [approvalLinks]
+  );
+
+  const deviceApproval = useMemo(
+    () =>
+      approvalEntries.find((approval) => approval.guardianType === "twoFactor"),
+    [approvalEntries]
+  );
+  const deviceApproved = Boolean(deviceApproval?.approvedAt);
+
+  const emailApprovals = useMemo(
+    () => approvalEntries.filter((entry) => entry.guardianType === "email"),
+    [approvalEntries]
+  );
+  const hasEmailApprovals = emailApprovals.length > 0;
+  const deviceApproveLabel =
+    deviceMode === "totp"
+      ? "Approve with authenticator"
+      : "Approve with backup code";
+  const deviceToggleLabel =
+    deviceMode === "totp" ? "Use a backup code" : "Use authenticator code";
+
+  const emailApprovalCopy = useMemo(() => {
+    if (!hasEmailApprovals) {
+      return null;
+    }
+    const parts = ["We emailed your guardians to approve this recovery."];
+    if (deliveryMode === "mixed") {
+      parts.push(" Some emails failed—share manual links below.");
+    } else if (deliveryMode && deliveryMode !== "email") {
+      parts.push(" Email delivery is not configured—share manual links below.");
+    }
+    if (deviceApproval) {
+      parts.push(" Enter your authenticator or backup code once you’re ready.");
+    }
+    return parts.join("");
+  }, [deliveryMode, deviceApproval, hasEmailApprovals]);
+
+  const getGuardianStatusLabel = (approved: boolean) => {
+    if (approved) {
+      return "Approval received.";
+    }
+    if (deliveryMode === "email") {
+      return "Email sent. Waiting for confirmation.";
+    }
+    return "Share a manual approval link with this guardian.";
+  };
 
   useEffect(() => {
-    if (!deliveryMode) {
+    if (!hasEmailApprovals) {
+      setShowManualLinks(false);
       return;
     }
-    setShowManualLinks(deliveryMode !== "email");
-  }, [deliveryMode]);
+    if (deliveryMode === "email") {
+      setShowManualLinks(false);
+      return;
+    }
+    if (deliveryMode) {
+      setShowManualLinks(true);
+    }
+  }, [deliveryMode, hasEmailApprovals]);
 
   useEffect(() => {
     if (!statusQuery.data || phase !== "pending") {
@@ -173,6 +288,61 @@ export default function RecoverSocialPage() {
     setTimeout(() => setCopiedAll(false), 2000);
   };
 
+  const handleDeviceApprove = async () => {
+    if (!deviceApproval) {
+      return;
+    }
+    const trimmed =
+      deviceMode === "totp"
+        ? deviceCode.replace(/\s+/g, "")
+        : deviceCode.replace(/[^a-zA-Z0-9]/g, "");
+    if (!trimmed) {
+      setDeviceError(
+        deviceMode === "totp"
+          ? "Enter the 6-digit code from your authenticator app."
+          : "Enter one of your backup codes."
+      );
+      return;
+    }
+    if (deviceMode === "totp" && trimmed.length !== OTP_DIGITS) {
+      setDeviceError("Enter the 6-digit code from your authenticator app.");
+      return;
+    }
+    if (deviceMode === "backup" && trimmed.length < 8) {
+      setDeviceError("Enter one of your backup codes.");
+      return;
+    }
+
+    setDeviceError(null);
+    setDeviceSubmitting(true);
+
+    try {
+      await trpc.recovery.approveGuardian.mutate({
+        token: deviceApproval.token,
+        code: trimmed,
+      });
+      await statusQuery.refetch();
+      toast.success("Authenticator approval recorded.");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to verify authenticator code.";
+      setDeviceError(message);
+      toast.error("Authenticator verification failed", {
+        description: message,
+      });
+    } finally {
+      setDeviceSubmitting(false);
+    }
+  };
+
+  const toggleDeviceMode = (next: "totp" | "backup") => {
+    setDeviceMode(next);
+    setDeviceCode("");
+    setDeviceError(null);
+  };
+
   const ensurePrfSupport = async () => {
     if (prfSupported !== null) {
       return prfSupported;
@@ -190,23 +360,31 @@ export default function RecoverSocialPage() {
   const handleStartRecovery = async () => {
     const trimmed = email.trim();
     if (!trimmed) {
-      setEmailError("Email is required");
+      setEmailError("Email or Recovery ID is required");
       return;
     }
-    if (!EMAIL_PATTERN.test(trimmed)) {
-      setEmailError("Invalid email address");
+    if (!(EMAIL_PATTERN.test(trimmed) || isRecoveryIdentifier(trimmed))) {
+      setEmailError("Enter a valid email or Recovery ID");
       return;
     }
 
     setEmailError(null);
     setError(null);
     setPhase("starting");
+    setDeviceCode("");
+    setDeviceError(null);
+    setDeviceMode("totp");
 
     try {
-      const result = await trpc.recovery.start.mutate({ email: trimmed });
+      const result = await trpc.recovery.start.mutate({ identifier: trimmed });
       setContextToken(result.contextToken);
       setChallengeId(result.challengeId);
-      setApprovalTokens(result.approvals);
+      const approvals: ApprovalToken[] = result.approvals.map((approval) => ({
+        ...approval,
+        guardianType:
+          approval.guardianType === "twoFactor" ? "twoFactor" : "email",
+      }));
+      setApprovalTokens(approvals);
       setThreshold(result.threshold);
       setDeliveryMode(result.delivery ?? "manual");
       setDeliveredCount(
@@ -330,13 +508,15 @@ export default function RecoverSocialPage() {
         {(phase === "email" || phase === "starting") && (
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="recovery-email">Email</FieldLabel>
+              <FieldLabel htmlFor="recovery-email">
+                Email or Recovery ID
+              </FieldLabel>
               <Input
                 disabled={phase === "starting"}
                 id="recovery-email"
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                type="email"
+                placeholder="you@example.com or rec_XXXX"
+                type="text"
                 value={email}
               />
               {emailError ? <FieldError>{emailError}</FieldError> : null}
@@ -361,117 +541,187 @@ export default function RecoverSocialPage() {
         {phase === "pending" && (
           <div className="space-y-4">
             <div className="rounded-md border border-dashed px-3 py-2 text-muted-foreground text-sm">
-              {deliveryMode === "email" && (
+              {hasEmailApprovals ? emailApprovalCopy : null}
+              {hasEmailApprovals ? null : (
                 <>
-                  We emailed guardians about your recovery. If someone can’t
-                  find it, share a manual link.
+                  Use your authenticator app or backup code to approve this
+                  recovery.
                 </>
               )}
-              {deliveryMode === "mixed" && (
-                <>Some guardian emails failed. Share links below.</>
-              )}
-              {deliveryMode !== "email" && deliveryMode !== "mixed" && (
-                <>Email delivery is not configured. Share links below.</>
-              )}
             </div>
-            {deliveryMode === "email" && (
+            {hasEmailApprovals && deliveryMode === "email" && (
               <div className="text-muted-foreground text-sm">
                 Emails sent to {deliveredCount ?? approvalLinks.length}/
                 {approvalLinks.length} guardians.
               </div>
             )}
-            {deliveryMode === "email" ? (
-              <Collapsible
-                onOpenChange={setShowManualLinks}
-                open={showManualLinks}
+            {expiresLabel ? (
+              <div className="text-muted-foreground text-xs">
+                Recovery request{" "}
+                {expiresLabel === "Expired"
+                  ? "expired"
+                  : `expires in ${expiresLabel}.`}
+              </div>
+            ) : null}
+            {hasEmailApprovals ? (
+              <Button
+                onClick={() => setShowManualLinks((current) => !current)}
+                type="button"
+                variant="secondary"
               >
-                <CollapsibleTrigger asChild>
-                  <Button type="button" variant="secondary">
-                    {showManualLinks
-                      ? "Hide manual links"
-                      : "Show manual links"}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-3 space-y-3">
-                  {approvalLinks.map((approval) => (
-                    <div className="space-y-1" key={approval.guardianId}>
-                      <div className="flex items-center justify-between font-medium text-sm">
-                        <span>{approval.email}</span>
-                        <Button
-                          onClick={() =>
-                            handleCopyLink(approval.guardianId, approval.url)
-                          }
-                          size="sm"
-                          type="button"
-                          variant="secondary"
-                        >
-                          {copiedGuardianId === approval.guardianId
-                            ? "Copied"
-                            : "Copy"}
-                        </Button>
-                      </div>
-                      <Input
-                        data-guardian-link={approval.guardianId}
-                        readOnly
-                        value={approval.url}
-                      />
-                    </div>
-                  ))}
-                  {approvalLinks.length > 1 && (
-                    <Button
-                      onClick={handleCopyAll}
-                      type="button"
-                      variant="secondary"
-                    >
-                      {copiedAll ? "All links copied" : "Copy all links"}
-                    </Button>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {approvalLinks.map((approval) => (
-                    <div className="space-y-1" key={approval.guardianId}>
-                      <div className="flex items-center justify-between font-medium text-sm">
-                        <span>{approval.email}</span>
-                        <Button
-                          onClick={() =>
-                            handleCopyLink(approval.guardianId, approval.url)
-                          }
-                          size="sm"
-                          type="button"
-                          variant="secondary"
-                        >
-                          {copiedGuardianId === approval.guardianId
-                            ? "Copied"
-                            : "Copy"}
-                        </Button>
-                      </div>
-                      <Input
-                        data-guardian-link={approval.guardianId}
-                        readOnly
-                        value={approval.url}
-                      />
-                    </div>
-                  ))}
-                </div>
-                {approvalLinks.length > 1 && (
-                  <Button
-                    onClick={handleCopyAll}
-                    type="button"
-                    variant="secondary"
+                {showManualLinks ? "Hide manual links" : "Show manual links"}
+              </Button>
+            ) : null}
+            <div className="space-y-3">
+              {emailApprovals.map((approval) => {
+                const approved = Boolean(approval.approvedAt);
+                const manualLink = approvalLinkByGuardianId.get(
+                  approval.guardianId
+                );
+                const showManual = Boolean(manualLink && showManualLinks);
+
+                return (
+                  <div
+                    className="rounded-md border px-3 py-3"
+                    key={approval.guardianId}
                   >
-                    {copiedAll ? "All links copied" : "Copy all links"}
-                  </Button>
-                )}
-              </>
-            )}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium text-sm">
+                          {approval.email}
+                        </div>
+                        <div className="text-muted-foreground text-xs">
+                          {getGuardianStatusLabel(approved)}
+                        </div>
+                      </div>
+                      <Badge variant={approved ? "secondary" : "outline"}>
+                        {approved ? "Approved" : "Pending"}
+                      </Badge>
+                    </div>
+                    {showManual && !approved && manualLink ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center justify-between font-medium text-sm">
+                          <span>Manual approval link</span>
+                          <Button
+                            onClick={() =>
+                              handleCopyLink(
+                                manualLink.guardianId,
+                                manualLink.url
+                              )
+                            }
+                            size="sm"
+                            type="button"
+                            variant="secondary"
+                          >
+                            {copiedGuardianId === manualLink.guardianId
+                              ? "Copied"
+                              : "Copy"}
+                          </Button>
+                        </div>
+                        <Input
+                          data-guardian-link={manualLink.guardianId}
+                          readOnly
+                          value={manualLink.url}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {showManualLinks && emailApprovals.length > 1 ? (
+                <Button
+                  onClick={handleCopyAll}
+                  type="button"
+                  variant="secondary"
+                >
+                  {copiedAll ? "All links copied" : "Copy all links"}
+                </Button>
+              ) : null}
+              {deviceApproval ? (
+                <div className="rounded-md border px-3 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-sm">
+                        Authenticator approval
+                      </div>
+                      <div className="text-muted-foreground text-xs">
+                        {deviceMode === "totp"
+                          ? "Enter the 6-digit code from your authenticator app."
+                          : "Enter one of your backup codes."}
+                      </div>
+                    </div>
+                    <Badge variant={deviceApproved ? "secondary" : "outline"}>
+                      {deviceApproved ? "Approved" : "Pending"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {deviceMode === "totp" ? (
+                      <InputOTP
+                        disabled={deviceSubmitting || deviceApproved}
+                        maxLength={OTP_DIGITS}
+                        onChange={(value) => {
+                          setDeviceCode(value);
+                          setDeviceError(null);
+                        }}
+                        value={deviceCode}
+                      >
+                        <InputOTPGroup>
+                          {OTP_SLOT_KEYS.map((key, index) => (
+                            <InputOTPSlot index={index} key={key} />
+                          ))}
+                        </InputOTPGroup>
+                      </InputOTP>
+                    ) : (
+                      <Input
+                        disabled={deviceSubmitting || deviceApproved}
+                        onChange={(event) => {
+                          setDeviceCode(event.target.value);
+                          setDeviceError(null);
+                        }}
+                        placeholder="XXXXX-XXXXX"
+                        value={deviceCode}
+                      />
+                    )}
+                    {deviceError ? (
+                      <FieldError>{deviceError}</FieldError>
+                    ) : null}
+                    <Button
+                      className="w-full"
+                      disabled={deviceSubmitting || deviceApproved}
+                      onClick={handleDeviceApprove}
+                      type="button"
+                    >
+                      {deviceSubmitting ? (
+                        <>
+                          <Spinner className="mr-2 size-4" />
+                          Verifying code...
+                        </>
+                      ) : (
+                        deviceApproveLabel
+                      )}
+                    </Button>
+                    <Button
+                      className="w-full"
+                      disabled={deviceSubmitting || deviceApproved}
+                      onClick={() =>
+                        toggleDeviceMode(
+                          deviceMode === "totp" ? "backup" : "totp"
+                        )
+                      }
+                      type="button"
+                      variant="outline"
+                    >
+                      {deviceToggleLabel}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Approvals collected</span>
               <Badge variant="secondary">
                 {approvalsCollected}/
-                {approvalsThreshold || approvalLinks.length}
+                {approvalsThreshold || approvalTokens.length}
               </Badge>
             </div>
             <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm">

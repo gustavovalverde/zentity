@@ -1,6 +1,11 @@
 import "server-only";
 
+import crypto from "node:crypto";
+
+import { base32 } from "@better-auth/utils/base32";
+import { createOTP } from "@better-auth/utils/otp";
 import { TRPCError } from "@trpc/server";
+import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { z } from "zod";
 
 import {
@@ -19,18 +24,24 @@ import {
 } from "@/lib/db/queries/crypto";
 import {
   completeRecoveryChallenge,
-  countApprovalsForChallenge,
   createGuardianApprovalToken,
   createRecoveryChallenge,
   createRecoveryConfig,
   createRecoveryGuardian,
+  createRecoveryIdentifier,
+  deleteRecoveryGuardian,
   getApprovalByToken,
   getRecoveryChallengeById,
   getRecoveryConfigById,
   getRecoveryConfigByUserId,
   getRecoveryGuardianByEmail,
+  getRecoveryGuardianById,
+  getRecoveryGuardianByType,
+  getRecoveryIdentifierByUserId,
+  getRecoveryIdentifierByValue,
   getRecoverySecretWrapperBySecretId,
   getUserByEmail,
+  getUserByRecoveryId,
   listApprovalsForChallenge,
   listRecoveryGuardiansByConfigId,
   listRecoveryWrappersByUserId,
@@ -38,7 +49,15 @@ import {
   markRecoveryChallengeApplied,
   upsertRecoverySecretWrapper,
 } from "@/lib/db/queries/recovery";
+import {
+  getTwoFactorByUserId,
+  updateTwoFactorBackupCodes,
+} from "@/lib/db/queries/two-factor";
 import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
+import {
+  RECOVERY_GUARDIAN_TYPE_EMAIL,
+  RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+} from "@/lib/recovery/constants";
 import {
   createRecoveryKeySet,
   signRecoveryChallenge,
@@ -48,10 +67,15 @@ import {
   getRecoveryPublicKey,
 } from "@/lib/recovery/recovery-keys";
 import { base64ToBytes } from "@/lib/utils/base64";
+import { getBetterAuthSecret } from "@/lib/utils/env";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
 const ciphersuiteSchema = z.enum(["secp256k1", "ed25519"]).default("secp256k1");
+const RECOVERY_ID_PREFIX = "rec_";
+const TOTP_DIGITS = 6;
+const TOTP_PERIOD = 30;
+const OTP_CODE_RE = /^\d{6}$/;
 
 function isExpired(value: string): boolean {
   const date = new Date(value);
@@ -65,6 +89,105 @@ function buildRecoveryMessage(params: {
   return `recovery:${params.challengeId}:${params.challengeNonce}`;
 }
 
+function normalizeOtpCode(code: string): string {
+  return code.replace(/\s+/g, "");
+}
+
+function normalizeRecoveryId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizeBackupCode(code: string): string {
+  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function generateRecoveryId(): string {
+  const bytes = crypto.randomBytes(12);
+  const encoded = base32.encode(bytes, { padding: false }).toLowerCase();
+  return `${RECOVERY_ID_PREFIX}${encoded}`;
+}
+
+async function ensureRecoveryIdentifier(
+  userId: string
+): Promise<{ recoveryId: string; createdAt: string }> {
+  const existing = await getRecoveryIdentifierByUserId(userId);
+  if (existing) {
+    return { recoveryId: existing.recoveryId, createdAt: existing.createdAt };
+  }
+
+  let recoveryId = generateRecoveryId();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const collision = await getRecoveryIdentifierByValue(recoveryId);
+    if (!collision) {
+      break;
+    }
+    recoveryId = generateRecoveryId();
+  }
+
+  const created = await createRecoveryIdentifier({
+    id: crypto.randomUUID(),
+    userId,
+    recoveryId,
+  });
+
+  return { recoveryId: created.recoveryId, createdAt: created.createdAt };
+}
+
+async function verifyTwoFactorGuardianCode(params: {
+  userId: string;
+  code: string;
+}): Promise<{ method: "backup" | "totp"; updatedCodes?: string[] } | null> {
+  const twoFactor = await getTwoFactorByUserId(params.userId);
+  if (!twoFactor) {
+    return null;
+  }
+
+  const normalized = normalizeBackupCode(params.code);
+  if (!normalized) {
+    return null;
+  }
+
+  const decryptedSecret = await symmetricDecrypt({
+    key: getBetterAuthSecret(),
+    data: twoFactor.secret,
+  });
+  const otp = createOTP(decryptedSecret, {
+    digits: TOTP_DIGITS,
+    period: TOTP_PERIOD,
+  });
+  const code = normalizeOtpCode(params.code);
+  if (code && OTP_CODE_RE.test(code)) {
+    const valid = await otp.verify(code);
+    if (valid) {
+      return { method: "totp" };
+    }
+  }
+
+  const decryptedBackup = await symmetricDecrypt({
+    key: getBetterAuthSecret(),
+    data: twoFactor.backupCodes,
+  });
+  let backupCodes: string[] = [];
+  try {
+    const parsed = JSON.parse(decryptedBackup);
+    if (Array.isArray(parsed)) {
+      backupCodes = parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  const matchIndex = backupCodes.findIndex(
+    (entry) => normalizeBackupCode(entry) === normalized
+  );
+  if (matchIndex === -1) {
+    return null;
+  }
+
+  const updatedCodes = backupCodes.filter((_, index) => index !== matchIndex);
+  return { method: "backup", updatedCodes };
+}
+
 export const recoveryRouter = router({
   publicKey: publicProcedure.query(() => getRecoveryPublicKey()),
 
@@ -72,6 +195,10 @@ export const recoveryRouter = router({
     const config = await getRecoveryConfigByUserId(ctx.userId);
     return { config };
   }),
+
+  identifier: protectedProcedure.query(
+    async ({ ctx }) => await ensureRecoveryIdentifier(ctx.userId)
+  ),
 
   setup: protectedProcedure
     .input(
@@ -115,6 +242,29 @@ export const recoveryRouter = router({
     const guardians = await listRecoveryGuardiansByConfigId(config.id);
     return { guardians };
   }),
+
+  removeGuardian: protectedProcedure
+    .input(z.object({ guardianId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const config = await getRecoveryConfigByUserId(ctx.userId);
+      if (!config) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Enable recovery before managing guardians.",
+        });
+      }
+
+      const guardian = await getRecoveryGuardianById(input.guardianId);
+      if (!guardian || guardian.recoveryConfigId !== config.id) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Guardian not found.",
+        });
+      }
+
+      await deleteRecoveryGuardian(guardian.id);
+      return { guardianId: guardian.id, guardianType: guardian.guardianType };
+    }),
 
   addGuardianEmail: protectedProcedure
     .input(z.object({ email: z.string().email() }))
@@ -170,6 +320,66 @@ export const recoveryRouter = router({
       return { guardian, created: true };
     }),
 
+  addGuardianTwoFactor: protectedProcedure.mutation(async ({ ctx }) => {
+    const config = await getRecoveryConfigByUserId(ctx.userId);
+    if (!config) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Enable recovery before adding guardians.",
+      });
+    }
+
+    const existing = await getRecoveryGuardianByType({
+      recoveryConfigId: config.id,
+      guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+    });
+    if (existing) {
+      return { guardian: existing, created: false };
+    }
+
+    const twoFactor = await getTwoFactorByUserId(ctx.userId);
+    if (!twoFactor) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Enable two-factor authentication before linking a guardian.",
+      });
+    }
+
+    const guardians = await listRecoveryGuardiansByConfigId(config.id);
+    if (guardians.length >= config.totalGuardians) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "All guardian slots are already filled.",
+      });
+    }
+
+    const assignedIndices = new Set(guardians.map((g) => g.participantIndex));
+    let participantIndex = 1;
+    while (
+      participantIndex <= config.totalGuardians &&
+      assignedIndices.has(participantIndex)
+    ) {
+      participantIndex += 1;
+    }
+
+    if (participantIndex > config.totalGuardians) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No guardian slots available.",
+      });
+    }
+
+    const guardian = await createRecoveryGuardian({
+      id: crypto.randomUUID(),
+      recoveryConfigId: config.id,
+      email: "authenticator",
+      guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+      participantIndex,
+    });
+
+    return { guardian, created: true };
+  }),
+
   wrappersStatus: protectedProcedure.query(async ({ ctx }) => {
     const secrets = await listEncryptedSecretsByUserId(ctx.userId);
     const wrappers = await listRecoveryWrappersByUserId(ctx.userId);
@@ -224,13 +434,16 @@ export const recoveryRouter = router({
     }),
 
   start: publicProcedure
-    .input(z.object({ email: z.string().email() }))
+    .input(z.object({ identifier: z.string().min(1) }))
     .mutation(async ({ input }) => {
-      const user = await getUserByEmail(input.email);
+      const normalized = normalizeRecoveryId(input.identifier);
+      const user = normalized.includes("@")
+        ? await getUserByEmail(normalized)
+        : await getUserByRecoveryId(normalized);
       if (!user) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "No account found for that email.",
+          message: "No account found for that email or recovery ID.",
         });
       }
 
@@ -262,6 +475,22 @@ export const recoveryRouter = router({
         });
       }
 
+      if (
+        guardians.some(
+          (guardian) =>
+            guardian.guardianType === RECOVERY_GUARDIAN_TYPE_TWO_FACTOR
+        )
+      ) {
+        const twoFactor = await getTwoFactorByUserId(user.id);
+        if (!twoFactor) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message:
+              "Authenticator guardian is not configured. Enable two-factor authentication and link it again.",
+          });
+        }
+      }
+
       const approvalTokens = await Promise.all(
         guardians.map(async (guardian) => {
           const token = crypto.randomUUID();
@@ -276,15 +505,20 @@ export const recoveryRouter = router({
           return {
             guardianId: guardian.id,
             email: guardian.email,
+            guardianType: guardian.guardianType,
             token,
             tokenExpiresAt: approval.tokenExpiresAt,
           };
         })
       );
 
+      const emailApprovals = approvalTokens.filter(
+        (approval) => approval.guardianType === RECOVERY_GUARDIAN_TYPE_EMAIL
+      );
+
       const delivery = await sendRecoveryGuardianEmails({
         accountEmail: user.email,
-        approvals: approvalTokens.map((approval) => ({
+        approvals: emailApprovals.map((approval) => ({
           email: approval.email,
           token: approval.token,
         })),
@@ -325,10 +559,18 @@ export const recoveryRouter = router({
         });
       }
 
-      const approvals = await countApprovalsForChallenge(challenge.id);
+      const approvals = await listApprovalsForChallenge(challenge.id);
+      const approvedCount = approvals.filter(
+        (entry) => entry.approvedAt
+      ).length;
       return {
         status: challenge.status,
-        approvals,
+        approvals: approvedCount,
+        guardianApprovals: approvals.map((entry) => ({
+          guardianId: entry.guardian.id,
+          guardianType: entry.guardian.guardianType,
+          approvedAt: entry.approvedAt,
+        })),
         threshold: config.threshold,
         expiresAt: challenge.expiresAt,
         completedAt: challenge.completedAt,
@@ -336,7 +578,7 @@ export const recoveryRouter = router({
     }),
 
   approveGuardian: publicProcedure
-    .input(z.object({ token: z.string().min(1) }))
+    .input(z.object({ token: z.string().min(1), code: z.string().optional() }))
     .mutation(async ({ input }) => {
       const approval = await getApprovalByToken(input.token);
       if (!approval) {
@@ -381,6 +623,40 @@ export const recoveryRouter = router({
           code: "NOT_FOUND",
           message: "Recovery configuration not found.",
         });
+      }
+
+      if (
+        approval.guardian.guardianType === RECOVERY_GUARDIAN_TYPE_TWO_FACTOR
+      ) {
+        const code = input.code ?? "";
+        if (!code.trim()) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "An authenticator or backup code is required.",
+          });
+        }
+
+        const verification = await verifyTwoFactorGuardianCode({
+          userId: config.userId,
+          code,
+        });
+        if (!verification) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "Invalid authenticator or backup code.",
+          });
+        }
+
+        if (verification.method === "backup" && verification.updatedCodes) {
+          const encryptedBackupCodes = await symmetricEncrypt({
+            key: getBetterAuthSecret(),
+            data: JSON.stringify(verification.updatedCodes),
+          });
+          await updateTwoFactorBackupCodes({
+            userId: config.userId,
+            backupCodes: encryptedBackupCodes,
+          });
+        }
       }
 
       if (!approval.approvedAt) {

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "../connection";
 import { users } from "../schema/auth";
@@ -9,11 +9,13 @@ import {
   type RecoveryConfig,
   type RecoveryGuardian,
   type RecoveryGuardianApproval,
+  type RecoveryIdentifier,
   type RecoverySecretWrapper,
   recoveryChallenges,
   recoveryConfigs,
   recoveryGuardianApprovals,
   recoveryGuardians,
+  recoveryIdentifiers,
   recoverySecretWrappers,
 } from "../schema/recovery";
 
@@ -24,6 +26,18 @@ export async function getUserByEmail(
     .select({ id: users.id, email: users.email })
     .from(users)
     .where(eq(users.email, email))
+    .get();
+  return row ?? null;
+}
+
+export async function getUserByRecoveryId(
+  recoveryId: string
+): Promise<{ id: string; email: string } | null> {
+  const row = await db
+    .select({ id: users.id, email: users.email })
+    .from(recoveryIdentifiers)
+    .innerJoin(users, eq(users.id, recoveryIdentifiers.userId))
+    .where(eq(recoveryIdentifiers.recoveryId, recoveryId))
     .get();
   return row ?? null;
 }
@@ -48,6 +62,55 @@ export async function getRecoveryConfigById(
     .where(eq(recoveryConfigs.id, id))
     .get();
   return row ?? null;
+}
+
+export async function getRecoveryIdentifierByUserId(
+  userId: string
+): Promise<RecoveryIdentifier | null> {
+  const row = await db
+    .select()
+    .from(recoveryIdentifiers)
+    .where(eq(recoveryIdentifiers.userId, userId))
+    .get();
+  return row ?? null;
+}
+
+export async function getRecoveryIdentifierByValue(
+  recoveryId: string
+): Promise<RecoveryIdentifier | null> {
+  const row = await db
+    .select()
+    .from(recoveryIdentifiers)
+    .where(eq(recoveryIdentifiers.recoveryId, recoveryId))
+    .get();
+  return row ?? null;
+}
+
+export async function createRecoveryIdentifier(params: {
+  id: string;
+  userId: string;
+  recoveryId: string;
+}): Promise<RecoveryIdentifier> {
+  await db
+    .insert(recoveryIdentifiers)
+    .values({
+      id: params.id,
+      userId: params.userId,
+      recoveryId: params.recoveryId,
+    })
+    .run();
+
+  const row = await db
+    .select()
+    .from(recoveryIdentifiers)
+    .where(eq(recoveryIdentifiers.id, params.id))
+    .get();
+
+  if (!row) {
+    throw new Error("Failed to create recovery identifier.");
+  }
+
+  return row;
 }
 
 export async function getRecoveryChallengeById(
@@ -113,12 +176,51 @@ export async function getRecoveryGuardianByEmail(params: {
     .where(
       and(
         eq(recoveryGuardians.recoveryConfigId, params.recoveryConfigId),
-        eq(recoveryGuardians.email, params.email)
+        eq(recoveryGuardians.email, params.email),
+        eq(recoveryGuardians.guardianType, "email")
       )
     )
     .get();
 
   return row ?? null;
+}
+
+export async function getRecoveryGuardianByType(params: {
+  recoveryConfigId: string;
+  guardianType: string;
+}): Promise<RecoveryGuardian | null> {
+  const row = await db
+    .select()
+    .from(recoveryGuardians)
+    .where(
+      and(
+        eq(recoveryGuardians.recoveryConfigId, params.recoveryConfigId),
+        eq(recoveryGuardians.guardianType, params.guardianType)
+      )
+    )
+    .get();
+
+  return row ?? null;
+}
+
+export async function getRecoveryGuardianById(
+  guardianId: string
+): Promise<RecoveryGuardian | null> {
+  const row = await db
+    .select()
+    .from(recoveryGuardians)
+    .where(eq(recoveryGuardians.id, guardianId))
+    .get();
+  return row ?? null;
+}
+
+export async function deleteRecoveryGuardian(
+  guardianId: string
+): Promise<void> {
+  await db
+    .delete(recoveryGuardians)
+    .where(eq(recoveryGuardians.id, guardianId))
+    .run();
 }
 
 function hashToken(token: string): string {
@@ -208,23 +310,6 @@ export async function markApprovalUsed(params: {
   }
 
   return row;
-}
-
-export async function countApprovalsForChallenge(
-  challengeId: string
-): Promise<number> {
-  const rows = await db
-    .select({ id: recoveryGuardianApprovals.id })
-    .from(recoveryGuardianApprovals)
-    .where(
-      and(
-        eq(recoveryGuardianApprovals.challengeId, challengeId),
-        isNotNull(recoveryGuardianApprovals.approvedAt)
-      )
-    )
-    .all();
-
-  return rows.length;
 }
 
 export async function listApprovalsForChallenge(

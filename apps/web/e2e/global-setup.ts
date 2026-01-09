@@ -342,6 +342,61 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
   await runSql(dbUrl, encryptedAttributesSql);
 }
 
+async function resetTwoFactor(dbUrl: string, email: string) {
+  const userId = await runSql(
+    dbUrl,
+    `SELECT id FROM "user" WHERE email = '${email.replace(/'/g, "''")}';`
+  );
+  if (!userId) {
+    return;
+  }
+  await runSql(dbUrl, `DELETE FROM two_factor WHERE user_id = '${userId}';`);
+  await runSql(
+    dbUrl,
+    `UPDATE "user" SET two_factor_enabled = 0 WHERE id = '${userId}';`
+  );
+}
+
+async function resetRecoveryState(dbUrl: string, email: string) {
+  const userId = await runSql(
+    dbUrl,
+    `SELECT id FROM "user" WHERE email = '${email.replace(/'/g, "''")}';`
+  );
+  if (!userId) {
+    return;
+  }
+  const configId = await runSql(
+    dbUrl,
+    `SELECT id FROM recovery_configs WHERE user_id = '${userId}';`
+  );
+  if (configId) {
+    await runSql(
+      dbUrl,
+      `DELETE FROM recovery_guardian_approvals WHERE challenge_id IN (SELECT id FROM recovery_challenges WHERE recovery_config_id = '${configId}');`
+    );
+    await runSql(
+      dbUrl,
+      `DELETE FROM recovery_challenges WHERE recovery_config_id = '${configId}';`
+    );
+    await runSql(
+      dbUrl,
+      `DELETE FROM recovery_guardians WHERE recovery_config_id = '${configId}';`
+    );
+    await runSql(
+      dbUrl,
+      `DELETE FROM recovery_configs WHERE id = '${configId}';`
+    );
+  }
+  await runSql(
+    dbUrl,
+    `DELETE FROM recovery_secret_wrappers WHERE user_id = '${userId}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM recovery_identifiers WHERE user_id = '${userId}';`
+  );
+}
+
 async function resetBlockchainState(dbUrl: string) {
   await runSql(dbUrl, "DELETE FROM blockchain_attestations;");
 }
@@ -391,6 +446,13 @@ export default async function globalSetup(config: FullConfig) {
         `E2E global setup failed to sign up: ${bodyText || "unknown error"}`
       );
     }
+  }
+
+  await resetTwoFactor(E2E_DB_URL, email);
+  await resetRecoveryState(E2E_DB_URL, email);
+  if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
+    await resetTwoFactor(DEFAULT_APP_DB_URL, email);
+    await resetRecoveryState(DEFAULT_APP_DB_URL, email);
   }
 
   const signInResponse = await postWithRetries(api, "/api/auth/sign-in/email", {

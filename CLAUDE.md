@@ -16,13 +16,13 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys for authe
 **For Web3/blockchain integration:**
 
 - [Web3 Architecture](docs/web3-architecture.md) — FHEVM hooks, encryption/decryption flows
-- [Web2 to Web3 Transition](docs/web2-to-web3-transition.md) — End-to-end attestation flow
 - [Blockchain Setup](docs/blockchain-setup.md) — Network config, contract deployment
 
 **For detailed system design:**
 
 - [Architecture](docs/architecture.md) — Components, data flow, storage model
 - [ZK Architecture](docs/zk-architecture.md) — Noir circuits and proving
+- [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
 ## Architecture
 
@@ -40,6 +40,7 @@ The frontend handles:
 - **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
 - **tRPC API layer** with type-safe routers for all backend operations
 - RP (Relying Party) redirect flow for OAuth-style integrations
+- **FROST threshold signatures** for guardian-based key recovery
 
 ## Build & Development Commands
 
@@ -50,8 +51,12 @@ bun run dev          # Start dev server
 bun run build        # Production build
 bun run lint         # Biome linting
 bun run lint:fix     # Fix lint issues
-bun run test         # Run unit tests (Vitest via Bun)
+bun run test         # Run unit tests (Vitest)
+bun run test path/to/file.test.ts           # Run single test file
+bun run test -t "test name pattern"         # Run tests matching pattern
 bun run test:e2e     # Run Playwright tests
+bun run typecheck    # TypeScript type checking
+bun run check-all    # Run typecheck + lint + build + circuit version check
 ```
 
 ### E2E Notes (Hardhat vs Sepolia)
@@ -102,7 +107,10 @@ cargo test               # Run tests
 python -m venv venv && source venv/bin/activate
 pip install -e '.[test]'
 PYTHONPATH=src uvicorn ocr_service.main:app --port 5004 --reload
-pytest
+pytest                    # Run tests
+pytest tests/test_x.py    # Run single test file
+ruff check src            # Lint (if dev deps installed)
+ruff format src           # Format
 ```
 
 ### Docker (all services)
@@ -219,7 +227,8 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 
 ## Code Conventions
 
-- **Linting**: Biome (not ESLint). Run `bun run lint:fix` before commits.
+- **Linting**: Biome via Ultracite preset (`bun x ultracite fix`). Run `bun run lint:fix` before commits.
+- **Code Standards**: See `apps/web/.claude/CLAUDE.md` for detailed TypeScript/React style guidelines enforced by Ultracite
 - **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
@@ -227,7 +236,7 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 - **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db` (no `DATABASE_PATH` fallback)
 - **Railway**: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service, then run `bun run db:push` from CI or local (no volume mounts or db-init container required)
 - **SQLite driver**: `drizzle-kit push` needs a driver; this repo uses `@libsql/client` (Bun-compatible)
-- **Auth**: better-auth
+- **Auth**: better-auth with passkey support
 
 ## tRPC API Structure
 
@@ -241,9 +250,10 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `onboarding` | Wizard state management and step validation |
 | `attestation` | On-chain identity attestation (submit, refresh, networks) |
 | `account` | User account management |
-| `passkeyAuth` | Passkey credential management (register, authenticate, list, remove) |
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
 | `token` | Session/token operations |
+| `recovery` | FROST guardian-based key recovery flow |
+| `app` | Application-level operations |
 
 **Client usage:**
 
