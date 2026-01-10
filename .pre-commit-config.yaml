@@ -26,7 +26,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(apps/.*/dist/|dist/)
+        exclude: ^(apps/.*/dist/|dist/|.*\.patch$)
       - id: end-of-file-fixer
         exclude: ^(apps/.*/dist/|dist/)
       - id: check-yaml
