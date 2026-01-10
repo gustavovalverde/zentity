@@ -219,8 +219,11 @@ jobs:
       # cargo-audit for CVE scanning
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
-      - name: Run cargo-audit
+      - name: Run cargo-audit (FHE service)
         run: cargo audit --file apps/fhe/Cargo.lock
+        continue-on-error: true
+      - name: Run cargo-audit (Signer service)
+        run: cargo audit --file apps/signer/Cargo.lock
         continue-on-error: true
 
   # ============================================
