@@ -11,8 +11,8 @@
     "lint:check": "biome check .",
     "lint:fix": "biome check --write --unsafe .",
     "type-check": "tsc -b",
-    "check-all": "bun run type-check && bun run lint:check",
-    "fix-all": "bun run type-check && bun run lint",
+    "check-all": "pnpm run type-check && pnpm run lint:check",
+    "fix-all": "pnpm run type-check && pnpm run lint",
     "preview": "vite preview"
   },
   "dependencies": {

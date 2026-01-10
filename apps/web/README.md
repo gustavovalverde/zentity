@@ -33,12 +33,12 @@ This is the main web application for Zentity, providing:
 
 ### Prerequisites
 
-- Bun 1.3+
+- pnpm 10+
 
 ### Install Dependencies
 
 ```bash
-bun install
+pnpm install
 ```
 
 ### Environment Variables
@@ -78,7 +78,7 @@ links if email is not configured).
 ### Development
 
 ```bash
-bun run dev
+pnpm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -86,20 +86,20 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Build
 
 ```bash
-bun run build
+pnpm run build
 ```
 
 ### Production
 
 ```bash
-bun run start
+pnpm run start
 ```
 
 ## Debugging
 
 Next.js supports server-side debugging with Node's inspector. We include a
 VS Code launch configuration in `.vscode/launch.json` that runs
-`bun run dev -- --inspect` from `apps/web` and opens the browser
+`pnpm run dev -- --inspect` from `apps/web` and opens the browser
 automatically.
 
 ### Server-side debugging (VS Code)
@@ -111,13 +111,13 @@ automatically.
 ### Server-side debugging (CLI)
 
 ```bash
-bun run dev -- --inspect
+pnpm run dev -- --inspect
 ```
 
 If you ever run the app inside Docker, use:
 
 ```bash
-NODE_OPTIONS=--inspect=0.0.0.0 bun run dev
+NODE_OPTIONS=--inspect=0.0.0.0 pnpm run dev
 ```
 
 ## Testing
@@ -127,7 +127,7 @@ NODE_OPTIONS=--inspect=0.0.0.0 bun run dev
 Run the social recovery flow (no Synpress required):
 
 ```bash
-bun run test:e2e -- e2e/social-recovery.spec.ts
+pnpm run test:e2e -- e2e/social-recovery.spec.ts
 ```
 
 ### E2E (Playwright + Synpress + MetaMask)
@@ -139,13 +139,13 @@ generated from `e2e/wallet-setup/hardhat.setup.ts`.
 First-time setup (or after changing wallet setup):
 
 ```bash
-bun run test:e2e:setup
+pnpm run test:e2e:setup
 ```
 
 Run the full E2E suite:
 
 ```bash
-bun run test:e2e
+pnpm run test:e2e
 ```
 
 Defaults (can be overridden via env):
@@ -167,7 +167,7 @@ the network during wallet cache creation.
 To rebuild the wallet cache after edits to the setup file or env overrides:
 
 ```bash
-bunx synpress ./e2e/wallet-setup --force
+pnpm exec synpress ./e2e/wallet-setup --force
 ```
 
 ## Project Structure
@@ -283,8 +283,8 @@ Trade-offs:
 ## Database Schema (high level)
 
 The schema is defined in `apps/web/src/lib/db/schema/` and applied with
-`bun run db:push` (no runtime migrations).
-For a clean reset, delete the SQLite DB and rerun `bun run db:push`.
+`pnpm run db:push` (no runtime migrations).
+For a clean reset, delete the SQLite DB and rerun `pnpm run db:push`.
 
 ### Local + Docker Compose
 
@@ -293,18 +293,18 @@ Docker:
 
 ```bash
 mkdir -p apps/web/.data
-TURSO_DATABASE_URL=file:./apps/web/.data/dev.db bun run db:push
+TURSO_DATABASE_URL=file:./apps/web/.data/dev.db pnpm run db:push
 docker compose up --build
 ```
 
 ### Turso (production / CI)
 
-Set the Turso env vars and run `bun run db:push` from CI or your local machine:
+Set the Turso env vars and run `pnpm run db:push` from CI or your local machine:
 
 ```bash
 TURSO_DATABASE_URL=libsql://your-db.turso.io \
 TURSO_AUTH_TOKEN=your-token \
-bun run db:push
+pnpm run db:push
 ```
 
 In Railway, configure `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` on the web
@@ -320,6 +320,26 @@ in the environment that runs the command.
 docker build -t zentity-web .
 docker run -p 3000:3000 zentity-web
 ```
+
+## Dependency Patches
+
+This project uses pnpm's native patching (via `pnpm-workspace.yaml`)
+to modify three packages:
+
+| Package | Purpose |
+| --- | --- |
+| `better-auth` | Add `allowPasswordless` option for 2FA backup codes |
+| `@better-auth/passkey` | Add WebAuthn extensions support and new error codes |
+| `@daveyplate/better-auth-ui` | Custom auth UI configuration |
+
+### Updating Patches
+
+When you need to modify a patched package:
+
+1. Run `pnpm patch <package>` to get a temp directory
+2. Make changes in the temp directory
+3. Run `pnpm patch-commit <temp-path>` to update the patch file
+4. Test with a clean install: `rm -rf node_modules pnpm-lock.yaml && pnpm install`
 
 ## License
 

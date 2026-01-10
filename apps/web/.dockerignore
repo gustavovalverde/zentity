@@ -8,7 +8,8 @@
 
 # Include package manifests
 !package.json
-!bun.lock
+!pnpm-lock.yaml
+!.npmrc
 !patches/
 
 # Include source code

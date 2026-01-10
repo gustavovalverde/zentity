@@ -50,7 +50,7 @@ async function ensureHardhatNode(): Promise<boolean> {
   }
 
   hardhatProcess = spawn(
-    "bunx",
+    "npx",
     ["hardhat", "node", "--hostname", "127.0.0.1", "--port", `${hardhatPort}`],
     {
       cwd: contractsPath,
@@ -69,7 +69,7 @@ interface ContractsEnv {
 }
 
 function deployContracts(): ContractsEnv {
-  const deploy = spawnSync("bun", ["run", "deploy:local", "--", "--reset"], {
+  const deploy = spawnSync("pnpm", ["run", "deploy:local", "--", "--reset"], {
     cwd: contractsPath,
     stdio: "inherit",
     env: process.env,
@@ -79,7 +79,7 @@ function deployContracts(): ContractsEnv {
   }
 
   const printed = spawnSync(
-    "bun",
+    "pnpm",
     ["run", "print:deployments", "localhost", "--env"],
     {
       cwd: contractsPath,
@@ -125,7 +125,7 @@ function startDevServer(contracts: ContractsEnv) {
     NEXT_PUBLIC_FHEVM_PROVIDER_ID: "mock",
   };
 
-  const dev = spawn("bun", ["run", "dev"], {
+  const dev = spawn("pnpm", ["run", "dev"], {
     cwd: webRoot,
     stdio: "inherit",
     env,

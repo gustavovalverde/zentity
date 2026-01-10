@@ -47,36 +47,36 @@ The frontend handles:
 ### Web Frontend (apps/web)
 
 ```bash
-bun run dev          # Start dev server
-bun run build        # Production build
-bun run lint         # Biome linting
-bun run lint:fix     # Fix lint issues
-bun run test         # Run unit tests (Vitest)
-bun run test path/to/file.test.ts           # Run single test file
-bun run test -t "test name pattern"         # Run tests matching pattern
-bun run test:e2e     # Run Playwright tests
-bun run typecheck    # TypeScript type checking
-bun run check-all    # Run typecheck + lint + build + circuit version check
+pnpm dev             # Start dev server
+pnpm build           # Production build
+pnpm lint            # Biome linting
+pnpm lint:fix        # Fix lint issues
+pnpm test            # Run unit tests (Vitest)
+pnpm test path/to/file.test.ts              # Run single test file
+pnpm test -t "test name pattern"            # Run tests matching pattern
+pnpm test:e2e        # Run Playwright tests
+pnpm typecheck       # TypeScript type checking
+pnpm check-all       # Run typecheck + lint + build + circuit version check
 ```
 
 ### E2E Notes (Hardhat vs Sepolia)
 
 **Hardhat (default):**
 
-- `bun run test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.js`.
+- `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.js`.
 - Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`).
 - Uses the seeded E2E database: `apps/web/e2e/.data/e2e.db`.
 
 **Existing dev server:**
 
-- Set `E2E_EXTERNAL_WEB_SERVER=true` so Playwright doesn’t spawn its own server.
+- Set `E2E_EXTERNAL_WEB_SERVER=true` so Playwright doesn't spawn its own server.
 - Ensure `TURSO_DATABASE_URL` (or `E2E_TURSO_DATABASE_URL`) matches `E2E_DATABASE_PATH` (seeded DB) or auth/attestation steps will fail.
 
 **Sepolia (fhEVM):**
 
 - Start server with `NEXT_PUBLIC_ENABLE_FHEVM=true` and `NEXT_PUBLIC_ENABLE_HARDHAT=false`.
 - Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `FHEVM_*` contract addresses + registrar key.
-- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true bunx playwright test e2e/web3-sepolia.spec.ts`
+- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true pnpm exec playwright test e2e/web3-sepolia.spec.ts`
 - Sepolia E2E **skips** if envs are missing or the MetaMask account has no SepoliaETH (grant compliance access is disabled).
 
 **Logs:**
@@ -87,8 +87,8 @@ bun run check-all    # Run typecheck + lint + build + circuit version check
 
 ```bash
 # From apps/web directory:
-bun run circuits:compile  # Compile all circuits
-bun run circuits:test     # Run circuit tests
+pnpm circuits:compile  # Compile all circuits
+pnpm circuits:test     # Run circuit tests
 ```
 
 ### FHE Service (apps/fhe)
@@ -161,7 +161,7 @@ railway up apps/web --path-as-root --service web
 **Prerequisites:**
 
 - Node.js 24+ (recommended: use `.nvmrc` or `mise`)
-- Bun 1.3+ (runtime + package manager for `apps/web`)
+- pnpm 10+ (package manager)
 - Rust 1.91+ (recommended: `mise`)
 - Python 3.12+ (recommended: `mise`)
 
@@ -179,7 +179,7 @@ mise install
 
 ```bash
 # Frontend
-cd apps/web && bun install
+cd apps/web && pnpm install
 
 # OCR service
 cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -e '.[test]'
@@ -188,19 +188,11 @@ cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -e
 cd apps/fhe && cargo build --release
 ```
 
-**Troubleshooting: tfjs-node on macOS**
-
-If you see `libtensorflow.2.dylib` errors after `bun install`, the tfjs-node postinstall may have failed to download the TensorFlow library (~340MB). Run manually:
-
-```bash
-cd apps/web/node_modules/@tensorflow/tfjs-node && node scripts/install.js
-```
-
 **Start Services (3 terminals):**
 
 ```bash
 # Terminal 1: Frontend
-cd apps/web && bun run dev
+cd apps/web && pnpm dev
 
 # Terminal 2: FHE Service
 cd apps/fhe && cargo run --release
@@ -227,15 +219,15 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 
 ## Code Conventions
 
-- **Linting**: Biome via Ultracite preset (`bun x ultracite fix`). Run `bun run lint:fix` before commits.
+- **Linting**: Biome via Ultracite preset (`pnpm exec ultracite fix`). Run `pnpm lint:fix` before commits.
 - **Code Standards**: See `apps/web/.claude/CLAUDE.md` for detailed TypeScript/React style guidelines enforced by Ultracite
 - **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
-- **Database**: Drizzle ORM with SQLite local files or Turso in production; schema is applied with `bun run db:push` (no runtime migrations; containers do not run drizzle-kit)
+- **Database**: Drizzle ORM with SQLite local files or Turso in production; schema is applied with `pnpm db:push` (no runtime migrations; containers do not run drizzle-kit)
 - **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db` (no `DATABASE_PATH` fallback)
-- **Railway**: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service, then run `bun run db:push` from CI or local (no volume mounts or db-init container required)
-- **SQLite driver**: `drizzle-kit push` needs a driver; this repo uses `@libsql/client` (Bun-compatible)
+- **Railway**: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service, then run `pnpm db:push` from CI or local (no volume mounts or db-init container required)
+- **SQLite driver**: `drizzle-kit push` needs a driver; this repo uses `@libsql/client`
 - **Auth**: better-auth with passkey support
 
 ## tRPC API Structure
@@ -283,8 +275,8 @@ Configure allowed redirect URIs via `RP_ALLOWED_REDIRECT_URIS` env var.
 ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
 
 1. Install Noir toolchain: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup`
-2. Compile circuits: `cd apps/web && bun run circuits:compile`
-3. Test circuits: `cd apps/web && bun run circuits:test`
+2. Compile circuits: `cd apps/web && pnpm circuits:compile`
+3. Test circuits: `cd apps/web && pnpm circuits:test`
 
 Circuits available:
 

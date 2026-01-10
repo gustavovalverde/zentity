@@ -33,46 +33,28 @@ const nextConfig: NextConfig = {
   // Mark packages as external for server-side usage
   // These are loaded at runtime from node_modules, not bundled
   serverExternalPackages: [
+    // Face detection & ML (native .node bindings)
     "@vladmandic/human",
     "@tensorflow/tfjs-node",
-    // tfjs-node transitive deps (Turbopack hash mismatch workaround)
-    "@tensorflow/tfjs",
-    "@tensorflow/tfjs-core",
-    "@tensorflow/tfjs-backend-cpu",
-    "@tensorflow/tfjs-converter",
-    "@tensorflow/tfjs-layers",
-    "@tensorflow/tfjs-data",
     "@mapbox/node-pre-gyp",
-    // bb.js works on both browser and Node.js
-    // - Browser: Used by Web Worker for proof generation
-    // - Server: Used by noir-verifier.ts for proof verification
+
+    // ZK/FHE WASM packages (runtime loading)
     "@aztec/bb.js",
-    // Zama relayer SDK relies on wasm assets that must stay in node_modules
     "@zama-fhe/relayer-sdk",
-    // Include subpath + native deps so Turbopack keeps them external
-    "@zama-fhe/relayer-sdk/node",
     "node-tfhe",
     "node-tkms",
-    // Optional dependencies for wallet SDKs (avoid bundler resolution issues)
-    "pino-pretty",
-    // Pino pulls in thread-stream which ships test files that break Next bundling
+
+    // Logging (thread-stream ships test files that break bundling)
     "pino",
     "thread-stream",
-    "lokijs",
-    "encoding",
+    "pino-pretty",
   ],
 
   turbopack: {
     resolveAlias: {
+      // Node.js polyfill for browser compatibility
       "node:buffer": "buffer",
-      "@coinbase/wallet-sdk": "./src/lib/wagmi/empty-module",
-      "@gemini-wallet/core": "./src/lib/wagmi/empty-module",
-      "@metamask/sdk": "./src/lib/wagmi/empty-module",
-      "@react-native-async-storage/async-storage":
-        "./src/lib/wagmi/empty-module",
-      porto: "./src/lib/wagmi/empty-module",
-      "porto/internal": "./src/lib/wagmi/empty-module/internal",
-      // Optional deps referenced by wallet tooling
+      // Optional deps referenced by wallet tooling - provide empty stubs
       "pino-pretty": "./src/lib/wagmi/empty-module",
       lokijs: "./src/lib/wagmi/empty-module",
       encoding: "./src/lib/wagmi/empty-module",

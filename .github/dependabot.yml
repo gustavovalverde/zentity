@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # JavaScript/TypeScript - Web (Bun/npm)
+  # JavaScript/TypeScript - Web (pnpm)
   - package-ecosystem: npm
     directory: "/apps/web"
     schedule:
@@ -8,6 +8,9 @@ updates:
       day: monday
       timezone: America/New_York
     open-pull-requests-limit: 5
+    # Delay updates to mitigate supply-chain risks from newly released packages
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "javascript"
@@ -18,7 +21,7 @@ updates:
       prod-dependencies:
         dependency-type: production
 
-  # JavaScript/TypeScript - Landing (Bun/npm)
+  # JavaScript/TypeScript - Landing (pnpm)
   - package-ecosystem: npm
     directory: "/apps/landing"
     schedule:
@@ -26,6 +29,8 @@ updates:
       day: monday
       timezone: America/New_York
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "javascript"
@@ -44,6 +49,8 @@ updates:
       day: monday
       timezone: America/New_York
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "python"
@@ -58,6 +65,8 @@ updates:
     # Only update lockfile, not Cargo.toml versions
     versioning-strategy: lockfile-only
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "rust"
@@ -70,6 +79,8 @@ updates:
       day: wednesday
       timezone: America/New_York
     open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "ci"

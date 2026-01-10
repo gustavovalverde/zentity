@@ -52,7 +52,7 @@ echo "[entrypoint] Starting Next.js server..."
 
 # Drop to nextjs user if running as root
 if [ "$(id -u)" = "0" ]; then
-  exec gosu nextjs bun server.js
+  exec gosu nextjs node server.js
 else
-  exec bun server.js
+  exec node server.js
 fi

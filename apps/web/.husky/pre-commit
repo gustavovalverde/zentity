@@ -21,7 +21,7 @@ git stash push --quiet --keep-index --message "pre-commit-stash" || true
 STASHED=$?
 
 # Run formatter on the staged files
-bun x ultracite fix
+pnpm exec ultracite fix
 FORMAT_EXIT_CODE=$?
 
 # Restore working directory state
@@ -70,5 +70,5 @@ if [ $FORMAT_EXIT_CODE -ne 0 ]; then
 fi
 
 # Typecheck + unit tests (Vitest)
-bun run type-check
-bun ./node_modules/vitest/vitest.mjs run --pool=forks --maxWorkers=1 --no-file-parallelism
+pnpm run type-check
+node ./node_modules/vitest/vitest.mjs run --pool=forks --maxWorkers=1 --no-file-parallelism

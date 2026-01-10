@@ -15,7 +15,6 @@
   "ignoreDependencies": [
     "buffer",
     "@vladmandic/human-models",
-    "@metamask/sdk",
     "@safe-global/safe-apps-provider",
     "@safe-global/safe-apps-sdk",
     "tfhe",

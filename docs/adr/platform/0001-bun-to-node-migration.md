@@ -1,6 +1,7 @@
 ---
-status: accepted
+status: implemented
 date: "2026-01-07"
+implemented: "2026-01-10"
 category: technical
 domains: [platform]
 ---
@@ -45,6 +46,9 @@ Bun provides marginal benefits (~5-10% faster installs) at the cost of ecosystem
 
 - Vitest test hanging issue: [oven-sh/bun#17723](https://github.com/oven-sh/bun/issues/17723)
 - High CPU usage: [oven-sh/bun#21654](https://github.com/oven-sh/bun/issues/21654)
+- Patch EACCES permission denied when creating files 2+ levels deep: [oven-sh/bun#13330](https://github.com/oven-sh/bun/issues/13330)
+- Patch failures when patches directory exists: [oven-sh/bun#16502](https://github.com/oven-sh/bun/issues/16502)
+- No monorepo subdirectory support for git dependencies: [oven-sh/bun#15506](https://github.com/oven-sh/bun/issues/15506)
 - Migration plan: `docs/bun-to-node-migration.md`
 
 ## Migration info

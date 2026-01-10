@@ -30,16 +30,21 @@ jobs:
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: "3.12"
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+        with:
+          version: 10.19.0
       - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
-      - name: Install bun dependencies (web)
-        run: bun install --frozen-lockfile
+      - name: Install pnpm dependencies (web)
+        run: pnpm install --frozen-lockfile
         working-directory: apps/web
-      - name: Install bun dependencies (landing)
-        run: bun install --frozen-lockfile
+      - name: Install pnpm dependencies (landing)
+        run: pnpm install --frozen-lockfile
         working-directory: apps/landing
       - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
         with:
@@ -62,12 +67,17 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+        with:
+          version: 10.19.0
+      - run: pnpm install --frozen-lockfile
         working-directory: apps/web
-      - run: bun run lint:check
+      - run: pnpm run lint:check
         working-directory: apps/web
-      - run: bun run type-check
+      - run: pnpm run type-check
         working-directory: apps/web
 
   # ============================================
@@ -80,14 +90,17 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
-      - run: bun install --frozen-lockfile
-        working-directory: apps/web
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+        with:
+          version: 10.19.0
+      - run: pnpm install --frozen-lockfile
         working-directory: apps/landing
-      - run: bun run lint:check
+      - run: pnpm run lint:check
         working-directory: apps/landing
-      - run: bun run type-check
+      - run: pnpm run type-check
         working-directory: apps/landing
 
   js-security:
@@ -97,16 +110,16 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+        with:
+          version: 10.19.0
+      - run: pnpm install --frozen-lockfile
         working-directory: apps/web
       - name: Run security audit
-        run: bun audit --level moderate || true
-        working-directory: apps/web
-        # Note: bun audit may not be fully implemented yet
-        # Fallback to npm audit if needed
-      - name: Fallback npm audit
-        run: npm audit --audit-level=moderate || echo "Some vulnerabilities found - review required"
+        run: pnpm audit --audit-level moderate || echo "Some vulnerabilities found - review required"
         working-directory: apps/web
 
   markdown:
@@ -116,11 +129,16 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+        with:
+          version: 10.19.0
+      - run: pnpm install --frozen-lockfile
         working-directory: apps/web
       - name: Run markdownlint (repo-wide)
-        run: bunx markdownlint-cli "**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "docs/archive/**"
+        run: pnpm exec markdownlint-cli "**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "docs/archive/**"
 
   # ============================================
   # Python
@@ -193,7 +211,7 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       # cargo-deny for banned crates and source restrictions
-      - uses: EmbarkStudios/cargo-deny-action@76cd80eb775d7bbbd2d80292136d74d39e1b4918 # v2.0.14
+      - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
         with:
           manifest-path: apps/fhe/Cargo.toml
           command: check bans sources
