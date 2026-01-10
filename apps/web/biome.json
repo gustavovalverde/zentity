@@ -1,11 +1,31 @@
 {
-  "root": false,
   "extends": [
-    "../../biome.json",
     "ultracite/biome/core",
     "ultracite/biome/react",
     "ultracite/biome/next"
   ],
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on",
+          "options": {
+            "groups": [
+              { "type": true },
+              ":BLANK_LINE:",
+              ":NODE:",
+              ":BLANK_LINE:",
+              ":PACKAGE:",
+              ":BLANK_LINE:",
+              "@/**",
+              ":BLANK_LINE:",
+              ":PATH:"
+            ]
+          }
+        }
+      }
+    }
+  },
   "linter": {
     "domains": {
       "next": "recommended"
@@ -25,16 +45,16 @@
       "*.mts",
       "*.js",
       "*.cjs",
-      "!!**/src/app/globals.css",
-      "!!**/node_modules",
-      "!!**/playwright-report",
-      "!!**/test-results",
-      "!!**/public/coi-serviceworker.js",
-      "!!**/public/fhevm",
-      "!!**/public/bb",
-      "!!**/public/workerHelpers.js",
-      "!!**/public/*.wasm",
-      "!!**/noir-circuits"
+      "!!node_modules",
+      "!!public",
+      "!!noir-circuits",
+      "!!.next",
+      "!!.cache-synpress",
+      "!!.synpress-wallet-setup-dist",
+      "!!.data",
+      "!!playwright-report",
+      "!!test-results",
+      "!!src/app/globals.css"
     ]
   },
   "overrides": [
@@ -51,6 +71,9 @@
           },
           "performance": {
             "noNamespaceImport": "off"
+          },
+          "style": {
+            "useImportType": "off"
           },
           "nursery": {
             "noShadow": "off"

@@ -1,6 +1,5 @@
-import type { Components } from "react-markdown";
-
 import { lazy, Suspense } from "react";
+import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router-dom";
 import rehypeRaw from "rehype-raw";
