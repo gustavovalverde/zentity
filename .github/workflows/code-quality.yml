@@ -138,7 +138,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: apps/web
       - name: Run markdownlint (repo-wide)
-        run: pnpm exec markdownlint-cli "../../**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "../../docs/archive/**"
+        run: pnpm exec markdownlint "../../**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "../../docs/archive/**"
         working-directory: apps/web
 
   # ============================================
