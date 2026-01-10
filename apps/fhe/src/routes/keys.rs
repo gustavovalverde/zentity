@@ -7,6 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use tfhe::{generate_keys, CompressedPublicKey, CompressedServerKey, ConfigBuilder};
+use tracing::info_span;
 
 use super::run_cpu_bound;
 use crate::crypto;
@@ -40,13 +41,24 @@ pub async fn register_key(headers: HeaderMap, body: Bytes) -> Result<Response, F
         server_key,
         public_key,
     } = payload;
+    let server_key_bytes = server_key.len();
+    let public_key_bytes = public_key.len();
+
     let (key_id, decode_ms) = run_cpu_bound(move || {
         let decode_start = Instant::now();
-        let server_key = crypto::decode_compressed_server_key(&server_key)?;
-        let public_key = crypto::decode_compressed_public_key(&public_key)?;
+        let server_key = info_span!("fhe.decode_server_key", bytes = server_key_bytes)
+            .in_scope(|| crypto::decode_compressed_server_key(&server_key))?;
+
+        let public_key = info_span!("fhe.decode_public_key", bytes = public_key_bytes)
+            .in_scope(|| crypto::decode_compressed_public_key(&public_key))?;
+
         let decode_ms = decode_start.elapsed().as_millis();
-        let key_store = crypto::get_key_store();
-        let key_id = key_store.register_key(public_key, server_key)?;
+
+        let key_id = info_span!("fhe.register_key").in_scope(|| {
+            let key_store = crypto::get_key_store();
+            key_store.register_key(public_key, server_key)
+        })?;
+
         Ok((key_id, decode_ms))
     })
     .await?;
@@ -79,12 +91,20 @@ pub async fn debug_keys() -> Result<Json<DebugKeyResponse>, FheError> {
     }
 
     let response = run_cpu_bound(move || {
-        let config = ConfigBuilder::default().build();
-        let (client_key, _server_key) = generate_keys(config);
-        let public_key = CompressedPublicKey::new(&client_key);
-        let server_key = CompressedServerKey::new(&client_key);
-        let key_id = crypto::get_key_store().register_key(public_key.clone(), server_key)?;
-        let public_key_bytes = bincode::serialize(&public_key)?;
+        let (_client_key, public_key, server_key) =
+            info_span!("fhe.generate_keys").in_scope(|| {
+                let config = ConfigBuilder::default().build();
+                let (client_key, _server_key) = generate_keys(config);
+                let public_key = CompressedPublicKey::new(&client_key);
+                let server_key = CompressedServerKey::new(&client_key);
+                (client_key, public_key, server_key)
+            });
+
+        let key_id = info_span!("fhe.register_key")
+            .in_scope(|| crypto::get_key_store().register_key(public_key.clone(), server_key))?;
+
+        let public_key_bytes =
+            info_span!("fhe.serialize_public_key").in_scope(|| bincode::serialize(&public_key))?;
 
         Ok(DebugKeyResponse {
             public_key: public_key_bytes,

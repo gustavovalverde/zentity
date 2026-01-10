@@ -5,6 +5,7 @@ use axum::http::HeaderMap;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
+use tracing::info_span;
 
 use super::run_cpu_bound;
 use crate::crypto;
@@ -53,25 +54,38 @@ pub async fn encrypt_batch(headers: HeaderMap, body: Bytes) -> Result<Response, 
     } = payload;
 
     let response = run_cpu_bound(move || {
-        let public_key = crypto::get_public_key_for_encryption(&key_id)?;
+        let public_key = info_span!("fhe.get_public_key", key_id = %key_id)
+            .in_scope(|| crypto::get_public_key_for_encryption(&key_id))?;
 
         let birth_year_offset_ciphertext = birth_year_offset
-            .map(|value| crypto::encrypt_birth_year_offset(value, &public_key))
+            .map(|value| {
+                info_span!("fhe.encrypt.birth_year_offset", value = value)
+                    .in_scope(|| crypto::encrypt_birth_year_offset(value, &public_key))
+            })
             .transpose()?
             .map(ByteBuf::from);
 
         let country_code_ciphertext = country_code
-            .map(|value| crypto::encrypt_country_code(value, &public_key))
+            .map(|value| {
+                info_span!("fhe.encrypt.country_code", value = value)
+                    .in_scope(|| crypto::encrypt_country_code(value, &public_key))
+            })
             .transpose()?
             .map(ByteBuf::from);
 
         let compliance_level_ciphertext = compliance_level
-            .map(|value| crypto::encrypt_compliance_level(value, &public_key))
+            .map(|value| {
+                info_span!("fhe.encrypt.compliance_level", value = value)
+                    .in_scope(|| crypto::encrypt_compliance_level(value, &public_key))
+            })
             .transpose()?
             .map(ByteBuf::from);
 
         let liveness_score_ciphertext = liveness_score
-            .map(|value| crypto::encrypt_liveness_score(value, &public_key))
+            .map(|value| {
+                info_span!("fhe.encrypt.liveness_score", value = %value)
+                    .in_scope(|| crypto::encrypt_liveness_score(value, &public_key))
+            })
             .transpose()?
             .map(ByteBuf::from);
 

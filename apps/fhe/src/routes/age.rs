@@ -4,6 +4,7 @@ use axum::body::Bytes;
 use axum::http::HeaderMap;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
+use tracing::info_span;
 
 use super::run_cpu_bound;
 use crate::crypto;
@@ -37,8 +38,10 @@ pub async fn encrypt_birth_year_offset(
         key_id,
     } = payload;
     let ciphertext = run_cpu_bound(move || {
-        let public_key = crypto::get_public_key_for_encryption(&key_id)?;
-        crypto::encrypt_birth_year_offset(birth_year_offset, &public_key)
+        let public_key = info_span!("fhe.get_public_key", key_id = %key_id)
+            .in_scope(|| crypto::get_public_key_for_encryption(&key_id))?;
+        info_span!("fhe.encrypt.birth_year_offset", value = birth_year_offset)
+            .in_scope(|| crypto::encrypt_birth_year_offset(birth_year_offset, &public_key))
     })
     .await?;
 
@@ -76,8 +79,16 @@ pub async fn verify_age_offset(headers: HeaderMap, body: Bytes) -> Result<Respon
         min_age,
         key_id,
     } = payload;
+    let ciphertext_bytes = ciphertext.len();
     let result_ciphertext = run_cpu_bound(move || {
-        crypto::verify_age_offset(&ciphertext, current_year, min_age, &key_id)
+        info_span!(
+            "fhe.verify.age_offset",
+            key_id = %key_id,
+            current_year = current_year,
+            min_age = min_age,
+            ciphertext_bytes = ciphertext_bytes
+        )
+        .in_scope(|| crypto::verify_age_offset(&ciphertext, current_year, min_age, &key_id))
     })
     .await?;
 

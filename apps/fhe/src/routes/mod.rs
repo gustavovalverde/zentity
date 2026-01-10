@@ -74,22 +74,27 @@ where
         .acquire_owned()
         .await
         .map_err(|_| FheError::Internal("CPU limiter closed".to_string()))?;
-    let queue_ms = queue_start.elapsed().as_millis();
-    if queue_ms > 0 {
-        let in_flight = limiter
-            .limit
-            .saturating_sub(limiter.semaphore.available_permits());
-        tracing::info!(
-            cpu_queue_ms = queue_ms as u64,
-            cpu_in_flight = in_flight,
-            cpu_limit = limiter.limit,
-            "cpu queue wait"
-        );
-    }
+    let queue_ms = queue_start.elapsed().as_millis() as u64;
+    let in_flight = limiter
+        .limit
+        .saturating_sub(limiter.semaphore.available_permits());
 
-    let result = task::spawn_blocking(f)
-        .await
-        .map_err(|error| FheError::Internal(format!("CPU task failed: {error}")))?;
+    // Create span for the CPU-bound task with queue metrics
+    let task_span = tracing::info_span!(
+        "fhe.cpu_task",
+        cpu_queue_ms = queue_ms,
+        cpu_in_flight = in_flight,
+        cpu_limit = limiter.limit
+    );
+
+    // Enter the span and pass it into the blocking closure
+    // so child spans created inside are properly parented
+    let result = task::spawn_blocking(move || {
+        let _guard = task_span.enter();
+        f()
+    })
+    .await
+    .map_err(|error| FheError::Internal(format!("CPU task failed: {error}")))?;
     drop(permit);
     result
 }

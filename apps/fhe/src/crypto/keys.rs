@@ -142,8 +142,10 @@ impl KeyStore {
         server_key: &CompressedServerKey,
     ) -> Result<u128, FheError> {
         let start = Instant::now();
-        let public_bytes = bincode::serialize(public_key)?;
-        let server_bytes = bincode::serialize(server_key)?;
+        let public_bytes = tracing::info_span!("fhe.serialize_public_key", key_id = %key_id)
+            .in_scope(|| bincode::serialize(public_key))?;
+        let server_bytes = tracing::info_span!("fhe.serialize_server_key", key_id = %key_id)
+            .in_scope(|| bincode::serialize(server_key))?;
 
         let write_txn = self.db.begin_write().map_err(|error| {
             FheError::Internal(format!(
@@ -179,10 +181,12 @@ impl KeyStore {
                 })?;
         }
 
-        write_txn.commit().map_err(|error| {
-            FheError::Internal(format!(
-                "Failed to commit key persistence for {key_id}: {error}"
-            ))
+        tracing::info_span!("fhe.persist_key.commit", key_id = %key_id).in_scope(|| {
+            write_txn.commit().map_err(|error| {
+                FheError::Internal(format!(
+                    "Failed to commit key persistence for {key_id}: {error}"
+                ))
+            })
         })?;
 
         Ok(start.elapsed().as_millis())
@@ -319,7 +323,8 @@ impl KeyStore {
         };
 
         let compressed = compressed?;
-        let server_key = compressed.decompress();
+        let server_key = tracing::info_span!("fhe.decompress_server_key", key_id = %key_id)
+            .in_scope(|| compressed.decompress());
 
         self.server_keys
             .write()
