@@ -1,5 +1,8 @@
 //! Batch encryption endpoint for multiple attributes.
 
+use std::sync::Arc;
+use std::thread;
+
 use axum::body::Bytes;
 use axum::http::HeaderMap;
 use axum::response::Response;
@@ -54,40 +57,86 @@ pub async fn encrypt_batch(headers: HeaderMap, body: Bytes) -> Result<Response, 
     } = payload;
 
     let response = run_cpu_bound(move || {
-        let public_key = info_span!("fhe.get_public_key", key_id = %key_id)
-            .in_scope(|| crypto::get_public_key_for_encryption(&key_id))?;
+        let public_key = Arc::new(
+            info_span!("fhe.get_public_key", key_id = %key_id)
+                .in_scope(|| crypto::get_public_key_for_encryption(&key_id))?,
+        );
 
-        let birth_year_offset_ciphertext = birth_year_offset
-            .map(|value| {
-                info_span!("fhe.encrypt.birth_year_offset", value = value)
-                    .in_scope(|| crypto::encrypt_birth_year_offset(value, &public_key))
-            })
-            .transpose()?
-            .map(ByteBuf::from);
+        // Run all encryption operations in parallel using scoped threads
+        let (
+            birth_year_offset_result,
+            country_code_result,
+            compliance_level_result,
+            liveness_score_result,
+        ) = info_span!("fhe.encrypt.parallel").in_scope(|| {
+            thread::scope(|s| {
+                // Spawn thread for birth year offset encryption
+                let pk = Arc::clone(&public_key);
+                let birth_year_handle = s.spawn(move || {
+                    birth_year_offset
+                        .map(|value| {
+                            info_span!("fhe.encrypt.birth_year_offset", value = value)
+                                .in_scope(|| crypto::encrypt_birth_year_offset(value, &pk))
+                        })
+                        .transpose()
+                });
 
-        let country_code_ciphertext = country_code
-            .map(|value| {
-                info_span!("fhe.encrypt.country_code", value = value)
-                    .in_scope(|| crypto::encrypt_country_code(value, &public_key))
-            })
-            .transpose()?
-            .map(ByteBuf::from);
+                // Spawn thread for country code encryption
+                let pk = Arc::clone(&public_key);
+                let country_code_handle = s.spawn(move || {
+                    country_code
+                        .map(|value| {
+                            info_span!("fhe.encrypt.country_code", value = value)
+                                .in_scope(|| crypto::encrypt_country_code(value, &pk))
+                        })
+                        .transpose()
+                });
 
-        let compliance_level_ciphertext = compliance_level
-            .map(|value| {
-                info_span!("fhe.encrypt.compliance_level", value = value)
-                    .in_scope(|| crypto::encrypt_compliance_level(value, &public_key))
-            })
-            .transpose()?
-            .map(ByteBuf::from);
+                // Spawn thread for compliance level encryption
+                let pk = Arc::clone(&public_key);
+                let compliance_level_handle = s.spawn(move || {
+                    compliance_level
+                        .map(|value| {
+                            info_span!("fhe.encrypt.compliance_level", value = value)
+                                .in_scope(|| crypto::encrypt_compliance_level(value, &pk))
+                        })
+                        .transpose()
+                });
 
-        let liveness_score_ciphertext = liveness_score
-            .map(|value| {
-                info_span!("fhe.encrypt.liveness_score", value = %value)
-                    .in_scope(|| crypto::encrypt_liveness_score(value, &public_key))
+                // Spawn thread for liveness score encryption
+                let pk = Arc::clone(&public_key);
+                let liveness_score_handle = s.spawn(move || {
+                    liveness_score
+                        .map(|value| {
+                            info_span!("fhe.encrypt.liveness_score", value = %value)
+                                .in_scope(|| crypto::encrypt_liveness_score(value, &pk))
+                        })
+                        .transpose()
+                });
+
+                // Join all threads and collect results
+                (
+                    birth_year_handle
+                        .join()
+                        .expect("birth_year thread panicked"),
+                    country_code_handle
+                        .join()
+                        .expect("country_code thread panicked"),
+                    compliance_level_handle
+                        .join()
+                        .expect("compliance_level thread panicked"),
+                    liveness_score_handle
+                        .join()
+                        .expect("liveness_score thread panicked"),
+                )
             })
-            .transpose()?
-            .map(ByteBuf::from);
+        });
+
+        // Propagate any encryption errors
+        let birth_year_offset_ciphertext = birth_year_offset_result?.map(ByteBuf::from);
+        let country_code_ciphertext = country_code_result?.map(ByteBuf::from);
+        let compliance_level_ciphertext = compliance_level_result?.map(ByteBuf::from);
+        let liveness_score_ciphertext = liveness_score_result?.map(ByteBuf::from);
 
         Ok(EncryptBatchResponse {
             birth_year_offset_ciphertext,
