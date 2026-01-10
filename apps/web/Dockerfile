@@ -12,7 +12,7 @@ ARG APP_USER=nextjs
 ARG APP_HOME=/app
 
 # --- Stage 1: Dependencies ---
-FROM node:24-slim AS deps
+FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS deps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SOURCE_DATE_EPOCH
@@ -38,8 +38,8 @@ COPY --link package.json pnpm-lock.yaml .npmrc ./
 COPY --link patches ./patches
 
 # Install dependencies with BuildKit cache mount for pnpm
-# Cache persists across builds, significantly speeds up installs
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+# Cache persists across builds, significantly speeds up installs (Railway cache ID)
+RUN --mount=type=cache,id=s/a0dbf135-6670-4cf9-8c14-247262ab102f-/pnpm/store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 # --- Stage 2: Builder ---
@@ -101,7 +101,7 @@ ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN pnpm run build
 
 # --- Stage 3: Runtime ---
-FROM node:24-slim AS runner
+FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS runner
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG GIT_SHA
@@ -121,7 +121,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-ENV BB_NODE_BINARY=/usr/bin/node
+ENV BB_NODE_BINARY=/usr/local/bin/node
 ENV BB_CRS_PATH=/var/lib/zentity/bb-crs
 ENV SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
 
