@@ -16,7 +16,7 @@ We need a single, privacy-preserving way to store user PII without allowing the 
 
 * No server-decryptable PII at rest
 * Single, consistent encryption mechanism for profile data
-* Keep email available for auth and recovery
+* Keep email available for auth and recovery when provided; Recovery ID is the fallback for email-less accounts
 * Support multi-device access via passkeys
 
 ## Decision Outcome

@@ -9,7 +9,7 @@
 
 ## Summary
 
-Move all user profile PII (first name, OCR-derived attributes, document metadata) into a **passkey-sealed secret** stored in `encrypted_secrets`, and remove any server-decryptable PII from the database. Keep **email only** in the auth DB for login, recovery, and magic link flows. Signed claims should retain **hashes only**, not raw values.
+Move all user profile PII (first name, OCR-derived attributes, document metadata) into a **passkey-sealed secret** stored in `encrypted_secrets`, and remove any server-decryptable PII from the database. Keep **email (when provided)** in the auth DB for login, recovery, and magic link flows, and allow Recovery ID-based recovery for email-less accounts. Signed claims should retain **hashes only**, not raw values.
 
 This consolidates PII encryption to a single method (passkey vault) and aligns storage with the trust model: **server is trusted for integrity but not for plaintext access**.
 
@@ -27,7 +27,7 @@ We need a simple, privacy-preserving architecture that still supports UX (first 
 
 - **Eliminate server-decryptable PII at rest**.
 - **Consolidate PII encryption** to the passkey vault.
-- Keep **email** in auth DB (required for recovery + magic link).
+- Keep **email** in auth DB when provided (used for recovery + magic link), with Recovery ID as the email-less fallback.
 - Preserve **resume after refresh** for onboarding.
 - Preserve **proof generation** using client-only private inputs, bound to server-signed claim hashes.
 

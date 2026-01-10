@@ -43,11 +43,11 @@ Zentity uses Better Auth’s passkey plugin for WebAuthn registration and authen
 * Web3 actions have a clear session boundary via SIWE.
 * Additional stored metadata includes passkey public key metadata, wallet address + chain ID, session IP/user agent, and short-lived onboarding context (email if provided).
 
-### Implementation Note: Patched `@better-auth/passkey`
+### Implementation Notes: Patched Better Auth Packages
 
-Zentity depends on upstream Better Auth for passkeys, but the current UX relies on canary-only features (pre-auth registration and returning WebAuthn responses for PRF extraction). Until those changes land upstream, the app uses Bun’s patch mechanism to apply a small diff to the published package. This keeps Docker/CI builds reproducible while preserving the passkey-first flow.
+Zentity depends on upstream Better Auth, but the current UX relies on features not yet available in published builds. We use Bun’s patch mechanism to apply small diffs to published packages. This keeps Docker/CI builds reproducible while preserving the passkey-first flow and recovery UX.
 
-**Patch location**
+#### `@better-auth/passkey` (pre-auth registration + PRF output)
 
 * `apps/web/patches/@better-auth%2Fpasskey@1.5.0-beta.2.patch`
 * `apps/web/package.json` → `patchedDependencies`
@@ -57,14 +57,26 @@ Zentity depends on upstream Better Auth for passkeys, but the current UX relies 
 * `registration.requireSession=false` + `resolveUser(context)` for passkey-first onboarding.
 * `returnWebAuthnResponse` + `extensions` in the passkey client to capture PRF output without a second prompt.
 
+#### `better-auth` (passwordless 2FA + backup codes)
+
+* `apps/web/patches/better-auth@1.5.0-beta.2.patch`
+* Adds `allowPasswordless` support for two-factor backup codes so passkey-only accounts can enable TOTP and generate backup codes without a password.
+
+#### `@daveyplate/better-auth-ui` (download-only backup codes)
+
+* `apps/web/patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch`
+* Updates the 2FA UI to avoid rendering backup codes inline and instead provide a download-only flow.
+
 **Maintenance**
 
-When the upstream release includes these features, remove the patch and the `patchedDependencies` entry. If the local canary changes are updated, regenerate the patch:
+When the upstream release includes these features, remove the patch and the `patchedDependencies` entry. If the local canary changes are updated, regenerate the patch (repeat per package):
 
 1) Update/rebuild `@better-auth/passkey` dist in the local Better Auth repo.
 2) Run `bun patch @better-auth/passkey@1.5.0-beta.2` in `apps/web`.
 3) Replace `node_modules/@better-auth/passkey/dist` with the updated dist.
 4) Run `bun patch --commit node_modules/@better-auth/passkey`.
+
+Repeat the same workflow for `better-auth` and `@daveyplate/better-auth-ui` when their patches need updates.
 
 ## Alternatives Considered
 

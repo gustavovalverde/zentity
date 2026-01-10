@@ -4,19 +4,27 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2025-01-06 |
-| **Updated** | 2025-01-07 |
+| **Updated** | 2026-01-10 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
 
 Enable account recovery via guardian threshold signatures using FROST (Flexible Round-Optimized Schnorr Threshold signatures). When a user loses their passkey, a threshold of trusted guardians (t-of-n) can collectively authorize recovery without any single guardian or the server being able to unilaterally access the user's encrypted secrets.
 
+**Current implementation:**
+
+- Guardian types implemented: **email** + **authenticator (TOTP/backup codes)**.
+- Recovery can be initiated with **email or Recovery ID**.
+- Email delivery uses **Resend in production** and **Mailpit locally**; otherwise manual approval links are shown.
+- Recovery configs store both **group verifying key** and **public key package** for signer operations.
+- Wallet and on-chain guardians remain future work.
+
 This RFC supports a **four-tier guardian model**:
 
-- **Tier 1 (Email)**: Magic link + passkey/password - mass adoption friendly
-- **Tier 1.5 (Device)**: TOTP from authenticator app or hardware token - user-controlled, no social coordination
-- **Tier 2 (Wallet)**: SIWE (Sign-In with Ethereum) - crypto-native users
-- **Tier 3 (On-chain)**: GuardianRegistry contract - enterprise/institutional
+- **Tier 1 (Email)**: Approval link (implemented)
+- **Tier 1.5 (Device)**: TOTP/backup codes via Better Auth 2FA (implemented)
+- **Tier 2 (Wallet)**: SIWE (Sign-In with Ethereum) - future
+- **Tier 3 (On-chain)**: GuardianRegistry contract - future
 
 ## Problem Statement
 
@@ -31,34 +39,30 @@ Currently, if a user loses all their passkeys, they have no way to recover their
 
 ## Onboarding Integration
 
-Recovery setup is **mandatory** during account creation to prevent lockout scenarios.
+Recovery setup is available from **Settings → Security**. Onboarding enforcement is planned but not enabled in the current implementation.
 
-### Setup Flow
+### Current Setup Flow
 
-After passkey registration (Step 4), users must complete recovery setup (Step 5):
+1. **Enable recovery** in settings (creates a FROST keyset via the signer service).
+2. **Recovery ID** is generated and displayed (copy/download).
+3. **Add guardian emails** (fills available guardian slots).
+4. **Link authenticator guardian** (requires Better Auth 2FA enabled).
+5. **Optional test**: start a recovery and confirm approvals.
 
-1. **Explanation Screen**: Why recovery matters, data-at-risk warning
-2. **Add Primary Guardian**: Email guardian (recommended) or device
-3. **Add Secondary Guardian**: Device (TOTP) or second email
-4. **Optional Third Guardian**: Wallet or additional email
-5. **DKG Completion**: Threshold keys generated and distributed
-6. **Confirmation**: Summary + reminder to inform guardians
+Defaults: **2-of-3** threshold, `secp256k1` ciphersuite unless overridden.
 
-### Skip Behavior
+### Planned Enforcement
 
-Users who attempt to skip receive:
-
-- **Warning**: "Your encrypted data will be permanently lost if you lose all passkeys"
-- **Grace period**: 7 days to complete setup before restrictions apply
-- **Reminder**: Dashboard banner until setup complete
-- **Lockdown**: After grace period, write operations disabled until setup complete
+- Prompt after passkey registration.
+- Warning + optional grace period if skipped.
+- Write restrictions after grace period (TBD).
 
 ## Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | **Threshold scheme** | FROST (t-of-n) | RFC 9591 standard, NCC audited, supports async signing |
-| **FROST library** | ZcashFoundation/frost (frost-secp256k1) | Production-ready, Ethereum-compatible curve, WASM compilable |
+| **FROST library** | ZcashFoundation/frost (frost-secp256k1 + frost-ed25519) | Production-ready, supports secp256k1 + ed25519 ciphersuites |
 | **Guardian model** | Four-tier (email, device, wallet, on-chain) | Balance accessibility with security; user choice |
 | **Minimum threshold** | 2-of-3 enforced | Prevents single point of failure; balances security with practicality |
 | **Maximum guardians** | 5 | Limits DKG complexity; covers enterprise needs |
@@ -121,25 +125,24 @@ Guardians do NOT need a full Zentity account (no identity verification required)
 
 ### Tier 1: Email Guardians
 
-**Identity**: Email address | **Auth**: Magic link + passkey/password | **Storage**: Downloaded OR passkey-wrapped
+**Identity**: Email address | **Auth**: Tokenized approval link (no login) | **Storage**: None (approval-only)
 
 ```text
 EMAIL GUARDIAN FLOW:
 
 1. Receive email notification
-2. Click magic link
-3. Authenticate (passkey/password)
-4. View recovery context
-5. Click "Approve"
-6. Browser generates FROST partial signature
-7. Submit to server
+2. Click approval link (no login required)
+3. Confirm approval
+4. Server records approval (tokenized, 15 min TTL)
+5. Once threshold met, server triggers FROST signing with signer service
 ```
 
-**Vulnerabilities**: SIM swap on email provider, phishing, email breach. Use time-bound links (48h signing, 7d invite) and domain-bound verification tokens.
+**Vulnerabilities**: SIM swap on email provider, phishing, email breach. Use short-lived links (15 min) and domain-bound verification tokens.
+When email delivery is not configured (local dev), the recovery UI shows manual approval links for copy/share.
 
-### Tier 1.5: Device Guardians (TOTP)
+### Tier 1.5: Device Guardians
 
-**Identity**: TOTP secret (server-encrypted) | **Auth**: 6-digit code or backup code | **Storage**: Server-custodied (TOTP gates access)
+**Identity**: Better Auth 2FA device (TOTP secret) | **Auth**: 6-digit code or backup code | **Storage**: Better Auth 2FA tables (server-encrypted)
 
 Device guardians are **user-controlled** and require no social coordination.
 
@@ -147,9 +150,9 @@ Device guardians are **user-controlled** and require no social coordination.
 DEVICE GUARDIAN FLOW:
 
 1. User enters 6-digit code from authenticator
-2. Server validates TOTP against stored secret
-3. If valid: server generates FROST partial signature
-4. Signature counts as 1 of t-of-n
+2. Server validates TOTP or backup code via Better Auth 2FA storage
+3. Approval is recorded for the recovery challenge
+4. Once threshold is met, the server triggers FROST signing with the signer service
 ```
 
 | Device Type | Examples | Security |
@@ -157,21 +160,11 @@ DEVICE GUARDIAN FLOW:
 | **Phone App** | Google Authenticator, Authy, 1Password | Lower (may be lost with phone) |
 | **Hardware Token** | YubiKey OATH, Nitrokey | Higher (stored separately, offline option) |
 
-**Implementation**: Uses `@better-auth/utils/otp` (RFC 6238 via Web Crypto):
-
-```typescript
-import { createOTP } from "@better-auth/utils/otp";
-
-const totpURI = createOTP(secret, { digits: 6, period: 30 })
-  .url("Zentity Recovery", userEmail);
-
-const isValid = await createOTP(secret, { digits: 6, period: 30 })
-  .verify(userCode, { window: 1 });
-```
+**Implementation**: Uses Better Auth 2FA storage + `@better-auth/utils/otp` for RFC 6238 verification and consumes backup codes on use.
 
 **Note**: TOTP is phishable in real-time. Use as ONE of t-of-n, not sole recovery factor.
 
-### Tier 2: Wallet Guardians (SIWE)
+### Tier 2: Wallet Guardians
 
 **Identity**: Ethereum address | **Auth**: SIWE signature | **Storage**: Wallet-derived key OR passkey-wrapped
 
@@ -206,6 +199,8 @@ ON-CHAIN GUARDIAN FLOW:
 
 ### Key Share Storage Options
 
+Current implementation: guardians do not store key shares; the signer service holds the shares and produces signatures after guardian approvals. The storage options below are future work for wallet/client-side guardians.
+
 | Option | Encryption | Trade-offs |
 |--------|------------|------------|
 | **Downloaded** | AES-256-GCM + PBKDF2 (100k iterations) | Portable; guardian responsibility |
@@ -216,7 +211,9 @@ ON-CHAIN GUARDIAN FLOW:
 
 ### Removing a Guardian
 
-Removing a guardian requires DKG regeneration:
+Current implementation: removing a guardian deletes the entry only. DKG-based key rotation is planned for future hardening.
+
+Planned flow (future):
 
 1. User initiates removal from settings
 2. Remaining guardians must re-sign to authorize removal
@@ -239,30 +236,6 @@ Rotation creates new FROST group key without changing underlying DEK.
 ## Database Schema
 
 ```sql
--- Guardian accounts (email/wallet guardians only; device guardians stored in recovery_guardians)
-CREATE TABLE guardian_accounts (
-  id TEXT PRIMARY KEY,
-  email TEXT,                           -- NULL for wallet-only
-  email_verified_at TEXT,
-  wallet_address TEXT,                  -- NULL for email-only
-  guardian_type TEXT NOT NULL,          -- 'email' | 'wallet' | 'onchain'
-  display_name TEXT,
-  created_at TEXT,
-  updated_at TEXT
-);
-
--- Guardian passkey credentials (for server storage)
-CREATE TABLE guardian_credentials (
-  id TEXT PRIMARY KEY,
-  guardian_account_id TEXT NOT NULL REFERENCES guardian_accounts(id),
-  credential_id TEXT NOT NULL UNIQUE,
-  public_key TEXT NOT NULL,
-  sign_count INTEGER DEFAULT 0,
-  transports TEXT,
-  prf_salt TEXT,
-  created_at TEXT
-);
-
 -- Recovery configuration per user
 CREATE TABLE recovery_configs (
   id TEXT PRIMARY KEY,
@@ -270,9 +243,8 @@ CREATE TABLE recovery_configs (
   threshold INTEGER NOT NULL,
   total_guardians INTEGER NOT NULL,
   frost_group_pubkey TEXT NOT NULL,
-  wrapped_recovery_dek TEXT NOT NULL,
-  secret_id TEXT NOT NULL REFERENCES encrypted_secrets(id),
-  security_level TEXT DEFAULT 'basic',
+  frost_public_key_package TEXT NOT NULL,
+  frost_ciphersuite TEXT NOT NULL,      -- 'secp256k1' | 'ed25519'
   status TEXT DEFAULT 'active',
   created_at TEXT,
   updated_at TEXT
@@ -282,27 +254,12 @@ CREATE TABLE recovery_configs (
 CREATE TABLE recovery_guardians (
   id TEXT PRIMARY KEY,
   recovery_config_id TEXT NOT NULL REFERENCES recovery_configs(id),
-  guardian_account_id TEXT REFERENCES guardian_accounts(id),
+  email TEXT NOT NULL,
   participant_index INTEGER NOT NULL,
-  guardian_type TEXT NOT NULL,          -- 'email' | 'device' | 'wallet' | 'onchain'
-  public_key_share TEXT,
-  encrypted_key_share TEXT,
-  wallet_encrypted_share TEXT,
-  key_share_storage TEXT,               -- 'downloaded' | 'server' | 'wallet'
-  onchain_commitment TEXT,
-  -- TOTP fields (device guardians)
-  totp_secret_encrypted TEXT,
-  totp_backup_codes_hash TEXT,
-  totp_device_type TEXT,                -- 'phone_app' | 'hardware_token'
-  totp_verified_at TEXT,
-  totp_last_used_at TEXT,
-  -- Invite fields
-  status TEXT DEFAULT 'pending',
-  invite_email TEXT,
-  invite_wallet TEXT,
-  invite_token_hash TEXT,
-  invite_expires_at TEXT,
-  activated_at TEXT
+  guardian_type TEXT NOT NULL,          -- 'email' | 'twoFactor'
+  status TEXT DEFAULT 'active',
+  created_at TEXT,
+  updated_at TEXT
 );
 
 -- Active recovery challenges
@@ -311,9 +268,6 @@ CREATE TABLE recovery_challenges (
   user_id TEXT NOT NULL REFERENCES users(id),
   recovery_config_id TEXT NOT NULL REFERENCES recovery_configs(id),
   challenge_nonce TEXT NOT NULL UNIQUE,
-  user_email_verified_at TEXT,
-  device_info TEXT,
-  new_credential_id TEXT,
   status TEXT DEFAULT 'pending',
   signatures_collected INTEGER DEFAULT 0,
   aggregated_signature TEXT,
@@ -322,80 +276,70 @@ CREATE TABLE recovery_challenges (
   completed_at TEXT
 );
 
--- Guardian signatures (FROST rounds)
-CREATE TABLE recovery_signatures (
+-- Guardian approval tokens
+CREATE TABLE recovery_guardian_approvals (
   id TEXT PRIMARY KEY,
   challenge_id TEXT NOT NULL REFERENCES recovery_challenges(id),
   guardian_id TEXT NOT NULL REFERENCES recovery_guardians(id),
-  signing_commitment TEXT,
-  partial_signature TEXT,
-  guardian_email_verified_at TEXT,
-  signer_ip TEXT,
-  created_at TEXT,
-  signed_at TEXT
+  token_hash TEXT NOT NULL,
+  token_expires_at TEXT NOT NULL,
+  approved_at TEXT,
+  created_at TEXT
 );
 
--- Audit trail
-CREATE TABLE guardian_notifications (
+-- Recovery ID (for email-less accounts)
+CREATE TABLE recovery_identifiers (
   id TEXT PRIMARY KEY,
-  guardian_id TEXT NOT NULL REFERENCES recovery_guardians(id),
-  challenge_id TEXT REFERENCES recovery_challenges(id),
-  notification_type TEXT NOT NULL,
-  email_sent_at TEXT,
-  email_clicked_at TEXT,
-  created_at TEXT
+  user_id TEXT NOT NULL REFERENCES users(id),
+  recovery_id TEXT NOT NULL UNIQUE,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- Recovery wrappers for secrets
+CREATE TABLE recovery_secret_wrappers (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  secret_id TEXT NOT NULL UNIQUE,
+  wrapped_dek TEXT NOT NULL,
+  key_id TEXT NOT NULL,
+  created_at TEXT,
+  updated_at TEXT
 );
 ```
 
 ## Sequence Diagrams
 
-### Guardian Invitation
+### Recovery Setup
 
 ```text
-User                    Server                  Guardian
+User                    Server               Signer Services
   │                        │                         │
-  ├─ Add guardian ────────►│                         │
-  │  (email/wallet)        │                         │
-  │                        ├─ Send invite ──────────►│
-  │                        │  (magic link, 7d exp)   │
+  ├─ Enable recovery ─────►│                         │
+  │                        ├─ DKG init ─────────────►│
+  │                        │◄─ Group pubkey + package│
+  │                        ├─ Store config + ID ────►│ DB
+  │◄─ Recovery ID shown ───┤                         │
   │                        │                         │
-  │                        │◄─ Accept invite ────────┤
-  │                        │   (verify identity)     │
-  │                        │                         │
-  │                        │◄─ Choose storage ───────┤
-  │                        │                         │
-  │                        ├─ DKG Round 1 ──────────►│
-  │                        │◄─ DKG commitment ───────┤
-  │                        │                         │
-  │◄─ Collect commits ─────┤                         │
-  │                        │                         │
-  ├─ Finalize DKG ────────►│                         │
-  │                        ├─ DKG Round 2 ──────────►│
-  │                        │◄─ Key share stored ─────┤
-  │                        │                         │
-  │◄─ Guardian active ─────┤                         │
+  ├─ Add guardian email ──►│ (active immediately)    │
+  ├─ Link 2FA guardian ───►│ (requires 2FA enabled)   │
 ```
 
 ### Recovery Flow
 
 ```text
-User (lost passkey)      Server                  Guardian(s)
+User (lost passkey)      Server                 Guardian(s)
   │                        │                         │
-  ├─ Initiate recovery ───►│                         │
-  │  (prove email via OTP) │                         │
-  │                        ├─ Verify user ──────────►│
+  ├─ Start recovery ──────►│                         │
+  │  (email or Recovery ID)│                         │
+  │                        ├─ Create challenge ─────►│
+  │                        ├─ Email approvals ──────►│
   │                        │                         │
-  │                        ├─ Notify guardians ─────►│
+  │                        │◄─ Approve link ─────────┤ (email guardian)
+  │                        │◄─ Enter TOTP/backup ────┤ (authenticator guardian)
   │                        │                         │
-  │                        │◄─ Authenticate ─────────┤
-  │                        │   (passkey/wallet/TOTP) │
-  │                        │                         │
-  │                        │◄─ View context ─────────┤
-  │                        │◄─ Sign commitment ──────┤
-  │                        │                         │
-  │                        │  (repeat for t guardians)
-  │                        │                         │
-  │                        ├─ Aggregate signature ──►│
+  │                        ├─ Threshold met ────────►│ Signer services
+  │                        │◄─ Aggregate signature ──┤
   │                        │                         │
   │◄─ Recovery approved ───┤                         │
   │                        │                         │
@@ -403,7 +347,7 @@ User (lost passkey)      Server                  Guardian(s)
   │◄─ DEK released ────────┤                         │
   ├─ Re-wrap with new PRF ►│                         │
   │◄─ Account recovered ───┤                         │
-  │                        ├─ Notify all guardians ─►│
+  │                        ├─ Notify guardians ─────►│
 ```
 
 ## Re-verification Fallback
@@ -449,15 +393,20 @@ Re-verification is intentionally difficult:
 
 ### Rate Limiting
 
-- **Recovery attempts**: 3 per 24 hours per user
-- **Guardian invitations**: 10 per 24 hours per user
-- **Signing window**: 48 hours from challenge creation
-- **Post-recovery cooldown**: 7 days before new recovery attempt
-- **TOTP verification**: 5 attempts per 15 minutes (1 hour lockout)
+**Current implementation**
+
+- **Recovery challenge + approval token TTL**: 15 minutes
+
+**Planned safeguards (not enforced yet)**
+
+- Recovery attempts: 3 per 24 hours per user
+- Guardian invitations: 10 per 24 hours per user
+- Post-recovery cooldown: 7 days before new recovery attempt
+- TOTP verification: 5 attempts per 15 minutes (1 hour lockout)
 
 ### Audit Logging
 
-All recovery events are logged:
+All recovery events are logged. Current implementation stores audit-relevant rows in `recovery_challenges` and `recovery_guardian_approvals`; richer audit trails remain future work.
 
 - Guardian invitations (sent, accepted, expired)
 - Recovery challenges (created, signed, completed, expired)
@@ -478,7 +427,7 @@ All transit: TLS 1.3 minimum. At rest: Only encrypted forms stored.
 
 ## Recovery Testing
 
-Users should verify recovery works before they need it.
+Users should verify recovery works before they need it. This flow is planned but not yet implemented.
 
 ### Dry-Run Verification
 
@@ -521,7 +470,7 @@ The recovery DEK is wrapped twice for defense-in-depth:
 │       │    │   └── secret_wrappers.wrapped_dek               │     │
 │       │    │                                                  │     │
 │       │    └── Wrapped by FROST-KEK ─────────── [recovery]    │     │
-│       │        └── recovery_configs.wrapped_recovery_dek      │     │
+│       │        └── recovery_secret_wrappers.wrapped_dek        │     │
 │       │                                                       │     │
 │       └── encrypted_secrets.encrypted_blob ───────────────────┘     │
 │                                                                     │
@@ -530,9 +479,9 @@ The recovery DEK is wrapped twice for defense-in-depth:
 
 ### Recovery DEK Release Flow
 
-1. **Setup**: During onboarding, DEK is wrapped with FROST group public key
-2. **Storage**: `wrapped_recovery_dek` stored in `recovery_configs`
-3. **Recovery**: t guardians produce FROST aggregate signature
+1. **Setup**: When recovery is enabled, the client wraps the DEK with the recovery public key
+2. **Storage**: `wrapped_dek` stored in `recovery_secret_wrappers`
+3. **Recovery**: t guardian approvals trigger FROST aggregate signing via signer service
 4. **Verification**: Server verifies signature against `frost_group_pubkey`
 5. **Release**: If valid, server uses FROST signature to derive FROST-KEK
 6. **Unwrap**: FROST-KEK unwraps DEK
@@ -540,7 +489,7 @@ The recovery DEK is wrapped twice for defense-in-depth:
 
 ### Key Insight
 
-FROST signature doesn't directly contain DEK - it authorizes the server to perform unwrap operation. Server holds `wrapped_recovery_dek` but cannot unwrap without valid FROST signature.
+FROST signature doesn't directly contain DEK - it authorizes the server to perform unwrap operation. Server holds `recovery_secret_wrappers.wrapped_dek` but cannot unwrap without valid FROST signature.
 
 ## Implementation Files
 
@@ -548,20 +497,21 @@ FROST signature doesn't directly contain DEK - it authorizes the server to perfo
 
 | Category | Files |
 |----------|-------|
-| **Database** | `schema/recovery.ts`, `queries/recovery.ts`, `queries/guardian.ts` |
-| **FROST** | `crypto/frost/types.ts`, `frost-wasm.ts`, `coordinator.ts`, `guardian-client.ts`, `key-share-storage.ts` |
-| **TOTP** | `crypto/totp/totp.ts`, `backup-codes.ts` |
-| **Contracts** | `contracts/guardian/GuardianRegistry.sol` |
-| **tRPC** | `routers/recovery.ts`, `routers/guardian.ts`, `routers/device-guardian.ts` |
-| **UI (User)** | `settings/recovery/page.tsx`, `recover-social/page.tsx`, `recovery/setup-wizard.tsx` |
-| **UI (Guardian)** | `accept-invite/[token]/page.tsx`, `sign-recovery/[token]/page.tsx`, `guardian/storage-choice.tsx` |
+| **Database** | `apps/web/src/lib/db/schema/recovery.ts`, `apps/web/src/lib/db/queries/recovery.ts` |
+| **Recovery keys** | `apps/web/src/lib/recovery/recovery-keys.ts`, `apps/web/src/lib/recovery/constants.ts` |
+| **Signer integration** | `apps/web/src/lib/recovery/frost-service.ts` |
+| **Email** | `apps/web/src/lib/email/recovery-mailer.ts`, `apps/web/src/lib/email/mailpit.ts`, `apps/web/src/lib/email/resend.ts` |
+| **tRPC** | `apps/web/src/lib/trpc/routers/recovery.ts` |
+| **UI (User)** | `apps/web/src/components/dashboard/recovery-setup-section.tsx`, `apps/web/src/app/(auth)/recover-social/page.tsx`, `apps/web/src/app/(auth)/recover-guardian/page.tsx`, `apps/web/src/app/(auth)/verify-2fa/*` |
+| **Signer service** | `apps/signer/src/frost/*`, `apps/signer/src/routes/*`, `apps/signer/src/audit.rs` |
 
 ### Modified Files
 
-- `db/schema/index.ts` - Export recovery schemas
-- `trpc/routers/app.ts` - Merge recovery routers
-- `auth.ts` - Add SIWE plugin
-- `recover-passkey/page.tsx` - Add social recovery option
+- `apps/web/src/lib/db/schema/index.ts` - Export recovery schemas
+- `apps/web/src/lib/trpc/routers/app.ts` - Mount recovery router
+- `apps/web/src/lib/auth/auth.ts` - Enable Better Auth 2FA + recovery hooks
+- `apps/web/src/components/dashboard/security-cards.tsx` - Surface 2FA in security UI
+- `apps/web/src/lib/crypto/secret-vault.ts` - Store recovery wrappers when enabled
 
 ## References
 

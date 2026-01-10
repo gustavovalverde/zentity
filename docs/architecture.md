@@ -27,6 +27,7 @@ Non-goals:
 | FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
 | Auth + key custody | Better Auth + WebAuthn + PRF | Passkey-based authentication and key derivation for sealing secrets. |
+| Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
 ### System Diagram
@@ -48,6 +49,8 @@ flowchart LR
 
   OCR["OCR Service :5004"]
   FHE["FHE Service :5001"]
+  SIGNER["Signer Coordinator :5002"]
+  SIGNERS["Signer Services :5101+"]
 
   UI -->|"doc + selfie"| API
   API -->|"image"| OCR
@@ -65,6 +68,8 @@ flowchart LR
 
   API -->|"encrypt"| FHE
   FHE -->|"ciphertext"| API
+  API -->|"recovery signing"| SIGNER
+  SIGNER --> SIGNERS
 ```
 
 ---
@@ -91,6 +96,12 @@ We persist **only the minimum** required for verification and auditability:
 - Verification status + non-sensitive metadata
 
 We **never store** raw document images, selfies, plaintext PII, or biometric templates. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
+
+---
+
+## Social Recovery
+
+Zentity supports guardian-approved recovery for passkey loss. Recovery is initiated with email or a Recovery ID, guardians approve via email links or authenticator codes, and the signer services perform FROST threshold signing once the approval threshold is met. Recovery wrappers are stored in `recovery_secret_wrappers`, and the signer coordinator is contacted from the Next.js server (not the browser).
 
 ---
 
