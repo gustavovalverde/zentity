@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2025-01-06 |
-| **Updated** | 2025-01-06 |
+| **Updated** | 2026-01-10 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
@@ -25,10 +25,15 @@ Currently, the `IdentityRegistry` contract is controlled by a single registrar a
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | **Signing scheme** | FROST (t-of-n) | RFC 9591 standard, produces standard Schnorr signatures |
-| **FROST library** | ZcashFoundation/frost (frost-secp256k1) | Same curve as Ethereum, production-ready |
+| **FROST library** | ZcashFoundation/frost (frost-secp256k1 + frost-ed25519) | Supports secp256k1 + ed25519 ciphersuites |
 | **On-chain verification** | ecrecover trick for Schnorr | ~3,300 gas, no protocol changes needed |
 | **Contract approach** | New SchnorrRegistrar contract | IdentityRegistry unchanged; SchnorrRegistrar becomes authorized registrar |
 | **Signer infrastructure** | Distributed services with mTLS | Each signer runs independently; coordinator aggregates |
+
+**Key material outputs**
+
+- **Group verifying key** (`group_pubkey`): used by the SchnorrRegistrar contract on-chain.
+- **Public key package** (`public_key_package`): used by signers/coordinator during signing sessions.
 
 ## Architecture Overview
 
@@ -215,19 +220,18 @@ interface IIdentityRegistry {
 ## Configuration
 
 ```bash
-# apps/web/.env
+# apps/web/.env (current signer wiring)
 
+SIGNER_COORDINATOR_URL=http://localhost:5002
+SIGNER_ENDPOINTS=https://signer1.example.com,https://signer2.example.com,https://signer3.example.com
+INTERNAL_SERVICE_TOKEN=...            # required in production
+INTERNAL_SERVICE_TOKEN_REQUIRED=1
+
+# Registrar config (future wiring)
 FROST_REGISTRAR_ENABLED=true
-FROST_THRESHOLD=2                    # t (minimum signers)
-FROST_TOTAL_SIGNERS=3                # n (total signers)
-FROST_GROUP_PUBKEY_X=0x...           # Group public key X coordinate
-FROST_GROUP_PUBKEY_PARITY=27         # Y parity (27 or 28)
-FROST_SCHNORR_REGISTRAR=0x...        # SchnorrRegistrar contract address
-
-# Signer endpoints
-FROST_SIGNER_1_URL=https://signer1.example.com
-FROST_SIGNER_2_URL=https://signer2.example.com
-FROST_SIGNER_3_URL=https://signer3.example.com
+FROST_GROUP_PUBKEY_X=0x...            # Group public key X coordinate
+FROST_GROUP_PUBKEY_PARITY=27          # Y parity (27 or 28)
+FROST_SCHNORR_REGISTRAR=0x...         # SchnorrRegistrar contract address
 ```
 
 ## Implementation Files
@@ -237,15 +241,16 @@ FROST_SIGNER_3_URL=https://signer3.example.com
 | Category | Files |
 |----------|-------|
 | **Contracts** | `registrar/SchnorrRegistrar.sol`, `interfaces/ISchnorrRegistrar.sol`, `test/SchnorrRegistrar.t.sol` |
-| **FROST** | `blockchain/frost/coordinator.ts`, `frost-account.ts`, `signer-client.ts`, `types.ts` |
-| **Provider** | `blockchain/providers/frost-provider.ts` |
-| **Signer** | `apps/frost-signer/` (optional standalone service) |
+| **Signer service** | `apps/signer/` (coordinator + signer binaries) |
+| **Coordinator client** | `apps/web/src/lib/recovery/frost-service.ts` |
+| **Provider (planned)** | `apps/web/src/lib/blockchain/providers/frost-provider.ts` |
 
 ### Modified Files
 
-- `blockchain/providers/base-provider.ts` - Add FROST account option
-- `blockchain/config/networks.ts` - Add FROST configuration
-- `contracts/deploy/` - Deploy SchnorrRegistrar
+- `apps/web/src/lib/utils/service-urls.ts` - Signer URL resolution
+- `apps/web/src/lib/blockchain/providers/base-provider.ts` - Add FROST account option (planned)
+- `apps/web/src/lib/blockchain/config/networks.ts` - Add FROST configuration (planned)
+- `contracts/deploy/` - Deploy SchnorrRegistrar (planned)
 
 ## Security Considerations
 
@@ -308,18 +313,7 @@ All signing sessions logged with: session ID, message hash, participating signer
 
 ## Shared Infrastructure
 
-This RFC shares FROST WASM bindings with RFC-0014 (Social Recovery):
-
-```text
-apps/web/src/lib/crypto/frost/
-├── wasm/
-│   ├── frost_secp256k1_bg.wasm
-│   └── frost_secp256k1.js
-├── types.ts
-├── frost-wasm.ts
-├── coordinator.ts
-└── index.ts
-```
+Client-side WASM bindings are deferred. Current implementation uses the signer service (`apps/signer`) and the coordinator client in `apps/web/src/lib/recovery/frost-service.ts`. WASM bindings will be revisited if/when browser signers are needed.
 
 ## References
 

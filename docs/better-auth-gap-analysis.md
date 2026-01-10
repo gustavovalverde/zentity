@@ -365,6 +365,40 @@ Each gap follows the same format:
 
 ---
 
+## G14) Two-Factor Authentication for Recovery Guardians
+
+**Why this matters (architecture/UX)**
+
+- Recovery guardians must support authenticator-based approvals even for passkey-only accounts.
+- Backup codes should be available without exposing them inline on shared screens.
+
+**Zentity locations**
+
+- `apps/web/src/lib/auth/auth.ts` (twoFactor plugin config)
+- `apps/web/src/lib/db/queries/two-factor.ts`
+- `apps/web/src/lib/trpc/routers/recovery.ts` (TOTP/backup code verification)
+- `apps/web/src/components/dashboard/recovery-setup-section.tsx`
+- `apps/web/src/app/(auth)/verify-2fa/*`
+
+**Better Auth capability**
+
+- Two-factor plugin:
+  - `better-auth/packages/better-auth/src/plugins/two-factor`
+
+**Current state**
+
+- Two-factor is enabled with `allowPasswordless` so passkey-only users can add an authenticator.
+- Recovery can link the authenticator as a guardian and validate TOTP or backup codes.
+- `better-auth` is patched to allow passwordless backup-code generation.
+- `@daveyplate/better-auth-ui` is patched to hide inline backup code lists (download-only flow).
+
+**Dependencies / notes**
+
+- Patched dependencies: `apps/web/patches/better-auth@1.5.0-beta.2.patch`,
+  `apps/web/patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch`.
+
+---
+
 ## 14) Documentation Alignment Tasks (Post‑Closure)
 
 - ✅ ER diagrams updated for the Better Auth `passkey` schema.

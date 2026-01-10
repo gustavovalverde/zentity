@@ -1,522 +1,427 @@
-# RFC-0007: Feature Flags System
+# RFC-0007: Environment & Configuration Management
 
 | Field | Value |
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2024-12-29 |
+| **Updated** | 2026-01-10 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
 
-Replace hardcoded environment variables with a type-safe, config-file-based feature flag system that supports hot-reloading in development and can evolve to self-hosted Unleash for advanced targeting.
+Implement a type-safe, validated environment configuration system using T3 Env that:
+
+1. Validates all environment variables at build time (fail fast)
+2. Eliminates redundant variables by hardcoding constants
+3. Consolidates service URL resolution with environment detection
+4. Separates E2E testing configuration from application config
+
+This supersedes the original "Feature Flags System" proposal. Feature flags can evolve to Unleash when gradual rollouts are needed.
 
 ## Problem Statement
 
-Current feature flag implementation has limitations:
+Current environment configuration has critical issues:
 
-1. **Environment Variables Only**: Features controlled via `NEXT_PUBLIC_*` env vars:
-
-   ```typescript
-   // Current pattern - scattered across codebase
-   const enableFhevm = process.env.NEXT_PUBLIC_ENABLE_FHEVM === "true";
-   const enableHardhat = process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true";
-   const enableDemo = process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true";
-   ```
-
-2. **No Gradual Rollouts**: Features are either fully on or fully off for all users.
-
-3. **Deploy Required for Changes**: Changing a flag requires redeploying the application.
-
-4. **No Centralized View**: Flags scattered across code, no single source of truth.
-
-5. **No Type Safety**: Typos in env var names fail silently.
-
-6. **Client/Server Split**: `NEXT_PUBLIC_*` prefix controls visibility but is easy to misuse.
+1. **Variable Explosion**: 130+ environment variables across the monorepo
+2. **Redundant Duplication**: Every `FHEVM_*` has a `NEXT_PUBLIC_FHEVM_*` twin
+3. **Constants as Variables**: Zama contract addresses, chain IDs never change
+4. **No Validation**: Missing values fail silently at runtime, not build time
+5. **Scattered Configuration**: `.env`, `.env.example`, `railway.toml`, docker-compose all define different subsets
+6. **Newcomer Friction**: Impossible to know which variables are actually required
 
 ## Design Decisions
 
-- **Initial Implementation**: Config file + Zod schema
-  - Zero external dependencies
-  - Type-safe at compile time
-  - Hot-reload in development
-  - Single source of truth
-  - Privacy-preserving (no external service)
+### T3 Env over Custom Solution
 
-- **Future Evolution**: Self-hosted Unleash
-  - When gradual rollouts needed
-  - User-segment targeting
-  - A/B testing capabilities
-  - Still self-hosted (privacy-first)
+The original RFC proposed a custom file watcher with fs.watchFile. T3 Env is superior:
 
-- **Flag Categories**:
-  - `feature.*` - Product features
-  - `experiment.*` - A/B tests (future)
-  - `ops.*` - Operational controls
-  - `debug.*` - Development aids
+- Build-time validation (fail fast on `bun run build`)
+- Works in Edge and serverless environments
+- Community-maintained and battle-tested
+- Server/client separation enforced by types
+- Zod coercion handles string → boolean/number
 
-## Architecture Overview
+### Hardcode What Never Changes
 
-### New Structure
+Zama fhEVM infrastructure contracts on Sepolia are constants. Hardhat deterministic addresses are constants. These should not be environment variables.
+
+### Environment Detection for Services
+
+Instead of manual URL configuration per deployment, detect docker/railway/local automatically.
+
+### Separate E2E Configuration
+
+25+ testing variables pollute the main configuration. Move to `e2e/.env.test`.
+
+## Architecture
+
+### File Structure
 
 ```text
-src/lib/config/
-├── feature-flags.ts        # Flag definitions + Zod schema
-├── flags.json              # Default flag values
-├── loader.ts               # Config loading + hot-reload
-└── index.ts                # Public API
+apps/web/
+├── src/
+│   ├── env.ts                        # T3 Env validation (single source of truth)
+│   └── lib/
+│       ├── blockchain/
+│       │   └── constants.ts          # Hardcoded network constants
+│       └── config/
+│           └── services.ts           # Service URL resolution
+├── .env.example                      # Minimal template (~15 vars)
+├── .env.local                        # Local overrides (gitignored)
+└── e2e/
+    └── .env.test                     # E2E-specific vars (25+ vars)
 ```
 
-### Flag Definition Schema
+### Environment Variables Schema
 
 ```typescript
-// src/lib/config/feature-flags.ts
+// src/env.ts
+import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-// Flag schema with validation
-export const featureFlagsSchema = z.object({
-  // Product features
-  feature: z.object({
-    fhevm: z.boolean().describe("Enable FHEVM blockchain integration"),
-    hardhat: z.boolean().describe("Use Hardhat local network"),
-    attestationDemo: z.boolean().describe("Enable attestation demo mode"),
-    rpFlow: z.boolean().describe("Enable Relying Party OAuth flow"),
-    nationalityProof: z.boolean().describe("Enable nationality ZK proof"),
-    faceMatch: z.boolean().describe("Enable face matching"),
-  }),
+export const env = createEnv({
+  server: {
+    // ========== REQUIRED ==========
+    BETTER_AUTH_SECRET: z.string().min(32, "Must be at least 32 characters"),
+    NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // Operational controls
-  ops: z.object({
-    maintenanceMode: z.boolean().describe("Show maintenance page"),
-    registrationOpen: z.boolean().describe("Allow new user registration"),
-    rateLimiting: z.boolean().describe("Enable rate limiting"),
-  }),
+    // ========== DATABASE ==========
+    TURSO_DATABASE_URL: z.string().refine(
+      (url) => url.startsWith("file:") || url.startsWith("libsql://") || url.startsWith("http"),
+      "Must be file:, libsql://, or http(s):// URL"
+    ),
+    TURSO_AUTH_TOKEN: z.string().optional(),
 
-  // Debug/development
-  debug: z.object({
-    verboseLogging: z.boolean().describe("Enable verbose logs"),
-    mockFheService: z.boolean().describe("Mock FHE service responses"),
-    mockOcrService: z.boolean().describe("Mock OCR service responses"),
-    skipLiveness: z.boolean().describe("Skip liveness in dev"),
-  }),
-});
+    // ========== SERVICE URLS ==========
+    FHE_SERVICE_URL: z.string().url().default("http://localhost:5001"),
+    OCR_SERVICE_URL: z.string().url().default("http://localhost:5004"),
+    SIGNER_COORDINATOR_URL: z.string().url().optional(),
+    SIGNER_ENDPOINTS: z
+      .string()
+      .transform((s) => s.split(",").map((url) => url.trim()))
+      .optional(),
 
-export type FeatureFlags = z.infer<typeof featureFlagsSchema>;
+    // ========== INTERNAL AUTH ==========
+    INTERNAL_SERVICE_TOKEN: z.string().optional(),
+    INTERNAL_SERVICE_TOKEN_REQUIRED: z.coerce.boolean().optional(),
 
-// Default values
-export const defaultFlags: FeatureFlags = {
-  feature: {
-    fhevm: false,
-    hardhat: true,
-    attestationDemo: true,
-    rpFlow: true,
-    nationalityProof: true,
-    faceMatch: true,
+    // ========== YOUR DEPLOYED CONTRACTS ==========
+    FHEVM_IDENTITY_REGISTRY: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+    FHEVM_COMPLIANCE_RULES: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+    FHEVM_COMPLIANT_ERC20: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+
+    // ========== WALLET KEYS ==========
+    REGISTRAR_PRIVATE_KEY: z.string().optional(),
+    FHEVM_REGISTRAR_PRIVATE_KEY: z.string().optional(),
+    LOCAL_REGISTRAR_PRIVATE_KEY: z.string().optional(),
+
+    // ========== OAUTH ==========
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    GITHUB_CLIENT_ID: z.string().optional(),
+    GITHUB_CLIENT_SECRET: z.string().optional(),
+
+    // ========== EMAIL ==========
+    RESEND_API_KEY: z.string().optional(),
+    MAIL_FROM_EMAIL: z.string().email().default("no-reply@zentity.local"),
+    MAIL_FROM_NAME: z.string().default("Zentity"),
+    MAILPIT_BASE_URL: z.string().url().optional(),
+    MAILPIT_SEND_API_URL: z.string().url().optional(),
+    MAILPIT_SEND_API_USERNAME: z.string().optional(),
+    MAILPIT_SEND_API_PASSWORD: z.string().optional(),
+
+    // ========== RECOVERY ==========
+    RECOVERY_RSA_PRIVATE_KEY: z.string().optional(),
+    RECOVERY_RSA_PRIVATE_KEY_PATH: z.string().default(".data/recovery-key.pem"),
+    RECOVERY_KEY_ID: z.string().default("v1"),
+
+    // ========== OBSERVABILITY ==========
+    LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info"),
+    OTEL_ENABLED: z.coerce.boolean().default(false),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
+
+    // ========== PATHS ==========
+    SECRET_BLOB_DIR: z.string().default(".data/secret-blobs"),
+    BB_CRS_PATH: z.string().default("/tmp/.bb-crs"),
   },
-  ops: {
-    maintenanceMode: false,
-    registrationOpen: true,
-    rateLimiting: true,
+
+  client: {
+    // ========== APP CONFIG ==========
+    NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+
+    // ========== FEATURE TOGGLES ==========
+    NEXT_PUBLIC_ENABLE_FHEVM: z.coerce.boolean().default(false),
+    NEXT_PUBLIC_ENABLE_HARDHAT: z.coerce.boolean().default(true),
+    NEXT_PUBLIC_ATTESTATION_DEMO: z.coerce.boolean().default(true),
+
+    // ========== WALLET CONFIG ==========
+    NEXT_PUBLIC_PROJECT_ID: z.string().optional(),
+    NEXT_PUBLIC_APPKIT_ENABLE_INJECTED: z.coerce.boolean().default(true),
+    NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT: z.coerce.boolean().default(false),
+    NEXT_PUBLIC_APPKIT_ENABLE_EIP6963: z.coerce.boolean().default(true),
+
+    // ========== DEBUG ==========
+    NEXT_PUBLIC_DEBUG: z.coerce.boolean().default(false),
   },
-  debug: {
-    verboseLogging: false,
-    mockFheService: false,
-    mockOcrService: false,
-    skipLiveness: false,
+
+  experimental__runtimeEnv: {
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_ENABLE_FHEVM: process.env.NEXT_PUBLIC_ENABLE_FHEVM,
+    NEXT_PUBLIC_ENABLE_HARDHAT: process.env.NEXT_PUBLIC_ENABLE_HARDHAT,
+    NEXT_PUBLIC_ATTESTATION_DEMO: process.env.NEXT_PUBLIC_ATTESTATION_DEMO,
+    NEXT_PUBLIC_PROJECT_ID: process.env.NEXT_PUBLIC_PROJECT_ID,
+    NEXT_PUBLIC_APPKIT_ENABLE_INJECTED: process.env.NEXT_PUBLIC_APPKIT_ENABLE_INJECTED,
+    NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT: process.env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT,
+    NEXT_PUBLIC_APPKIT_ENABLE_EIP6963: process.env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963,
+    NEXT_PUBLIC_DEBUG: process.env.NEXT_PUBLIC_DEBUG,
   },
-};
-```
 
-### Flag Configuration File
-
-```json
-// src/lib/config/flags.json
-{
-  "feature": {
-    "fhevm": false,
-    "hardhat": true,
-    "attestationDemo": true,
-    "rpFlow": true,
-    "nationalityProof": true,
-    "faceMatch": true
-  },
-  "ops": {
-    "maintenanceMode": false,
-    "registrationOpen": true,
-    "rateLimiting": true
-  },
-  "debug": {
-    "verboseLogging": false,
-    "mockFheService": false,
-    "mockOcrService": false,
-    "skipLiveness": false
-  }
-}
-```
-
-### Config Loader with Hot-Reload
-
-```typescript
-// src/lib/config/loader.ts
-import { readFileSync, watchFile, unwatchFile } from "fs";
-import { join } from "path";
-import { featureFlagsSchema, defaultFlags, type FeatureFlags } from "./feature-flags";
-import { logger } from "@/lib/logging";
-
-const CONFIG_PATH = join(process.cwd(), "src/lib/config/flags.json");
-
-let currentFlags: FeatureFlags = defaultFlags;
-let isWatching = false;
-
-function loadFlags(): FeatureFlags {
-  try {
-    const content = readFileSync(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(content);
-    const validated = featureFlagsSchema.parse(parsed);
-
-    logger.info({ flags: validated }, "Feature flags loaded");
-    return validated;
-  } catch (error) {
-    logger.warn({ error }, "Failed to load flags.json, using defaults");
-    return defaultFlags;
-  }
-}
-
-function startWatching(): void {
-  if (isWatching || process.env.NODE_ENV === "production") return;
-
-  watchFile(CONFIG_PATH, { interval: 1000 }, () => {
-    logger.info("flags.json changed, reloading");
-    currentFlags = loadFlags();
-  });
-
-  isWatching = true;
-}
-
-function stopWatching(): void {
-  if (!isWatching) return;
-  unwatchFile(CONFIG_PATH);
-  isWatching = false;
-}
-
-// Initialize
-export function initFlags(): void {
-  currentFlags = loadFlags();
-  startWatching();
-}
-
-// Cleanup
-export function cleanupFlags(): void {
-  stopWatching();
-}
-
-// Get current flags (reactive in dev)
-export function getFlags(): FeatureFlags {
-  return currentFlags;
-}
-
-// Check specific flag
-export function isEnabled(path: string): boolean {
-  const parts = path.split(".");
-  let value: unknown = currentFlags;
-
-  for (const part of parts) {
-    if (typeof value !== "object" || value === null) return false;
-    value = (value as Record<string, unknown>)[part];
-  }
-
-  return value === true;
-}
-```
-
-### Public API
-
-```typescript
-// src/lib/config/index.ts
-export { initFlags, cleanupFlags, getFlags, isEnabled } from "./loader";
-export { featureFlagsSchema, defaultFlags } from "./feature-flags";
-export type { FeatureFlags } from "./feature-flags";
-
-// Convenience functions
-import { getFlags } from "./loader";
-
-export const flags = {
-  // Feature flags
-  get fhevm() { return getFlags().feature.fhevm; },
-  get hardhat() { return getFlags().feature.hardhat; },
-  get attestationDemo() { return getFlags().feature.attestationDemo; },
-  get rpFlow() { return getFlags().feature.rpFlow; },
-  get nationalityProof() { return getFlags().feature.nationalityProof; },
-  get faceMatch() { return getFlags().feature.faceMatch; },
-
-  // Ops flags
-  get maintenanceMode() { return getFlags().ops.maintenanceMode; },
-  get registrationOpen() { return getFlags().ops.registrationOpen; },
-  get rateLimiting() { return getFlags().ops.rateLimiting; },
-
-  // Debug flags
-  get verboseLogging() { return getFlags().debug.verboseLogging; },
-  get mockFheService() { return getFlags().debug.mockFheService; },
-  get mockOcrService() { return getFlags().debug.mockOcrService; },
-  get skipLiveness() { return getFlags().debug.skipLiveness; },
-};
-```
-
-### Usage in Components
-
-```typescript
-// Before
-const enableFhevm = process.env.NEXT_PUBLIC_ENABLE_FHEVM === "true";
-
-if (enableFhevm) {
-  // ...
-}
-
-// After
-import { flags } from "@/lib/config";
-
-if (flags.fhevm) {
-  // ...
-}
-```
-
-### Usage in Server Components
-
-```typescript
-// src/app/layout.tsx
-import { initFlags } from "@/lib/config";
-
-// Initialize on server startup
-initFlags();
-
-export default function RootLayout({ children }) {
-  return <html>{children}</html>;
-}
-```
-
-### Usage in tRPC Routers
-
-```typescript
-// src/lib/trpc/routers/attestation.ts
-import { flags } from "@/lib/config";
-
-export const attestationRouter = router({
-  submit: protectedProcedure
-    .input(submitSchema)
-    .mutation(async ({ ctx, input }) => {
-      if (!flags.fhevm) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "FHEVM is not enabled",
-        });
-      }
-
-      // ...
-    }),
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  emptyStringAsUndefined: true,
 });
 ```
 
-### Maintenance Mode Middleware
+### Hardcoded Constants
 
 ```typescript
-// src/middleware.ts
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { flags } from "@/lib/config";
+// src/lib/blockchain/constants.ts
 
-export function middleware(request: NextRequest) {
-  // Skip API routes and static files
-  if (
-    request.nextUrl.pathname.startsWith("/api") ||
-    request.nextUrl.pathname.startsWith("/_next")
-  ) {
-    return NextResponse.next();
-  }
+// Zama fhEVM Infrastructure (Sepolia testnet) - these NEVER change
+export const ZAMA_CONTRACTS = {
+  ACL: "0xf0Ffdc93b7E186bC2f8CB3dAA75D86d1930A433D",
+  KMS: "0xbE0E383937d564D7FF0BC3b46c51f0bF8d5C311A",
+  INPUT_VERIFIER: "0xBBC1fFCdc7C316aAAd72E807D9b0272BE8F84DA0",
+  DECRYPTION: "0x5D8BD78e2ea6bbE41f26dFe9fdaEAa349e077478",
+  INPUT_VERIFICATION: "0x483b9dE06E4E4C7D35CCf5837A1668487406D955",
+  RELAYER_URL: "https://relayer.testnet.zama.org",
+  SDK_PATH: "/fhevm/relayer-sdk-js.umd.js",
+  GATEWAY_CHAIN_ID: 10901,
+} as const;
 
-  // Maintenance mode redirect
-  if (flags.maintenanceMode && request.nextUrl.pathname !== "/maintenance") {
-    return NextResponse.redirect(new URL("/maintenance", request.url));
-  }
+export const SEPOLIA_NETWORK = {
+  chainId: 11155111,
+  networkId: "fhevm_sepolia",
+  name: "fhEVM (Sepolia)",
+  rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+  explorerUrl: "https://sepolia.etherscan.io",
+  providerId: "zama",
+} as const;
 
-  return NextResponse.next();
-}
+export const HARDHAT_NETWORK = {
+  chainId: 31337,
+  networkId: "local",
+  name: "Hardhat Local",
+  rpcUrl: "http://127.0.0.1:8545",
+  explorerUrl: "",
+  // Deterministic addresses from Hardhat's first deployments
+  contracts: {
+    identityRegistry: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    complianceRules: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+    compliantErc20: "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  },
+} as const;
 ```
 
-### Client-Side Flag Access
+### Service URL Resolution
 
 ```typescript
-// src/hooks/use-feature-flags.ts
-"use client";
+// src/lib/config/services.ts
+import { env } from "@/env";
 
-import { useQuery } from "@tanstack/react-query";
-import type { FeatureFlags } from "@/lib/config";
+type Environment = "docker" | "railway" | "local";
 
-export function useFeatureFlags() {
-  return useQuery<FeatureFlags>({
-    queryKey: ["feature-flags"],
-    queryFn: async () => {
-      const response = await fetch("/api/config/flags");
-      return response.json();
-    },
-    staleTime: 60 * 1000, // Cache for 1 minute
-    refetchOnWindowFocus: false,
-  });
+function detectEnvironment(): Environment {
+  if (process.env.RAILWAY_ENVIRONMENT) return "railway";
+  if (process.env.DOCKER_CONTAINER) return "docker";
+  return "local";
 }
 
-// Usage
-function MyComponent() {
-  const { data: flags, isLoading } = useFeatureFlags();
+const SERVICE_URLS: Record<Environment, { fhe: string; ocr: string; signer?: string }> = {
+  local: {
+    fhe: "http://localhost:5001",
+    ocr: "http://localhost:5004",
+    signer: "http://localhost:5002",
+  },
+  docker: {
+    fhe: "http://fhe:5001",
+    ocr: "http://ocr:5004",
+    signer: "http://coordinator:5002",
+  },
+  railway: {
+    fhe: "http://fhe.railway.internal:5001",
+    ocr: "http://ocr.railway.internal:5004",
+    signer: "http://signer.railway.internal:5002",
+  },
+};
 
-  if (isLoading || !flags) return null;
+export function getServiceUrls() {
+  const detected = detectEnvironment();
+  const defaults = SERVICE_URLS[detected];
 
-  return flags.feature.fhevm ? <FhevmFeature /> : <FallbackFeature />;
-}
-```
-
-### API Endpoint for Client Flags
-
-```typescript
-// src/app/api/config/flags/route.ts
-import { NextResponse } from "next/server";
-import { getFlags } from "@/lib/config";
-
-export async function GET() {
-  const flags = getFlags();
-
-  // Only expose safe flags to client
-  const clientFlags = {
-    feature: flags.feature,
-    ops: {
-      maintenanceMode: flags.ops.maintenanceMode,
-      registrationOpen: flags.ops.registrationOpen,
-    },
-    // Don't expose debug flags to client
-  };
-
-  return NextResponse.json(clientFlags);
-}
-```
-
-### Migration from Environment Variables
-
-```typescript
-// Migration helper
-function migrateEnvToFlags(): Partial<FeatureFlags> {
   return {
-    feature: {
-      fhevm: process.env.NEXT_PUBLIC_ENABLE_FHEVM === "true",
-      hardhat: process.env.NEXT_PUBLIC_ENABLE_HARDHAT !== "false",
-      attestationDemo: process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true",
-      // ... map other env vars
-    },
+    fhe: env.FHE_SERVICE_URL ?? defaults.fhe,
+    ocr: env.OCR_SERVICE_URL ?? defaults.ocr,
+    signer: env.SIGNER_COORDINATOR_URL ?? defaults.signer,
   };
 }
+```
+
+## Variables Eliminated
+
+### By Hardcoding (45 variables)
+
+All `FHEVM_*` and `NEXT_PUBLIC_FHEVM_*` pairs for:
+
+- Chain ID, Network ID, Network Name
+- Explorer URL, RPC URL, Provider ID
+- ACL, KMS, Input Verifier, Decryption, Input Verification addresses
+- Relayer URL, SDK URL, Gateway Chain ID
+
+All `LOCAL_*` Hardhat addresses.
+
+### By Consolidation (15 variables)
+
+Service URL pairs merged into environment detection.
+
+### By Separation (25 variables)
+
+E2E testing variables moved to `e2e/.env.test`.
+
+## Minimal .env.example
+
+```bash
+# Zentity Web Environment Variables
+# Copy to .env.local and fill in required values
+
+# ============================================================
+# REQUIRED - App will not start without these
+# ============================================================
+
+# Authentication secret (generate with: openssl rand -base64 32)
+BETTER_AUTH_SECRET=
+
+# Database URL (SQLite file for local dev)
+TURSO_DATABASE_URL=file:./.data/dev.db
+
+# ============================================================
+# OPTIONAL - Service Discovery
+# ============================================================
+
+# Service URLs (defaults work for local dev with docker-compose)
+# FHE_SERVICE_URL=http://localhost:5001
+# OCR_SERVICE_URL=http://localhost:5004
+
+# Internal service authentication (required in production)
+# INTERNAL_SERVICE_TOKEN=
+
+# ============================================================
+# OPTIONAL - Your Deployed Contracts
+# ============================================================
+
+# Your deployed contract addresses on Sepolia
+# (Zama infrastructure contracts are hardcoded)
+# FHEVM_IDENTITY_REGISTRY=0x...
+# FHEVM_COMPLIANCE_RULES=0x...
+# FHEVM_COMPLIANT_ERC20=0x...
+
+# Registrar wallet keys
+# FHEVM_REGISTRAR_PRIVATE_KEY=
+# LOCAL_REGISTRAR_PRIVATE_KEY=
+
+# ============================================================
+# OPTIONAL - Feature Toggles
+# ============================================================
+
+# NEXT_PUBLIC_ENABLE_FHEVM=false
+# NEXT_PUBLIC_ENABLE_HARDHAT=true
+# NEXT_PUBLIC_ATTESTATION_DEMO=true
+
+# ============================================================
+# OPTIONAL - Third-Party Integrations
+# ============================================================
+
+# WalletConnect Project ID
+# NEXT_PUBLIC_PROJECT_ID=
+
+# OAuth Providers
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+# GITHUB_CLIENT_ID=
+# GITHUB_CLIENT_SECRET=
+
+# Email (Resend)
+# RESEND_API_KEY=
+
+# ============================================================
+# PRODUCTION ONLY
+# ============================================================
+
+# TURSO_AUTH_TOKEN=
+# NEXT_PUBLIC_APP_URL=https://app.zentity.xyz
 ```
 
 ## Implementation Steps
 
-### Step 1: Create Flag Schema
+1. Install T3 Env: `bun add @t3-oss/env-nextjs`
+2. Create `src/env.ts` with Zod schemas
+3. Create `src/lib/blockchain/constants.ts` with hardcoded values
+4. Create `src/lib/config/services.ts` with environment detection
+5. Import `./src/env` in `next.config.ts` for build-time validation
+6. Replace all `process.env.*` with `env.*` across codebase
+7. Create `e2e/.env.test` and update `playwright.config.ts`
+8. Simplify `.env.example`, `docker-compose.yml`, `Dockerfile`
+9. Update CLAUDE.md with new configuration guide
 
-Create `src/lib/config/feature-flags.ts` with Zod schema.
+## Files to Create
 
-### Step 2: Create Config File
+| File | Purpose |
+|------|---------|
+| `src/env.ts` | T3 Env validation schema |
+| `src/lib/blockchain/constants.ts` | Hardcoded network constants |
+| `src/lib/config/services.ts` | Service URL resolution |
+| `e2e/.env.test` | E2E-specific configuration |
 
-Create `src/lib/config/flags.json` with default values.
+## Files to Modify
 
-### Step 3: Create Config Loader
+| File | Change |
+|------|--------|
+| `next.config.ts` | Import env validation |
+| `.env.example` | Simplify to ~15 vars |
+| `docker-compose.yml` | Remove redundant env vars |
+| `apps/web/Dockerfile` | Remove hardcoded ARGs |
+| `playwright.config.ts` | Load e2e/.env.test |
+| `src/lib/blockchain/config/networks.ts` | Use constants.ts |
+| `src/lib/utils/service-urls.ts` | Use services.ts |
+| `src/lib/wagmi/config.ts` | Use constants.ts |
+| `src/hooks/fhevm/use-fhevm-sdk.ts` | Use constants.ts |
+| `src/app/api/fhevm/diagnostics/route.ts` | Use constants.ts |
+| `src/lib/auth/auth.ts` | Use env.ts |
+| `src/lib/crypto/fhe-client.ts` | Use env.ts |
+| `src/lib/logging/logger.ts` | Use env.ts |
+| `drizzle.config.ts` | Use env.ts |
 
-Create `src/lib/config/loader.ts` with hot-reload support.
+## Future Evolution: Feature Flags
 
-### Step 4: Create Public API
+When gradual rollouts or A/B testing are needed:
 
-Create `src/lib/config/index.ts` with convenience functions.
+1. Self-host Unleash on Railway
+2. Replace boolean env vars with Unleash SDK calls
+3. Add user context for targeting
+4. Enable percentage rollouts
 
-### Step 5: Add Client Hook
+This keeps the simple boolean approach for now while preserving the evolution path.
 
-Create `src/hooks/use-feature-flags.ts` for React components.
+## Security Considerations
 
-### Step 6: Add API Endpoint
-
-Create `/api/config/flags` for client-side access.
-
-### Step 7: Initialize in Layout
-
-Add `initFlags()` call in root layout.
-
-### Step 8: Migrate Existing Code
-
-Replace `process.env.NEXT_PUBLIC_*` with `flags.*`:
-
-| Current | New |
-|---------|-----|
-| `process.env.NEXT_PUBLIC_ENABLE_FHEVM === "true"` | `flags.fhevm` |
-| `process.env.NEXT_PUBLIC_ENABLE_HARDHAT !== "false"` | `flags.hardhat` |
-| `process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true"` | `flags.attestationDemo` |
-
-### Step 9: Add Maintenance Mode
-
-Create `/app/maintenance/page.tsx` and middleware.
-
-### Step 10: Update Documentation
-
-Document available flags and their purposes.
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/lib/config/feature-flags.ts` | Create | Schema + types |
-| `src/lib/config/flags.json` | Create | Flag values |
-| `src/lib/config/loader.ts` | Create | Config loading |
-| `src/lib/config/index.ts` | Create | Public API |
-| `src/hooks/use-feature-flags.ts` | Create | React hook |
-| `src/app/api/config/flags/route.ts` | Create | Client endpoint |
-| `src/middleware.ts` | Modify | Maintenance mode |
-| `src/app/maintenance/page.tsx` | Create | Maintenance page |
-| Components using env vars | Modify | Use flags.* |
-
-## Security/Privacy Considerations
-
-1. **No User Data**: Flags are global, not per-user (no tracking)
-2. **Debug Flags Hidden**: Debug flags not exposed to client
-3. **Server-Side Validation**: All flag checks in tRPC are server-side
-4. **No External Service**: Config file is local, no data sharing
-5. **Type Safety**: Zod prevents invalid configurations
-
-## Technical Notes
-
-- **Hot-Reload**: Only in development, production reads once
-- **File Watching**: Uses Node.js `fs.watchFile` with 1s interval
-- **JSON Format**: Simple, editable, git-friendly
-- **No Build Step**: Changes take effect immediately in dev
-- **Caching**: Client caches flags for 1 minute
-
-## Future Enhancements (Unleash)
-
-When gradual rollouts are needed:
-
-1. **Self-Host Unleash**: Deploy on Railway
-2. **SDK Integration**: Replace loader with Unleash SDK
-3. **User Context**: Add userId for targeting
-4. **Percentage Rollouts**: 10% → 50% → 100%
-5. **A/B Testing**: Track variants with analytics
-
-## Package Changes
-
-No new dependencies for initial implementation.
-
-For future Unleash integration:
-
-```json
-{
-  "dependencies": {
-    "@unleash/proxy-client-react": "^4.x"
-  }
-}
-```
+1. **Secrets in env vars only**: Never hardcode secrets
+2. **Build-time validation**: Missing secrets fail the build
+3. **Server/client separation**: T3 Env enforces NEXT_PUBLIC_ prefix
+4. **No debug in production**: Debug flags default to false
 
 ## References
 
-- [Zod Documentation](https://zod.dev/)
-- [Feature Flags Best Practices](https://martinfowler.com/articles/feature-toggles.html)
+- [T3 Env Documentation](https://env.t3.gg/docs/nextjs)
+- [Turborepo Environment Variables](https://turborepo.com/docs/crafting-your-repository/using-environment-variables)
+- [Feature Toggles Best Practices](https://martinfowler.com/articles/feature-toggles.html)
 - [Unleash Documentation](https://docs.getunleash.io/)
-- [Next.js Environment Variables](https://nextjs.org/docs/app/building-your-application/configuring/environment-variables)

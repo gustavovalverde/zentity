@@ -222,6 +222,8 @@ This is a proof of concept and will change quickly.
   (client decrypt only)
 - Passkey-wrapped FHE key storage (multi-device support; explicit user unlock
   required)
+- Social recovery with guardian approvals (email + authenticator) and Recovery
+  ID initiation, backed by FROST signer services
 - Disclosure demo flow (client decrypt → re-encrypt to RP + consent receipt)
 - OAuth 2.1 provider flow (authorize → consent → token exchange)
 
@@ -270,6 +272,8 @@ Details: [docs/architecture.md](docs/architecture.md) |
 | Web Frontend | Next.js 16, React 19, Noir.js, bb.js, Human.js | 3000 |
 | FHE Service | Rust, Axum, TFHE-rs | 5001 |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
+| Signer Coordinator | Rust (Actix), FROST coordinator | 5002 |
+| Signer Services | Rust (Actix), FROST signers | 5101+ |
 
 ## License
 
