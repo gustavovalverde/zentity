@@ -1,5 +1,3 @@
-import type { SemanticColor } from "@/lib/colors";
-
 import {
   IconCalendar,
   IconFileText,
@@ -10,8 +8,8 @@ import {
   IconUserCheck,
   IconWorld,
 } from "@tabler/icons-react";
-
 import { ColoredIconBox } from "@/components/ui/colored-icon-box";
+import type { SemanticColor } from "@/lib/colors";
 
 interface Feature {
   icon: React.ComponentType<{ className?: string }>;
