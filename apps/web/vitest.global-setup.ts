@@ -26,7 +26,7 @@ export function setup(): void {
   // Push schema to test database
   console.log("Initializing test database schema...");
   try {
-    execSync("bunx drizzle-kit push --force", {
+    execSync("npx drizzle-kit push --force", {
       cwd: process.cwd(),
       env: {
         ...process.env,

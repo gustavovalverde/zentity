@@ -218,8 +218,11 @@ function setFetchOrigin(origin: string | null) {
     return originalFetchBound(input, init);
   }) as typeof fetch;
 
+  // Copy any non-standard fetch properties (e.g., Bun's preconnect)
   if ("preconnect" in originalFetch) {
-    wrappedFetch.preconnect = originalFetch.preconnect;
+    (wrappedFetch as unknown as Record<string, unknown>).preconnect = (
+      originalFetch as unknown as Record<string, unknown>
+    ).preconnect;
   }
 
   globalThis.fetch = wrappedFetch;

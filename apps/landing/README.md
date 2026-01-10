@@ -25,15 +25,15 @@ For the technical details, see:
 ## Development
 
 ```bash
-bun install
-bun run dev
+pnpm install
+pnpm run dev
 ```
 
 ## Build
 
 ```bash
-bun run build
-bun run preview
+pnpm run build
+pnpm run preview
 ```
 
 ## Notes

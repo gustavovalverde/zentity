@@ -9,7 +9,7 @@
  * NOTE: pino-pretty transport is NOT used because Next.js Turbopack cannot resolve
  * pino's dynamically-generated worker modules. Structured JSON is used in all environments.
  * For human-readable dev logs, pipe output through pino-pretty CLI:
- *   bun run dev | pino-pretty
+ *   pnpm run dev | pino-pretty
  */
 import "server-only";
 

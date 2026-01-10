@@ -5,14 +5,14 @@
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": "24.x",
-    "bun": "1.3.x"
+    "pnpm": ">=10"
   },
   "scripts": {
     "preinstall": "mkdir -p dist/plugins/two-factor && chmod -R 755 dist 2>/dev/null || true",
-    "setup:coep-assets": "bun scripts/setup-coep-assets.ts",
-    "dev": "bun run setup:coep-assets && bun ./node_modules/next/dist/bin/next dev",
-    "build": "bun run setup:coep-assets && bun ./node_modules/next/dist/bin/next build",
-    "start": "bun ./node_modules/next/dist/bin/next start",
+    "setup:coep-assets": "pnpm exec tsx scripts/setup-coep-assets.ts",
+    "dev": "pnpm run setup:coep-assets && next dev",
+    "build": "pnpm run setup:coep-assets && next build",
+    "start": "next start",
     "clean": "rm -rf .next test-results playwright-report coverage",
     "lint": "biome check . --write",
     "lint:check": "biome check .",
@@ -22,8 +22,8 @@
     "lint:md:check": "markdownlint \"**/*.md\" --ignore \"node_modules/**/*.md\"",
     "typecheck": "tsc --noEmit",
     "type-check": "tsc --noEmit",
-    "check-all": "bun run type-check && bun run lint:check && bun run lint:md:check && bun run build && bun run circuits:check-versions",
-    "fix-all": "bun run type-check && bun run lint && bun run lint:md",
+    "check-all": "pnpm run type-check && pnpm run lint:check && pnpm run lint:md:check && pnpm run build && pnpm run circuits:check-versions",
+    "fix-all": "pnpm run type-check && pnpm run lint && pnpm run lint:md",
     "knip": "knip",
     "knip:fix": "knip --fix",
     "format": "biome format --write .",
@@ -31,18 +31,18 @@
     "test:watch": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs",
     "test:ui": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs --ui",
     "test:coverage": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run --coverage",
-    "test:e2e:setup": "bun e2e/automation/build-synpress-cache.ts",
-    "test:e2e": "bun run test:e2e:setup && bunx playwright test",
-    "test:e2e:ui": "bun run test:e2e:setup && bunx playwright test --ui",
+    "test:e2e:setup": "pnpm exec tsx e2e/automation/build-synpress-cache.ts",
+    "test:e2e": "pnpm run test:e2e:setup && pnpm exec playwright test",
+    "test:e2e:ui": "pnpm run test:e2e:setup && pnpm exec playwright test --ui",
     "db:push": "drizzle-kit push",
     "db:push:dev": "TURSO_DATABASE_URL=file:./.data/dev.db drizzle-kit push",
     "circuits:compile": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo compile && mkdir -p artifacts && cp -f target/*.json artifacts/); done",
     "circuits:test": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo test); done",
-    "circuits:profile": "bun scripts/noir-profile.ts",
-    "circuits:profile:opcodes": "bun scripts/noir-profile.ts opcodes",
-    "circuits:profile:gates": "bun scripts/noir-profile.ts gates",
-    "circuits:profile:execution": "bun scripts/noir-profile.ts execution-opcodes",
-    "circuits:check-versions": "bun scripts/check-noir-versions.ts",
+    "circuits:profile": "pnpm exec tsx scripts/noir-profile.ts",
+    "circuits:profile:opcodes": "pnpm exec tsx scripts/noir-profile.ts opcodes",
+    "circuits:profile:gates": "pnpm exec tsx scripts/noir-profile.ts gates",
+    "circuits:profile:execution": "pnpm exec tsx scripts/noir-profile.ts execution-opcodes",
+    "circuits:check-versions": "pnpm exec tsx scripts/check-noir-versions.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -50,10 +50,9 @@
     "@better-auth/oauth-provider": "1.5.0-beta.2",
     "@better-auth/passkey": "1.5.0-beta.2",
     "@better-auth/utils": "^0.3.0",
-    "@daveyplate/better-auth-ui": "^3.3.12",
+    "@daveyplate/better-auth-ui": "3.3.12",
     "@fhevm/mock-utils": "0.3.0-4",
     "@libsql/client": "0.15.15",
-    "@metamask/sdk": "0.34.0",
     "@msgpack/msgpack": "3.1.3",
     "@noir-lang/acvm_js": "1.0.0-beta.17",
     "@noir-lang/noir_js": "1.0.0-beta.17",
@@ -143,7 +142,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitest/coverage-v8": "4.0.16",
-    "bun-types": "1.3.5",
+    "tsx": "^4.19.4",
     "drizzle-kit": "0.31.8",
     "fs-extra": "11.3.3",
     "glob": "13.0.0",
@@ -162,15 +161,18 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
-      "bun x ultracite fix"
+      "pnpm exec ultracite fix"
     ]
   },
-  "trustedDependencies": [
-    "@tensorflow/tfjs-node"
-  ],
-  "patchedDependencies": {
-    "@better-auth/passkey@1.5.0-beta.2": "patches/@better-auth%2Fpasskey@1.5.0-beta.2.patch",
-    "@daveyplate/better-auth-ui@3.3.12": "patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch",
-    "better-auth@1.5.0-beta.2": "patches/better-auth@1.5.0-beta.2.patch"
+  "pnpm": {
+    "patchedDependencies": {
+      "@better-auth/passkey@1.5.0-beta.2": "patches/@better-auth%2Fpasskey@1.5.0-beta.2.patch",
+      "@daveyplate/better-auth-ui@3.3.12": "patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch",
+      "better-auth@1.5.0-beta.2": "patches/better-auth@1.5.0-beta.2.patch"
+    },
+    "onlyBuiltDependencies": [
+      "@tensorflow/tfjs-node",
+      "@synthetixio/synpress-cache"
+    ]
   }
 }

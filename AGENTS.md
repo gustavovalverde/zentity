@@ -13,8 +13,8 @@ Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 ## Build, Test, and Development Commands
 
 - Full stack (recommended): `docker compose up --build` from repo root.
-- Toolchain versions are pinned in `.mise.toml` (Node 24, Bun 1.3, Rust 1.91, Python 3.12).
-- Web (`apps/web`): `bun install`, `bun run dev` (localhost:3000), `bun run build`, `bun run lint`, `bun run test`, `bun run test:e2e`, `bun run circuits:compile` (Noir), `bun run circuits:test`.
+- Toolchain versions are pinned in `.mise.toml` (Node 24, pnpm 10, Rust 1.92, Python 3.12).
+- Web (`apps/web`): `pnpm install`, `pnpm run dev` (localhost:3000), `pnpm run build`, `pnpm run lint`, `pnpm run test`, `pnpm run test:e2e`, `pnpm run circuits:compile` (Noir), `pnpm run circuits:test`.
 - FHE (`apps/fhe`): `cargo run` (port 5001), `cargo test`.
 - OCR (`apps/ocr`): `pip install -e '.[test]'`, `PYTHONPATH=src uvicorn ocr_service.main:app --reload --port 5004`, `pytest`.
 
@@ -27,7 +27,7 @@ Shared docs are in `docs/`, and sample/test data in `fixtures/`.
 ## Testing Guidelines
 
 - Vitest for TS apps; name files `*.test.ts`/`*.spec.ts`.
-- Playwright for web E2E (`bun run test:e2e`).
+- Playwright for web E2E (`pnpm run test:e2e`).
 - Pytest for Python services; name files `test_*.py`.
 - Keep tests close to the module they cover and avoid storing PII in fixtures.
 
@@ -43,13 +43,13 @@ Never commit secrets. Copy `.env.example` to `.env` / `.env.local` and override 
 ## Database (Drizzle)
 
 - Schema source of truth: `apps/web/src/lib/db/schema/`.
-- Apply schema via `bun run db:push` (no runtime migrations; containers do not run drizzle-kit).
-- Local + Docker Compose: create or reset `apps/web/.data/dev.db` with `TURSO_DATABASE_URL=file:./apps/web/.data/dev.db bun run db:push` before `docker compose up`.
-- Turso (production/CI): set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`, then run `bun run db:push`.
-- Railway: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service and run `bun run db:push` from CI or your local machine (no volume mounts or db-init container required).
+- Apply schema via `pnpm run db:push` (no runtime migrations; containers do not run drizzle-kit).
+- Local + Docker Compose: create or reset `apps/web/.data/dev.db` with `TURSO_DATABASE_URL=file:./apps/web/.data/dev.db pnpm run db:push` before `docker compose up`.
+- Turso (production/CI): set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`, then run `pnpm run db:push`.
+- Railway: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service and run `pnpm run db:push` from CI or your local machine (no volume mounts or db-init container required).
 - Local SQLite uses `file:` URLs via `TURSO_DATABASE_URL` (no `DATABASE_PATH` fallback).
-- `drizzle-kit push` requires a SQLite driver; in this repo we use `@libsql/client` (Bun-compatible).
-- When wiping DBs, delete the SQLite file and rerun `bun run db:push` before starting the web app.
+- `drizzle-kit push` requires a SQLite driver; in this repo we use `@libsql/client`.
+- When wiping DBs, delete the SQLite file and rerun `pnpm run db:push` before starting the web app.
 
 ## E2E (Playwright/Synpress) - Web
 
@@ -57,7 +57,7 @@ E2E lives in `apps/web/e2e` and relies on a seeded SQLite DB plus MetaMask.
 
 ### Default (Hardhat, auto web server)
 
-- Run: `cd apps/web && bun run test:e2e`
+- Run: `cd apps/web && pnpm run test:e2e`
 - Playwright will start its own dev server via `e2e/automation/start-web3-dev.js`:
   - Boots Hardhat node + deploys contracts from `../zama/zentity-fhevm-contracts`
   - Sets `NEXT_PUBLIC_ENABLE_HARDHAT=true`, `NEXT_PUBLIC_ENABLE_FHEVM=false`
@@ -67,7 +67,7 @@ E2E lives in `apps/web/e2e` and relies on a seeded SQLite DB plus MetaMask.
 ### Existing dev server (port 3000)
 
 - Start your own server with the correct envs.
-- Run tests with: `E2E_EXTERNAL_WEB_SERVER=true bunx playwright test`
+- Run tests with: `E2E_EXTERNAL_WEB_SERVER=true pnpm exec playwright test`
 - **Important:** set `TURSO_DATABASE_URL` (or `E2E_TURSO_DATABASE_URL` for Playwright) to the same file as `E2E_DATABASE_PATH` so server + tests share the same seed DB:
   - `TURSO_DATABASE_URL=file:apps/web/e2e/.data/e2e.db`
 
@@ -77,7 +77,7 @@ E2E lives in `apps/web/e2e` and relies on a seeded SQLite DB plus MetaMask.
   - `NEXT_PUBLIC_ENABLE_FHEVM=true`
   - `NEXT_PUBLIC_ENABLE_HARDHAT=false`
 - Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `FHEVM_*` contract addresses + registrar key.
-- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true bunx playwright test e2e/web3-sepolia.spec.ts`
+- Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true pnpm exec playwright test e2e/web3-sepolia.spec.ts`
 - The Sepolia test will **skip** if:
   - Required envs are missing, or
   - The MetaMask account has **no SepoliaETH** (grant compliance access is disabled).

@@ -39,7 +39,6 @@ beforeEach(() => {
   resetFheKeyStoreCache();
   vi.clearAllMocks();
   fetchMock.mockReset();
-  // @ts-expect-error - test global override
   globalThis.fetch = fetchMock;
 });
 

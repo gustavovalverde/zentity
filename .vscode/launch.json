@@ -5,8 +5,11 @@
       "name": "Next.js: debug server-side (apps/web)",
       "type": "node-terminal",
       "request": "launch",
-      "command": "bun run dev -- --inspect",
-      "cwd": "${workspaceFolder}/apps/web"
+      "command": "pnpm run dev",
+      "cwd": "${workspaceFolder}/apps/web",
+      "env": {
+        "NODE_OPTIONS": "--inspect"
+      }
     },
     {
       "name": "Next.js: debug client-side (apps/web)",
@@ -16,20 +19,24 @@
     },
     {
       "name": "Next.js: debug full stack (apps/web)",
-      "type": "node",
+      "type": "node-terminal",
       "request": "launch",
-      "program": "${workspaceFolder}/apps/web/node_modules/next/dist/bin/next",
-      "runtimeArgs": ["--inspect"],
-      "args": ["dev", "--webpack"],
+      "command": "NODE_OPTIONS='--inspect' pnpm run dev",
       "cwd": "${workspaceFolder}/apps/web",
-      "skipFiles": ["<node_internals>/**"],
       "serverReadyAction": {
         "action": "debugWithChrome",
         "killOnServerStop": true,
         "pattern": "- Local:.+(https?://.+)",
         "uriFormat": "%s",
-        "webRoot": "${workspaceFolder}"
+        "webRoot": "${workspaceFolder}/apps/web"
       }
+    },
+    {
+      "name": "Vitest: debug tests (apps/web)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm run test -- --inspect-brk --no-file-parallelism",
+      "cwd": "${workspaceFolder}/apps/web"
     }
   ]
 }

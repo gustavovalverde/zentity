@@ -12,13 +12,18 @@ ARG APP_USER=nextjs
 ARG APP_HOME=/app
 
 # --- Stage 1: Dependencies ---
-FROM oven/bun:1-debian@sha256:9d9504d425a8b85c5cf162c1c354f9403e15583e0f3e1de3750ce3723d3e89ac AS deps
+FROM node:24-slim AS deps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SOURCE_DATE_EPOCH
 ARG APP_HOME
 
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+# Enable pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Build tools for tfjs-node native compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,14 +33,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR ${APP_HOME}
 
 # Copy package files first for dependency caching
-COPY --link package.json bun.lock ./
-# Include patches needed for bun patchedDependencies resolution
+COPY --link package.json pnpm-lock.yaml .npmrc ./
+# Include patches needed for pnpm patchedDependencies resolution
 COPY --link patches ./patches
 
-# Install dependencies with BuildKit cache mount for Bun
+# Install dependencies with BuildKit cache mount for pnpm
 # Cache persists across builds, significantly speeds up installs
-RUN --mount=type=cache,id=s/a0dbf135-6670-4cf9-8c14-247262ab102f-/root/.bun/install/cache,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # --- Stage 2: Builder ---
 FROM deps AS builder
@@ -93,10 +98,10 @@ ENV BUILD_TIME=${BUILD_TIME}
 # Build Next.js
 # NODE_OPTIONS increases heap size for Next build (trace generation can be memory intensive)
 ENV NODE_OPTIONS="--max-old-space-size=6144"
-RUN bun run build
+RUN pnpm run build
 
 # --- Stage 3: Runtime ---
-FROM oven/bun:1-slim@sha256:10c077f99e1d7dd7fa2947d8ed0a8c2094fa85577856062e43c8967dc97e9fc6 AS runner
+FROM node:24-slim AS runner
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG GIT_SHA
@@ -106,7 +111,7 @@ ARG APP_GID
 ARG APP_USER
 ARG APP_HOME
 
-RUN apt-get update && apt-get install -y --no-install-recommends gosu curl nodejs ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 WORKDIR ${APP_HOME}

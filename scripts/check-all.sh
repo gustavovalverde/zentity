@@ -37,7 +37,7 @@ echo "--- TypeScript/JavaScript (apps/web) ---"
 cd "$ROOT_DIR/apps/web"
 
 echo "Running Biome lint check..."
-if bun run lint:check; then
+if pnpm run lint:check; then
     success "Biome (web): passed"
 else
     error "Biome (web): failed"
@@ -45,7 +45,7 @@ else
 fi
 
 echo "Running TypeScript type-check..."
-if bun run type-check; then
+if pnpm run type-check; then
     success "TypeScript (web): passed"
 else
     error "TypeScript (web): failed"
@@ -55,7 +55,7 @@ fi
 cd "$ROOT_DIR"
 
 echo "Running markdownlint (repo-wide)..."
-if bunx markdownlint-cli "**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "docs/archive/**"; then
+if pnpm exec markdownlint-cli "**/*.md" --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "docs/archive/**"; then
     success "Markdownlint: passed"
 else
     error "Markdownlint: failed"
@@ -73,7 +73,7 @@ echo "--- TypeScript/JavaScript (apps/landing) ---"
 cd "$ROOT_DIR/apps/landing"
 
 echo "Running Biome lint check..."
-if bun run lint:check; then
+if pnpm run lint:check; then
     success "Biome (landing): passed"
 else
     error "Biome (landing): failed"
@@ -81,7 +81,7 @@ else
 fi
 
 echo "Running TypeScript type-check..."
-if bun run type-check; then
+if pnpm run type-check; then
     success "TypeScript (landing): passed"
 else
     error "TypeScript (landing): failed"

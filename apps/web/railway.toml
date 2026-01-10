@@ -23,7 +23,7 @@
 #     - Persists secret blobs and SQLite (if using file: DB)
 #
 # Schema apply (run from CI/local machine):
-#   TURSO_DATABASE_URL=libsql://<db>.turso.io TURSO_AUTH_TOKEN=<secret> bun run db:push
+#   TURSO_DATABASE_URL=libsql://<db>.turso.io TURSO_AUTH_TOKEN=<secret> pnpm run db:push
 
 [build]
 builder = "DOCKERFILE"

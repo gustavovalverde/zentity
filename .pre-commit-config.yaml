@@ -60,13 +60,13 @@ repos:
     hooks:
       - id: tsc-check-web
         name: TypeScript type-check (web)
-        entry: bash -c 'cd apps/web && bun run tsc --noEmit'
+        entry: bash -c 'cd apps/web && pnpm run type-check'
         language: system
         files: ^apps/web/.*\.(ts|tsx)$
         pass_filenames: false
       - id: tsc-check-landing
         name: TypeScript type-check (landing)
-        entry: bash -c 'cd apps/landing && bun run tsc -b'
+        entry: bash -c 'cd apps/landing && pnpm run type-check'
         language: system
         files: ^apps/landing/.*\.(ts|tsx)$
         pass_filenames: false
@@ -78,7 +78,7 @@ repos:
     hooks:
       - id: knip-check-web
         name: Knip dead code check (web)
-        entry: bash -c 'cd apps/web && bun run knip'
+        entry: bash -c 'cd apps/web && pnpm run knip'
         language: system
         files: ^apps/web/.*\.(ts|tsx)$
         pass_filenames: false
@@ -158,6 +158,6 @@ repos:
     hooks:
       - id: commitlint
         name: commitlint
-        entry: bash -c 'cd apps/web && bunx commitlint --edit "$0"'
+        entry: bash -c 'cd apps/web && pnpm exec commitlint --edit "$0"'
         language: system
         stages: [commit-msg]
