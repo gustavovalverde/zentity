@@ -139,3 +139,59 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Liveness feedback animations */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+@keyframes confetti-spin {
+  0% {
+    transform: rotateX(0deg) rotateY(0deg);
+  }
+  100% {
+    transform: rotateX(360deg) rotateY(360deg);
+  }
+}
+
+.animate-confetti-fall {
+  animation: confetti-fall 2.5s ease-out forwards;
+}
+
+.animate-confetti-spin {
+  animation: confetti-spin 1s linear infinite;
+}
+
+/* Directional nudge animations */
+@keyframes bounce-left {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-8px);
+  }
+}
+
+@keyframes bounce-right {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(8px);
+  }
+}
+
+.animate-bounce-left {
+  animation: bounce-left 1s ease-in-out infinite;
+}
+
+.animate-bounce-right {
+  animation: bounce-right 1s ease-in-out infinite;
+}

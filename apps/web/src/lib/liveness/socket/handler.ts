@@ -7,6 +7,7 @@
 
 import type { Socket } from "socket.io";
 
+import { LivenessErrorState } from "../errors";
 import {
   getFacingDirection,
   getHappyScore,
@@ -37,6 +38,7 @@ import {
   resetChallengePass,
   resetFaceDetection,
   type SessionState,
+  type SessionTimeouts,
   toClientState,
 } from "./session";
 
@@ -51,6 +53,10 @@ const CONSECUTIVE_ERROR_THRESHOLD = 5;
 
 // Completion acknowledgment timeout
 const COMPLETION_ACK_TIMEOUT_MS = 5000;
+// Countdown auto-advance fallback if client never finishes countdown
+const COUNTDOWN_AUTO_ADVANCE_MS = 7000;
+// Challenge auto-start fallback if client never acknowledges prompt
+const CHALLENGE_READY_TIMEOUT_MS = 4000;
 
 /**
  * Handle a new liveness socket connection.
@@ -65,17 +71,28 @@ export function handleLivenessConnection(socket: Socket): void {
   let consecutiveErrors = 0;
 
   // Start session
-  socket.on("start", (config?: { challenges?: number }) => {
-    const numChallenges = config?.challenges ?? 2;
-    session = createSession(numChallenges);
-    log.info(
-      { sessionId: session.id, challenges: session.challenges },
-      "Session started"
-    );
+  socket.on(
+    "start",
+    (config?: { challenges?: number; timeouts?: Partial<SessionTimeouts> }) => {
+      const numChallenges = config?.challenges ?? 2;
+      const timeouts = config?.timeouts ?? {};
+      session = createSession(numChallenges, timeouts);
+      log.info(
+        {
+          sessionId: session.id,
+          challenges: session.challenges,
+          timeouts: session.timeouts,
+        },
+        "Session started"
+      );
 
-    // Send initial state
-    socket.emit("state", toClientState(session));
-  });
+      // Send initial state with timeout config for client awareness
+      socket.emit("state", {
+        ...toClientState(session),
+        timeouts: session.timeouts,
+      });
+    }
+  );
 
   // Handle binary frame
   socket.on("frame", async (data: Buffer | ArrayBuffer) => {
@@ -91,7 +108,7 @@ export function handleLivenessConnection(socket: Socket): void {
     if (isSessionExpired(session)) {
       session.phase = "failed";
       socket.emit("failed", {
-        code: "timeout",
+        code: LivenessErrorState.SESSION_TIMEOUT,
         message: "Session timed out",
         canRetry: true,
       });
@@ -155,9 +172,11 @@ export function handleLivenessConnection(socket: Socket): void {
       } else {
         session.face = { detected: false, box: null };
       }
+      session.lastFrameDataUrl = dataUrl;
+      session.lastHappyScore = face ? getHappyScore(face) : null;
 
       // Process based on current phase
-      await processPhase(socket, session, result, face, dataUrl, log);
+      processPhase(socket, session, result, face, dataUrl, log);
 
       // Reset error counter on success
       consecutiveErrors = 0;
@@ -180,14 +199,87 @@ export function handleLivenessConnection(socket: Socket): void {
     }
   });
 
-  // Handle retry
+  // Handle retry - soft retries within a session
+  const MAX_RETRIES = 3;
   socket.on("retry", () => {
-    if (session) {
-      log.info({ oldSessionId: session.id }, "Session retry requested");
+    if (!session) {
+      session = createSession();
+      log.info({ sessionId: session.id }, "New session created for retry");
+      socket.emit("state", toClientState(session));
+      return;
     }
-    session = createSession();
-    log.info({ sessionId: session.id }, "New session created for retry");
+
+    // Check retry limit
+    if (session.retryCount >= MAX_RETRIES) {
+      log.warn(
+        { sessionId: session.id, retryCount: session.retryCount },
+        "Max retries exceeded"
+      );
+      socket.emit("failed", {
+        code: LivenessErrorState.SESSION_EXPIRED,
+        message: "Maximum retries exceeded",
+        canRetry: false,
+      });
+      return;
+    }
+
+    // Increment retry count and reset session state for new attempt
+    session.retryCount++;
+    session.phase = "detecting";
+    session.currentIndex = 0;
+    session.challenge = null;
+    session.face = { detected: false, box: null };
+    session.countdown = null;
+    session.consecutiveFaceDetections = 0;
+    session.consecutiveChallengeDetections = 0;
+    session.baselineHappy = null;
+    session.lastHappyScore = null;
+    session.turnStartYaw = null;
+    session.turnCentered = false;
+    session.countdownAwaitingClient = false;
+    session.countdownRequestedAt = null;
+    session.pendingBaselineFrame = null;
+    session.lastFrameDataUrl = null;
+    session.challengeAwaitingClient = false;
+    session.challengeRequestedAt = null;
+    session.challengeStartedAt = null;
+    session.baselineFrame = null;
+    session.challengeFrames.clear();
+    session.startedAt = Date.now();
+    session.lastFrameAt = Date.now();
+
+    log.info(
+      { sessionId: session.id, retryCount: session.retryCount },
+      "Session retry - resetting for new attempt"
+    );
     socket.emit("state", toClientState(session));
+  });
+
+  // Client signals that local countdown finished.
+  socket.on("countdown:done", () => {
+    if (!session) {
+      return;
+    }
+    if (session.phase !== "countdown" || !session.countdownAwaitingClient) {
+      return;
+    }
+    const baselineFrame =
+      session.lastFrameDataUrl ?? session.pendingBaselineFrame ?? "";
+    advanceAfterCountdown(socket, session, baselineFrame);
+  });
+
+  // Client signals that challenge instruction has completed.
+  socket.on("challenge:ready", () => {
+    if (!session) {
+      return;
+    }
+    if (session.phase !== "challenging" || !session.challengeAwaitingClient) {
+      return;
+    }
+    session.challengeAwaitingClient = false;
+    session.challengeRequestedAt = null;
+    session.challengeStartedAt = Date.now();
+    resetChallengePass(session);
   });
 
   // Handle disconnect
@@ -200,25 +292,25 @@ export function handleLivenessConnection(socket: Socket): void {
 /**
  * Process frame based on current session phase.
  */
-async function processPhase(
+function processPhase(
   socket: Socket,
   session: SessionState,
   result: Awaited<ReturnType<typeof detectFromBase64>>,
   face: ReturnType<typeof getPrimaryFace>,
   frameDataUrl: string,
   log: Logger
-): Promise<void> {
+): void {
   switch (session.phase) {
     case "detecting":
-      await handleDetectingPhase(socket, session, face, frameDataUrl);
+      handleDetectingPhase(socket, session, face, frameDataUrl);
       break;
 
     case "countdown":
-      // Countdown is handled client-side, just wait for baseline
+      handleCountdownPhase(socket, session, face, frameDataUrl);
       break;
 
     case "baseline":
-      await handleBaselinePhase(socket, session, face, frameDataUrl);
+      handleBaselinePhase(socket, session, face, frameDataUrl);
       break;
 
     case "challenging":
@@ -243,12 +335,12 @@ async function processPhase(
 /**
  * Handle detecting phase - looking for stable face.
  */
-async function handleDetectingPhase(
+function handleDetectingPhase(
   socket: Socket,
   session: SessionState,
   face: ReturnType<typeof getPrimaryFace>,
   frameDataUrl: string
-): Promise<void> {
+): void {
   if (!face) {
     resetFaceDetection(session);
     socket.emit("state", {
@@ -263,12 +355,11 @@ async function handleDetectingPhase(
   if (hasStableDetection(session)) {
     // Face is stable, start countdown
     session.phase = "countdown";
-    session.countdown = 3;
-
+    session.countdown = null;
+    session.countdownAwaitingClient = true;
+    session.countdownRequestedAt = Date.now();
+    session.pendingBaselineFrame = frameDataUrl;
     socket.emit("state", toClientState(session));
-
-    // Auto-advance countdown (server controls timing)
-    await countdownAndCapture(socket, session, frameDataUrl);
   } else {
     socket.emit("state", {
       ...toClientState(session),
@@ -278,27 +369,54 @@ async function handleDetectingPhase(
 }
 
 /**
- * Run countdown and capture baseline.
+ * Handle countdown phase - wait for client completion or fallback.
  */
-async function countdownAndCapture(
+function handleCountdownPhase(
+  socket: Socket,
+  session: SessionState,
+  face: ReturnType<typeof getPrimaryFace>,
+  frameDataUrl: string
+): void {
+  if (!(session.countdownAwaitingClient && session.countdownRequestedAt)) {
+    return;
+  }
+
+  if (!face) {
+    session.phase = "detecting";
+    resetFaceDetection(session);
+    session.countdownAwaitingClient = false;
+    session.countdownRequestedAt = null;
+    session.pendingBaselineFrame = null;
+    socket.emit("state", {
+      ...toClientState(session),
+      hint: "Face lost - please position your face again",
+    });
+    return;
+  }
+
+  const elapsed = Date.now() - session.countdownRequestedAt;
+  if (elapsed < COUNTDOWN_AUTO_ADVANCE_MS) {
+    return;
+  }
+
+  const baselineFrame =
+    session.lastFrameDataUrl ?? session.pendingBaselineFrame ?? frameDataUrl;
+  advanceAfterCountdown(socket, session, baselineFrame);
+}
+
+function advanceAfterCountdown(
   socket: Socket,
   session: SessionState,
   frameDataUrl: string
-): Promise<void> {
-  // Countdown 3, 2, 1
-  for (let i = 3; i >= 1; i--) {
-    session.countdown = i;
-    socket.emit("state", toClientState(session));
-    await sleep(1000);
-  }
-
-  // Capture baseline
+): void {
+  session.countdownAwaitingClient = false;
+  session.countdownRequestedAt = null;
+  session.pendingBaselineFrame = null;
   session.countdown = null;
-  session.phase = "baseline";
-  socket.emit("state", toClientState(session));
 
-  // Store baseline frame and advance to first challenge
   session.baselineFrame = frameDataUrl;
+  session.baselineHappy = session.lastHappyScore ?? null;
+
   session.phase = "challenging";
   session.challenge = {
     type: session.challenges[0],
@@ -307,6 +425,10 @@ async function countdownAndCapture(
     progress: 0,
     hint: getHintForChallenge(session.challenges[0]),
   };
+  session.challengeAwaitingClient = true;
+  session.challengeRequestedAt = Date.now();
+  session.challengeStartedAt = null;
+  resetChallengePass(session);
 
   socket.emit("state", toClientState(session));
 }
@@ -337,6 +459,10 @@ function handleBaselinePhase(
 
   // Start first challenge
   session.phase = "challenging";
+  session.challengeAwaitingClient = true;
+  session.challengeRequestedAt = Date.now();
+  session.challengeStartedAt = null;
+  resetChallengePass(session);
   socket.emit("state", toClientState(session));
 }
 
@@ -350,11 +476,25 @@ function handleChallengePhase(
   face: ReturnType<typeof getPrimaryFace>,
   frameDataUrl: string
 ): void {
+  if (session.challengeAwaitingClient) {
+    if (
+      session.challengeRequestedAt &&
+      Date.now() - session.challengeRequestedAt > CHALLENGE_READY_TIMEOUT_MS
+    ) {
+      session.challengeAwaitingClient = false;
+      session.challengeRequestedAt = null;
+      session.challengeStartedAt = Date.now();
+      resetChallengePass(session);
+    } else {
+      return;
+    }
+  }
+
   // Check challenge timeout
   if (isChallengeExpired(session)) {
     session.phase = "failed";
     socket.emit("failed", {
-      code: "challenge_timeout",
+      code: LivenessErrorState.CHALLENGE_TIMEOUT,
       message: "Challenge timed out",
       canRetry: true,
     });
@@ -364,6 +504,9 @@ function handleChallengePhase(
   if (!face) {
     resetChallengePass(session);
     session.phase = "detecting";
+    session.challengeAwaitingClient = false;
+    session.challengeRequestedAt = null;
+    session.challengeStartedAt = null;
     socket.emit("state", {
       ...toClientState(session),
       hint: "Face lost - position your face in the frame",
@@ -396,6 +539,9 @@ function handleChallengePhase(
 
       if (allDone) {
         session.phase = "verifying";
+        session.challengeAwaitingClient = false;
+        session.challengeRequestedAt = null;
+        session.challengeStartedAt = null;
         socket.emit("state", {
           ...toClientState(session),
           hint: "Verifying...",
@@ -410,6 +556,10 @@ function handleChallengePhase(
           progress: 0,
           hint: getHintForChallenge(nextType),
         };
+        session.challengeAwaitingClient = true;
+        session.challengeRequestedAt = Date.now();
+        session.challengeStartedAt = null;
+        resetChallengePass(session);
         socket.emit("state", toClientState(session));
       }
     } else {
@@ -452,7 +602,9 @@ function handleVerifyingPhase(
   if (!(antispoofPassed && livenessPassed)) {
     session.phase = "failed";
     socket.emit("failed", {
-      code: antispoofPassed ? "liveness_failed" : "antispoof_failed",
+      code: antispoofPassed
+        ? LivenessErrorState.LIVENESS_FAILED
+        : LivenessErrorState.ANTISPOOF_FAILED,
       message: "Verification failed - please try again with a live camera",
       canRetry: true,
     });
@@ -603,6 +755,3 @@ function getHintForChallenge(type: string): string {
 /**
  * Simple sleep helper.
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

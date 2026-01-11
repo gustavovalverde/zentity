@@ -3,6 +3,8 @@
   "ignore": [
     ".synpress-wallet-setup-dist/**",
     "src/components/ui/**",
+    "src/components/liveness/**",
+    "src/lib/liveness/**",
     "scripts/**",
     "public/coi-serviceworker.js",
     "src/hooks/fhevm/use-fhe-encryption.ts",

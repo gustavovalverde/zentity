@@ -12,6 +12,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 
+import {
+  createLivenessError,
+  getAutoRetryCount,
+  type LivenessError,
+  mapLegacyErrorCode,
+} from "@/lib/liveness/errors";
+
 // State types matching server session.ts
 export type LivenessPhase =
   | "connecting"
@@ -96,12 +103,20 @@ export interface UseLivenessResult {
   isConnected: boolean;
   /** Start the liveness session */
   beginCamera: () => Promise<void>;
+  /** Signal that client finished countdown */
+  signalCountdownDone: () => void;
+  /** Signal that client finished challenge instruction */
+  signalChallengeReady: () => void;
   /** Retry after failure */
   retryChallenge: () => void;
   /** Final selfie image after success */
   selfieImage: string | null;
   /** Error message if failed */
   errorMessage: string | null;
+  /** Typed error object with recovery info */
+  error: LivenessError | null;
+  /** Whether a soft retry is in progress */
+  isRetrying: boolean;
 }
 
 // Frame capture interval (ms) - balance between responsiveness and server load
@@ -205,6 +220,9 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
   const isSendingRef = useRef(false);
   const canvasPoolRef = useRef<CanvasPool | null>(null);
 
+  // Soft retry tracking
+  const softRetryCountRef = useRef(0);
+
   // State
   const [isConnected, setIsConnected] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -218,6 +236,8 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
   const [hint, setHint] = useState("");
   const [selfieImage, setSelfieImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [error, setError] = useState<LivenessError | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // Clean up function
   const cleanup = useCallback(() => {
@@ -315,13 +335,45 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       ack?.();
     });
 
-    // Handle failure
+    // Handle failure with soft retry logic
     socket.on("failed", (result: FailedResult) => {
       if (debugEnabled) {
         console.log("[liveness] Failed:", result);
       }
+
+      // Map legacy error code to typed error state
+      const errorState = mapLegacyErrorCode(result.code);
+      const livenessError = createLivenessError(errorState);
+      const maxAutoRetries = getAutoRetryCount(errorState);
+
+      // Soft retry logic - retry automatically before showing error UI
+      if (softRetryCountRef.current < maxAutoRetries) {
+        softRetryCountRef.current++;
+        setIsRetrying(true);
+
+        if (debugEnabled) {
+          console.log(
+            `[liveness] Soft retry ${softRetryCountRef.current}/${maxAutoRetries}`
+          );
+        }
+
+        // Request server to retry the session
+        socket.emit("retry");
+
+        // Brief toast to show retry is happening
+        toast.info(livenessError.recovery.message, {
+          duration: 2000,
+        });
+
+        return;
+      }
+
+      // Exceeded soft retries - show error UI
+      softRetryCountRef.current = 0;
+      setIsRetrying(false);
       setPhase("failed");
-      setErrorMessage(result.message);
+      setError(livenessError);
+      setErrorMessage(livenessError.message);
 
       // Stop frame streaming
       if (frameIntervalRef.current) {
@@ -330,7 +382,7 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       }
 
       toast.error("Verification failed", {
-        description: result.message,
+        description: livenessError.message,
       });
     });
 
@@ -435,6 +487,20 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
     }
   }, [startCamera, connectAndStart]);
 
+  const signalCountdownDone = useCallback(() => {
+    const socket = socketRef.current;
+    if (socket?.connected) {
+      socket.emit("countdown:done");
+    }
+  }, []);
+
+  const signalChallengeReady = useCallback(() => {
+    const socket = socketRef.current;
+    if (socket?.connected) {
+      socket.emit("challenge:ready");
+    }
+  }, []);
+
   // Retry after failure
   const retryChallenge = useCallback(() => {
     cleanup();
@@ -462,8 +528,12 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
     sessionId,
     isConnected,
     beginCamera,
+    signalCountdownDone,
+    signalChallengeReady,
     retryChallenge,
     selfieImage,
     errorMessage,
+    error,
+    isRetrying,
   };
 }

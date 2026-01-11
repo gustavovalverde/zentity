@@ -45,8 +45,16 @@ export interface SessionState {
   consecutiveFaceDetections: number;
   consecutiveChallengeDetections: number;
   baselineHappy: number | null;
+  lastHappyScore: number | null;
   turnStartYaw: number | null;
   turnCentered: boolean;
+  countdownAwaitingClient: boolean;
+  countdownRequestedAt: number | null;
+  pendingBaselineFrame: string | null;
+  lastFrameDataUrl: string | null;
+  challengeAwaitingClient: boolean;
+  challengeRequestedAt: number | null;
+  challengeStartedAt: number | null;
 
   // Captured frames (base64)
   baselineFrame: string | null;
@@ -55,21 +63,47 @@ export interface SessionState {
   // Timing
   startedAt: number;
   lastFrameAt: number;
+
+  // Retry tracking
+  retryCount: number;
+
+  // Configurable timeouts
+  timeouts: SessionTimeouts;
 }
 
 // Constants
 const STABILITY_FRAMES = 3;
-const SESSION_TIMEOUT_MS = 60_000; // 60 seconds max
-const CHALLENGE_TIMEOUT_MS = 15_000; // 15 seconds per challenge
+
+/**
+ * Configurable timeout settings for liveness sessions.
+ */
+export interface SessionTimeouts {
+  /** Maximum session duration in milliseconds */
+  sessionTimeoutMs: number;
+  /** Maximum time per challenge in milliseconds */
+  challengeTimeoutMs: number;
+  /** Countdown duration in milliseconds */
+  countdownDurationMs: number;
+}
+
+export const DEFAULT_TIMEOUTS: SessionTimeouts = {
+  sessionTimeoutMs: 60_000, // 60 seconds max
+  challengeTimeoutMs: 15_000, // 15 seconds per challenge
+  countdownDurationMs: 3000, // 3 second countdown
+};
 
 // Challenge limits (security: prevent DoS via excessive challenges)
+// Cap to available unique challenges to avoid repeats in a single session.
 const MIN_CHALLENGES = 1;
-const MAX_CHALLENGES = 5;
+const MAX_CHALLENGES = 3;
 
 /**
  * Create a new session with random challenges.
  */
-export function createSession(numChallenges = 2): SessionState {
+export function createSession(
+  numChallenges = 2,
+  timeouts: Partial<SessionTimeouts> = {}
+): SessionState {
   // Silently clamp to valid range (security: prevent DoS)
   const count = Math.max(
     MIN_CHALLENGES,
@@ -90,14 +124,25 @@ export function createSession(numChallenges = 2): SessionState {
     consecutiveFaceDetections: 0,
     consecutiveChallengeDetections: 0,
     baselineHappy: null,
+    lastHappyScore: null,
     turnStartYaw: null,
     turnCentered: false,
+    countdownAwaitingClient: false,
+    countdownRequestedAt: null,
+    pendingBaselineFrame: null,
+    lastFrameDataUrl: null,
+    challengeAwaitingClient: false,
+    challengeRequestedAt: null,
+    challengeStartedAt: null,
 
     baselineFrame: null,
     challengeFrames: new Map(),
 
     startedAt: now,
     lastFrameAt: now,
+
+    retryCount: 0,
+    timeouts: { ...DEFAULT_TIMEOUTS, ...timeouts },
   };
 }
 
@@ -106,16 +151,12 @@ export function createSession(numChallenges = 2): SessionState {
  */
 function generateChallenges(count: number): ChallengeType[] {
   const pool: ChallengeType[] = ["smile", "turn_left", "turn_right"];
-  const challenges: ChallengeType[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const index = Math.floor(Math.random() * pool.length);
-    challenges.push(pool[index]);
-  }
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const challenges = shuffled.slice(0, count);
 
   // Ensure at least one turn for better security
   if (!challenges.some((c) => c.startsWith("turn"))) {
-    const replaceIndex = Math.floor(Math.random() * count);
+    const replaceIndex = Math.floor(Math.random() * challenges.length);
     challenges[replaceIndex] = Math.random() < 0.5 ? "turn_left" : "turn_right";
   }
 
@@ -151,7 +192,7 @@ export function getCurrentChallenge(
  */
 export function isSessionExpired(session: SessionState): boolean {
   const elapsed = Date.now() - session.startedAt;
-  return elapsed > SESSION_TIMEOUT_MS;
+  return elapsed > session.timeouts.sessionTimeoutMs;
 }
 
 /**
@@ -161,9 +202,11 @@ export function isChallengeExpired(session: SessionState): boolean {
   if (session.phase !== "challenging") {
     return false;
   }
-  // Use lastFrameAt as proxy for challenge start (simplified)
-  const elapsed = Date.now() - session.lastFrameAt;
-  return elapsed > CHALLENGE_TIMEOUT_MS;
+  if (!session.challengeStartedAt) {
+    return false;
+  }
+  const elapsed = Date.now() - session.challengeStartedAt;
+  return elapsed > session.timeouts.challengeTimeoutMs;
 }
 
 /**
