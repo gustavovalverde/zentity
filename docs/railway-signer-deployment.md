@@ -13,7 +13,7 @@ The FROST signer system provides threshold signatures for decentralized attestat
 | `signer-2` | Signer | 5101 | Holds key share #2 |
 | `signer-3` | Signer | 5101 | Holds key share #3 |
 
-```
+```text
 ┌─────────────┐     ┌──────────────────────┐     ┌───────────────┐
 │   Web App   │────▶│  Signer Coordinator  │────▶│   Signer 1    │
 │  (port 3000)│     │    (port 5002)       │     │  (port 5101)  │
@@ -73,6 +73,7 @@ RAILWAY_DOCKERFILE_PATH=Dockerfile.coordinator
 ```
 
 Optional coordinator variables:
+
 ```env
 GUARDIAN_ASSERTION_JWKS_URL=<jwks-url>  # For JWT verification in Phase 3
 ```
@@ -98,6 +99,7 @@ Each service requires a persistent volume for the ReDB database:
 | signer-3 | `/var/lib/zentity/signer` | Encrypted key share |
 
 Create volumes via Railway dashboard:
+
 1. Go to service settings
 2. Click "Add Volume"
 3. Set mount path to `/var/lib/zentity/signer`
@@ -176,6 +178,7 @@ curl http://signer-3.railway.internal:5101/health
 ### Runtime Issues
 
 **Coordinator can't reach signers**: Check that:
+
 - All signers are healthy first
 - `SIGNER_ENDPOINTS` uses correct Railway internal DNS names
 - Network connectivity exists between services
