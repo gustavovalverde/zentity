@@ -51,7 +51,7 @@ import {
   getVerificationStatus,
   updateIdentityBundleStatus,
 } from "@/lib/db/queries/identity";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/policy";
 import { withSpan } from "@/lib/observability/telemetry";
 import { getFheServiceUrl } from "@/lib/utils/service-urls";
 import { getTodayAsInt } from "@/lib/zk/noir-prover";

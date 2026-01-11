@@ -48,11 +48,12 @@ fi
 
 echo "[entrypoint] Schema is managed via manual drizzle-kit push (no runtime migrations)."
 
-echo "[entrypoint] Starting Next.js server..."
+echo "[entrypoint] Starting Next.js server with Socket.io..."
 
 # Drop to nextjs user if running as root
+# Use tsx directly for full TypeScript support (handles path aliases via tsconfig.json)
 if [ "$(id -u)" = "0" ]; then
-  exec gosu nextjs node server.js
+  exec gosu nextjs ./node_modules/.bin/tsx server.mjs
 else
-  exec node server.js
+  exec ./node_modules/.bin/tsx server.mjs
 fi

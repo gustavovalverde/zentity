@@ -10,7 +10,8 @@
     "src/lib/wagmi/empty-module/index.js",
     "src/lib/wagmi/empty-module/internal/index.js",
     "src/lib/zk/noir-worker-manager.ts",
-    "src/test/client-only.ts"
+    "src/test/client-only.ts",
+    "src/test/server-only.ts"
   ],
   "ignoreDependencies": [
     "buffer",

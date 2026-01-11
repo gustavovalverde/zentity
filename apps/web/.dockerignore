@@ -26,6 +26,9 @@
 !tailwind.config.ts
 !components.json
 
+# Include custom server for Socket.io
+!server.mjs
+
 # Include scripts (entrypoint)
 !scripts/
 

@@ -7,9 +7,6 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
-  // Enable standalone output for Docker deployments
-  output: "standalone",
-
   experimental: {
     // Required for large tRPC payloads (e.g., encrypted secrets) when using proxy.ts
     proxyClientMaxBodySize: "100mb",

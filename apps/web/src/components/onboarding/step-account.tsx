@@ -67,11 +67,8 @@ import {
   parseBirthYearFromDob,
 } from "@/lib/identity/birth-year";
 import { countryCodeToNumeric } from "@/lib/identity/compliance";
-import {
-  type FaceMatchResult,
-  matchFaces,
-} from "@/lib/liveness/face-detection";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
+import { type FaceMatchResult, matchFaces } from "@/lib/liveness/face-match";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/policy";
 import { trpc } from "@/lib/trpc/client";
 import { getFirstPart } from "@/lib/utils/name-utils";
 import { cn } from "@/lib/utils/utils";

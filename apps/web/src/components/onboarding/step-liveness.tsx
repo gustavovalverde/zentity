@@ -18,17 +18,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
-import { STABILITY_FRAMES } from "@/hooks/liveness/constants";
-import { useSelfieLivenessFlow } from "@/hooks/liveness/use-selfie-liveness-flow";
-import { useHumanLiveness } from "@/hooks/use-human-liveness";
+import { useLiveness } from "@/hooks/liveness/use-liveness";
 import { useLivenessCamera } from "@/hooks/use-liveness-camera";
-import {
-  SMILE_DELTA_THRESHOLD,
-  SMILE_HIGH_THRESHOLD,
-  SMILE_SCORE_THRESHOLD,
-  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
-  TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness/liveness-policy";
+import { CHALLENGE_INSTRUCTIONS } from "@/lib/liveness/challenges";
 import { trpc } from "@/lib/trpc/client";
 
 import { useOnboardingStore } from "./onboarding-store";
@@ -36,8 +28,6 @@ import { useStepper } from "./stepper-context";
 import { StepperControls } from "./stepper-ui";
 
 const debugEnabled = process.env.NEXT_PUBLIC_DEBUG === "1";
-const HEAD_TURN_YAW_THRESHOLD = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
-const HEAD_TURN_DELTA_THRESHOLD = TURN_YAW_SIGNIFICANT_DELTA_DEG;
 
 export function StepLiveness() {
   const stepper = useStepper();
@@ -51,19 +41,11 @@ export function StepLiveness() {
     startCamera,
     stopCamera,
     captureFrame,
-    captureStreamFrame,
-    getSquareDetectionCanvas,
   } = useLivenessCamera({
     facingMode: "user",
     idealWidth: 640,
     idealHeight: 480,
   });
-
-  const {
-    human,
-    ready: humanReady,
-    error: humanError,
-  } = useHumanLiveness(isStreaming);
 
   const handleVerified = useCallback(
     ({
@@ -94,46 +76,48 @@ export function StepLiveness() {
   }, [store, stepper]);
 
   const {
-    challengeState,
-    challengeImage,
-    currentChallenge,
-    completedChallenges,
-    detectionProgress,
-    challengeProgress,
+    phase,
+    challenge,
+    face,
     countdown,
-    statusMessage,
-    serverProgress,
-    serverHint,
-    debugCanvasRef,
-    debugFrame,
-    lastVerifyError,
-    lastVerifyResponse,
+    hint,
+    isConnected,
+    selfieImage: serverSelfieImage,
+    errorMessage,
     beginCamera,
     retryChallenge,
-  } = useSelfieLivenessFlow({
+  } = useLiveness({
     videoRef,
     isStreaming,
     startCamera,
     stopCamera,
-    captureFrame,
-    captureStreamFrame,
-    getSquareDetectionCanvas,
-    human,
-    humanReady,
+    numChallenges: 2,
     debugEnabled,
-    initialSelfieImage: store.selfieImage || null,
     onVerified: handleVerified,
     onReset: handleReset,
     onSessionError: handleSessionError,
   });
 
+  // Map server phase to display state
+  const isActive = [
+    "detecting",
+    "countdown",
+    "baseline",
+    "challenging",
+    "verifying",
+  ].includes(phase);
+  const isCompleted = phase === "completed";
+  const isFailed = phase === "failed";
+  const isIdle = phase === "connecting" && !isConnected;
+
   const handleSubmit = useCallback(async () => {
     stopCamera();
 
-    const selfieToVerify = store.bestSelfieFrame || store.selfieImage;
+    const selfieToVerify =
+      store.bestSelfieFrame || store.selfieImage || serverSelfieImage;
     if (!selfieToVerify) {
       toast.error("Missing selfie", {
-        description: "Please complete the selfie step before continuing.",
+        description: "Please complete the liveness step before continuing.",
       });
       return;
     }
@@ -168,7 +152,7 @@ export function StepLiveness() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [stepper, stopCamera, store]);
+  }, [stepper, stopCamera, store, serverSelfieImage]);
 
   const handleSkipChallenges = useCallback(async () => {
     try {
@@ -231,12 +215,13 @@ export function StepLiveness() {
     }
   }, [captureFrame, isStreaming, startCamera, stepper, stopCamera, store]);
 
+  // Get challenge instruction text
+  const challengeInstruction = challenge
+    ? (CHALLENGE_INSTRUCTIONS[challenge.type]?.instruction ?? challenge.hint)
+    : null;
+
   const disableNext =
-    challengeState === "validating" ||
-    challengeState === "failed" ||
-    challengeState === "timeout" ||
-    challengeState === "loading_session" ||
-    (isStreaming && challengeState !== "all_passed");
+    phase === "verifying" || isFailed || (isStreaming && !isCompleted);
 
   return (
     <div className="space-y-6">
@@ -250,33 +235,16 @@ export function StepLiveness() {
           We&apos;ll ask for camera access next. Photos are used only for
           verification and are not stored.
         </p>
-        {isStreaming && !humanReady && !humanError && (
-          <p className="text-muted-foreground text-xs">
-            Loading liveness models (first run may take up to a minute).
-          </p>
-        )}
-        {!!humanError && (
-          <p className="text-muted-foreground text-xs">
-            Liveness models failed to load. Please retry.
-          </p>
-        )}
       </div>
 
       {/* Camera/Image display */}
       <div className="relative aspect-4/3 w-full overflow-hidden rounded-lg bg-muted">
-        {(challengeState === "all_passed" || challengeState === "failed") &&
-        challengeImage ? (
+        {(isCompleted || isFailed) && serverSelfieImage ? (
           <img
-            alt={
-              challengeState === "all_passed"
-                ? "Verified selfie"
-                : "Failed selfie"
-            }
-            className={`h-full w-full object-cover ${
-              challengeState === "failed" ? "opacity-50" : ""
-            }`}
+            alt={isCompleted ? "Verified selfie" : "Failed selfie"}
+            className={`h-full w-full object-cover ${isFailed ? "opacity-50" : ""}`}
             height={480}
-            src={challengeImage}
+            src={serverSelfieImage}
             width={640}
           />
         ) : (
@@ -290,58 +258,20 @@ export function StepLiveness() {
               playsInline
               ref={videoRef}
             />
-            {!!debugEnabled && (
-              <canvas
-                className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${
-                  isStreaming ? "" : "hidden"
-                }`}
-                ref={debugCanvasRef}
-              />
-            )}
-            {!!debugEnabled && !!debugFrame && (
+            {/* Debug overlay */}
+            {debugEnabled && isStreaming && (
               <div className="absolute top-2 left-2 z-10 max-w-[95%] rounded-md bg-black/70 px-2 py-1 text-[10px] text-white leading-snug">
                 <div className="font-mono">
-                  <div>state: {debugFrame.state}</div>
-                  <div>
-                    face: {debugFrame.faceDetected ? "yes" : "no"} | video:{" "}
-                    {debugFrame.videoWidth}x{debugFrame.videoHeight}
-                  </div>
-                  <div>
-                    happy: {(debugFrame.happy * 100).toFixed(0)}% | base:{" "}
-                    {(debugFrame.baselineHappy * 100).toFixed(0)}% | Δ:{" "}
-                    {(debugFrame.deltaHappy * 100).toFixed(0)}%
-                  </div>
-                  <div>
-                    yaw: {debugFrame.yawDeg.toFixed(1)}° ({debugFrame.dir}) |
-                    centered: {debugFrame.headTurnCentered ? "yes" : "no"}
-                  </div>
-                  <div>
-                    stable: face {debugFrame.consecutiveDetections}/
-                    {STABILITY_FRAMES} | challenge{" "}
-                    {debugFrame.consecutiveChallengeDetections}/
-                    {STABILITY_FRAMES}
-                  </div>
-                  <div className="opacity-80">
-                    req: smile (≥{Math.round(SMILE_SCORE_THRESHOLD * 100)}%+Δ≥
-                    {Math.round(SMILE_DELTA_THRESHOLD * 100)}%) OR ≥
-                    {Math.round(SMILE_HIGH_THRESHOLD * 100)}%; turn≥
-                    {HEAD_TURN_YAW_THRESHOLD}° OR Δ≥{HEAD_TURN_DELTA_THRESHOLD}°
-                  </div>
-                  {!!lastVerifyError && (
-                    <div className="mt-1 text-destructive/80">
-                      verify: {lastVerifyError}
+                  <div>phase: {phase}</div>
+                  <div>connected: {isConnected ? "yes" : "no"}</div>
+                  <div>face: {face.detected ? "yes" : "no"}</div>
+                  {challenge && (
+                    <div>
+                      challenge: {challenge.type} ({challenge.index + 1}/
+                      {challenge.total}) - {challenge.progress}%
                     </div>
                   )}
-                  {lastVerifyResponse !== null && (
-                    <details className="mt-1 opacity-80">
-                      <summary className="cursor-pointer">
-                        verify payload
-                      </summary>
-                      <pre className="wrap-break-words mt-1 max-h-32 overflow-auto whitespace-pre-wrap">
-                        {JSON.stringify(lastVerifyResponse, null, 2)}
-                      </pre>
-                    </details>
-                  )}
+                  {hint && <div>hint: {hint}</div>}
                 </div>
               </div>
             )}
@@ -369,8 +299,7 @@ export function StepLiveness() {
         )}
 
         {/* Face positioning guide */}
-        {(challengeState === "detecting" ||
-          challengeState === "waiting_challenge") && (
+        {(phase === "detecting" || phase === "challenging") && (
           <div className="pointer-events-none absolute inset-0">
             <svg
               aria-label="Face positioning guide"
@@ -395,27 +324,23 @@ export function StepLiveness() {
                 y="0"
               />
               <ellipse
-                className={
-                  challengeState === "detecting" ? "animate-pulse" : ""
-                }
+                className={phase === "detecting" ? "animate-pulse" : ""}
                 cx="320"
                 cy="200"
                 fill="none"
                 rx="130"
                 ry="170"
                 stroke={
-                  challengeState === "waiting_challenge"
+                  phase === "challenging"
                     ? "var(--warning)"
                     : "var(--foreground)"
                 }
-                strokeDasharray={
-                  challengeState === "detecting" ? "12,6" : "none"
-                }
+                strokeDasharray={phase === "detecting" ? "12,6" : "none"}
                 strokeWidth="3"
               />
               <g
                 stroke={
-                  challengeState === "waiting_challenge"
+                  phase === "challenging"
                     ? "var(--warning)"
                     : "var(--foreground)"
                 }
@@ -432,7 +357,7 @@ export function StepLiveness() {
         )}
 
         {/* Detecting face overlay */}
-        {challengeState === "detecting" && (
+        {phase === "detecting" && (
           <div className="absolute right-0 bottom-4 left-0 flex justify-center">
             <output
               aria-atomic="true"
@@ -442,12 +367,9 @@ export function StepLiveness() {
               <div className="flex items-center gap-3">
                 <Spinner aria-hidden="true" className="size-5 text-primary" />
                 <div>
-                  <p className="font-medium">{statusMessage}</p>
-                  <Progress
-                    aria-label={`Face detection progress: ${Math.round(detectionProgress)}%`}
-                    className="mt-1 h-1 w-32"
-                    value={detectionProgress}
-                  />
+                  <p className="font-medium">
+                    {hint || "Position your face in the frame"}
+                  </p>
                 </div>
               </div>
             </output>
@@ -455,7 +377,7 @@ export function StepLiveness() {
         )}
 
         {/* Countdown overlay */}
-        {challengeState === "countdown" && (
+        {phase === "countdown" && countdown !== null && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <div
               aria-atomic="true"
@@ -476,8 +398,8 @@ export function StepLiveness() {
           </div>
         )}
 
-        {/* Waiting for challenge overlay */}
-        {challengeState === "waiting_challenge" && currentChallenge && (
+        {/* Challenge overlay */}
+        {phase === "challenging" && challenge && (
           <div className="absolute right-0 bottom-4 left-0 flex justify-center">
             <output
               aria-atomic="true"
@@ -485,52 +407,38 @@ export function StepLiveness() {
               className="block rounded-lg bg-warning/90 px-6 py-4 shadow-lg backdrop-blur"
             >
               <div className="flex items-center gap-3 text-warning-foreground">
-                {currentChallenge.challengeType === "smile" && (
+                {challenge.type === "smile" && (
                   <Smile aria-hidden="true" className="h-8 w-8" />
                 )}
-                {currentChallenge.challengeType === "turn_left" && (
+                {challenge.type === "turn_left" && (
                   <ArrowLeft aria-hidden="true" className="h-8 w-8" />
                 )}
-                {currentChallenge.challengeType === "turn_right" && (
+                {challenge.type === "turn_right" && (
                   <ArrowRight aria-hidden="true" className="h-8 w-8" />
                 )}
                 <div>
                   <p className="font-bold text-xl">
-                    {currentChallenge.instruction}
+                    {challengeInstruction || hint || "Follow the prompt"}
                   </p>
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2">
                     <div className="flex items-center gap-2">
-                      <span className="w-14 text-xs">You:</span>
+                      <span className="w-14 text-xs">Progress:</span>
                       <Progress
-                        aria-label={`Your progress: ${challengeProgress.toFixed(0)}%`}
+                        aria-label={`Challenge progress: ${challenge.progress}%`}
                         className="h-2 w-32 bg-warning/20"
                         indicatorClassName="bg-warning"
-                        value={challengeProgress}
+                        value={challenge.progress}
                       />
-                      <span className="w-8 text-xs">
-                        {challengeProgress.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-14 text-xs">Server:</span>
-                      <Progress
-                        aria-label={`Server progress: ${serverProgress?.progress ?? 0}%`}
-                        className="h-2 w-32 bg-warning/20"
-                        indicatorClassName="bg-warning"
-                        value={serverProgress?.progress ?? 0}
-                      />
-                      <span className="w-8 text-xs">
-                        {serverProgress?.progress ?? 0}%
-                      </span>
+                      <span className="w-8 text-xs">{challenge.progress}%</span>
                     </div>
                   </div>
-                  {!!serverHint && (
+                  {challenge.hint && (
                     <p className="mt-2 font-medium text-warning-foreground text-xs">
-                      {serverHint}
+                      {challenge.hint}
                     </p>
                   )}
                   <p aria-hidden="true" className="mt-1 text-xs">
-                    {currentChallenge.index + 1} of {currentChallenge.total}
+                    {challenge.index + 1} of {challenge.total}
                   </p>
                 </div>
               </div>
@@ -538,75 +446,8 @@ export function StepLiveness() {
           </div>
         )}
 
-        {/* Capturing overlay */}
-        {challengeState === "capturing" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <output
-              aria-live="polite"
-              className="block rounded-lg bg-success/90 px-6 py-4"
-            >
-              <div className="flex items-center gap-2 text-success-foreground">
-                <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
-                <p className="font-medium">
-                  {currentChallenge?.title || "Challenge"} detected!
-                </p>
-              </div>
-            </output>
-          </div>
-        )}
-
-        {/* Challenge passed overlay */}
-        {challengeState === "challenge_passed" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <output
-              aria-live="polite"
-              className="block rounded-lg bg-success/90 px-6 py-4"
-            >
-              <div className="flex items-center gap-2 text-success-foreground">
-                <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
-                <p className="font-medium">Great! Next challenge…</p>
-              </div>
-            </output>
-          </div>
-        )}
-
-        {/* Preparing for next challenge overlay */}
-        {challengeState === "preparing_challenge" && currentChallenge && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-            <output
-              aria-live="polite"
-              className="block rounded-lg bg-background/95 px-6 py-4 text-center shadow-lg"
-            >
-              <div className="flex flex-col items-center gap-3">
-                {currentChallenge.challengeType === "smile" && (
-                  <Smile
-                    aria-hidden="true"
-                    className="h-12 w-12 text-primary"
-                  />
-                )}
-                {currentChallenge.challengeType === "turn_left" && (
-                  <ArrowLeft
-                    aria-hidden="true"
-                    className="h-12 w-12 text-primary"
-                  />
-                )}
-                {currentChallenge.challengeType === "turn_right" && (
-                  <ArrowRight
-                    aria-hidden="true"
-                    className="h-12 w-12 text-primary"
-                  />
-                )}
-                <p className="font-bold text-lg">Get Ready!</p>
-                <p className="text-muted-foreground text-sm">
-                  Next: {currentChallenge.instruction}
-                </p>
-              </div>
-            </output>
-          </div>
-        )}
-
-        {/* Validating overlay */}
-        {challengeState === "validating" && (
+        {/* Verifying overlay */}
+        {phase === "verifying" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
             <output
               aria-live="polite"
@@ -636,64 +477,59 @@ export function StepLiveness() {
       )}
 
       {/* Success indicator */}
-      {challengeState === "all_passed" && (
+      {isCompleted && (
         <Alert variant="success">
           <CheckCircle2 className="h-4 w-4" />
           <AlertDescription className="ml-2">
-            Liveness verified! All {completedChallenges.length} challenges
-            passed. Click &quot;Next&quot; to continue.
+            Liveness verified! Click &quot;Next&quot; to continue.
           </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error indicator */}
+      {isFailed && errorMessage && (
+        <Alert variant="destructive">
+          <AlertDescription>{errorMessage}</AlertDescription>
         </Alert>
       )}
 
       {/* Action buttons */}
       <div className="flex gap-3">
-        {(challengeState === "idle" || challengeState === "loading_session") &&
-          !isStreaming && (
-            <Button
-              className="flex-1"
-              disabled={challengeState === "loading_session"}
-              onClick={beginCamera}
-              type="button"
-            >
-              {challengeState === "loading_session" ? (
-                <Spinner aria-hidden="true" className="mr-2" size="sm" />
-              ) : (
-                <Camera className="mr-2 h-4 w-4" />
-              )}
-              Start Camera
-            </Button>
-          )}
+        {isIdle && !isStreaming && (
+          <Button className="flex-1" onClick={beginCamera} type="button">
+            <Camera className="mr-2 h-4 w-4" />
+            Start Camera
+          </Button>
+        )}
 
-        {(challengeState === "all_passed" ||
-          challengeState === "failed" ||
-          challengeState === "timeout") && (
+        {phase === "connecting" && isConnected && (
+          <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground text-sm">
+            <Spinner className="size-4" />
+            <span>Connecting...</span>
+          </div>
+        )}
+
+        {(isCompleted || isFailed) && (
           <Button
             className="flex-1"
             onClick={retryChallenge}
             type="button"
-            variant={challengeState === "all_passed" ? "outline" : "default"}
+            variant={isCompleted ? "outline" : "default"}
           >
             <RotateCcw className="mr-2 h-4 w-4" />
-            {challengeState === "all_passed" ? "Retake" : "Try Again"}
+            {isCompleted ? "Retake" : "Try Again"}
           </Button>
         )}
 
-        {isStreaming &&
-          challengeState !== "all_passed" &&
-          challengeState !== "failed" &&
-          challengeState !== "timeout" && (
-            <div className="flex-1 text-center text-muted-foreground text-sm">
-              {challengeState === "detecting" && "Looking for your face…"}
-              {challengeState === "countdown" && "Get ready…"}
-              {challengeState === "preparing_challenge" && "Get ready…"}
-              {challengeState === "waiting_challenge" &&
-                currentChallenge?.instruction}
-              {challengeState === "capturing" && "Capturing…"}
-              {challengeState === "validating" && "Verifying…"}
-              {challengeState === "challenge_passed" && "Moving to next…"}
-            </div>
-          )}
+        {isActive && (
+          <div className="flex-1 text-center text-muted-foreground text-sm">
+            {phase === "detecting" && "Looking for your face…"}
+            {phase === "countdown" && "Get ready…"}
+            {phase === "baseline" && "Capturing baseline…"}
+            {phase === "challenging" && challengeInstruction}
+            {phase === "verifying" && "Verifying…"}
+          </div>
+        )}
       </div>
 
       <Alert>

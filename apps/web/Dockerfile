@@ -96,7 +96,6 @@ ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 
 # Build Next.js
-# NODE_OPTIONS increases heap size for Next build (trace generation can be memory intensive)
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN pnpm run build
 
@@ -129,31 +128,30 @@ ENV SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
 RUN groupadd --gid ${APP_GID} nodejs && \
     useradd --uid ${APP_UID} --gid nodejs --shell /sbin/nologin ${APP_USER}
 
-# Copy app metadata
+# Copy app metadata and configuration
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/package.json ./package.json
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/next.config.ts ./next.config.ts
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/tsconfig.json ./tsconfig.json
 
-# Copy Next.js standalone output
+# Copy Next.js build output
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/public ./public
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/standalone ./
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/static ./.next/static
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next ./.next
 
-# Copy native modules (tfjs-node + human.js - can't be traced by standalone)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@tensorflow ./node_modules/@tensorflow
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
-# Copy bb.js (Noir/Barretenberg) assets + workers (server-side verification)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@aztec ./node_modules/@aztec
-# Copy Poseidon2 dependency used by bb-worker (not traced into standalone output)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@zkpassport ./node_modules/@zkpassport
-# Copy noir-lang WASM modules for client-side proof generation in Web Worker
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@noir-lang ./node_modules/@noir-lang
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
+# Copy all node_modules (no standalone tracing, so we need the full dependencies)
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules ./node_modules
+
+# Copy custom server for Socket.io support
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/server.mjs ./server.mjs
+
+# Copy source files needed by custom server (tsx handles TypeScript at runtime)
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src ./src
 
 # Copy scripts
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
-# Copy bb-worker for server-side Noir verification (not traced into standalone output)
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src/lib/zk/bb-worker.mjs ./src/lib/zk/bb-worker.mjs
+# Create symlink for human-models (expected location by human-server.ts)
+RUN ln -s ./node_modules/@vladmandic/human-models/models ./human-models
 
 RUN mkdir -p /var/lib/zentity/web && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity
 RUN mkdir -p /var/lib/zentity/bb-crs && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity/bb-crs
