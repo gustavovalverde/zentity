@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://railway.com/railway.schema.json
+# FROST Signer Coordinator - Rust/Actix on port 5002
+# Private networking only (no public domain)
+#
+# Required env vars (set via Railway dashboard/CLI):
+#   SIGNER_ROLE=coordinator
+#   SIGNER_PORT=5002
+#   SIGNER_HOST=::  (IPv6 dual-stack, accepts both IPv4 and IPv6)
+#   SIGNER_DB_PATH=/var/lib/zentity/signer/coordinator.redb
+#   SIGNER_ENDPOINTS=http://signer-1.railway.internal:5101,http://signer-2.railway.internal:5101,http://signer-3.railway.internal:5101
+#   INTERNAL_SERVICE_TOKEN=<shared-secret>
+#   RUST_LOG=signer_service=info,actix_web=info
+#
+# Optional env vars:
+#   GUARDIAN_ASSERTION_JWKS_URL=<jwks-url>  (for JWT verification)
+#
+# Required volumes (create via Railway dashboard):
+#   signer-volume -> /var/lib/zentity/signer
+#     - Persists ReDB database with DKG sessions and signing state
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.coordinator"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+startCommand = "./start.sh"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

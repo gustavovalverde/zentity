@@ -3,6 +3,8 @@
   "ignore": [
     ".synpress-wallet-setup-dist/**",
     "src/components/ui/**",
+    "src/components/liveness/**",
+    "src/lib/liveness/**",
     "scripts/**",
     "public/coi-serviceworker.js",
     "src/hooks/fhevm/use-fhe-encryption.ts",
@@ -10,7 +12,8 @@
     "src/lib/wagmi/empty-module/index.js",
     "src/lib/wagmi/empty-module/internal/index.js",
     "src/lib/zk/noir-worker-manager.ts",
-    "src/test/client-only.ts"
+    "src/test/client-only.ts",
+    "src/test/server-only.ts"
   ],
   "ignoreDependencies": [
     "buffer",

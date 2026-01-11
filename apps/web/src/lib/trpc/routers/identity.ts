@@ -73,7 +73,7 @@ import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
   FACE_MATCH_MIN_CONFIDENCE,
-} from "@/lib/liveness/liveness-policy";
+} from "@/lib/liveness/policy";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { getNationalityCode } from "@/lib/zk/nationality-data";
 

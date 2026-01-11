@@ -7,7 +7,7 @@
 
 "use client";
 
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/liveness-policy";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/policy";
 import { trpc } from "@/lib/trpc/client";
 
 /**

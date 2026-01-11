@@ -6,7 +6,7 @@ import {
   CHALLENGE_INSTRUCTIONS,
   type ChallengeInfo,
   type ChallengeType,
-} from "./liveness-challenges";
+} from "./challenges";
 
 interface LivenessSession {
   sessionId: string;

@@ -30,15 +30,6 @@ const livenessDetectDuration = meter.createHistogram(
   }
 );
 
-const livenessFrameDuration = meter.createHistogram(
-  "zentity.liveness.frame.duration",
-  {
-    description: "Liveness frame processing duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
 const ocrRequestDuration = meter.createHistogram(
   "zentity.ocr.request.duration",
   {
@@ -178,13 +169,6 @@ export function recordLivenessDetectDuration(
   attributes?: MetricAttributes
 ): void {
   recordSafe(livenessDetectDuration, durationMs, attributes);
-}
-
-export function recordLivenessFrameDuration(
-  durationMs: number,
-  attributes?: MetricAttributes
-): void {
-  recordSafe(livenessFrameDuration, durationMs, attributes);
 }
 
 export function recordOcrDuration(

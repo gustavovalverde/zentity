@@ -12,7 +12,7 @@ ARG APP_USER=nextjs
 ARG APP_HOME=/app
 
 # --- Stage 1: Dependencies ---
-FROM node:24-slim AS deps
+FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS deps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SOURCE_DATE_EPOCH
@@ -38,8 +38,8 @@ COPY --link package.json pnpm-lock.yaml .npmrc ./
 COPY --link patches ./patches
 
 # Install dependencies with BuildKit cache mount for pnpm
-# Cache persists across builds, significantly speeds up installs
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+# Cache persists across builds, significantly speeds up installs (Railway cache ID)
+RUN --mount=type=cache,id=s/a0dbf135-6670-4cf9-8c14-247262ab102f-/pnpm/store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 # --- Stage 2: Builder ---
@@ -96,12 +96,11 @@ ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 
 # Build Next.js
-# NODE_OPTIONS increases heap size for Next build (trace generation can be memory intensive)
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN pnpm run build
 
 # --- Stage 3: Runtime ---
-FROM node:24-slim AS runner
+FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS runner
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG GIT_SHA
@@ -121,7 +120,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV GIT_SHA=${GIT_SHA}
 ENV BUILD_TIME=${BUILD_TIME}
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-ENV BB_NODE_BINARY=/usr/bin/node
+ENV BB_NODE_BINARY=/usr/local/bin/node
 ENV BB_CRS_PATH=/var/lib/zentity/bb-crs
 ENV SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
 
@@ -129,31 +128,30 @@ ENV SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
 RUN groupadd --gid ${APP_GID} nodejs && \
     useradd --uid ${APP_UID} --gid nodejs --shell /sbin/nologin ${APP_USER}
 
-# Copy app metadata
+# Copy app metadata and configuration
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/package.json ./package.json
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/next.config.ts ./next.config.ts
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/tsconfig.json ./tsconfig.json
 
-# Copy Next.js standalone output
+# Copy Next.js build output
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/public ./public
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/standalone ./
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next/static ./.next/static
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next ./.next
 
-# Copy native modules (tfjs-node + human.js - can't be traced by standalone)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@tensorflow ./node_modules/@tensorflow
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic ./node_modules/@vladmandic
-# Copy bb.js (Noir/Barretenberg) assets + workers (server-side verification)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@aztec ./node_modules/@aztec
-# Copy Poseidon2 dependency used by bb-worker (not traced into standalone output)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@zkpassport ./node_modules/@zkpassport
-# Copy noir-lang WASM modules for client-side proof generation in Web Worker
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@noir-lang ./node_modules/@noir-lang
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules/@vladmandic/human-models/models ./human-models
+# Copy all node_modules (no standalone tracing, so we need the full dependencies)
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules ./node_modules
+
+# Copy custom server for Socket.io support
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/server.mjs ./server.mjs
+
+# Copy source files needed by custom server (tsx handles TypeScript at runtime)
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src ./src
 
 # Copy scripts
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/scripts ./scripts
 RUN chmod +x ./scripts/docker-entrypoint.sh
 
-# Copy bb-worker for server-side Noir verification (not traced into standalone output)
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src/lib/zk/bb-worker.mjs ./src/lib/zk/bb-worker.mjs
+# Create symlink for human-models (expected location by human-server.ts)
+RUN ln -s ./node_modules/@vladmandic/human-models/models ./human-models
 
 RUN mkdir -p /var/lib/zentity/web && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity
 RUN mkdir -p /var/lib/zentity/bb-crs && chown -R ${APP_UID}:${APP_GID} /var/lib/zentity/bb-crs

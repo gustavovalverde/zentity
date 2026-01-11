@@ -14,7 +14,7 @@
  */
 import "server-only";
 
-import type { ChallengeType } from "@/lib/liveness/liveness-challenges";
+import type { ChallengeType } from "@/lib/liveness/challenges";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
@@ -36,6 +36,11 @@ import {
 } from "@/lib/liveness/human-metrics";
 import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
 import {
+  createLivenessSession,
+  getChallengeInfo,
+  getLivenessSession,
+} from "@/lib/liveness/liveness-session-store";
+import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
   BASELINE_CENTERED_THRESHOLD_DEG,
@@ -45,12 +50,7 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness/liveness-policy";
-import {
-  createLivenessSession,
-  getChallengeInfo,
-  getLivenessSession,
-} from "@/lib/liveness/liveness-session-store";
+} from "@/lib/liveness/policy";
 
 import { publicProcedure, router } from "../server";
 
