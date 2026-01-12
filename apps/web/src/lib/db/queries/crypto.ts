@@ -330,9 +330,12 @@ export async function upsertSecretWrapper(data: {
   userId: string;
   credentialId: string;
   wrappedDek: string;
-  prfSalt: string;
+  prfSalt?: string | null;
   kekVersion: string;
+  kekSource?: string;
 }): Promise<SecretWrapperRecord> {
+  const kekSource = data.kekSource ?? "prf";
+
   await db
     .insert(secretWrappers)
     .values({
@@ -341,15 +344,17 @@ export async function upsertSecretWrapper(data: {
       userId: data.userId,
       credentialId: data.credentialId,
       wrappedDek: data.wrappedDek,
-      prfSalt: data.prfSalt,
+      prfSalt: data.prfSalt ?? null,
       kekVersion: data.kekVersion,
+      kekSource,
     })
     .onConflictDoUpdate({
       target: [secretWrappers.secretId, secretWrappers.credentialId],
       set: {
         wrappedDek: data.wrappedDek,
-        prfSalt: data.prfSalt,
+        prfSalt: data.prfSalt ?? null,
         kekVersion: data.kekVersion,
+        kekSource,
         updatedAt: sql`datetime('now')`,
       },
     })
@@ -363,6 +368,21 @@ export async function upsertSecretWrapper(data: {
     throw new Error("Failed to upsert secret wrapper");
   }
   return match;
+}
+
+export async function deleteSecretWrapper(
+  secretId: string,
+  credentialId: string
+): Promise<void> {
+  await db
+    .delete(secretWrappers)
+    .where(
+      and(
+        eq(secretWrappers.secretId, secretId),
+        eq(secretWrappers.credentialId, credentialId)
+      )
+    )
+    .run();
 }
 
 export async function deleteEncryptedSecretByUserAndType(

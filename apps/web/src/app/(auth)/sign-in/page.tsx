@@ -4,6 +4,7 @@ import { AuthView } from "@daveyplate/better-auth-ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { OpaqueSignInForm } from "@/components/auth/opaque-sign-in-form";
 import { PasskeySignInForm } from "@/components/auth/passkey-sign-in-form";
 import {
   Card,
@@ -12,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth/auth-client";
 
@@ -26,6 +28,9 @@ function getLastUsedLabel(method: string | null): string | null {
   }
   if (method === "passkey") {
     return "Passkey";
+  }
+  if (method === "opaque") {
+    return "Password";
   }
   if (method === "credential" || method === "email") {
     return "Email/Password";
@@ -71,22 +76,30 @@ export default function SignInPage() {
         >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="passkey">Passkey</TabsTrigger>
-            <TabsTrigger value="other">Email / OAuth</TabsTrigger>
+            <TabsTrigger value="other">Password / OAuth</TabsTrigger>
           </TabsList>
           <TabsContent className="mt-4" value="passkey">
             {/* Custom passkey form with PRF support for FHE key derivation */}
             <PasskeySignInForm />
           </TabsContent>
           <TabsContent className="mt-4" value="other">
-            {/* AuthView with hidden card (transparent wrapper) - keeps magic link + social */}
-            <AuthView
-              classNames={{
-                base: "border-0 shadow-none bg-transparent p-0",
-                header: "hidden",
-                footer: "hidden",
-              }}
-              view="SIGN_IN"
-            />
+            <div className="space-y-6">
+              <OpaqueSignInForm />
+              <div className="flex items-center gap-3 text-muted-foreground text-xs">
+                <Separator className="flex-1" />
+                <span>Or continue with</span>
+                <Separator className="flex-1" />
+              </div>
+              {/* AuthView with hidden card (transparent wrapper) - keeps magic link + social */}
+              <AuthView
+                classNames={{
+                  base: "border-0 bg-transparent p-0 shadow-none",
+                  header: "hidden",
+                  footer: "hidden",
+                }}
+                view="SIGN_IN"
+              />
+            </div>
           </TabsContent>
         </Tabs>
         <div className="mt-6 text-center text-muted-foreground text-sm">

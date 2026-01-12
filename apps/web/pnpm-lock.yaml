@@ -130,6 +130,9 @@ importers:
       '@safe-global/safe-apps-sdk':
         specifier: 9.1.0
         version: 9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.4)
+      '@serenity-kit/opaque':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@simplewebauthn/server':
         specifier: 13.2.2
         version: 13.2.2
@@ -3153,6 +3156,10 @@ packages:
 
   '@selderee/plugin-htmlparser2@0.11.0':
     resolution: {integrity: sha512-P33hHGdldxGabLFjPPpaTxVolMrzrcegejx+0GxjrIb9Zv48D8yAIA/QTDR2dFl7Uz7urX8aX6+5bCZslr+gWQ==}
+
+  '@serenity-kit/opaque@1.0.0':
+    resolution: {integrity: sha512-UCu92RBFroWaUOdrIJzjXW8M/wqGGi7/2J8D5BPbCNAYU27iyzr5JDZ0N6wq31IhNhEIr7C/8V3+9aSgXi4F3A==}
+    hasBin: true
 
   '@simplewebauthn/browser@13.2.2':
     resolution: {integrity: sha512-FNW1oLQpTJyqG5kkDg5ZsotvWgmBaC6jCHR7Ej0qUNep36Wl9tj2eZu7J5rP+uhXgHaLk+QQ3lqcw2vS5MX1IA==}
@@ -11684,6 +11691,8 @@ snapshots:
     dependencies:
       domhandler: 5.0.3
       selderee: 0.11.0
+
+  '@serenity-kit/opaque@1.0.0': {}
 
   '@simplewebauthn/browser@13.2.2': {}
 

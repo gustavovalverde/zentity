@@ -10,6 +10,7 @@ services:
         - NEXT_PUBLIC_ENABLE_FHEVM=${NEXT_PUBLIC_ENABLE_FHEVM:-false}
         - NEXT_PUBLIC_ENABLE_HARDHAT=${NEXT_PUBLIC_ENABLE_HARDHAT:-false}
         - NEXT_PUBLIC_COOP=${NEXT_PUBLIC_COOP:-same-origin-allow-popups}
+        - NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY=${NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY:-}
         - NEXT_PUBLIC_FHEVM_RPC_URL=${NEXT_PUBLIC_FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
         - NEXT_PUBLIC_FHEVM_NETWORK_ID=${NEXT_PUBLIC_FHEVM_NETWORK_ID:-fhevm_sepolia}
         - NEXT_PUBLIC_FHEVM_CHAIN_ID=${NEXT_PUBLIC_FHEVM_CHAIN_ID:-11155111}
@@ -31,6 +32,7 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-1}
       - NEXT_PUBLIC_COOP=${NEXT_PUBLIC_COOP:-same-origin-allow-popups}
+      - NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY=${NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
@@ -40,6 +42,7 @@ services:
       - OTEL_SERVICE_NAME=zentity-web
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
       - BETTER_AUTH_URL=http://localhost:3000
+      - OPAQUE_SERVER_SETUP=${OPAQUE_SERVER_SETUP:-}
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
       - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}

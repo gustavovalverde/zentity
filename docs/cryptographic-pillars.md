@@ -6,7 +6,7 @@ Zentity relies on **four complementary cryptographic pillars**. Each solves a di
 
 | Pillar | What it protects | Where it runs | Why it exists |
 |---|---|---|---|
-| **Passkeys (WebAuthn + PRF)** | Authentication + key custody | Browser + authenticator | Passwordless login and user-held keys that seal profiles and wrap FHE keys. |
+| **Auth + key custody (Passkeys + OPAQUE)** | Authentication + key custody | Browser + authenticator | Passkeys for passwordless login and OPAQUE for privacy-preserving passwords; both yield client-held keys that seal profiles and wrap FHE keys. |
 | **Zero-Knowledge Proofs (ZKPs)** | Eligibility without disclosure | Browser (prove) + server (verify) | Prove age, nationality group, or document validity without revealing the underlying values. |
 | **Fully Homomorphic Encryption (FHE)** | Encrypted computation | Server + fhEVM | Compute on encrypted attributes (age, nationality, compliance level) without decryption. |
 | **Cryptographic Commitments** | Integrity + dedup + erasure | Server DB | One-way hashes bind values without storing them; deleting the salt breaks linkability. |
@@ -15,7 +15,7 @@ Zentity relies on **four complementary cryptographic pillars**. Each solves a di
 
 Each pillar addresses a different threat boundary:
 
-- **Passkeys** guarantee user-owned custody of secret material.
+- **Passkeys + OPAQUE** guarantee user-owned custody of secret material (passwordless or password-based).
 - **ZKPs** prove statements without exposing private inputs.
 - **FHE** enables computation on ciphertext when ZKPs are not practical for repeated policy checks.
 - **Commitments** give integrity and deduplication without storing plaintext.
@@ -26,7 +26,7 @@ Removing any one creates a gap (e.g., ZK can prove eligibility but not enable en
 
 ```mermaid
 flowchart LR
-  P["Passkeys<br/>WebAuthn + PRF"] --> V["Vault<br/>passkey-sealed profile"]
+  P["Auth<br/>Passkeys + OPAQUE"] --> V["Vault<br/>client-sealed profile"]
   V --> C["Commitments<br/>hash + salt"]
   V --> Z["ZK Proofs<br/>eligibility"]
   V --> F["FHE Keys<br/>passkey-wrapped"]
@@ -64,16 +64,16 @@ FHE allows policy checks on encrypted data:
 2. Store ciphertexts server-side or on-chain.
 3. Evaluate compliance under encryption (no plaintext exposure).
 
-### Passkey-Wrapped Key Custody
+### Passkey + OPAQUE Key Custody
 
-Passkeys secure the keys used for encryption and disclosure:
+Passkeys and OPAQUE secure the keys used for encryption and disclosure:
 
 | Aspect | What we do |
 |---|---|
 | Key generation | Client generates keys in the browser |
 | Key storage | Encrypted blobs stored server-side |
-| Key protection | PRF-derived KEK wraps a random DEK |
-| Who can decrypt | Only the user with their passkey |
+| Key protection | PRF-derived KEK (passkey) or OPAQUE export-derived KEK (password) wraps a random DEK |
+| Who can decrypt | Only the user with their passkey or password-derived export key |
 | Result | User-controlled erasure and multi-device access |
 
 ### ZK Proofs
@@ -82,9 +82,9 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 
 ## Where Each Pillar Appears in the Flow
 
-- **Onboarding**: Passkeys create the account; commitments + signed claims are stored; ZK proofs are generated client-side.
+- **Onboarding**: Passkeys or OPAQUE passwords create the account; commitments + signed claims are stored; ZK proofs are generated client-side.
 - **Compliance checks**: FHE ciphertexts allow encrypted evaluation; ZK proofs provide eligibility guarantees.
-- **Disclosure**: Passkeys authorize decryption and re-encryption to relying parties.
+- **Disclosure**: Passkeys or OPAQUE-derived keys authorize decryption and re-encryption to relying parties.
 - **Auditability**: Commitments + proof hashes form an evidence pack for compliance.
 
 ## Supporting Techniques
@@ -111,7 +111,16 @@ We use the WebAuthn PRF extension to derive a deterministic secret that never le
 - We derive a KEK via HKDF-SHA-256.
 - The KEK wraps a random DEK using AES-256-GCM.
 
-The DEK then encrypts sensitive payloads (profile vault, FHE keys). This keeps secret custody user-owned while allowing multi-device access.
+The DEK then encrypts sensitive payloads (profile vault, FHE keys). This keeps secret custody user-owned while allowing multi-device access across both passkey and password flows.
+
+### 1b) OPAQUE (password-based authentication)
+
+OPAQUE is an **augmented PAKE** that keeps raw passwords off the server:
+
+- The client never transmits the plaintext password.
+- The server stores an **OPAQUE registration record**, not a password hash.
+- The client derives an **export key** on registration/login; we use it to derive a KEK (via HKDF) that wraps the DEK, mirroring the passkey PRF flow.
+- Clients verify the server’s static public key (pinned in production) to prevent MITM.
 
 ### 2) Commitments + Hashing
 

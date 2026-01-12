@@ -1,9 +1,16 @@
 "use client";
 
 import type { EnvelopeFormat } from "./passkey-vault";
-import type { PasskeyEnrollmentContext } from "./secret-vault";
+import type {
+  EnrollmentCredential,
+  PasskeyEnrollmentContext,
+} from "./secret-vault";
 
-import { loadSecret, storeSecret } from "./secret-vault";
+import {
+  loadSecret,
+  storeSecret,
+  storeSecretWithCredential,
+} from "./secret-vault";
 
 export const PROFILE_SECRET_TYPE = "profile_v1";
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
@@ -114,6 +121,27 @@ export async function storeProfileSecret(params: {
     secretType: PROFILE_SECRET_TYPE,
     plaintext: secretPayload,
     enrollment: params.enrollment,
+    envelopeFormat: PROFILE_ENVELOPE_FORMAT,
+  });
+
+  cacheProfile(result.secretId, params.profile);
+
+  return { secretId: result.secretId };
+}
+
+/**
+ * Store profile secret with support for both passkey and OPAQUE credential types.
+ * This is the recommended function for new code during onboarding.
+ */
+export async function storeProfileSecretWithCredential(params: {
+  profile: ProfileSecretPayload;
+  credential: EnrollmentCredential;
+}): Promise<{ secretId: string }> {
+  const secretPayload = serializeProfile(params.profile);
+  const result = await storeSecretWithCredential({
+    secretType: PROFILE_SECRET_TYPE,
+    plaintext: secretPayload,
+    credential: params.credential,
     envelopeFormat: PROFILE_ENVELOPE_FORMAT,
   });
 

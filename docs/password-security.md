@@ -1,12 +1,34 @@
 # Password security
 
-This repo includes password-based authentication (via Better Auth) and additional checks to reduce account takeover risk from credential stuffing.
+This repo includes password-based authentication using **OPAQUE** (augmented PAKE) via Better Auth, plus additional checks to reduce account takeover risk from credential stuffing.
 
 ## Goals
 
 - **Block known-compromised passwords** (hard fail)
 - **Keep requirements understandable** with live feedback
 - **Minimize exposure** of password material during breach checks
+- **Keep raw passwords off the server** during registration and login
+- **Reduce breach impact** if the database is compromised
+- **Prevent MITM on OPAQUE flows** via server public key pinning
+
+## OPAQUE-based password authentication
+
+OPAQUE is an **augmented PAKE**: the client never sends the raw password to the server, and the server stores a **registration record** instead of a password hash. During registration and login:
+
+- The client generates an OPAQUE request from the password.
+- The server replies with a challenge derived from `OPAQUE_SERVER_SETUP` (private server setup).
+- The client finishes the flow locally, producing:
+  - a **registration record** (stored server-side), and
+  - an **export key** (used client-side to wrap secret vault keys).
+
+To prevent man-in-the-middle attacks, the client verifies the server’s static public key. In production, we **pin** this key via `NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY` (fallback: `/api/auth/opaque-public-key`).
+
+### Breach impact model
+
+- **DB compromise only**: attackers obtain registration records but **cannot validate password guesses offline** without the server setup secret.
+- **DB + server setup compromise**: attackers can attempt offline guesses; Argon2 key stretching increases the cost of each guess.
+- **Server logs** never contain plaintext passwords, because the server never receives them.
+- **Post-quantum note**: current OPAQUE ciphersuites are not PQ; if PQ requirements arise we will evaluate alternative PAKEs or future OPAQUE suites.
 
 ## Password policy summary
 
@@ -22,6 +44,8 @@ UX-only guidance (client):
 - Recommended diversity: upper/lower/number/symbol (not enforced)
 
 ## What enforces the rules
+
+OPAQUE handles the password exchange and keeps raw passwords off the server. We still run Better Auth’s HIBP checks for compromised-password blocking, and the UI performs a pre-check to reduce user frustration.
 
 The server enforces breached-password blocking using Better Auth’s `haveIBeenPwned()` plugin. This runs during:
 
@@ -94,4 +118,4 @@ Users can always inspect what *their own browser* sends in the Network tab. The 
 - **Avoid duplicate upstream checks**: Better Auth will also run its own HIBP check on submit. We can add short-lived, non-identifying caching on the server-side Route Handler to reduce external calls without weakening enforcement.
 - **Rate limiting**: Add per-IP / per-session limits to the pre-check endpoint to prevent abuse.
 - **Passwordless**: Prefer passkeys or magic links for stronger phishing resistance and less password exposure overall.
-- **PAKE/OPAQUE** (advanced): If we ever want a design where the server never sees the raw password during sign-up, we would need a different authentication protocol (not the current Better Auth email+password flow).
+- **Key-stretching profiles**: make OPAQUE key stretching configurable per environment (with careful migration/compatibility planning).

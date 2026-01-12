@@ -18,10 +18,6 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import {
-  getBetterAuthErrorMessage,
-  getPasswordPolicyErrorMessage,
-} from "@/lib/auth/better-auth-errors";
-import {
   getPasswordLengthError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -57,20 +53,16 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       setError(null);
 
       try {
-        const result = await authClient.resetPassword({
+        const result = await authClient.opaque.resetPassword({
           newPassword: value.password,
           token,
         });
 
-        if (result.error) {
-          const rawMessage = getBetterAuthErrorMessage(
-            result.error,
-            "Failed to reset password"
-          );
-          const policyMessage = getPasswordPolicyErrorMessage(result.error);
-          setError(policyMessage || rawMessage);
+        if (!result.data || result.error) {
+          const message = result.error?.message || "Failed to reset password.";
+          setError(message);
           toast.error("Reset failed", {
-            description: policyMessage || rawMessage,
+            description: message,
           });
           return;
         }

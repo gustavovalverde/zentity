@@ -19,16 +19,16 @@ export async function getUserCreatedAt(userId: string): Promise<string | null> {
  */
 export async function userHasPassword(userId: string): Promise<boolean> {
   const row = await db
-    .select({ password: accounts.password })
+    .select({ registrationRecord: accounts.registrationRecord })
     .from(accounts)
     .where(
       and(
         eq(accounts.userId, userId),
-        eq(accounts.providerId, "credential"),
-        isNotNull(accounts.password)
+        eq(accounts.providerId, "opaque"),
+        isNotNull(accounts.registrationRecord)
       )
     )
     .get();
 
-  return !!row?.password && row.password.length > 0;
+  return !!row?.registrationRecord && row.registrationRecord.length > 0;
 }

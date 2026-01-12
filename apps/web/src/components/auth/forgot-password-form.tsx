@@ -8,6 +8,8 @@ import { toast } from "sonner";
 /** Basic email format validation pattern */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const isEmail = (value: string) => EMAIL_PATTERN.test(value);
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,34 +24,34 @@ import { authClient } from "@/lib/auth/auth-client";
 
 export function ForgotPasswordForm() {
   const router = useRouter();
-  const emailId = useId();
+  const identifierId = useId();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm({
     defaultValues: {
-      email: "",
+      identifier: "",
     },
     onSubmit: async ({ value }) => {
       setIsLoading(true);
       setError(null);
 
       try {
-        const result = await authClient.requestPasswordReset({
-          email: value.email,
+        const result = await authClient.opaque.requestPasswordReset({
+          identifier: value.identifier,
           redirectTo: "/reset-password",
         });
 
         if (result.error) {
-          // Don't reveal if email exists or not (security)
+          // Don't reveal if identifier exists or not (security)
           // Still show success message
         }
 
         toast.success("Check your email", {
-          description: "If an account exists, we sent a password reset link.",
+          description: "If an account exists, we sent a reset link.",
         });
         router.push(
-          `/forgot-password/sent?email=${encodeURIComponent(value.email)}`
+          `/forgot-password/sent?identifier=${encodeURIComponent(value.identifier)}`
         );
       } catch {
         setError("An unexpected error occurred. Please try again.");
@@ -66,11 +68,11 @@ export function ForgotPasswordForm() {
     form.handleSubmit();
   };
 
-  const validateEmail = (value: string) => {
-    if (!value) {
-      return "Email is required";
+  const validateIdentifier = (value: string) => {
+    if (!value.trim()) {
+      return "Email or recovery ID is required";
     }
-    if (!EMAIL_PATTERN.test(value)) {
+    if (value.includes("@") && !isEmail(value)) {
       return "Invalid email address";
     }
     return;
@@ -86,10 +88,10 @@ export function ForgotPasswordForm() {
 
       <FieldGroup>
         <form.Field
-          name="email"
+          name="identifier"
           validators={{
-            onBlur: ({ value }) => validateEmail(value),
-            onSubmit: ({ value }) => validateEmail(value),
+            onBlur: ({ value }) => validateIdentifier(value),
+            onSubmit: ({ value }) => validateIdentifier(value),
           }}
         >
           {(field) => {
@@ -101,20 +103,20 @@ export function ForgotPasswordForm() {
 
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={emailId}>Email</FieldLabel>
+                <FieldLabel htmlFor={identifierId}>
+                  Email or Recovery ID
+                </FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   autoCapitalize="none"
-                  autoComplete="email"
+                  autoComplete="username"
                   disabled={isLoading}
-                  id={emailId}
-                  inputMode="email"
+                  id={identifierId}
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="you@example.com or rec_abc123"
                   spellCheck={false}
-                  type="email"
                   value={field.state.value}
                 />
                 <FieldError>{errorMessage}</FieldError>

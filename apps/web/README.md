@@ -48,6 +48,9 @@ Create a `.env.local` file:
 ```env
 # Authentication
 BETTER_AUTH_SECRET=your-secret-key
+OPAQUE_SERVER_SETUP=your-opaque-server-setup
+# Optional (recommended for production): pin the OPAQUE public key for MITM protection
+NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY=your-opaque-server-public-key
 
 # Service URLs (defaults for local development)
 FHE_SERVICE_URL=http://localhost:5001

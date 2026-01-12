@@ -22,7 +22,7 @@ Every database is a breach waiting to happen. The model itself is broken.
 ---
 
 **Zentity** proves you can verify identity claims without storing plaintext
-underlying data. Built with passkeys for authentication and key custody,
+underlying data. Built with passkeys **and OPAQUE** for authentication and key custody,
 zero-knowledge proofs, fully homomorphic encryption, and cryptographic
 commitments.
 
@@ -69,7 +69,7 @@ PII**.
 
 ### What this project demonstrates
 
-- Four cryptographic pillars—passkeys (auth + PRF key custody), ZK proofs, FHE,
+- Four cryptographic pillars—passkeys + OPAQUE (auth + key custody), ZK proofs, FHE,
   and commitments—work together in a real flow.
 - Merkle trees extend those pillars for private group membership proofs.
 - Privacy-preserving compliance can be practical without sacrificing usability.
@@ -80,9 +80,11 @@ PII**.
    - Document capture and selfie/liveness flows run in the app.
    - OCR and liveness checks produce verified attributes and scores.
    - Passkey registration creates the account and enables passwordless sign-in.
+   - OPAQUE password sign-up is available for users without passkeys.
 2. **Encryption and storage**:
    - Sensitive attributes are encrypted before storage.
    - Passkey vaults use PRF-derived keys to seal profiles and wrap FHE keys.
+   - OPAQUE export keys provide the same wrapping flow for password users.
 3. **Proof layer**:
    - ZK proofs are generated client-side.
    - Proofs are verified server-side.
@@ -96,7 +98,7 @@ PII**.
 | --- | --- | --- | --- |
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
-| Passkey auth + key custody | Passkey vaults + PRF-derived keys | Passwordless authentication and user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md) |
+| Auth + key custody (passkeys + OPAQUE) | Passkey vaults + PRF-derived keys + OPAQUE export keys | Passwordless or password-based auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
 | Data integrity and dedup | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
 | KYC extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
 
@@ -116,7 +118,7 @@ PII**.
 - [docs/web3-architecture.md](docs/web3-architecture.md) - Web2-to-Web3 transition and on-chain flow
 - [docs/blockchain-setup.md](docs/blockchain-setup.md) - fhEVM envs and deployment
 - [docs/rp-redirect-flow.md](docs/rp-redirect-flow.md) - RP integration flow
-- [docs/password-security.md](docs/password-security.md) - Argon2id settings
+- [docs/password-security.md](docs/password-security.md) - OPAQUE password model and breach checks
 - [docs/verification.md](docs/verification.md) - deployment verification
 - [docs/adr/README.md](docs/adr/README.md) - decision records
 - [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md) - API collection
@@ -129,6 +131,13 @@ cp .env.example .env
 # Generate a strong auth secret (required for production-mode containers)
 openssl rand -base64 32
 # Paste it into .env as BETTER_AUTH_SECRET
+
+# Generate OPAQUE server setup (required for password auth)
+npx @serenity-kit/opaque@latest create-server-setup
+# Paste it into .env as OPAQUE_SERVER_SETUP
+# Optional (recommended for production): pin the OPAQUE public key for MITM protection
+# npx @serenity-kit/opaque@latest get-server-public-key "<OPAQUE_SERVER_SETUP>"
+# Paste it into .env as NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY
 
 # Optional: increase FHE request body limit if key registration fails
 # Default is 64MB

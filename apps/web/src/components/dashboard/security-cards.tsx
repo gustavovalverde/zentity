@@ -13,11 +13,7 @@ import {
  * - SessionsCard: View and revoke active sessions across devices
  * - TwoFactorCard: TOTP 2FA setup (passwordless allowed)
  */
-interface SecurityCardsProps {
-  hasPassword: boolean;
-}
-
-export function SecurityCards({ hasPassword }: SecurityCardsProps) {
+export function SecurityCards() {
   return (
     <>
       <ProvidersCard
@@ -42,11 +38,11 @@ export function SecurityCards({ hasPassword }: SecurityCardsProps) {
           TWO_FACTOR_CARD_DESCRIPTION:
             "Add an authenticator app to secure sign-in and approve recovery.",
           TWO_FACTOR_ENABLE_INSTRUCTIONS:
-            "Scan a QR code with your authenticator app to enable two-factor authentication.",
+            "Confirm to enable two-factor authentication.",
           TWO_FACTOR_DISABLE_INSTRUCTIONS:
-            "Disable two-factor authentication and remove your backup codes.",
+            "Confirm to disable two-factor authentication.",
         }}
-        requirePassword={hasPassword}
+        requirePassword={false}
       />
     </>
   );

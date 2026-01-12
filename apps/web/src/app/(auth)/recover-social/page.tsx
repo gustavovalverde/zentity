@@ -442,6 +442,7 @@ export default function RecoverSocialPage() {
       await trpc.recovery.finalize.mutate({
         challengeId,
         contextToken,
+        credentialType: "passkey",
         credentialId,
         prfSalt: bytesToBase64(prfSalt),
         prfOutput: bytesToBase64(prfOutput),

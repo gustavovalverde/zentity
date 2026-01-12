@@ -69,6 +69,7 @@ export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
       authClient={authUiClient}
       basePath=""
       baseURL={baseURL}
+      credentials={false}
       Link={Link}
       magicLink={true}
       navigate={router.push}

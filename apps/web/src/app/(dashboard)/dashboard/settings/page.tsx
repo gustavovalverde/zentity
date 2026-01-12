@@ -54,8 +54,8 @@ export default async function SettingsPage() {
           <PasskeyManagementSection />
           <RecoverySetupSection />
           {/* Security cards for OAuth, sessions, and two-factor authentication */}
-          <SecurityCards hasPassword={hasPassword} />
-          {/* Password section: ChangePasswordCard or SetPasswordSection */}
+          <SecurityCards />
+          {/* Password section: OPAQUE change or set password */}
           <PasswordSection hasPassword={hasPassword} />
         </TabsContent>
 

@@ -14,6 +14,7 @@ import {
 } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
+import { opaqueClient } from "@/lib/auth/plugins/opaque/client";
 import { getSafeRedirectPath } from "@/lib/utils/navigation";
 
 // Use current origin in browser to avoid IPv4/IPv6 localhost mismatch
@@ -31,6 +32,7 @@ export const authClient = createAuthClient({
   plugins: [
     magicLinkClient(),
     passkeyClient(),
+    opaqueClient(),
     anonymousClient(),
     siweClient(),
     genericOAuthClient(),

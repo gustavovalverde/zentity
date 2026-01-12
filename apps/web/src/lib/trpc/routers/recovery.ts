@@ -14,7 +14,9 @@ import {
   getOnboardingContext,
 } from "@/lib/auth/onboarding-context";
 import {
+  OPAQUE_CREDENTIAL_ID,
   RECOVERY_WRAP_VERSION,
+  wrapDekWithOpaqueExportServer,
   wrapDekWithPrfServer,
 } from "@/lib/crypto/passkey-wrap.server";
 import {
@@ -732,13 +734,30 @@ export const recoveryRouter = router({
 
   finalize: publicProcedure
     .input(
-      z.object({
-        challengeId: z.string().min(1),
-        contextToken: z.string().min(1),
-        credentialId: z.string().min(1),
-        prfSalt: z.string().min(1),
-        prfOutput: z.string().min(1),
-      })
+      z
+        .object({
+          challengeId: z.string().min(1),
+          contextToken: z.string().min(1),
+          credentialType: z.enum(["passkey", "opaque"]),
+          // Passkey fields
+          credentialId: z.string().min(1).optional(),
+          prfSalt: z.string().min(1).optional(),
+          prfOutput: z.string().min(1).optional(),
+          // OPAQUE fields
+          exportKey: z.string().min(1).optional(),
+        })
+        .refine(
+          (data) => {
+            if (data.credentialType === "passkey") {
+              return data.credentialId && data.prfSalt && data.prfOutput;
+            }
+            return data.exportKey;
+          },
+          {
+            message:
+              "Passkey requires credentialId, prfSalt, and prfOutput. OPAQUE requires exportKey.",
+          }
+        )
     )
     .mutation(async ({ input }) => {
       const challenge = await getRecoveryChallengeById(input.challengeId);
@@ -772,7 +791,11 @@ export const recoveryRouter = router({
       }
 
       const secrets = await listEncryptedSecretsByUserId(challenge.userId);
-      const prfOutput = base64ToBytes(input.prfOutput);
+
+      // Parse credential-specific data
+      const isPasskey = input.credentialType === "passkey";
+      const prfOutput = isPasskey ? base64ToBytes(input.prfOutput ?? "") : null;
+      const exportKey = isPasskey ? null : base64ToBytes(input.exportKey ?? "");
 
       let rewrappedCount = 0;
       for (const secret of secrets) {
@@ -788,21 +811,47 @@ export const recoveryRouter = router({
           keyId: recoveryWrapper.keyId,
         });
 
-        const wrappedDek = await wrapDekWithPrfServer({
-          secretId: secret.id,
-          credentialId: input.credentialId,
-          dek,
-          prfOutput,
-        });
+        let wrappedDek: string;
+        let credentialId: string;
+        let prfSalt: string;
+        let kekSource: "prf" | "opaque" | "recovery";
+
+        if (isPasskey && prfOutput && input.credentialId && input.prfSalt) {
+          wrappedDek = await wrapDekWithPrfServer({
+            secretId: secret.id,
+            credentialId: input.credentialId,
+            dek,
+            prfOutput,
+          });
+          credentialId = input.credentialId;
+          prfSalt = input.prfSalt;
+          kekSource = "prf";
+        } else if (!isPasskey && exportKey) {
+          wrappedDek = await wrapDekWithOpaqueExportServer({
+            secretId: secret.id,
+            userId: challenge.userId,
+            dek,
+            exportKey,
+          });
+          credentialId = OPAQUE_CREDENTIAL_ID;
+          prfSalt = "";
+          kekSource = "opaque";
+        } else {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid credential data for re-wrapping.",
+          });
+        }
 
         await upsertSecretWrapper({
           id: crypto.randomUUID(),
           secretId: secret.id,
           userId: challenge.userId,
-          credentialId: input.credentialId,
+          credentialId,
           wrappedDek,
-          prfSalt: input.prfSalt,
+          prfSalt,
           kekVersion: RECOVERY_WRAP_VERSION,
+          kekSource,
         });
 
         rewrappedCount += 1;

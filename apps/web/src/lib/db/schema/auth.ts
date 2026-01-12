@@ -61,11 +61,15 @@ export const accounts = sqliteTable(
     refreshTokenExpiresAt: text("refreshTokenExpiresAt"),
     scope: text("scope"),
     password: text("password"),
+    registrationRecord: text("registrationRecord"),
     createdAt: text("createdAt").notNull(),
     updatedAt: text("updatedAt").notNull(),
   },
   (table) => ({
     userIdIdx: index("account_userId_idx").on(table.userId),
+    registrationRecordUnique: uniqueIndex(
+      "account_registration_record_unique"
+    ).on(table.registrationRecord),
   })
 );
 

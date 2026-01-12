@@ -10,10 +10,6 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth";
-import {
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-} from "@/lib/auth/password-policy";
 import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
 import {
@@ -117,66 +113,5 @@ export const accountRouter = router({
       }
 
       return { success: true };
-    }),
-
-  /**
-   * Set password for users who don't have one (passwordless signup).
-   * This creates a credential account for the user.
-   */
-  setPassword: protectedProcedure
-    .input(
-      z.object({
-        newPassword: z
-          .string()
-          .min(
-            PASSWORD_MIN_LENGTH,
-            `Password must be at least ${PASSWORD_MIN_LENGTH} characters`
-          )
-          .max(
-            PASSWORD_MAX_LENGTH,
-            `Password must be at most ${PASSWORD_MAX_LENGTH} characters`
-          ),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { userId } = ctx;
-
-      // Check if user already has a password
-      if (await userHasPassword(userId)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "You already have a password set. Use the change password option instead.",
-        });
-      }
-
-      try {
-        // Use Better Auth's server-side setPassword API
-        // This creates a credential account for the user
-        await auth.api.setPassword({
-          body: { newPassword: input.newPassword },
-          headers: ctx.req.headers,
-        });
-
-        return { success: true };
-      } catch (error) {
-        // Check for password breach (HIBP)
-        const message =
-          error instanceof Error ? error.message : "Failed to set password";
-        if (
-          message.toLowerCase().includes("breach") ||
-          message.includes("pwned")
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "This password has been found in a data breach. Please choose a different password.",
-          });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message,
-        });
-      }
     }),
 });

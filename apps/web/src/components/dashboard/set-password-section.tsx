@@ -23,12 +23,15 @@ import {
 } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import { authClient, useSession } from "@/lib/auth/auth-client";
 import {
   getPasswordLengthError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
-import { trpc } from "@/lib/trpc/client";
+import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
+import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
+import { addOpaqueWrapperForSecretType } from "@/lib/crypto/secret-vault";
 
 interface SetPasswordSectionProps {
   onPasswordSet?: () => void;
@@ -36,7 +39,7 @@ interface SetPasswordSectionProps {
 
 /**
  * Component for passwordless users to set an initial password.
- * This enables email/password sign-in as an alternative to passkeys.
+ * This enables password sign-in as an alternative to passkeys.
  */
 export function SetPasswordSection({ onPasswordSet }: SetPasswordSectionProps) {
   const passwordId = useId();
@@ -47,6 +50,7 @@ export function SetPasswordSection({ onPasswordSet }: SetPasswordSectionProps) {
   const [breachStatus, setBreachStatus] = useState<
     "idle" | "checking" | "safe" | "compromised" | "error"
   >("idle");
+  const { data: sessionData } = useSession();
 
   const form = useForm({
     defaultValues: {
@@ -63,12 +67,47 @@ export function SetPasswordSection({ onPasswordSet }: SetPasswordSectionProps) {
       setError(null);
 
       try {
-        await trpc.account.setPassword.mutate({
-          newPassword: value.newPassword,
+        const result = await authClient.opaque.setPassword({
+          password: value.newPassword,
         });
 
+        if (!result.data || result.error) {
+          const message =
+            result.error?.message ||
+            "Failed to set password. Please try again.";
+          setError(message);
+          toast.error("Failed to set password", { description: message });
+          return;
+        }
+
+        const userId = sessionData?.user?.id;
+        if (userId) {
+          try {
+            await Promise.all([
+              addOpaqueWrapperForSecretType({
+                secretType: FHE_SECRET_TYPE,
+                userId,
+                exportKey: result.data.exportKey,
+              }),
+              addOpaqueWrapperForSecretType({
+                secretType: PROFILE_SECRET_TYPE,
+                userId,
+                exportKey: result.data.exportKey,
+              }),
+            ]);
+          } catch {
+            toast.message(
+              "Password set, but secret wrappers could not be prepared yet."
+            );
+          }
+        } else {
+          toast.message(
+            "Password set, but secret wrappers could not be prepared yet."
+          );
+        }
+
         toast.success("Password set successfully", {
-          description: "You can now sign in with your email and password.",
+          description: "You can now sign in with your password.",
         });
         onPasswordSet?.();
         form.reset();
@@ -133,7 +172,7 @@ export function SetPasswordSection({ onPasswordSet }: SetPasswordSectionProps) {
           Set Password
         </CardTitle>
         <CardDescription>
-          Add a password to enable email/password sign-in as an alternative to
+          Add a password to enable password sign-in as an alternative to
           passkeys
         </CardDescription>
       </CardHeader>

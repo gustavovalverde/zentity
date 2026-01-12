@@ -136,8 +136,9 @@ export const secretWrappers = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     credentialId: text("credential_id").notNull(),
     wrappedDek: text("wrapped_dek").notNull(),
-    prfSalt: text("prf_salt").notNull(),
+    prfSalt: text("prf_salt"),
     kekVersion: text("kek_version").notNull(),
+    kekSource: text("kek_source").notNull().default("prf"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
@@ -146,6 +147,7 @@ export const secretWrappers = sqliteTable(
     credentialIdx: index("idx_secret_wrappers_credential_id").on(
       table.credentialId
     ),
+    kekSourceIdx: index("idx_secret_wrappers_kek_source").on(table.kekSource),
     secretCredentialUnique: uniqueIndex(
       "secret_wrappers_secret_credential_unique"
     ).on(table.secretId, table.credentialId),

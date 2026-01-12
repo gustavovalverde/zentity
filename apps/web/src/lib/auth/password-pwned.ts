@@ -4,8 +4,8 @@ import { getOnboardingFlowId } from "@/lib/observability/flow-client";
  * Client helper for checking whether a password appears in known breaches.
  *
  * Important:
- * - This is *UX-only* (pre-submit feedback). Better Auth still enforces the real
- *   server-side block via the `haveIBeenPwned()` plugin at sign-up/reset/change.
+ * - This is *UX-only* (pre-submit feedback). With OPAQUE, the server never sees
+ *   the raw password, so breach checks are enforced client-side before submit.
  * - The endpoint uses HIBP k-anonymity (range API) server-side. The client
  *   sends a SHA-1 hash (not the raw password) to our endpoint; the raw password
  *   is never sent to HIBP and does not appear in the `/api/password/pwned`

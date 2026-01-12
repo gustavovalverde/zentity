@@ -76,7 +76,7 @@ function serializeEncryptedPayload(
   return textEncoder.encode(JSON.stringify(toJsonPayload(payload)));
 }
 
-function serializeWrappedDek(payload: WrappedDekPayload): string {
+export function serializeWrappedDek(payload: WrappedDekPayload): string {
   return JSON.stringify(payload);
 }
 
@@ -124,7 +124,7 @@ function parseEncryptedPayload(
   };
 }
 
-function parseWrappedDek(blob: string): WrappedDekPayload {
+export function parseWrappedDek(blob: string): WrappedDekPayload {
   const parsed = JSON.parse(blob) as WrappedDekPayload;
   if (!parsed || parsed.version !== WRAP_VERSION) {
     throw new Error("Unsupported wrapped DEK version.");

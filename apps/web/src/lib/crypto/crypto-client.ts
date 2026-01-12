@@ -21,7 +21,7 @@ import { fetchMsgpack } from "@/lib/crypto/binary-transport";
 import { createFheKeyEnvelope } from "@/lib/crypto/fhe-key-store";
 import {
   decryptFheBool,
-  generateFheKeyMaterialForStorage,
+  generateFheKeyMaterialForStorage as generateFheKeyMaterialForStorageImpl,
   getOrCreateFheKeyRegistrationMaterial,
   persistFheKeyId,
 } from "@/lib/crypto/tfhe-browser";
@@ -34,6 +34,10 @@ import {
   generateFaceMatchProofNoir,
   generateNationalityProofNoir,
 } from "@/lib/zk/noir-prover";
+
+// Re-export for use in password sign-up flow
+export const generateFheKeyMaterialForStorage =
+  generateFheKeyMaterialForStorageImpl;
 
 type CryptoOutputs = inferRouterOutputs<AppRouter>["crypto"];
 

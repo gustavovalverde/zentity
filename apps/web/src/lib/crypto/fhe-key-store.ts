@@ -7,9 +7,11 @@ import { trpc } from "@/lib/trpc/client";
 import { createSecretEnvelope, type EnvelopeFormat } from "./passkey-vault";
 import { uploadSecretBlob } from "./secret-blob-client";
 import {
+  type EnrollmentCredential,
   loadSecret,
   type PasskeyEnrollmentContext,
   storeSecret,
+  storeSecretWithCredential,
 } from "./secret-vault";
 
 export interface StoredFheKeys {
@@ -124,6 +126,27 @@ export async function storeFheKeys(params: {
     secretType: SECRET_TYPE,
     plaintext: secretPayload,
     enrollment: params.enrollment,
+    envelopeFormat: FHE_ENVELOPE_FORMAT,
+  });
+
+  cacheKeys(result.secretId, params.keys);
+
+  return { secretId: result.secretId };
+}
+
+/**
+ * Store FHE keys with support for both passkey and OPAQUE credential types.
+ * This is the recommended function for new code during onboarding.
+ */
+export async function storeFheKeysWithCredential(params: {
+  keys: StoredFheKeys;
+  credential: EnrollmentCredential;
+}): Promise<{ secretId: string }> {
+  const secretPayload = serializeKeys(params.keys);
+  const result = await storeSecretWithCredential({
+    secretType: SECRET_TYPE,
+    plaintext: secretPayload,
+    credential: params.credential,
     envelopeFormat: FHE_ENVELOPE_FORMAT,
   });
 

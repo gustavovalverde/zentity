@@ -26,7 +26,7 @@ Non-goals:
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
 | FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
-| Auth + key custody | Better Auth + WebAuthn + PRF | Passkey-based authentication and key derivation for sealing secrets. |
+| Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE | Passkey-based authentication and OPAQUE password auth; both derive client-held keys for sealing secrets. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
@@ -93,6 +93,7 @@ We persist **only the minimum** required for verification and auditability:
 - Encrypted attributes (FHE ciphertexts)
 - Proof payloads + public inputs
 - Passkey-sealed profile (encrypted blob; client-decrypt only)
+- OPAQUE registration records for password users (no plaintext or password hashes)
 - Verification status + non-sensitive metadata
 
 We **never store** raw document images, selfies, plaintext PII, or biometric templates. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
@@ -167,6 +168,15 @@ sequenceDiagram
   API->>DB: Attach encrypted secret + wrapper
   API-->>UI: Enrollment complete
 ```
+
+**Password (OPAQUE) onboarding**
+
+OPAQUE sign-up mirrors the passkey flow but uses a password-derived export key:
+
+- Client performs OPAQUE registration and derives an **export key**.
+- Export key → HKDF → KEK wraps the DEK.
+- Server stores the OPAQUE **registration record** (no plaintext password).
+- Secret wrappers are stored with `kek_source = "opaque"`.
 
 ### Disclosure
 

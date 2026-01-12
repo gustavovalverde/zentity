@@ -3,9 +3,8 @@ import { NextResponse } from "next/server";
  * Breached password check endpoint (UX-only).
  *
  * Why this exists:
- * - Better Auth already blocks compromised passwords on the auth endpoints.
- * - This endpoint exists to provide *pre-submit UX feedback* so users can fix
- *   their password before hitting the real auth endpoint.
+ * - With OPAQUE, the server never sees raw passwords, so this endpoint powers
+ *   client-side breach checks before submitting a registration/reset request.
  *
  * Privacy/Security:
  * - Uses the Have I Been Pwned "range" API (k-anonymity). We only send the first

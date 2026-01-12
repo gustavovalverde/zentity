@@ -234,6 +234,7 @@ export function StepperControls({
   nextLabel,
   disableNext = false,
   isSubmitting = false,
+  hideBack = false,
 }: {
   stepper: OnboardingStepper;
   onNext?: () => void | Promise<void>;
@@ -243,6 +244,7 @@ export function StepperControls({
   nextLabel?: string;
   disableNext?: boolean;
   isSubmitting?: boolean;
+  hideBack?: boolean;
 }) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [pendingBack, setPendingBack] = useState<{
@@ -391,16 +393,18 @@ export function StepperControls({
             {label}
           </Button>
         ) : (
-          /* Subsequent steps: Back + Next side by side */
+          /* Subsequent steps: Back + Next side by side (unless hideBack) */
           <div className="flex justify-end gap-4">
-            <Button
-              disabled={loading}
-              onClick={handleBack}
-              type="button"
-              variant="secondary"
-            >
-              Back
-            </Button>
+            {!hideBack && (
+              <Button
+                disabled={loading}
+                onClick={handleBack}
+                type="button"
+                variant="secondary"
+              >
+                Back
+              </Button>
+            )}
             <Button
               disabled={disableNext || loading}
               onClick={handleNext}

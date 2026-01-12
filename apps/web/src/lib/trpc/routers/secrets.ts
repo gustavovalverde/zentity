@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import {
   deleteEncryptedSecretByUserAndType,
+  deleteSecretWrapper,
   getEncryptedSecretByUserAndType,
   getSecretWrappersBySecretId,
   updateEncryptedSecretMetadata,
@@ -54,11 +55,12 @@ export const secretsRouter = router({
         blobHash: z.string().min(1),
         blobSize: z.number().int().nonnegative(),
         wrappedDek: z.string().min(1),
-        prfSalt: z.string().min(1),
+        prfSalt: z.string(),
         credentialId: z.string().min(1),
         metadata: metadataSchema,
         version: z.string().min(1),
         kekVersion: z.string().min(1),
+        kekSource: z.enum(["prf", "opaque", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -91,6 +93,7 @@ export const secretsRouter = router({
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
         kekVersion: input.kekVersion,
+        kekSource: input.kekSource,
       });
 
       return { secret, wrapper };
@@ -103,8 +106,9 @@ export const secretsRouter = router({
         secretType: secretTypeSchema,
         credentialId: z.string().min(1),
         wrappedDek: z.string().min(1),
-        prfSalt: z.string().min(1),
+        prfSalt: z.string().min(1).optional(),
         kekVersion: z.string().min(1),
+        kekSource: z.enum(["prf", "opaque", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -127,9 +131,44 @@ export const secretsRouter = router({
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
         kekVersion: input.kekVersion,
+        kekSource: input.kekSource,
       });
 
       return { wrapper };
+    }),
+
+  removeWrapper: protectedProcedure
+    .input(
+      z.object({
+        secretId: z.string().min(1),
+        credentialId: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const wrappers = await getSecretWrappersBySecretId(input.secretId);
+
+      const wrapper = wrappers.find(
+        (w) => w.credentialId === input.credentialId && w.userId === ctx.userId
+      );
+      if (!wrapper) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Wrapper not found for user.",
+        });
+      }
+
+      // Prevent removing the last wrapper
+      const userWrappers = wrappers.filter((w) => w.userId === ctx.userId);
+      if (userWrappers.length <= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot remove the last wrapper for a secret.",
+        });
+      }
+
+      await deleteSecretWrapper(input.secretId, input.credentialId);
+
+      return { success: true };
     }),
 
   updateSecretMetadata: protectedProcedure

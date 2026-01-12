@@ -4,14 +4,14 @@
 
 ## Executive Summary
 
-Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **passkey-held keys (WebAuthn + PRF)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These four cryptographic pillars are used together throughout the system.
+Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These four cryptographic pillars are used together throughout the system.
 
 - **ZK proofs**: age, document validity, nationality membership, face match threshold.
 - **FHE encryption**: birth year offset, country code, compliance level, liveness score.
 - **Commitments + hashes**: document hash, name commitment, proof hashes.
-- **Passkeys (auth + key custody)**: authenticate users and derive PRF keys that seal profiles and wrap FHE keys.
+- **Passkeys + OPAQUE (auth + key custody)**: passkeys for passwordless auth and PRF‑derived KEKs; OPAQUE for password auth with client‑derived export keys that wrap secrets.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
-- **User-only decryption**: client keys are stored server-side as passkey-wrapped encrypted secrets—only the user with their passkey can unwrap them in the browser.
+- **User-only decryption**: client keys are stored server-side as passkey‑ or OPAQUE‑wrapped encrypted secrets—only the user can unwrap them in the browser.
 
 This model supports **multi-document identities**, **revocable attestations**, and **auditable disclosures** across Web2 and Web3.
 
@@ -22,8 +22,8 @@ This model supports **multi-document identities**, **revocable attestations**, a
 ### Core trust model
 
 - **Browser is untrusted for integrity** (users can tamper with client code).
-- **Browser is best for privacy** (ZK proofs + passkey-based key custody).
-- **Passkeys are the auth + key custody anchor** (WebAuthn signatures prove user presence; PRF outputs derive KEKs locally and never leave the client).
+- **Browser is best for privacy** (ZK proofs + passkey/OPAQUE-based key custody).
+- **Passkeys + OPAQUE are the auth + key custody anchors** (WebAuthn signatures prove user presence; PRF outputs and OPAQUE export keys derive KEKs locally and never leave the client).
 - **Server is trusted for integrity** (verification, signing, policy enforcement).
 - **Server is not trusted for plaintext access** (only commitments + ciphertext).
 
@@ -34,7 +34,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | **Web2 (off-chain)** | TFHE encryption via FHE service using client public key | **User only** (client key in browser) | Server can compute on ciphertext without decryption. |
 | **Web3 (on-chain)** | Attestation encryption via registrar (server relayer SDK); client SDK used for wallet-initiated ops (transfers, decrypt) | **User only** (wallet signature auth) | On-chain compliance checks operate on ciphertext; decryption is user-authorized. |
 
-**Important**: The server persists **encrypted key bundles** (passkey‑wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
+**Important**: The server persists **encrypted key bundles** (passkey‑ or OPAQUE‑wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
 
 ### Integrity controls
 
@@ -43,6 +43,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 - High-risk measurements (OCR results, liveness, face match) are **server-signed claims**.
 - Proofs are **bound to a claim hash** to prevent client tampering.
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
+- OPAQUE authentication keeps raw passwords off the server; clients verify the server’s static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
 
 ---
@@ -67,6 +68,7 @@ This model supports **multi-document identities**, **revocable attestations**, a
 | User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
 | FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
 | Passkey credential metadata | — | — | — | — | Stored in the `passkey` table for WebAuthn verification. |
+| OPAQUE registration record | — | — | — | — | Stored in the `account` table; not a password hash and not plaintext. |
 | Raw images / biometrics | — | — | — | — | Never stored; transient only. |
 
 **Note:** Passkey credential metadata (public keys, counters, transports) is stored in the `passkey` table for authentication and key custody.
@@ -75,13 +77,13 @@ This model supports **multi-document identities**, **revocable attestations**, a
 
 ## Storage Boundaries
 
-This system intentionally splits data across **server storage** and **client‑only access** suggesting “vault” does **not** mean “local‑only.” The vault is **stored server‑side in encrypted form**, but only the user can decrypt it using their passkey.
+This system intentionally splits data across **server storage** and **client‑only access** suggesting “vault” does **not** mean “local‑only.” The vault is **stored server‑side in encrypted form**, but only the user can decrypt it using their passkey or OPAQUE export key.
 
 ### Summary view
 
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
-| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OAuth operational metadata (client/consent/token records), document metadata (type, issuer), status fields | Server readable | Required for basic UX, auth, and workflow state |
+| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), document metadata (type, issuer), status fields | Server readable | Required for basic UX, auth, and workflow state |
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑derived keys) | User‑controlled privacy + encrypted computation |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
@@ -94,7 +96,7 @@ This system intentionally splits data across **server storage** and **client‑o
 
 ### What “vault” means here
 
-The vault is **not** a separate storage system. It is a **server‑stored encrypted blob** (`encrypted_secrets` + `secret_wrappers`) that can **only be decrypted client‑side** after WebAuthn + PRF.
+The vault is **not** a separate storage system. It is a **server‑stored encrypted blob** (`encrypted_secrets` + `secret_wrappers`) that can **only be decrypted client‑side** after WebAuthn + PRF or OPAQUE export‑key derivation.
 
 ---
 

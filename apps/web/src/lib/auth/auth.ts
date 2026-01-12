@@ -1,3 +1,5 @@
+import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
+
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
@@ -8,7 +10,6 @@ import { nextCookies } from "better-auth/next-js";
 import {
   anonymous,
   genericOAuth,
-  haveIBeenPwned,
   lastLoginMethod,
   magicLink,
   siwe,
@@ -18,12 +19,14 @@ import { eq } from "drizzle-orm";
 import { SiweMessage } from "siwe";
 
 import { getOnboardingContext } from "@/lib/auth/onboarding-context";
+import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
   getRecoveryGuardianByType,
+  getUserByRecoveryId,
 } from "@/lib/db/queries/recovery";
 import {
   accounts,
@@ -41,7 +44,7 @@ import {
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
-import { getBetterAuthSecret } from "@/lib/utils/env";
+import { getBetterAuthSecret, getOpaqueServerSetup } from "@/lib/utils/env";
 
 const betterAuthSchema = {
   user: users,
@@ -114,7 +117,39 @@ const resolveLastLoginMethod = (ctx: { path?: string }): string | null => {
   ) {
     return "magic-link";
   }
+  if (path.startsWith("/sign-in/opaque/complete")) {
+    return "opaque";
+  }
   return null;
+};
+
+const resolveOpaqueUserByIdentifier = async (
+  identifier: string,
+  ctx: OpaqueEndpointContext
+) => {
+  const normalized = identifier.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes("@")) {
+    return ctx.context.internalAdapter.findUserByEmail(normalized, {
+      includeAccounts: true,
+    });
+  }
+
+  const recoveryMatch = await getUserByRecoveryId(normalized);
+  if (!recoveryMatch) {
+    return null;
+  }
+
+  const user = await ctx.context.internalAdapter.findUserById(recoveryMatch.id);
+  if (!user) {
+    return null;
+  }
+
+  const accounts = await ctx.context.internalAdapter.findAccounts(user.id);
+  return { user, accounts };
 };
 
 const getAuthDomain = (): string => {
@@ -137,16 +172,67 @@ export const auth = betterAuth({
   secret: getBetterAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   trustedOrigins: getTrustedOrigins(),
-  emailAndPassword: {
+  rateLimit: {
     enabled: true,
-    requireEmailVerification: false, // Disable for dev, enable in production
-    minPasswordLength: 10,
-    maxPasswordLength: 128,
-    sendResetPassword: async ({ user: _user, url: _url }) => {
-      // TODO: Implement email sending when SMTP is configured
-      // For now, silently succeed - the user won't receive an email but can retry
+    window: 60, // 1 minute window
+    max: 100, // 100 requests per minute globally
+    customRules: {
+      // Stricter limits for authentication endpoints
+      "/sign-in/opaque/challenge": {
+        window: 60, // 1 minute
+        max: 10, // 10 login attempts per minute
+      },
+      "/sign-in/opaque/complete": {
+        window: 60, // 1 minute
+        max: 10, // 10 login completions per minute
+      },
+      "/sign-up/opaque/challenge": {
+        window: 60, // 1 minute
+        max: 5, // 5 sign-up attempts per minute
+      },
+      "/sign-up/opaque/complete": {
+        window: 60, // 1 minute
+        max: 5, // 5 sign-up completions per minute
+      },
+      "/password/opaque/registration/challenge": {
+        window: 60, // 1 minute
+        max: 5, // 5 password set attempts per minute
+      },
+      "/password/opaque/registration/complete": {
+        window: 60, // 1 minute
+        max: 5, // 5 password set completions per minute
+      },
+      "/password/opaque/verify/challenge": {
+        window: 60, // 1 minute
+        max: 5, // 5 password verify attempts per minute
+      },
+      "/password/opaque/verify/complete": {
+        window: 60, // 1 minute
+        max: 5, // 5 password verify completions per minute
+      },
+      "/password-reset/opaque/request": {
+        window: 300, // 5 minutes
+        max: 3, // 3 password reset requests per 5 minutes
+      },
+      "/password-reset/opaque/challenge": {
+        window: 60, // 1 minute
+        max: 5, // 5 password reset challenges per minute
+      },
+      "/password-reset/opaque/complete": {
+        window: 60, // 1 minute
+        max: 5, // 5 password reset completions per minute
+      },
     },
   },
+  disabledPaths: [
+    "/sign-in/email",
+    "/sign-up/email",
+    "/request-password-reset",
+    "/reset-password",
+    "/change-password",
+    "/set-password",
+    "/verify-password",
+  ],
   user: {
     deleteUser: {
       enabled: true,
@@ -208,7 +294,15 @@ export const auth = betterAuth({
   },
   plugins: [
     nextCookies(),
-    haveIBeenPwned(),
+    opaque({
+      serverSetup: getOpaqueServerSetup(),
+      resolveUserByIdentifier: resolveOpaqueUserByIdentifier,
+      sendResetPassword: async ({ user: _user, url: _url }) => {
+        // TODO: Implement email sending when SMTP is configured
+        // For now, silently succeed - the user won't receive an email but can retry
+      },
+      revokeSessionsOnPasswordReset: true,
+    }),
     anonymous({
       emailDomainName: process.env.ANONYMOUS_EMAIL_DOMAIN || "anon.zentity.app",
     }),

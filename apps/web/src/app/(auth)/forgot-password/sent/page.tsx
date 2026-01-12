@@ -11,13 +11,13 @@ import {
 } from "@/components/ui/card";
 
 interface PageProps {
-  searchParams: Promise<{ email?: string }>;
+  searchParams: Promise<{ identifier?: string }>;
 }
 
 export default async function ForgotPasswordSentPage({
   searchParams,
 }: PageProps) {
-  const { email } = await searchParams;
+  const { identifier } = await searchParams;
 
   return (
     <Card className="w-full max-w-md">
@@ -27,13 +27,13 @@ export default async function ForgotPasswordSentPage({
         </div>
         <CardTitle className="text-2xl">Check Your Email</CardTitle>
         <CardDescription>
-          {email ? (
+          {identifier ? (
             <>
               We sent a password reset link to{" "}
-              <span className="font-medium text-foreground">{email}</span>
+              <span className="font-medium text-foreground">{identifier}</span>
             </>
           ) : (
-            "We sent a password reset link to your email"
+            "We sent a password reset link to your inbox"
           )}
         </CardDescription>
       </CardHeader>
@@ -47,7 +47,7 @@ export default async function ForgotPasswordSentPage({
 
         <div className="flex flex-col gap-2">
           <Button asChild className="w-full" variant="outline">
-            <Link href="/forgot-password">Try a different email</Link>
+            <Link href="/forgot-password">Try a different identifier</Link>
           </Button>
           <Button asChild className="w-full" variant="ghost">
             <Link href="/sign-in">Back to Sign In</Link>

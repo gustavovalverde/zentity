@@ -79,6 +79,13 @@ These must be verified by the backend or by on-chain cryptographic checks.
 - Internal services (FHE, OCR) must require authenticated requests in production.
 - Public endpoints must be explicitly audited and limited.
 
+### Authentication integrity (OPAQUE passwords)
+
+- The server never receives plaintext passwords; it stores OPAQUE registration records.
+- Clients verify the server’s static public key (pinned in production) to prevent MITM.
+- Login state is encrypted and time-limited to reduce replay risk.
+- OPAQUE endpoints are rate-limited to slow online guessing.
+
 ## Tamper-Safe Verification Decision Flow
 
 1. Backend performs OCR, liveness, and face match.
