@@ -37,7 +37,6 @@ export interface OnboardingStore {
   // Step 3: Transient (not persisted)
   selfieImage: string | null;
   bestSelfieFrame: string | null;
-  blinkCount: number | null;
 
   // Step 4
   preferredName: string | null;
@@ -70,7 +69,6 @@ const initialState: Omit<OnboardingStore, "set" | "reset"> = {
   documentResult: null,
   selfieImage: null,
   bestSelfieFrame: null,
-  blinkCount: null,
   preferredName: null,
   identityDocumentId: null,
   documentProcessed: false,

@@ -104,9 +104,17 @@ function wrapResult<T>(data: T): Result<T> {
   return { data, error: null };
 }
 
-/** Decode base64 export key from OPAQUE library to Uint8Array */
-function decodeExportKey(base64: string): Uint8Array {
-  const binary = atob(base64);
+/** Decode base64url export key from OPAQUE library to Uint8Array */
+function decodeExportKey(base64url: string): Uint8Array {
+  // Convert base64url to standard base64 (atob only accepts standard base64)
+  const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+  // Add padding if needed
+  const padded = base64.padEnd(
+    base64.length + ((4 - (base64.length % 4)) % 4),
+    "="
+  );
+
+  const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);

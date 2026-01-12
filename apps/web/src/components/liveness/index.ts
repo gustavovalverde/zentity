@@ -5,8 +5,10 @@
  * for face positioning and challenge guidance.
  */
 
-// biome-ignore lint/performance/noBarrelFile: Re-export of liveness UI components for convenient access
+// Legacy/shared UI components
+// biome-ignore lint/performance/noBarrelFile: Intentional re-export for component library
 export { AudioToggle, FeedbackToggleGroup } from "./audio-toggle";
+export { CameraView } from "./camera-view";
 export {
   ChallengeBanner,
   type ChallengeType,
@@ -18,7 +20,19 @@ export {
   DirectionalNudgeContainer,
   type NudgeDirection,
 } from "./directional-nudge";
-export { FullscreenCamera } from "./fullscreen-camera";
+export { LivenessFlow } from "./liveness-flow";
+// Server-authoritative provider and hooks
+export {
+  type ChallengeState,
+  type FaceBox,
+  LivenessProvider,
+  type LivenessProviderProps,
+  useLiveness,
+  useLivenessChallenge,
+  useLivenessContext,
+  useLivenessFace,
+  useLivenessPhase,
+} from "./liveness-provider";
 export { OvalFrame, type OvalFrameStatus } from "./oval-frame";
 export {
   deriveQualityIssue,

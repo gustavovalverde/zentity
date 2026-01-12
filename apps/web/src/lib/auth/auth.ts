@@ -295,7 +295,7 @@ export const auth = betterAuth({
   plugins: [
     nextCookies(),
     opaque({
-      serverSetup: getOpaqueServerSetup(),
+      serverSetup: getOpaqueServerSetup,
       resolveUserByIdentifier: resolveOpaqueUserByIdentifier,
       sendResetPassword: async ({ user: _user, url: _url }) => {
         // TODO: Implement email sending when SMTP is configured

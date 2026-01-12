@@ -66,7 +66,6 @@ export interface WizardData {
   // Step 3: Selfie/Liveness
   selfieImage: string | null;
   bestSelfieFrame: string | null;
-  blinkCount: number | null;
 
   // Step 4: Create Account with Passkey
   preferredName: string | null; // Optional display name (editable from extracted name)
@@ -91,7 +90,6 @@ const _defaultWizardData: WizardData = {
   // Step 3
   selfieImage: null,
   bestSelfieFrame: null,
-  blinkCount: null,
   // Step 4
   preferredName: null,
   identityDocumentId: null,

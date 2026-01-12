@@ -71,8 +71,9 @@ export interface SessionState {
   timeouts: SessionTimeouts;
 }
 
-// Constants
-const STABILITY_FRAMES = 3;
+// Constants - consecutive frames needed for stable detection
+// Reduced from 3 to 2 for faster response (~200ms at 10 FPS)
+const STABILITY_FRAMES = 2;
 
 /**
  * Configurable timeout settings for liveness sessions.
@@ -89,7 +90,7 @@ export interface SessionTimeouts {
 export const DEFAULT_TIMEOUTS: SessionTimeouts = {
   sessionTimeoutMs: 60_000, // 60 seconds max
   challengeTimeoutMs: 15_000, // 15 seconds per challenge
-  countdownDurationMs: 3000, // 3 second countdown
+  countdownDurationMs: 2000, // 2 second countdown (reduced from 3)
 };
 
 // Challenge limits (security: prevent DoS via excessive challenges)
@@ -284,7 +285,9 @@ export function toClientState(session: SessionState): {
   return {
     id: session.id,
     phase: session.phase,
-    challenge: getCurrentChallenge(session),
+    // Use session.challenge directly - it has the actual progress and hint values
+    // that are updated during challenge evaluation
+    challenge: session.challenge,
     face: session.face,
     countdown: session.countdown,
   };

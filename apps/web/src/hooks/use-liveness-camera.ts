@@ -26,6 +26,7 @@ const MOBILE_UA_REGEX =
 
 /**
  * Detect if device is mobile using multiple signals.
+ * Used for UI decisions (fullscreen mode), NOT for quality/performance branching.
  */
 function detectIsMobile(): boolean {
   if (typeof window === "undefined") {
@@ -39,18 +40,17 @@ function detectIsMobile(): boolean {
 
 interface UseLivenessCameraOptions {
   facingMode?: "user" | "environment";
-  /** Ideal width - will be reduced on mobile for performance */
+  /** Ideal video width */
   idealWidth?: number;
-  /** Ideal height - will be reduced on mobile for performance */
+  /** Ideal video height */
   idealHeight?: number;
+  /** Target brightness for correction (0-255) */
   brightnessTarget?: number;
-  /** Force mobile optimizations regardless of detection */
-  forceMobile?: boolean;
-  /** Skip brightness correction for faster frame capture */
+  /** Skip brightness correction */
   skipBrightnessCorrection?: boolean;
   /** Block virtual cameras (OBS, ManyCam, etc.) for security. Default: true */
   blockVirtualCameras?: boolean;
-  /** Validate frame rate meets minimum (15 fps). Default: true */
+  /** Validate frame rate meets minimum. Default: true */
   validateFrameRateOption?: boolean;
   /** Minimum required frame rate. Default: 15 */
   minFrameRate?: number;
@@ -67,9 +67,9 @@ interface UseLivenessCameraResult {
   captureFrame: () => string | null;
   /** Capture frame optimized for streaming (smaller size, lower quality) */
   captureStreamFrame: () => string | null;
-  /** Get a square-padded canvas for improved face detection (centered video in square) */
+  /** Get a square-padded canvas for improved face detection */
   getSquareDetectionCanvas: () => HTMLCanvasElement | null;
-  /** Whether mobile optimizations are active */
+  /** Whether device is mobile (for UI decisions like fullscreen) */
   isMobile: boolean;
   /** Available camera devices (physical cameras only if blockVirtualCameras is true) */
   availableDevices: MediaDeviceInfo[];
@@ -86,13 +86,11 @@ interface UseLivenessCameraResult {
 }
 
 /**
- * Shared camera hook used by liveness/doc capture steps.
- * Manages permissions, stream lifecycle, and brightness-corrected frame capture.
+ * Shared camera hook for liveness and document capture.
+ * Manages permissions, stream lifecycle, and frame capture.
  *
- * Mobile optimizations:
- * - Lower resolution (480x360 vs 640x480) reduces processing load
- * - Limited frame rate (15fps vs unlimited) reduces power consumption
- * - Simplified brightness correction for faster captures
+ * Same settings for mobile and desktop - no platform-specific branching.
+ * Frames sent to server are capped at 640px anyway (use-liveness.ts).
  */
 export function useLivenessCamera(
   options: UseLivenessCameraOptions = {}
@@ -102,7 +100,6 @@ export function useLivenessCamera(
     idealWidth = 640,
     idealHeight = 480,
     brightnessTarget = 110,
-    forceMobile,
     skipBrightnessCorrection = false,
     blockVirtualCameras = true,
     validateFrameRateOption = true,
@@ -110,15 +107,8 @@ export function useLivenessCamera(
     rememberDevice = true,
   } = options;
 
-  // Detect mobile once on mount
-  const isMobile = useMemo(
-    () => forceMobile ?? detectIsMobile(),
-    [forceMobile]
-  );
-
-  // Apply mobile-optimized constraints
-  const effectiveWidth = isMobile ? Math.min(480, idealWidth) : idealWidth;
-  const effectiveHeight = isMobile ? Math.min(360, idealHeight) : idealHeight;
+  // Detect mobile for UI decisions only (e.g., fullscreen mode)
+  const isMobile = useMemo(() => detectIsMobile(), []);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -239,17 +229,15 @@ export function useLivenessCamera(
       // Ensure any existing stream is fully released before requesting a new one.
       stopCamera();
 
-      // Build constraints with mobile optimizations and optional device selection
+      // Build constraints - same for all devices
       const constraints: MediaStreamConstraints = {
         video: {
           // Use selected device if available, otherwise use facingMode
           ...(selectedDeviceId
             ? { deviceId: { exact: selectedDeviceId } }
             : { facingMode }),
-          width: { ideal: effectiveWidth },
-          height: { ideal: effectiveHeight },
-          // Mobile: limit frame rate to reduce power/heat and processing load
-          ...(isMobile && { frameRate: { ideal: 15, max: 24 } }),
+          width: { ideal: idealWidth },
+          height: { ideal: idealHeight },
         },
       };
 
@@ -258,7 +246,6 @@ export function useLivenessCamera(
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (constraintError) {
         // Fallback: try with minimal constraints if specific ones fail
-        // This helps on devices that don't support frameRate constraint
         console.warn(
           "Camera constraints failed, retrying with minimal constraints:",
           constraintError
@@ -337,9 +324,8 @@ export function useLivenessCamera(
     }
   }, [
     facingMode,
-    effectiveWidth,
-    effectiveHeight,
-    isMobile,
+    idealWidth,
+    idealHeight,
     stopCamera,
     selectedDeviceId,
     validateFrameRateOption,
@@ -351,7 +337,6 @@ export function useLivenessCamera(
 
   /**
    * Capture a frame to dataURL with optional brightness correction.
-   * On mobile, brightness correction can be skipped for performance.
    */
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current;
@@ -370,8 +355,7 @@ export function useLivenessCamera(
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    // Skip brightness correction on mobile for performance
-    const shouldCorrectBrightness = !(skipBrightnessCorrection || isMobile);
+    const shouldCorrectBrightness = !skipBrightnessCorrection;
 
     // Use willReadFrequently only if we need to read pixels for brightness
     const ctx = canvas.getContext("2d", {
@@ -383,12 +367,11 @@ export function useLivenessCamera(
 
     ctx.drawImage(video, 0, 0);
 
-    // The filter.equalization in Human.js config handles some normalization
     if (shouldCorrectBrightness) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
-      // Sample brightness on a subset of pixels to save time.
+      // Sample brightness on a subset of pixels
       let totalBrightness = 0;
       const sampleSize = Math.min(1200, data.length / 4);
       const step = Math.max(1, Math.floor(data.length / 4 / sampleSize));
@@ -413,10 +396,8 @@ export function useLivenessCamera(
       }
     }
 
-    // Use lower quality on mobile for faster encoding
-    const quality = isMobile ? 0.75 : 0.85;
-    return canvas.toDataURL("image/jpeg", quality);
-  }, [brightnessTarget, skipBrightnessCorrection, isMobile]);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }, [brightnessTarget, skipBrightnessCorrection]);
 
   /**
    * Capture a frame optimized for streaming (smaller size, lower quality).
@@ -456,10 +437,8 @@ export function useLivenessCamera(
 
   /**
    * Get a square-padded canvas with the video frame centered.
-   * Square images significantly improve face detection accuracy (research finding).
-   * The canvas is padded with black bars to maintain aspect ratio.
-   *
-   * On mobile: caps size to 480px max to reduce tensor allocation overhead.
+   * Square images improve face detection accuracy.
+   * NOTE: Currently unused - face detection runs server-side.
    */
   const getSquareDetectionCanvas = useCallback((): HTMLCanvasElement | null => {
     const video = videoRef.current;
@@ -475,10 +454,7 @@ export function useLivenessCamera(
 
     const { videoWidth, videoHeight } = video;
     const maxDim = Math.max(videoWidth, videoHeight);
-
-    // On mobile, cap the square size to reduce memory and processing
-    // 480px is sufficient for face detection and reduces tensor size by ~75%
-    const maxSquareSize = isMobile ? 480 : 1280;
+    const maxSquareSize = 1280;
     const size = Math.min(maxDim, maxSquareSize);
     const scale = size / maxDim;
 
@@ -504,7 +480,7 @@ export function useLivenessCamera(
     ctx.drawImage(video, offsetX, offsetY, scaledWidth, scaledHeight);
 
     return canvas;
-  }, [isMobile]);
+  }, []);
 
   // Stop camera when component using the hook unmounts.
   useEffect(() => () => stopCamera(), [stopCamera]);

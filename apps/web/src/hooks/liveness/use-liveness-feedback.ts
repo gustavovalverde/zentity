@@ -200,7 +200,7 @@ export function useLivenessFeedback(
     [audioEnabled, audioSupported]
   );
 
-  // Speak by key
+  // Speak by key (fire-and-forget: errors are caught internally)
   const speak = useCallback(
     async (key: SpeechKey, priority: "low" | "high" = "low") => {
       if (!(speechEnabled && speechSupported)) {
@@ -210,6 +210,9 @@ export function useLivenessFeedback(
       setIsSpeaking(true);
       try {
         await speechEngine.speakKey(key, { priority });
+      } catch {
+        // Speech synthesis failed (audio-busy, not-allowed, etc.)
+        // This is non-critical - visual cues remain available
       } finally {
         setIsSpeaking(false);
       }
@@ -217,7 +220,7 @@ export function useLivenessFeedback(
     [speechEnabled, speechSupported]
   );
 
-  // Speak custom text
+  // Speak custom text (fire-and-forget: errors are caught internally)
   const speakText = useCallback(
     async (text: string, priority: "low" | "high" = "low") => {
       if (!(speechEnabled && speechSupported)) {
@@ -227,6 +230,9 @@ export function useLivenessFeedback(
       setIsSpeaking(true);
       try {
         await speechEngine.speak(text, { priority });
+      } catch {
+        // Speech synthesis failed (audio-busy, not-allowed, etc.)
+        // This is non-critical - visual cues remain available
       } finally {
         setIsSpeaking(false);
       }

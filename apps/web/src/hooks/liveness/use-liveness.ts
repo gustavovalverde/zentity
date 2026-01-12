@@ -77,11 +77,7 @@ export interface UseLivenessArgs {
   numChallenges?: number;
   /** Enable debug logging */
   debugEnabled?: boolean;
-  onVerified: (args: {
-    selfieImage: string;
-    bestSelfieFrame: string;
-    blinkCount: number | null;
-  }) => void;
+  onVerified: (args: { selfieImage: string; bestSelfieFrame: string }) => void;
   onReset: () => void;
   onSessionError?: () => void;
 }
@@ -109,6 +105,8 @@ export interface UseLivenessResult {
   signalChallengeReady: () => void;
   /** Retry after failure */
   retryChallenge: () => void;
+  /** Cancel and reset to initial state (without restarting) */
+  cancelSession: () => void;
   /** Final selfie image after success */
   selfieImage: string | null;
   /** Error message if failed */
@@ -314,17 +312,17 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       setPhase("completed");
       setSelfieImage(result.selfieImage);
 
-      // Stop frame streaming
+      // Stop frame streaming and camera
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
       }
+      stopCamera();
 
       // Notify parent
       onVerifiedRef.current({
         selfieImage: result.selfieImage,
         bestSelfieFrame: result.selfieImage,
-        blinkCount: null,
       });
 
       toast.success("Liveness verified!", {
@@ -375,11 +373,12 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       setError(livenessError);
       setErrorMessage(livenessError.message);
 
-      // Stop frame streaming
+      // Stop frame streaming and camera
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
       }
+      stopCamera();
 
       toast.error("Verification failed", {
         description: livenessError.message,
@@ -395,7 +394,7 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
         onSessionErrorRef.current?.();
       }
     });
-  }, [cleanup, numChallenges, debugEnabled]);
+  }, [cleanup, numChallenges, debugEnabled, stopCamera]);
 
   // Send frames to server
   const startFrameStreaming = useCallback(() => {
@@ -490,16 +489,22 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
   const signalCountdownDone = useCallback(() => {
     const socket = socketRef.current;
     if (socket?.connected) {
+      if (debugEnabled) {
+        console.log("[liveness] Signal: countdown:done");
+      }
       socket.emit("countdown:done");
     }
-  }, []);
+  }, [debugEnabled]);
 
   const signalChallengeReady = useCallback(() => {
     const socket = socketRef.current;
     if (socket?.connected) {
+      if (debugEnabled) {
+        console.log("[liveness] Signal: challenge:ready");
+      }
       socket.emit("challenge:ready");
     }
-  }, []);
+  }, [debugEnabled]);
 
   // Retry after failure
   const retryChallenge = useCallback(() => {
@@ -519,6 +524,25 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
     beginCamera();
   }, [cleanup, stopCamera, beginCamera]);
 
+  // Cancel session - reset to initial state WITHOUT restarting
+  const cancelSession = useCallback(() => {
+    cleanup();
+    stopCamera();
+
+    setPhase("connecting");
+    setChallenge(null);
+    setFace({ detected: false, box: null });
+    setCountdown(null);
+    setHint("");
+    setSessionId(null);
+    setSelfieImage(null);
+    setErrorMessage(null);
+    setError(null);
+    setIsRetrying(false);
+
+    onResetRef.current();
+  }, [cleanup, stopCamera]);
+
   return {
     phase,
     challenge,
@@ -531,6 +555,7 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
     signalCountdownDone,
     signalChallengeReady,
     retryChallenge,
+    cancelSession,
     selfieImage,
     errorMessage,
     error,

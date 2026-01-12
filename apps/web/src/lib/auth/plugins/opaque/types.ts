@@ -62,10 +62,12 @@ export interface OpaquePasswordResetOptions {
 export interface OpaquePluginOptions
   extends Partial<OpaquePasswordResetOptions> {
   /**
-   * OPAQUE server setup string.
+   * OPAQUE server setup string or a getter function that returns it.
+   * Using a getter function allows lazy evaluation (deferred until runtime),
+   * which is necessary for Next.js builds where env vars may not be available.
    * Generate with: npx @serenity-kit/opaque@latest create-server-setup
    */
-  serverSetup: string;
+  serverSetup: string | (() => string);
   /**
    * Resolve a user + accounts from a login identifier (email or recovery ID).
    * If omitted, we fall back to email lookup only.

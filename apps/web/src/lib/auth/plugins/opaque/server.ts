@@ -95,9 +95,18 @@ function buildResetUrl(params: {
 }
 
 export const opaque = (options: OpaquePluginOptions) => {
-  if (!options?.serverSetup) {
-    throw new Error("OPAQUE server setup is required");
-  }
+  // Allow lazy evaluation of serverSetup to support Next.js builds
+  // where env vars may not be available at module load time
+  const getServerSetup = (): string => {
+    const setup =
+      typeof options.serverSetup === "function"
+        ? options.serverSetup()
+        : options.serverSetup;
+    if (!setup) {
+      throw new Error("OPAQUE server setup is required");
+    }
+    return setup;
+  };
 
   const resolveUserByIdentifier =
     options.resolveUserByIdentifier ?? defaultResolveUserByIdentifier;
@@ -173,7 +182,7 @@ export const opaque = (options: OpaquePluginOptions) => {
               : null;
 
           const { serverLoginState, loginResponse } = server.startLogin({
-            serverSetup: options.serverSetup,
+            serverSetup: getServerSetup(),
             userIdentifier: loginUserIdentifier,
             registrationRecord,
             startLoginRequest: ctx.body.loginRequest,
@@ -279,7 +288,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           }
 
           const { registrationResponse } = server.createRegistrationResponse({
-            serverSetup: options.serverSetup,
+            serverSetup: getServerSetup(),
             userIdentifier: userId,
             registrationRequest: ctx.body.registrationRequest,
           });
@@ -353,7 +362,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           }
 
           const { serverLoginState, loginResponse } = server.startLogin({
-            serverSetup: options.serverSetup,
+            serverSetup: getServerSetup(),
             userIdentifier: userId,
             registrationRecord: opaqueAccount.registrationRecord,
             startLoginRequest: ctx.body.loginRequest,
@@ -541,7 +550,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           }
 
           const { registrationResponse } = server.createRegistrationResponse({
-            serverSetup: options.serverSetup,
+            serverSetup: getServerSetup(),
             userIdentifier: verification.value,
             registrationRequest: ctx.body.registrationRequest,
           });
@@ -659,7 +668,7 @@ export const opaque = (options: OpaquePluginOptions) => {
 
           // Generate OPAQUE registration response
           const { registrationResponse } = server.createRegistrationResponse({
-            serverSetup: options.serverSetup,
+            serverSetup: getServerSetup(),
             userIdentifier: userId,
             registrationRequest: ctx.body.registrationRequest,
           });

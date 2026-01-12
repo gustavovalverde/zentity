@@ -2,7 +2,6 @@
 
 import { ArrowLeftIcon, ArrowRightIcon, SmileIcon } from "lucide-react";
 
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils/utils";
 
 export type ChallengeType = "smile" | "turn_left" | "turn_right";
@@ -16,8 +15,6 @@ interface ChallengeBannerProps {
   totalChallenges?: number;
   /** Optional hint text to display */
   hint?: string;
-  /** Progress percentage (0-100) */
-  progress: number;
   /** Optional class name */
   className?: string;
 }
@@ -47,15 +44,15 @@ const CHALLENGE_CONFIG: Record<
 };
 
 /**
- * Lightweight challenge hint shown below the video.
- * Displays the current challenge instruction with icon and progress.
+ * Lightweight challenge instruction shown over the video.
+ * Uses high-contrast styling for visibility over any video background.
+ * Progress is shown via the oval frame ring, not here.
  */
 export function ChallengeBanner({
   challenge,
   currentIndex,
   totalChallenges,
   hint,
-  progress,
   className,
 }: ChallengeBannerProps) {
   const config = CHALLENGE_CONFIG[challenge];
@@ -65,36 +62,25 @@ export function ChallengeBanner({
     <output
       aria-atomic="true"
       aria-live="polite"
-      className={cn("flex flex-col items-center gap-2 text-center", className)}
+      className={cn(
+        "flex flex-col items-center gap-2 text-center",
+        "rounded-xl bg-black/70 px-5 py-3 backdrop-blur-sm",
+        className
+      )}
     >
       {/* Icon and instruction - primary focus */}
-      <div className="flex items-center justify-center gap-2 text-foreground">
-        <Icon className="size-5 text-muted-foreground" />
-        <span className="font-medium text-lg">{config.instruction}</span>
+      <div className="flex items-center justify-center gap-2 text-white">
+        <Icon className="size-6 text-white/80" />
+        <span className="font-semibold text-xl">{config.instruction}</span>
         {currentIndex !== undefined && totalChallenges !== undefined && (
-          <span className="text-muted-foreground text-sm">
+          <span className="text-sm text-white/70">
             ({currentIndex}/{totalChallenges})
           </span>
         )}
       </div>
 
       {/* Dynamic hint - secondary */}
-      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
-
-      {/* Progress bar - horizontal layout */}
-      <div className="flex w-full max-w-xs items-center gap-3">
-        <Progress
-          className="h-2 flex-1 bg-muted"
-          indicatorClassName={cn(
-            "transition-all duration-150",
-            progress >= 100 ? "bg-green-500" : "bg-primary"
-          )}
-          value={progress}
-        />
-        <span className="w-10 text-muted-foreground text-xs tabular-nums">
-          {progress}%
-        </span>
-      </div>
+      {hint && <p className="text-sm text-white/70">{hint}</p>}
     </output>
   );
 }

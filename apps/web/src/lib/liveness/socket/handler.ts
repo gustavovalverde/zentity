@@ -54,9 +54,10 @@ const CONSECUTIVE_ERROR_THRESHOLD = 5;
 // Completion acknowledgment timeout
 const COMPLETION_ACK_TIMEOUT_MS = 5000;
 // Countdown auto-advance fallback if client never finishes countdown
-const COUNTDOWN_AUTO_ADVANCE_MS = 7000;
+const COUNTDOWN_AUTO_ADVANCE_MS = 5000;
 // Challenge auto-start fallback if client never acknowledges prompt
-const CHALLENGE_READY_TIMEOUT_MS = 4000;
+// Client signals immediately now, so this is just a safety net for edge cases
+const CHALLENGE_READY_TIMEOUT_MS = 100;
 
 /**
  * Handle a new liveness socket connection.
@@ -285,7 +286,11 @@ export function handleLivenessConnection(socket: Socket): void {
   // Handle disconnect
   socket.on("disconnect", (reason) => {
     log.info({ reason, sessionId: session?.id }, "Liveness connection closed");
+    // Clear all local state to prevent memory leaks
     session = null;
+    isProcessing = false;
+    consecutiveErrors = 0;
+    lastFrameTime = 0;
   });
 }
 

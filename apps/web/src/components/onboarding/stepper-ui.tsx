@@ -109,7 +109,6 @@ export function StepperNavigation({ stepper }: { stepper: OnboardingStepper }) {
         resetState.faceMatchPassed = false;
         resetState.selfieImage = null;
         resetState.bestSelfieFrame = null;
-        resetState.blinkCount = null;
       }
 
       // Reset account/finalization data when returning from the account step

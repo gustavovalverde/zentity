@@ -46,8 +46,8 @@ function generateConfetti(count: number): ConfettiParticle[] {
 }
 
 /**
- * Success animation overlay shown when liveness verification completes.
- * Displays a checkmark icon with optional confetti celebration.
+ * Success animation shown when liveness verification completes.
+ * Simple, contained checkmark with optional confetti - NOT a full-page overlay.
  */
 export function SuccessAnimation({
   className,
@@ -55,7 +55,7 @@ export function SuccessAnimation({
   autoHideDuration = 0,
   onComplete,
 }: SuccessAnimationProps) {
-  const [confetti] = useState(() => generateConfetti(24));
+  const [confetti] = useState(() => generateConfetti(12));
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -76,18 +76,17 @@ export function SuccessAnimation({
     <output
       aria-label="Verification successful"
       className={cn(
-        "absolute inset-0 flex items-center justify-center",
-        "bg-black/50 backdrop-blur-sm",
+        "relative flex flex-col items-center justify-center",
         "fade-in animate-in duration-300",
         className
       )}
     >
       {/* Success icon */}
-      <div className="zoom-in animate-in rounded-full bg-green-500 p-6 shadow-2xl duration-300">
-        <CheckCircleIcon className="size-16 text-white" />
+      <div className="zoom-in animate-in rounded-full bg-green-500 p-5 shadow-lg duration-300">
+        <CheckCircleIcon className="size-12 text-white" />
       </div>
 
-      {/* Confetti particles */}
+      {/* Confetti particles - contained within component bounds */}
       {showConfetti && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {confetti.map((particle) => (

@@ -89,14 +89,46 @@ app.prepare().then(() => {
       console.log("> Environment:", dev ? "development" : "production");
     });
 
-  // Graceful shutdown
-  const shutdown = () => {
+  // Graceful shutdown with timeout and proper Next.js cleanup
+  const SHUTDOWN_TIMEOUT_MS = 10_000;
+  let isShuttingDown = false;
+
+  const shutdown = async () => {
+    if (isShuttingDown) {
+      return;
+    }
+    isShuttingDown = true;
     console.log("\n> Shutting down...");
-    io.close();
-    httpServer.close(() => {
+
+    // Force exit if shutdown takes too long
+    const forceExitTimeout = setTimeout(() => {
+      console.error("> Shutdown timed out, forcing exit");
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+    forceExitTimeout.unref();
+
+    try {
+      // 1. Stop accepting new Socket.IO connections and close existing ones
+      io.close();
+
+      // 2. Stop accepting new HTTP connections
+      httpServer.close();
+
+      // 3. Force close all HTTP connections (browsers keep keep-alive open)
+      // closeAllConnections() added in Node.js 18.2.0
+      httpServer.closeAllConnections();
+
+      // 4. Close Next.js app (flushes TurboPack cache, closes watchers)
+      await app.close();
+
+      clearTimeout(forceExitTimeout);
       console.log("> Server closed");
       process.exit(0);
-    });
+    } catch (err) {
+      console.error("> Shutdown error:", err);
+      clearTimeout(forceExitTimeout);
+      process.exit(1);
+    }
   };
 
   process.on("SIGTERM", shutdown);
