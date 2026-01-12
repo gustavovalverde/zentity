@@ -43,14 +43,24 @@ commitments.
 
 ## Contents
 
-- [Project guide](#project-guide)
-- [TL;DR run and test](#tldr-run-and-test)
-- [Architecture](#architecture)
-- [What's implemented](#whats-implemented)
-- [Use cases](#use-cases)
-- [Planned features](#planned-features)
-- [Data handling at a glance](#data-handling-at-a-glance)
-- [Services and ports](#services-and-ports)
+- [Zentity](#zentity)
+  - [Contents](#contents)
+  - [Project Guide](#project-guide)
+    - [Why we are building this](#why-we-are-building-this)
+    - [What this project demonstrates](#what-this-project-demonstrates)
+    - [How the pieces connect](#how-the-pieces-connect)
+    - [Key custody in plain English](#key-custody-in-plain-english)
+    - [Tech choices and rationale](#tech-choices-and-rationale)
+    - [Documentation map](#documentation-map)
+  - [TL;DR run and test](#tldr-run-and-test)
+  - [Architecture](#architecture)
+  - [What’s implemented](#whats-implemented)
+  - [Use cases](#use-cases)
+  - [Planned features](#planned-features)
+  - [Data handling at a glance](#data-handling-at-a-glance)
+  - [Services and ports](#services-and-ports)
+  - [License](#license)
+  - [Contributing](#contributing)
 
 ## Project Guide
 
@@ -91,6 +101,15 @@ PII**.
 4. **Consumption**:
    - Apps request privacy-preserving signals such as `is_over_18`.
    - Raw attributes are never shared with integrators.
+
+### Key custody in plain English
+
+- The browser encrypts sensitive data with a random **data key (DEK)**.
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived from either:
+  - a **passkey PRF output**, or
+  - an **OPAQUE export key** (password fallback).
+- The server stores only encrypted blobs + wrapped DEKs, so it **cannot decrypt** user data.
+- When a user unlocks with a passkey or password, the browser unwraps the DEK and decrypts locally.
 
 ### Tech choices and rationale
 

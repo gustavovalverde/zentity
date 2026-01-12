@@ -96,6 +96,13 @@ We persist **only the minimum** required for verification and auditability:
 - OPAQUE registration records for password users (no plaintext or password hashes)
 - Verification status + non-sensitive metadata
 
+### Key custody
+
+- The browser encrypts sensitive data with a random **data key (DEK)**.
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived from either a **passkey PRF output** or an **OPAQUE export key**.
+- The server stores only encrypted blobs + wrapped DEKs, so it cannot decrypt user data.
+- Users decrypt locally after an explicit passkey or password unlock.
+
 We **never store** raw document images, selfies, plaintext PII, or biometric templates. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
 
 ---

@@ -11,6 +11,13 @@ Zentity relies on **four complementary cryptographic pillars**. Each solves a di
 | **Fully Homomorphic Encryption (FHE)** | Encrypted computation | Server + fhEVM | Compute on encrypted attributes (age, nationality, compliance level) without decryption. |
 | **Cryptographic Commitments** | Integrity + dedup + erasure | Server DB | One-way hashes bind values without storing them; deleting the salt breaks linkability. |
 
+## Plain-English snapshot
+
+- **Passkeys + OPAQUE**: log in and derive a key that unlocks your encrypted data on the client. The server stores encrypted blobs only.
+- **ZK proofs**: prove a statement like “over 18” without revealing the birth year.
+- **FHE**: run policy checks on encrypted data without decrypting it.
+- **Commitments**: store one-way hashes so you can verify later without storing plaintext.
+
 ## Why Four
 
 Each pillar addresses a different threat boundary:

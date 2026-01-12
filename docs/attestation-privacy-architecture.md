@@ -36,6 +36,13 @@ This model supports **multi-document identities**, **revocable attestations**, a
 
 **Important**: The server persists **encrypted key bundles** (passkey‑ or OPAQUE‑wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
 
+### Why the server can’t decrypt
+
+- The browser encrypts data with a random **data key (DEK)**.
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived from either a passkey PRF output or an OPAQUE export key.
+- The server stores only the encrypted blob + wrapped DEK, but **never sees the PRF output or export key**.
+- Result: the server can store and verify, but cannot decrypt user data.
+
 ### Integrity controls
 
 - All ZK proofs include a **server-issued nonce** (replay protection).
