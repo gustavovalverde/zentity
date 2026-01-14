@@ -146,7 +146,7 @@ pillow==12.0.0
     # via
     #   ocr-service (pyproject.toml)
     #   rapidocr
-protobuf==6.33.3
+protobuf==6.33.4
     # via
     #   googleapis-common-protos
     #   onnxruntime
