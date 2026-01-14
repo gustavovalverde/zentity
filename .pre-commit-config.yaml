@@ -31,6 +31,7 @@ repos:
         exclude: ^(apps/.*/dist/|dist/)
       - id: check-yaml
         args: [--allow-multiple-documents]
+        exclude: pnpm-lock\.yaml$
       - id: check-toml
       - id: check-json
         exclude: (^\.vscode/|tsconfig.*\.json$)  # JSONC files (VSCode, TypeScript)
