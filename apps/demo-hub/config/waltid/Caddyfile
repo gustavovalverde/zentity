@@ -1,0 +1,22 @@
+# Caddyfile for walt.id wallet services
+# Routes /wallet-api/* to the wallet-api backend while serving frontend from web-wallet
+
+{
+	# Disable automatic HTTPS for local development
+	auto_https off
+	# Disable admin endpoint
+	admin off
+}
+
+# Demo Wallet - serves web wallet frontend with API proxying
+:7101 {
+	# Route all /wallet-api/* requests to the wallet-api backend
+	handle /wallet-api/* {
+		reverse_proxy waltid-wallet-api:7001
+	}
+
+	# All other requests go to the Nuxt frontend
+	handle {
+		reverse_proxy waltid-web-wallet-internal:7101
+	}
+}
