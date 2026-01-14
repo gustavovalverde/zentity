@@ -67,7 +67,8 @@ The stack already includes:
 - **Authorization Server (AS)**: issues access tokens and handles consent.
   - Backed by Better Auth OAuth Provider plugin.
 - **Credential Issuer**: exposes issuer metadata + credential endpoint.
-  - Implemented as new Next.js API routes.
+  - Implemented via Better Auth plugins under `/api/auth/oidc4vci/*` with public
+    `.well-known` routing.
 - **Wallet**: holds VC and proves possession (internal web wallet or external).
 - **Verifier/RP**: requests a presentation (OIDC4VP).
 
@@ -90,18 +91,20 @@ the plugin is marked as deprecating in favor of OAuth.
 **Scopes**
 
 - `openid` (OIDC identity baseline)
-- `verification` (existing scope used to expose verification status)
-- `vc:age`, `vc:nationality`, `vc:liveness`, `vc:document` (VC-specific)
+- `profile`, `email`, `offline_access` (standard scopes)
+- `vc:identity` (credential issuance scope)
 
 ### 2) OIDC4VCI Issuer API (new routes)
 
 Add a credential issuer surface:
 
 - `/.well-known/openid-credential-issuer`
-- `/api/oidc/credential` (credential endpoint)
-- `/api/oidc/nonce` (optional; proof nonce)
-- `/api/oidc/credential-offer` (optional; pre-authorized issuance)
-- `/api/oidc/deferred` (optional; async issuance)
+- `/api/auth/oidc4vci/credential` (credential endpoint)
+- `/api/auth/oidc4vci/nonce` (proof nonce)
+- `/api/auth/oidc4vci/credential-offer` (pre-authorized issuance)
+- `/api/auth/oidc4vci/credential/deferred` (async issuance)
+- `/api/auth/oidc4vci/status-list` (credential status list)
+- `/api/auth/oidc4vci/credential/status` (revocation / status updates)
 
 Issuer metadata includes:
 
@@ -114,9 +117,8 @@ Issuer metadata includes:
 
 Add a verifier surface for RPs:
 
-- `/.well-known/openid-configuration` (verifier metadata)
-- `/api/oidc/presentation/request`
-- `/api/oidc/presentation/response`
+- `/api/auth/oidc4vp/verify`
+- `/api/auth/oidc4vp/response`
 
 Support:
 
@@ -128,11 +130,11 @@ Support:
 
 Credentials only include **derived** or **non‑PII** claims:
 
-- `is_adult` / `age_over_18` / `age_over_21`
-- `nationality_code` (ISO) derived from verified doc
-- `verification_level` (e.g., `basic`, `enhanced`)
-- `liveness_verified`, `face_match_verified`
-- `proof_hash`, `policy_hash`, `issuer_id`, `verification_timestamp`
+- `verification_level` (`none` | `basic` | `full`)
+- `verified`
+- `document_verified`, `liveness_verified`, `face_match_verified`
+- `age_proof_verified`, `doc_validity_proof_verified`, `nationality_proof_verified`
+- `policy_version`, `issuer_id`, `verification_time`, `attestation_expires_at`
 
 No raw PII such as:
 

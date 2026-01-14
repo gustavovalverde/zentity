@@ -1,5 +1,6 @@
 "use client";
 
+import type { BetterFetchOption } from "better-auth/react";
 import type { ReactNode } from "react";
 
 import { AuthUIProvider } from "@daveyplate/better-auth-ui";
@@ -9,6 +10,10 @@ import { useMemo } from "react";
 
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
+
+type AuthClientBase = ReturnType<
+  typeof import("better-auth/react").createAuthClient
+>;
 
 interface BetterAuthUIProviderProps {
   children: ReactNode;
@@ -27,6 +32,10 @@ export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
     const signIn = authClient.signIn as typeof authClient.signIn & {
       __zentityWrapped?: boolean;
     };
+    const client = authClient as typeof authClient &
+      Pick<AuthClientBase, "requestPasswordReset" | "resetPassword"> & {
+        __zentityPasswordWrapped?: boolean;
+      };
 
     if (!signIn.__zentityWrapped) {
       const email = signIn.email;
@@ -56,7 +65,130 @@ export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
       signIn.__zentityWrapped = true;
     }
 
-    return authClient;
+    if (!client.__zentityPasswordWrapped) {
+      type RequestPasswordResetArgs = Parameters<
+        AuthClientBase["requestPasswordReset"]
+      >;
+      type ResetPasswordArgs = Parameters<AuthClientBase["resetPassword"]>;
+      type RequestPasswordResetReturn = Awaited<
+        ReturnType<AuthClientBase["requestPasswordReset"]>
+      >;
+      type ResetPasswordReturn = Awaited<
+        ReturnType<AuthClientBase["resetPassword"]>
+      >;
+
+      client.requestPasswordReset = (async (
+        ...args: RequestPasswordResetArgs
+      ) => {
+        const [payload, fetchOptionsOverride] = args;
+        const fetchOptions =
+          (fetchOptionsOverride as BetterFetchOption | undefined) ??
+          payload?.fetchOptions;
+        const email = payload?.email;
+        const redirectTo = payload?.redirectTo;
+
+        if (!email) {
+          const error = {
+            data: null,
+            error: {
+              message: "Email is required",
+              status: 400,
+              statusText: "Bad Request",
+            },
+          } as RequestPasswordResetReturn;
+          if (fetchOptions?.throw) {
+            throw new Error("Email is required");
+          }
+          return error;
+        }
+
+        const result = await authClient.opaque.requestPasswordReset({
+          identifier: email,
+          redirectTo,
+        });
+
+        if (result.error) {
+          if (fetchOptions?.throw) {
+            throw new Error(result.error.message);
+          }
+          return {
+            data: null,
+            error: {
+              message: result.error.message,
+              code: result.error.code,
+              status: 400,
+              statusText: "Bad Request",
+            },
+          } as RequestPasswordResetReturn;
+        }
+
+        const success = {
+          status: result.data.status,
+          message: result.data.message,
+        };
+        return fetchOptions?.throw
+          ? (success as RequestPasswordResetReturn)
+          : ({
+              data: success,
+              error: null,
+            } as RequestPasswordResetReturn);
+      }) as AuthClientBase["requestPasswordReset"];
+
+      client.resetPassword = (async (...args: ResetPasswordArgs) => {
+        const [payload, fetchOptionsOverride] = args;
+        const fetchOptions =
+          (fetchOptionsOverride as BetterFetchOption | undefined) ??
+          payload?.fetchOptions;
+        const token = payload?.token;
+
+        if (!token) {
+          const error = {
+            data: null,
+            error: {
+              message: "Reset token is required",
+              status: 400,
+              statusText: "Bad Request",
+            },
+          } as ResetPasswordReturn;
+          if (fetchOptions?.throw) {
+            throw new Error("Reset token is required");
+          }
+          return error;
+        }
+
+        const result = await authClient.opaque.resetPassword({
+          token,
+          newPassword: payload.newPassword,
+        });
+
+        if (result.error) {
+          if (fetchOptions?.throw) {
+            throw new Error(result.error.message);
+          }
+          return {
+            data: null,
+            error: {
+              message: result.error.message,
+              code: result.error.code,
+              status: 400,
+              statusText: "Bad Request",
+            },
+          } as ResetPasswordReturn;
+        }
+
+        const success = { status: true };
+        return fetchOptions?.throw
+          ? (success as ResetPasswordReturn)
+          : ({
+              data: success,
+              error: null,
+            } as ResetPasswordReturn);
+      }) as AuthClientBase["resetPassword"];
+
+      client.__zentityPasswordWrapped = true;
+    }
+
+    return client;
   }, []);
 
   const baseURL =
@@ -84,7 +216,7 @@ export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
       social={{
         providers: ["google", "github"],
       }}
-      twoFactor={{ methods: ["totp"], allowPasswordless: true }}
+      twoFactor={["totp"]}
       viewPaths={{
         SIGN_IN: "sign-in",
         SIGN_UP: "sign-up",

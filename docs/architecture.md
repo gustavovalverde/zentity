@@ -27,6 +27,7 @@ Non-goals:
 | FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
 | Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE | Passkey-based authentication and OPAQUE password auth; both derive client-held keys for sealing secrets. |
+| Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT | Portable credential issuance and presentation with selective disclosure. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
@@ -229,6 +230,23 @@ For detailed liveness policy and integrity guarantees, see [Tamper Model](tamper
 Zentity can **attest verified identity on-chain** using fhEVM while keeping attributes encrypted. The server (registrar) encrypts identity attributes and submits attestation; users authorize access with explicit grants.
 
 See [Web3 Architecture](web3-architecture.md).
+
+---
+
+## Verifiable Credentials (SSI)
+
+Zentity issues portable verifiable credentials following OpenID standards:
+
+- **OIDC4VCI**: Credential issuance with pre-authorized code flow
+- **OIDC4VP**: Presentation requests from verifiers
+- **SD-JWT VC**: Selective disclosure format (derived claims only)
+- **Holder binding**: EdDSA proof JWT ties credentials to holder keys
+
+External wallets can receive and hold credentials; third-party verifiers can request presentations without Zentity involvement.
+
+Credentials contain **derived claims only**—no raw PII. Claims like `verified`, `age_proof_verified`, and `verification_level` indicate verification status without exposing underlying data.
+
+See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Identity model.
 
 ---
 

@@ -26,6 +26,12 @@ import {
   identityVerificationDrafts,
   identityVerificationJobs,
 } from "@/lib/db/schema/identity";
+import { jwks } from "@/lib/db/schema/jwks";
+import { oidc4idaVerifiedClaims } from "@/lib/db/schema/oidc4ida";
+import {
+  oidc4vciIssuedCredentials,
+  oidc4vciOffers,
+} from "@/lib/db/schema/oidc4vci";
 import { onboardingSessions } from "@/lib/db/schema/onboarding";
 
 export interface CreateUserInput {
@@ -50,6 +56,10 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(identityVerificationDrafts).run();
     await tx.delete(identityDocuments).run();
     await tx.delete(identityBundles).run();
+    await tx.delete(jwks).run();
+    await tx.delete(oidc4vciIssuedCredentials).run();
+    await tx.delete(oidc4vciOffers).run();
+    await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
     await tx.delete(accounts).run();
     await tx.delete(sessions).run();

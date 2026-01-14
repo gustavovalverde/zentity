@@ -42,7 +42,6 @@ export function SecurityCards() {
           TWO_FACTOR_DISABLE_INSTRUCTIONS:
             "Confirm to disable two-factor authentication.",
         }}
-        requirePassword={false}
       />
     </>
   );

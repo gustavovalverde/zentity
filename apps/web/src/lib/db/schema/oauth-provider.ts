@@ -8,11 +8,13 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 import { users } from "./auth";
+import { defaultId } from "./utils";
 
 export const oauthClients = sqliteTable(
   "oauth_client",
   {
-    clientId: text("client_id").primaryKey(),
+    id: text("id").primaryKey().default(defaultId),
+    clientId: text("client_id").notNull(),
     clientSecret: text("client_secret"),
     disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
     skipConsent: integer("skip_consent", { mode: "boolean" }),
@@ -21,8 +23,10 @@ export const oauthClients = sqliteTable(
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    createdAt: text("created_at").default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" }),
     name: text("name"),
     uri: text("uri"),
     icon: text("icon"),
@@ -43,6 +47,9 @@ export const oauthClients = sqliteTable(
     metadata: text("metadata", { mode: "json" }),
   },
   (table) => ({
+    clientIdUnique: uniqueIndex("oauth_client_client_id_unique").on(
+      table.clientId
+    ),
     userIdIdx: index("oauth_client_user_id_idx").on(table.userId),
   })
 );
@@ -50,7 +57,7 @@ export const oauthClients = sqliteTable(
 export const oauthRefreshTokens = sqliteTable(
   "oauth_refresh_token",
   {
-    id: text("id").primaryKey().default(sql`(lower(hex(randomblob(16))))`),
+    id: text("id").primaryKey().default(defaultId),
     token: text("token").notNull(),
     clientId: text("client_id")
       .notNull()
@@ -75,7 +82,7 @@ export const oauthRefreshTokens = sqliteTable(
 export const oauthAccessTokens = sqliteTable(
   "oauth_access_token",
   {
-    id: text("id").primaryKey().default(sql`(lower(hex(randomblob(16))))`),
+    id: text("id").primaryKey().default(defaultId),
     token: text("token").notNull(),
     clientId: text("client_id")
       .notNull()
@@ -102,7 +109,7 @@ export const oauthAccessTokens = sqliteTable(
 export const oauthConsents = sqliteTable(
   "oauth_consent",
   {
-    id: text("id").primaryKey().default(sql`(lower(hex(randomblob(16))))`),
+    id: text("id").primaryKey().default(defaultId),
     clientId: text("client_id")
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),

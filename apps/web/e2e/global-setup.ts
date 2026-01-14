@@ -17,6 +17,7 @@ const E2E_DB_PATH =
   process.env.E2E_DATABASE_PATH ?? join(currentDir, ".data", "e2e.db");
 const DEFAULT_APP_DB_PATH = join(currentDir, "..", ".data", "dev.db");
 const SELECT_QUERY_REGEX = /^select\s/i;
+const IS_OIDC_ONLY = process.env.E2E_OIDC_ONLY === "true";
 
 type ApiContext = Awaited<ReturnType<typeof request.newContext>>;
 
@@ -408,8 +409,6 @@ export default async function globalSetup(config: FullConfig) {
 
   mkdirSync(dirname(AUTH_STATE_PATH), { recursive: true });
 
-  const { email, password, name } = getOrCreateSeed();
-
   const api = await request.newContext({
     baseURL,
     extraHTTPHeaders: {
@@ -426,6 +425,26 @@ export default async function globalSetup(config: FullConfig) {
     ensureDatabaseInitialized(DEFAULT_APP_DB_URL);
     await resetBlockchainState(DEFAULT_APP_DB_URL);
   }
+
+  if (IS_OIDC_ONLY) {
+    const signInResponse = await postWithRetries(
+      api,
+      "/api/auth/sign-in/anonymous",
+      {}
+    );
+
+    if (!signInResponse.ok()) {
+      throw new Error(
+        `E2E global setup failed to sign in anonymously: ${await signInResponse.text()}`
+      );
+    }
+
+    await api.storageState({ path: AUTH_STATE_PATH });
+    await api.dispose();
+    return;
+  }
+
+  const { email, password, name } = getOrCreateSeed();
 
   const signUpResponse = await postWithRetries(api, "/api/auth/sign-up/email", {
     email,

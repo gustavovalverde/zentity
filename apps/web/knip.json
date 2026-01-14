@@ -31,6 +31,7 @@
     "src/app/**/layout.{ts,tsx}",
     "src/app/**/route.{ts,tsx}",
     "e2e/automation/start-web3-dev.ts",
+    "e2e/automation/start-oidc-dev.ts",
     "e2e/wallet-setup/hardhat.setup.ts"
   ],
   "ignoreExportsUsedInFile": true

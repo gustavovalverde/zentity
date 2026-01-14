@@ -92,6 +92,7 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 - **Onboarding**: Passkeys or OPAQUE passwords create the account; commitments + signed claims are stored; ZK proofs are generated client-side.
 - **Compliance checks**: FHE ciphertexts allow encrypted evaluation; ZK proofs provide eligibility guarantees.
 - **Disclosure**: Passkeys or OPAQUE-derived keys authorize decryption and re-encryption to relying parties.
+- **Credential issuance**: SD-JWT VCs package derived claims from ZK proofs and signed claims for portable presentation.
 - **Auditability**: Commitments + proof hashes form an evidence pack for compliance.
 
 ## Supporting Techniques
@@ -209,3 +210,4 @@ This combination yields privacy (no plaintext storage) and integrity (verifiable
 - [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification and storage boundaries
 - [ZK Architecture](zk-architecture.md) for proof system design
 - [Web3 Architecture](web3-architecture.md) for on-chain encrypted attestation
+- [SSI Architecture](ssi-architecture.md) for verifiable credential issuance and presentation

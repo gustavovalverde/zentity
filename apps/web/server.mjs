@@ -30,8 +30,10 @@ process.emitWarning = (warning, options) => {
   return originalEmitWarning.call(process, warning, options);
 };
 
+import { existsSync, unlinkSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 
 import next from "next";
 import { Server as SocketServer } from "socket.io";
@@ -59,6 +61,20 @@ const port = Number.parseInt(process.env.PORT || "3000", 10);
 // When using middleware, hostname and port must be provided
 const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
+
+// Clean up stale lock file from previous dev server sessions
+// This prevents "port already in use" style issues when the server was killed abruptly
+if (dev) {
+  const lockFile = join(process.cwd(), ".next", "dev", "lock");
+  if (existsSync(lockFile)) {
+    try {
+      unlinkSync(lockFile);
+      console.log("> Removed stale .next/dev/lock");
+    } catch {
+      // Ignore if removal fails (e.g., permissions, file already deleted)
+    }
+  }
+}
 
 app.prepare().then(() => {
   // Pass handler directly to createServer (official pattern)

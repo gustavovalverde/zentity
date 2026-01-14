@@ -14,7 +14,13 @@ import * as cryptoSchema from "./schema/crypto";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as identitySchema from "./schema/identity";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as jwksSchema from "./schema/jwks";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as oauthProviderSchema from "./schema/oauth-provider";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as oidc4idaSchema from "./schema/oidc4ida";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as oidc4vciSchema from "./schema/oidc4vci";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as onboardingSchema from "./schema/onboarding";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
@@ -25,6 +31,9 @@ const schema = {
   ...authSchema,
   ...cryptoSchema,
   ...identitySchema,
+  ...jwksSchema,
+  ...oidc4idaSchema,
+  ...oidc4vciSchema,
   ...onboardingSchema,
   ...oauthProviderSchema,
   ...recoverySchema,

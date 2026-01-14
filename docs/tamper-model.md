@@ -31,6 +31,7 @@ This document covers integrity controls for both deployment modes:
 3. **Bind proofs to server nonces** to prevent replay attacks.
 4. **Use server-signed claims** when a trusted measurement is required (e.g., liveness score).
 5. **Persist an evidence pack** (`policy_hash` + `proof_set_hash`) for auditability.
+6. **Sign verifiable credentials** with issuer keys; validate holder binding on presentation.
 
 ## What the Browser Can Do
 

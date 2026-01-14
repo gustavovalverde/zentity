@@ -1,27 +1,32 @@
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { oidc4ida } from "@better-auth/oidc4ida";
+import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
+import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware } from "better-auth/api";
-import { setSessionCookie } from "better-auth/cookies";
 import { nextCookies } from "better-auth/next-js";
 import {
   anonymous,
   genericOAuth,
+  jwt,
   lastLoginMethod,
   magicLink,
   siwe,
   twoFactor,
 } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
 import { SiweMessage } from "siwe";
 
-import { getOnboardingContext } from "@/lib/auth/onboarding-context";
+import {
+  buildOidcVerifiedClaims,
+  buildVcClaims,
+  VC_DISCLOSURE_KEYS,
+} from "@/lib/auth/oidc/claims";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
-import { getVerificationStatus } from "@/lib/db/queries/identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -37,12 +42,18 @@ import {
   verifications,
   walletAddresses,
 } from "@/lib/db/schema/auth";
+import { jwks } from "@/lib/db/schema/jwks";
 import {
   oauthAccessTokens,
   oauthClients,
   oauthConsents,
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
+import { oidc4idaVerifiedClaims } from "@/lib/db/schema/oidc4ida";
+import {
+  oidc4vciIssuedCredentials,
+  oidc4vciOffers,
+} from "@/lib/db/schema/oidc4vci";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { getBetterAuthSecret, getOpaqueServerSetup } from "@/lib/utils/env";
 
@@ -58,17 +69,33 @@ const betterAuthSchema = {
   oauthRefreshToken: oauthRefreshTokens,
   oauthAccessToken: oauthAccessTokens,
   oauthConsent: oauthConsents,
+  jwks,
+  oidc4idaVerifiedClaim: oidc4idaVerifiedClaims,
+  oidc4vciOffer: oidc4vciOffers,
+  oidc4vciIssuedCredential: oidc4vciIssuedCredentials,
 };
 
 // Build trusted origins based on environment
 // In production: only the configured app URL + any explicit TRUSTED_ORIGINS
 // In development: also trust all localhost variants (IPv4/IPv6)
+const getAppOrigin = (): string => {
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.BETTER_AUTH_URL ||
+    "http://localhost:3000";
+  try {
+    return new URL(base).origin;
+  } catch {
+    return "http://localhost:3000";
+  }
+};
+
 const getTrustedOrigins = (): string[] => {
   const origins: string[] = [];
 
-  const appUrl = process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) {
-    origins.push(appUrl);
+  const appOrigin = getAppOrigin();
+  if (appOrigin) {
+    origins.push(appOrigin);
   }
 
   // Allow additional trusted origins via env var (comma-separated)
@@ -85,11 +112,13 @@ const getTrustedOrigins = (): string[] => {
 
   // Node.js v17+ prefers IPv6, so browsers may access via [::1] instead of localhost
   // Add all localhost variants in development to handle IPv4/IPv6 resolution differences
+  // Also add host.docker.internal for Docker container interoperability (demo stack, walt.id, etc.)
   if (process.env.NODE_ENV !== "production") {
     origins.push(
       "http://localhost:3000",
       "http://127.0.0.1:3000",
-      "http://[::1]:3000"
+      "http://[::1]:3000",
+      "http://host.docker.internal:3000"
     );
   }
 
@@ -152,17 +181,77 @@ const resolveOpaqueUserByIdentifier = async (
   return { user, accounts };
 };
 
-const getAuthDomain = (): string => {
+const getAuthDomain = (): string => new URL(getAppOrigin()).host;
+
+const TRAILING_SLASHES_REGEX = /\/+$/;
+const LEADING_SLASHES_REGEX = /^\/+/;
+
+const getAuthIssuer = (): string => {
   const base =
     process.env.BETTER_AUTH_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
     "http://localhost:3000";
   try {
-    return new URL(base).host;
+    const url = new URL(base);
+    if (!url.pathname || url.pathname === "/") {
+      url.pathname = "/api/auth";
+    }
+    url.pathname = url.pathname.replace(TRAILING_SLASHES_REGEX, "");
+    return url.toString();
   } catch {
-    return "localhost:3000";
+    return "http://localhost:3000/api/auth";
   }
 };
+
+const joinAuthIssuerPath = (issuer: string, path: string): string => {
+  const normalized = issuer.endsWith("/") ? issuer : `${issuer}/`;
+  return new URL(
+    path.replace(LEADING_SLASHES_REGEX, ""),
+    normalized
+  ).toString();
+};
+
+const authIssuer = getAuthIssuer();
+const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
+const isOidcE2e = process.env.E2E_OIDC_ONLY === "true";
+const oidc4vciCredentialConfigurations = [
+  {
+    id: "zentity_identity",
+    // Using HTTP URL format for VCT to support wallet interoperability (e.g., walt.id)
+    // Some wallets expect to resolve VCT URLs to fetch type metadata
+    vct: `${authIssuer}/vct/zentity_identity`,
+    format: "dc+sd-jwt" as const,
+    sdJwt: {
+      disclosures: [...VC_DISCLOSURE_KEYS],
+      decoyCount: 0,
+    },
+  },
+  ...(isOidcE2e
+    ? [
+        {
+          id: "zentity_identity_deferred",
+          vct: `${authIssuer}/vct/zentity_identity:deferred`,
+          format: "dc+sd-jwt" as const,
+          sdJwt: {
+            disclosures: [...VC_DISCLOSURE_KEYS],
+            decoyCount: 0,
+          },
+        },
+      ]
+    : []),
+] satisfies Oidc4vciOptions["credentialConfigurations"];
+
+const oidc4vciDeferredIssuance = isOidcE2e
+  ? {
+      shouldDefer: async ({
+        credentialConfigurationId,
+      }: {
+        credentialConfigurationId: string;
+      }) => credentialConfigurationId === "zentity_identity_deferred",
+      intervalSeconds: 5,
+      transactionExpiresInSeconds: 600,
+    }
+  : undefined;
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -170,69 +259,74 @@ export const auth = betterAuth({
     schema: betterAuthSchema,
   }),
   secret: getBetterAuthSecret(),
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  baseURL: authIssuer,
   trustedOrigins: getTrustedOrigins(),
-  rateLimit: {
-    enabled: true,
-    window: 60, // 1 minute window
-    max: 100, // 100 requests per minute globally
-    customRules: {
-      // Stricter limits for authentication endpoints
-      "/sign-in/opaque/challenge": {
-        window: 60, // 1 minute
-        max: 10, // 10 login attempts per minute
+  rateLimit: isOidcE2e
+    ? { enabled: false }
+    : {
+        enabled: true,
+        window: 60, // 1 minute window
+        max: 100, // 100 requests per minute globally
+        customRules: {
+          // Stricter limits for authentication endpoints
+          "/sign-in/opaque/challenge": {
+            window: 60, // 1 minute
+            max: 10, // 10 login attempts per minute
+          },
+          "/sign-in/opaque/complete": {
+            window: 60, // 1 minute
+            max: 10, // 10 login completions per minute
+          },
+          "/sign-up/opaque/challenge": {
+            window: 60, // 1 minute
+            max: 5, // 5 sign-up attempts per minute
+          },
+          "/sign-up/opaque/complete": {
+            window: 60, // 1 minute
+            max: 5, // 5 sign-up completions per minute
+          },
+          "/password/opaque/registration/challenge": {
+            window: 60, // 1 minute
+            max: 5, // 5 password set attempts per minute
+          },
+          "/password/opaque/registration/complete": {
+            window: 60, // 1 minute
+            max: 5, // 5 password set completions per minute
+          },
+          "/password/opaque/verify/challenge": {
+            window: 60, // 1 minute
+            max: 5, // 5 password verify attempts per minute
+          },
+          "/password/opaque/verify/complete": {
+            window: 60, // 1 minute
+            max: 5, // 5 password verify completions per minute
+          },
+          "/password-reset/opaque/request": {
+            window: 300, // 5 minutes
+            max: 3, // 3 password reset requests per 5 minutes
+          },
+          "/password-reset/opaque/challenge": {
+            window: 60, // 1 minute
+            max: 5, // 5 password reset challenges per minute
+          },
+          "/password-reset/opaque/complete": {
+            window: 60, // 1 minute
+            max: 5, // 5 password reset completions per minute
+          },
+        },
       },
-      "/sign-in/opaque/complete": {
-        window: 60, // 1 minute
-        max: 10, // 10 login completions per minute
-      },
-      "/sign-up/opaque/challenge": {
-        window: 60, // 1 minute
-        max: 5, // 5 sign-up attempts per minute
-      },
-      "/sign-up/opaque/complete": {
-        window: 60, // 1 minute
-        max: 5, // 5 sign-up completions per minute
-      },
-      "/password/opaque/registration/challenge": {
-        window: 60, // 1 minute
-        max: 5, // 5 password set attempts per minute
-      },
-      "/password/opaque/registration/complete": {
-        window: 60, // 1 minute
-        max: 5, // 5 password set completions per minute
-      },
-      "/password/opaque/verify/challenge": {
-        window: 60, // 1 minute
-        max: 5, // 5 password verify attempts per minute
-      },
-      "/password/opaque/verify/complete": {
-        window: 60, // 1 minute
-        max: 5, // 5 password verify completions per minute
-      },
-      "/password-reset/opaque/request": {
-        window: 300, // 5 minutes
-        max: 3, // 3 password reset requests per 5 minutes
-      },
-      "/password-reset/opaque/challenge": {
-        window: 60, // 1 minute
-        max: 5, // 5 password reset challenges per minute
-      },
-      "/password-reset/opaque/complete": {
-        window: 60, // 1 minute
-        max: 5, // 5 password reset completions per minute
-      },
-    },
-  },
-  disabledPaths: [
-    "/sign-in/email",
-    "/sign-up/email",
-    "/request-password-reset",
-    "/reset-password",
-    "/change-password",
-    "/set-password",
-    "/verify-password",
-  ],
+  disabledPaths: isOidcE2e
+    ? []
+    : [
+        "/sign-in/email",
+        "/sign-up/email",
+        "/request-password-reset",
+        "/reset-password",
+        "/change-password",
+        "/set-password",
+        "/verify-password",
+      ],
+  emailAndPassword: isOidcE2e ? { enabled: true } : { enabled: false },
   user: {
     deleteUser: {
       enabled: true,
@@ -290,6 +384,7 @@ export const auth = betterAuth({
       if (guardian) {
         await deleteRecoveryGuardian(guardian.id);
       }
+      return;
     }),
   },
   plugins: [
@@ -315,64 +410,6 @@ export const auth = betterAuth({
     }),
     passkey({
       origin: getTrustedOrigins(),
-      registration: {
-        requireSession: false,
-        resolveUser: async ({ context }) => {
-          if (!context) {
-            throw new Error("Missing onboarding context token.");
-          }
-          const onboardingContext = await getOnboardingContext(context);
-          if (!onboardingContext?.userId) {
-            throw new Error("Onboarding context expired or invalid.");
-          }
-          const user = await db.query.users.findFirst({
-            where: eq(users.id, onboardingContext.userId),
-          });
-          if (!user) {
-            throw new Error("Onboarding user not found.");
-          }
-          const name = onboardingContext.email || user.email || user.id;
-          return { id: user.id, name, displayName: name };
-        },
-        afterVerification: async ({ ctx, user, context }) => {
-          if (!context) {
-            throw new Error("Missing onboarding context token.");
-          }
-          const onboardingContext = await getOnboardingContext(context);
-          if (!onboardingContext) {
-            throw new Error("Onboarding context expired or invalid.");
-          }
-          if (onboardingContext.userId !== user.id) {
-            throw new Error("Onboarding context user mismatch.");
-          }
-
-          if (onboardingContext.email) {
-            await ctx.context.internalAdapter.updateUser(user.id, {
-              email: onboardingContext.email,
-              isAnonymous: false,
-            });
-          } else {
-            await ctx.context.internalAdapter.updateUser(user.id, {
-              isAnonymous: false,
-            });
-          }
-
-          const session = await ctx.context.internalAdapter.createSession(
-            user.id
-          );
-          if (!session) {
-            throw new Error("Failed to create session.");
-          }
-          const storedUser = await ctx.context.internalAdapter.findUserById(
-            user.id
-          );
-          if (!storedUser) {
-            throw new Error("User not found.");
-          }
-          await setSessionCookie(ctx, { session, user: storedUser });
-          return { userId: user.id };
-        },
-      },
     }),
     siwe({
       domain: getAuthDomain(),
@@ -405,20 +442,59 @@ export const auth = betterAuth({
     lastLoginMethod({
       customResolveMethod: resolveLastLoginMethod,
     }),
+    jwt({
+      jwt: {
+        issuer: authIssuer,
+      },
+    }),
     oauthProvider({
-      scopes: ["openid", "verification"],
-      disableJwtPlugin: true,
+      scopes: ["openid", "profile", "email", "offline_access", "vc:identity"],
+      grantTypes: [
+        "authorization_code",
+        "client_credentials",
+        "refresh_token",
+        "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+      ],
+      validAudiences: [authIssuer, oidc4vciCredentialAudience],
       allowDynamicClientRegistration: false,
       allowUnauthenticatedClientRegistration: false,
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
-      customUserInfoClaims: async ({ user, scopes }) => {
-        if (!scopes.includes("verification")) {
-          return {};
+    }),
+    oidc4ida({
+      getVerifiedClaims: async ({ user }: { user: { id: string } }) =>
+        buildOidcVerifiedClaims(user.id),
+    }),
+    oidc4vci({
+      defaultWalletClientId:
+        process.env.OIDC4VCI_WALLET_CLIENT_ID || "zentity-wallet",
+      credentialIssuer: authIssuer,
+      issuerBaseURL: authIssuer,
+      credentialAudience: oidc4vciCredentialAudience,
+      authorizationServer: authIssuer,
+      credentialConfigurations: oidc4vciCredentialConfigurations,
+      resolveClaims: async ({ user }: { user: { id: string } }) =>
+        buildVcClaims(user.id),
+      ...(oidc4vciDeferredIssuance
+        ? { deferredIssuance: oidc4vciDeferredIssuance }
+        : {}),
+    }),
+    oidc4vp({
+      allowedIssuers: [authIssuer],
+      resolveIssuerJwks: async (issuer: string) => {
+        const jwksUrl =
+          process.env.OIDC4VP_JWKS_URL || joinAuthIssuerPath(issuer, "jwks");
+        const response = await fetch(jwksUrl);
+        if (!response.ok) {
+          throw new Error("Unable to resolve issuer JWKS");
         }
-        const verification = await getVerificationStatus(user.id);
-        return { verification };
+        const body = (await response.json()) as { keys?: unknown };
+        return Array.isArray(body.keys)
+          ? (body.keys as Record<string, unknown>[])
+          : [];
       },
+      verifyStatusList: true,
+      requiredClaimKeys: ["verification_level", "verified"],
     }),
     // Two-factor authentication (TOTP) as optional backup for password users
     // Note: TOTP cannot replace passkey for FHE key access

@@ -82,10 +82,10 @@ export function OAuthConsentClient({
     <div className="mx-auto flex w-full max-w-md flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Approve verification request</CardTitle>
+          <CardTitle>Approve access request</CardTitle>
           <CardDescription>
-            {formatClientId(clientId)} is requesting access to verification
-            status.
+            {formatClientId(clientId)} is requesting access to your identity
+            data.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

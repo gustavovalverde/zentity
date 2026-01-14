@@ -135,6 +135,8 @@ erDiagram
   USERS ||--o{ OAUTH_REFRESH_TOKEN : authorizes
   USERS ||--o{ OAUTH_CONSENT : grants
   USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : submits
+  USERS ||--o{ OIDC4VCI_OFFERS : receives
+  USERS ||--o{ OIDC4VCI_ISSUED_CREDENTIALS : holds
 
   OAUTH_CLIENT ||--o{ OAUTH_ACCESS_TOKEN : issues
   OAUTH_CLIENT ||--o{ OAUTH_REFRESH_TOKEN : issues
@@ -233,6 +235,23 @@ erDiagram
     text client_id FK
     text user_id FK
   }
+  OIDC4VCI_OFFERS {
+    text id PK
+    text user_id FK
+    text credentials_to_issue
+    text expires_at
+  }
+  OIDC4VCI_ISSUED_CREDENTIALS {
+    text id PK
+    text user_id FK
+    text credential_type
+    text status
+  }
+  JWKS {
+    text id PK
+    text public_key
+    text private_key
+  }
 ```
 
 ### Core tables
@@ -300,6 +319,31 @@ This enables a bank or exchange to:
 - Verify all ZK proofs independently
 - Store an immutable audit trail
 - Enforce compliance without handling raw PII
+
+---
+
+## Verifiable Credential Issuance
+
+Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
+
+- `verification_level` (`none` | `basic` | `full`)
+- `verified`, `document_verified`, `liveness_verified`, `face_match_verified`
+- `age_proof_verified`, `doc_validity_proof_verified`, `nationality_proof_verified`
+- `policy_version`, `issuer_id`, `verification_time`
+
+**No raw PII** is included in credentials. Claims derive from existing verification artifacts (ZK proofs, signed claims, FHE).
+
+### Credential tables
+
+- `oidc4vci_offers`: Pre-authorized credential offers (short-lived)
+- `oidc4vci_issued_credentials`: Issued credential metadata + status
+- `jwks`: Signing key material for credential signatures
+
+### Selective disclosure
+
+SD-JWT format allows users to reveal only specific claims during presentation. The holder controls which disclosure keys are included.
+
+See [SSI Architecture](ssi-architecture.md) for the full credential model.
 
 ---
 

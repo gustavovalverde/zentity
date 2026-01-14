@@ -11,6 +11,7 @@
     "preinstall": "mkdir -p dist/plugins/two-factor && chmod -R 755 dist 2>/dev/null || true",
     "setup:coep-assets": "pnpm exec tsx scripts/setup-coep-assets.ts",
     "dev": "pnpm run setup:coep-assets && node --import tsx server.mjs",
+    "dev:demo": "BETTER_AUTH_URL=http://host.docker.internal:3000 pnpm run dev",
     "build": "pnpm run setup:coep-assets && next build",
     "start": "node --import tsx server.mjs",
     "clean": "rm -rf .next test-results playwright-report coverage",
@@ -34,6 +35,9 @@
     "test:e2e:setup": "pnpm exec tsx e2e/automation/build-synpress-cache.ts",
     "test:e2e": "pnpm run test:e2e:setup && pnpm exec playwright test",
     "test:e2e:ui": "pnpm run test:e2e:setup && pnpm exec playwright test --ui",
+    "test:e2e:oidc": "E2E_OIDC_ONLY=true pnpm exec playwright test e2e/oidc",
+    "test:e2e:oidc:ui": "E2E_OIDC_ONLY=true pnpm exec playwright test e2e/oidc --ui",
+    "test:e2e:oidc:external": "E2E_OIDC_ONLY=true E2E_EXTERNAL_WEB_SERVER=true pnpm exec playwright test e2e/oidc",
     "db:push": "drizzle-kit push",
     "db:push:dev": "TURSO_DATABASE_URL=file:./.data/dev.db drizzle-kit push",
     "circuits:compile": "cd noir-circuits && for d in */; do (cd \"$d\" && nargo compile && mkdir -p artifacts && cp -f target/*.json artifacts/); done",
@@ -47,8 +51,12 @@
   },
   "dependencies": {
     "@aztec/bb.js": "2.1.9",
-    "@better-auth/oauth-provider": "1.5.0-beta.3",
-    "@better-auth/passkey": "1.5.0-beta.3",
+    "@better-auth/core": "file:./local-packages/better-auth-core-1.5.0-beta.6.tgz",
+    "@better-auth/oauth-provider": "file:./local-packages/better-auth-oauth-provider-1.5.0-beta.6.tgz",
+    "@better-auth/oidc4ida": "file:./local-packages/better-auth-oidc4ida-0.0.0.tgz",
+    "@better-auth/oidc4vci": "file:./local-packages/better-auth-oidc4vci-0.0.0.tgz",
+    "@better-auth/oidc4vp": "file:./local-packages/better-auth-oidc4vp-0.0.0.tgz",
+    "@better-auth/passkey": "file:./local-packages/better-auth-passkey-1.5.0-beta.6.tgz",
     "@better-auth/utils": "^0.3.0",
     "@daveyplate/better-auth-ui": "3.3.12",
     "@fhevm/mock-utils": "0.3.0-4",
@@ -97,7 +105,7 @@
     "@zama-fhe/relayer-sdk": "0.3.0-8",
     "@zentity/fhevm-contracts": "0.2.1",
     "@zkpassport/poseidon2": "0.6.2",
-    "better-auth": "1.5.0-beta.3",
+    "better-auth": "file:./local-packages/better-auth-1.5.0-beta.6.tgz",
     "buffer": "6.0.3",
     "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",
@@ -169,16 +177,30 @@
     ]
   },
   "pnpm": {
-    "patchedDependencies": {
-      "@daveyplate/better-auth-ui@3.3.12": "patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch",
-      "@better-auth/passkey@1.5.0-beta.3": "patches/@better-auth__passkey@1.5.0-beta.3.patch",
-      "better-auth@1.5.0-beta.3": "patches/better-auth@1.5.0-beta.3.patch"
-    },
     "overrides": {
       "ws": ">=8.17.1",
       "esbuild": ">=0.25.0",
       "axios": ">=1.12.0",
-      "glob": ">=10.5.0"
+      "glob": ">=10.5.0",
+      "@better-auth/core": "file:./local-packages/better-auth-core-1.5.0-beta.6.tgz",
+      "@better-auth/telemetry": "file:./local-packages/better-auth-telemetry-1.5.0-beta.6.tgz"
+    },
+    "packageExtensions": {
+      "@better-auth/oidc4ida": {
+        "dependencies": {
+          "@better-auth/core": "file:./local-packages/better-auth-core-1.5.0-beta.6.tgz"
+        }
+      },
+      "@better-auth/oidc4vci": {
+        "dependencies": {
+          "@better-auth/core": "file:./local-packages/better-auth-core-1.5.0-beta.6.tgz"
+        }
+      },
+      "@better-auth/oidc4vp": {
+        "dependencies": {
+          "@better-auth/core": "file:./local-packages/better-auth-core-1.5.0-beta.6.tgz"
+        }
+      }
     },
     "onlyBuiltDependencies": [
       "@tensorflow/tfjs-node",

@@ -4,6 +4,7 @@ import "client-only";
 
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { passkeyClient } from "@better-auth/passkey/client";
+import { InferAuth } from "better-auth/client";
 import {
   anonymousClient,
   genericOAuthClient,
@@ -27,8 +28,11 @@ const getAuthBaseURL = () => {
   return new URL("/api/auth", base).toString();
 };
 
+type ServerAuth = typeof import("./auth").auth;
+
 export const authClient = createAuthClient({
   baseURL: getAuthBaseURL(),
+  $InferAuth: InferAuth<ServerAuth>(),
   plugins: [
     magicLinkClient(),
     passkeyClient(),

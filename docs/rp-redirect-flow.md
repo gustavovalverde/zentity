@@ -1,6 +1,6 @@
 # OAuth Provider Flow (Better Auth)
 
-This document describes **Better Auth’s OAuth 2.1 Provider**. Zentity acts as a standards‑based authorization server for partners who need **verification flags** (not raw PII).
+This document describes **Better Auth’s OAuth 2.1 Provider**. Zentity acts as a standards‑based authorization server for partners who need **verified claims** (not raw PII).
 
 Implementation note: OAuth provider endpoints are implemented by the Better Auth plugin (`@better-auth/oauth-provider`) and exposed under `/api/auth/oauth2/*` plus `/api/auth/.well-known/*` metadata.
 
@@ -14,7 +14,7 @@ Implementation note: OAuth provider endpoints are implemented by the Better Auth
 ## High‑level sequence
 
 1. **Partner redirects the user to Zentity**
-   - `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20verification&state=...`
+   - `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20profile%20email&state=...`
 2. **User authenticates** (if not already signed in)
    - Redirects to `/sign-in` (Better Auth login page)
 3. **User consents**
@@ -24,7 +24,7 @@ Implementation note: OAuth provider endpoints are implemented by the Better Auth
    - Redirects back to partner with `code` + `state`
 5. **Partner exchanges code for tokens**
    - `POST /api/auth/oauth2/token`
-6. **Partner retrieves verification flags**
+6. **Partner retrieves verified claims**
    - `GET /api/auth/oauth2/userinfo` (requires `openid`)
 
 ## Key endpoints
@@ -46,15 +46,15 @@ Implementation note: OAuth provider endpoints are implemented by the Better Auth
 - Redirect URIs are **defined per client**, not via env allowlists.
 - Login page: `/sign-in`
 - Consent page: `/oauth/consent`
-- Scopes are limited to the verification domain (e.g. `verification`).
+- Scopes are limited to identity/VC needs (e.g. `openid`, `profile`, `email`, `vc:identity`).
 
 ## Privacy boundaries
 
-- The OAuth provider returns **verification flags only** (e.g., verified, level, checks).
+- The OAuth provider returns **verified claims only** via OIDC4IDA `verified_claims`.
 - **PII disclosure remains a separate, passkey‑consented flow.**
 - Encrypted data is never returned without PRF‑based unlock on the client.
 
-**Userinfo claims**: when the access token includes the `verification` scope, `/oauth2/userinfo` includes a `verification` object with `verified`, `level`, and `checks`.
+**Userinfo claims**: when identity assurance data is available, `/oauth2/userinfo` includes a `verified_claims` object with the verification context and claim flags.
 
 ## Related
 

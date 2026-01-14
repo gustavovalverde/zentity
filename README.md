@@ -118,6 +118,7 @@ PII**.
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
 | Auth + key custody (passkeys + OPAQUE) | Passkey vaults + PRF-derived keys + OPAQUE export keys | Passwordless or password-based auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
+| Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT | Standards-based interoperability with external wallets; selective disclosure preserves privacy | [SSI Architecture](docs/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
 | Data integrity and dedup | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
 | KYC extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
 
@@ -128,7 +129,8 @@ PII**.
 1. [docs/architecture.md](docs/architecture.md) - system map and data flow
 2. [docs/cryptographic-pillars.md](docs/cryptographic-pillars.md) - what we use and why
 3. [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md) - data classification and privacy boundaries
-4. [docs/tamper-model.md](docs/tamper-model.md) - integrity controls and threat model
+4. [docs/ssi-architecture.md](docs/ssi-architecture.md) - Self-Sovereign Identity and verifiable credentials
+5. [docs/tamper-model.md](docs/tamper-model.md) - integrity controls and threat model
 
 **Deep dives (pick what you need)**:
 
@@ -254,6 +256,8 @@ This is a proof of concept and will change quickly.
   ID initiation, backed by FROST signer services
 - Disclosure demo flow (client decrypt → re-encrypt to RP + consent receipt)
 - OAuth 2.1 provider flow (authorize → consent → token exchange)
+- OIDC4VCI credential issuance (SD-JWT VC format with selective disclosure)
+- OIDC4VP credential presentation (verifier flow with holder binding)
 
 ## Use cases
 

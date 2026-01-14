@@ -23,7 +23,7 @@ INSERT INTO oauth_client (client_id, redirect_uris, scopes, created_at)
 VALUES (
   'partner-client-id',
   '["https://partner.example.com/callback"]',
-  '["verification"]',
+  '["openid","profile","email","vc:identity"]',
   datetime('now')
 );
 ```
@@ -31,29 +31,28 @@ VALUES (
 ### Minimal authorization flow
 
 1) Redirect user to authorize:
-   - `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20verification&state=...`
+   - `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20profile%20email&state=...`
 2) Exchange code for tokens:
    - `POST /api/auth/oauth2/token`
-3) Fetch verification flags:
+3) Fetch verified claims (OIDC4IDA):
    - `GET /api/auth/oauth2/userinfo` (requires `openid`)
 
-### Userinfo response (verification claims)
+### Userinfo response (verified claims)
 
-When the access token includes the `verification` scope, `/oauth2/userinfo` returns a `verification` object:
+When identity assurance data is available, `/oauth2/userinfo` includes a `verified_claims` object (OIDC4IDA):
 
 ```json
 {
   "sub": "user-id",
-  "verification": {
-    "verified": true,
-    "level": "full",
-    "checks": {
-      "document": true,
-      "liveness": true,
-      "ageProof": true,
-      "docValidityProof": true,
-      "nationalityProof": true,
-      "faceMatchProof": true
+  "verified_claims": {
+    "verification": {
+      "trust_framework": "zentity",
+      "assurance_level": "full",
+      "time": "2026-01-02T00:00:00.000Z"
+    },
+    "claims": {
+      "verification_level": "full",
+      "verified": true
     }
   }
 }
@@ -95,6 +94,64 @@ GENERIC_OAUTH_PROVIDERS='[{"providerId":"partner-oidc","discoveryUrl":"https://p
   - `GET /api/auth/oauth2/callback/partner-oidc`
 
 If the user is already signed in, Better Auth can link the provider account via `authClient.oauth2.link` (optional).
+
+## OIDC4VCI (Credential Issuance)
+
+Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specification.
+
+### Issuer metadata
+
+- `GET /.well-known/openid-credential-issuer`
+- `GET /.well-known/oauth-authorization-server`
+
+### Credential endpoint
+
+- `POST /api/auth/oidc4vci/credential`
+
+### Pre-authorized code flow
+
+1. User completes verification
+2. Server creates credential offer with pre-authorized code
+3. Wallet scans QR or follows deep link
+4. Wallet exchanges code for access token
+5. Wallet requests credential with holder binding proof
+
+### Supported credential types
+
+- `zentity_identity` (vct: `urn:zentity:credential:identity`)
+- Format: `dc+sd-jwt` (SD-JWT VC)
+
+### Derived claims
+
+Credentials contain only derived claims (no raw PII):
+
+- `verification_level` (`none` | `basic` | `full`)
+- `verified`, `document_verified`, `liveness_verified`, `face_match_verified`
+- `age_proof_verified`, `doc_validity_proof_verified`, `nationality_proof_verified`
+- `policy_version`, `issuer_id`, `verification_time`
+
+## OIDC4VP (Credential Presentation)
+
+Zentity can act as a verifier requesting presentations from wallets.
+
+### Verifier endpoints
+
+- `POST /api/auth/oidc4vp/verify` — Create presentation request
+- `POST /api/auth/oidc4vp/response` — Submit presentation
+
+### Presentation definition
+
+Verifiers specify required claims via Presentation Exchange (PEX) format.
+
+### Holder binding
+
+Presentations include a proof JWT demonstrating possession of the holder's private key. The verifier validates:
+
+- Issuer signature on the credential
+- Holder binding (`cnf.jkt` thumbprint)
+- Required claims are present
+
+See [SSI Architecture](ssi-architecture.md) for the complete model.
 
 ## Notes
 
