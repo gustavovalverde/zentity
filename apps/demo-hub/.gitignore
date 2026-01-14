@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# runtime data (ephemeral offers/requests with TTL)
+.demo-store.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
