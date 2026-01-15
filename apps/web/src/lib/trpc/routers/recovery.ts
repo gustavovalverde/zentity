@@ -191,7 +191,9 @@ async function verifyTwoFactorGuardianCode(params: {
 }
 
 export const recoveryRouter = router({
-  publicKey: publicProcedure.query(() => getRecoveryPublicKey()),
+  publicKey: publicProcedure.query(() => {
+    return getRecoveryPublicKey();
+  }),
 
   config: protectedProcedure.query(async ({ ctx }) => {
     const config = await getRecoveryConfigByUserId(ctx.userId);

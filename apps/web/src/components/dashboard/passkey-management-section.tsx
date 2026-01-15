@@ -57,6 +57,7 @@ import {
   listUserPasskeys,
   registerPasskeyWithPrf,
   renamePasskey,
+  signInWithPasskey,
 } from "@/lib/auth/passkey";
 import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/crypto/key-derivation";
@@ -161,6 +162,16 @@ export function PasskeyManagementSection() {
     setError(null);
 
     try {
+      // Step-up authentication: verify user identity with existing passkey
+      // before allowing new passkey registration. This prevents session hijacking
+      // attacks where an attacker with a stale session could add their own passkey.
+      const stepUp = await signInWithPasskey();
+      if (!stepUp.ok) {
+        throw new Error(
+          stepUp.message || "Please verify your identity to add a new passkey."
+        );
+      }
+
       const prfSalt = generatePrfSalt();
       const registration = await registerPasskeyWithPrf({
         name: `Passkey ${optimisticPasskeys.length + 1}`,
