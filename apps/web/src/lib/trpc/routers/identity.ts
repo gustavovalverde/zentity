@@ -14,8 +14,6 @@
  */
 import "server-only";
 
-import type { OcrProcessResult } from "@/lib/document/ocr-client";
-
 import crypto from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
@@ -776,30 +774,35 @@ export const identityRouter = router({
         Buffer.byteLength(input.image)
       );
 
-      let documentResult: OcrProcessResult | null = null;
       const issues: string[] = [];
+      const sessionId = validation.session.id;
 
-      try {
-        documentResult = await processDocumentOcr({
+      // Parallelize OCR and draft lookup - they are independent operations
+      const [ocrResult, existingDraft] = await Promise.all([
+        processDocumentOcr({
           image: input.image,
           requestId: ctx.requestId,
           flowId: ctx.flowId ?? undefined,
-        });
-        issues.push(...(documentResult?.validationIssues || []));
-      } catch (error) {
-        logger.error(
-          { error: String(error), requestId: ctx.requestId },
-          "Document OCR processing failed in prepareDocument"
-        );
-        issues.push("document_processing_failed");
-      }
-
-      const sessionId = validation.session.id;
-      const existingDraft =
+        }).catch((error) => {
+          logger.error(
+            { error: String(error), requestId: ctx.requestId },
+            "Document OCR processing failed in prepareDocument"
+          );
+          return null;
+        }),
         validation.session.identityDraftId !== null &&
         validation.session.identityDraftId !== undefined
-          ? await getIdentityDraftById(validation.session.identityDraftId)
-          : await getIdentityDraftBySessionId(sessionId);
+          ? getIdentityDraftById(validation.session.identityDraftId)
+          : getIdentityDraftBySessionId(sessionId),
+      ]);
+
+      // Process OCR result
+      const documentResult = ocrResult;
+      if (documentResult) {
+        issues.push(...(documentResult.validationIssues || []));
+      } else {
+        issues.push("document_processing_failed");
+      }
 
       const draftId = existingDraft?.id ?? uuidv4();
       const documentId = existingDraft?.documentId ?? uuidv4();
@@ -1269,28 +1272,39 @@ export const identityRouter = router({
       }
 
       const userId = ctx.userId;
-      const existingDocument = await getLatestIdentityDocumentByUserId(userId);
       const userSalt = input.userSalt;
       const fheKeyId = input.fheKeyId;
       const hasFheKeyMaterial = Boolean(fheKeyId);
 
-      let documentResult: OcrProcessResult | null = null;
-      try {
-        documentResult = await processDocumentOcr({
+      // Parallelize independent operations: existing doc lookup, OCR, and face validation
+      // OCR (~2-5s) and face validation (~500-1000ms) are independent - both use raw input images
+      const [existingDocument, ocrResult, faceValidation] = await Promise.all([
+        getLatestIdentityDocumentByUserId(userId),
+        processDocumentOcr({
           image: input.documentImage,
           userSalt,
           requestId: ctx.requestId,
           flowId: ctx.flowId ?? undefined,
-        });
-        issues.push(...(documentResult?.validationIssues || []));
-      } catch (error) {
-        logger.error(
-          { error: String(error), requestId: ctx.requestId, userId },
-          "Document OCR processing failed in verify"
-        );
+        }).catch((error) => {
+          logger.error(
+            { error: String(error), requestId: ctx.requestId, userId },
+            "Document OCR processing failed in verify"
+          );
+          return null;
+        }),
+        validateFaces(input.selfieImage, input.documentImage),
+      ]);
+
+      // Process OCR result and collect issues
+      const documentResult = ocrResult;
+      if (documentResult) {
+        issues.push(...(documentResult.validationIssues || []));
+      } else {
         issues.push("document_processing_failed");
       }
+      issues.push(...faceValidation.issues);
 
+      // Check for duplicate document (depends on OCR result)
       let isDuplicateDocument = false;
       if (documentResult?.commitments?.documentHash) {
         const hashExists = await documentHashExists(
@@ -1301,13 +1315,6 @@ export const identityRouter = router({
           issues.push("duplicate_document");
         }
       }
-
-      // Validate faces using the face-validation module
-      const faceValidation = await validateFaces(
-        input.selfieImage,
-        input.documentImage
-      );
-      issues.push(...faceValidation.issues);
 
       const documentProcessed = Boolean(documentResult?.commitments);
       const identityDocumentId = documentProcessed ? uuidv4() : null;

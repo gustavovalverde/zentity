@@ -5,7 +5,10 @@ import type { QueryClient } from "@tanstack/react-query";
 import { signOut as betterAuthSignOut } from "@/lib/auth/auth-client";
 import { resetFheKeyStoreCache } from "@/lib/crypto/fhe-key-store";
 import { resetProfileSecretCache } from "@/lib/crypto/profile-secret";
-import { resetPasskeyUnlockCache } from "@/lib/crypto/secret-vault";
+import {
+  resetOpaqueExportCache,
+  resetPasskeyUnlockCache,
+} from "@/lib/crypto/secret-vault";
 import { resetOnboardingFlowId } from "@/lib/observability/flow-client";
 import { redirectTo as navigateTo } from "@/lib/utils/navigation";
 
@@ -31,6 +34,7 @@ export function clearClientCaches(): void {
   resetFheKeyStoreCache();
   resetProfileSecretCache();
   resetPasskeyUnlockCache();
+  resetOpaqueExportCache();
 
   // Clear onboarding storage (sessionStorage only)
   if (typeof window !== "undefined") {

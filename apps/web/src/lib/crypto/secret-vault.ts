@@ -38,6 +38,7 @@ export type EnrollmentCredential =
 
 export const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
 const PASSKEY_CACHE_TTL_MS = 15 * 60 * 1000;
+const OPAQUE_CACHE_TTL_MS = 15 * 60 * 1000;
 
 interface CachedPasskeyUnlock {
   credentialId: string;
@@ -45,10 +46,17 @@ interface CachedPasskeyUnlock {
   cachedAt: number;
 }
 
+interface CachedOpaqueExport {
+  userId: string;
+  exportKey: Uint8Array;
+  cachedAt: number;
+}
+
 let cachedUnlock: CachedPasskeyUnlock | null = null;
 let pendingUnlock: Promise<CachedPasskeyUnlock> | null = null;
 let pendingUnlockKey: string | null = null;
 let cachedRecoveryKey: { keyId: string; cryptoKey: CryptoKey } | null = null;
+let cachedOpaqueExport: CachedOpaqueExport | null = null;
 
 function getCachedUnlock(
   allowedCredentialIds: string[]
@@ -81,6 +89,46 @@ export function resetPasskeyUnlockCache(): void {
   cachedUnlock = null;
   pendingUnlock = null;
   pendingUnlockKey = null;
+}
+
+/**
+ * Cache the OPAQUE export key after successful sign-in.
+ * This enables secret retrieval for password-only users.
+ */
+export function cacheOpaqueExportKey(params: {
+  userId: string;
+  exportKey: Uint8Array;
+}): void {
+  cachedOpaqueExport = {
+    userId: params.userId,
+    exportKey: params.exportKey,
+    cachedAt: Date.now(),
+  };
+}
+
+/**
+ * Get cached OPAQUE export key if valid and matches userId.
+ */
+export function getCachedOpaqueExportKey(userId: string): Uint8Array | null {
+  if (!cachedOpaqueExport) {
+    return null;
+  }
+  if (Date.now() - cachedOpaqueExport.cachedAt > OPAQUE_CACHE_TTL_MS) {
+    cachedOpaqueExport = null;
+    return null;
+  }
+  if (cachedOpaqueExport.userId !== userId) {
+    return null;
+  }
+  return cachedOpaqueExport.exportKey;
+}
+
+/**
+ * Clear the OPAQUE export key cache.
+ * Call on sign-out or session change.
+ */
+export function resetOpaqueExportCache(): void {
+  cachedOpaqueExport = null;
 }
 
 export function hasCachedPasskeyUnlock(): boolean {
@@ -419,53 +467,92 @@ export async function loadSecret(params: {
     );
   }
 
-  // Only include PRF-based wrappers (those with prfSalt)
+  // Try PRF-based wrappers first (those with prfSalt)
   const prfWrappers = bundle.wrappers.filter((w) => w.prfSalt);
-  if (prfWrappers.length === 0) {
-    throw new Error(`No passkeys are registered for this ${label}.`);
-  }
 
-  const saltByCredential: Record<string, Uint8Array> = {};
-  for (const wrapper of prfWrappers) {
-    if (!wrapper.prfSalt) {
-      continue;
+  // If PRF wrappers exist, use passkey flow
+  if (prfWrappers.length > 0) {
+    const saltByCredential: Record<string, Uint8Array> = {};
+    for (const wrapper of prfWrappers) {
+      if (!wrapper.prfSalt) {
+        continue;
+      }
+      saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
     }
-    saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
-  }
 
-  const { credentialId: unlockedCredentialId, prfOutput } =
-    await resolvePasskeyUnlock({
-      credentialIdToSalt: saltByCredential,
+    const { credentialId: unlockedCredentialId, prfOutput } =
+      await resolvePasskeyUnlock({
+        credentialIdToSalt: saltByCredential,
+      });
+
+    const selectedWrapper = prfWrappers.find(
+      (wrapper) => wrapper.credentialId === unlockedCredentialId
+    );
+    if (!selectedWrapper) {
+      throw new Error("Selected passkey is not registered for this secret.");
+    }
+    if (selectedWrapper.kekVersion !== WRAP_VERSION) {
+      throw new Error(
+        "Unsupported key wrapper version. Please re-add your passkey."
+      );
+    }
+
+    const plaintext = await decryptSecretEnvelope({
+      secretId: bundle.secret.id,
+      secretType: params.secretType,
+      encryptedBlob,
+      wrappedDek: selectedWrapper.wrappedDek,
+      credentialId: selectedWrapper.credentialId,
+      prfOutput,
+      envelopeFormat,
     });
 
-  const selectedWrapper = prfWrappers.find(
-    (wrapper) => wrapper.credentialId === unlockedCredentialId
-  );
-  if (!selectedWrapper) {
-    throw new Error("Selected passkey is not registered for this secret.");
+    return {
+      secretId: bundle.secret.id,
+      plaintext,
+      metadata: bundle.secret.metadata,
+      envelopeFormat,
+    };
   }
-  if (selectedWrapper.kekVersion !== WRAP_VERSION) {
+
+  // No PRF wrappers - check for OPAQUE wrapper
+  const opaqueWrapper = bundle.wrappers.find(
+    (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
+  );
+
+  if (opaqueWrapper) {
+    // Try to get cached OPAQUE export key
+    // We need userId from context - check if we have it cached
+    if (cachedOpaqueExport) {
+      const exportKey = getCachedOpaqueExportKey(cachedOpaqueExport.userId);
+      if (exportKey) {
+        const plaintext = await decryptSecretWithOpaqueExport({
+          secretId: bundle.secret.id,
+          secretType: params.secretType,
+          userId: cachedOpaqueExport.userId,
+          encryptedBlob,
+          wrappedDek: opaqueWrapper.wrappedDek,
+          exportKey,
+          envelopeFormat,
+        });
+
+        return {
+          secretId: bundle.secret.id,
+          plaintext,
+          metadata: bundle.secret.metadata,
+          envelopeFormat,
+        };
+      }
+    }
+
+    // OPAQUE wrapper exists but no cached export key
     throw new Error(
-      "Unsupported key wrapper version. Please re-add your passkey."
+      `Please sign in again to access your ${label}. Your session key has expired.`
     );
   }
 
-  const plaintext = await decryptSecretEnvelope({
-    secretId: bundle.secret.id,
-    secretType: params.secretType,
-    encryptedBlob,
-    wrappedDek: selectedWrapper.wrappedDek,
-    credentialId: selectedWrapper.credentialId,
-    prfOutput,
-    envelopeFormat,
-  });
-
-  return {
-    secretId: bundle.secret.id,
-    plaintext,
-    metadata: bundle.secret.metadata,
-    envelopeFormat,
-  };
+  // No PRF wrappers and no OPAQUE wrappers
+  throw new Error(`No credentials are registered for this ${label}.`);
 }
 
 export async function addWrapperForSecretType(params: {

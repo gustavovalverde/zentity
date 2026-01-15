@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { cacheOpaqueExportKey } from "@/lib/crypto/secret-vault";
 import { redirectTo } from "@/lib/utils/navigation";
 
 export function OpaqueSignInForm() {
@@ -48,6 +49,15 @@ export function OpaqueSignInForm() {
           setError(message);
           toast.error("Sign in failed", { description: message });
           return;
+        }
+
+        // Cache the OPAQUE export key for secret retrieval
+        // This enables password-only users to access their encrypted secrets
+        if (result.data.exportKey && result.data.user?.id) {
+          cacheOpaqueExportKey({
+            userId: result.data.user.id,
+            exportKey: result.data.exportKey,
+          });
         }
 
         toast.success("Signed in successfully!");

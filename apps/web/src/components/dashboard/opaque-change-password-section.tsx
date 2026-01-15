@@ -31,7 +31,10 @@ import {
 } from "@/lib/auth/password-policy";
 import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
 import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
-import { updateOpaqueWrapperForSecretType } from "@/lib/crypto/secret-vault";
+import {
+  cacheOpaqueExportKey,
+  updateOpaqueWrapperForSecretType,
+} from "@/lib/crypto/secret-vault";
 
 interface OpaqueChangePasswordSectionProps {
   onPasswordChanged?: () => void;
@@ -81,9 +84,15 @@ export function OpaqueChangePasswordSection({
           return;
         }
 
-        // Re-wrap secrets with new export key
+        // Re-wrap secrets with new export key and update cache
         const userId = sessionData?.user?.id;
         if (userId && result.data.oldExportKey && result.data.exportKey) {
+          // Update the cached export key for secret retrieval
+          cacheOpaqueExportKey({
+            userId,
+            exportKey: result.data.exportKey,
+          });
+
           try {
             await Promise.all([
               updateOpaqueWrapperForSecretType({
