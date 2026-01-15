@@ -7,6 +7,7 @@
  * Routers:
  * - account: Account management and GDPR deletion
  * - attestation: On-chain identity attestation (multi-network)
+ * - credentials: Verifiable credential issuance (OIDC4VCI)
  * - crypto: FHE encryption, ZK proof verification, challenge management
  * - identity: Full identity verification (document + selfie + liveness)
  * - liveness: Multi-gesture liveness detection sessions
@@ -19,6 +20,7 @@ import "server-only";
 import { router } from "../server";
 import { accountRouter } from "./account";
 import { attestationRouter } from "./attestation";
+import { credentialsRouter } from "./credentials";
 import { cryptoRouter } from "./crypto";
 import { identityRouter } from "./identity";
 import { livenessRouter } from "./liveness";
@@ -30,6 +32,7 @@ import { tokenRouter } from "./token";
 export const appRouter = router({
   account: accountRouter,
   attestation: attestationRouter,
+  credentials: credentialsRouter,
   crypto: cryptoRouter,
   identity: identityRouter,
   liveness: livenessRouter,

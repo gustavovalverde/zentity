@@ -44,7 +44,7 @@ services:
       - BETTER_AUTH_URL=http://localhost:3000
       - OPAQUE_SERVER_SETUP=${OPAQUE_SERVER_SETUP:-}
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
+      - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000,http://localhost:3101,http://localhost:3100
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}
       - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}

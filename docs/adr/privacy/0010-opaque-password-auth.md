@@ -22,7 +22,7 @@ Zentity needs a password option for users who cannot use passkeys, but storing p
 
 ## Decision Outcome
 
-Chosen option: **OPAQUE (RFC 9497)** augmented PAKE via `@serenity-kit/opaque`, integrated into Better Auth and the onboarding flows.
+Chosen option: **OPAQUE (RFC 9807)** augmented PAKE via `@serenity-kit/opaque`, integrated into Better Auth and the onboarding flows.
 
 Key elements of the decision:
 

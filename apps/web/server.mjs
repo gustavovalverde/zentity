@@ -54,6 +54,11 @@ const { handleLivenessConnection } = await import(
   "./src/lib/liveness/socket/handler.ts"
 );
 
+// Import OIDC4VCI wallet client setup
+const { ensureWalletClientExists } = await import(
+  "./src/lib/auth/oidc/wallet-client.ts"
+);
+
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = Number.parseInt(process.env.PORT || "3000", 10);
@@ -76,7 +81,15 @@ if (dev) {
   }
 }
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  // Ensure OIDC4VCI wallet client is registered for credential issuance
+  try {
+    await ensureWalletClientExists();
+  } catch (err) {
+    console.error("> Failed to ensure wallet client:", err);
+    // Continue startup - this is not fatal, just OIDC4VCI won't work
+  }
+
   // Pass handler directly to createServer (official pattern)
   const httpServer = createServer(handler);
 

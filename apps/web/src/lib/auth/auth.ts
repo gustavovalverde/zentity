@@ -478,8 +478,11 @@ export const auth = betterAuth({
         "urn:ietf:params:oauth:grant-type:pre-authorized_code",
       ],
       validAudiences: [authIssuer, oidc4vciCredentialAudience],
-      allowDynamicClientRegistration: false,
-      allowUnauthenticatedClientRegistration: false,
+      // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
+      // Wallets can self-register via POST /api/auth/oauth/register
+      allowDynamicClientRegistration: true,
+      // Allow public clients (no client_secret) - required for mobile/browser wallets
+      allowUnauthenticatedClientRegistration: true,
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
     }),

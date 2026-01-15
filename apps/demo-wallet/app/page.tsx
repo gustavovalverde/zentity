@@ -78,6 +78,9 @@ function WalletPageContent() {
   const searchParams = useSearchParams();
   const offerId = searchParams.get("offerId");
   const requestId = searchParams.get("requestId");
+  // Support standard OIDC4VCI credential offer parameters
+  const credentialOfferParam = searchParams.get("credential_offer");
+  const credentialOfferUriParam = searchParams.get("credential_offer_uri");
 
   const [offer, setOffer] = useState<CredentialOffer | null>(null);
   const [offerError, setOfferError] = useState<string | null>(null);
@@ -100,10 +103,55 @@ function WalletPageContent() {
     }
   }, []);
 
+  // Handle direct OIDC4VCI credential_offer parameter
+  useEffect(() => {
+    if (!credentialOfferParam) return;
+    try {
+      const parsed = JSON.parse(decodeURIComponent(credentialOfferParam)) as CredentialOffer;
+      setOffer(parsed);
+    } catch (error) {
+      setOfferError(
+        error instanceof Error ? error.message : "Invalid credential offer format"
+      );
+    }
+  }, [credentialOfferParam]);
+
+  // Handle OIDC4VCI credential_offer_uri parameter (fetch from URI)
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchOfferFromUri() {
+      if (!credentialOfferUriParam) return;
+      setOfferError(null);
+      try {
+        const res = await fetch(decodeURIComponent(credentialOfferUriParam));
+        if (!res.ok) {
+          throw new Error("Failed to fetch credential offer from URI");
+        }
+        const data = (await res.json()) as CredentialOffer;
+        if (!cancelled) {
+          setOffer(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOfferError(
+            error instanceof Error ? error.message : "Failed to fetch offer from URI"
+          );
+        }
+      }
+    }
+    void fetchOfferFromUri();
+    return () => {
+      cancelled = true;
+    };
+  }, [credentialOfferUriParam]);
+
+  // Handle Demo Hub offerId parameter (legacy flow)
   useEffect(() => {
     let cancelled = false;
     async function loadOffer() {
       if (!offerId) return;
+      // Skip if we already have an offer from direct params
+      if (credentialOfferParam || credentialOfferUriParam) return;
       setOfferError(null);
       for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
@@ -139,7 +187,7 @@ function WalletPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [offerId]);
+  }, [offerId, credentialOfferParam, credentialOfferUriParam]);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,19 +267,24 @@ function WalletPageContent() {
         "urn:ietf:params:oauth:grant-type:pre-authorized_code"
       );
       tokenParams.set("pre-authorized_code", preAuthorizedCode);
+      tokenParams.set("client_id", "zentity-wallet");
       tokenParams.set(
         "resource",
         `${offer.credential_issuer}/oidc4vci/credential`
       );
 
+      const bodyStr = tokenParams.toString();
+      console.log("Token request URL:", `${authServer}/oauth2/token`);
+      console.log("Token request body:", bodyStr);
+      console.log("Body includes client_id:", bodyStr.includes("client_id"));
       const tokenRes = await fetch(`${authServer}/oauth2/token`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          Origin: window.location.origin,
         },
-        body: tokenParams.toString(),
+        body: bodyStr,
       });
+      console.log("Token response status:", tokenRes.status);
       if (!tokenRes.ok) {
         throw new Error(await tokenRes.text());
       }
@@ -267,7 +320,6 @@ function WalletPageContent() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${tokenPayload.access_token}`,
-            Origin: window.location.origin,
           },
           body: JSON.stringify({
             credential_configuration_id:
@@ -280,9 +332,16 @@ function WalletPageContent() {
         throw new Error(await credentialRes.text());
       }
       const credentialPayload = (await credentialRes.json()) as {
+        // Draft 11/13 format (backwards compat) - used by better-auth
+        credential?: string;
+        format?: string;
+        // Batch format - used by some OIDC4VCI implementations
         credentials?: Array<{ credential?: string }>;
       };
-      const issued = credentialPayload.credentials?.[0]?.credential;
+      // Support both Draft 11/13 single format and batch format
+      const issued =
+        credentialPayload.credential ??
+        credentialPayload.credentials?.[0]?.credential;
       if (!issued) {
         throw new Error("Credential missing from response");
       }

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Code,
   Coins,
+  FileCheck2,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -55,6 +56,11 @@ const identityNavItems: NavItem[] = [
     title: "Verification Status",
     url: "/dashboard/verification",
     icon: Shield,
+  },
+  {
+    title: "Credentials",
+    url: "/dashboard/credentials",
+    icon: FileCheck2,
   },
   {
     title: "Settings",
