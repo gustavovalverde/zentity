@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -149,7 +149,7 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
     return `${walletUrl}/?requestId=${request.id}`;
   }, [request]);
 
-  async function loadStatus() {
+  const loadStatus = useCallback(async () => {
     try {
       setStatusError(null);
       const res = await fetch("/api/demo/status");
@@ -163,7 +163,7 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
         error instanceof Error ? error.message : "Status unavailable"
       );
     }
-  }
+  }, []);
 
   async function seedDemo() {
     setSeedBusy(true);
@@ -240,7 +240,7 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
 
   useEffect(() => {
     void loadStatus();
-  }, []);
+  }, [loadStatus]);
 
   const verificationLevel = status?.status?.verification?.level ?? "none";
   const verificationChecks = status?.status?.verification?.checks ?? {};

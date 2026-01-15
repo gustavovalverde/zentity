@@ -135,7 +135,7 @@ test.describe("walt.id Interoperability", () => {
     expect(offerRes.ok()).toBeTruthy();
 
     const offerData = await offerRes.json();
-    expect(offerData.id).toBeDefined();
+    expect(offerData.offerId).toBeDefined();
     expect(offerData.offer).toBeDefined();
     expect(offerData.offer.grants).toBeDefined();
   });

@@ -99,22 +99,18 @@ async function runFheEncryption(
         ? getComplianceLevel(verificationStatus)
         : null;
 
-      const existingBirthYearOffset =
-        await getLatestEncryptedAttributeByUserAndType(
-          userId,
-          "birth_year_offset"
-        );
-      const existingCountryCode =
-        await getLatestEncryptedAttributeByUserAndType(userId, "country_code");
-      const existingLivenessScore =
-        await getLatestEncryptedAttributeByUserAndType(
-          userId,
-          "liveness_score"
-        );
-      const existingCompliance = await getLatestEncryptedAttributeByUserAndType(
-        userId,
-        "compliance_level"
-      );
+      // Parallelize independent attribute lookups
+      const [
+        existingBirthYearOffset,
+        existingCountryCode,
+        existingLivenessScore,
+        existingCompliance,
+      ] = await Promise.all([
+        getLatestEncryptedAttributeByUserAndType(userId, "birth_year_offset"),
+        getLatestEncryptedAttributeByUserAndType(userId, "country_code"),
+        getLatestEncryptedAttributeByUserAndType(userId, "liveness_score"),
+        getLatestEncryptedAttributeByUserAndType(userId, "compliance_level"),
+      ]);
 
       const hasBirthYearOffsetValue =
         typeof birthYearOffset === "number" &&

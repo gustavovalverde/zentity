@@ -14,6 +14,15 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: "100mb",
     // Allow local workspace packages linked outside apps/web
     externalDir: true,
+    // Optimize tree-shaking for large libraries with barrel files
+    // Automatically transforms barrel imports to direct imports at build time
+    optimizePackageImports: [
+      "lucide-react",
+      "@radix-ui/react-icons",
+      "sonner",
+      "@tanstack/react-query",
+      "date-fns",
+    ],
   },
 
   // Deterministic build ID for reproducible builds

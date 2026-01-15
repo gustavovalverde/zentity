@@ -818,17 +818,26 @@ export const recoveryRouter = router({
         let prfSalt: string;
         let kekSource: "prf" | "opaque" | "recovery";
 
-        if (isPasskey && prfOutput && input.credentialId && input.prfSalt) {
+        // Extract credential values for type narrowing
+        const inputCredentialId = input.credentialId;
+        const inputPrfSalt = input.prfSalt;
+
+        // Named conditions for readability (reduces cognitive load)
+        const hasValidPrfCredential =
+          isPasskey && prfOutput && inputCredentialId && inputPrfSalt;
+        const hasValidOpaqueCredential = !isPasskey && exportKey;
+
+        if (hasValidPrfCredential) {
           wrappedDek = await wrapDekWithPrfServer({
             secretId: secret.id,
-            credentialId: input.credentialId,
+            credentialId: inputCredentialId,
             dek,
             prfOutput,
           });
-          credentialId = input.credentialId;
-          prfSalt = input.prfSalt;
+          credentialId = inputCredentialId;
+          prfSalt = inputPrfSalt;
           kekSource = "prf";
-        } else if (!isPasskey && exportKey) {
+        } else if (hasValidOpaqueCredential) {
           wrappedDek = await wrapDekWithOpaqueExportServer({
             secretId: secret.id,
             userId: challenge.userId,

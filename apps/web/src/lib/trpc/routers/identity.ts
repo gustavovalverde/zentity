@@ -58,22 +58,16 @@ import {
 } from "@/lib/db/queries/identity";
 import { identityVerificationJobs } from "@/lib/db/schema/identity";
 import { processDocument } from "@/lib/document/document-ocr";
-import { cropFaceRegion } from "@/lib/document/image-processing";
 import { processDocumentOcr } from "@/lib/document/ocr-client";
 import { calculateBirthYearOffset } from "@/lib/identity/birth-year";
+import {
+  computeClaimHashes,
+  storeVerificationClaims,
+} from "@/lib/identity/claims-signing";
 import { countryCodeToNumeric } from "@/lib/identity/compliance";
-import {
-  getEmbeddingVector,
-  getLargestFace,
-  getLiveScore,
-  getRealScore,
-} from "@/lib/liveness/human-metrics";
-import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
-import {
-  ANTISPOOF_LIVE_THRESHOLD,
-  ANTISPOOF_REAL_THRESHOLD,
-  FACE_MATCH_MIN_CONFIDENCE,
-} from "@/lib/liveness/policy";
+import { validateFaces } from "@/lib/identity/face-validation";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/liveness/policy";
+import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { getNationalityCode } from "@/lib/zk/nationality-data";
 
@@ -415,7 +409,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           try {
             documentHashField = await getDocumentHashField(documentHash);
             await updateIdentityDraft(draft.id, { documentHashField });
-          } catch {
+          } catch (error) {
+            logger.error(
+              { error: String(error), jobId, documentHash },
+              "Failed to generate document hash field in finalize job"
+            );
             issues.push("document_hash_field_failed");
           }
         }
@@ -455,7 +453,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               signature: ocrSignature,
               issuedAt,
             });
-          } catch {
+          } catch (error) {
+            logger.error(
+              { error: String(error), jobId, userId: job.userId },
+              "Failed to sign OCR claim in finalize job"
+            );
             issues.push("signed_ocr_claim_failed");
           }
         }
@@ -498,7 +500,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               signature: livenessSignature,
               issuedAt,
             });
-          } catch {
+          } catch (error) {
+            logger.error(
+              { error: String(error), jobId, userId: job.userId },
+              "Failed to sign liveness claim in finalize job"
+            );
             issues.push("signed_liveness_claim_failed");
           }
         }
@@ -548,7 +554,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               signature: faceMatchSignature,
               issuedAt,
             });
-          } catch {
+          } catch (error) {
+            logger.error(
+              { error: String(error), jobId, userId: job.userId },
+              "Failed to sign face match claim in finalize job"
+            );
             issues.push("signed_face_match_claim_failed");
           }
         }
@@ -621,7 +631,16 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               confidenceScore: draft.confidenceScore ?? null,
               status: verified ? "verified" : "failed",
             });
-          } catch {
+          } catch (error) {
+            logger.error(
+              {
+                error: String(error),
+                jobId,
+                userId: job.userId,
+                documentId: draft.documentId,
+              },
+              "Failed to create identity document in finalize job"
+            );
             issues.push("failed_to_create_identity_document");
           }
         }
@@ -767,7 +786,11 @@ export const identityRouter = router({
           flowId: ctx.flowId ?? undefined,
         });
         issues.push(...(documentResult?.validationIssues || []));
-      } catch {
+      } catch (error) {
+        logger.error(
+          { error: String(error), requestId: ctx.requestId },
+          "Document OCR processing failed in prepareDocument"
+        );
         issues.push("document_processing_failed");
       }
 
@@ -787,7 +810,11 @@ export const identityRouter = router({
       if (documentHash) {
         try {
           documentHashField = await getDocumentHashField(documentHash);
-        } catch {
+        } catch (error) {
+          logger.error(
+            { error: String(error), documentHash },
+            "Failed to generate document hash field in prepareDocument"
+          );
           issues.push("document_hash_field_failed");
         }
       }
@@ -826,7 +853,11 @@ export const identityRouter = router({
                   value: birthYear,
                   documentHashField,
                 });
-              } catch {
+              } catch (error) {
+                logger.error(
+                  { error: String(error), birthYear },
+                  "Failed to compute age claim hash"
+                );
                 issues.push("age_claim_hash_failed");
               }
             })()
@@ -840,7 +871,11 @@ export const identityRouter = router({
                   value: expiryDateInt,
                   documentHashField,
                 });
-              } catch {
+              } catch (error) {
+                logger.error(
+                  { error: String(error), expiryDateInt },
+                  "Failed to compute doc validity claim hash"
+                );
                 issues.push("doc_validity_claim_hash_failed");
               }
             })()
@@ -854,7 +889,11 @@ export const identityRouter = router({
                   value: nationalityCodeNumeric,
                   documentHashField,
                 });
-              } catch {
+              } catch (error) {
+                logger.error(
+                  { error: String(error), nationalityCodeNumeric },
+                  "Failed to compute nationality claim hash"
+                );
                 issues.push("nationality_claim_hash_failed");
               }
             })()
@@ -1017,76 +1056,20 @@ export const identityRouter = router({
         });
       }
 
-      let antispoofScore = 0;
-      let liveScore = 0;
-      let livenessPassedLocal = false;
-      let facesMatchLocal = false;
-      let faceMatchConfidence = 0;
+      // Validate faces using the face-validation module
+      const faceValidation = await validateFaces(
+        input.selfieImage,
+        input.documentImage
+      );
+      issues.push(...faceValidation.issues);
 
-      try {
-        const human = await getHumanServer();
-
-        const selfieResult = await detectFromBase64(input.selfieImage);
-        const docResultInitial = await detectFromBase64(input.documentImage);
-        const docFaceInitial = getLargestFace(docResultInitial);
-
-        let docResult = docResultInitial;
-
-        if (docFaceInitial?.box) {
-          try {
-            const box = Array.isArray(docFaceInitial.box)
-              ? {
-                  x: docFaceInitial.box[0],
-                  y: docFaceInitial.box[1],
-                  width: docFaceInitial.box[2],
-                  height: docFaceInitial.box[3],
-                }
-              : docFaceInitial.box;
-
-            const croppedFaceDataUrl = await cropFaceRegion(
-              input.documentImage,
-              box
-            );
-            docResult = await detectFromBase64(croppedFaceDataUrl);
-          } catch {
-            /* Crop failed, fallback to initial detection result */
-          }
-        }
-
-        const selfieFace = getLargestFace(selfieResult);
-        const docFace = getLargestFace(docResult);
-        const localIssues: string[] = [];
-
-        if (selfieFace) {
-          antispoofScore = getRealScore(selfieFace);
-          liveScore = getLiveScore(selfieFace);
-          livenessPassedLocal =
-            antispoofScore >= ANTISPOOF_REAL_THRESHOLD &&
-            liveScore >= ANTISPOOF_LIVE_THRESHOLD;
-        } else {
-          localIssues.push("no_selfie_face");
-        }
-
-        if (selfieFace && docFace) {
-          const selfieEmb = getEmbeddingVector(selfieFace);
-          const docEmb = getEmbeddingVector(docFace);
-          if (selfieEmb && docEmb) {
-            faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
-            facesMatchLocal = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
-          } else {
-            localIssues.push("embedding_failed");
-          }
-        } else {
-          localIssues.push("no_document_face");
-        }
-
-        issues.push(...localIssues);
-      } catch {
-        issues.push("verification_service_failed");
-      }
-
-      const livenessPassed = livenessPassedLocal;
-      const faceMatchPassed = facesMatchLocal;
+      const {
+        antispoofScore,
+        liveScore,
+        livenessPassed,
+        faceMatchConfidence,
+        faceMatchPassed,
+      } = faceValidation;
 
       await updateIdentityDraft(draft.id, {
         antispoofScore,
@@ -1300,7 +1283,11 @@ export const identityRouter = router({
           flowId: ctx.flowId ?? undefined,
         });
         issues.push(...(documentResult?.validationIssues || []));
-      } catch {
+      } catch (error) {
+        logger.error(
+          { error: String(error), requestId: ctx.requestId, userId },
+          "Document OCR processing failed in verify"
+        );
         issues.push("document_processing_failed");
       }
 
@@ -1315,93 +1302,12 @@ export const identityRouter = router({
         }
       }
 
-      let verificationResult: {
-        verified: boolean;
-        is_live: boolean;
-        antispoof_score: number;
-        faces_match: boolean;
-        face_match_confidence: number;
-        issues: string[];
-      } | null = null;
-
-      let antispoofScore = 0;
-      let liveScore = 0;
-      let livenessPassedLocal = false;
-      let facesMatchLocal = false;
-      let faceMatchConfidence = 0;
-
-      try {
-        const human = await getHumanServer();
-
-        const selfieResult = await detectFromBase64(input.selfieImage);
-
-        const docResultInitial = await detectFromBase64(input.documentImage);
-        const docFaceInitial = getLargestFace(docResultInitial);
-
-        let docResult = docResultInitial;
-
-        if (docFaceInitial?.box) {
-          try {
-            const box = Array.isArray(docFaceInitial.box)
-              ? {
-                  x: docFaceInitial.box[0],
-                  y: docFaceInitial.box[1],
-                  width: docFaceInitial.box[2],
-                  height: docFaceInitial.box[3],
-                }
-              : docFaceInitial.box;
-
-            const croppedFaceDataUrl = await cropFaceRegion(
-              input.documentImage,
-              box
-            );
-            docResult = await detectFromBase64(croppedFaceDataUrl);
-          } catch {
-            /* Crop failed, fallback to initial detection result */
-          }
-        }
-
-        const selfieFace = getLargestFace(selfieResult);
-        const docFace = getLargestFace(docResult);
-        const localIssues: string[] = [];
-
-        if (selfieFace) {
-          antispoofScore = getRealScore(selfieFace);
-          liveScore = getLiveScore(selfieFace);
-          livenessPassedLocal =
-            antispoofScore >= ANTISPOOF_REAL_THRESHOLD &&
-            liveScore >= ANTISPOOF_LIVE_THRESHOLD;
-        } else {
-          localIssues.push("no_selfie_face");
-        }
-
-        if (selfieFace && docFace) {
-          const selfieEmb = getEmbeddingVector(selfieFace);
-          const docEmb = getEmbeddingVector(docFace);
-          if (selfieEmb && docEmb) {
-            faceMatchConfidence = human.match.similarity(docEmb, selfieEmb);
-            facesMatchLocal = faceMatchConfidence >= FACE_MATCH_MIN_CONFIDENCE;
-          } else {
-            localIssues.push("embedding_failed");
-          }
-        } else {
-          localIssues.push("no_document_face");
-        }
-
-        verificationResult = {
-          verified: livenessPassedLocal && facesMatchLocal,
-          is_live: livenessPassedLocal,
-          antispoof_score: antispoofScore,
-          faces_match: facesMatchLocal,
-          face_match_confidence: faceMatchConfidence,
-          issues: localIssues,
-        };
-
-        issues.push(...localIssues);
-      } catch {
-        /* Human.js detection failed, add to issues */
-        issues.push("verification_service_failed");
-      }
+      // Validate faces using the face-validation module
+      const faceValidation = await validateFaces(
+        input.selfieImage,
+        input.documentImage
+      );
+      issues.push(...faceValidation.issues);
 
       const documentProcessed = Boolean(documentResult?.commitments);
       const identityDocumentId = documentProcessed ? uuidv4() : null;
@@ -1410,186 +1316,65 @@ export const identityRouter = router({
       if (documentHash) {
         try {
           documentHashField = await getDocumentHashField(documentHash);
-        } catch {
+        } catch (error) {
+          logger.error(
+            { error: String(error), documentHash },
+            "Failed to generate document hash field"
+          );
           issues.push("document_hash_field_failed");
         }
       }
 
-      const issuedAt = new Date().toISOString();
+      // Compute claim hashes and store signed claims
+      const birthYear = parseBirthYear(
+        documentResult?.extractedData?.dateOfBirth
+      );
+      const expiryDateInt = parseDateToInt(
+        documentResult?.extractedData?.expirationDate
+      );
+      const nationalityCode =
+        documentResult?.extractedData?.nationalityCode ?? null;
+      const nationalityCodeNumeric = nationalityCode
+        ? (getNationalityCode(nationalityCode) ?? null)
+        : null;
 
-      // Store OCR signed claim for tamper-resistant verification
-      if (documentProcessed && documentHash && documentHashField) {
-        try {
-          const birthYear = parseBirthYear(
-            documentResult?.extractedData?.dateOfBirth
-          );
-          const expiryDate = parseDateToInt(
-            documentResult?.extractedData?.expirationDate
-          );
-          const nationalityCode =
-            documentResult?.extractedData?.nationalityCode ?? null;
-          const nationalityCodeNumeric = nationalityCode
-            ? (getNationalityCode(nationalityCode) ?? null)
-            : null;
-
-          const claimHashes: {
-            age?: string | null;
-            docValidity?: string | null;
-            nationality?: string | null;
-          } = {
-            age: null,
-            docValidity: null,
-            nationality: null,
-          };
-
-          const hashTasks: Promise<void>[] = [];
-          if (birthYear) {
-            hashTasks.push(
-              (async () => {
-                claimHashes.age = await computeClaimHash({
-                  value: birthYear,
-                  documentHashField,
-                });
-              })()
-            );
-          }
-          if (expiryDate) {
-            hashTasks.push(
-              (async () => {
-                claimHashes.docValidity = await computeClaimHash({
-                  value: expiryDate,
-                  documentHashField,
-                });
-              })()
-            );
-          }
-          if (nationalityCodeNumeric) {
-            hashTasks.push(
-              (async () => {
-                claimHashes.nationality = await computeClaimHash({
-                  value: nationalityCodeNumeric,
-                  documentHashField,
-                });
-              })()
-            );
-          }
-          if (hashTasks.length) {
-            await Promise.all(hashTasks);
-          }
-
-          const ocrClaimPayload = {
-            type: "ocr_result" as const,
-            userId,
-            issuedAt,
-            version: 1,
-            policyVersion: POLICY_VERSION,
-            documentHash,
-            documentHashField,
-            data: {
-              documentType: documentResult?.documentType ?? null,
-              issuerCountry:
-                documentResult?.documentOrigin ||
-                documentResult?.extractedData?.nationalityCode ||
-                null,
-              confidence: documentResult?.confidence ?? null,
-              claimHashes,
-            },
-          };
-
-          const ocrSignature = await signAttestationClaim(ocrClaimPayload);
-          await insertSignedClaim({
-            id: uuidv4(),
-            userId,
-            documentId: identityDocumentId,
-            claimType: ocrClaimPayload.type,
-            claimPayload: JSON.stringify(ocrClaimPayload),
-            signature: ocrSignature,
-            issuedAt,
-          });
-        } catch {
-          issues.push("signed_ocr_claim_failed");
-        }
+      // Compute claim hashes if document hash field is available
+      let claimHashes = { age: null, docValidity: null, nationality: null } as {
+        age: string | null;
+        docValidity: string | null;
+        nationality: string | null;
+      };
+      if (documentHashField) {
+        const hashResult = await computeClaimHashes({
+          documentHashField,
+          birthYear,
+          expiryDateInt,
+          nationalityCodeNumeric,
+        });
+        claimHashes = hashResult.hashes;
+        issues.push(...hashResult.issues);
       }
 
-      // Store signed claims for tamper-resistant verification (server measured)
-      if (verificationResult) {
-        const antispoofScoreFixed = Math.round(
-          verificationResult.antispoof_score * 10_000
-        );
-        const liveScoreFixed = Math.round(liveScore * 10_000);
-
-        try {
-          const livenessClaimPayload = {
-            type: "liveness_score" as const,
-            userId,
-            issuedAt,
-            version: 1,
-            policyVersion: POLICY_VERSION,
-            documentHash,
-            documentHashField,
-            data: {
-              antispoofScore: verificationResult.antispoof_score,
-              liveScore,
-              passed: verificationResult.is_live,
-              antispoofScoreFixed,
-              liveScoreFixed,
-            },
-          };
-
-          const livenessSignature =
-            await signAttestationClaim(livenessClaimPayload);
-          await insertSignedClaim({
-            id: uuidv4(),
-            userId,
-            documentId: identityDocumentId,
-            claimType: livenessClaimPayload.type,
-            claimPayload: JSON.stringify(livenessClaimPayload),
-            signature: livenessSignature,
-            issuedAt,
-          });
-
-          const faceMatchClaimPayload = {
-            type: "face_match_score" as const,
-            userId,
-            issuedAt,
-            version: 1,
-            policyVersion: POLICY_VERSION,
-            documentHash,
-            documentHashField,
-            data: {
-              confidence: verificationResult.face_match_confidence,
-              confidenceFixed: Math.round(
-                verificationResult.face_match_confidence * 10_000
-              ),
-              thresholdFixed: Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000),
-              passed: verificationResult.faces_match,
-              claimHash: documentHashField
-                ? await computeClaimHash({
-                    value: Math.round(
-                      verificationResult.face_match_confidence * 10_000
-                    ),
-                    documentHashField,
-                  })
-                : null,
-            },
-          };
-
-          const faceMatchSignature = await signAttestationClaim(
-            faceMatchClaimPayload
-          );
-          await insertSignedClaim({
-            id: uuidv4(),
-            userId,
-            documentId: identityDocumentId,
-            claimType: faceMatchClaimPayload.type,
-            claimPayload: JSON.stringify(faceMatchClaimPayload),
-            signature: faceMatchSignature,
-            issuedAt,
-          });
-        } catch {
-          issues.push("signed_claim_generation_failed");
-        }
-      }
+      // Store all verification claims using the claims-signing module
+      const claimIssues = await storeVerificationClaims({
+        userId,
+        documentId: identityDocumentId,
+        documentHash,
+        documentHashField,
+        documentType: documentResult?.documentType ?? null,
+        issuerCountry:
+          documentResult?.documentOrigin ||
+          documentResult?.extractedData?.nationalityCode ||
+          null,
+        confidence: documentResult?.confidence ?? null,
+        claimHashes,
+        antispoofScore: faceValidation.antispoofScore,
+        liveScore: faceValidation.liveScore,
+        livenessPassed: faceValidation.livenessPassed,
+        faceMatchConfidence: faceValidation.faceMatchConfidence,
+        faceMatchPassed: faceValidation.faceMatchPassed,
+      });
+      issues.push(...claimIssues);
 
       let nationalityCommitment: string | null = null;
 
@@ -1597,14 +1382,17 @@ export const identityRouter = router({
         issues.push("fhe_key_missing");
       }
 
-      const nationalityCode = documentResult?.extractedData?.nationalityCode;
       if (nationalityCode && documentResult?.commitments?.userSalt) {
         try {
           nationalityCommitment = await sha256CommitmentHex({
             value: nationalityCode,
             salt: documentResult.commitments.userSalt,
           });
-        } catch {
+        } catch (error) {
+          logger.error(
+            { error: String(error), nationalityCode },
+            "Failed to generate nationality commitment"
+          );
           issues.push("nationality_commitment_failed");
         }
       }
@@ -1613,8 +1401,8 @@ export const identityRouter = router({
         documentProcessed &&
         (documentResult?.confidence ?? 0) > 0.3 &&
         Boolean(documentResult?.extractedData?.documentNumber);
-      const livenessPassed = verificationResult?.is_live ?? livenessPassedLocal;
-      const facesMatch = verificationResult?.faces_match ?? facesMatchLocal;
+      const livenessPassed = faceValidation.livenessPassed;
+      const facesMatch = faceValidation.faceMatchPassed;
       const ageProofGenerated = false;
       const birthYearOffsetEncrypted = false;
       const docValidityProofGenerated = false;
@@ -1677,7 +1465,11 @@ export const identityRouter = router({
             confidenceScore: documentResult.confidence ?? null,
             status: verified ? "verified" : "failed",
           });
-        } catch {
+        } catch (error) {
+          logger.error(
+            { error: String(error), userId, documentId: identityDocumentId },
+            "Failed to create identity document"
+          );
           issues.push("failed_to_create_identity_document");
         }
       }
