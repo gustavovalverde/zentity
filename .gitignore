@@ -10,11 +10,13 @@ fixtures/
 commit-message.txt
 .actrc
 .zentity-auth-secret
+.playwright-mcp
 
 ### Documentation ###
 # Keep the public docs lean for open-source. Treat the rest as internal notes.
 docs/archive/
 docs/internal/
+docs/papers/
 
 ### Linux ###
 *~

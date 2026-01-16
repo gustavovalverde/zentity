@@ -460,12 +460,7 @@ export function ViewIdentityData() {
                     SDK initialization failed.{" "}
                     {fhevmError?.message || "Please try again."}
                   </span>
-                  <Button
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                    onClick={refreshFhevm}
-                    size="sm"
-                    variant="outline"
-                  >
+                  <Button onClick={refreshFhevm} size="sm" variant="outline">
                     <RefreshCw className="mr-1 h-3 w-3" />
                     Retry
                   </Button>

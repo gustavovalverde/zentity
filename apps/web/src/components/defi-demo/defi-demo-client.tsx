@@ -387,7 +387,8 @@ export function DefiDemoClient({
         }
 
         return (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-6">
+            {/* Compliance Setup (one-time) */}
             {requiresAccessGrant ? (
               <ComplianceAccessCard
                 complianceRules={
@@ -411,19 +412,22 @@ export function DefiDemoClient({
               walletAddress={address}
             />
 
-            {/* Mint Form */}
-            <div ref={mintFormRef}>
-              <MintForm networkId={resolvedNetworkId} walletAddress={address} />
+            {/* Token Actions - side by side for related actions */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <div ref={mintFormRef}>
+                <MintForm
+                  networkId={resolvedNetworkId}
+                  walletAddress={address}
+                />
+              </div>
+              <TransferForm
+                accessGranted={accessReady}
+                contractAddress={
+                  selectedNetworkData.contractAddress as `0x${string}`
+                }
+                networkId={resolvedNetworkId}
+              />
             </div>
-
-            {/* Transfer Form */}
-            <TransferForm
-              accessGranted={accessReady}
-              contractAddress={
-                selectedNetworkData.contractAddress as `0x${string}`
-              }
-              networkId={resolvedNetworkId}
-            />
 
             {/* Transaction History */}
             <TxHistory

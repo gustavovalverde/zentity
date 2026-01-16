@@ -258,39 +258,37 @@ export function CredentialsContent() {
       </Card>
 
       {/* Available Credentials */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {status?.availableCredentials?.map((credential) => (
-          <Card key={credential.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileCheck2 className="h-5 w-5" />
-                {credential.name}
-              </CardTitle>
-              <CardDescription>{credential.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">{credential.format}</Badge>
-                <Badge variant="success">Ready to issue</Badge>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button
-                className="w-full"
-                disabled={createOfferMutation.isPending}
-                onClick={() => handleGetCredential(credential.id)}
-              >
-                {createOfferMutation.isPending ? (
-                  <Spinner aria-hidden="true" className="mr-2" size="sm" />
-                ) : (
-                  <QrCode className="mr-2 h-4 w-4" />
-                )}
-                Get Credential
-              </Button>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+      {status?.availableCredentials?.map((credential) => (
+        <Card key={credential.id}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileCheck2 className="h-5 w-5" />
+              {credential.name}
+            </CardTitle>
+            <CardDescription>{credential.description}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{credential.format}</Badge>
+              <Badge variant="success">Ready to issue</Badge>
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button
+              className="w-full"
+              disabled={createOfferMutation.isPending}
+              onClick={() => handleGetCredential(credential.id)}
+            >
+              {createOfferMutation.isPending ? (
+                <Spinner aria-hidden="true" className="mr-2" size="sm" />
+              ) : (
+                <QrCode className="mr-2 h-4 w-4" />
+              )}
+              Get Credential
+            </Button>
+          </CardFooter>
+        </Card>
+      ))}
 
       {/* How It Works */}
       <Alert>
