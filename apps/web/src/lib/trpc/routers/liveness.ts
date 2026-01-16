@@ -193,6 +193,11 @@ export const livenessRouter = router({
         );
       }
 
+      // Run all face detections in parallel for ~2-4x speedup
+      const detectionResults = await Promise.all(
+        input.challenges.map((challenge) => detectFromBase64(challenge.image))
+      );
+
       const results: Array<{
         challengeType: ChallengeType;
         passed: boolean;
@@ -205,8 +210,9 @@ export const livenessRouter = router({
       let allPassed = true;
       const failureReasons: string[] = [];
 
+      // Process detection results in order
       for (const [index, challenge] of input.challenges.entries()) {
-        const res = await detectFromBase64(challenge.image);
+        const res = detectionResults[index];
         const face = getPrimaryFace(res);
         if (!face) {
           results.push({

@@ -65,10 +65,18 @@ function getTransports(
   return response.transports as AuthenticatorTransport[];
 }
 
+/**
+ * Resolve PRF output from WebAuthn response or via fallback evaluation.
+ *
+ * @param allowFallback - If false, skip the fallback evaluatePrf() call that
+ *   triggers a second WebAuthn prompt. Use false during registration to avoid
+ *   double-prompting the user.
+ */
 async function resolvePrfOutput(params: {
   prfSalt: Uint8Array;
   credentialId: string | null;
   webauthn: WebauthnResponse | null;
+  allowFallback?: boolean;
 }): Promise<Uint8Array | null> {
   const prfOutput = extractPrfOutputFromClientResults({
     clientExtensionResults: params.webauthn?.clientExtensionResults,
@@ -78,6 +86,11 @@ async function resolvePrfOutput(params: {
     return prfOutput;
   }
   if (!params.credentialId) {
+    return null;
+  }
+
+  // Skip fallback to avoid double WebAuthn prompt during registration
+  if (params.allowFallback === false) {
     return null;
   }
 
@@ -153,10 +166,14 @@ export async function registerPasskeyWithPrf(params: {
     };
   }
 
+  // Disable fallback to avoid double WebAuthn prompt during registration.
+  // Modern authenticators (Windows Hello, Face ID, YubiKey 5+) return PRF
+  // directly in the registration response.
   const prfOutput = await resolvePrfOutput({
     prfSalt: params.prfSalt,
     credentialId,
     webauthn,
+    allowFallback: false,
   });
 
   if (!prfOutput) {
@@ -164,7 +181,8 @@ export async function registerPasskeyWithPrf(params: {
       ok: false,
       error: null,
       message:
-        "This passkey did not return PRF output. Please try a different authenticator.",
+        "Your passkey doesn't support the PRF extension required for key encryption. " +
+        "Please try Windows Hello, Face ID, Touch ID, or a YubiKey 5 Series.",
     };
   }
 
