@@ -129,6 +129,7 @@ export const identityVerificationDrafts = sqliteTable(
     livenessPassed: integer("liveness_passed", { mode: "boolean" }),
     faceMatchConfidence: real("face_match_confidence"),
     faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
+    birthYearOffset: integer("birth_year_offset"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
