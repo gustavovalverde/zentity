@@ -14,10 +14,10 @@ import { Input } from "@/components/ui/input";
 import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
+import { useOnboardingStore } from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
 import { makeFieldValidator } from "@/lib/utils/validation";
 
-import { useOnboardingStore } from "./onboarding-store";
 import { useStepper } from "./stepper-context";
 import { StepperControls } from "./stepper-ui";
 

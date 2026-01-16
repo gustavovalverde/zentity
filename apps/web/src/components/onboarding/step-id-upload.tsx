@@ -31,11 +31,11 @@ import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
 } from "@/lib/document/document-ocr";
+import { useOnboardingStore } from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
 import { resizeImageFile } from "@/lib/utils/image";
 import { cn } from "@/lib/utils/utils";
 
-import { useOnboardingStore } from "./onboarding-store";
 import { useStepper } from "./stepper-context";
 import { StepperControls } from "./stepper-ui";
 

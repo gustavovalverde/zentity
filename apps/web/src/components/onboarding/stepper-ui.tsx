@@ -17,10 +17,13 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  type OnboardingStore,
+  useOnboardingStore,
+} from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/utils";
 
-import { type OnboardingStore, useOnboardingStore } from "./onboarding-store";
 import { type StepId, steps, utils } from "./stepper-context";
 
 /** Stepper instance type inferred from our step definitions */
