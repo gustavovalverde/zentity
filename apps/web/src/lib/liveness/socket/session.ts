@@ -7,6 +7,8 @@
 
 import type { ChallengeType } from "../challenges";
 
+import { randomInt } from "node:crypto";
+
 // Session phases (simple state machine)
 export type SessionPhase =
   | "connecting"
@@ -148,17 +150,24 @@ export function createSession(
 }
 
 /**
- * Generate random challenge sequence.
+ * Generate random challenge sequence using cryptographically secure randomness.
  */
 function generateChallenges(count: number): ChallengeType[] {
   const pool: ChallengeType[] = ["smile", "turn_left", "turn_right"];
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+
+  // Fisher-Yates shuffle with crypto.randomInt for unpredictability
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
   const challenges = shuffled.slice(0, count);
 
   // Ensure at least one turn for better security
   if (!challenges.some((c) => c.startsWith("turn"))) {
-    const replaceIndex = Math.floor(Math.random() * challenges.length);
-    challenges[replaceIndex] = Math.random() < 0.5 ? "turn_left" : "turn_right";
+    const replaceIndex = randomInt(challenges.length);
+    challenges[replaceIndex] = randomInt(2) === 0 ? "turn_left" : "turn_right";
   }
 
   return challenges;
