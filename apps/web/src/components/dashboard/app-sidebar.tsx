@@ -5,7 +5,6 @@ import {
   Code,
   Coins,
   FileCheck2,
-  LayoutDashboard,
   LogOut,
   Settings,
   Shield,
@@ -49,13 +48,8 @@ interface AppSidebarProps {
 
 const identityNavItems: NavItem[] = [
   {
-    title: "Overview",
+    title: "My Identity",
     url: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Verification Status",
-    url: "/dashboard/verification",
     icon: Shield,
   },
   {

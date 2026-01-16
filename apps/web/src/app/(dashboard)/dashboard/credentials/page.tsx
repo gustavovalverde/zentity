@@ -6,7 +6,7 @@ export default function CredentialsPage() {
       {/* Header */}
       <div>
         <h1 className="font-bold text-2xl">Verifiable Credentials</h1>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           Issue verifiable credentials to store in your wallet
         </p>
       </div>
