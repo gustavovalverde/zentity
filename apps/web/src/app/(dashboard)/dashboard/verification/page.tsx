@@ -1,15 +1,13 @@
 import { headers } from "next/headers";
 import { Suspense } from "react";
 
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 
 import { VerificationContent } from "./_components/verification-content";
 import { VerificationContentSkeleton } from "./_components/verification-skeleton";
 
 export default async function VerificationPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedSession(await headers());
 
   const userId = session?.user?.id;
 

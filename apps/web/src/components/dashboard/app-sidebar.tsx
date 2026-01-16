@@ -13,7 +13,8 @@ import {
   User,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useRef } from "react";
 
 import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { Logo } from "@/components/logo";
@@ -97,9 +98,11 @@ const developmentNavItems: NavItem[] = [
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const web3Enabled = isWeb3Enabled();
   const queryClient = useQueryClient();
   const { clear: clearPrfOutput } = usePasskeyAuth();
+  const prefetchedRef = useRef<Set<string>>(new Set());
 
   const handleSignOut = async () => {
     await completeSignOut({
@@ -114,6 +117,17 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }
     return pathname.startsWith(url);
   };
+
+  // Prefetch on hover for faster navigation (deduplicated)
+  const handlePrefetch = useCallback(
+    (url: string) => {
+      if (!prefetchedRef.current.has(url)) {
+        prefetchedRef.current.add(url);
+        router.prefetch(url);
+      }
+    },
+    [router]
+  );
 
   return (
     <Sidebar>
@@ -143,7 +157,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     isActive={isActive(item.url)}
                     tooltip={item.title}
                   >
-                    <Link href={item.url}>
+                    <Link
+                      href={item.url}
+                      onMouseEnter={() => handlePrefetch(item.url)}
+                    >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -167,7 +184,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                       isActive={isActive(item.url)}
                       tooltip={item.title}
                     >
-                      <Link href={item.url}>
+                      <Link
+                        href={item.url}
+                        onMouseEnter={() => handlePrefetch(item.url)}
+                      >
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
                       </Link>
@@ -191,7 +211,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     isActive={isActive(item.url)}
                     tooltip={item.title}
                   >
-                    <Link href={item.url}>
+                    <Link
+                      href={item.url}
+                      onMouseEnter={() => handlePrefetch(item.url)}
+                    >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -208,7 +231,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" tooltip="Settings">
-              <Link href="/dashboard/settings">
+              <Link
+                href="/dashboard/settings"
+                onMouseEnter={() => handlePrefetch("/dashboard/settings")}
+              >
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
                   <User className="h-4 w-4" />
                 </div>

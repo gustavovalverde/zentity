@@ -14,7 +14,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 
 export default async function DashboardLayout({
   children,
@@ -22,9 +22,7 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const headersObj = await headers();
-  const session = await auth.api.getSession({
-    headers: headersObj,
-  });
+  const session = await getCachedSession(headersObj);
 
   if (!session) {
     redirect("/sign-in");

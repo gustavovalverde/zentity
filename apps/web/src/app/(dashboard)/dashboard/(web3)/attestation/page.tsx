@@ -4,7 +4,7 @@ import { Suspense } from "react";
 
 import { OnChainAttestation } from "@/components/dashboard/on-chain-attestation";
 import { ViewIdentityData } from "@/components/dashboard/view-identity-data";
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
@@ -17,9 +17,7 @@ export default async function AttestationPage() {
     redirect("/dashboard");
   }
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedSession(await headers());
 
   const userId = session?.user?.id;
 

@@ -140,3 +140,17 @@ export async function PrivacyInfoSection({
     </div>
   );
 }
+
+export function PrivacyInfoSkeleton() {
+  return (
+    <div className="animate-pulse rounded-lg border bg-muted/50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="h-8 w-8 shrink-0 rounded-full bg-muted" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 w-40 rounded bg-muted" />
+          <div className="h-3 w-full max-w-md rounded bg-muted" />
+        </div>
+      </div>
+    </div>
+  );
+}

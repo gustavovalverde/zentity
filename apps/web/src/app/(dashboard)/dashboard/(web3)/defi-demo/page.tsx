@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { DefiDemoClient } from "@/components/defi-demo/defi-demo-client";
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 import { isWeb3Enabled } from "@/lib/feature-flags";
@@ -13,9 +13,7 @@ export default async function DefiDemoPage() {
     redirect("/dashboard");
   }
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedSession(await headers());
 
   const userId = session?.user?.id || process.env.E2E_USER_ID || null;
 
