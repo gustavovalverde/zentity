@@ -46,6 +46,12 @@ vi.mock("@/noir-circuits/face_match/artifacts/face_match.json", () => ({
 }));
 
 import { getBbJsVersion, getCircuitMetadata } from "../noir-verifier";
+import {
+  CIRCUIT_SPECS,
+  isCircuitType,
+  normalizeChallengeNonce,
+  parsePublicInputToNumber,
+} from "../zk-circuit-spec";
 
 describe("noir-verifier", () => {
   describe("getCircuitMetadata", () => {
@@ -108,14 +114,6 @@ describe("noir-verifier", () => {
 });
 
 describe("zk-circuit-spec", () => {
-  // Import the spec utilities for additional tests
-  const {
-    CIRCUIT_SPECS,
-    isCircuitType,
-    parsePublicInputToNumber,
-    normalizeChallengeNonce,
-  } = require("../zk-circuit-spec");
-
   describe("CIRCUIT_SPECS", () => {
     it("defines specs for all circuit types", () => {
       expect(CIRCUIT_SPECS.age_verification).toBeDefined();

@@ -135,6 +135,15 @@ const clientTfheLoadDuration = meter.createHistogram(
   }
 );
 
+const clientTfheLoadRetry = meter.createHistogram(
+  "zentity.client.tfhe.load.retry",
+  {
+    description: "Client-side TFHE WASM load retry delay.",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
 const clientTfheKeygenDuration = meter.createHistogram(
   "zentity.client.tfhe.keygen.duration",
   {
@@ -260,6 +269,13 @@ export function recordClientTfheLoadDuration(
   attributes?: MetricAttributes
 ): void {
   recordSafe(clientTfheLoadDuration, durationMs, attributes);
+}
+
+export function recordClientTfheLoadRetry(
+  delayMs: number,
+  attributes?: MetricAttributes
+): void {
+  recordSafe(clientTfheLoadRetry, delayMs, attributes);
 }
 
 export function recordClientTfheKeygenDuration(

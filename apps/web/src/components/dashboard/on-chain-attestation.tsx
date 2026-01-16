@@ -121,19 +121,22 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   // Poll blockchain status for pending submissions
   // The refresh mutation checks the actual blockchain and updates the DB
   useEffect(() => {
-    const hasPending = networks?.some(
-      (n) => n.attestation?.status === "submitted"
-    );
-    if (!(hasPending && selectedNetwork)) {
+    const pendingNetworkIds =
+      networks
+        ?.filter((n) => n.attestation?.status === "submitted")
+        .map((n) => n.id) ?? [];
+    if (pendingNetworkIds.length === 0) {
       return;
     }
 
     const interval = setInterval(() => {
-      refreshMutation.mutate({ networkId: selectedNetwork });
+      for (const networkId of pendingNetworkIds) {
+        refreshMutation.mutate({ networkId });
+      }
     }, 8000);
 
     return () => clearInterval(interval);
-  }, [networks, selectedNetwork, refreshMutation]);
+  }, [networks, refreshMutation]);
 
   // Track initial wallet for change detection
   const [initialWallet, setInitialWallet] = useState<string | undefined>();

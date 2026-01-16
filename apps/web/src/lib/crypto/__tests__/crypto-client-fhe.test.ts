@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tfheMocks = vi.hoisted(() => ({
   getOrCreateFheKeyRegistrationMaterial: vi.fn(),
+  generateFheKeyMaterialForStorage: vi.fn(),
   persistFheKeyId: vi.fn(),
   decryptFheBool: vi.fn(),
 }));
