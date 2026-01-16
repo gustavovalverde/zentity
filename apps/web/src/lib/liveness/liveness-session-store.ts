@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 
 import {
   CHALLENGE_INSTRUCTIONS,
@@ -50,19 +50,19 @@ export function createLivenessSession(
 
   if (requireHeadTurn) {
     const headTurns: ChallengeType[] = ["turn_left", "turn_right"];
-    challenges.push(headTurns[Math.floor(Math.random() * headTurns.length)]);
+    challenges.push(headTurns[randomInt(headTurns.length)]);
   }
 
   while (challenges.length < count) {
-    const next = available[Math.floor(Math.random() * available.length)];
+    const next = available[randomInt(available.length)];
     if (!challenges.includes(next)) {
       challenges.push(next);
     }
   }
 
-  // Shuffle for unpredictability
+  // Fisher-Yates shuffle with cryptographically secure randomness
   for (let i = challenges.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [challenges[i], challenges[j]] = [challenges[j], challenges[i]];
   }
 
