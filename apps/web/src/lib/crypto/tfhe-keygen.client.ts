@@ -102,3 +102,17 @@ export function generateFheKeyMaterialInWorker(): Promise<FheKeygenResult> {
     worker.postMessage(payload);
   });
 }
+
+/**
+ * Pre-warm the TFHE worker by spawning it early.
+ * This loads the WASM module in the background, reducing latency
+ * when key generation is actually needed.
+ *
+ * Call this on pages where users are likely to create accounts.
+ */
+export function prewarmTfheWorker(): void {
+  if (typeof Worker === "undefined") {
+    return;
+  }
+  getWorker();
+}

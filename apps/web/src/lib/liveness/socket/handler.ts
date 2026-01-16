@@ -18,6 +18,7 @@ import {
 } from "../human-metrics";
 import { detectFromBuffer } from "../human-server";
 import {
+  ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
   SMILE_DELTA_THRESHOLD,
   SMILE_HIGH_THRESHOLD,
@@ -612,7 +613,7 @@ function handleVerifyingPhase(
   const liveScore = getLiveScore(face);
 
   const antispoofPassed = realScore >= ANTISPOOF_REAL_THRESHOLD;
-  const livenessPassed = liveScore >= 0.5;
+  const livenessPassed = liveScore >= ANTISPOOF_LIVE_THRESHOLD;
 
   if (!(antispoofPassed && livenessPassed)) {
     session.phase = "failed";
