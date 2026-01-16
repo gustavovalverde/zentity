@@ -8,9 +8,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { prewarmTfheWorker } from "@/lib/crypto/tfhe-keygen.client";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
+import { useOnboardingStore } from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
 
-import { useOnboardingStore } from "./onboarding-store";
 import { StepEmail } from "./step-email";
 import { Stepper, steps, useStepper } from "./stepper-context";
 import { StepperNavigation } from "./stepper-ui";
