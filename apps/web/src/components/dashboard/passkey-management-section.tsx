@@ -100,6 +100,14 @@ type OptimisticAction =
   | { type: "delete"; id: string }
   | { type: "rename"; id: string; name: string };
 
+// Grouped editing state to reduce cognitive load
+interface EditState {
+  id: string | null;
+  name: string;
+}
+
+const INITIAL_EDIT_STATE: EditState = { id: null, name: "" };
+
 export function PasskeyManagementSection() {
   const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -107,8 +115,7 @@ export function PasskeyManagementSection() {
   const [isAdding, setIsAdding] = useState(false);
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
+  const [editState, setEditState] = useState<EditState>(INITIAL_EDIT_STATE);
 
   // Optimistic state for instant feedback on delete and rename
   const [optimisticPasskeys, applyOptimistic] = useOptimistic(
@@ -244,27 +251,24 @@ export function PasskeyManagementSection() {
     }
   };
 
-  const handleStartEdit = (passkey: PasskeyCredential) => {
-    setEditingId(passkey.id);
-    setEditName(passkey.name || "");
-  };
+  const handleStartEdit = useCallback((passkey: PasskeyCredential) => {
+    setEditState({ id: passkey.id, name: passkey.name || "" });
+  }, []);
 
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditName("");
-  };
+  const handleCancelEdit = useCallback(() => {
+    setEditState(INITIAL_EDIT_STATE);
+  }, []);
 
-  const handleSaveEdit = async () => {
-    if (!(editingId && editName.trim())) {
+  const handleSaveEdit = useCallback(async () => {
+    const { id: passkeyId, name } = editState;
+    const newName = name.trim();
+
+    if (!(passkeyId && newName)) {
       return;
     }
 
-    const passkeyId = editingId;
-    const newName = editName.trim();
-
     // Close edit mode immediately for instant feedback
-    setEditingId(null);
-    setEditName("");
+    setEditState(INITIAL_EDIT_STATE);
 
     // Apply optimistic update - name changes instantly
     applyOptimistic({ type: "rename", id: passkeyId, name: newName });
@@ -283,7 +287,7 @@ export function PasskeyManagementSection() {
       });
       await loadPasskeys();
     }
-  };
+  }, [editState, applyOptimistic, loadPasskeys]);
 
   return (
     <Card>
@@ -337,14 +341,19 @@ export function PasskeyManagementSection() {
                     <DeviceIcon deviceType={passkey.deviceType} />
                   </ItemMedia>
                   <ItemContent>
-                    {editingId === passkey.id ? (
+                    {editState.id === passkey.id ? (
                       <div className="flex items-center gap-2">
                         <Input
                           aria-label="Passkey name"
                           autoFocus
                           className="h-7 w-40"
                           name="passkeyName"
-                          onChange={(e) => setEditName(e.target.value)}
+                          onChange={(e) =>
+                            setEditState((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               handleSaveEdit().catch(() => {
@@ -355,11 +364,11 @@ export function PasskeyManagementSection() {
                               handleCancelEdit();
                             }
                           }}
-                          value={editName}
+                          value={editState.name}
                         />
                         <Button
                           aria-label="Save passkey name"
-                          disabled={!editName.trim()}
+                          disabled={!editState.name.trim()}
                           onClick={handleSaveEdit}
                           size="sm"
                           variant="ghost"

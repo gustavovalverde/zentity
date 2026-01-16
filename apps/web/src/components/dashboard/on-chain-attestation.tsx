@@ -18,7 +18,7 @@ import {
   Shield,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ComplianceAccessCard } from "@/components/blockchain/compliance-access-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -110,11 +110,30 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   });
 
   // Refresh attestation status mutation
+  // This endpoint actively checks the blockchain via provider.checkTransaction()
+  // and updates the database - not just a cache refresh
   const refreshMutation = trpcReact.attestation.refresh.useMutation({
     onSuccess: () => {
       refetchNetworks();
     },
   });
+
+  // Poll blockchain status for pending submissions
+  // The refresh mutation checks the actual blockchain and updates the DB
+  useEffect(() => {
+    const hasPending = networks?.some(
+      (n) => n.attestation?.status === "submitted"
+    );
+    if (!(hasPending && selectedNetwork)) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      refreshMutation.mutate({ networkId: selectedNetwork });
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [networks, selectedNetwork, refreshMutation]);
 
   // Track initial wallet for change detection
   const [initialWallet, setInitialWallet] = useState<string | undefined>();
@@ -127,13 +146,21 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
   const walletChanged = initialWallet && address && address !== initialWallet;
 
-  // Get selected network data
-  const selectedNetworkData = networks?.find((n) => n.id === selectedNetwork);
+  // Get selected network data - memoized to prevent recalculation
+  const selectedNetworkData = useMemo(
+    () => networks?.find((n) => n.id === selectedNetwork),
+    [networks, selectedNetwork]
+  );
 
-  const showComplianceAccess = Boolean(
-    selectedNetworkData?.attestation?.status === "confirmed" &&
-      selectedNetworkData?.identityRegistry &&
-      selectedNetworkData?.complianceRules
+  // Derived state - memoized for performance
+  const showComplianceAccess = useMemo(
+    () =>
+      Boolean(
+        selectedNetworkData?.attestation?.status === "confirmed" &&
+          selectedNetworkData?.identityRegistry &&
+          selectedNetworkData?.complianceRules
+      ),
+    [selectedNetworkData]
   );
 
   // Verify on-chain attestation status (catches stale DB records after contract redeployment)
@@ -152,15 +179,20 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
     );
 
   // If DB says attested but on-chain says not, user needs to re-attest
-  const needsReAttestation =
-    !isDemo &&
-    showComplianceAccess &&
-    onChainStatus &&
-    !onChainStatus.isAttested;
+  const needsReAttestation = useMemo(
+    () =>
+      !isDemo &&
+      showComplianceAccess &&
+      onChainStatus &&
+      !onChainStatus.isAttested,
+    [isDemo, showComplianceAccess, onChainStatus]
+  );
 
   // Only show compliance card if actually attested on-chain (or still loading)
-  const showComplianceCard =
-    showComplianceAccess && !needsReAttestation && !isCheckingOnChain;
+  const showComplianceCard = useMemo(
+    () => showComplianceAccess && !needsReAttestation && !isCheckingOnChain,
+    [showComplianceAccess, needsReAttestation, isCheckingOnChain]
+  );
 
   const { data: complianceAccess } = trpcReact.token.complianceAccess.useQuery(
     {
@@ -186,26 +218,6 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
       setSelectedNetwork(networks[0].id);
     }
   }, [networks, selectedNetwork]);
-
-  // Auto-refresh TX status when attestation is submitted (poll every 8 seconds)
-  useEffect(() => {
-    if (selectedNetworkData?.attestation?.status !== "submitted") {
-      return;
-    }
-    if (!selectedNetwork) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      refreshMutation.mutate({ networkId: selectedNetwork });
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [
-    selectedNetworkData?.attestation?.status,
-    selectedNetwork,
-    refreshMutation,
-  ]);
 
   const handleSubmit = useCallback(async () => {
     if (!(selectedNetwork && address)) {
@@ -322,174 +334,39 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
 
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            {(() => {
-              if (!isConnected) {
-                return (
-                  <div className="flex flex-col items-center gap-4 py-4">
-                    <Wallet className="h-12 w-12 text-muted-foreground" />
-                    <p className="text-center text-muted-foreground text-sm">
-                      Connect your wallet to register your identity on-chain
-                    </p>
-                    {/* AppKit web component - globally available after createAppKit init */}
-                    <appkit-button />
-                  </div>
-                );
+            <AttestationContentBody
+              address={address}
+              complianceExplorerUrl={complianceExplorerUrl ?? null}
+              complianceGranted={complianceGranted}
+              complianceTxHash={complianceTxHash}
+              error={submitMutation.error?.message ?? clientError ?? undefined}
+              invalidateComplianceAccess={() => {
+                if (selectedNetworkData?.id && address) {
+                  utils.token.complianceAccess.invalidate({
+                    networkId: selectedNetworkData.id,
+                    walletAddress: address,
+                  });
+                }
+              }}
+              isCheckingOnChain={isCheckingOnChain}
+              isConnected={isConnected}
+              isDemo={isDemo}
+              isRefreshing={refreshMutation.isPending}
+              isSubmitting={submitMutation.isPending}
+              needsReAttestation={needsReAttestation ?? false}
+              networks={networks}
+              networksLoading={networksLoading}
+              onNetworkSelect={setSelectedNetwork}
+              onRefresh={handleRefresh}
+              onSubmit={handleSubmit}
+              selectedNetwork={selectedNetwork}
+              selectedNetworkData={
+                selectedNetworkData as NetworkStatus | undefined
               }
-
-              if (networksLoading) {
-                return (
-                  <div className="flex items-center justify-center py-8">
-                    <Spinner size="lg" />
-                  </div>
-                );
-              }
-
-              if (!(networks && networks.length > 0)) {
-                return (
-                  <Empty>
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <AlertTriangle />
-                      </EmptyMedia>
-                      <EmptyTitle>No Networks Available</EmptyTitle>
-                      <EmptyDescription>
-                        No blockchain networks are configured. Contact support
-                        if this persists.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                );
-              }
-
-              return (
-                <>
-                  {/* Demo Mode Warning */}
-                  {isDemo ? (
-                    <Alert variant="warning">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Demo Mode</strong> - No real blockchain
-                        transactions. Configure contract addresses for
-                        production use.
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  {/* Wallet Change Warning */}
-                  {walletChanged ? (
-                    <Alert variant="warning">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Wallet Changed</strong> - Attestation will be
-                        linked to:{" "}
-                        <code className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-xs">
-                          {address?.slice(0, 6)}…{address?.slice(-4)}
-                        </code>
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  {/* Network Selector */}
-                  <fieldset className="space-y-3">
-                    <Label asChild>
-                      <legend>Select Network</legend>
-                    </Label>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {networks.map((network) => (
-                        <NetworkCard
-                          isSelected={selectedNetwork === network.id}
-                          key={network.id}
-                          network={network as NetworkStatus}
-                          onSelect={() => setSelectedNetwork(network.id)}
-                        />
-                      ))}
-                    </div>
-                  </fieldset>
-
-                  {/* Selected Network Actions */}
-                  {selectedNetworkData && address ? (
-                    <NetworkActions
-                      attestedWalletAddress={
-                        selectedNetworkData.attestation?.walletAddress
-                      }
-                      error={
-                        submitMutation.error?.message ??
-                        clientError ??
-                        undefined
-                      }
-                      isRefreshing={refreshMutation.isPending}
-                      isSubmitting={submitMutation.isPending}
-                      network={selectedNetworkData as NetworkStatus}
-                      onRefresh={handleRefresh}
-                      onSubmit={handleSubmit}
-                      walletAddress={address}
-                    />
-                  ) : null}
-
-                  {/* Re-attestation required warning (DB says confirmed but chain says not) */}
-                  {needsReAttestation ? (
-                    <Alert variant="warning">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>Re-attestation Required</strong> - The identity
-                        contracts have been updated. Click &quot;Update
-                        Attestation&quot; above to re-register your identity
-                        on-chain before granting compliance access.
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  {/* Loading on-chain status */}
-                  {showComplianceAccess && isCheckingOnChain ? (
-                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                      <Spinner size="sm" />
-                      <span>Verifying on-chain attestation…</span>
-                    </div>
-                  ) : null}
-
-                  {showComplianceCard ? (
-                    <ComplianceAccessCard
-                      complianceRules={
-                        selectedNetworkData?.complianceRules as
-                          | `0x${string}`
-                          | null
-                      }
-                      expectedChainId={selectedNetworkData?.chainId}
-                      expectedNetworkName={selectedNetworkData?.name}
-                      grantedExplorerUrl={complianceExplorerUrl}
-                      grantedTxHash={complianceTxHash}
-                      identityRegistry={
-                        selectedNetworkData?.identityRegistry as
-                          | `0x${string}`
-                          | null
-                      }
-                      isGranted={complianceGranted}
-                      onGranted={() => {
-                        if (selectedNetworkData?.id && address) {
-                          utils.token.complianceAccess.invalidate({
-                            networkId: selectedNetworkData.id,
-                            walletAddress: address,
-                          });
-                        }
-                      }}
-                    />
-                  ) : null}
-
-                  {/* Info about encryption */}
-                  {selectedNetworkData?.type === "fhevm" && (
-                    <Alert variant="info">
-                      <Lock className="h-4 w-4" />
-                      <AlertDescription className="text-xs">
-                        <strong>Encrypted Attestation</strong> - Your identity
-                        data will be encrypted using Fully Homomorphic
-                        Encryption (FHE) before being stored on-chain. Only
-                        authorized smart contracts can verify claims.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </>
-              );
-            })()}
+              showComplianceAccess={showComplianceAccess}
+              showComplianceCard={showComplianceCard}
+              walletChanged={Boolean(walletChanged)}
+            />
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
@@ -497,34 +374,263 @@ export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
   );
 }
 
+const STATUS_VARIANT: Record<
+  string,
+  "warning" | "info" | "success" | "destructive"
+> = {
+  pending: "warning",
+  submitted: "info",
+  confirmed: "success",
+  failed: "destructive",
+};
+
+// Network type from tRPC may have slightly different status typing
+interface ApiNetworkStatus {
+  id: string;
+  name: string;
+  chainId: number;
+  type: "fhevm" | "evm";
+  features: string[];
+  explorer?: string;
+  identityRegistry?: string | null;
+  complianceRules?: string | null;
+  attestation: {
+    id: string;
+    status: "pending" | "submitted" | "confirmed" | "failed" | null;
+    txHash: string | null;
+    blockNumber: number | null;
+    confirmedAt: string | null;
+    errorMessage: string | null;
+    explorerUrl?: string;
+    walletAddress: string;
+  } | null;
+}
+
+interface AttestationContentBodyProps {
+  isConnected: boolean;
+  networksLoading: boolean;
+  networks: ApiNetworkStatus[] | undefined;
+  isDemo: boolean;
+  walletChanged: boolean;
+  address: string | undefined;
+  selectedNetwork: string | null;
+  selectedNetworkData: NetworkStatus | undefined;
+  onNetworkSelect: (networkId: string) => void;
+  onSubmit: () => void;
+  onRefresh: () => void;
+  isSubmitting: boolean;
+  isRefreshing: boolean;
+  error: string | undefined;
+  needsReAttestation: boolean;
+  showComplianceAccess: boolean;
+  isCheckingOnChain: boolean;
+  showComplianceCard: boolean;
+  complianceGranted: boolean;
+  complianceTxHash: string | null;
+  complianceExplorerUrl: string | null;
+  invalidateComplianceAccess: () => void;
+}
+
+/**
+ * Content body for attestation card.
+ * Uses guard clauses for clearer control flow than IIFE.
+ */
+const AttestationContentBody = memo(function AttestationContentBody({
+  isConnected,
+  networksLoading,
+  networks,
+  isDemo,
+  walletChanged,
+  address,
+  selectedNetwork,
+  selectedNetworkData,
+  onNetworkSelect,
+  onSubmit,
+  onRefresh,
+  isSubmitting,
+  isRefreshing,
+  error,
+  needsReAttestation,
+  showComplianceAccess,
+  isCheckingOnChain,
+  showComplianceCard,
+  complianceGranted,
+  complianceTxHash,
+  complianceExplorerUrl,
+  invalidateComplianceAccess,
+}: AttestationContentBodyProps) {
+  // Guard: Wallet not connected
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-4">
+        <Wallet className="h-12 w-12 text-muted-foreground" />
+        <p className="text-center text-muted-foreground text-sm">
+          Connect your wallet to register your identity on-chain
+        </p>
+        <appkit-button />
+      </div>
+    );
+  }
+
+  // Guard: Loading networks
+  if (networksLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // Guard: No networks available
+  if (!(networks && networks.length > 0)) {
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <AlertTriangle />
+          </EmptyMedia>
+          <EmptyTitle>No Networks Available</EmptyTitle>
+          <EmptyDescription>
+            No blockchain networks are configured. Contact support if this
+            persists.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+
+  // Main content: Networks loaded and available
+  return (
+    <>
+      {isDemo ? (
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Demo Mode</strong> - No real blockchain transactions.
+            Configure contract addresses for production use.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {walletChanged ? (
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Wallet Changed</strong> - Attestation will be linked to:{" "}
+            <code className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-xs">
+              {address?.slice(0, 6)}…{address?.slice(-4)}
+            </code>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <fieldset className="space-y-3">
+        <Label asChild>
+          <legend>Select Network</legend>
+        </Label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {networks.map((network) => (
+            <NetworkCard
+              isSelected={selectedNetwork === network.id}
+              key={network.id}
+              network={network}
+              onSelect={() => onNetworkSelect(network.id)}
+            />
+          ))}
+        </div>
+      </fieldset>
+
+      {selectedNetworkData && address ? (
+        <NetworkActions
+          attestedWalletAddress={selectedNetworkData.attestation?.walletAddress}
+          error={error}
+          isRefreshing={isRefreshing}
+          isSubmitting={isSubmitting}
+          network={selectedNetworkData}
+          onRefresh={onRefresh}
+          onSubmit={onSubmit}
+          walletAddress={address}
+        />
+      ) : null}
+
+      {needsReAttestation ? (
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Re-attestation Required</strong> - The identity contracts
+            have been updated. Click &quot;Update Attestation&quot; above to
+            re-register your identity on-chain before granting compliance
+            access.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {showComplianceAccess && isCheckingOnChain ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Spinner size="sm" />
+          <span>Verifying on-chain attestation…</span>
+        </div>
+      ) : null}
+
+      {showComplianceCard ? (
+        <ComplianceAccessCard
+          complianceRules={
+            selectedNetworkData?.complianceRules as `0x${string}` | null
+          }
+          expectedChainId={selectedNetworkData?.chainId}
+          expectedNetworkName={selectedNetworkData?.name}
+          grantedExplorerUrl={complianceExplorerUrl}
+          grantedTxHash={complianceTxHash}
+          identityRegistry={
+            selectedNetworkData?.identityRegistry as `0x${string}` | null
+          }
+          isGranted={complianceGranted}
+          onGranted={invalidateComplianceAccess}
+        />
+      ) : null}
+
+      {selectedNetworkData?.type === "fhevm" && (
+        <Alert variant="info">
+          <Lock className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            <strong>Encrypted Attestation</strong> - Your identity data will be
+            encrypted using Fully Homomorphic Encryption (FHE) before being
+            stored on-chain. Only authorized smart contracts can verify claims.
+          </AlertDescription>
+        </Alert>
+      )}
+    </>
+  );
+});
+
 /**
  * Individual network card for selection.
+ * Memoized to prevent re-renders when parent state changes.
  */
-function NetworkCard({
+function getStatusIcon(status: string | undefined) {
+  if (status === "confirmed") {
+    return <CheckCircle className="h-3 w-3" />;
+  }
+  if (status === "failed") {
+    return <AlertTriangle className="h-3 w-3" />;
+  }
+  if (status) {
+    return <Spinner className="size-3" />;
+  }
+  return null;
+}
+
+const NetworkCard = memo(function NetworkCard({
   network,
   isSelected,
   onSelect,
 }: {
-  network: NetworkStatus;
+  network: ApiNetworkStatus;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const statusVariant: Record<
-    string,
-    "warning" | "info" | "success" | "destructive"
-  > = {
-    pending: "warning",
-    submitted: "info",
-    confirmed: "success",
-    failed: "destructive",
-  };
-
-  const statusIcons = {
-    pending: <Spinner className="size-3" />,
-    submitted: <Spinner className="size-3" />,
-    confirmed: <CheckCircle className="h-3 w-3" />,
-    failed: <AlertTriangle className="h-3 w-3" />,
-  };
+  const status = network.attestation?.status ?? undefined;
+  const statusIcon = getStatusIcon(status);
 
   return (
     <button
@@ -547,23 +653,21 @@ function NetworkCard({
           {network.type === "fhevm" ? "Encrypted" : "Standard"}
         </p>
       </div>
-      {network.attestation ? (
-        <Badge
-          className="shrink-0"
-          variant={statusVariant[network.attestation.status]}
-        >
-          {statusIcons[network.attestation.status]}
-          <span className="ml-1 capitalize">{network.attestation.status}</span>
+      {network.attestation && status ? (
+        <Badge className="shrink-0" variant={STATUS_VARIANT[status]}>
+          {statusIcon}
+          <span className="ml-1 capitalize">{status}</span>
         </Badge>
       ) : null}
     </button>
   );
-}
+});
 
 /**
  * Actions for the selected network.
+ * Memoized to prevent re-renders when unrelated parent state changes.
  */
-function NetworkActions({
+const NetworkActions = memo(function NetworkActions({
   network,
   walletAddress,
   attestedWalletAddress,
@@ -804,4 +908,4 @@ function NetworkActions({
       </Button>
     </div>
   );
-}
+});
