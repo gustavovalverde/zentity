@@ -67,8 +67,6 @@ interface UseLivenessCameraResult {
   captureFrame: () => string | null;
   /** Capture frame optimized for streaming (smaller size, lower quality) */
   captureStreamFrame: () => string | null;
-  /** Get a square-padded canvas for improved face detection */
-  getSquareDetectionCanvas: () => HTMLCanvasElement | null;
   /** Whether device is mobile (for UI decisions like fullscreen) */
   isMobile: boolean;
   /** Available camera devices (physical cameras only if blockVirtualCameras is true) */
@@ -112,9 +110,13 @@ export function useLivenessCamera(
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const squareCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Single pooled canvas for all capture operations (saves ~2.4MB vs 3 separate canvases)
+  const canvasPoolRef = useRef<{
+    canvas: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D;
+    width: number;
+    height: number;
+  } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [permissionStatus, setPermissionStatus] =
     useState<PermissionState>("checking");
@@ -336,6 +338,39 @@ export function useLivenessCamera(
   ]);
 
   /**
+   * Get or create a pooled canvas with the specified dimensions.
+   * Reuses the same canvas instance, resizing only when needed.
+   */
+  const getPooledCanvas = useCallback(
+    (
+      width: number,
+      height: number
+    ): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null => {
+      const pool = canvasPoolRef.current;
+
+      // Reuse existing canvas if dimensions match
+      if (pool && pool.width === width && pool.height === height) {
+        return { canvas: pool.canvas, ctx: pool.ctx };
+      }
+
+      // Create or resize canvas
+      const canvas = pool?.canvas ?? document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      // Get context with willReadFrequently for brightness correction support
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        return null;
+      }
+
+      canvasPoolRef.current = { canvas, ctx, width, height };
+      return { canvas, ctx };
+    },
+    []
+  );
+
+  /**
    * Capture a frame to dataURL with optional brightness correction.
    */
   const captureFrame = useCallback((): string | null => {
@@ -350,24 +385,15 @@ export function useLivenessCamera(
       return null;
     }
 
-    const canvas = captureCanvasRef.current ?? document.createElement("canvas");
-    captureCanvasRef.current = canvas;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const shouldCorrectBrightness = !skipBrightnessCorrection;
-
-    // Use willReadFrequently only if we need to read pixels for brightness
-    const ctx = canvas.getContext("2d", {
-      willReadFrequently: shouldCorrectBrightness,
-    });
-    if (!ctx) {
+    const pooled = getPooledCanvas(video.videoWidth, video.videoHeight);
+    if (!pooled) {
       return null;
     }
+    const { canvas, ctx } = pooled;
 
     ctx.drawImage(video, 0, 0);
 
-    if (shouldCorrectBrightness) {
+    if (!skipBrightnessCorrection) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
@@ -397,7 +423,7 @@ export function useLivenessCamera(
     }
 
     return canvas.toDataURL("image/jpeg", 0.85);
-  }, [brightnessTarget, skipBrightnessCorrection]);
+  }, [brightnessTarget, skipBrightnessCorrection, getPooledCanvas]);
 
   /**
    * Capture a frame optimized for streaming (smaller size, lower quality).
@@ -418,69 +444,20 @@ export function useLivenessCamera(
     // Target 640x480 max for streaming
     const MAX_WIDTH = 640;
     const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+    const width = Math.round(video.videoWidth * scale);
+    const height = Math.round(video.videoHeight * scale);
 
-    const canvas = streamCanvasRef.current ?? document.createElement("canvas");
-    streamCanvasRef.current = canvas;
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
+    const pooled = getPooledCanvas(width, height);
+    if (!pooled) {
       return null;
     }
+    const { canvas, ctx } = pooled;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     // Lower quality (70%) for faster transmission
     return canvas.toDataURL("image/jpeg", 0.7);
-  }, []);
-
-  /**
-   * Get a square-padded canvas with the video frame centered.
-   * Square images improve face detection accuracy.
-   * NOTE: Currently unused - face detection runs server-side.
-   */
-  const getSquareDetectionCanvas = useCallback((): HTMLCanvasElement | null => {
-    const video = videoRef.current;
-    if (!video) {
-      return null;
-    }
-    if (video.videoWidth === 0 || video.videoHeight === 0) {
-      return null;
-    }
-    if (video.readyState < 2) {
-      return null;
-    }
-
-    const { videoWidth, videoHeight } = video;
-    const maxDim = Math.max(videoWidth, videoHeight);
-    const maxSquareSize = 1280;
-    const size = Math.min(maxDim, maxSquareSize);
-    const scale = size / maxDim;
-
-    const canvas = squareCanvasRef.current ?? document.createElement("canvas");
-    squareCanvasRef.current = canvas;
-    canvas.width = size;
-    canvas.height = size;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return null;
-    }
-
-    // Fill with black (padding color)
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, size, size);
-
-    // Scale and center the video frame in the square canvas
-    const scaledWidth = videoWidth * scale;
-    const scaledHeight = videoHeight * scale;
-    const offsetX = (size - scaledWidth) / 2;
-    const offsetY = (size - scaledHeight) / 2;
-    ctx.drawImage(video, offsetX, offsetY, scaledWidth, scaledHeight);
-
-    return canvas;
-  }, []);
+  }, [getPooledCanvas]);
 
   // Stop camera when component using the hook unmounts.
   useEffect(() => () => stopCamera(), [stopCamera]);
@@ -493,9 +470,7 @@ export function useLivenessCamera(
     stopCamera,
     captureFrame,
     captureStreamFrame,
-    getSquareDetectionCanvas,
     isMobile,
-    // New camera management features
     availableDevices,
     selectedDeviceId,
     selectDevice: setSelectedDeviceId,
