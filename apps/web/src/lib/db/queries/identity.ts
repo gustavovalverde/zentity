@@ -9,6 +9,7 @@ import type {
 } from "../schema/identity";
 
 import { and, desc, eq, sql } from "drizzle-orm";
+import { cache } from "react";
 
 import { db } from "../connection";
 import { attestationEvidence } from "../schema/attestation";
@@ -81,7 +82,9 @@ export async function deleteIdentityData(userId: string): Promise<void> {
   });
 }
 
-export async function getVerificationStatus(userId: string): Promise<{
+export const getVerificationStatus = cache(async function getVerificationStatus(
+  userId: string
+): Promise<{
   verified: boolean;
   level: "none" | "basic" | "full";
   checks: {
@@ -130,7 +133,7 @@ export async function getVerificationStatus(userId: string): Promise<{
     level,
     checks,
   };
-}
+});
 
 export async function getIdentityBundleByUserId(
   userId: string
@@ -178,87 +181,89 @@ export async function getIdentityDocumentsByUserId(
     .all();
 }
 
-export async function getSelectedIdentityDocumentByUserId(
-  userId: string
-): Promise<IdentityDocument | null> {
-  // Parallelize all three independent queries
-  const [documents, proofRows, claimRows] = await Promise.all([
-    getIdentityDocumentsByUserId(userId),
-    db
-      .select({
-        documentId: zkProofs.documentId,
-        proofType: zkProofs.proofType,
-        verified: zkProofs.verified,
-      })
-      .from(zkProofs)
-      .where(eq(zkProofs.userId, userId))
-      .all(),
-    db
-      .select({
-        documentId: signedClaims.documentId,
-        claimType: signedClaims.claimType,
-      })
-      .from(signedClaims)
-      .where(eq(signedClaims.userId, userId))
-      .all(),
-  ]);
+export const getSelectedIdentityDocumentByUserId = cache(
+  async function getSelectedIdentityDocumentByUserId(
+    userId: string
+  ): Promise<IdentityDocument | null> {
+    // Parallelize all three independent queries
+    const [documents, proofRows, claimRows] = await Promise.all([
+      getIdentityDocumentsByUserId(userId),
+      db
+        .select({
+          documentId: zkProofs.documentId,
+          proofType: zkProofs.proofType,
+          verified: zkProofs.verified,
+        })
+        .from(zkProofs)
+        .where(eq(zkProofs.userId, userId))
+        .all(),
+      db
+        .select({
+          documentId: signedClaims.documentId,
+          claimType: signedClaims.claimType,
+        })
+        .from(signedClaims)
+        .where(eq(signedClaims.userId, userId))
+        .all(),
+    ]);
 
-  if (documents.length === 0) {
-    return null;
+    if (documents.length === 0) {
+      return null;
+    }
+
+    const proofTypesByDocument = new Map<string, Set<string>>();
+    for (const row of proofRows) {
+      if (!(row.documentId && row.verified)) {
+        continue;
+      }
+      if (!proofTypesByDocument.has(row.documentId)) {
+        proofTypesByDocument.set(row.documentId, new Set());
+      }
+      proofTypesByDocument.get(row.documentId)?.add(row.proofType);
+    }
+
+    const claimTypesByDocument = new Map<string, Set<string>>();
+    for (const row of claimRows) {
+      if (!row.documentId) {
+        continue;
+      }
+      if (!claimTypesByDocument.has(row.documentId)) {
+        claimTypesByDocument.set(row.documentId, new Set());
+      }
+      claimTypesByDocument.get(row.documentId)?.add(row.claimType);
+    }
+
+    const requiredProofs = [
+      "age_verification",
+      "doc_validity",
+      "nationality_membership",
+      "face_match",
+    ];
+    const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
+
+    const hasAll = (set: Set<string> | undefined, required: string[]) =>
+      required.every((item) => set?.has(item));
+
+    for (const doc of documents) {
+      if (doc.status !== "verified") {
+        continue;
+      }
+      const proofs = proofTypesByDocument.get(doc.id);
+      const claims = claimTypesByDocument.get(doc.id);
+      if (hasAll(proofs, requiredProofs) && hasAll(claims, requiredClaims)) {
+        return doc;
+      }
+    }
+
+    for (const doc of documents) {
+      if (doc.status === "verified") {
+        return doc;
+      }
+    }
+
+    return documents[0] ?? null;
   }
-
-  const proofTypesByDocument = new Map<string, Set<string>>();
-  for (const row of proofRows) {
-    if (!(row.documentId && row.verified)) {
-      continue;
-    }
-    if (!proofTypesByDocument.has(row.documentId)) {
-      proofTypesByDocument.set(row.documentId, new Set());
-    }
-    proofTypesByDocument.get(row.documentId)?.add(row.proofType);
-  }
-
-  const claimTypesByDocument = new Map<string, Set<string>>();
-  for (const row of claimRows) {
-    if (!row.documentId) {
-      continue;
-    }
-    if (!claimTypesByDocument.has(row.documentId)) {
-      claimTypesByDocument.set(row.documentId, new Set());
-    }
-    claimTypesByDocument.get(row.documentId)?.add(row.claimType);
-  }
-
-  const requiredProofs = [
-    "age_verification",
-    "doc_validity",
-    "nationality_membership",
-    "face_match",
-  ];
-  const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
-
-  const hasAll = (set: Set<string> | undefined, required: string[]) =>
-    required.every((item) => set?.has(item));
-
-  for (const doc of documents) {
-    if (doc.status !== "verified") {
-      continue;
-    }
-    const proofs = proofTypesByDocument.get(doc.id);
-    const claims = claimTypesByDocument.get(doc.id);
-    if (hasAll(proofs, requiredProofs) && hasAll(claims, requiredClaims)) {
-      return doc;
-    }
-  }
-
-  for (const doc of documents) {
-    if (doc.status === "verified") {
-      return doc;
-    }
-  }
-
-  return documents[0] ?? null;
-}
+);
 
 export async function getIdentityDraftById(
   draftId: string

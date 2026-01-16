@@ -204,8 +204,12 @@ export const attestationRouter = router({
         };
       }
 
-      // Check verification status
-      const verificationStatus = await getVerificationStatus(ctx.userId);
+      // Parallelize verification status and identity document queries
+      const [verificationStatus, identityDocument] = await Promise.all([
+        getVerificationStatus(ctx.userId),
+        getSelectedIdentityDocumentByUserId(ctx.userId),
+      ]);
+
       if (!verificationStatus?.verified) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -213,10 +217,6 @@ export const attestationRouter = router({
         });
       }
 
-      // Get latest identity document for attestation data
-      const identityDocument = await getSelectedIdentityDocumentByUserId(
-        ctx.userId
-      );
       if (!identityDocument) {
         throw new TRPCError({
           code: "NOT_FOUND",

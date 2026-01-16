@@ -10,13 +10,14 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
+import { cn } from "@/lib/utils/utils";
 
 interface VerificationCheck {
   id: string;
@@ -93,59 +94,81 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
     }
   };
 
-  const verificationChecks: VerificationCheck[] = [
-    {
-      id: "document",
-      label: "Document Verified",
-      description: "ID document processed via OCR",
-      completed: effectiveChecks.document,
-      icon: <FileCheck className="h-4 w-4" />,
-    },
-    {
-      id: "liveness",
-      label: "Liveness Check",
-      description: "Real person confirmed",
-      completed: effectiveChecks.liveness,
-      icon: <Camera className="h-4 w-4" />,
-    },
-    {
-      id: "faceMatchProof",
-      label: "Face Match (ZK)",
-      description: "Selfie matches ID photo",
-      completed: effectiveChecks.faceMatchProof,
-      icon: <User className="h-4 w-4" />,
-    },
-    {
-      id: "ageProof",
-      label: "Age Proof (ZK)",
-      description: "18+ verified cryptographically",
-      completed: effectiveChecks.ageProof,
-      icon: <Shield className="h-4 w-4" />,
-    },
-    {
-      id: "docValidityProof",
-      label: "Document Valid (ZK)",
-      description: "Document is not expired",
-      completed: effectiveChecks.docValidityProof,
-      icon: <FileCheck className="h-4 w-4" />,
-    },
-    {
-      id: "nationalityProof",
-      label: "Nationality Proof (ZK)",
-      description: "Membership in allowlist group",
-      completed: effectiveChecks.nationalityProof,
-      icon: <Shield className="h-4 w-4" />,
-    },
-    {
-      id: "fheEncryption",
-      label: "FHE Encryption",
-      description: "Data encrypted homomorphically",
-      completed: effectiveChecks.fheEncryption,
-      icon: <Key className="h-4 w-4" />,
-    },
-  ];
+  const verificationChecks = useMemo<VerificationCheck[]>(
+    () => [
+      {
+        id: "document",
+        label: "Document Verified",
+        description: "ID document processed via OCR",
+        completed: effectiveChecks.document,
+        icon: <FileCheck className="h-4 w-4" />,
+      },
+      {
+        id: "liveness",
+        label: "Liveness Check",
+        description: "Real person confirmed",
+        completed: effectiveChecks.liveness,
+        icon: <Camera className="h-4 w-4" />,
+      },
+      {
+        id: "faceMatchProof",
+        label: "Face Match (ZK)",
+        description: "Selfie matches ID photo",
+        completed: effectiveChecks.faceMatchProof,
+        icon: <User className="h-4 w-4" />,
+      },
+      {
+        id: "ageProof",
+        label: "Age Proof (ZK)",
+        description: "18+ verified cryptographically",
+        completed: effectiveChecks.ageProof,
+        icon: <Shield className="h-4 w-4" />,
+      },
+      {
+        id: "docValidityProof",
+        label: "Document Valid (ZK)",
+        description: "Document is not expired",
+        completed: effectiveChecks.docValidityProof,
+        icon: <FileCheck className="h-4 w-4" />,
+      },
+      {
+        id: "nationalityProof",
+        label: "Nationality Proof (ZK)",
+        description: "Membership in allowlist group",
+        completed: effectiveChecks.nationalityProof,
+        icon: <Shield className="h-4 w-4" />,
+      },
+      {
+        id: "fheEncryption",
+        label: "FHE Encryption",
+        description: "Data encrypted homomorphically",
+        completed: effectiveChecks.fheEncryption,
+        icon: <Key className="h-4 w-4" />,
+      },
+    ],
+    [
+      effectiveChecks.document,
+      effectiveChecks.liveness,
+      effectiveChecks.faceMatchProof,
+      effectiveChecks.ageProof,
+      effectiveChecks.docValidityProof,
+      effectiveChecks.nationalityProof,
+      effectiveChecks.fheEncryption,
+    ]
+  );
 
-  const completedCount = [
+  const { completedCount, progress } = useMemo(() => {
+    const count = [
+      effectiveChecks.document,
+      effectiveChecks.liveness,
+      effectiveChecks.ageProof,
+      effectiveChecks.docValidityProof,
+      effectiveChecks.nationalityProof,
+      effectiveChecks.faceMatchProof,
+      effectiveChecks.fheEncryption,
+    ].filter(Boolean).length;
+    return { completedCount: count, progress: (count / 7) * 100 };
+  }, [
     effectiveChecks.document,
     effectiveChecks.liveness,
     effectiveChecks.ageProof,
@@ -153,8 +176,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
     effectiveChecks.nationalityProof,
     effectiveChecks.faceMatchProof,
     effectiveChecks.fheEncryption,
-  ].filter(Boolean).length;
-  const progress = (completedCount / 7) * 100;
+  ]);
 
   return (
     <Card>
@@ -190,11 +212,12 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">{check.icon}</span>
                     <span
-                      className={`font-medium text-sm ${
+                      className={cn(
+                        "font-medium text-sm",
                         check.completed
                           ? "text-foreground"
                           : "text-muted-foreground"
-                      }`}
+                      )}
                     >
                       {check.label}
                     </span>
