@@ -46,14 +46,14 @@ export function CredentialChoice({
           onClick={() => prfSupported && onSelect("passkey")}
           type="button"
         >
-          <div className="flex w-full items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                <Fingerprint className="h-5 w-5 text-primary" />
-              </div>
-              <div className="font-medium">Passkey</div>
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <Fingerprint className="h-5 w-5 text-primary" />
             </div>
-            <Badge variant="secondary">Recommended</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">Passkey</span>
+              <Badge variant="secondary">Recommended</Badge>
+            </div>
           </div>
 
           <p className="text-muted-foreground text-sm">
@@ -81,10 +81,10 @@ export function CredentialChoice({
           type="button"
         >
           <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
               <KeyRound className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div className="font-medium">Password</div>
+            <span className="font-medium">Password</span>
           </div>
 
           <p className="text-muted-foreground text-sm">
