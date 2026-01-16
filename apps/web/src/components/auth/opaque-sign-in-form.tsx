@@ -176,10 +176,9 @@ export function OpaqueSignInForm() {
         </form.Field>
       </FieldGroup>
 
-      <div className="flex items-center justify-between text-muted-foreground text-xs">
-        <span>OPAQUE password sign-in (zero-knowledge).</span>
+      <div className="flex justify-end">
         <Link
-          className="font-medium text-primary hover:underline"
+          className="font-medium text-primary text-xs hover:underline"
           href="/forgot-password"
         >
           Forgot password?

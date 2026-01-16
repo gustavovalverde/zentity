@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, TriangleAlert } from "lucide-react";
+import { ChevronDown, KeyRound, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -8,6 +8,11 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
 import { useFaceMatch } from "@/hooks/onboarding/use-face-match";
 import {
@@ -575,15 +580,14 @@ export function StepAccount() {
         </Alert>
       )}
 
-      {/* Extracted Information Review - only show when idle */}
-      {status === "idle" && (
+      {/* Extracted Information Review - only show when idle and session ready */}
+      {status === "idle" && sessionReady && (
         <ExtractedInfoReview
-          email={store.email || ""}
+          email={store.email || sessionEmail || ""}
           extractedDOB={store.extractedDOB}
           extractedName={store.extractedName}
           extractedNationality={store.extractedNationality}
-          hasIdDocument={!!store.idDocument}
-          hasSelfie={!!store.selfieImage}
+          isAnonymous={isAnonymousSession && !store.email}
         />
       )}
 
@@ -653,44 +657,36 @@ export function StepAccount() {
         />
       )}
 
-      {/* Privacy Info - only show when idle */}
+      {/* Privacy Info - collapsible for reduced cognitive load */}
       {!isSubmitting && status === "idle" && (
-        <Alert>
-          <AlertDescription>
-            <strong>Privacy-First Verification:</strong>
-            <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
+        <Collapsible>
+          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border p-4 text-left text-sm hover:bg-accent/50">
+            <span className="text-muted-foreground">
+              Your data is encrypted end-to-end. No plaintext PII is stored.
+            </span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform [[data-state=open]>&]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+            <div className="space-y-2 px-4 pt-3 text-muted-foreground text-xs">
               {!!hasDob && (
-                <>
-                  <li>
-                    Your birth year is encrypted using FHE (Fully Homomorphic
-                    Encryption)
-                  </li>
-                  <li>
-                    A zero-knowledge proof verifies you are 18+ without
-                    revealing your age
-                  </li>
-                </>
+                <p>
+                  Your birth year is encrypted with FHE. A zero-knowledge proof
+                  verifies you are 18+ without revealing your age.
+                </p>
               )}
               {!!hasIdentityImages && (
-                <>
-                  <li>
-                    Your ID document is processed to generate cryptographic
-                    commitments
-                  </li>
-                  <li>
-                    Face matching compares your selfie to your ID photo, then
-                    both are deleted
-                  </li>
-                </>
+                <p>
+                  Your ID generates cryptographic commitments. Face matching
+                  compares your selfie to your ID photo, then both are deleted.
+                </p>
               )}
-              <li>
-                Only commitments, proofs, signed claims, encrypted attributes,
-                and a passkey-sealed profile are stored - no plaintext PII is
-                retained
-              </li>
-            </ul>
-          </AlertDescription>
-        </Alert>
+              <p>
+                Only commitments, proofs, signed claims, and encrypted
+                attributes are stored.
+              </p>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       {/* Only show passkey controls when passkey credential type is selected */}

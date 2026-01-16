@@ -15,36 +15,31 @@ import {
 import { calculateAge } from "@/lib/identity/date-utils";
 
 interface ExtractedInfoReviewProps {
-  /** User's email address */
+  /** User's email address (from store or session) */
   email: string | null;
+  /** Whether this is an anonymous account */
+  isAnonymous?: boolean;
   /** Extracted name from ID document */
   extractedName: string | null;
   /** Extracted date of birth */
   extractedDOB: string | null;
   /** Extracted nationality */
   extractedNationality: string | null;
-  /** Whether ID document was uploaded */
-  hasIdDocument: boolean;
-  /** Whether selfie/liveness was completed */
-  hasSelfie: boolean;
 }
 
 /**
  * Displays a summary of extracted information for user review.
  *
- * Shows email, name, DOB (with age badge), nationality, and
- * document/liveness status before account creation.
+ * Shows email, name, DOB (with age badge), and nationality before account creation.
  *
  * Memoized to prevent re-renders when parent state changes but props remain the same.
- * (rerender-memo optimization)
  */
 export const ExtractedInfoReview = memo(function ExtractedInfoReview({
   email,
+  isAnonymous = false,
   extractedName,
   extractedDOB,
   extractedNationality,
-  hasIdDocument,
-  hasSelfie,
 }: ExtractedInfoReviewProps) {
   const age = calculateAge(extractedDOB);
 
@@ -58,8 +53,15 @@ export const ExtractedInfoReview = memo(function ExtractedInfoReview({
         <Item size="sm">
           <ItemContent>
             <ItemDescription>Email</ItemDescription>
-            <ItemTitle>{email || "Not provided"}</ItemTitle>
+            <ItemTitle className={isAnonymous ? "font-mono text-sm" : ""}>
+              {email || "Not provided"}
+            </ItemTitle>
           </ItemContent>
+          {isAnonymous ? (
+            <ItemActions>
+              <Badge variant="secondary">Anonymous</Badge>
+            </ItemActions>
+          ) : null}
         </Item>
 
         <ItemSeparator />
@@ -92,32 +94,6 @@ export const ExtractedInfoReview = memo(function ExtractedInfoReview({
             <ItemDescription>Nationality</ItemDescription>
             <ItemTitle>{extractedNationality || "Not extracted"}</ItemTitle>
           </ItemContent>
-        </Item>
-
-        <ItemSeparator />
-
-        <Item size="sm">
-          <ItemContent>
-            <ItemDescription>Document</ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            <Badge variant={hasIdDocument ? "default" : "outline"}>
-              {hasIdDocument ? "Uploaded" : "Skipped"}
-            </Badge>
-          </ItemActions>
-        </Item>
-
-        <ItemSeparator />
-
-        <Item size="sm">
-          <ItemContent>
-            <ItemDescription>Liveness</ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            <Badge variant={hasSelfie ? "default" : "outline"}>
-              {hasSelfie ? "Verified" : "Skipped"}
-            </Badge>
-          </ItemActions>
         </Item>
       </ItemGroup>
     </div>
