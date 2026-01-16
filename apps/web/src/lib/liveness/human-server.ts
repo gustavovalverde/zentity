@@ -54,9 +54,46 @@ const serverConfig: Partial<Config> = {
 let humanInstance: Human | null = null;
 let initPromise: Promise<Human> | null = null;
 
-// Mutex for detection calls - TensorFlow.js doesn't handle concurrent inference well
-// and can deadlock when multiple detect() calls run simultaneously on the same model.
-let detectionLock: Promise<void> = Promise.resolve();
+/**
+ * Counting semaphore for limiting concurrent TensorFlow detections.
+ * tfjs-node's native backend can handle limited concurrency safely,
+ * but too many concurrent calls can exhaust GPU memory or cause contention.
+ */
+class Semaphore {
+  private permits: number;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(permits: number) {
+    this.permits = permits;
+  }
+
+  acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits--;
+      return Promise.resolve();
+    }
+    // No permits available, wait in queue
+    return new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  release(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      // Pass permit directly to next waiter
+      next();
+    } else {
+      // No waiters, return permit to pool
+      this.permits++;
+    }
+  }
+}
+
+// Allow 2 concurrent detections by default. This is conservative but safe.
+// Increase to 3-4 if testing shows no issues on your hardware.
+const MAX_CONCURRENT_DETECTIONS = 2;
+const detectionSemaphore = new Semaphore(MAX_CONCURRENT_DETECTIONS);
 
 export function getHumanServer(): Promise<Human> {
   if (humanInstance) {
@@ -95,37 +132,26 @@ async function decodeBase64Image(dataUrl: string): Promise<TfTensor> {
   const tf = await import("@tensorflow/tfjs-node");
   const base64 = stripDataUrl(dataUrl);
   const buffer = Buffer.from(base64, "base64");
-  // decodeImage returns a 3D or 4D tensor (height, width, channels)
-  const tensor = tf.node.decodeImage(buffer, 3);
-  return tensor;
+  return decodeBuffer(tf, buffer);
 }
 
-/**
- * Create a deferred promise with external resolve control.
- */
-function createDeferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve: () => void = () => {
-    /* No-op placeholder until Promise assigns real resolve */
-  };
-  const promise = new Promise<void>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
+function decodeBuffer(
+  tf: typeof import("@tensorflow/tfjs-node"),
+  buffer: Buffer
+): TfTensor {
+  // decodeImage returns a 3D or 4D tensor (height, width, channels)
+  return tf.node.decodeImage(buffer, 3);
 }
 
 /**
  * Run Human.js detection on a base64 image (server-side).
- * Uses a mutex to prevent concurrent detection calls which can deadlock TensorFlow.js.
+ * Uses a semaphore to limit concurrent detections and prevent resource exhaustion.
  */
 export async function detectFromBase64(dataUrl: string) {
   const start = performance.now();
   let result: "ok" | "error" = "ok";
-  // Acquire lock - wait for any pending detection to complete
-  const previousLock = detectionLock;
-  const { promise: currentLock, resolve: releaseLock } = createDeferred();
-  detectionLock = currentLock;
 
-  await previousLock;
+  await detectionSemaphore.acquire();
 
   let tensor: TfTensor | null = null;
   try {
@@ -142,8 +168,39 @@ export async function detectFromBase64(dataUrl: string) {
     } catch {
       // ignore dispose errors
     }
-    // Release lock for next detection
-    releaseLock();
+    detectionSemaphore.release();
+    recordLivenessDetectDuration(performance.now() - start, { result });
+  }
+}
+
+/**
+ * Run Human.js detection directly from a Buffer (server-side).
+ * Skips base64 encoding overhead - use when you already have binary image data.
+ * Uses the same semaphore as detectFromBase64 to limit concurrent detections.
+ */
+export async function detectFromBuffer(buffer: Buffer) {
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+
+  await detectionSemaphore.acquire();
+
+  let tensor: TfTensor | null = null;
+  try {
+    const tf = await import("@tensorflow/tfjs-node");
+    const human = await getHumanServer();
+    tensor = decodeBuffer(tf, buffer);
+    return await human.detect(tensor);
+  } catch (error) {
+    result = "error";
+    throw error;
+  } finally {
+    // Dispose tensor to prevent memory leaks
+    try {
+      tensor?.dispose();
+    } catch {
+      // ignore dispose errors
+    }
+    detectionSemaphore.release();
     recordLivenessDetectDuration(performance.now() - start, { result });
   }
 }

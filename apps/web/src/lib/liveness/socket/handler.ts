@@ -16,7 +16,7 @@ import {
   getRealScore,
   getYawDegrees,
 } from "../human-metrics";
-import { detectFromBase64 } from "../human-server";
+import { detectFromBuffer } from "../human-server";
 import {
   ANTISPOOF_REAL_THRESHOLD,
   SMILE_DELTA_THRESHOLD,
@@ -131,13 +131,13 @@ export function handleLivenessConnection(socket: Socket): void {
     isProcessing = true;
 
     try {
-      // Convert buffer to base64 data URL
       const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-      const base64 = buffer.toString("base64");
-      const dataUrl = `data:image/jpeg;base64,${base64}`;
 
-      // Run server-side detection
-      const result = await detectFromBase64(dataUrl);
+      // Run detection directly from buffer (skips base64→Buffer round-trip)
+      const result = await detectFromBuffer(buffer);
+
+      // Convert to data URL only for storage (needed for frame retrieval later)
+      const dataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
       const face = getPrimaryFace(result);
 
       // Update face state
@@ -286,7 +286,17 @@ export function handleLivenessConnection(socket: Socket): void {
   // Handle disconnect
   socket.on("disconnect", (reason) => {
     log.info({ reason, sessionId: session?.id }, "Liveness connection closed");
-    // Clear all local state to prevent memory leaks
+
+    // Explicitly release frame storage before nullifying session.
+    // Base64 images can be 100KB+ each; clearing helps GC reclaim memory faster.
+    if (session) {
+      session.challengeFrames.clear();
+      session.baselineFrame = null;
+      session.lastFrameDataUrl = null;
+      session.pendingBaselineFrame = null;
+    }
+
+    // Clear all local state
     session = null;
     isProcessing = false;
     consecutiveErrors = 0;
@@ -300,7 +310,7 @@ export function handleLivenessConnection(socket: Socket): void {
 function processPhase(
   socket: Socket,
   session: SessionState,
-  result: Awaited<ReturnType<typeof detectFromBase64>>,
+  result: Awaited<ReturnType<typeof detectFromBuffer>>,
   face: ReturnType<typeof getPrimaryFace>,
   frameDataUrl: string,
   log: Logger
@@ -477,7 +487,7 @@ function handleBaselinePhase(
 function handleChallengePhase(
   socket: Socket,
   session: SessionState,
-  result: Awaited<ReturnType<typeof detectFromBase64>>,
+  result: Awaited<ReturnType<typeof detectFromBuffer>>,
   face: ReturnType<typeof getPrimaryFace>,
   frameDataUrl: string
 ): void {
@@ -585,7 +595,7 @@ function handleChallengePhase(
 function handleVerifyingPhase(
   socket: Socket,
   session: SessionState,
-  _result: Awaited<ReturnType<typeof detectFromBase64>>,
+  _result: Awaited<ReturnType<typeof detectFromBuffer>>,
   face: ReturnType<typeof getPrimaryFace>,
   log: Logger
 ): void {
@@ -648,7 +658,7 @@ function handleVerifyingPhase(
 function evaluateChallenge(
   type: string,
   face: NonNullable<ReturnType<typeof getPrimaryFace>>,
-  result: Awaited<ReturnType<typeof detectFromBase64>>,
+  result: Awaited<ReturnType<typeof detectFromBuffer>>,
   session: SessionState
 ): { passed: boolean; progress: number; hint: string } {
   if (type === "smile") {
@@ -689,7 +699,7 @@ function evaluateSmile(
 function evaluateTurn(
   type: string,
   face: NonNullable<ReturnType<typeof getPrimaryFace>>,
-  result: Awaited<ReturnType<typeof detectFromBase64>>,
+  result: Awaited<ReturnType<typeof detectFromBuffer>>,
   session: SessionState
 ): { passed: boolean; progress: number; hint: string } {
   const yaw = getYawDegrees(face);
