@@ -9,6 +9,8 @@ import type {
 } from "../schema/identity";
 
 import { and, desc, eq, sql } from "drizzle-orm";
+// React.cache() is per-request memoization - NOT persistent across requests.
+// Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
 
 import { db } from "../connection";
@@ -135,18 +137,20 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   };
 });
 
-export async function getIdentityBundleByUserId(
-  userId: string
-): Promise<IdentityBundle | null> {
-  const row = await db
-    .select()
-    .from(identityBundles)
-    .where(eq(identityBundles.userId, userId))
-    .limit(1)
-    .get();
+export const getIdentityBundleByUserId = cache(
+  async function getIdentityBundleByUserId(
+    userId: string
+  ): Promise<IdentityBundle | null> {
+    const row = await db
+      .select()
+      .from(identityBundles)
+      .where(eq(identityBundles.userId, userId))
+      .limit(1)
+      .get();
 
-  return row ?? null;
-}
+    return row ?? null;
+  }
+);
 
 export async function getLatestIdentityDocumentByUserId(
   userId: string

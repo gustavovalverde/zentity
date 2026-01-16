@@ -72,6 +72,13 @@ function WizardContent() {
           "sessionId" in serverState &&
           serverState.sessionId
         ) {
+          // If user already completed onboarding (keysSecured), redirect to dashboard
+          // This handles race conditions where server-side check didn't catch it
+          if (serverState.keysSecured) {
+            window.location.href = "/dashboard";
+            return;
+          }
+
           // Restore from server (direct access, no subscription)
           getStoreState().set({
             sessionId: serverState.sessionId,

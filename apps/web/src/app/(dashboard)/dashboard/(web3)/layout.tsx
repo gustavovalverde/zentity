@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 
 import { Web3Provider } from "@/components/providers/web3-provider";
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 
 export default async function Web3Layout({
   children,
@@ -9,9 +9,7 @@ export default async function Web3Layout({
   children: React.ReactNode;
 }) {
   const headersObj = await headers();
-  const session = await auth.api.getSession({
-    headers: headersObj,
-  });
+  const session = await getCachedSession(headersObj);
   const cookies = headersObj.get("cookie");
   const walletScopeId = session?.user?.id ?? null;
 
