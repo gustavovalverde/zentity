@@ -24,12 +24,16 @@ interface SuccessAnimationProps {
   onComplete?: () => void;
 }
 
+/**
+ * Confetti colors using CSS custom properties for theme awareness.
+ * These reference Tailwind's color palette via oklch values.
+ */
 const CONFETTI_COLORS = [
-  "#22c55e", // green-500
-  "#3b82f6", // blue-500
-  "#f59e0b", // amber-500
-  "#ec4899", // pink-500
-  "#8b5cf6", // violet-500
+  "oklch(0.723 0.219 142.5)", // green-500 equivalent
+  "oklch(0.623 0.214 259.1)", // blue-500 equivalent
+  "oklch(0.769 0.188 70.1)", // amber-500 equivalent
+  "oklch(0.656 0.241 354.3)", // pink-500 equivalent
+  "oklch(0.606 0.25 292.7)", // violet-500 equivalent
 ];
 
 /**
@@ -82,8 +86,8 @@ export function SuccessAnimation({
       )}
     >
       {/* Success icon */}
-      <div className="zoom-in animate-in rounded-full bg-green-500 p-5 shadow-lg duration-300">
-        <CheckCircleIcon className="size-12 text-white" />
+      <div className="zoom-in animate-in rounded-full bg-success p-5 shadow-lg duration-300">
+        <CheckCircleIcon className="size-12 text-success-foreground" />
       </div>
 
       {/* Confetti particles - contained within component bounds */}
@@ -153,7 +157,7 @@ export function ChallengeSuccessFlash({
     <div
       className={cn(
         "pointer-events-none absolute inset-0",
-        "fade-out animate-out bg-green-500/20 duration-300",
+        "fade-out animate-out bg-success/20 duration-300",
         className
       )}
     />
