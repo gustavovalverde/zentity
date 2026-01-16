@@ -470,10 +470,10 @@ export function RecoverySetupSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Social recovery</CardTitle>
+        <CardTitle>Guardian Recovery</CardTitle>
         <CardDescription>
-          Add guardians who can approve a recovery if you lose access to your
-          passkey.
+          Add trusted contacts who can approve a recovery if you lose access to
+          your passkey.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

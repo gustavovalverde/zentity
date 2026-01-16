@@ -453,8 +453,8 @@ export function PasskeyManagementSection() {
           <Alert>
             <TriangleAlert className="h-4 w-4" />
             <AlertDescription className="ml-2 text-xs">
-              Your device doesn't support the required passkey features (PRF
-              extension).
+              Your device doesn't support the required passkey security
+              features.
             </AlertDescription>
           </Alert>
         )}

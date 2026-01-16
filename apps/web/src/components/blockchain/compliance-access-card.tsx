@@ -316,7 +316,7 @@ export function ComplianceAccessCard({
                   return "ACL permission denied. The contract lacks permission to your encrypted data. Please update your attestation.";
                 }
                 if (msg.includes("0x99efb890")) {
-                  return "Identity not attested. Please register on-chain first.";
+                  return "Identity not attested. Please attest on-chain first.";
                 }
                 if (msg.includes("0x72c0afff") || msg.includes("0xa4fbc572")) {
                   return "Invalid encrypted data. Your attestation may have expired. Please re-attest.";
