@@ -20,7 +20,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -66,6 +66,109 @@ const ERROR_RECOVERY_TIPS: Record<string, string> = {
   unknown_format:
     "Try using a passport, national ID card, or driver's license.",
 };
+
+/**
+ * Verified document display card.
+ * Memoized to prevent re-renders when parent state changes (rerender-memo).
+ */
+const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
+  documentResult,
+  previewUrl,
+  onRemove,
+}: {
+  documentResult: DocumentResult;
+  previewUrl: string | null;
+  onRemove: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Alert className="flex items-center" variant="success">
+        <CheckCircle2 className="h-5 w-5" />
+        <AlertDescription className="flex-1">
+          <p className="font-medium">Document Verified</p>
+          <p className="text-sm">
+            {DOCUMENT_TYPE_LABELS[documentResult.documentType]} detected
+          </p>
+        </AlertDescription>
+        <Button
+          className="ml-auto h-8 w-8"
+          onClick={onRemove}
+          size="icon"
+          variant="ghost"
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Remove file</span>
+        </Button>
+      </Alert>
+
+      {previewUrl ? (
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <img
+            alt="ID preview"
+            className="mx-auto max-h-48 rounded-lg object-contain"
+            height={192}
+            src={previewUrl}
+            width={288}
+          />
+        </div>
+      ) : null}
+
+      {documentResult.extractedData ? (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <h4 className="font-medium">Extracted Information</h4>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {documentResult.extractedData.fullName ? (
+              <>
+                <dt className="text-muted-foreground">Full Name</dt>
+                <dd className="font-medium">
+                  {documentResult.extractedData.fullName}
+                </dd>
+              </>
+            ) : null}
+            {documentResult.extractedData.documentNumber ? (
+              <>
+                <dt className="text-muted-foreground">Document Number</dt>
+                <dd className="font-medium">
+                  {documentResult.extractedData.documentNumber}
+                </dd>
+              </>
+            ) : null}
+            {documentResult.extractedData.dateOfBirth ? (
+              <>
+                <dt className="text-muted-foreground">Date of Birth</dt>
+                <dd className="font-medium">
+                  {documentResult.extractedData.dateOfBirth}
+                </dd>
+              </>
+            ) : null}
+            {documentResult.extractedData.expirationDate ? (
+              <>
+                <dt className="text-muted-foreground">Expiration Date</dt>
+                <dd className="font-medium">
+                  {documentResult.extractedData.expirationDate}
+                </dd>
+              </>
+            ) : null}
+            {documentResult.extractedData.nationality ? (
+              <>
+                <dt className="text-muted-foreground">Nationality</dt>
+                <dd className="font-medium">
+                  {documentResult.extractedData.nationality}
+                </dd>
+              </>
+            ) : null}
+          </dl>
+          <p className="mt-3 text-muted-foreground text-xs">
+            Confidence: {Math.round(documentResult.confidence * 100)}%
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+});
 
 export function StepIdUpload() {
   const stepper = useStepper();
@@ -385,98 +488,17 @@ export function StepIdUpload() {
         </div>
       )}
 
-      {/* Verified document */}
-      {processingState === "verified" && documentResult && (
-        <div className="space-y-4">
-          <Alert className="flex items-center" variant="success">
-            <CheckCircle2 className="h-5 w-5" />
-            <AlertDescription className="flex-1">
-              <p className="font-medium">Document Verified</p>
-              <p className="text-sm">
-                {DOCUMENT_TYPE_LABELS[documentResult.documentType]} detected
-              </p>
-            </AlertDescription>
-            <Button
-              className="ml-auto h-8 w-8"
-              onClick={handleRemove}
-              size="icon"
-              variant="ghost"
-            >
-              <X className="h-4 w-4" />
-              <span className="sr-only">Remove file</span>
-            </Button>
-          </Alert>
+      {/* Verified document - memoized component (rerender-memo) */}
+      {processingState === "verified" && documentResult ? (
+        <VerifiedDocumentCard
+          documentResult={documentResult}
+          onRemove={handleRemove}
+          previewUrl={previewUrl}
+        />
+      ) : null}
 
-          {!!previewUrl && (
-            <div className="rounded-lg border bg-muted/30 p-4">
-              <img
-                alt="ID preview"
-                className="mx-auto max-h-48 rounded-lg object-contain"
-                height={192}
-                src={previewUrl}
-                width={288}
-              />
-            </div>
-          )}
-
-          {!!documentResult.extractedData && (
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
-                <h4 className="font-medium">Extracted Information</h4>
-              </div>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {!!documentResult.extractedData.fullName && (
-                  <>
-                    <dt className="text-muted-foreground">Full Name</dt>
-                    <dd className="font-medium">
-                      {documentResult.extractedData.fullName}
-                    </dd>
-                  </>
-                )}
-                {!!documentResult.extractedData.documentNumber && (
-                  <>
-                    <dt className="text-muted-foreground">Document Number</dt>
-                    <dd className="font-medium">
-                      {documentResult.extractedData.documentNumber}
-                    </dd>
-                  </>
-                )}
-                {!!documentResult.extractedData.dateOfBirth && (
-                  <>
-                    <dt className="text-muted-foreground">Date of Birth</dt>
-                    <dd className="font-medium">
-                      {documentResult.extractedData.dateOfBirth}
-                    </dd>
-                  </>
-                )}
-                {!!documentResult.extractedData.expirationDate && (
-                  <>
-                    <dt className="text-muted-foreground">Expiration Date</dt>
-                    <dd className="font-medium">
-                      {documentResult.extractedData.expirationDate}
-                    </dd>
-                  </>
-                )}
-                {!!documentResult.extractedData.nationality && (
-                  <>
-                    <dt className="text-muted-foreground">Nationality</dt>
-                    <dd className="font-medium">
-                      {documentResult.extractedData.nationality}
-                    </dd>
-                  </>
-                )}
-              </dl>
-              <p className="mt-3 text-muted-foreground text-xs">
-                Confidence: {Math.round(documentResult.confidence * 100)}%
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Rejected document */}
-      {processingState === "rejected" && documentResult && (
+      {/* Rejected document (rendering-conditional-render: ternary over &&) */}
+      {processingState === "rejected" && documentResult ? (
         <div className="space-y-4">
           <Alert className="flex items-center" variant="destructive">
             <AlertCircle className="h-5 w-5" />
@@ -499,7 +521,7 @@ export function StepIdUpload() {
             </Button>
           </Alert>
 
-          {documentResult.validationIssues.length > 0 && (
+          {documentResult.validationIssues.length > 0 ? (
             <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
               <div>
                 <h4 className="mb-2 font-medium text-sm">Issues Found:</h4>
@@ -536,9 +558,9 @@ export function StepIdUpload() {
                 </ul>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {!!previewUrl && (
+          {previewUrl ? (
             <div className="rounded-lg border bg-muted/30 p-4">
               <img
                 alt="ID preview"
@@ -548,16 +570,16 @@ export function StepIdUpload() {
                 width={192}
               />
             </div>
-          )}
+          ) : null}
 
           <Button className="w-full" onClick={handleRemove} variant="outline">
             Try a Different Document
           </Button>
         </div>
-      )}
+      ) : null}
 
       {/* PDF preview (not supported) */}
-      {fileName && !previewUrl && processingState === "idle" && (
+      {fileName && !previewUrl && processingState === "idle" ? (
         <div className="relative rounded-lg border bg-muted/30 p-4">
           <Button
             className="absolute top-2 right-2 h-8 w-8"
@@ -576,10 +598,10 @@ export function StepIdUpload() {
             </p>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Upload area */}
-      {!fileName && processingState === "idle" && (
+      {!fileName && processingState === "idle" ? (
         <Button
           aria-describedby="id-upload-help"
           className={cn(
@@ -610,7 +632,7 @@ export function StepIdUpload() {
             JPEG, PNG, or WebP (max 10MB)
           </p>
         </Button>
-      )}
+      ) : null}
 
       <Alert>
         <AlertDescription>

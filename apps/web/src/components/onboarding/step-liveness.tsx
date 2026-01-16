@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { trpc } from "@/lib/trpc/client";
 
-import { LivenessFlow, LivenessProvider } from "../liveness";
+import { LivenessFlow } from "../liveness/liveness-flow";
+import { LivenessProvider } from "../liveness/liveness-provider";
 import { useOnboardingStore } from "./onboarding-store";
 import { useStepper } from "./stepper-context";
 import { StepperControls } from "./stepper-ui";

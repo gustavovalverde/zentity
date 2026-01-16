@@ -111,6 +111,8 @@ async function generateAllProofs(params: {
   extractedDOB: string | null;
   extractedExpirationDate: string | null;
   extractedNationalityCode: string | null;
+  /** Called when transitioning to storing phase */
+  onBeforeStore?: () => void;
 }): Promise<void> {
   const {
     documentId,
@@ -118,6 +120,7 @@ async function generateAllProofs(params: {
     extractedDOB,
     extractedExpirationDate,
     extractedNationalityCode,
+    onBeforeStore,
   } = params;
 
   const claims = await getSignedClaims(documentId);
@@ -286,6 +289,9 @@ async function generateAllProofs(params: {
   );
   enqueueStore({ circuitType: "face_match", ...faceProof });
 
+  // Notify caller before storing (so UI can show "storing" status)
+  onBeforeStore?.();
+
   // Store all proofs
   await Promise.all(storeTasks);
 }
@@ -392,13 +398,11 @@ export async function finalizeIdentityAndGenerateProofs(
       extractedDOB,
       extractedExpirationDate,
       extractedNationalityCode,
+      onBeforeStore: () => onStatus("storing-proofs"),
     });
   } catch (zkError) {
     throw new Error(formatZkError(zkError));
   }
-
-  // Store proofs (already done in generateAllProofs)
-  onStatus("storing-proofs");
 
   return { documentId, verified: true };
 }

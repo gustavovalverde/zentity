@@ -1,7 +1,7 @@
 import type { FhevmProviderFactory, FhevmProviderId } from "./types";
 
 import { createMockInstance } from "./mock";
-import { createZamaProvider } from "./zama";
+import { createZamaRelayerInstance as createZamaProvider } from "./zama/relayer";
 
 const registry = new Map<FhevmProviderId, FhevmProviderFactory>([
   ["zama", createZamaProvider],
