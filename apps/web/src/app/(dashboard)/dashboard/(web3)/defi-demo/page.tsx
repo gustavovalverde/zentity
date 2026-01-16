@@ -31,14 +31,12 @@ export default async function DefiDemoPage() {
   );
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="font-bold text-3xl">DeFi Compliance Demo</h1>
-          <p className="text-muted-foreground">
-            Experience compliant token transfers with encrypted identity
-          </p>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-bold text-2xl">DeFi Compliance Demo</h1>
+        <p className="text-muted-foreground text-sm">
+          Experience compliant token transfers with encrypted identity
+        </p>
       </div>
 
       <DefiDemoClient

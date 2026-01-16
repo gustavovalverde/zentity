@@ -304,17 +304,37 @@ const TwoFactorGuardianSection = memo(function TwoFactorGuardianSection({
     }
   }, [isLinking, onRefetch]);
 
+  // Navigate to Security tab to enable 2FA
+  const handleGoToSecurity = useCallback(() => {
+    const securityTab = document.querySelector(
+      '[data-state="inactive"][value="security"]'
+    ) as HTMLButtonElement | null;
+    securityTab?.click();
+  }, []);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between font-medium text-sm">
         <span>Authenticator guardian</span>
         {hasTwoFactorGuardian ? <Badge variant="outline">Linked</Badge> : null}
       </div>
-      <p className="text-muted-foreground text-xs">
-        {isTwoFactorConfigured
-          ? "Use your authenticator app (2FA) as a recovery guardian."
-          : "Enable two-factor authentication to link your authenticator as a guardian."}
-      </p>
+      {isTwoFactorConfigured ? (
+        <p className="text-muted-foreground text-xs">
+          Use your authenticator app (2FA) as a recovery guardian.
+        </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          Enable two-factor authentication in the{" "}
+          <button
+            className="font-medium text-primary underline-offset-4 hover:underline"
+            onClick={handleGoToSecurity}
+            type="button"
+          >
+            Security tab
+          </button>{" "}
+          to link your authenticator as a guardian.
+        </p>
+      )}
       <Button
         disabled={!isTwoFactorConfigured || hasTwoFactorGuardian || isLinking}
         onClick={handleLink}

@@ -18,8 +18,8 @@ import {
  * Maps URL paths to human-readable labels.
  */
 const ROUTE_LABELS: Record<string, string> = {
-  "/dashboard": "Overview",
-  "/dashboard/verification": "Verification Status",
+  "/dashboard": "My Identity",
+  "/dashboard/credentials": "Credentials",
   "/dashboard/attestation": "On-Chain Attestation",
   "/dashboard/defi-demo": "DeFi Demo",
   "/dashboard/settings": "Settings",

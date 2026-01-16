@@ -118,8 +118,10 @@ export const FaceVerificationCard = memo(function FaceVerificationCard({
 
           {status === "error" ? (
             <>
-              <XCircle className="h-6 w-6 text-warning" />
-              <span className="font-medium text-warning text-xs">Error</span>
+              <XCircle className="h-6 w-6 text-destructive" />
+              <span className="font-medium text-destructive text-xs">
+                Error
+              </span>
             </>
           ) : null}
         </div>

@@ -1,7 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { OffChainAttestationSkeleton } from "./_components/off-chain-attestation-skeleton";
-
 export default function AttestationLoading() {
   return (
     <div className="space-y-8">
@@ -12,9 +10,6 @@ export default function AttestationLoading() {
           <Skeleton className="mt-2 h-5 w-80" />
         </div>
       </div>
-
-      {/* Off-Chain Attestation Card */}
-      <OffChainAttestationSkeleton />
 
       {/* On-Chain Attestation skeleton */}
       <div className="space-y-4 rounded-lg border p-6">
