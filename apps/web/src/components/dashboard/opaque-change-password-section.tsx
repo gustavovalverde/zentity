@@ -87,12 +87,6 @@ export function OpaqueChangePasswordSection({
         // Re-wrap secrets with new export key and update cache
         const userId = sessionData?.user?.id;
         if (userId && result.data.oldExportKey && result.data.exportKey) {
-          // Update the cached export key for secret retrieval
-          cacheOpaqueExportKey({
-            userId,
-            exportKey: result.data.exportKey,
-          });
-
           try {
             await Promise.all([
               updateOpaqueWrapperForSecretType({
@@ -108,7 +102,17 @@ export function OpaqueChangePasswordSection({
                 newExportKey: result.data.exportKey,
               }),
             ]);
+            // Update the cached export key for secret retrieval
+            cacheOpaqueExportKey({
+              userId,
+              exportKey: result.data.exportKey,
+            });
           } catch {
+            // Keep the cached key aligned with existing wrappers on failure.
+            cacheOpaqueExportKey({
+              userId,
+              exportKey: result.data.oldExportKey,
+            });
             toast.message(
               "Password changed, but some encrypted data may need re-setup",
               {

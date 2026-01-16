@@ -27,6 +27,10 @@ export const CLIENT_METRIC_DEFINITIONS = {
     unit: "ms",
     attributes: ["result", "multithreaded"],
   },
+  "client.tfhe.load.retry": {
+    unit: "ms",
+    attributes: ["attempt", "error"],
+  },
   "client.tfhe.keygen.duration": {
     unit: "ms",
     attributes: ["result", "flow_present"],

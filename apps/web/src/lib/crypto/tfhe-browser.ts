@@ -80,55 +80,106 @@ export interface FheKeyMaterial {
 let tfheInitPromise: Promise<TfheModule> | null = null;
 
 /**
- * Load TFHE from public folder instead of node_modules.
+ * WASM initialization retry configuration.
+ * Allows recovery from transient network failures on slow connections.
+ */
+const WASM_INIT_MAX_RETRIES = 3;
+const WASM_INIT_BASE_DELAY_MS = 500;
+
+/**
+ * Sleep helper for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Attempt a single TFHE initialization.
+ * Separated from retry logic for clarity.
+ */
+async function initTfheOnce(): Promise<TfheModule> {
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+  const multithreaded =
+    typeof window !== "undefined" && Boolean(window.crossOriginIsolated);
+  const tfheUrl = "/tfhe/tfhe.js";
+
+  try {
+    const tfhe = (await import(
+      /* webpackIgnore: true */
+      /* @vite-ignore */
+      tfheUrl
+    )) as TfheModule;
+
+    // Initialize WASM (tfhe.js will load tfhe_bg.wasm from same directory)
+    await tfhe.default();
+
+    // Enable multi-threading if cross-origin isolated
+    if (typeof window !== "undefined" && window.crossOriginIsolated) {
+      const threads = navigator.hardwareConcurrency || 4;
+      try {
+        await tfhe.initThreadPool(threads);
+      } catch {
+        // Thread pool init can fail on some environments; continue single-threaded.
+      }
+    }
+
+    try {
+      tfhe.init_panic_hook();
+    } catch {
+      // Panic hook is optional in some runtimes.
+    }
+
+    return tfhe;
+  } catch (error) {
+    result = "error";
+    throw error;
+  } finally {
+    recordClientMetric({
+      name: "client.tfhe.load.duration",
+      value: performance.now() - start,
+      attributes: { result, multithreaded },
+    });
+  }
+}
+
+/**
+ * Load TFHE from public folder with retry logic.
+ * Clears the init promise on failure to allow recovery on subsequent calls.
  */
 function loadTfhe(): Promise<TfheModule> {
-  if (!tfheInitPromise) {
-    tfheInitPromise = (async () => {
-      const start = performance.now();
-      let result: "ok" | "error" = "ok";
-      const multithreaded =
-        typeof window !== "undefined" && Boolean(window.crossOriginIsolated);
-      const tfheUrl = "/tfhe/tfhe.js";
-      try {
-        const tfhe = (await import(
-          /* webpackIgnore: true */
-          /* @vite-ignore */
-          tfheUrl
-        )) as TfheModule;
-
-        // Initialize WASM (tfhe.js will load tfhe_bg.wasm from same directory)
-        await tfhe.default();
-
-        // Enable multi-threading if cross-origin isolated
-        if (typeof window !== "undefined" && window.crossOriginIsolated) {
-          const threads = navigator.hardwareConcurrency || 4;
-          try {
-            await tfhe.initThreadPool(threads);
-          } catch {
-            // Thread pool init can fail on some environments; continue single-threaded.
-          }
-        }
-
-        try {
-          tfhe.init_panic_hook();
-        } catch {
-          // Panic hook is optional in some runtimes.
-        }
-
-        return tfhe;
-      } catch (error) {
-        result = "error";
-        throw error;
-      } finally {
-        recordClientMetric({
-          name: "client.tfhe.load.duration",
-          value: performance.now() - start,
-          attributes: { result, multithreaded },
-        });
-      }
-    })();
+  if (tfheInitPromise) {
+    return tfheInitPromise;
   }
+
+  tfheInitPromise = (async () => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= WASM_INIT_MAX_RETRIES; attempt++) {
+      try {
+        return await initTfheOnce();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Don't retry on the last attempt
+        if (attempt < WASM_INIT_MAX_RETRIES) {
+          const delay = WASM_INIT_BASE_DELAY_MS * 2 ** (attempt - 1);
+          recordClientMetric({
+            name: "client.tfhe.load.retry",
+            value: delay,
+            attributes: { attempt, error: lastError.message },
+          });
+          await sleep(delay);
+        }
+      }
+    }
+
+    // All retries exhausted - clear promise to allow future retry
+    tfheInitPromise = null;
+    throw new Error(
+      `TFHE WASM initialization failed after ${WASM_INIT_MAX_RETRIES} attempts: ${lastError?.message}`
+    );
+  })();
 
   return tfheInitPromise;
 }

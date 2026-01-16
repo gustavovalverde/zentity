@@ -130,13 +130,14 @@ interface WorkerState {
 let workerPool: WorkerState[] = [];
 let workerPoolInitPromise: Promise<WorkerState[]> | null = null;
 
-// Pending request callbacks
+// Pending request callbacks with timeout tracking for proper cleanup
 const pendingRequests = new Map<
   string,
   {
     resolve: (value: ProofOutput) => void;
     reject: (error: Error) => void;
     workerState: WorkerState;
+    timeoutId: ReturnType<typeof setTimeout>;
   }
 >();
 
@@ -199,6 +200,8 @@ function createWorkerState(index: number): WorkerState {
     const pending = pendingRequests.get(id);
 
     if (pending) {
+      // Clear the timeout FIRST to prevent double-handling
+      clearTimeout(pending.timeoutId);
       pendingRequests.delete(id);
       pending.workerState.inflight = Math.max(
         0,
@@ -221,6 +224,8 @@ function createWorkerState(index: number): WorkerState {
       if (pending.workerState.index !== state.index) {
         continue;
       }
+      // Clear the timeout to prevent timer leaks
+      clearTimeout(pending.timeoutId);
       pending.reject(new Error(`Worker error: ${error.message}`));
       pendingRequests.delete(id);
     }
@@ -231,7 +236,8 @@ function createWorkerState(index: number): WorkerState {
 }
 
 /**
- * Initialize the worker pool (lazy)
+ * Initialize the worker pool (lazy, thread-safe).
+ * Clears the init promise on failure to allow retry.
  */
 function getWorkerPool(): Promise<WorkerState[]> {
   if (workerPool.length > 0) {
@@ -241,17 +247,17 @@ function getWorkerPool(): Promise<WorkerState[]> {
     return workerPoolInitPromise;
   }
 
-  workerPoolInitPromise = new Promise((resolve, reject) => {
-    try {
-      const desired = getDesiredWorkerCount();
-      workerPool = Array.from({ length: desired }, (_, index) =>
-        createWorkerState(index)
-      );
-      resolve(workerPool);
-    } catch (error) {
-      reject(error);
-    }
-  });
+  try {
+    const desired = getDesiredWorkerCount();
+    workerPool = Array.from({ length: desired }, (_, index) =>
+      createWorkerState(index)
+    );
+    workerPoolInitPromise = Promise.resolve(workerPool);
+  } catch (error) {
+    // Clear promise on failure to allow retry on next call
+    workerPoolInitPromise = null;
+    throw error;
+  }
 
   return workerPoolInitPromise;
 }
@@ -289,16 +295,12 @@ async function sendProofRequest(
       );
     }, WORKER_TIMEOUT_MS);
 
+    // Store raw resolve/reject with timeoutId - cleanup happens in onmessage/onerror
     pendingRequests.set(id, {
       workerState,
-      resolve: (value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      },
-      reject: (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      },
+      resolve,
+      reject,
+      timeoutId,
     });
 
     workerState.inflight += 1;
@@ -406,14 +408,14 @@ export async function checkWorkerHealth(): Promise<WorkerHealthStatus> {
         });
       }, HEALTH_CHECK_TIMEOUT_MS);
 
+      // Store timeoutId so it can be cleared by onerror handler
       pendingRequests.set(id, {
         workerState,
+        timeoutId,
         resolve: () => {
-          clearTimeout(timeoutId);
           resolve({ workerReady: true, modulesLoaded: true });
         },
         reject: (error) => {
-          clearTimeout(timeoutId);
           resolve({
             workerReady: true,
             modulesLoaded: false,
