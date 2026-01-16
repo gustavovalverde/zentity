@@ -429,7 +429,7 @@ packages:
     engines: {node: '>=18'}
 
   '@better-auth/core@file:local-packages/better-auth-core-1.5.0-beta.6.tgz':
-    resolution: {integrity: sha512-f6tbph0wsXuG4adbrPsQAIiLF+uqxA0+WXQWL0+gOAnSWB7qW2MrWnmQIAMeMsF6Pk0WGCHkg73n+mFE8mfD8A==, tarball: file:local-packages/better-auth-core-1.5.0-beta.6.tgz}
+    resolution: {integrity: sha512-apn0lraQDRJqYBrNhj3IYfJuyvA673CDpWtNm+aSEI6VBR6vNlIlftI2jYifzc8mAHHRCgw3wLlMHIgiVNQNxw==, tarball: file:local-packages/better-auth-core-1.5.0-beta.6.tgz}
     version: 1.5.0-beta.6
     peerDependencies:
       '@better-auth/utils': 0.3.0
@@ -450,28 +450,28 @@ packages:
       better-call: 1.1.8
 
   '@better-auth/oidc4ida@file:local-packages/better-auth-oidc4ida-0.0.0.tgz':
-    resolution: {integrity: sha512-JRyRSYz6Ua2Xnhzg0Wmun72AENuBtDhegBcub/aKBf9tYYmw6/kyRw3rsG7WJeZj6MzqaPtaMIbtACxwFYEAVw==, tarball: file:local-packages/better-auth-oidc4ida-0.0.0.tgz}
+    resolution: {integrity: sha512-qiG/u1N09Qg6d9yBUeWXpAabqlNMTZQVa6rQcitJNnghJuqscD6+T9F7T64vwaYVTbYJbaAH7ewVPAX1kEbh0Q==, tarball: file:local-packages/better-auth-oidc4ida-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.0-beta.6
       better-auth: 1.5.0-beta.6
 
   '@better-auth/oidc4vci@file:local-packages/better-auth-oidc4vci-0.0.0.tgz':
-    resolution: {integrity: sha512-yRnGR2GoAvirWa/aqQzJTetELGEv2mwhYILmyblkcAI6UhAZVWGgh42ZgOb/60Yy265GMHhuLR4wgOHML0hVCg==, tarball: file:local-packages/better-auth-oidc4vci-0.0.0.tgz}
+    resolution: {integrity: sha512-0nkOCg9n10IQtvI93k5kSyoyRs+rfVf1usLKabru1dyAj4Osxs93dFtGYln0bT9YcRLDAGyGZg7FJNuja2MJSw==, tarball: file:local-packages/better-auth-oidc4vci-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.0-beta.6
       better-auth: 1.5.0-beta.6
 
   '@better-auth/oidc4vp@file:local-packages/better-auth-oidc4vp-0.0.0.tgz':
-    resolution: {integrity: sha512-zreLSw69wYjsyerNRC2NelywGkUUKG7y0xDahUAQ6YGXCenSaasVCRJ+LYO+3y22FPnjN88wxe111FRUfQ160A==, tarball: file:local-packages/better-auth-oidc4vp-0.0.0.tgz}
+    resolution: {integrity: sha512-pg5goHTerHfGJfewtWH3iBKf/7mT+CI3Pcpsd7ZJHxV9pS0Y2WQiJITpvpJlorV7mGDl0HR6yRkVf93kBqPLLg==, tarball: file:local-packages/better-auth-oidc4vp-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.0-beta.6
       better-auth: 1.5.0-beta.6
 
   '@better-auth/passkey@file:local-packages/better-auth-passkey-1.5.0-beta.6.tgz':
-    resolution: {integrity: sha512-J4vZsOrW+r/BEZaZCD7srXTxJmlu9SXkniuDLkAPmUJ/wtEWZ53ojFgnLp/gk1j73fesoYj2NGgTjvhNg9FX4g==, tarball: file:local-packages/better-auth-passkey-1.5.0-beta.6.tgz}
+    resolution: {integrity: sha512-77XiNa2USzUL8GwTYCbrQmViaEEtXUv7O4twImVm5lGlhEiSPN9AdxxjWM333E2/bcHqp2MpecGNjowLdqlDJA==, tarball: file:local-packages/better-auth-passkey-1.5.0-beta.6.tgz}
     version: 1.5.0-beta.6
     peerDependencies:
       '@better-auth/core': 1.5.0-beta.6
@@ -482,7 +482,7 @@ packages:
       nanostores: ^1.0.1
 
   '@better-auth/telemetry@file:local-packages/better-auth-telemetry-1.5.0-beta.6.tgz':
-    resolution: {integrity: sha512-ltbP1Uy35KDCna9Y1/fQqO3Y8zBbZ1lOsQPBJ4gJkGb6t/Eos9vE7d1c7F9vIJ3oGv7bTrvI1/QCyKsGG6OfKQ==, tarball: file:local-packages/better-auth-telemetry-1.5.0-beta.6.tgz}
+    resolution: {integrity: sha512-229wZJOTJ4EgO28+TQXU3F5qjqEytu1MCltPEsWb9446bwBu+cjxqTQFCeSIBM1DACOk5FUmqPBMLhZegb5cgw==, tarball: file:local-packages/better-auth-telemetry-1.5.0-beta.6.tgz}
     version: 1.5.0-beta.6
     peerDependencies:
       '@better-auth/core': 1.5.0-beta.6
@@ -4425,7 +4425,7 @@ packages:
     resolution: {integrity: sha512-s0IrSOzLlbvX7yp4WBfPITzpAU8sqQcpsmwXDiKwrG4r491vwCO/XpejasRNl0piBMe/DvP4Tz0mIS/X1DPJBQ==}
 
   better-auth@file:local-packages/better-auth-1.5.0-beta.6.tgz:
-    resolution: {integrity: sha512-PuLFxK3lYrZ7ozGo2+fpXLmgdxjBAJ0TQ3CqgK2bjP7Md91oSlspv1ZuK9m134hDT7OTFmjxNhPhWgBabI2/ew==, tarball: file:local-packages/better-auth-1.5.0-beta.6.tgz}
+    resolution: {integrity: sha512-TzA94Hoxy+6UbvIBnKClD1hzSZmIZtqI8G7Qn0Dp7RvY+3CqABcvxQXZdhTxh1M6+DYQppRoXvTPjjecjS1T9g==, tarball: file:local-packages/better-auth-1.5.0-beta.6.tgz}
     version: 1.5.0-beta.6
     peerDependencies:
       '@lynx-js/react': '*'
