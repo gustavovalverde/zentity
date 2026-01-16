@@ -64,7 +64,7 @@ export function RecoverGuardianClient() {
       <CardHeader className="text-center">
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
           {state === "approved" ? (
-            <Check className="size-6 text-emerald-600" />
+            <Check className="size-6 text-success" />
           ) : (
             <ShieldCheck className="size-6 text-primary" />
           )}

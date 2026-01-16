@@ -371,7 +371,6 @@ export function StepAccount() {
           : "An unexpected error occurred while creating your account.";
       setError(message);
       setStatus("error");
-      toast.error("Account creation failed", { description: message });
     } finally {
       setIsSubmitting(false);
     }
@@ -499,7 +498,6 @@ export function StepAccount() {
           : "An unexpected error occurred while creating your account.";
       setError(message);
       setStatus("error");
-      toast.error("Account creation failed", { description: message });
     } finally {
       setIsSubmitting(false);
     }
