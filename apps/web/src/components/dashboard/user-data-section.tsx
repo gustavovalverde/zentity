@@ -9,7 +9,7 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,11 @@ import { getStoredProfile } from "@/lib/crypto/profile-secret";
 import { hasCachedPasskeyUnlock } from "@/lib/crypto/secret-vault";
 import { trpcReact } from "@/lib/trpc/client";
 
-function VerificationBadge({
+/**
+ * Verification status badge.
+ * Memoized to prevent re-renders when other badges change.
+ */
+const VerificationBadge = memo(function VerificationBadge({
   passed,
   label,
 }: {
@@ -51,7 +55,7 @@ function VerificationBadge({
       {label}
     </Badge>
   );
-}
+});
 
 function formatDate(dateString: string | null): string {
   if (!dateString) {

@@ -14,7 +14,7 @@ import { Eye, EyeOff, KeyRound, Lock, RefreshCw } from "lucide-react";
 /** Matches a valid hex string with 0x prefix */
 const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useChainId, useReadContract } from "wagmi";
 
 import { useFhevmContext } from "@/components/providers/fhevm-provider";
@@ -598,10 +598,24 @@ export function ViewIdentityData() {
   );
 }
 
+const VARIANT_CLASSES = {
+  default: "text-foreground",
+  destructive: "text-destructive",
+  success: "text-success",
+} as const;
+
+const ICON_MAP: Record<string, string> = {
+  calendar: "📅",
+  globe: "🌍",
+  shield: "🛡️",
+  flag: "🚩",
+};
+
 /**
- * Individual identity field display
+ * Individual identity field display.
+ * Memoized to prevent re-renders when other fields change.
  */
-function IdentityField({
+const IdentityField = memo(function IdentityField({
   label,
   value,
   isVisible,
@@ -614,24 +628,15 @@ function IdentityField({
   icon: string;
   variant?: "default" | "destructive" | "success";
 }) {
-  const iconClasses = "h-4 w-4 text-muted-foreground";
-
-  const variantClasses = {
-    default: "text-foreground",
-    destructive: "text-destructive",
-    success: "text-success",
-  };
-
   return (
     <div className="flex items-center justify-between border-b py-2 last:border-0">
       <span className="flex items-center gap-2 text-muted-foreground text-sm">
-        {icon === "calendar" && <span className={iconClasses}>📅</span>}
-        {icon === "globe" && <span className={iconClasses}>🌍</span>}
-        {icon === "shield" && <span className={iconClasses}>🛡️</span>}
-        {icon === "flag" && <span className={iconClasses}>🚩</span>}
+        <span className="h-4 w-4 text-muted-foreground">
+          {ICON_MAP[icon] ?? ""}
+        </span>
         {label}
       </span>
-      <span className={`font-medium text-sm ${variantClasses[variant]}`}>
+      <span className={`font-medium text-sm ${VARIANT_CLASSES[variant]}`}>
         {isVisible && value ? (
           value
         ) : (
@@ -640,4 +645,4 @@ function IdentityField({
       </span>
     </div>
   );
-}
+});
