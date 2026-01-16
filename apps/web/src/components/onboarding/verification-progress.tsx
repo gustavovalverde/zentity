@@ -137,6 +137,9 @@ export const VerificationProgress = memo(function VerificationProgress({
   hasIdentityDocs,
 }: VerificationProgressProps) {
   const progressStatus = useMemo(() => {
+    // Steps for status progression tracking
+    // Note: "unlocking-prf" only triggers in fallback flow (passkey already registered)
+    // In normal registration, PRF is extracted atomically during "registering-passkey"
     const steps: SecureStatus[] = [
       "preparing-account",
       "registering-passkey",
@@ -168,8 +171,12 @@ export const VerificationProgress = memo(function VerificationProgress({
     };
 
     return {
-      passkey: stepStatus(1, ["preparing-account", "registering-passkey"]),
-      prf: stepStatus(2, "unlocking-prf"),
+      // Passkey step includes PRF derivation (both happen in single WebAuthn ceremony)
+      passkey: stepStatus(2, [
+        "preparing-account",
+        "registering-passkey",
+        "unlocking-prf",
+      ]),
       secure: stepStatus(6, [
         "generating-keys",
         "encrypting-keys",
@@ -204,13 +211,8 @@ export const VerificationProgress = memo(function VerificationProgress({
       <div className="space-y-3">
         <StepIndicator
           icon={<KeyRound className="h-4 w-4" />}
-          label="Create passkey"
+          label="Create passkey & derive keys"
           status={progressStatus.passkey}
-        />
-        <StepIndicator
-          icon={<Spinner />}
-          label="Derive encryption key"
-          status={progressStatus.prf}
         />
         <StepIndicator
           icon={<ShieldCheck className="h-4 w-4" />}

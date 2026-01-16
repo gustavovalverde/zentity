@@ -210,9 +210,16 @@ export type PasskeySignInResult =
 export async function signInWithPasskey(params?: {
   prfSalt?: Uint8Array;
   requirePrf?: boolean;
+  /**
+   * If false, skip the fallback evaluatePrf() call that triggers a second
+   * WebAuthn prompt when PRF output isn't in the initial sign-in response.
+   * Default: true (allow fallback for normal sign-in flows).
+   */
+  allowPrfFallback?: boolean;
 }): Promise<PasskeySignInResult> {
   const prfSalt = params?.prfSalt;
   const requirePrf = params?.requirePrf ?? Boolean(prfSalt);
+  const allowPrfFallback = params?.allowPrfFallback ?? true;
   const result = await authClient.signIn.passkey({
     returnWebAuthnResponse: Boolean(prfSalt),
     extensions: prfSalt ? buildPrfExtension(prfSalt) : undefined,
@@ -243,6 +250,7 @@ export async function signInWithPasskey(params?: {
     prfSalt,
     credentialId,
     webauthn,
+    allowFallback: allowPrfFallback,
   });
 
   if (requirePrf && !prfOutput) {
