@@ -48,85 +48,18 @@ import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
 import { parseBirthYearFromDob } from "@/lib/identity/birth-year";
 import { parseDateToInt } from "@/lib/identity/date-utils";
 import { finalizeIdentityAndGenerateProofs } from "@/lib/identity/finalize-and-prove";
+import { useOnboardingStore } from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
 import { getFirstPart } from "@/lib/utils/name-utils";
 
 import { CredentialChoice, type CredentialType } from "./credential-choice";
 import { ExtractedInfoReview } from "./extracted-info-review";
 import { FaceVerificationCard } from "./face-verification-card";
-import { useOnboardingStore } from "./onboarding-store";
 import { PasswordSignUpForm } from "./password-signup-form";
 import {
   type SecureStatus,
   VerificationProgress,
 } from "./verification-progress";
-
-interface OnboardingContextResponse {
-  contextToken: string;
-  registrationToken: string;
-  expiresAt: string;
-}
-
-interface FheEnrollmentCompleteResponse {
-  success: boolean;
-  keyId: string;
-}
-
-async function requestOnboardingContext(
-  email?: string | null
-): Promise<OnboardingContextResponse> {
-  const response = await fetch("/api/onboarding/context", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(email ? { email } : {}),
-  });
-
-  const payload = (await response.json().catch(() => null)) as unknown;
-  if (!(response.ok && payload) || typeof payload !== "object") {
-    throw new Error("Unable to start onboarding.");
-  }
-
-  if ("error" in payload && payload.error) {
-    throw new Error(String(payload.error));
-  }
-
-  return payload as OnboardingContextResponse;
-}
-
-async function completeFheEnrollment(enrollmentPayload: {
-  registrationToken: string;
-  wrappedDek: string;
-  prfSalt: string;
-  credentialId: string;
-  keyId: string;
-  version: string;
-  kekVersion: string;
-  envelopeFormat: "json" | "msgpack";
-}): Promise<FheEnrollmentCompleteResponse> {
-  const response = await fetch("/api/fhe/enrollment/complete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(enrollmentPayload),
-  });
-
-  const data = (await response.json().catch(() => null)) as unknown;
-  if (!(response.ok && data) || typeof data !== "object") {
-    throw new Error("Failed to finalize FHE enrollment.");
-  }
-
-  if ("error" in data && data.error) {
-    throw new Error(String(data.error));
-  }
-
-  const responsePayload = data as FheEnrollmentCompleteResponse;
-  if (!responsePayload.keyId) {
-    throw new Error("Missing FHE key registration. Please try again.");
-  }
-
-  return responsePayload;
-}
 
 function buildProfilePayload(args: {
   extractedName: string | null;
@@ -293,8 +226,10 @@ export function StepAccount() {
       await ensureAuthSession();
       const prfSalt = generatePrfSalt();
 
-      // Step 2: Create onboarding context
-      const onboardingContext = await requestOnboardingContext(store.email);
+      // Step 2: Create onboarding context via tRPC
+      const onboardingContext = await trpc.onboarding.createContext.mutate(
+        store.email ? { email: store.email } : undefined
+      );
 
       // Step 3: Register passkey with PRF extension
       setStatus("registering-passkey");
@@ -309,7 +244,12 @@ export function StepAccount() {
 
       if (!registration.ok && isPasskeyAlreadyRegistered(registration.error)) {
         setStatus("unlocking-prf");
-        const authResult = await signInWithPasskey({ prfSalt });
+        // Use allowPrfFallback: false to avoid a third WebAuthn prompt
+        // if PRF output isn't in the sign-in response directly
+        const authResult = await signInWithPasskey({
+          prfSalt,
+          allowPrfFallback: false,
+        });
         if (!authResult.ok) {
           const message =
             authResult.error?.code === "AUTH_CANCELLED"
@@ -366,9 +306,9 @@ export function StepAccount() {
         }),
       ]);
 
-      // Step 5: Finalize enrollment (store encrypted secrets)
+      // Step 5: Finalize enrollment via tRPC (store encrypted secrets)
       setStatus("storing-secrets");
-      const completion = await completeFheEnrollment({
+      const completion = await trpc.onboarding.completeFheEnrollment.mutate({
         registrationToken: onboardingContext.registrationToken,
         wrappedDek: fheEnrollment.wrappedDek,
         prfSalt: fheEnrollment.prfSalt,

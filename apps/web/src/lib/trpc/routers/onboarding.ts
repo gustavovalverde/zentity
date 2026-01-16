@@ -17,6 +17,12 @@ import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
+  consumeOnboardingContext,
+  consumeRegistrationBlob,
+  createOnboardingContext,
+  getOnboardingContext,
+} from "@/lib/auth/onboarding-context";
+import {
   completeOnboarding,
   getSessionFromCookie,
   loadWizardState,
@@ -26,9 +32,16 @@ import {
   updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
+import {
+  deleteEncryptedSecretByUserAndType,
+  getEncryptedSecretByUserAndType,
+  updateEncryptedSecretMetadata,
+  upsertEncryptedSecret,
+  upsertSecretWrapper,
+} from "@/lib/db/queries/crypto";
 import { cleanupExpiredOnboardingSessions } from "@/lib/db/queries/onboarding";
 
-import { publicProcedure, router } from "../server";
+import { protectedProcedure, publicProcedure, router } from "../server";
 
 const stepSchema = z.union([
   z.literal(1),
@@ -264,5 +277,132 @@ export const onboardingRouter = router({
 
       await resetToStep(session.id, step, ctx.resHeaders);
       return { success: true, newStep: step };
+    }),
+
+  /**
+   * Creates an onboarding context for FHE key enrollment.
+   * Returns tokens needed for secure key registration.
+   */
+  createContext: protectedProcedure
+    .input(z.object({ email: z.string().email().optional() }).optional())
+    .mutation(async ({ input, ctx }) => {
+      const email = input?.email?.trim() || null;
+
+      const { contextToken, registrationToken, expiresAt } =
+        await createOnboardingContext({
+          userId: ctx.userId,
+          email,
+        });
+
+      return { contextToken, registrationToken, expiresAt };
+    }),
+
+  /**
+   * Completes FHE key enrollment by storing the wrapped key.
+   * Consumes the registration token and persists the encrypted key data.
+   */
+  completeFheEnrollment: protectedProcedure
+    .input(
+      z.object({
+        registrationToken: z.string().min(1),
+        wrappedDek: z.string().min(1),
+        prfSalt: z.string().min(1),
+        credentialId: z.string().min(1),
+        keyId: z.string().min(1),
+        version: z.string().min(1),
+        kekVersion: z.string().min(1),
+        envelopeFormat: z.enum(["json", "msgpack"]),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (input.envelopeFormat !== "msgpack") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Unsupported FHE envelope format.",
+        });
+      }
+
+      let registration: Awaited<ReturnType<typeof consumeRegistrationBlob>>;
+      try {
+        registration = await consumeRegistrationBlob(input.registrationToken);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Registration token invalid.",
+        });
+      }
+
+      const context = await getOnboardingContext(registration.contextToken);
+      if (!context) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Onboarding context expired.",
+        });
+      }
+
+      if (context.userId !== ctx.userId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Onboarding context does not match session.",
+        });
+      }
+
+      const secretType = "fhe_keys";
+      if (registration.blob.secretType !== secretType) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Registration secret type mismatch.",
+        });
+      }
+
+      const existingSecret = await getEncryptedSecretByUserAndType(
+        ctx.userId,
+        secretType
+      );
+      if (
+        existingSecret &&
+        existingSecret.id !== registration.blob.secretId &&
+        existingSecret.userId === ctx.userId
+      ) {
+        await deleteEncryptedSecretByUserAndType(ctx.userId, secretType);
+      }
+
+      await upsertEncryptedSecret({
+        id: registration.blob.secretId,
+        userId: ctx.userId,
+        secretType,
+        encryptedBlob: "",
+        blobRef: registration.blob.blobRef,
+        blobHash: registration.blob.blobHash,
+        blobSize: registration.blob.blobSize,
+        metadata: { envelopeFormat: input.envelopeFormat },
+        version: input.version,
+      });
+
+      await upsertSecretWrapper({
+        id: crypto.randomUUID(),
+        secretId: registration.blob.secretId,
+        userId: ctx.userId,
+        credentialId: input.credentialId,
+        wrappedDek: input.wrappedDek,
+        prfSalt: input.prfSalt,
+        kekVersion: input.kekVersion,
+      });
+
+      await updateEncryptedSecretMetadata({
+        userId: ctx.userId,
+        secretType,
+        metadata: {
+          envelopeFormat: input.envelopeFormat,
+          keyId: input.keyId,
+        },
+      });
+
+      await consumeOnboardingContext(registration.contextToken);
+
+      return { success: true, keyId: input.keyId };
     }),
 });

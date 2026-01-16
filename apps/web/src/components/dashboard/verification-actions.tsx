@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle, Clock, Key, Shield, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +58,7 @@ export function VerificationActions() {
   const [error, setError] = useState<string | null>(null);
   const [proofData, setProofData] = useState<ProofData | null>(null);
 
-  const loadProofData = async () => {
+  const loadProofData = useCallback(async () => {
     const hasCachedFheData =
       Boolean(proofData?.birthYearOffsetCiphertextBytes) &&
       Boolean(proofData?.fheKeyId);
@@ -89,9 +89,9 @@ export function VerificationActions() {
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, [proofData]);
 
-  const handleVerifyZK = async () => {
+  const handleVerifyZK = useCallback(async () => {
     setIsVerifyingZK(true);
     setError(null);
     setZkResult(null);
@@ -113,9 +113,9 @@ export function VerificationActions() {
     } finally {
       setIsVerifyingZK(false);
     }
-  };
+  }, []);
 
-  const handleVerifyFHE = async () => {
+  const handleVerifyFHE = useCallback(async () => {
     setIsVerifyingFHE(true);
     setError(null);
     setFheResult(null);
@@ -140,7 +140,7 @@ export function VerificationActions() {
     } finally {
       setIsVerifyingFHE(false);
     }
-  };
+  }, [loadProofData]);
 
   return (
     <Card>
