@@ -1,5 +1,6 @@
 "use client";
 
+import { authClient } from "@/lib/auth/auth-client";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
@@ -433,6 +434,7 @@ export async function loadSecret(params: {
   secretType: string;
   expectedEnvelopeFormat?: EnvelopeFormat;
   secretLabel?: string;
+  userId?: string;
 }): Promise<{
   secretId: string;
   plaintext: Uint8Array;
@@ -538,26 +540,34 @@ export async function loadSecret(params: {
 
   if (opaqueWrapper) {
     // Try to get cached OPAQUE export key
-    // We need userId from context - check if we have it cached
+    // Validate cached key against the current authenticated user
     if (cachedOpaqueExport) {
-      const exportKey = getCachedOpaqueExportKey(cachedOpaqueExport.userId);
-      if (exportKey) {
-        const plaintext = await decryptSecretWithOpaqueExport({
-          secretId: bundle.secret.id,
-          secretType: params.secretType,
-          userId: cachedOpaqueExport.userId,
-          encryptedBlob,
-          wrappedDek: opaqueWrapper.wrappedDek,
-          exportKey,
-          envelopeFormat,
-        });
+      const sessionUserId =
+        params.userId ?? (await authClient.getSession()).data?.user?.id;
+      if (sessionUserId) {
+        if (cachedOpaqueExport.userId !== sessionUserId) {
+          resetOpaqueExportCache();
+        } else {
+          const exportKey = getCachedOpaqueExportKey(sessionUserId);
+          if (exportKey) {
+            const plaintext = await decryptSecretWithOpaqueExport({
+              secretId: bundle.secret.id,
+              secretType: params.secretType,
+              userId: sessionUserId,
+              encryptedBlob,
+              wrappedDek: opaqueWrapper.wrappedDek,
+              exportKey,
+              envelopeFormat,
+            });
 
-        return {
-          secretId: bundle.secret.id,
-          plaintext,
-          metadata: bundle.secret.metadata,
-          envelopeFormat,
-        };
+            return {
+              secretId: bundle.secret.id,
+              plaintext,
+              metadata: bundle.secret.metadata,
+              envelopeFormat,
+            };
+          }
+        }
       }
     }
 
