@@ -113,8 +113,9 @@ export function StepLiveness() {
 
       <Alert>
         <AlertDescription>
-          Your photos are processed securely and never stored. We verify
-          you&apos;re a real person through randomized challenges.
+          Your selfie is captured for face matching with your ID, then deleted
+          after verification. Randomized gestures confirm you&apos;re a real
+          person.
         </AlertDescription>
       </Alert>
 

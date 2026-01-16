@@ -213,12 +213,12 @@ export function DefiDemoClient({
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              Your identity is verified but not yet registered on-chain.
+              Your identity is verified but not yet attested on-chain.
             </AlertDescription>
           </Alert>
           <Button asChild variant="outline">
             <a href="/dashboard">
-              Register On-Chain
+              Attest On-Chain
               <ArrowRight className="ml-2 h-4 w-4" />
             </a>
           </Button>
@@ -243,7 +243,7 @@ export function DefiDemoClient({
         <CardContent className="flex flex-col items-center gap-4 py-8">
           <Wallet className="h-12 w-12 text-muted-foreground" />
           <p className="text-center text-muted-foreground text-sm">
-            Connect the wallet you registered on-chain to continue
+            Connect the wallet you attested on-chain to continue
           </p>
           <appkit-button />
         </CardContent>
@@ -275,20 +275,20 @@ export function DefiDemoClient({
             Re-attestation Required
           </CardTitle>
           <CardDescription>
-            Your on-chain identity registration needs to be renewed
+            Your on-chain identity attestation needs to be renewed
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert variant="warning">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              The identity contracts have been updated. Please register your
+              The identity contracts have been updated. Please attest your
               identity on-chain again to continue using compliant DeFi features.
             </AlertDescription>
           </Alert>
           <Button asChild variant="outline">
             <a href="/dashboard">
-              Register On-Chain
+              Attest On-Chain
               <ArrowRight className="ml-2 h-4 w-4" />
             </a>
           </Button>

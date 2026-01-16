@@ -511,7 +511,7 @@ export function StepAccount() {
   const unsupportedMessage =
     supportStatus && !supportStatus.supported
       ? supportStatus.reason ||
-        "PRF passkeys are not supported on this device or browser."
+        "Passkeys with encryption support are not available on this device or browser."
       : null;
 
   if (isRedirecting) {
@@ -547,7 +547,7 @@ export function StepAccount() {
           <AlertDescription>
             {unsupportedMessage}
             <div className="mt-2 text-muted-foreground text-xs">
-              Supported: Chrome/Edge/Firefox with a PRF-capable passkey. Safari
+              Supported: Chrome, Edge, or Firefox with device biometrics. Safari
               requires iCloud Keychain. Windows Hello and external keys on
               iOS/iPadOS are not supported.
             </div>
@@ -670,8 +670,8 @@ export function StepAccount() {
             <div className="space-y-2 px-4 pt-3 text-muted-foreground text-xs">
               {!!hasDob && (
                 <p>
-                  Your birth year is encrypted with FHE. A zero-knowledge proof
-                  verifies you are 18+ without revealing your age.
+                  Your birth year is encrypted so age can be verified without
+                  revealing it. A zero-knowledge proof confirms you are 18+.
                 </p>
               )}
               {!!hasIdentityImages && (

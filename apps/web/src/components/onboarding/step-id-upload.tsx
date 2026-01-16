@@ -464,7 +464,7 @@ export function StepIdUpload() {
               </p>
               <p className="text-sm">
                 {processingState === "processing" &&
-                  "Verifying your document securely"}
+                  "Extracting information from your document"}
               </p>
             </AlertDescription>
           </Alert>

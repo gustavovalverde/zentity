@@ -76,10 +76,9 @@ export default function SignInPage() {
         >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="passkey">Passkey</TabsTrigger>
-            <TabsTrigger value="other">Password / OAuth</TabsTrigger>
+            <TabsTrigger value="other">More options</TabsTrigger>
           </TabsList>
           <TabsContent className="mt-4" value="passkey">
-            {/* Custom passkey form with PRF support for FHE key derivation */}
             <PasskeySignInForm />
           </TabsContent>
           <TabsContent className="mt-4" value="other">
