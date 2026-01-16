@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import {
@@ -8,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { loadWizardState } from "@/lib/db/onboarding-session";
 
 interface SignUpPageProps {
   searchParams: Promise<{ fresh?: string }>;
@@ -15,6 +17,15 @@ interface SignUpPageProps {
 
 export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const { fresh } = await searchParams;
+
+  // Server-side check: redirect to dashboard if user already completed onboarding
+  // This prevents the flash where email step shows before client-side hydration kicks in
+  if (fresh !== "1") {
+    const { state } = await loadWizardState();
+    if (state?.keysSecured) {
+      redirect("/dashboard");
+    }
+  }
 
   return (
     <Card className="w-full max-w-lg">

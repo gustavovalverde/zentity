@@ -9,13 +9,11 @@ import { RecoverySetupSection } from "@/components/dashboard/recovery-setup-sect
 import { SecurityCards } from "@/components/dashboard/security-cards";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 import { userHasPassword } from "@/lib/db/queries/auth";
 
 export default async function SettingsPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedSession(await headers());
 
   if (!session) {
     redirect("/sign-in");

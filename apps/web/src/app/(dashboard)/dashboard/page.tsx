@@ -13,19 +13,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { auth } from "@/lib/auth/auth";
+import { getCachedSession } from "@/lib/auth/cached-session";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
 import {
   PrivacyInfoSection,
+  PrivacyInfoSkeleton,
   VerificationStatusCard,
 } from "./_components/verification-status-card";
 import { VerificationStatusSkeleton } from "./_components/verification-status-skeleton";
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCachedSession(await headers());
 
   const userId = session?.user?.id;
   const web3Enabled = isWeb3Enabled();
@@ -97,7 +96,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* STREAMING - Privacy Info */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<PrivacyInfoSkeleton />}>
         <PrivacyInfoSection userId={userId} />
       </Suspense>
     </div>
