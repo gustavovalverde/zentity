@@ -15,7 +15,10 @@ import {
   getVerificationStatus,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
-import { getComplianceLevel } from "@/lib/identity/compliance";
+import {
+  countryCodeToNumeric,
+  getComplianceLevel,
+} from "@/lib/identity/compliance";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
@@ -84,14 +87,26 @@ async function runFheEncryption(
           )
         : await getLatestIdentityDraftByUserId(userId);
 
-      const birthYearOffset =
-        typeof context?.birthYearOffset === "number"
-          ? context.birthYearOffset
-          : null;
-      const countryCodeNumeric =
-        typeof context?.countryCodeNumeric === "number"
-          ? context.countryCodeNumeric
-          : null;
+      // Resolve birthYearOffset: context > draft fallback
+      const birthYearOffset = (() => {
+        if (typeof context?.birthYearOffset === "number") {
+          return context.birthYearOffset;
+        }
+        if (typeof draft?.birthYearOffset === "number") {
+          return draft.birthYearOffset;
+        }
+        return null;
+      })();
+      // Resolve countryCodeNumeric: context > draft.issuerCountry conversion
+      const countryCodeNumeric = (() => {
+        if (typeof context?.countryCodeNumeric === "number") {
+          return context.countryCodeNumeric;
+        }
+        if (draft?.issuerCountry) {
+          return countryCodeToNumeric(draft.issuerCountry);
+        }
+        return null;
+      })();
       const livenessScore = draft?.antispoofScore;
 
       const verificationStatus = await getVerificationStatus(userId);

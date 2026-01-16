@@ -289,10 +289,6 @@ function parseDateToInt(dateValue?: string | null): number | null {
 }
 
 const activeIdentityJobs = new Set<string>();
-const pendingFheInputs = new Map<
-  string,
-  { birthYearOffset?: number | null; countryCodeNumeric?: number | null }
->();
 
 function scheduleIdentityJob(jobId: string): void {
   if (activeIdentityJobs.has(jobId)) {
@@ -339,9 +335,6 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         span.setAttribute("identity.job_skipped", true);
         return;
       }
-
-      const pendingInputs = pendingFheInputs.get(job.id);
-      pendingFheInputs.delete(job.id);
 
       span.setAttribute("identity.job_id", job.id);
       span.setAttribute("identity.user_id_hash", hashIdentifier(job.userId));
@@ -603,16 +596,8 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         // Invalidate cached verification status
         invalidateVerificationCache(job.userId);
-        if (job.fheKeyId) {
-          scheduleFheEncryption({
-            userId: job.userId,
-            requestId: job.id,
-            flowId: draft.onboardingSessionId,
-            reason: "identity_finalize",
-            birthYearOffset: pendingInputs?.birthYearOffset ?? null,
-            countryCodeNumeric: pendingInputs?.countryCodeNumeric ?? null,
-          });
-        }
+        // Note: FHE encryption is deferred to proof_stored for single-batch optimization
+        // Values (birthYearOffset, countryCodeNumeric) are stored in draft for later lookup
 
         if (documentProcessed && draft.documentId) {
           try {
@@ -1163,6 +1148,13 @@ export const identityRouter = router({
         });
       }
 
+      // Store birthYearOffset in draft for later FHE encryption (deferred to proof_stored)
+      if (typeof input.birthYearOffset === "number") {
+        await updateIdentityDraft(draft.id, {
+          birthYearOffset: input.birthYearOffset,
+        });
+      }
+
       const existingJob = await getLatestIdentityVerificationJobForDraft(
         input.draftId
       );
@@ -1171,10 +1163,6 @@ export const identityRouter = router({
         existingJob.status !== "error" &&
         existingJob.status !== "complete"
       ) {
-        pendingFheInputs.set(existingJob.id, {
-          birthYearOffset: input.birthYearOffset,
-          countryCodeNumeric: input.countryCodeNumeric,
-        });
         scheduleIdentityJob(existingJob.id);
         return { jobId: existingJob.id, status: existingJob.status };
       }
@@ -1185,10 +1173,6 @@ export const identityRouter = router({
         draftId: input.draftId,
         userId: ctx.userId,
         fheKeyId: input.fheKeyId,
-      });
-      pendingFheInputs.set(jobId, {
-        birthYearOffset: input.birthYearOffset,
-        countryCodeNumeric: input.countryCodeNumeric,
       });
 
       scheduleIdentityJob(jobId);
