@@ -118,8 +118,8 @@ export function PasskeySignInForm() {
         <Alert>
           <TriangleAlert className="h-4 w-4" />
           <AlertDescription className="ml-2 text-xs">
-            Your device supports passkeys but not PRF. Some features like FHE
-            key auto-unlock may not be available.
+            Your device supports passkeys but some advanced encryption features
+            may be limited.
           </AlertDescription>
         </Alert>
       )}

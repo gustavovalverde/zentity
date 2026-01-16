@@ -485,7 +485,7 @@ export default function RecoverSocialPage() {
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
           {icon}
         </div>
-        <CardTitle>Social Recovery</CardTitle>
+        <CardTitle>Guardian Recovery</CardTitle>
         <CardDescription>
           Recover access with guardian approval and set a new passkey.
         </CardDescription>
