@@ -288,7 +288,8 @@ export function StepAccount() {
         userSalt: store.userSalt,
       });
 
-      // Step 1: Ensure we have a session
+      // Step 1: Ensure we have a session (this creates the anonymous user)
+      setStatus("preparing-account");
       await ensureAuthSession();
       const prfSalt = generatePrfSalt();
 
@@ -365,8 +366,8 @@ export function StepAccount() {
         }),
       ]);
 
-      // Step 5: Finalize enrollment
-      setStatus("creating-account");
+      // Step 5: Finalize enrollment (store encrypted secrets)
+      setStatus("storing-secrets");
       const completion = await completeFheEnrollment({
         registrationToken: onboardingContext.registrationToken,
         wrappedDek: fheEnrollment.wrappedDek,
@@ -503,7 +504,7 @@ export function StepAccount() {
       storedKeys.keyId = fheRegistration.keyId;
       cacheFheKeys(secretId, storedKeys);
 
-      setStatus("creating-account");
+      setStatus("storing-secrets");
       await trpc.onboarding.markKeysSecured.mutate();
       store.set({ keysSecured: true });
 
@@ -613,7 +614,26 @@ export function StepAccount() {
 
       {!!error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            <div className="space-y-3">
+              <p>{error}</p>
+              <p className="text-muted-foreground text-xs">
+                You can safely try again. Your previous incomplete signup will
+                be automatically cleaned up.
+              </p>
+              <Button
+                onClick={() => {
+                  setError(null);
+                  setStatus("idle");
+                  setCredentialType(null);
+                }}
+                size="sm"
+                variant="outline"
+              >
+                Try Again
+              </Button>
+            </div>
+          </AlertDescription>
         </Alert>
       )}
 
