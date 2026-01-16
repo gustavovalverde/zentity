@@ -472,7 +472,7 @@ export default function RecoverSocialPage() {
 
   let icon = <Mail className="size-6 text-primary" />;
   if (phase === "complete") {
-    icon = <Check className="size-6 text-emerald-600" />;
+    icon = <Check className="size-6 text-success" />;
   } else if (phase === "ready" || phase === "registering") {
     icon = <KeyRound className="size-6 text-primary" />;
   } else if (phase === "pending") {
@@ -749,9 +749,12 @@ export default function RecoverSocialPage() {
         )}
 
         {phase === "complete" && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-emerald-700 text-sm">
-            Recovery complete. You can now sign in with your new passkey.
-          </div>
+          <Alert variant="success">
+            <Check className="size-4" />
+            <AlertDescription>
+              Recovery complete. You can now sign in with your new passkey.
+            </AlertDescription>
+          </Alert>
         )}
       </CardContent>
     </Card>

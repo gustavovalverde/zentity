@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -212,6 +213,16 @@ export function StepEmail() {
         skipLabel="Continue without email"
         stepper={stepper}
       />
+
+      <div className="mt-6 text-center text-muted-foreground text-sm">
+        Already have an account?{" "}
+        <Link
+          className="font-medium text-primary hover:underline"
+          href="/sign-in"
+        >
+          Sign In
+        </Link>
+      </div>
     </form>
   );
 }
