@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
@@ -37,15 +36,6 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
       </CardHeader>
       <CardContent>
         <OnboardingWizard forceReset={fresh === "1"} />
-        <div className="mt-6 text-center text-muted-foreground text-sm">
-          Already have an account?{" "}
-          <Link
-            className="font-medium text-primary hover:underline"
-            href="/sign-in"
-          >
-            Sign In
-          </Link>
-        </div>
       </CardContent>
     </Card>
   );

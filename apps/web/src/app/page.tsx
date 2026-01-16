@@ -57,51 +57,17 @@ export default function Home() {
                 Start Verification
               </Button>
             </Link>
-            <Link href="#how-it-works">
+            <a
+              href="https://zentity.xyz"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
               <Button className="w-full sm:w-auto" size="lg" variant="outline">
-                How It Works
+                Learn More
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
-
-        <section
-          className="mx-auto mt-20 w-full max-w-5xl scroll-mt-24"
-          id="how-it-works"
-        >
-          <h2 className="text-center font-bold text-3xl">How It Works</h2>
-          <div className="mt-12 grid gap-8 md:grid-cols-3">
-            <div className="rounded-lg border border-border p-6">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                1
-              </div>
-              <h3 className="font-semibold text-lg">Start with Email</h3>
-              <p className="mt-2 text-muted-foreground text-sm">
-                Begin in seconds. We only ask for what we need, when we need it.
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-6">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                2
-              </div>
-              <h3 className="font-semibold text-lg">Scan Your ID</h3>
-              <p className="mt-2 text-muted-foreground text-sm">
-                Upload a clear photo of your ID so we can extract the minimum
-                fields required for verification.
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-6">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                3
-              </div>
-              <h3 className="font-semibold text-lg">Verify Privately</h3>
-              <p className="mt-2 text-muted-foreground text-sm">
-                Prove claims (like being 18+) with cryptography so services can
-                verify without seeing raw personal data.
-              </p>
-            </div>
-          </div>
-        </section>
       </main>
 
       <footer className="mt-auto border-border border-t py-8">
