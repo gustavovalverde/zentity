@@ -1,11 +1,11 @@
 "use client";
 
-import { AuthView } from "@daveyplate/better-auth-ui";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { OpaqueSignInForm } from "@/components/auth/opaque-sign-in-form";
 import { PasskeySignInForm } from "@/components/auth/passkey-sign-in-form";
+import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 import {
   Card,
   CardContent,
@@ -90,15 +90,7 @@ export default function SignInPage() {
                 <span>Or continue with</span>
                 <Separator className="flex-1" />
               </div>
-              {/* AuthView with hidden card (transparent wrapper) - keeps magic link + social */}
-              <AuthView
-                classNames={{
-                  base: "border-0 bg-transparent p-0 shadow-none",
-                  header: "hidden",
-                  footer: "hidden",
-                }}
-                view="SIGN_IN"
-              />
+              <SocialLoginButtons />
             </div>
           </TabsContent>
         </Tabs>
