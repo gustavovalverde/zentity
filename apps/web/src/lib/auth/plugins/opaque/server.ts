@@ -640,12 +640,27 @@ export const opaque = (options: OpaquePluginOptions) => {
           );
 
           // Check if email already exists
-          const existing =
+          const existingRecord =
             await ctx.context.internalAdapter.findUserByEmail(email);
-          if (existing) {
-            throw new APIError("BAD_REQUEST", {
-              message: "Email already registered",
-            });
+          if (existingRecord) {
+            const existingUser = existingRecord.user;
+            // Allow retry if previous signup was incomplete (anonymous + unverified)
+            // Check isAnonymous on the extended user fields from our schema
+            const userWithExtras = existingUser as typeof existingUser & {
+              isAnonymous?: boolean;
+            };
+            if (userWithExtras.isAnonymous && !existingUser.emailVerified) {
+              // Delete incomplete signup to allow fresh start
+              const { deleteIncompleteSignup } = await import(
+                "@/lib/db/queries/auth"
+              );
+              await deleteIncompleteSignup(existingUser.id);
+            } else {
+              // Real user exists - reject
+              throw new APIError("BAD_REQUEST", {
+                message: "Email already registered",
+              });
+            }
           }
 
           // Create user (anonymous until sign-up completes)
