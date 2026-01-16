@@ -92,11 +92,47 @@ interface ChallengeResponse {
   expiresAt: string;
 }
 
+/**
+ * In-flight request tracking with automatic TTL cleanup.
+ * These maps are naturally bounded by their key space but we add TTL
+ * as a defensive measure against edge cases where cleanup doesn't run.
+ */
+const CHALLENGE_TTL_MS = 60_000; // 1 minute
+const REGISTRATION_TTL_MS = 120_000; // 2 minutes
+
+interface TimestampedEntry<T> {
+  promise: T;
+  createdAt: number;
+}
+
 const challengeInFlight = new Map<
   "age_verification" | "doc_validity" | "nationality_membership" | "face_match",
-  Promise<ChallengeResponse>
+  TimestampedEntry<Promise<ChallengeResponse>>
 >();
-const registerFheKeyInFlight = new Map<string, Promise<{ keyId: string }>>();
+const registerFheKeyInFlight = new Map<
+  string,
+  TimestampedEntry<Promise<{ keyId: string }>>
+>();
+
+/**
+ * Cleanup stale entries from in-flight maps.
+ * Called periodically and before adding new entries.
+ */
+function cleanupStaleEntries(): void {
+  const now = Date.now();
+
+  for (const [key, entry] of challengeInFlight) {
+    if (now - entry.createdAt > CHALLENGE_TTL_MS) {
+      challengeInFlight.delete(key);
+    }
+  }
+
+  for (const [key, entry] of registerFheKeyInFlight) {
+    if (now - entry.createdAt > REGISTRATION_TTL_MS) {
+      registerFheKeyInFlight.delete(key);
+    }
+  }
+}
 
 /**
  * Generate a zero-knowledge proof of age (CLIENT-SIDE)
@@ -322,13 +358,16 @@ export async function getProofChallenge(
     | "nationality_membership"
     | "face_match"
 ): Promise<ChallengeResponse> {
+  // Cleanup stale entries before checking
+  cleanupStaleEntries();
+
   const inFlight = challengeInFlight.get(circuitType);
   if (inFlight) {
-    return await inFlight;
+    return await inFlight.promise;
   }
   try {
     const promise = trpc.crypto.createChallenge.mutate({ circuitType });
-    challengeInFlight.set(circuitType, promise);
+    challengeInFlight.set(circuitType, { promise, createdAt: Date.now() });
     const response = await promise;
     return response;
   } catch (error) {
@@ -421,10 +460,13 @@ export async function ensureFheKeyRegistration(params?: {
 }): Promise<{
   keyId: string;
 }> {
+  // Cleanup stale entries before checking
+  cleanupStaleEntries();
+
   const inFlightKey = params?.enrollment?.credentialId ?? "default";
   const inFlight = registerFheKeyInFlight.get(inFlightKey);
   if (inFlight) {
-    return await inFlight;
+    return await inFlight.promise;
   }
 
   let resolvePromise: ((value: { keyId: string }) => void) | undefined;
@@ -436,7 +478,10 @@ export async function ensureFheKeyRegistration(params?: {
     }
   );
 
-  registerFheKeyInFlight.set(inFlightKey, registrationPromise);
+  registerFheKeyInFlight.set(inFlightKey, {
+    promise: registrationPromise,
+    createdAt: Date.now(),
+  });
 
   const runRegistration = async () => {
     try {

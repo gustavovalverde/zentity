@@ -15,6 +15,7 @@ import {
   recordClientPasskeyDuration,
   recordClientTfheKeygenDuration,
   recordClientTfheLoadDuration,
+  recordClientTfheLoadRetry,
 } from "@/lib/observability/metrics";
 
 export const runtime = "nodejs";
@@ -94,6 +95,13 @@ const handlers: Record<
     record: recordClientTfheLoadDuration,
     attributes: new Set(
       CLIENT_METRIC_DEFINITIONS["client.tfhe.load.duration"].attributes
+    ),
+  },
+  "client.tfhe.load.retry": {
+    unit: "ms",
+    record: recordClientTfheLoadRetry,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.tfhe.load.retry"].attributes
     ),
   },
   "client.tfhe.keygen.duration": {

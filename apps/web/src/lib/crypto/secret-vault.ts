@@ -125,10 +125,26 @@ export function getCachedOpaqueExportKey(userId: string): Uint8Array | null {
 
 /**
  * Clear the OPAQUE export key cache.
- * Call on sign-out or session change.
  */
-export function resetOpaqueExportCache(): void {
+function resetOpaqueExportCache(): void {
   cachedOpaqueExport = null;
+}
+
+/**
+ * Clear the cached recovery encryption key.
+ */
+function clearCachedRecoveryKey(): void {
+  cachedRecoveryKey = null;
+}
+
+/**
+ * Clear all cached crypto materials.
+ * SECURITY: Call on sign-out to ensure no sensitive key material persists.
+ */
+export function clearAllCaches(): void {
+  resetPasskeyUnlockCache();
+  resetOpaqueExportCache();
+  clearCachedRecoveryKey();
 }
 
 export function hasCachedPasskeyUnlock(): boolean {
