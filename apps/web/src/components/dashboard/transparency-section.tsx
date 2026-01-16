@@ -17,6 +17,16 @@ import {
   getProofTypeLabel,
 } from "@/lib/constants/verification-labels";
 
+const NEVER_STORED_ITEMS = [
+  "ID Document Image",
+  "Selfie Image",
+  "Full Name",
+  "Birth Date",
+  "Document Number",
+  "Face Embeddings",
+  "Address",
+] as const;
+
 interface TransparencySectionProps {
   documentHash?: string;
   nameCommitment?: string;
@@ -234,15 +244,7 @@ export function TransparencySection({
                 with your passkey.
               </p>
               <div className="flex flex-wrap gap-2">
-                {[
-                  "ID Document Image",
-                  "Selfie Image",
-                  "Full Name",
-                  "Birth Date",
-                  "Document Number",
-                  "Face Embeddings",
-                  "Address",
-                ].map((item) => (
+                {NEVER_STORED_ITEMS.map((item) => (
                   <Badge
                     className="border-destructive/30 text-destructive text-xs"
                     key={item}
