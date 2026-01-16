@@ -59,8 +59,7 @@ describe("passkey auth wrapper", () => {
     expect(prfMocks.evaluatePrf).not.toHaveBeenCalled();
   });
 
-  it("falls back to PRF evaluation when no PRF output is returned", async () => {
-    const prfOutput = new Uint8Array(32).fill(2);
+  it("returns error when passkey does not support PRF during registration", async () => {
     authMocks.addPasskey.mockResolvedValue({
       data: { credentialID: "cred-2" },
       webauthn: {
@@ -69,21 +68,18 @@ describe("passkey auth wrapper", () => {
       },
     });
     prfMocks.extractPrfOutputFromClientResults.mockReturnValue(null);
-    prfMocks.evaluatePrf.mockResolvedValue({
-      prfOutputs: new Map([["cred-2", prfOutput]]),
-    });
 
     const result = await registerPasskeyWithPrf({
-      name: "Fallback",
+      name: "No PRF Support",
       prfSalt: new Uint8Array(32).fill(7),
     });
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.credentialId).toBe("cred-2");
-      expect(result.prfOutput).toEqual(prfOutput);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("PRF extension");
     }
-    expect(prfMocks.evaluatePrf).toHaveBeenCalled();
+    // Should NOT fall back to evaluatePrf during registration (avoids double prompt)
+    expect(prfMocks.evaluatePrf).not.toHaveBeenCalled();
   });
 
   it("returns an error when credential ID is missing", async () => {
