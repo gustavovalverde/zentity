@@ -12,13 +12,14 @@ import { cn } from "@/lib/utils/utils";
  */
 export type SecureStatus =
   | "idle"
+  | "preparing-account"
   | "registering-passkey"
   | "unlocking-prf"
   | "generating-keys"
   | "encrypting-keys"
   | "uploading-keys"
   | "registering-keys"
-  | "creating-account"
+  | "storing-secrets"
   | "finalizing-identity"
   | "generating-proofs"
   | "storing-proofs"
@@ -30,6 +31,8 @@ export type SecureStatus =
  */
 export function getStatusMessage(status: SecureStatus): string | null {
   switch (status) {
+    case "preparing-account":
+      return "Preparing your account…";
     case "registering-passkey":
       return "Creating your passkey…";
     case "unlocking-prf":
@@ -42,8 +45,8 @@ export function getStatusMessage(status: SecureStatus): string | null {
       return "Uploading encrypted keys…";
     case "registering-keys":
       return "Registering keys with the FHE service…";
-    case "creating-account":
-      return "Creating your account and storing secrets…";
+    case "storing-secrets":
+      return "Storing encrypted secrets…";
     case "finalizing-identity":
       return "Finalizing your identity data…";
     case "generating-proofs":
@@ -135,13 +138,14 @@ export const VerificationProgress = memo(function VerificationProgress({
 }: VerificationProgressProps) {
   const progressStatus = useMemo(() => {
     const steps: SecureStatus[] = [
+      "preparing-account",
       "registering-passkey",
       "unlocking-prf",
       "generating-keys",
       "encrypting-keys",
       "uploading-keys",
       "registering-keys",
-      "creating-account",
+      "storing-secrets",
       "finalizing-identity",
       "generating-proofs",
       "storing-proofs",
@@ -164,18 +168,18 @@ export const VerificationProgress = memo(function VerificationProgress({
     };
 
     return {
-      passkey: stepStatus(0, "registering-passkey"),
-      prf: stepStatus(1, "unlocking-prf"),
-      secure: stepStatus(5, [
+      passkey: stepStatus(1, ["preparing-account", "registering-passkey"]),
+      prf: stepStatus(2, "unlocking-prf"),
+      secure: stepStatus(6, [
         "generating-keys",
         "encrypting-keys",
         "uploading-keys",
         "registering-keys",
       ]),
-      account: stepStatus(6, "creating-account"),
-      verify: stepStatus(7, "finalizing-identity"),
-      proofs: stepStatus(8, "generating-proofs"),
-      store: stepStatus(9, "storing-proofs"),
+      secrets: stepStatus(7, "storing-secrets"),
+      verify: stepStatus(8, "finalizing-identity"),
+      proofs: stepStatus(9, "generating-proofs"),
+      store: stepStatus(10, "storing-proofs"),
     };
   }, [status]);
 
@@ -215,8 +219,8 @@ export const VerificationProgress = memo(function VerificationProgress({
         />
         <StepIndicator
           icon={<ShieldCheck className="h-4 w-4" />}
-          label="Create account & store keys"
-          status={progressStatus.account}
+          label="Store encrypted secrets"
+          status={progressStatus.secrets}
         />
         {hasIdentityDocs ? (
           <>
