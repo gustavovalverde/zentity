@@ -351,19 +351,19 @@ export function StepAccount() {
       });
 
       setStatus("uploading-keys");
-      await uploadSecretBlobWithToken({
-        secretId: fheEnrollment.secretId,
-        secretType: FHE_SECRET_TYPE,
-        payload: fheEnrollment.encryptedBlob,
-        registrationToken: onboardingContext.registrationToken,
-      });
-
-      setStatus("registering-keys");
-      const fheRegistration = await registerFheKeyForEnrollment({
-        registrationToken: onboardingContext.registrationToken,
-        publicKeyBytes: fheEnrollment.publicKeyBytes,
-        serverKeyBytes: fheEnrollment.serverKeyBytes,
-      });
+      const [, fheRegistration] = await Promise.all([
+        uploadSecretBlobWithToken({
+          secretId: fheEnrollment.secretId,
+          secretType: FHE_SECRET_TYPE,
+          payload: fheEnrollment.encryptedBlob,
+          registrationToken: onboardingContext.registrationToken,
+        }),
+        registerFheKeyForEnrollment({
+          registrationToken: onboardingContext.registrationToken,
+          publicKeyBytes: fheEnrollment.publicKeyBytes,
+          serverKeyBytes: fheEnrollment.serverKeyBytes,
+        }),
+      ]);
 
       // Step 5: Finalize enrollment
       setStatus("creating-account");
@@ -480,26 +480,24 @@ export function StepAccount() {
       const { storedKeys: generatedKeys } =
         await generateFheKeyMaterialForStorage();
 
-      // Step 2: Store FHE keys using OPAQUE-wrapped DEK
-      setStatus("encrypting-keys");
+      // Step 2: Store FHE keys + register with FHE service in parallel
+      setStatus("uploading-keys");
       const storedKeys = { ...generatedKeys };
 
-      setStatus("uploading-keys");
-      const { secretId } = await storeFheKeysWithCredential({
-        keys: storedKeys,
-        credential,
-      });
-
-      // Step 3: Register keys with FHE service (session-based auth)
-      setStatus("registering-keys");
-      const fheRegistration = await fetchMsgpack<{ keyId: string }>(
-        "/api/fhe/keys/register",
-        {
-          publicKey: generatedKeys.publicKey,
-          serverKey: generatedKeys.serverKey,
-        },
-        { credentials: "include" }
-      );
+      const [{ secretId }, fheRegistration] = await Promise.all([
+        storeFheKeysWithCredential({
+          keys: storedKeys,
+          credential,
+        }),
+        fetchMsgpack<{ keyId: string }>(
+          "/api/fhe/keys/register",
+          {
+            publicKey: generatedKeys.publicKey,
+            serverKey: generatedKeys.serverKey,
+          },
+          { credentials: "include" }
+        ),
+      ]);
 
       // Cache the keys
       storedKeys.keyId = fheRegistration.keyId;

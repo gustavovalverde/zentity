@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Spinner } from "@/components/ui/spinner";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { prewarmTfheWorker } from "@/lib/crypto/tfhe-keygen.client";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
 import { trpc } from "@/lib/trpc/client";
 
@@ -101,6 +102,9 @@ function WizardContent() {
         // Server not available, continue with local state
       } finally {
         setIsHydrated(true);
+        // Pre-warm TFHE worker while user completes earlier steps
+        // This loads WASM in background, reducing latency at account creation
+        prewarmTfheWorker();
       }
     };
 
