@@ -56,6 +56,7 @@ import { getStoredProfile } from "@/lib/crypto/profile-secret";
 import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
 import { trpcReact } from "@/lib/trpc/client";
 import { getAttestationError } from "@/lib/utils/error-messages";
+import { cn } from "@/lib/utils/utils";
 
 interface NetworkStatus {
   id: string;
@@ -637,18 +638,20 @@ const NetworkCard = memo(function NetworkCard({
 
   return (
     <button
-      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors",
         isSelected
           ? "border-primary bg-primary/5 ring-1 ring-primary/20"
           : "border-border bg-card hover:border-primary/50 hover:bg-accent/50"
-      }`}
+      )}
       onClick={onSelect}
       type="button"
     >
       <div
-        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+        className={cn(
+          "size-2.5 shrink-0 rounded-full",
           network.type === "fhevm" ? "bg-info" : "bg-primary"
-        }`}
+        )}
       />
       <div className="min-w-0 flex-1">
         <p className="font-medium text-sm">{network.name}</p>

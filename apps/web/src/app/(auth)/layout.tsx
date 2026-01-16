@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { ModeToggle } from "@/components/mode-toggle";
 import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
+import { PasskeyAuthProvider } from "@/components/providers/passkey-auth-provider";
 import { TrpcProvider } from "@/components/providers/trpc-provider";
 
 export default function AuthLayout({
@@ -22,7 +23,9 @@ export default function AuthLayout({
       </header>
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <TrpcProvider>
-          <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
+          <PasskeyAuthProvider>
+            <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
+          </PasskeyAuthProvider>
         </TrpcProvider>
       </main>
     </div>

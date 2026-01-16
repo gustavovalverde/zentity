@@ -39,6 +39,7 @@ import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
 import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
 import { IdentityRegistryABI } from "@/lib/contracts";
 import { trpcReact } from "@/lib/trpc/client";
+import { cn } from "@/lib/utils/utils";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
 import { getCountryName } from "@/lib/zk/nationality-data";
 
@@ -583,7 +584,7 @@ export function ViewIdentityData() {
             variant="ghost"
           >
             <RefreshCw
-              className={`h-4 w-4 ${isLoadingContract ? "animate-spin" : ""}`}
+              className={cn("size-4", isLoadingContract && "animate-spin")}
             />
           </Button>
         </div>
@@ -636,7 +637,7 @@ const IdentityField = memo(function IdentityField({
         </span>
         {label}
       </span>
-      <span className={`font-medium text-sm ${VARIANT_CLASSES[variant]}`}>
+      <span className={cn("font-medium text-sm", VARIANT_CLASSES[variant])}>
         {isVisible && value ? (
           value
         ) : (
