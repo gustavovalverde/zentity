@@ -43,30 +43,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const coopHeader =
-    process.env.NEXT_PUBLIC_COOP === "same-origin-allow-popups" ||
-    process.env.NEXT_PUBLIC_COOP === "unsafe-none"
-      ? process.env.NEXT_PUBLIC_COOP
-      : "same-origin";
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Enable cross-origin isolation for SharedArrayBuffer (ZK proofs).
-            Service worker intercepts ALL requests and adds COEP/COOP headers.
-            First visit triggers a reload to activate the SW.
-            Must be a raw script tag - Next.js Script component doesn't work
-            correctly with service worker self-registration. */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `globalThis.window.coi = Object.assign({}, globalThis.window.coi, { coop: ${JSON.stringify(
-              coopHeader
-            )} });`,
-          }}
-        />
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script src="/coi-serviceworker.js" />
+        {/* Cross-origin isolation (COEP/COOP) for SharedArrayBuffer is set via
+            server-side headers in next.config.ts. This is required for WASM
+            multi-threading (nested workers). Service worker approach doesn't work
+            because it can't intercept nested worker requests.
+            See: https://github.com/w3c/ServiceWorker/issues/1529 */}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
