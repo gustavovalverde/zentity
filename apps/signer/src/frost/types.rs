@@ -17,8 +17,89 @@ pub use frost_secp256k1::Identifier;
 /// Session ID type alias for clarity.
 pub type SessionId = Uuid;
 
+// =============================================================================
+// ParticipantId Newtype
+// =============================================================================
+
 /// Participant identifier (1-based index in FROST).
-pub type ParticipantId = u16;
+///
+/// FROST requires participant IDs to be non-zero. This newtype enforces that
+/// constraint at the type level, preventing accidental use of 0 as a participant ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "u16", into = "u16")]
+pub struct ParticipantId(u16);
+
+impl ParticipantId {
+    /// Create a new participant ID.
+    ///
+    /// Returns `None` if the ID is 0 (invalid in FROST).
+    #[must_use]
+    pub const fn new(id: u16) -> Option<Self> {
+        if id == 0 { None } else { Some(Self(id)) }
+    }
+
+    /// Create a participant ID, panicking if invalid.
+    ///
+    /// # Panics
+    /// Panics if `id` is 0.
+    #[must_use]
+    pub const fn new_unwrap(id: u16) -> Self {
+        match Self::new(id) {
+            Some(p) => p,
+            None => panic!("ParticipantId cannot be 0"),
+        }
+    }
+
+    /// Get the raw u16 value.
+    #[must_use]
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ParticipantId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<ParticipantId> for u16 {
+    fn from(id: ParticipantId) -> Self {
+        id.0
+    }
+}
+
+impl TryFrom<u16> for ParticipantId {
+    type Error = &'static str;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        Self::new(value).ok_or("participant ID cannot be 0")
+    }
+}
+
+// =============================================================================
+// Session Trait
+// =============================================================================
+
+/// Common interface for FROST protocol sessions.
+///
+/// Both DKG and signing sessions share common lifecycle patterns
+/// like expiration checking. This trait provides a unified interface.
+pub trait Session {
+    /// Get the session's unique identifier.
+    fn session_id(&self) -> SessionId;
+
+    /// Get the session's expiration time.
+    fn expires_at(&self) -> DateTime<Utc>;
+
+    /// Check if the session has expired.
+    fn is_expired(&self) -> bool {
+        Utc::now() > self.expires_at()
+    }
+
+    /// Get the error message if the session failed.
+    fn error(&self) -> Option<&str>;
+}
 
 // =============================================================================
 // DKG Types
@@ -144,15 +225,41 @@ impl DkgSession {
         true
     }
 
-    /// Check if session has expired.
-    pub fn is_expired(&self) -> bool {
-        Utc::now() > self.expires_at
-    }
-
     /// Transition to failed state with error message.
     pub fn fail(&mut self, error: String) {
         self.state = DkgState::Failed;
         self.error = Some(error);
+    }
+
+    /// Validate that transitioning to target state is allowed.
+    ///
+    /// Valid transitions:
+    /// - AwaitingRound1 → AwaitingRound2
+    /// - AwaitingRound2 → Completed | Failed
+    /// - Any state → Failed (always allowed for error handling)
+    pub fn can_transition_to(&self, target: DkgState) -> bool {
+        if target == DkgState::Failed {
+            return true;
+        }
+        matches!(
+            (self.state, target),
+            (DkgState::AwaitingRound1, DkgState::AwaitingRound2)
+                | (DkgState::AwaitingRound2, DkgState::Completed)
+        )
+    }
+}
+
+impl Session for DkgSession {
+    fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    fn expires_at(&self) -> DateTime<Utc> {
+        self.expires_at
+    }
+
+    fn error(&self) -> Option<&str> {
+        self.error.as_deref()
     }
 }
 
@@ -267,15 +374,43 @@ impl SigningSession {
             .all(|id| self.partial_signatures.contains_key(id))
     }
 
-    /// Check if session has expired.
-    pub fn is_expired(&self) -> bool {
-        Utc::now() > self.expires_at
-    }
-
     /// Transition to failed state with error message.
     pub fn fail(&mut self, error: String) {
         self.state = SigningState::Failed;
         self.error = Some(error);
+    }
+
+    /// Validate that transitioning to target state is allowed.
+    ///
+    /// Valid transitions:
+    /// - AwaitingCommitments → AwaitingPartials
+    /// - AwaitingPartials → Completed | Failed
+    /// - Any state → Failed (always allowed for error handling)
+    pub fn can_transition_to(&self, target: SigningState) -> bool {
+        if target == SigningState::Failed {
+            return true;
+        }
+        matches!(
+            (self.state, target),
+            (
+                SigningState::AwaitingCommitments,
+                SigningState::AwaitingPartials
+            ) | (SigningState::AwaitingPartials, SigningState::Completed)
+        )
+    }
+}
+
+impl Session for SigningSession {
+    fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    fn expires_at(&self) -> DateTime<Utc> {
+        self.expires_at
+    }
+
+    fn error(&self) -> Option<&str> {
+        self.error.as_deref()
     }
 }
 
@@ -611,9 +746,18 @@ mod tests {
     #[test]
     fn test_dkg_session_creation() {
         let mut endpoints = HashMap::new();
-        endpoints.insert(1, "http://signer-1:5101".to_string());
-        endpoints.insert(2, "http://signer-2:5102".to_string());
-        endpoints.insert(3, "http://signer-3:5103".to_string());
+        endpoints.insert(
+            ParticipantId::new_unwrap(1),
+            "http://signer-1:5101".to_string(),
+        );
+        endpoints.insert(
+            ParticipantId::new_unwrap(2),
+            "http://signer-2:5102".to_string(),
+        );
+        endpoints.insert(
+            ParticipantId::new_unwrap(3),
+            "http://signer-3:5103".to_string(),
+        );
 
         let hpke_keys = HashMap::new();
 
@@ -629,8 +773,14 @@ mod tests {
     #[test]
     fn test_signing_session_creation() {
         let mut endpoints = HashMap::new();
-        endpoints.insert(1, "http://signer-1:5101".to_string());
-        endpoints.insert(2, "http://signer-2:5102".to_string());
+        endpoints.insert(
+            ParticipantId::new_unwrap(1),
+            "http://signer-1:5101".to_string(),
+        );
+        endpoints.insert(
+            ParticipantId::new_unwrap(2),
+            "http://signer-2:5102".to_string(),
+        );
 
         let session = SigningSession::new(
             "deadbeef".to_string(),
@@ -638,7 +788,7 @@ mod tests {
             Ciphersuite::Secp256k1,
             2,
             "bWVzc2FnZQ==".to_string(),
-            vec![1, 2],
+            vec![ParticipantId::new_unwrap(1), ParticipantId::new_unwrap(2)],
             endpoints,
             10,
         );
@@ -661,5 +811,52 @@ mod tests {
             "awaiting_commitments"
         );
         assert_eq!(format!("{}", SigningState::Completed), "completed");
+    }
+
+    #[test]
+    fn test_dkg_state_transitions() {
+        let mut endpoints = HashMap::new();
+        endpoints.insert(
+            ParticipantId::new_unwrap(1),
+            "http://signer-1:5101".to_string(),
+        );
+        endpoints.insert(
+            ParticipantId::new_unwrap(2),
+            "http://signer-2:5102".to_string(),
+        );
+        let session = DkgSession::new(2, 2, Ciphersuite::Secp256k1, endpoints, HashMap::new(), 24);
+
+        // From AwaitingRound1
+        assert!(session.can_transition_to(DkgState::AwaitingRound2));
+        assert!(!session.can_transition_to(DkgState::Completed));
+        assert!(session.can_transition_to(DkgState::Failed)); // Always allowed
+    }
+
+    #[test]
+    fn test_signing_state_transitions() {
+        let mut endpoints = HashMap::new();
+        endpoints.insert(
+            ParticipantId::new_unwrap(1),
+            "http://signer-1:5101".to_string(),
+        );
+        endpoints.insert(
+            ParticipantId::new_unwrap(2),
+            "http://signer-2:5102".to_string(),
+        );
+        let session = SigningSession::new(
+            "deadbeef".to_string(),
+            "beadfeed".to_string(),
+            Ciphersuite::Secp256k1,
+            2,
+            "bWVzc2FnZQ==".to_string(),
+            vec![ParticipantId::new_unwrap(1), ParticipantId::new_unwrap(2)],
+            endpoints,
+            10,
+        );
+
+        // From AwaitingCommitments
+        assert!(session.can_transition_to(SigningState::AwaitingPartials));
+        assert!(!session.can_transition_to(SigningState::Completed));
+        assert!(session.can_transition_to(SigningState::Failed)); // Always allowed
     }
 }

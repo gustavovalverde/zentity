@@ -28,7 +28,7 @@ fn validate_ciphersuite(
 /// POST /signer/dkg/round1
 ///
 /// Generate DKG round 1 package.
-#[tracing::instrument(skip(signer, request), fields(session_id = %request.session_id, participant = request.participant_id))]
+#[tracing::instrument(skip(signer, request), fields(session_id = %request.session_id, participant = %request.participant_id))]
 pub async fn dkg_round1(
     signer: web::Data<SignerService>,
     request: web::Json<SignerDkgRound1Request>,
@@ -64,7 +64,7 @@ pub async fn dkg_round1(
 /// POST /signer/dkg/round2
 ///
 /// Generate DKG round 2 packages.
-#[tracing::instrument(skip(signer, request), fields(session_id = %request.session_id, participant = request.participant_id))]
+#[tracing::instrument(skip(signer, request), fields(session_id = %request.session_id, participant = %request.participant_id))]
 pub async fn dkg_round2(
     signer: web::Data<SignerService>,
     request: web::Json<SignerDkgRound2Request>,
@@ -100,7 +100,7 @@ pub async fn dkg_round2(
 /// POST /signer/dkg/finalize
 ///
 /// Finalize DKG and store key share.
-#[tracing::instrument(skip(signer, request), fields(session_id = %request.session_id, participant = request.participant_id))]
+#[tracing::instrument(skip(signer, request), fields(session_id = %request.session_id, participant = %request.participant_id))]
 pub async fn dkg_finalize(
     signer: web::Data<SignerService>,
     request: web::Json<SignerDkgFinalizeRequest>,

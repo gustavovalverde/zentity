@@ -184,7 +184,7 @@ impl JwtVerifier {
         }
 
         // Validate participant binding
-        if claims.participant_id != participant_id {
+        if claims.participant_id != participant_id.get() {
             return Err(SignerError::InvalidGuardianAssertion(format!(
                 "Participant ID mismatch: expected {participant_id}, got {}",
                 claims.participant_id
