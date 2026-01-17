@@ -23,15 +23,15 @@ const vaultMocks = vi.hoisted(() => ({
   addWrapperForSecretType: vi.fn(),
 }));
 
-vi.mock("@/lib/crypto/secret-vault", () => vaultMocks);
+vi.mock("@/lib/privacy/crypto/secret-vault", () => vaultMocks);
 
-vi.mock("@/lib/crypto/key-derivation", () => ({
+vi.mock("@/lib/privacy/crypto/key-derivation", () => ({
   generatePrfSalt: vi.fn().mockReturnValue(new Uint8Array(32).fill(7)),
 }));
 
-vi.mock("@/lib/crypto/webauthn-prf", async (importOriginal) => {
+vi.mock("@/lib/privacy/crypto/webauthn-prf", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/crypto/webauthn-prf")>();
+    await importOriginal<typeof import("@/lib/privacy/crypto/webauthn-prf")>();
   return {
     ...actual,
     checkPrfSupport: vi.fn().mockResolvedValue({ supported: true }),

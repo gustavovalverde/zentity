@@ -23,7 +23,7 @@ import {
   getExplorerTxUrl,
   getNetworkById,
   isDemoMode,
-} from "@/lib/blockchain/config/networks";
+} from "@/lib/blockchain/networks";
 import {
   canCreateProvider,
   createProvider,

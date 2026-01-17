@@ -7,14 +7,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { consumeChallenge } from "@/lib/crypto/challenge-store";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { verifyNoirProof } from "@/lib/zk/noir-verifier";
+import { consumeChallenge } from "@/lib/privacy/crypto/challenge-store";
+import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
   CIRCUIT_SPECS,
   normalizeChallengeNonce,
   parsePublicInputToNumber,
-} from "@/lib/zk/zk-circuit-spec";
+} from "@/lib/privacy/zk/zk-circuit-spec";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 /**
  * POST - Verify nationality membership ZK proof

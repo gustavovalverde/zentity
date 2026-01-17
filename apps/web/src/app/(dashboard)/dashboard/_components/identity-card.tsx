@@ -32,7 +32,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { getCountryDisplayName } from "@/lib/constants/verification-labels";
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
@@ -43,6 +42,7 @@ import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
 } from "@/lib/db/queries/identity";
+import { getCountryDisplayName } from "@/lib/identity/labels";
 
 interface IdentityCardProps {
   userId: string | undefined;

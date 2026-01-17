@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
-import { ComplianceAccessCard } from "@/components/blockchain/compliance-access-card";
+import { ComplianceAccessCard } from "@/components/dashboard/compliance-access-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,11 +52,11 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { getStoredProfile } from "@/lib/crypto/profile-secret";
-import { calculateBirthYearOffsetFromYear } from "@/lib/identity/birth-year";
+import { calculateBirthYearOffsetFromYear } from "@/lib/identity/verification/birth-year";
+import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
 import { trpcReact } from "@/lib/trpc/client";
+import { cn } from "@/lib/utils/classname";
 import { getAttestationError } from "@/lib/utils/error-messages";
-import { cn } from "@/lib/utils/utils";
 
 interface NetworkStatus {
   id: string;

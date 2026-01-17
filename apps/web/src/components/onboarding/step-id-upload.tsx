@@ -10,8 +10,6 @@
  */
 "use client";
 
-/* eslint @next/next/no-img-element: off */
-
 import {
   AlertCircle,
   CheckCircle2,
@@ -20,6 +18,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,13 +29,13 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
-} from "@/lib/document/document-ocr";
-import { useOnboardingStore } from "@/lib/onboarding/store";
+} from "@/lib/identity/document/document-ocr";
 import { trpc } from "@/lib/trpc/client";
+import { cn } from "@/lib/utils/classname";
 import { resizeImageFile } from "@/lib/utils/image";
-import { cn } from "@/lib/utils/utils";
+import { useOnboardingStore } from "@/store/onboarding";
 
-import { useStepper } from "./stepper-context";
+import { useStepper } from "./stepper-config";
 import { StepperControls } from "./stepper-ui";
 
 type ProcessingState =
@@ -103,11 +102,12 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
 
       {previewUrl ? (
         <div className="rounded-lg border bg-muted/30 p-4">
-          <img
+          <Image
             alt="ID preview"
             className="mx-auto max-h-48 rounded-lg object-contain"
             height={192}
             src={previewUrl}
+            unoptimized
             width={288}
           />
         </div>
@@ -191,7 +191,6 @@ export function StepIdUpload() {
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
-    return;
   }, [store.idDocument]);
 
   // Timeout for long-running processing
@@ -420,7 +419,7 @@ export function StepIdUpload() {
     });
   };
 
-  const documentResult = store.documentResult as DocumentResult | null;
+  const documentResult = store.documentResult;
   const isVerified = processingState === "verified" && Boolean(documentResult);
 
   const handleSubmit = useCallback(() => {
@@ -562,11 +561,12 @@ export function StepIdUpload() {
 
           {previewUrl ? (
             <div className="rounded-lg border bg-muted/30 p-4">
-              <img
+              <Image
                 alt="ID preview"
                 className="mx-auto max-h-32 rounded-lg object-contain opacity-50"
                 height={128}
                 src={previewUrl}
+                unoptimized
                 width={192}
               />
             </div>

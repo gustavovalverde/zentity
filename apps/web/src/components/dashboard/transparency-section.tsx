@@ -15,7 +15,7 @@ import {
   getAttributeLabel,
   getClaimTypeLabel,
   getProofTypeLabel,
-} from "@/lib/constants/verification-labels";
+} from "@/lib/identity/labels";
 
 const NEVER_STORED_ITEMS = [
   "ID Document Image",

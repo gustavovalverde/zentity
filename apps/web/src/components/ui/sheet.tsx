@@ -5,7 +5,7 @@ import type * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 function Sheet({
   ...props

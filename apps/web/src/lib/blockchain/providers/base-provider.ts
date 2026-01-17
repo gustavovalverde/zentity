@@ -6,7 +6,7 @@
  */
 import "server-only";
 
-import type { NetworkConfig } from "../config/networks";
+import type { NetworkConfig } from "../networks";
 import type {
   AttestationStatus,
   IAttestationProvider,

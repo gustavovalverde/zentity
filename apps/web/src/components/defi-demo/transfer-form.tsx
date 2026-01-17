@@ -41,10 +41,10 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useFheTransfer } from "@/hooks/fhevm/use-fhe-transfer";
+import { useDevFaucet } from "@/lib/blockchain/wagmi/use-dev-faucet";
 import { trpcReact } from "@/lib/trpc/client";
 import { getUserFriendlyError } from "@/lib/utils/error-messages";
 import { parseTokenAmount } from "@/lib/utils/token";
-import { useDevFaucet } from "@/lib/wagmi/use-dev-faucet";
 
 interface TransferFormProps {
   networkId: string;

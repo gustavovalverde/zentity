@@ -45,7 +45,7 @@ import {
 import {
   CIRCUIT_SPECS,
   parsePublicInputToNumber,
-} from "@/lib/zk/zk-circuit-spec";
+} from "@/lib/privacy/zk/zk-circuit-spec";
 
 interface DisclosureRequest {
   // RP identification

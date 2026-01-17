@@ -34,10 +34,8 @@ WORKDIR ${APP_HOME}
 
 # Copy package files first for dependency caching
 COPY --link package.json pnpm-lock.yaml .npmrc ./
-# Include patches needed for pnpm patchedDependencies resolution
-COPY --link patches ./patches
-# Include local packages needed for file: dependencies (better-auth plugins)
-COPY --link local-packages ./local-packages
+# Include vendored dependencies (modified packages and patches)
+COPY --link vendor ./vendor
 
 # Install dependencies with BuildKit cache mount for pnpm
 # Cache persists across builds, significantly speeds up installs (Railway cache ID)

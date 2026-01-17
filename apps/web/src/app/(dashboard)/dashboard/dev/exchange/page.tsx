@@ -25,8 +25,8 @@ import {
   buildDisclosurePayload,
   type DisclosureField,
   encryptDisclosurePayload,
-} from "@/lib/crypto/disclosure-client";
-import { getStoredProfile } from "@/lib/crypto/profile-secret";
+} from "@/lib/privacy/crypto/disclosure-client";
+import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
 
 // Types for the demo
 interface ExchangeKeypair {

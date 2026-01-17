@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 interface VerificationCheck {
   id: string;

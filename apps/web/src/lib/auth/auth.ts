@@ -25,7 +25,7 @@ import {
   buildVcClaims,
   VC_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
-import { getOnboardingContext } from "@/lib/auth/onboarding-context";
+import { getOnboardingContext } from "@/lib/auth/onboarding-tokens";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
 import {

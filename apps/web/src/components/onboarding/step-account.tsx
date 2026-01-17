@@ -24,47 +24,47 @@ import {
   registerPasskeyWithPrf,
   signInWithPasskey,
 } from "@/lib/auth/passkey";
-import { fetchMsgpack } from "@/lib/crypto/binary-transport";
+import { parseBirthYearFromDob } from "@/lib/identity/verification/birth-year";
+import { parseDateToInt } from "@/lib/identity/verification/date-utils";
+import { finalizeIdentityAndGenerateProofs } from "@/lib/identity/verification/finalize-and-prove";
+import { fetchMsgpack } from "@/lib/privacy/crypto/binary-transport";
 import {
   generateFheKeyMaterialForStorage,
   prepareFheKeyEnrollment,
   registerFheKeyForEnrollment,
-} from "@/lib/crypto/crypto-client";
+} from "@/lib/privacy/crypto/crypto-client";
 import {
   cacheFheKeys,
   FHE_SECRET_TYPE,
   storeFheKeysWithCredential,
   uploadSecretBlobWithToken,
-} from "@/lib/crypto/fhe-key-store";
-import { generatePrfSalt } from "@/lib/crypto/key-derivation";
+} from "@/lib/privacy/crypto/fhe-key-store";
+import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
 import {
   PASSKEY_VAULT_VERSION,
   WRAP_VERSION,
-} from "@/lib/crypto/passkey-vault";
+} from "@/lib/privacy/crypto/passkey-vault";
 import {
   type ProfileSecretPayload,
   storeProfileSecret,
-} from "@/lib/crypto/profile-secret";
+} from "@/lib/privacy/crypto/profile-secret";
 import {
   cachePasskeyUnlock,
   type EnrollmentCredential,
-} from "@/lib/crypto/secret-vault";
-import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
-import { parseBirthYearFromDob } from "@/lib/identity/birth-year";
-import { parseDateToInt } from "@/lib/identity/date-utils";
-import { finalizeIdentityAndGenerateProofs } from "@/lib/identity/finalize-and-prove";
-import { useOnboardingStore } from "@/lib/onboarding/store";
+} from "@/lib/privacy/crypto/secret-vault";
+import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
 import { getFirstPart } from "@/lib/utils/name-utils";
+import { useOnboardingStore } from "@/store/onboarding";
 
+import {
+  type SecureStatus,
+  VerificationProgress,
+} from "./account-setup-progress";
 import { CredentialChoice, type CredentialType } from "./credential-choice";
 import { ExtractedInfoReview } from "./extracted-info-review";
 import { FaceVerificationCard } from "./face-verification-card";
 import { PasswordSignUpForm } from "./password-signup-form";
-import {
-  type SecureStatus,
-  VerificationProgress,
-} from "./verification-progress";
 
 function buildProfilePayload(args: {
   extractedName: string | null;
@@ -455,7 +455,7 @@ export function StepAccount() {
       // Step 4: Store profile secret if available
       if (profilePayload) {
         const { storeProfileSecretWithCredential } = await import(
-          "@/lib/crypto/profile-secret"
+          "@/lib/privacy/crypto/profile-secret"
         );
         await storeProfileSecretWithCredential({
           profile: profilePayload,

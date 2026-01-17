@@ -14,7 +14,7 @@
  */
 import "server-only";
 
-import type { ChallengeType } from "@/lib/liveness/challenges";
+import type { ChallengeType } from "@/lib/identity/liveness/challenges";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
@@ -23,7 +23,7 @@ import {
   getSessionFromCookie,
   validateStepAccess,
 } from "@/lib/db/onboarding-session";
-import { cropFaceRegion } from "@/lib/document/image-processing";
+import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
   getEmbeddingVector,
   getFacingDirection,
@@ -33,13 +33,16 @@ import {
   getPrimaryFace,
   getRealScore,
   getYawDegrees,
-} from "@/lib/liveness/human-metrics";
-import { detectFromBase64, getHumanServer } from "@/lib/liveness/human-server";
+} from "@/lib/identity/liveness/human-metrics";
+import {
+  detectFromBase64,
+  getHumanServer,
+} from "@/lib/identity/liveness/human-server";
 import {
   createLivenessSession,
   getChallengeInfo,
   getLivenessSession,
-} from "@/lib/liveness/liveness-session-store";
+} from "@/lib/identity/liveness/liveness-session-store";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
@@ -50,7 +53,7 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/liveness/policy";
+} from "@/lib/identity/liveness/policy";
 
 import { publicProcedure, router } from "../server";
 

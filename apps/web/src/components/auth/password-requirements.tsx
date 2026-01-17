@@ -10,7 +10,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
 import { checkPasswordPwned } from "@/lib/auth/password-pwned";
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 /**
  * Live password requirements / strength UI.

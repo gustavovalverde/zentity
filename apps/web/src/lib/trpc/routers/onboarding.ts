@@ -21,7 +21,7 @@ import {
   consumeRegistrationBlob,
   createOnboardingContext,
   getOnboardingContext,
-} from "@/lib/auth/onboarding-context";
+} from "@/lib/auth/onboarding-tokens";
 import {
   completeOnboarding,
   getSessionFromCookie,

@@ -13,11 +13,11 @@ import {
 import {
   cachePasskeyUnlock,
   resetPasskeyUnlockCache,
-} from "@/lib/crypto/secret-vault";
+} from "@/lib/privacy/crypto/secret-vault";
 import {
   checkPrfSupport,
   type PrfSupportStatus,
-} from "@/lib/crypto/webauthn-prf";
+} from "@/lib/privacy/crypto/webauthn-prf";
 
 /** TTL for cached PRF output (matches fhe-key-store.ts and profile-secret.ts) */
 const PRF_CACHE_TTL_MS = 15 * 60 * 1000;

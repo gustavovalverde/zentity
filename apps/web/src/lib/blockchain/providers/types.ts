@@ -6,7 +6,7 @@
  * with a consistent API.
  */
 
-import type { NetworkConfig } from "../config/networks";
+import type { NetworkConfig } from "../networks";
 
 /**
  * Parameters for submitting an attestation.

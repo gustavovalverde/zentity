@@ -35,12 +35,12 @@
  * }
  * ```
  */
-import type { FhevmGoState, FhevmInstance } from "@/lib/fhevm/types";
+import type { FhevmGoState, FhevmInstance } from "@/lib/privacy/fhe/types";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { resolveFhevmProviderFactory } from "@/lib/fhevm/providers/registry";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
+import { resolveFhevmProviderFactory } from "@/lib/privacy/fhe/providers/registry";
 
 type MetricAttributes = Record<string, string | number | boolean>;
 

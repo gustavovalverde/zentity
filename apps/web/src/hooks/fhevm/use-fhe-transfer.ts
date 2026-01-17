@@ -20,7 +20,7 @@ import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 import { useFhevmContext } from "@/components/providers/fhevm-provider";
 import { toHex, useFHEEncryption } from "@/hooks/fhevm/use-fhe-encryption";
-import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
+import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
 
 interface UseFheTransferParams {
   /** CompliantERC20 contract address */

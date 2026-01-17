@@ -2,7 +2,7 @@
 
 import { ArrowLeftIcon, ArrowRightIcon, SmileIcon } from "lucide-react";
 
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 export type ChallengeType = "smile" | "turn_left" | "turn_right";
 

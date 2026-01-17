@@ -6,8 +6,8 @@
 "use client";
 
 import { Spinner } from "@/components/ui/spinner";
-import { useMobileDetect } from "@/hooks/use-mobile-detect";
-import { cn } from "@/lib/utils/utils";
+import { useMobileDetect } from "@/hooks/use-device-detection";
+import { cn } from "@/lib/utils/classname";
 
 import { AudioToggle } from "./audio-toggle";
 import { ChallengeBanner, CountdownOverlay } from "./challenge-banner";
