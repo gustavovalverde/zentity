@@ -244,7 +244,7 @@ impl AuditLogger {
         let _append_guard = self
             .append_lock
             .lock()
-            .map_err(|_| SignerError::Storage("Audit append lock poisoned".to_string()))?;
+            .map_err(|_e| SignerError::Storage("Audit append lock poisoned".to_string()))?;
 
         // Get next sequence number
         let seq = self.current_seq.load(Ordering::SeqCst) + 1;
