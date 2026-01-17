@@ -3,9 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import { base32 } from "@better-auth/utils/base32";
 import { createOTP } from "@better-auth/utils/otp";
-import { type Download, expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-const SEED_PATH = fileURLToPath(new URL("./.auth/seed.json", import.meta.url));
+const SEED_PATH = fileURLToPath(new URL("../.auth/seed.json", import.meta.url));
 const APPROVAL_TEXT_RE = /Approval recorded|Recovery approved/;
 const RECOVERY_ID_RE = /^rec_[a-z0-9]+$/;
 const BACKUP_CODE_RE = /[A-Za-z0-9]{5}-[A-Za-z0-9]{5}/g;
@@ -44,14 +44,6 @@ function _getSeedPassword(): string {
 function parseBackupCodes(text: string): string[] {
   const matches = text.match(BACKUP_CODE_RE) ?? [];
   return Array.from(new Set(matches.map((code) => code.trim())));
-}
-
-async function readDownload(download: Download): Promise<string> {
-  const path = await download.path();
-  if (!path) {
-    throw new Error("Download path missing.");
-  }
-  return readFileSync(path, "utf8");
 }
 
 async function fetchMailpitApprovalLinks(
@@ -156,11 +148,19 @@ async function ensureRecoveryEnabled(page: Page) {
     );
   }
 
-  const socialRecoveryHeading = page
-    .getByText("Social recovery", { exact: true })
+  // Click on the Recovery tab (settings page uses tabs now)
+  const recoveryTab = page.getByRole("tab", { name: "Recovery" });
+  if (await recoveryTab.isVisible()) {
+    await recoveryTab.click();
+    await page.waitForLoadState("networkidle");
+  }
+
+  // UI now uses "Guardian Recovery" instead of "Social recovery"
+  const guardianRecoveryHeading = page
+    .getByText("Guardian Recovery", { exact: true })
     .first();
-  await expect(socialRecoveryHeading).toBeVisible();
-  await socialRecoveryHeading.scrollIntoViewIfNeeded();
+  await expect(guardianRecoveryHeading).toBeVisible();
+  await guardianRecoveryHeading.scrollIntoViewIfNeeded();
 
   const enableButton = page.getByRole("button", { name: "Enable recovery" });
   if (await enableButton.isVisible()) {
@@ -181,6 +181,13 @@ async function ensureRecoveryEnabled(page: Page) {
 }
 
 async function getRecoveryId(page: Page): Promise<string> {
+  // Recovery ID is on the Recovery tab
+  const recoveryTab = page.getByRole("tab", { name: "Recovery" });
+  if (await recoveryTab.isVisible()) {
+    await recoveryTab.click();
+    await page.waitForLoadState("networkidle");
+  }
+
   const recoveryIdInput = page.locator('input[readonly][value^="rec_"]');
   await recoveryIdInput.first().scrollIntoViewIfNeeded();
   await expect(recoveryIdInput).toBeVisible();
@@ -192,6 +199,13 @@ async function getRecoveryId(page: Page): Promise<string> {
 }
 
 async function ensureGuardianEmails(page: Page, emails: string[]) {
+  // Guardian emails are on the Recovery tab
+  const recoveryTab = page.getByRole("tab", { name: "Recovery" });
+  if (await recoveryTab.isVisible()) {
+    await recoveryTab.click();
+    await page.waitForLoadState("networkidle");
+  }
+
   await page.getByText("Guardians", { exact: true }).scrollIntoViewIfNeeded();
   for (const email of emails) {
     const alreadyVisible = await page
@@ -216,6 +230,13 @@ async function ensureTwoFactorEnabled(
   totpUri: string | null;
   backupCodes: string[];
 }> {
+  // 2FA settings are on the Security tab
+  const securityTab = page.getByRole("tab", { name: "Security" });
+  if (await securityTab.isVisible()) {
+    await securityTab.click();
+    await page.waitForLoadState("networkidle");
+  }
+
   const enableButton = page.getByRole("button", {
     name: ENABLE_TWO_FACTOR_RE,
   });
@@ -249,13 +270,12 @@ async function ensureTwoFactorEnabled(
     .first();
   await expect(backupDialog).toBeVisible();
 
-  const downloadPromise = page.waitForEvent("download");
-  await backupDialog.getByRole("button", { name: "Download codes" }).click();
-  const download = await downloadPromise;
-  const contents = await readDownload(download);
-  const backupCodes = parseBackupCodes(contents);
+  // UI no longer has download - codes are shown directly in dialog
+  // Extract backup codes from the dialog text content
+  const dialogText = await backupDialog.textContent();
+  const backupCodes = parseBackupCodes(dialogText ?? "");
   if (backupCodes.length === 0) {
-    throw new Error("No backup codes found in download.");
+    throw new Error("No backup codes found in dialog.");
   }
   await backupDialog.getByRole("button", { name: "Continue" }).click();
   await page.waitForURL(VERIFY_2FA_URL_RE, { timeout: 30_000 });
@@ -273,6 +293,13 @@ async function ensureTwoFactorEnabled(
 }
 
 async function linkAuthenticatorGuardian(page: Page) {
+  // Authenticator guardian linking is on the Recovery tab
+  const recoveryTab = page.getByRole("tab", { name: "Recovery" });
+  if (await recoveryTab.isVisible()) {
+    await recoveryTab.click();
+    await page.waitForLoadState("networkidle");
+  }
+
   const guardianRow = page.getByText("Authenticator app", { exact: true });
   if (await guardianRow.isVisible().catch(() => false)) {
     return;

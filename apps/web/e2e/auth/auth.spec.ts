@@ -1,20 +1,21 @@
 import { expect, test } from "@playwright/test";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
-const WELCOME_OR_SIGN_IN_PATTERN = /welcome back|sign in/i;
+const WELCOME_BACK_PATTERN = /welcome back/i;
 const SIGN_UP_LINK_PATTERN = /sign up/i;
 const SIGN_UP_URL_PATTERN = /sign-up/;
 const SIGN_IN_URL_PATTERN = /sign-in/;
+const EMAIL_PLACEHOLDER_PATTERN = /email|you@example/i;
+const PASSWORD_PLACEHOLDER_PATTERN = /password/i;
+const SIGN_IN_WITH_PASSWORD_PATTERN = /sign in with password/i;
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("Authentication Flow", () => {
   test("should show sign-in page", async ({ page }) => {
     await page.goto("/sign-in");
-    // Card title says "Welcome Back" and description mentions "Sign in"
-    await expect(
-      page.locator(`text=${WELCOME_OR_SIGN_IN_PATTERN.source}`).first()
-    ).toBeVisible();
+    // Card title says "Welcome Back" - passkey-first sign-in
+    await expect(page.getByText(WELCOME_BACK_PATTERN).first()).toBeVisible();
   });
 
   test("should show sign-up page", async ({ page }) => {
@@ -52,9 +53,19 @@ test.describe("Authentication Flow", () => {
   test("should show validation error for invalid email", async ({ page }) => {
     await page.goto("/sign-in");
 
-    await page.fill('input[type="email"]', "invalid-email");
-    await page.fill('input[type="password"]', "password123");
-    await page.click('button[type="submit"]');
+    // Sign-in is passkey-first, click "More options" to reveal email/password form
+    await page.getByRole("tab", { name: "More options" }).click();
+
+    // The field accepts "Email or Recovery ID" - fill with invalid format
+    const emailField = page.getByPlaceholder(EMAIL_PLACEHOLDER_PATTERN);
+    await emailField.waitFor({ timeout: 10_000 });
+    await emailField.fill("invalid-email");
+    await page
+      .getByPlaceholder(PASSWORD_PLACEHOLDER_PATTERN)
+      .fill("password123");
+    await page
+      .getByRole("button", { name: SIGN_IN_WITH_PASSWORD_PATTERN })
+      .click();
 
     // Should show validation error or stay on page
     await expect(page).toHaveURL(SIGN_IN_URL_PATTERN);

@@ -108,8 +108,16 @@ function deployContracts(): ContractsEnv {
 }
 
 function startDevServer(contracts: ContractsEnv) {
+  // Explicitly pass database env vars to ensure dev server uses the same DB as E2E tests
+  const dbUrl =
+    process.env.TURSO_DATABASE_URL || process.env.E2E_TURSO_DATABASE_URL;
+  const dbPath = process.env.E2E_DATABASE_PATH;
+
   const env = {
     ...process.env,
+    // Ensure database URL is explicitly set
+    ...(dbUrl ? { TURSO_DATABASE_URL: dbUrl } : {}),
+    ...(dbPath ? { E2E_DATABASE_PATH: dbPath } : {}),
     NEXT_PUBLIC_ENABLE_HARDHAT: "true",
     NEXT_PUBLIC_ENABLE_FHEVM: "false",
     NEXT_PUBLIC_ATTESTATION_DEMO: "false",
@@ -124,6 +132,8 @@ function startDevServer(contracts: ContractsEnv) {
     FHEVM_PROVIDER_ID: "mock",
     NEXT_PUBLIC_FHEVM_PROVIDER_ID: "mock",
   };
+
+  console.log("[start-web3-dev] using database:", dbUrl || "default");
 
   const dev = spawn("pnpm", ["run", "dev"], {
     cwd: webRoot,

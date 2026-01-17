@@ -185,14 +185,44 @@ async function runSql(dbUrl: string, sql: string) {
 
 // Schema is managed via drizzle-kit push; no manual schema migrations here.
 
-async function seedVerifiedIdentity(dbUrl: string, email: string) {
-  const userId = await runSql(
+async function ensureUserExists(
+  dbUrl: string,
+  email: string,
+  name: string
+): Promise<string> {
+  // Check if user exists
+  let userId = await runSql(
     dbUrl,
     `SELECT id FROM "user" WHERE email = '${email.replaceAll("'", "''")}';`
   );
 
   if (!userId) {
-    throw new Error(`E2E seed user not found for ${email}`);
+    // Create user directly in database if not found
+    const now = new Date().toISOString();
+    userId = randomUUID();
+    await runSql(
+      dbUrl,
+      `INSERT INTO "user" (id, email, name, email_verified, created_at, updated_at)
+       VALUES ('${userId}', '${email.replaceAll("'", "''")}', '${name.replaceAll("'", "''")}', 1, '${now}', '${now}');`
+    );
+    console.log(
+      `[global-setup] Created E2E user directly in database: ${email}`
+    );
+  }
+
+  return userId;
+}
+
+async function seedVerifiedIdentity(
+  dbUrl: string,
+  email: string,
+  name: string
+) {
+  const userId = await ensureUserExists(dbUrl, email, name);
+  if (!userId) {
+    throw new Error(
+      `E2E seed user not found and could not be created for ${email}`
+    );
   }
 
   const now = new Date().toISOString();
@@ -412,6 +442,10 @@ async function resetBlockchainState(dbUrl: string) {
 export default async function globalSetup(config: FullConfig) {
   const baseURL = config.projects[0]?.use?.baseURL ?? "http://localhost:3000";
 
+  console.log("[global-setup] Starting E2E global setup");
+  console.log("[global-setup] E2E_DB_URL:", E2E_DB_URL);
+  console.log("[global-setup] DEFAULT_APP_DB_URL:", DEFAULT_APP_DB_URL);
+
   mkdirSync(dirname(AUTH_STATE_PATH), { recursive: true });
 
   const api = await request.newContext({
@@ -490,9 +524,9 @@ export default async function globalSetup(config: FullConfig) {
     );
   }
 
-  await seedVerifiedIdentity(E2E_DB_URL, email);
+  await seedVerifiedIdentity(E2E_DB_URL, email, name);
   if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
-    await seedVerifiedIdentity(DEFAULT_APP_DB_URL, email);
+    await seedVerifiedIdentity(DEFAULT_APP_DB_URL, email, name);
   }
 
   await api.storageState({ path: AUTH_STATE_PATH });

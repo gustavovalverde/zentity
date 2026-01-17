@@ -1,3 +1,15 @@
+/**
+ * Playwright configuration with feature-based test projects.
+ *
+ * Run specific projects:
+ *   pnpm test:e2e --project=auth
+ *   pnpm test:e2e --project=onboarding
+ *   pnpm test:e2e --project=web3-hardhat
+ *   pnpm test:e2e --project=web3-sepolia
+ *   pnpm test:e2e --project=oidc
+ *   pnpm test:e2e --project=recovery
+ *   pnpm test:e2e --project=dashboard
+ */
 import { join } from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
@@ -32,6 +44,8 @@ const webServerEnv = {
     : {}),
 };
 
+const chromeOptions = { ...devices["Desktop Chrome"] };
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
@@ -47,9 +61,53 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
+    // Auth tests - foundational, no dependencies
     {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      name: "auth",
+      testMatch: /e2e\/auth\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Dashboard tests - requires authenticated session
+    {
+      name: "dashboard",
+      testMatch: /e2e\/dashboard\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Onboarding flow tests
+    {
+      name: "onboarding",
+      testMatch: /e2e\/onboarding\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Web3 tests with local Hardhat
+    {
+      name: "web3-hardhat",
+      testMatch: /e2e\/web3\/(?!sepolia).*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Web3 tests with Sepolia testnet
+    {
+      name: "web3-sepolia",
+      testMatch: /e2e\/web3\/sepolia.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // OIDC protocol tests
+    {
+      name: "oidc",
+      testMatch: /e2e\/oidc\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Recovery flow tests
+    {
+      name: "recovery",
+      testMatch: /e2e\/recovery\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Automation validation (internal tooling tests)
+    {
+      name: "automation",
+      testMatch: /e2e\/automation\/.*\.spec\.ts/,
+      use: chromeOptions,
     },
   ],
   ...(useWebServer
