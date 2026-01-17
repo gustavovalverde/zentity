@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/queries/crypto";
 import {
   completeRecoveryChallenge,
+  countRecentRecoveryChallenges,
   createGuardianApprovalToken,
   createRecoveryChallenge,
   getApprovalByToken,
@@ -76,6 +77,15 @@ export const startProcedure = publicProcedure
       throw new TRPCError({
         code: "NOT_FOUND",
         message: "Recovery is not enabled for this account.",
+      });
+    }
+
+    const recentAttempts = await countRecentRecoveryChallenges(user.id, 24);
+    if (recentAttempts >= 3) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message:
+          "Too many recovery attempts. Please wait 24 hours before trying again.",
       });
     }
 

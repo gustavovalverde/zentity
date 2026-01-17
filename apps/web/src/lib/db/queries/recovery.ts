@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gte } from "drizzle-orm";
 
 import { db } from "../connection";
 import { users } from "../schema/auth";
@@ -122,6 +122,27 @@ export async function getRecoveryChallengeById(
     .where(eq(recoveryChallenges.id, id))
     .get();
   return row ?? null;
+}
+
+export async function countRecentRecoveryChallenges(
+  userId: string,
+  windowHours = 24
+): Promise<number> {
+  const cutoffTime = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+  const cutoffIso = cutoffTime.toISOString();
+
+  const result = await db
+    .select({ value: count() })
+    .from(recoveryChallenges)
+    .where(
+      and(
+        eq(recoveryChallenges.userId, userId),
+        gte(recoveryChallenges.createdAt, cutoffIso)
+      )
+    )
+    .get();
+
+  return result?.value ?? 0;
 }
 
 export async function listRecoveryGuardiansByConfigId(

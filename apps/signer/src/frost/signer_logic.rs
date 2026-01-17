@@ -156,16 +156,26 @@ impl SignerService {
         nonces_key: (String, String),
         nonces_bytes: Vec<u8>,
     ) -> SignerResult<()> {
-        self.signing_nonces
+        let mut map = self
+            .signing_nonces
             .lock()
-            .map_err(|e| SignerError::Internal(format!("Signing nonces mutex poisoned: {e}")))?
-            .insert(
-                nonces_key,
-                StoredNonces {
-                    ciphersuite: self.ciphersuite,
-                    bytes: nonces_bytes,
-                },
-            );
+            .map_err(|e| SignerError::Internal(format!("Signing nonces mutex poisoned: {e}")))?;
+
+        if map.contains_key(&nonces_key) {
+            return Err(SignerError::NoncesAlreadyExist {
+                group_pubkey: nonces_key.0,
+                session_id: nonces_key.1,
+            });
+        }
+
+        map.insert(
+            nonces_key,
+            StoredNonces {
+                ciphersuite: self.ciphersuite,
+                bytes: nonces_bytes,
+            },
+        );
+        drop(map);
         Ok(())
     }
 
@@ -294,6 +304,7 @@ impl SignerService {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn dkg_round2_secp(
         &self,
         session_id: &SessionId,
@@ -316,20 +327,27 @@ impl SignerService {
                     SignerError::Deserialization(format!("Invalid round 1 secret: {e}"))
                 })?;
 
+        // Decode packages and collect raw bytes for commitment hash
         let mut decoded_packages: BTreeMap<
             frost_secp::Identifier,
             frost_secp::keys::dkg::round1::Package,
         > = BTreeMap::new();
-        for (&participant_id, package_b64) in round1_packages {
-            if participant_id == self.participant_id {
-                continue;
-            }
+        let mut package_bytes_map: BTreeMap<u16, Vec<u8>> = BTreeMap::new();
 
+        for (&participant_id, package_b64) in round1_packages {
             let package_bytes = BASE64.decode(package_b64).map_err(|e| {
                 SignerError::Deserialization(format!(
                     "Invalid round 1 package base64 for {participant_id}: {e}"
                 ))
             })?;
+
+            // Store bytes for commitment hash computation
+            package_bytes_map.insert(participant_id, package_bytes.clone());
+
+            if participant_id == self.participant_id {
+                continue;
+            }
+
             let identifier = frost_secp::Identifier::try_from(participant_id).map_err(|e| {
                 SignerError::InvalidParticipant(format!("Invalid identifier {participant_id}: {e}"))
             })?;
@@ -341,6 +359,13 @@ impl SignerService {
                 })?;
             decoded_packages.insert(identifier, package);
         }
+
+        // Compute commitment hash for HPKE context binding (RFC 9591 §A.2.2)
+        let package_refs: BTreeMap<u16, &[u8]> = package_bytes_map
+            .iter()
+            .map(|(k, v)| (*k, v.as_slice()))
+            .collect();
+        let commitment_hash = hpke_crypto::compute_commitment_hash(&package_refs);
 
         let (round2_secret, round2_packages) =
             frost_secp::keys::dkg::part2(round1_secret, &decoded_packages)
@@ -383,8 +408,12 @@ impl SignerService {
                 ))
             })?;
 
-            let info =
-                hpke_crypto::dkg_round2_info(session_id, self.participant_id, to_participant_id);
+            let info = hpke_crypto::dkg_round2_info(
+                session_id,
+                self.participant_id,
+                to_participant_id,
+                Some(&commitment_hash),
+            );
             let encrypted =
                 hpke_crypto::encrypt_to_base64(&recipient_pubkey, &package_bytes, &info)?;
 
@@ -411,6 +440,7 @@ impl SignerService {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     fn dkg_round2_ed(
         &self,
         session_id: &SessionId,
@@ -432,20 +462,27 @@ impl SignerService {
         )
         .map_err(|e| SignerError::Deserialization(format!("Invalid round 1 secret: {e}")))?;
 
+        // Decode packages and collect raw bytes for commitment hash
         let mut decoded_packages: BTreeMap<
             frost_ed::Identifier,
             frost_ed::keys::dkg::round1::Package,
         > = BTreeMap::new();
-        for (&participant_id, package_b64) in round1_packages {
-            if participant_id == self.participant_id {
-                continue;
-            }
+        let mut package_bytes_map: BTreeMap<u16, Vec<u8>> = BTreeMap::new();
 
+        for (&participant_id, package_b64) in round1_packages {
             let package_bytes = BASE64.decode(package_b64).map_err(|e| {
                 SignerError::Deserialization(format!(
                     "Invalid round 1 package base64 for {participant_id}: {e}"
                 ))
             })?;
+
+            // Store bytes for commitment hash computation
+            package_bytes_map.insert(participant_id, package_bytes.clone());
+
+            if participant_id == self.participant_id {
+                continue;
+            }
+
             let identifier = frost_ed::Identifier::try_from(participant_id).map_err(|e| {
                 SignerError::InvalidParticipant(format!("Invalid identifier {participant_id}: {e}"))
             })?;
@@ -457,6 +494,13 @@ impl SignerService {
                 })?;
             decoded_packages.insert(identifier, package);
         }
+
+        // Compute commitment hash for HPKE context binding (RFC 9591 §A.2.2)
+        let package_refs: BTreeMap<u16, &[u8]> = package_bytes_map
+            .iter()
+            .map(|(k, v)| (*k, v.as_slice()))
+            .collect();
+        let commitment_hash = hpke_crypto::compute_commitment_hash(&package_refs);
 
         let (round2_secret, round2_packages) =
             frost_ed::keys::dkg::part2(round1_secret, &decoded_packages)
@@ -499,8 +543,12 @@ impl SignerService {
                 ))
             })?;
 
-            let info =
-                hpke_crypto::dkg_round2_info(session_id, self.participant_id, to_participant_id);
+            let info = hpke_crypto::dkg_round2_info(
+                session_id,
+                self.participant_id,
+                to_participant_id,
+                Some(&commitment_hash),
+            );
             let encrypted =
                 hpke_crypto::encrypt_to_base64(&recipient_pubkey, &package_bytes, &info)?;
 
@@ -571,20 +619,27 @@ impl SignerService {
                     SignerError::Deserialization(format!("Invalid round 2 secret: {e}"))
                 })?;
 
+        // Decode round 1 packages and compute commitment hash
         let mut decoded_round1: BTreeMap<
             frost_secp::Identifier,
             frost_secp::keys::dkg::round1::Package,
         > = BTreeMap::new();
-        for (&participant_id, package_b64) in round1_packages {
-            if participant_id == self.participant_id {
-                continue;
-            }
+        let mut package_bytes_map: BTreeMap<u16, Vec<u8>> = BTreeMap::new();
 
+        for (&participant_id, package_b64) in round1_packages {
             let package_bytes = BASE64.decode(package_b64).map_err(|e| {
                 SignerError::Deserialization(format!(
                     "Invalid round 1 package base64 for {participant_id}: {e}"
                 ))
             })?;
+
+            // Store bytes for commitment hash computation
+            package_bytes_map.insert(participant_id, package_bytes.clone());
+
+            if participant_id == self.participant_id {
+                continue;
+            }
+
             let identifier = frost_secp::Identifier::try_from(participant_id).map_err(|e| {
                 SignerError::InvalidParticipant(format!("Invalid identifier {participant_id}: {e}"))
             })?;
@@ -597,13 +652,24 @@ impl SignerService {
             decoded_round1.insert(identifier, package);
         }
 
+        // Compute commitment hash for HPKE decryption (must match encryption context)
+        let package_refs: BTreeMap<u16, &[u8]> = package_bytes_map
+            .iter()
+            .map(|(k, v)| (*k, v.as_slice()))
+            .collect();
+        let commitment_hash = hpke_crypto::compute_commitment_hash(&package_refs);
+
         let mut decoded_round2: BTreeMap<
             frost_secp::Identifier,
             frost_secp::keys::dkg::round2::Package,
         > = BTreeMap::new();
         for (&from_participant_id, encrypted_b64) in round2_packages {
-            let info =
-                hpke_crypto::dkg_round2_info(session_id, from_participant_id, self.participant_id);
+            let info = hpke_crypto::dkg_round2_info(
+                session_id,
+                from_participant_id,
+                self.participant_id,
+                Some(&commitment_hash),
+            );
             let package_bytes = hpke_crypto::decrypt_from_base64(
                 self.hpke_keypair.secret_key(),
                 encrypted_b64,
@@ -677,6 +743,7 @@ impl SignerService {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     fn dkg_finalize_ed(
         &self,
         session_id: &SessionId,
@@ -699,20 +766,27 @@ impl SignerService {
         )
         .map_err(|e| SignerError::Deserialization(format!("Invalid round 2 secret: {e}")))?;
 
+        // Decode round 1 packages and compute commitment hash
         let mut decoded_round1: BTreeMap<
             frost_ed::Identifier,
             frost_ed::keys::dkg::round1::Package,
         > = BTreeMap::new();
-        for (&participant_id, package_b64) in round1_packages {
-            if participant_id == self.participant_id {
-                continue;
-            }
+        let mut package_bytes_map: BTreeMap<u16, Vec<u8>> = BTreeMap::new();
 
+        for (&participant_id, package_b64) in round1_packages {
             let package_bytes = BASE64.decode(package_b64).map_err(|e| {
                 SignerError::Deserialization(format!(
                     "Invalid round 1 package base64 for {participant_id}: {e}"
                 ))
             })?;
+
+            // Store bytes for commitment hash computation
+            package_bytes_map.insert(participant_id, package_bytes.clone());
+
+            if participant_id == self.participant_id {
+                continue;
+            }
+
             let identifier = frost_ed::Identifier::try_from(participant_id).map_err(|e| {
                 SignerError::InvalidParticipant(format!("Invalid identifier {participant_id}: {e}"))
             })?;
@@ -725,13 +799,24 @@ impl SignerService {
             decoded_round1.insert(identifier, package);
         }
 
+        // Compute commitment hash for HPKE decryption (must match encryption context)
+        let package_refs: BTreeMap<u16, &[u8]> = package_bytes_map
+            .iter()
+            .map(|(k, v)| (*k, v.as_slice()))
+            .collect();
+        let commitment_hash = hpke_crypto::compute_commitment_hash(&package_refs);
+
         let mut decoded_round2: BTreeMap<
             frost_ed::Identifier,
             frost_ed::keys::dkg::round2::Package,
         > = BTreeMap::new();
         for (&from_participant_id, encrypted_b64) in round2_packages {
-            let info =
-                hpke_crypto::dkg_round2_info(session_id, from_participant_id, self.participant_id);
+            let info = hpke_crypto::dkg_round2_info(
+                session_id,
+                from_participant_id,
+                self.participant_id,
+                Some(&commitment_hash),
+            );
             let package_bytes = hpke_crypto::decrypt_from_base64(
                 self.hpke_keypair.secret_key(),
                 encrypted_b64,

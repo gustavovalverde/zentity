@@ -224,9 +224,42 @@ pub fn decrypt_from_base64(
 
 /// Build HPKE info string for DKG round-2 encryption.
 ///
-/// Format: "frost-dkg-round2|{session_id}|{from_id}|{to_id}"
-pub fn dkg_round2_info(session_id: &uuid::Uuid, from_id: u16, to_id: u16) -> Vec<u8> {
-    format!("frost-dkg-round2|{session_id}|{from_id}|{to_id}").into_bytes()
+/// Format: "frost-dkg-round2|{session_id}|{from_id}|{to_id}|{commitment_hash}"
+///
+/// The commitment_hash binds the encryption to the specific round 1 commitment set,
+/// preventing cross-session attacks per RFC 9591 §A.2.2.
+pub fn dkg_round2_info(
+    session_id: &uuid::Uuid,
+    from_id: u16,
+    to_id: u16,
+    commitment_hash: Option<&[u8]>,
+) -> Vec<u8> {
+    commitment_hash.map_or_else(
+        || format!("frost-dkg-round2|{session_id}|{from_id}|{to_id}").into_bytes(),
+        |hash| {
+            let hash_hex = hex::encode(hash);
+            format!("frost-dkg-round2|{session_id}|{from_id}|{to_id}|{hash_hex}").into_bytes()
+        },
+    )
+}
+
+/// Compute a deterministic hash of round 1 packages for HPKE context binding.
+///
+/// Packages are sorted by participant ID and concatenated before hashing
+/// to ensure all participants compute the same hash.
+pub fn compute_commitment_hash(packages: &std::collections::BTreeMap<u16, &[u8]>) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    for (participant_id, package_bytes) in packages {
+        hasher.update(participant_id.to_be_bytes());
+        // Safety: FROST packages are small (< 1KB), truncation to u32 is safe
+        #[allow(clippy::cast_possible_truncation)]
+        let len = package_bytes.len() as u32;
+        hasher.update(len.to_be_bytes());
+        hasher.update(package_bytes);
+    }
+    hasher.finalize().into()
 }
 
 #[cfg(test)]
@@ -313,12 +346,53 @@ mod tests {
     }
 
     #[test]
-    fn test_dkg_info_format() {
+    fn test_dkg_info_format_without_hash() {
         let session_id = uuid::Uuid::new_v4();
-        let info = dkg_round2_info(&session_id, 1, 2);
+        let info = dkg_round2_info(&session_id, 1, 2, None);
         let info_str = String::from_utf8(info).unwrap();
 
         assert!(info_str.starts_with("frost-dkg-round2|"));
         assert!(info_str.contains("|1|2"));
+    }
+
+    #[test]
+    fn test_dkg_info_format_with_hash() {
+        let session_id = uuid::Uuid::new_v4();
+        let commitment_hash = [0xab; 32];
+        let info = dkg_round2_info(&session_id, 1, 2, Some(&commitment_hash));
+        let info_str = String::from_utf8(info).unwrap();
+
+        assert!(info_str.starts_with("frost-dkg-round2|"));
+        assert!(info_str.contains("|1|2|"));
+        assert!(info_str.ends_with(&hex::encode(commitment_hash)));
+    }
+
+    #[test]
+    fn test_commitment_hash_deterministic() {
+        let mut packages = std::collections::BTreeMap::new();
+        packages.insert(1_u16, b"package1".as_slice());
+        packages.insert(2_u16, b"package2".as_slice());
+
+        let hash1 = compute_commitment_hash(&packages);
+        let hash2 = compute_commitment_hash(&packages);
+
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_commitment_hash_order_independent() {
+        // BTreeMap ensures deterministic ordering
+        let mut packages1 = std::collections::BTreeMap::new();
+        packages1.insert(1_u16, b"pkg1".as_slice());
+        packages1.insert(2_u16, b"pkg2".as_slice());
+
+        let mut packages2 = std::collections::BTreeMap::new();
+        packages2.insert(2_u16, b"pkg2".as_slice());
+        packages2.insert(1_u16, b"pkg1".as_slice());
+
+        assert_eq!(
+            compute_commitment_hash(&packages1),
+            compute_commitment_hash(&packages2)
+        );
     }
 }
