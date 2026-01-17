@@ -8,6 +8,12 @@
  * Only cryptographic proofs are returned to the main thread.
  */
 
+import { Buffer } from "node:buffer";
+
+// bb.js expects `Buffer` to exist in the browser/worker runtime.
+// Turbopack polyfills node:buffer to the npm `buffer` package which has BigInt methods.
+globalThis.Buffer = Buffer;
+
 import type { InitInput as AcvmInitInput } from "@noir-lang/acvm_js";
 import type { InitInput as NoirAbiInitInput } from "@noir-lang/noirc_abi";
 import type {
@@ -20,8 +26,6 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./noir-worker-manager";
-
-import { Buffer } from "node:buffer";
 
 // Circuit artifacts - these are bundled with the worker
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
@@ -144,10 +148,6 @@ function getThreadCount(): number {
 const bbLogger = (msg: string) => {
   logWorker("bb", msg);
 };
-
-// bb.js expects `Buffer` to exist in the browser/worker runtime.
-// The `buffer` package provides a Node.js-compatible Buffer with BigInt methods.
-globalThis.Buffer = Buffer;
 
 // Some bundlers load module workers via `blob:` URLs. In that case, `fetch("/...")`
 // fails because the base URL is non-hierarchical. Normalize absolute-path fetches

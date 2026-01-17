@@ -60,9 +60,9 @@ const nextConfig: NextConfig = {
 
   headers() {
     // Security headers applied to all routes.
-    // NOTE: COEP/COOP headers are NOT set here - they're handled by coi-serviceworker.js
-    // This is intentional: server-side COEP headers conflict with service worker approach.
-    // See: https://web.dev/articles/coop-coep
+    // COEP/COOP are set server-side for proper SharedArrayBuffer support in nested workers.
+    // Service worker approach (coi-serviceworker) cannot intercept nested worker requests.
+    // See: https://github.com/w3c/ServiceWorker/issues/1529
     const baseHeaders = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "DENY" },
@@ -71,6 +71,11 @@ const nextConfig: NextConfig = {
         key: "Permissions-Policy",
         value: "camera=(self), microphone=(), geolocation=()",
       },
+      // Cross-origin isolation for SharedArrayBuffer (required for WASM multi-threading)
+      // "credentialless" is more lenient than "require-corp" - allows cross-origin resources
+      // without explicit CORP headers while still enabling crossOriginIsolated
+      { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
     ];
 
     if (process.env.NODE_ENV === "production") {
