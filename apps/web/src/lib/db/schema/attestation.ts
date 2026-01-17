@@ -27,15 +27,14 @@ export const attestationEvidence = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    userIdIdx: index("idx_attestation_evidence_user_id").on(table.userId),
-    documentIdIdx: index("idx_attestation_evidence_document_id").on(
+  (table) => [
+    index("idx_attestation_evidence_user_id").on(table.userId),
+    index("idx_attestation_evidence_document_id").on(table.documentId),
+    uniqueIndex("attestation_evidence_user_document_unique").on(
+      table.userId,
       table.documentId
     ),
-    userDocumentUnique: uniqueIndex(
-      "attestation_evidence_user_document_unique"
-    ).on(table.userId, table.documentId),
-  })
+  ]
 );
 
 export type AttestationStatus =
@@ -65,14 +64,15 @@ export const blockchainAttestations = sqliteTable(
     errorMessage: text("error_message"),
     retryCount: integer("retry_count").notNull().default(0),
   },
-  (table) => ({
-    userIdIdx: index("idx_attestations_user_id").on(table.userId),
-    networkIdx: index("idx_attestations_network").on(table.networkId),
-    statusIdx: index("idx_attestations_status").on(table.status),
-    userNetworkUnique: uniqueIndex(
-      "blockchain_attestations_user_network_unique"
-    ).on(table.userId, table.networkId),
-  })
+  (table) => [
+    index("idx_attestations_user_id").on(table.userId),
+    index("idx_attestations_network").on(table.networkId),
+    index("idx_attestations_status").on(table.status),
+    uniqueIndex("blockchain_attestations_user_network_unique").on(
+      table.userId,
+      table.networkId
+    ),
+  ]
 );
 
 export type AttestationEvidenceRecord = typeof attestationEvidence.$inferSelect;

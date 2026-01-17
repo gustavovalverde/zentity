@@ -14,6 +14,7 @@ const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
 /** Matches hex error data (e.g., "data: 0x12345abc") */
 const ERROR_DATA_PATTERN = /data:\s*(0x[a-fA-F0-9]+)/;
 
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 import { useEffect, useState } from "react";
 import {
   useBalance,
@@ -33,10 +34,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { IdentityRegistryABI } from "@/lib/contracts";
 import { useDevFaucet } from "@/lib/wagmi/use-dev-faucet";
-
-const GRANT_ACCESS_ABI = IdentityRegistryABI;
 
 interface ComplianceAccessCardProps {
   identityRegistry: `0x${string}` | null | undefined;
@@ -58,11 +56,11 @@ export function ComplianceAccessCard({
   expectedNetworkName,
   grantedTxHash,
   grantedExplorerUrl,
-}: ComplianceAccessCardProps) {
+}: Readonly<ComplianceAccessCardProps>) {
   const { address } = useAppKitAccount();
   const walletAddress = address as `0x${string}` | undefined;
   const chainId = useChainId();
-  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const { mutate: switchChain, isPending: isSwitching } = useSwitchChain();
   const {
     data: balance,
     refetch: refetchBalance,
@@ -78,7 +76,7 @@ export function ComplianceAccessCard({
   } = useDevFaucet(chainId);
   const {
     data: txHash,
-    writeContractAsync,
+    mutateAsync: writeContractAsync,
     isPending: isWritePending,
     error: writeError,
     reset: resetWrite,
@@ -100,7 +98,7 @@ export function ComplianceAccessCard({
     }
   }, [isConfirmed, isGranted, onGranted, resetWrite]);
 
-  const error = writeError || confirmError || faucetError;
+  const error = writeError ?? confirmError ?? faucetError;
   const isPending =
     isWritePending || isConfirming || isFauceting || isSubmitting;
   const hasExpectedChain = !expectedChainId || chainId === expectedChainId;
@@ -142,15 +140,14 @@ export function ComplianceAccessCard({
         if (chainId === 11_155_111) {
           return { gas: BigInt(1_000_000) }; // Sepolia (fhEVM operations need more gas)
         }
-        return;
       })();
 
       await writeContractAsync({
         address: identityRegistry,
-        abi: GRANT_ACCESS_ABI,
+        abi: IdentityRegistryABI,
         functionName: "grantAccessTo",
         args: [complianceRules],
-        ...(txOverrides ?? {}),
+        ...txOverrides,
       });
     } finally {
       setIsSubmitting(false);
@@ -305,7 +302,7 @@ export function ComplianceAccessCard({
 
         {error ? (
           <Alert variant="destructive">
-            <AlertDescription className="break-words">
+            <AlertDescription className="wrap-break-word">
               {(() => {
                 if (!(error instanceof Error)) {
                   return "Grant failed";
@@ -322,12 +319,12 @@ export function ComplianceAccessCard({
                   return "Invalid encrypted data. Your attestation may have expired. Please re-attest.";
                 }
                 // Extract reason or show more context
-                const reason = msg.match(ERROR_REASON_PATTERN)?.[1];
+                const reason = ERROR_REASON_PATTERN.exec(msg)?.[1];
                 if (reason) {
                   return reason;
                 }
                 // Show error data if present
-                const dataMatch = msg.match(ERROR_DATA_PATTERN);
+                const dataMatch = ERROR_DATA_PATTERN.exec(msg);
                 if (dataMatch) {
                   return `Contract reverted with: ${dataMatch[1].slice(0, 10)}…`;
                 }

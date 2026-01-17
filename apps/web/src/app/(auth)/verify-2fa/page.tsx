@@ -8,7 +8,7 @@ interface VerifyTwoFactorPageProps {
 
 export default async function VerifyTwoFactorPage({
   searchParams,
-}: VerifyTwoFactorPageProps) {
+}: Readonly<VerifyTwoFactorPageProps>) {
   const { redirectTo, totpURI } = await searchParams;
   const isSetup = Boolean(totpURI);
   const safeRedirectTo = getSafeRedirectPath(

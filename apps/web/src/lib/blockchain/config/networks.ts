@@ -16,11 +16,13 @@
  */
 import "server-only";
 
-import { resolveContractAddresses } from "@/lib/contracts";
+import { resolveContractAddresses } from "@zentity/fhevm-contracts";
 
 export type NetworkType = "fhevm";
 
 export type NetworkFeature = "encrypted" | "basic";
+
+type ContractName = "IdentityRegistry" | "ComplianceRules" | "CompliantERC20";
 
 export interface NetworkConfig {
   /** Unique identifier (e.g., "fhevm_sepolia", "hardhat") */
@@ -80,16 +82,10 @@ const FHEVM_PROVIDER_ID =
   process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID ||
   "zama";
 
-function toOverrides(
-  values: Partial<
-    Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
-  >
-) {
+function toOverrides(values: Partial<Record<ContractName, string>>) {
   const overrides = Object.fromEntries(
     Object.entries(values).filter(([, value]) => Boolean(value?.trim()))
-  ) as Partial<
-    Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
-  >;
+  ) as Partial<Record<ContractName, string>>;
 
   return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
@@ -97,9 +93,7 @@ function toOverrides(
 function resolveNetworkContracts(
   chainId: number,
   prefer: "hardhat" | "localhost" | "sepolia",
-  overrides?: Partial<
-    Record<"IdentityRegistry" | "ComplianceRules" | "CompliantERC20", string>
-  >
+  overrides?: Partial<Record<ContractName, string>>
 ) {
   const contracts = overrides
     ? resolveContractAddresses(chainId, { prefer, overrides })

@@ -284,7 +284,7 @@ export const onboardingRouter = router({
    * Returns tokens needed for secure key registration.
    */
   createContext: protectedProcedure
-    .input(z.object({ email: z.string().email().optional() }).optional())
+    .input(z.object({ email: z.email().optional() }).optional())
     .mutation(async ({ input, ctx }) => {
       const email = input?.email?.trim() || null;
 

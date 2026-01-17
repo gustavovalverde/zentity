@@ -101,7 +101,8 @@ async function initTfheOnce(): Promise<TfheModule> {
   const start = performance.now();
   let result: "ok" | "error" = "ok";
   const multithreaded =
-    typeof window !== "undefined" && Boolean(window.crossOriginIsolated);
+    globalThis.window !== undefined &&
+    Boolean(globalThis.window.crossOriginIsolated);
   const tfheUrl = "/tfhe/tfhe.js";
 
   try {
@@ -115,7 +116,7 @@ async function initTfheOnce(): Promise<TfheModule> {
     await tfhe.default();
 
     // Enable multi-threading if cross-origin isolated
-    if (typeof window !== "undefined" && window.crossOriginIsolated) {
+    if (globalThis.window?.crossOriginIsolated) {
       const threads = navigator.hardwareConcurrency || 4;
       try {
         await tfhe.initThreadPool(threads);

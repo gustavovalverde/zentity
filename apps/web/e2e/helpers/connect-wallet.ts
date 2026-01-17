@@ -38,7 +38,7 @@ interface ConnectWalletOptions {
 }
 
 function escapeRegExp(value: string) {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 async function getNotificationPage(metamask: MetaMask, timeoutMs = 15_000) {
@@ -129,7 +129,7 @@ async function manualConnect(
 async function getAccounts(page: Page) {
   return await page.evaluate(async () => {
     try {
-      const appWindow = window as BrowserWindow;
+      const appWindow = globalThis.window as BrowserWindow;
       const ethereum = appWindow.ethereum;
       if (!ethereum?.request) {
         return [] as string[];
@@ -152,7 +152,7 @@ async function ensureAppKitConnected(
   }
   const isConnected = await page
     .evaluate(() => {
-      const appWindow = window as BrowserWindow;
+      const appWindow = globalThis.window as BrowserWindow;
       const appkit = appWindow.__appkit;
       if (!appkit?.getAccount) {
         return false;
@@ -169,7 +169,7 @@ async function ensureAppKitConnected(
   await page
     .evaluate(
       ({ addr, activeChainId }) => {
-        const appWindow = window as BrowserWindow;
+        const appWindow = globalThis.window as BrowserWindow;
         const appkit = appWindow.__appkit;
         if (!(appkit?.setCaipAddress && appkit?.setStatus)) {
           return false;
@@ -193,9 +193,13 @@ export async function connectWalletIfNeeded({
 }: ConnectWalletOptions) {
   await page.bringToFront();
   await page
-    .waitForFunction(() => Boolean((window as BrowserWindow).__appkit), null, {
-      timeout: 10_000,
-    })
+    .waitForFunction(
+      () => Boolean((globalThis.window as BrowserWindow).__appkit),
+      null,
+      {
+        timeout: 10_000,
+      }
+    )
     .catch(() => undefined);
 
   try {
@@ -212,11 +216,11 @@ export async function connectWalletIfNeeded({
 
   // Open AppKit modal and choose MetaMask.
   const hasAppKit = await page.evaluate(() =>
-    Boolean((window as BrowserWindow).__appkit)
+    Boolean((globalThis.window as BrowserWindow).__appkit)
   );
   if (hasAppKit) {
     await page.evaluate(() => {
-      const appWindow = window as BrowserWindow;
+      const appWindow = globalThis.window as BrowserWindow;
       appWindow.__appkit?.open?.();
     });
   } else {
@@ -240,7 +244,7 @@ export async function connectWalletIfNeeded({
     // Modal may not show options (already connected or auto-injected).
     await page
       .evaluate(() => {
-        const appWindow = window as BrowserWindow;
+        const appWindow = globalThis.window as BrowserWindow;
         appWindow.__appkit?.close?.();
       })
       .catch(() => undefined);
@@ -282,7 +286,7 @@ export async function connectWalletIfNeeded({
   await ensureAppKitConnected(page, chainId, accounts[0]);
   await page
     .evaluate(() => {
-      const appWindow = window as BrowserWindow;
+      const appWindow = globalThis.window as BrowserWindow;
       return appWindow.__appkit?.close?.();
     })
     .catch(() => undefined);

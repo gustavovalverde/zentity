@@ -358,7 +358,7 @@ export async function exchangePreAuthorizedCode(
 
 export async function createProofJwt(cNonce: string) {
   const holder = await generateKeyPair("EdDSA");
-  const holderJwk = (await exportJWK(holder.publicKey)) as JWK;
+  const holderJwk = await exportJWK(holder.publicKey);
   const proofJwt = await new SignJWT({ nonce: cNonce })
     .setProtectedHeader({
       alg: "EdDSA",

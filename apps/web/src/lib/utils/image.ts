@@ -17,7 +17,7 @@ export async function resizeImageFile(
   file: File,
   { maxWidth = 1600, maxHeight = 1600, quality = 0.85 }: ResizeOptions = {}
 ): Promise<ResizeResult> {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("resizeImageFile must run in the browser");
   }
 

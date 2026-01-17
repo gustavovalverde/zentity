@@ -40,9 +40,7 @@ export const sessions = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
   },
-  (table) => ({
-    userIdIdx: index("session_userId_idx").on(table.userId),
-  })
+  (table) => [index("session_userId_idx").on(table.userId)]
 );
 
 export const accounts = sqliteTable(
@@ -65,12 +63,12 @@ export const accounts = sqliteTable(
     createdAt: text("createdAt").notNull(),
     updatedAt: text("updatedAt").notNull(),
   },
-  (table) => ({
-    userIdIdx: index("account_userId_idx").on(table.userId),
-    registrationRecordUnique: uniqueIndex(
-      "account_registration_record_unique"
-    ).on(table.registrationRecord),
-  })
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    uniqueIndex("account_registration_record_unique").on(
+      table.registrationRecord
+    ),
+  ]
 );
 
 export const verifications = sqliteTable(
@@ -83,9 +81,7 @@ export const verifications = sqliteTable(
     createdAt: text("createdAt").notNull(),
     updatedAt: text("updatedAt").notNull(),
   },
-  (table) => ({
-    identifierIdx: index("verification_identifier_idx").on(table.identifier),
-  })
+  (table) => [index("verification_identifier_idx").on(table.identifier)]
 );
 
 export const twoFactor = sqliteTable(
@@ -98,10 +94,10 @@ export const twoFactor = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
   },
-  (table) => ({
-    secretIdx: index("twoFactor_secret_idx").on(table.secret),
-    userIdIdx: index("twoFactor_userId_idx").on(table.userId),
-  })
+  (table) => [
+    index("twoFactor_secret_idx").on(table.secret),
+    index("twoFactor_userId_idx").on(table.userId),
+  ]
 );
 
 /**
@@ -126,12 +122,10 @@ export const passkeys = sqliteTable(
     createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
     aaguid: text("aaguid"),
   },
-  (table) => ({
-    userIdIdx: index("passkey_user_id_idx").on(table.userId),
-    credentialIdUnique: uniqueIndex("passkey_credential_id_unique").on(
-      table.credentialID
-    ),
-  })
+  (table) => [
+    index("passkey_user_id_idx").on(table.userId),
+    uniqueIndex("passkey_credential_id_unique").on(table.credentialID),
+  ]
 );
 
 export const walletAddresses = sqliteTable(
@@ -147,14 +141,14 @@ export const walletAddresses = sqliteTable(
       .default(false),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    userIdIdx: index("wallet_address_user_id_idx").on(table.userId),
-    addressIdx: index("wallet_address_address_idx").on(table.address),
-    addressChainUnique: uniqueIndex("wallet_address_address_chain_unique").on(
+  (table) => [
+    index("wallet_address_user_id_idx").on(table.userId),
+    index("wallet_address_address_idx").on(table.address),
+    uniqueIndex("wallet_address_address_chain_unique").on(
       table.address,
       table.chainId
     ),
-  })
+  ]
 );
 
 export type User = typeof users.$inferSelect;

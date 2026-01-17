@@ -21,10 +21,10 @@ export const oidc4vciOffers = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => ({
-    userIdIdx: index("oidc4vci_offer_user_id_idx").on(table.userId),
-    expiresAtIdx: index("oidc4vci_offer_expires_at_idx").on(table.expiresAt),
-  })
+  (table) => [
+    index("oidc4vci_offer_user_id_idx").on(table.userId),
+    index("oidc4vci_offer_expires_at_idx").on(table.expiresAt),
+  ]
 );
 
 export const oidc4vciIssuedCredentials = sqliteTable(
@@ -45,12 +45,12 @@ export const oidc4vciIssuedCredentials = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => ({
-    userIdIdx: index("oidc4vci_issued_credential_user_id_idx").on(table.userId),
-    statusListIdIdx: index("oidc4vci_issued_credential_status_list_id_idx").on(
+  (table) => [
+    index("oidc4vci_issued_credential_user_id_idx").on(table.userId),
+    index("oidc4vci_issued_credential_status_list_id_idx").on(
       table.statusListId
     ),
-  })
+  ]
 );
 
 export type Oidc4vciOffer = typeof oidc4vciOffers.$inferSelect;

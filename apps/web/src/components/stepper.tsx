@@ -276,7 +276,7 @@ const Title = ({
   className,
   asChild,
   ...props
-}: ComponentProps<"h4"> & { asChild?: boolean }) => {
+}: Readonly<ComponentProps<"h4"> & { asChild?: boolean }>) => {
   const Comp = asChild ? Slot : "h4";
 
   return (
@@ -295,7 +295,7 @@ const Description = ({
   className,
   asChild,
   ...props
-}: ComponentProps<"p"> & { asChild?: boolean }) => {
+}: Readonly<ComponentProps<"p"> & { asChild?: boolean }>) => {
   const Comp = asChild ? Slot : "p";
 
   return (
@@ -315,11 +315,13 @@ const StepperSeparator = ({
   labelOrientation,
   state,
   disabled,
-}: {
-  isLast: boolean;
-  state: string;
-  disabled?: boolean;
-} & VariantProps<typeof classForSeparator>) => {
+}: Readonly<
+  {
+    isLast: boolean;
+    state: string;
+    disabled?: boolean;
+  } & VariantProps<typeof classForSeparator>
+>) => {
   if (isLast) {
     return null;
   }
@@ -339,7 +341,7 @@ const CircleStepIndicator = ({
   totalSteps,
   size = 80,
   strokeWidth = 6,
-}: CircleStepIndicatorProps) => {
+}: Readonly<CircleStepIndicatorProps>) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const fillPercentage = (currentStep / totalSteps) * 100;

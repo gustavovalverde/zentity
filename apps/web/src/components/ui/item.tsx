@@ -6,12 +6,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils/utils";
 
-function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
+function ItemGroup({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"ul">>) {
   return (
-    <div
-      className={cn("group/item-group flex flex-col", className)}
+    <ul
+      className={cn("group/item-group flex list-none flex-col", className)}
       data-slot="item-group"
-      role="list"
       {...props}
     />
   );
@@ -20,7 +22,7 @@ function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
 function ItemSeparator({
   className,
   ...props
-}: React.ComponentProps<typeof Separator>) {
+}: Readonly<React.ComponentProps<typeof Separator>>) {
   return (
     <Separator
       className={cn("my-0", className)}
@@ -58,8 +60,10 @@ function Item({
   size = "default",
   asChild = false,
   ...props
-}: React.ComponentProps<"div"> &
-  VariantProps<typeof itemVariants> & { asChild?: boolean }) {
+}: Readonly<
+  React.ComponentProps<"div"> &
+    VariantProps<typeof itemVariants> & { asChild?: boolean }
+>) {
   const Comp = asChild ? Slot : "div";
   return (
     <Comp
@@ -93,7 +97,9 @@ function ItemMedia({
   className,
   variant = "default",
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof itemMediaVariants>) {
+}: Readonly<
+  React.ComponentProps<"div"> & VariantProps<typeof itemMediaVariants>
+>) {
   return (
     <div
       className={cn(itemMediaVariants({ variant, className }))}
@@ -104,7 +110,10 @@ function ItemMedia({
   );
 }
 
-function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
+function ItemContent({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -117,7 +126,10 @@ function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
+function ItemTitle({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -130,7 +142,10 @@ function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
+function ItemDescription({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"p">>) {
   return (
     <p
       className={cn(
@@ -144,7 +159,10 @@ function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
-function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
+function ItemActions({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"div">>) {
   return (
     <div
       className={cn("flex items-center gap-2", className)}
@@ -154,7 +172,10 @@ function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function ItemHeader({ className, ...props }: React.ComponentProps<"div">) {
+function ItemHeader({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -167,7 +188,10 @@ function ItemHeader({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function ItemFooter({ className, ...props }: React.ComponentProps<"div">) {
+function ItemFooter({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"div">>) {
   return (
     <div
       className={cn(

@@ -191,8 +191,8 @@ export const secretsRouter = router({
       }
 
       const mergedMetadata = {
-        ...(existing.metadata ?? {}),
-        ...(input.metadata ?? {}),
+        ...existing.metadata,
+        ...input.metadata,
       };
 
       const updated = await updateEncryptedSecretMetadata({

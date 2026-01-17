@@ -10,7 +10,7 @@ import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 import { Spinner } from "@/components/ui/spinner";
 
-const Toaster = ({ ...props }: ToasterProps) => (
+const Toaster = ({ ...props }: Readonly<ToasterProps>) => (
   <Sonner
     className="toaster group"
     icons={{

@@ -10,10 +10,13 @@ const SIWE_BASE_PATH = "/api/auth/siwe";
 type SignMessageFn = (params: { message: string }) => Promise<string>;
 
 function getWindowOrigin(): { origin: string; host: string } {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("SIWE requires a browser environment.");
   }
-  return { origin: window.location.origin, host: window.location.host };
+  return {
+    origin: globalThis.window.location.origin,
+    host: globalThis.window.location.host,
+  };
 }
 
 async function requestSiweNonce(params: {

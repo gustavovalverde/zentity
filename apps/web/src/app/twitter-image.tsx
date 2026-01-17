@@ -9,14 +9,26 @@ export const size = {
 };
 export const contentType = "image/png";
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCodePoint(byte);
+  }
+  return btoa(binary);
+}
+
 export default async function Image() {
-  // Fetch the actual brand logo (transparent version)
-  const logoData = await fetch(
+  // Fetch the actual brand logo (transparent version) from static bundle
+  const logoBuffer = await fetch(
     new URL(
       "../../public/images/logo/logo-full-dark-transparent.png",
       import.meta.url
     )
   ).then((res) => res.arrayBuffer());
+
+  // Convert to base64 data URL for Satori renderer
+  const logoDataUrl = `data:image/png;base64,${arrayBufferToBase64(logoBuffer)}`;
 
   return new ImageResponse(
     <div
@@ -75,7 +87,7 @@ export default async function Image() {
         {/* biome-ignore lint/performance/noImgElement: Satori only supports basic HTML img elements */}
         <img
           height={250}
-          src={logoData as unknown as string}
+          src={logoDataUrl}
           style={{
             objectFit: "contain",
           }}

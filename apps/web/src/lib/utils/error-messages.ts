@@ -104,7 +104,7 @@ export function getUserFriendlyError(error: unknown): string {
   }
 
   // Extract the reason from viem/wagmi errors, or show first 3 lines
-  const reasonMatch = msg.match(ERROR_REASON_PATTERN);
+  const reasonMatch = ERROR_REASON_PATTERN.exec(msg);
   if (reasonMatch) {
     return reasonMatch[1];
   }
@@ -124,7 +124,7 @@ export function getUserFriendlyError(error: unknown): string {
 export function getAttestationError(error: unknown): string {
   const msg = getErrorMessage(error);
   // Extract the reason from viem/tRPC errors, or show more context
-  const reasonMatch = msg.match(ERROR_REASON_PATTERN);
+  const reasonMatch = ERROR_REASON_PATTERN.exec(msg);
   if (reasonMatch) {
     return reasonMatch[1];
   }

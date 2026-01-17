@@ -23,11 +23,11 @@ function nowIso() {
 }
 
 function makeDocHash() {
-  return `doc_${crypto.randomUUID().replace(/-/g, "")}`;
+  return `doc_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
 function makeCommitment(prefix: string) {
-  return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`;
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
 export async function seedDemoIdentity(userId: string): Promise<SeedResult> {
@@ -134,7 +134,7 @@ export async function seedDemoIdentity(userId: string): Promise<SeedResult> {
           userId,
           documentId,
           proofType,
-          proofHash: `proof_${crypto.randomUUID().replace(/-/g, "")}`,
+          proofHash: `proof_${crypto.randomUUID().replaceAll("-", "")}`,
           proofPayload: "demo-proof",
           publicInputs: JSON.stringify([
             `${new Date().getFullYear()}`,

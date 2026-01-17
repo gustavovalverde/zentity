@@ -33,7 +33,7 @@ export function AudioToggle({
   className,
   enabledTooltip = "Mute audio",
   disabledTooltip = "Enable audio",
-}: AudioToggleProps) {
+}: Readonly<AudioToggleProps>) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -86,7 +86,7 @@ export function FeedbackToggleGroup({
   onAudioToggle,
   onSpeechToggle,
   className,
-}: FeedbackToggleGroupProps) {
+}: Readonly<FeedbackToggleGroupProps>) {
   // Combined state - if either is enabled, show as "audio enabled"
   const combinedEnabled = audioEnabled || speechEnabled;
 

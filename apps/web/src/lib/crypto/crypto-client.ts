@@ -106,7 +106,7 @@ interface TimestampedEntry<T> {
 }
 
 const challengeInFlight = new Map<
-  "age_verification" | "doc_validity" | "nationality_membership" | "face_match",
+  ClientProofType,
   TimestampedEntry<Promise<ChallengeResponse>>
 >();
 const registerFheKeyInFlight = new Map<
@@ -352,11 +352,7 @@ export async function getSignedClaims(
  * @param circuitType - The type of circuit the nonce is for
  */
 export async function getProofChallenge(
-  circuitType:
-    | "age_verification"
-    | "doc_validity"
-    | "nationality_membership"
-    | "face_match"
+  circuitType: ClientProofType
 ): Promise<ChallengeResponse> {
   // Cleanup stale entries before checking
   cleanupStaleEntries();
@@ -392,11 +388,7 @@ export async function getProofChallenge(
  */
 interface StoreProofOptions {
   /** The type of circuit used to generate the proof */
-  circuitType:
-    | "age_verification"
-    | "doc_validity"
-    | "nationality_membership"
-    | "face_match";
+  circuitType: ClientProofType;
   /** Base64 encoded UltraHonk ZK proof */
   proof: string;
   /** The public signals from the proof */

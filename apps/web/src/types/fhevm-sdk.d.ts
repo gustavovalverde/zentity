@@ -1,7 +1,7 @@
 /**
  * Type declarations for Zama relayer SDK loaded via CDN
  *
- * The Zama provider adapter injects the script and exposes window.relayerSDK.
+ * The Zama provider adapter injects the script and exposes globalThis.window.relayerSDK.
  */
 
 interface RelayerSDK {

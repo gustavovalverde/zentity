@@ -21,7 +21,7 @@ import type {
   WorkerResponse,
 } from "./noir-worker-manager";
 
-import { Buffer } from "buffer";
+import { Buffer } from "node:buffer";
 
 // Circuit artifacts - these are bundled with the worker
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
@@ -146,45 +146,7 @@ const bbLogger = (msg: string) => {
 };
 
 // bb.js expects `Buffer` to exist in the browser/worker runtime.
-// In the browser, `buffer` provides a Uint8Array-backed Buffer that doesn't
-// include BigInt read/write helpers, so we polyfill the minimum required API.
-function ensureBigIntUint8ArrayHelpers() {
-  const proto = Uint8Array.prototype as unknown as {
-    writeBigUInt64BE?: (value: bigint, offset?: number) => number;
-    readBigUInt64BE?: (offset?: number) => bigint;
-  };
-
-  if (typeof proto.writeBigUInt64BE !== "function") {
-    Object.defineProperty(Uint8Array.prototype, "writeBigUInt64BE", {
-      value(value: bigint, offset = 0) {
-        let v = BigInt(value);
-        for (let i = 7; i >= 0; i--) {
-          (this as Uint8Array)[offset + i] = Number(v & BigInt(255));
-          v >>= BigInt(8);
-        }
-        return offset + 8;
-      },
-      writable: true,
-      configurable: true,
-    });
-  }
-
-  if (typeof proto.readBigUInt64BE !== "function") {
-    Object.defineProperty(Uint8Array.prototype, "readBigUInt64BE", {
-      value(offset = 0) {
-        let v = BigInt(0);
-        for (let i = 0; i < 8; i++) {
-          v = (v << BigInt(8)) + BigInt((this as Uint8Array)[offset + i]);
-        }
-        return v;
-      },
-      writable: true,
-      configurable: true,
-    });
-  }
-}
-
-ensureBigIntUint8ArrayHelpers();
+// The `buffer` package provides a Node.js-compatible Buffer with BigInt methods.
 globalThis.Buffer = Buffer;
 
 // Some bundlers load module workers via `blob:` URLs. In that case, `fetch("/...")`
@@ -804,7 +766,7 @@ async function generateNationalityProofClient(
 /**
  * Handle incoming messages from the main thread
  */
-self.onmessage = async (
+globalThis.onmessage = async (
   event: MessageEvent<WorkerRequest | WorkerInitMessage>
 ) => {
   const request = event.data;

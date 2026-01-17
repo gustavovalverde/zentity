@@ -91,7 +91,6 @@ export function normalizeChallengeNonce(publicInput: string): string {
   // bb.js typically returns field elements as 32-byte hex (64 chars),
   // so we normalize by parsing and re-encoding the low 128 bits.
   const value = parsePublicInputToBigInt(publicInput);
-  const mask128 = (BigInt(1) << BigInt(128)) - BigInt(1);
-  const nonce128 = value & mask128;
+  const nonce128 = value % BigInt(2) ** BigInt(128);
   return nonce128.toString(16).padStart(32, "0");
 }

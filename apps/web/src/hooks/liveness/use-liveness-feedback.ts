@@ -80,7 +80,7 @@ interface StoredPrefs {
 }
 
 function loadPrefs(): StoredPrefs | null {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return null;
   }
   try {
@@ -95,7 +95,7 @@ function loadPrefs(): StoredPrefs | null {
 }
 
 function savePrefs(prefs: StoredPrefs): void {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return;
   }
   try {

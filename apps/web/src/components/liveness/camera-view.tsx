@@ -42,7 +42,9 @@ function getOvalStatus(phase: string, faceDetected: boolean): OvalFrameStatus {
   }
 }
 
-export function CameraView({ isFullscreen = false }: CameraViewProps) {
+export function CameraView({
+  isFullscreen = false,
+}: Readonly<CameraViewProps>) {
   const {
     phase,
     faceDetected,

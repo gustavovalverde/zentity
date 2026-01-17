@@ -11,7 +11,7 @@ interface TrpcProviderProps {
   children: ReactNode;
 }
 
-export function TrpcProvider({ children }: TrpcProviderProps) {
+export function TrpcProvider({ children }: Readonly<TrpcProviderProps>) {
   const [queryClient] = useState(
     () =>
       new QueryClient({

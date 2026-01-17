@@ -42,7 +42,7 @@ class LivenessSpeechEngine {
       return;
     }
 
-    const synth = window.speechSynthesis;
+    const synth = globalThis.window.speechSynthesis;
 
     // Trigger voice loading (Chrome loads voices async)
     synth.getVoices();
@@ -74,7 +74,7 @@ class LivenessSpeechEngine {
         return;
       }
 
-      const synth = window.speechSynthesis;
+      const synth = globalThis.window.speechSynthesis;
 
       // Handle priority - cancel ALL pending AND current speech if high priority
       if (options.priority === "high") {
@@ -108,7 +108,7 @@ class LivenessSpeechEngine {
     resolve: () => void,
     reject: (error: Error) => void
   ): void {
-    const synth = window.speechSynthesis;
+    const synth = globalThis.window.speechSynthesis;
     const utterance = new SpeechSynthesisUtterance(text);
 
     const lang = options.lang ?? this.language;
@@ -165,7 +165,7 @@ class LivenessSpeechEngine {
   cancel(): void {
     this.cancelAllPending();
     if (this.isSupported()) {
-      window.speechSynthesis.cancel();
+      globalThis.window.speechSynthesis.cancel();
     }
   }
 
@@ -176,7 +176,7 @@ class LivenessSpeechEngine {
     if (!this.isSupported()) {
       return false;
     }
-    return window.speechSynthesis.speaking;
+    return globalThis.window.speechSynthesis.speaking;
   }
 
   /**
@@ -214,7 +214,7 @@ class LivenessSpeechEngine {
    * Check if Web Speech API is supported.
    */
   isSupported(): boolean {
-    return typeof window !== "undefined" && "speechSynthesis" in window;
+    return globalThis.window !== undefined && "speechSynthesis" in globalThis;
   }
 
   /**
@@ -225,7 +225,7 @@ class LivenessSpeechEngine {
       return [];
     }
 
-    const voices = window.speechSynthesis.getVoices();
+    const voices = globalThis.window.speechSynthesis.getVoices();
     return voices.filter((v) => v.lang.startsWith(this.language));
   }
 }

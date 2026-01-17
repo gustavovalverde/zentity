@@ -29,11 +29,11 @@ const MOBILE_UA_REGEX =
  * Used for UI decisions (fullscreen mode), NOT for quality/performance branching.
  */
 function detectIsMobile(): boolean {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return false;
   }
-  const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-  const isSmallScreen = window.innerWidth < 768;
+  const hasTouch = "ontouchstart" in globalThis || navigator.maxTouchPoints > 0;
+  const isSmallScreen = globalThis.window.innerWidth < 768;
   const mobileUA = MOBILE_UA_REGEX.test(navigator.userAgent);
   return (hasTouch && isSmallScreen) || mobileUA;
 }

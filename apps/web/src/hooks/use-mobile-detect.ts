@@ -27,7 +27,9 @@ export function useMobileDetect() {
     };
 
     // Listen for orientation changes
-    const landscapeQuery = window.matchMedia("(orientation: landscape)");
+    const landscapeQuery = globalThis.window.matchMedia(
+      "(orientation: landscape)"
+    );
     const handleOrientation = (e: MediaQueryListEvent) => {
       setIsLandscape(e.matches);
     };

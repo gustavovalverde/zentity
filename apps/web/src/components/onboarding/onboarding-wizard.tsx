@@ -19,7 +19,7 @@ import { StepperNavigation } from "./stepper-ui";
 const getStoreState = () => useOnboardingStore.getState();
 
 // Dynamic imports for heavy step components (stepperize pattern with lazy loading)
-function StepLoading({ label }: { label: string }) {
+function StepLoading({ label }: Readonly<{ label: string }>) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
       <Spinner size="lg" />
@@ -75,7 +75,7 @@ function WizardContent() {
           // If user already completed onboarding (keysSecured), redirect to dashboard
           // This handles race conditions where server-side check didn't catch it
           if (serverState.keysSecured) {
-            window.location.href = "/dashboard";
+            globalThis.window.location.href = "/dashboard";
             return;
           }
 
@@ -135,8 +135,9 @@ function WizardContent() {
       }
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    globalThis.window.addEventListener("beforeunload", handleBeforeUnload);
+    return () =>
+      globalThis.window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isHydrated, hasIdDocument, hasSelfieImage, stepper.current.id]);
 
   // Cleanup flow ID on unmount
@@ -174,7 +175,9 @@ function WizardContent() {
  * Wraps the wizard content with the stepperize provider.
  * Optionally forces a fresh start if forceReset is true.
  */
-export function OnboardingWizard({ forceReset }: { forceReset?: boolean }) {
+export function OnboardingWizard({
+  forceReset,
+}: Readonly<{ forceReset?: boolean }>) {
   const [isReady, setIsReady] = useState(!forceReset);
   const resetStartedRef = useRef(false);
 

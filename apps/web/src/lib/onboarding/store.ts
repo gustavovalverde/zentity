@@ -1,3 +1,5 @@
+import type { DocumentResult } from "../document/document-ocr";
+
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -32,7 +34,7 @@ export interface OnboardingStore {
   // Step 2: Transient (not persisted)
   idDocument: File | null;
   idDocumentBase64: string | null;
-  documentResult: unknown | null;
+  documentResult: DocumentResult | null;
 
   // Step 3: Transient (not persisted)
   selfieImage: string | null;

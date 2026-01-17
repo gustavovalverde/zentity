@@ -41,6 +41,46 @@ function timestampNow(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+/** Type guard for non-null objects */
+function isNonNullObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+/** Check if object has a string property */
+function hasStringProp(obj: Record<string, unknown>, key: string): boolean {
+  return key in obj && typeof obj[key] === "string";
+}
+
+/** Check if object has a number property */
+function hasNumberProp(obj: Record<string, unknown>, key: string): boolean {
+  return key in obj && typeof obj[key] === "number";
+}
+
+/** Validate contract addresses array */
+function isValidContractAddresses(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.every(
+    (addr) => typeof addr === "string" && addr.startsWith("0x")
+  );
+}
+
+/** Validate EIP-712 structure */
+function isValidEIP712Structure(value: unknown): boolean {
+  if (!isNonNullObject(value)) {
+    return false;
+  }
+  return (
+    "domain" in value &&
+    typeof value.domain === "object" &&
+    hasStringProp(value, "primaryType") &&
+    "message" in value &&
+    "types" in value &&
+    isNonNullObject(value.types)
+  );
+}
+
 /**
  * Normalize contract addresses for deterministic EIP-712 payloads.
  *
@@ -84,9 +124,7 @@ function isSignatureValid(
       eip712.message,
       signature
     );
-    return (
-      ethers.getAddress(recovered) === ethers.getAddress(userAddress as string)
-    );
+    return ethers.getAddress(recovered) === ethers.getAddress(userAddress);
   } catch {
     return false;
   }
@@ -127,10 +165,10 @@ function buildTypedDataV4Payload(eip712: EIP712Type) {
  * This ensures different users/contracts/keypairs get different cache entries.
  */
 class FhevmDecryptionSignatureStorageKey {
-  #contractAddresses: `0x${string}`[];
-  #userAddress: `0x${string}`;
-  #publicKey: string | undefined;
-  #key: string;
+  readonly #contractAddresses: `0x${string}`[];
+  readonly #userAddress: `0x${string}`;
+  readonly #publicKey: string | undefined;
+  readonly #key: string;
 
   constructor(
     instance: FhevmInstance,
@@ -215,14 +253,14 @@ class FhevmDecryptionSignatureStorageKey {
  * ```
  */
 export class FhevmDecryptionSignature {
-  #publicKey: string;
-  #privateKey: string;
-  #signature: string;
-  #startTimestamp: number;
-  #durationDays: number;
-  #userAddress: `0x${string}`;
-  #contractAddresses: `0x${string}`[];
-  #eip712: EIP712Type;
+  readonly #publicKey: string;
+  readonly #privateKey: string;
+  readonly #signature: string;
+  readonly #startTimestamp: number;
+  readonly #durationDays: number;
+  readonly #userAddress: `0x${string}`;
+  readonly #contractAddresses: `0x${string}`[];
+  readonly #eip712: EIP712Type;
 
   /** Private constructor - use static factory methods */
   private constructor(parameters: FhevmDecryptionSignatureType) {
@@ -276,67 +314,35 @@ export class FhevmDecryptionSignature {
 
   /** Type guard for validating signature data from storage */
   static checkIs(s: unknown): s is FhevmDecryptionSignatureType {
-    if (!s || typeof s !== "object") {
+    if (!isNonNullObject(s)) {
       return false;
     }
-    const obj = s as Record<string, unknown>;
-    if (!("publicKey" in obj && typeof obj.publicKey === "string")) {
+
+    const hasRequiredStrings =
+      hasStringProp(s, "publicKey") &&
+      hasStringProp(s, "privateKey") &&
+      hasStringProp(s, "signature");
+
+    const hasRequiredNumbers =
+      hasNumberProp(s, "startTimestamp") && hasNumberProp(s, "durationDays");
+
+    if (!(hasRequiredStrings && hasRequiredNumbers)) {
       return false;
     }
-    if (!("privateKey" in obj && typeof obj.privateKey === "string")) {
+
+    if (!isValidContractAddresses(s.contractAddresses)) {
       return false;
     }
-    if (!("signature" in obj && typeof obj.signature === "string")) {
+
+    const hasValidUserAddress =
+      hasStringProp(s, "userAddress") &&
+      (s.userAddress as string).startsWith("0x");
+
+    if (!hasValidUserAddress) {
       return false;
     }
-    if (!("startTimestamp" in obj && typeof obj.startTimestamp === "number")) {
-      return false;
-    }
-    if (!("durationDays" in obj && typeof obj.durationDays === "number")) {
-      return false;
-    }
-    if (!("contractAddresses" in obj && Array.isArray(obj.contractAddresses))) {
-      return false;
-    }
-    for (const addr of obj.contractAddresses as unknown[]) {
-      if (typeof addr !== "string" || !addr.startsWith("0x")) {
-        return false;
-      }
-    }
-    if (
-      !(
-        "userAddress" in obj &&
-        typeof obj.userAddress === "string" &&
-        obj.userAddress.startsWith("0x")
-      )
-    ) {
-      return false;
-    }
-    if (
-      !(
-        "eip712" in obj &&
-        typeof obj.eip712 === "object" &&
-        obj.eip712 !== null
-      )
-    ) {
-      return false;
-    }
-    const eip = obj.eip712 as Record<string, unknown>;
-    if (!("domain" in eip && typeof eip.domain === "object")) {
-      return false;
-    }
-    if (!("primaryType" in eip && typeof eip.primaryType === "string")) {
-      return false;
-    }
-    if (!("message" in eip)) {
-      return false;
-    }
-    if (
-      !("types" in eip && typeof eip.types === "object" && eip.types !== null)
-    ) {
-      return false;
-    }
-    return true;
+
+    return isValidEIP712Structure(s.eip712);
   }
 
   /** Serialize for storage (JSON.stringify compatible) */
@@ -548,7 +554,7 @@ export class FhevmDecryptionSignature {
         startTimestamp,
         durationDays,
         signature,
-        eip712: eip712 as EIP712Type,
+        eip712,
         userAddress,
       });
     } catch {

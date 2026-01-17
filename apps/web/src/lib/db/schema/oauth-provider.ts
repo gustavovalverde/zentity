@@ -46,12 +46,10 @@ export const oauthClients = sqliteTable(
     referenceId: text("reference_id"),
     metadata: text("metadata", { mode: "json" }),
   },
-  (table) => ({
-    clientIdUnique: uniqueIndex("oauth_client_client_id_unique").on(
-      table.clientId
-    ),
-    userIdIdx: index("oauth_client_user_id_idx").on(table.userId),
-  })
+  (table) => [
+    uniqueIndex("oauth_client_client_id_unique").on(table.clientId),
+    index("oauth_client_user_id_idx").on(table.userId),
+  ]
 );
 
 export const oauthRefreshTokens = sqliteTable(
@@ -72,11 +70,11 @@ export const oauthRefreshTokens = sqliteTable(
     revoked: text("revoked"),
     scopes: text("scopes", { mode: "json" }).notNull(),
   },
-  (table) => ({
-    tokenIdx: index("oauth_refresh_token_token_idx").on(table.token),
-    clientIdIdx: index("oauth_refresh_token_client_id_idx").on(table.clientId),
-    userIdIdx: index("oauth_refresh_token_user_id_idx").on(table.userId),
-  })
+  (table) => [
+    index("oauth_refresh_token_token_idx").on(table.token),
+    index("oauth_refresh_token_client_id_idx").on(table.clientId),
+    index("oauth_refresh_token_user_id_idx").on(table.userId),
+  ]
 );
 
 export const oauthAccessTokens = sqliteTable(
@@ -99,11 +97,11 @@ export const oauthAccessTokens = sqliteTable(
     createdAt: text("created_at").default(sql`(datetime('now'))`),
     scopes: text("scopes", { mode: "json" }).notNull(),
   },
-  (table) => ({
-    tokenUnique: uniqueIndex("oauth_access_token_token_unique").on(table.token),
-    clientIdIdx: index("oauth_access_token_client_id_idx").on(table.clientId),
-    userIdIdx: index("oauth_access_token_user_id_idx").on(table.userId),
-  })
+  (table) => [
+    uniqueIndex("oauth_access_token_token_unique").on(table.token),
+    index("oauth_access_token_client_id_idx").on(table.clientId),
+    index("oauth_access_token_user_id_idx").on(table.userId),
+  ]
 );
 
 export const oauthConsents = sqliteTable(
@@ -119,10 +117,10 @@ export const oauthConsents = sqliteTable(
     createdAt: text("created_at").default(sql`(datetime('now'))`),
     updatedAt: text("updated_at"),
   },
-  (table) => ({
-    clientIdIdx: index("oauth_consent_client_id_idx").on(table.clientId),
-    userIdIdx: index("oauth_consent_user_id_idx").on(table.userId),
-  })
+  (table) => [
+    index("oauth_consent_client_id_idx").on(table.clientId),
+    index("oauth_consent_user_id_idx").on(table.userId),
+  ]
 );
 
 export type OauthClient = typeof oauthClients.$inferSelect;

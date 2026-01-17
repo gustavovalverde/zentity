@@ -8,7 +8,7 @@ const LOWERCASE_LETTER_PATTERN = /[a-z]/;
 /** Matches uppercase letters */
 const UPPERCASE_LETTER_PATTERN = /[A-Z]/;
 /** Matches digits */
-const DIGIT_PATTERN = /[0-9]/;
+const DIGIT_PATTERN = /\d/;
 /** Matches non-alphanumeric (symbol) characters */
 const SYMBOL_PATTERN = /[^A-Za-z0-9]/;
 
@@ -26,7 +26,6 @@ export function getPasswordLengthError(password: string): string | undefined {
   if (password.length > PASSWORD_MAX_LENGTH) {
     return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
   }
-  return;
 }
 
 export function getPasswordSimilarityError(
@@ -62,8 +61,6 @@ export function getPasswordSimilarityError(
   ) {
     return "Password can't contain your document number";
   }
-
-  return;
 }
 
 export function getPasswordRequirementStatus(

@@ -19,7 +19,7 @@ export function VisuallyHidden({
   children,
   className,
   ...props
-}: VisuallyHiddenProps) {
+}: Readonly<VisuallyHiddenProps>) {
   return (
     <span
       className={cn(

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils/utils";
 function Tabs({
   className,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Root>) {
+}: Readonly<React.ComponentProps<typeof TabsPrimitive.Root>>) {
   return (
     <TabsPrimitive.Root
       className={cn("flex flex-col gap-2", className)}
@@ -22,7 +22,7 @@ function Tabs({
 function TabsList({
   className,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.List>) {
+}: Readonly<React.ComponentProps<typeof TabsPrimitive.List>>) {
   return (
     <TabsPrimitive.List
       className={cn(
@@ -38,7 +38,7 @@ function TabsList({
 function TabsTrigger({
   className,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+}: Readonly<React.ComponentProps<typeof TabsPrimitive.Trigger>>) {
   return (
     <TabsPrimitive.Trigger
       className={cn(
@@ -54,7 +54,7 @@ function TabsTrigger({
 function TabsContent({
   className,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Content>) {
+}: Readonly<React.ComponentProps<typeof TabsPrimitive.Content>>) {
   return (
     <TabsPrimitive.Content
       className={cn("flex-1 outline-none", className)}

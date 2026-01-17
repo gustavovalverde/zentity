@@ -131,7 +131,7 @@ export async function consumeChallenge(
 
     return {
       nonce: row.nonce,
-      circuitType: row.circuitType as CircuitType,
+      circuitType: row.circuitType,
       userId: row.userId ?? undefined,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,

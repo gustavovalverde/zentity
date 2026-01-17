@@ -460,7 +460,7 @@ export function validateStepAccess(
   if (requirements.requiredFields) {
     for (const field of requirements.requiredFields) {
       if (!session[field]) {
-        const fieldName = field.replace(/([A-Z])/g, " $1").toLowerCase();
+        const fieldName = field.replaceAll(/([A-Z])/g, " $1").toLowerCase();
         return {
           valid: false,
           error: `Required verification not completed: ${fieldName}.`,

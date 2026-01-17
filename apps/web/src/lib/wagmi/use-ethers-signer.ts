@@ -16,20 +16,22 @@ export function useEthersSigner(): Signer | undefined {
 
   useEffect(() => {
     async function getSigner() {
-      if (!(isConnected && address) || typeof window === "undefined") {
+      if (!(isConnected && address) || globalThis.window === undefined) {
         setSigner(undefined);
         return;
       }
 
       // Check for ethereum provider (injected by wallet)
-      const ethereum = window.ethereum as Eip1193Provider | undefined;
+      const ethereum = globalThis.window.ethereum as
+        | Eip1193Provider
+        | undefined;
       if (!ethereum) {
         setSigner(undefined);
         return;
       }
 
       try {
-        const provider = new BrowserProvider(ethereum as Eip1193Provider);
+        const provider = new BrowserProvider(ethereum);
         const ethSigner = await provider.getSigner(address);
         setSigner(ethSigner);
       } catch {

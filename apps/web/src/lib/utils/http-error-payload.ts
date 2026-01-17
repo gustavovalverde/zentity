@@ -26,8 +26,6 @@ function getErrorStringFromBodyText(bodyText: string): string | undefined {
   } catch {
     // ignore
   }
-
-  return;
 }
 
 export function toServiceErrorPayload(

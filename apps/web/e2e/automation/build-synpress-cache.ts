@@ -82,8 +82,8 @@ function stopHardhat() {
 }
 
 function extractWalletSetupFunction(sourceCode: string): string {
-  const callMatch = sourceCode.match(WALLET_SETUP_CALL_PATTERN);
-  if (!callMatch || callMatch.index === undefined) {
+  const callMatch = WALLET_SETUP_CALL_PATTERN.exec(sourceCode);
+  if (callMatch?.index === undefined) {
     throw new Error("Could not find defineWalletSetup call");
   }
   const openParen = callMatch.index + callMatch[0].lastIndexOf("(");
@@ -199,7 +199,7 @@ async function compileWalletSetupFunctions(): Promise<{
   );
   const fileList = (
     await glob(path.join(walletSetupDir, "**", "*.setup.{ts,js,mjs}"))
-  ).sort();
+  ).toSorted((a, b) => a.localeCompare(b));
   if (!fileList.length) {
     throw new Error(
       `No wallet setup files found at ${walletSetupDir}. Ensure files end with .setup.ts/.js/.mjs`
@@ -296,8 +296,10 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error(error);
   stopHardhat();
   process.exit(1);
-});
+}

@@ -236,7 +236,14 @@ export function logVerificationError(
     issueCode: error.issueCode,
     isExpected: error.isExpected,
     ...context,
-    ...(error.cause ? { cause: String(error.cause) } : {}),
+    ...(error.cause
+      ? {
+          cause:
+            error.cause instanceof Error
+              ? error.cause.message
+              : JSON.stringify(error.cause),
+        }
+      : {}),
   };
 
   if (error.isExpected) {

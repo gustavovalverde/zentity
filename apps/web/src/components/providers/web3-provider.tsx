@@ -15,7 +15,7 @@ import {
  * Includes FhevmProvider for client-side FHE operations.
  */
 import { type ReactNode, useEffect, useMemo } from "react";
-import { type Config, cookieToInitialState, WagmiProvider } from "wagmi";
+import { cookieToInitialState, WagmiProvider } from "wagmi";
 
 import { InMemoryStorageProvider } from "@/hooks/fhevm/use-in-memory-storage";
 import {
@@ -34,8 +34,8 @@ const metadata = {
   name: "Zentity",
   description: "Privacy-preserving identity verification",
   url:
-    typeof window !== "undefined"
-      ? window.location.origin
+    globalThis.window !== undefined
+      ? globalThis.location.origin
       : "https://zentity.app",
   icons: ["/icon.png"],
 };
@@ -53,7 +53,7 @@ export function Web3Provider({
   children,
   cookies,
   walletScopeId,
-}: Web3ProviderProps) {
+}: Readonly<Web3ProviderProps>) {
   const wagmiAdapter = useMemo(
     () => createWagmiAdapter(walletScopeId),
     [walletScopeId]
@@ -76,8 +76,8 @@ export function Web3Provider({
     const analyticsEnabled =
       process.env.NEXT_PUBLIC_APPKIT_ANALYTICS === "true" ||
       (process.env.NEXT_PUBLIC_APPKIT_ANALYTICS !== "false" &&
-        typeof window !== "undefined" &&
-        !window.crossOriginIsolated);
+        globalThis.window !== undefined &&
+        !globalThis.crossOriginIsolated);
 
     const initializeAppKit = () =>
       createAppKit({
@@ -106,16 +106,16 @@ export function Web3Provider({
       });
 
     const waitForInjectedProvider = async () => {
-      if (typeof window === "undefined") {
+      if (globalThis.window === undefined) {
         return;
       }
-      if (window.ethereum) {
+      if ((globalThis as typeof globalThis & { ethereum?: unknown }).ethereum) {
         return;
       }
 
       await Promise.race([
         new Promise<void>((resolve) => {
-          window.addEventListener("ethereum#initialized", () => resolve(), {
+          globalThis.addEventListener("ethereum#initialized", () => resolve(), {
             once: true,
           });
         }),
@@ -131,13 +131,13 @@ export function Web3Provider({
         return;
       }
       if (
-        typeof window !== "undefined" &&
+        globalThis.window !== undefined &&
         appkitStorageKey &&
         appkitStorageKey !== activeStorageKey
       ) {
-        // biome-ignore lint/suspicious/noDocumentCookie: intentional cleanup of wagmi cookie on account switch
-        document.cookie = `${appkitStorageKey}=; Max-Age=0; Path=/`;
-        window.location.reload();
+        // biome-ignore lint/suspicious/noDocumentCookie: clearing stale appkit storage key requires cookie deletion
+        document.cookie = `${appkitStorageKey}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;
+        globalThis.location.reload();
         return;
       }
 
@@ -151,16 +151,16 @@ export function Web3Provider({
       if (
         (process.env.NEXT_PUBLIC_APPKIT_DEBUG === "true" ||
           process.env.NODE_ENV === "development") &&
-        typeof window !== "undefined"
+        globalThis.window !== undefined
       ) {
         (
-          window as typeof window & {
+          globalThis as typeof globalThis & {
             __appkit?: unknown;
             __appkitControllers?: unknown;
           }
         ).__appkit = appkit;
         (
-          window as typeof window & {
+          globalThis as typeof globalThis & {
             __appkit?: unknown;
             __appkitControllers?: unknown;
           }
@@ -183,14 +183,11 @@ export function Web3Provider({
     };
   }, [storageKey, wagmiAdapter]);
   // Get initial state from cookies for SSR hydration
-  const initialState = cookieToInitialState(
-    wagmiAdapter.wagmiConfig as Config,
-    cookies
-  );
+  const initialState = cookieToInitialState(wagmiAdapter.wagmiConfig, cookies);
 
   return (
     <WagmiProvider
-      config={wagmiAdapter.wagmiConfig as Config}
+      config={wagmiAdapter.wagmiConfig}
       initialState={initialState}
     >
       <InMemoryStorageProvider>

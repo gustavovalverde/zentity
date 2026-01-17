@@ -112,11 +112,11 @@ function SectionHeader({
   title,
   description,
   variant = "default",
-}: {
+}: Readonly<{
   title: string;
   description: string;
   variant?: "default" | "danger";
-}) {
+}>) {
   return (
     <div className="space-y-1">
       <h2

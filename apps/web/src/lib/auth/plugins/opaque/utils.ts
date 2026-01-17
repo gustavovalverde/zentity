@@ -16,7 +16,7 @@ const LOGIN_STATE_PAD_LENGTH = 1024;
 
 export function base64UrlDecode(str: string): Buffer {
   const padded = str + "=".repeat((4 - (str.length % 4)) % 4);
-  const normalized = padded.replace(/-/g, "+").replace(/_/g, "/");
+  const normalized = padded.replaceAll("-", "+").replaceAll("_", "/");
   return Buffer.from(normalized, "base64");
 }
 

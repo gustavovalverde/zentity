@@ -70,7 +70,7 @@ export function OvalFrame({
   className,
   showMask = true,
   isMobile = false,
-}: OvalFrameProps) {
+}: Readonly<OvalFrameProps>) {
   // SVG viewBox dimensions - taller on mobile for better face positioning
   const viewBox = isMobile ? "0 0 100 140" : "0 0 100 120";
   const viewBoxHeight = isMobile ? 140 : 120;

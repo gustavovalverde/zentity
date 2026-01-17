@@ -20,9 +20,9 @@ import { hasCachedPasskeyUnlock } from "@/lib/crypto/secret-vault";
  */
 export function ProfileGreetingName({
   fallback = "User",
-}: {
-  readonly fallback?: string;
-}) {
+}: Readonly<{
+  fallback?: string;
+}>) {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [lastLoginMethod, setLastLoginMethod] = useState<string | null>(null);
   const attemptedUnlockRef = useRef(false);

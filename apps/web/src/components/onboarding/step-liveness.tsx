@@ -32,10 +32,10 @@ export function StepLiveness() {
     ({
       selfieImage,
       bestSelfieFrame,
-    }: {
+    }: Readonly<{
       selfieImage: string;
       bestSelfieFrame: string;
-    }) => {
+    }>) => {
       store.set({ selfieImage, bestSelfieFrame });
       setLivenessCompleted(true);
     },

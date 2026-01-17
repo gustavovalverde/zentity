@@ -96,10 +96,10 @@ function getStatusLabel(status: boolean | undefined): string {
 function VerificationStatusRow({
   label,
   status,
-}: {
+}: Readonly<{
   label: string;
   status: boolean | undefined;
-}) {
+}>) {
   return (
     <div className="flex items-center gap-2">
       <span
@@ -211,7 +211,8 @@ export default function ExchangeSimulatorPage() {
       }
       if (!noirIsolationWarningRef.current) {
         const isIsolated =
-          typeof window !== "undefined" && window.crossOriginIsolated === true;
+          globalThis.window !== undefined &&
+          globalThis.window.crossOriginIsolated === true;
         if (!isIsolated) {
           noirIsolationWarningRef.current = true;
           toast.warning("ZK proofs may be slower in this session", {
@@ -250,15 +251,18 @@ export default function ExchangeSimulatorPage() {
         faceMatchProof.status !== "fulfilled" ||
         docValidityProof.status !== "fulfilled"
       ) {
+        const formatRejection = (reason: unknown): string =>
+          reason instanceof Error ? reason.message : String(reason);
+
         const details = [
           ageProof.status === "rejected"
-            ? `age: ${ageProof.reason instanceof Error ? ageProof.reason.message : String(ageProof.reason)}`
+            ? `age: ${formatRejection(ageProof.reason)}`
             : null,
           faceMatchProof.status === "rejected"
-            ? `face_match: ${faceMatchProof.reason instanceof Error ? faceMatchProof.reason.message : String(faceMatchProof.reason)}`
+            ? `face_match: ${formatRejection(faceMatchProof.reason)}`
             : null,
           docValidityProof.status === "rejected"
-            ? `doc_validity: ${docValidityProof.reason instanceof Error ? docValidityProof.reason.message : String(docValidityProof.reason)}`
+            ? `doc_validity: ${formatRejection(docValidityProof.reason)}`
             : null,
         ]
           .filter(Boolean)
