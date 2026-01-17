@@ -4,6 +4,11 @@
   "version": "0.0.0",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
+  "pnpm": {
+    "overrides": {
+      "hono": ">=4.11.4"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

@@ -26,7 +26,7 @@ let flushTimer: number | null = null;
 let flushing = false;
 let listenersBound = false;
 
-const isBrowser = typeof window !== "undefined";
+const isBrowser = globalThis.window !== undefined;
 
 function normalizeAttributes(
   attributes?: MetricAttributes
@@ -71,7 +71,7 @@ async function flush(): Promise<void> {
   }
   flushing = true;
   if (flushTimer) {
-    window.clearTimeout(flushTimer);
+    globalThis.window.clearTimeout(flushTimer);
     flushTimer = null;
   }
 
@@ -114,7 +114,7 @@ function scheduleFlush(): void {
   if (!isBrowser || flushTimer) {
     return;
   }
-  flushTimer = window.setTimeout(() => {
+  flushTimer = globalThis.window.setTimeout(() => {
     flush().catch(() => {
       // ignore flush failures
     });
@@ -126,14 +126,14 @@ function bindListeners(): void {
     return;
   }
   listenersBound = true;
-  window.addEventListener("visibilitychange", () => {
+  globalThis.window.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       flush().catch(() => {
         // ignore flush failures
       });
     }
   });
-  window.addEventListener("pagehide", () => {
+  globalThis.window.addEventListener("pagehide", () => {
     flush().catch(() => {
       // ignore flush failures
     });
@@ -153,7 +153,7 @@ export function recordClientMetric(input: {
   const definition = CLIENT_METRIC_DEFINITIONS[input.name];
   const attributes = normalizeAttributes({
     ...getBaseAttributes(),
-    ...(input.attributes ?? {}),
+    ...input.attributes,
   });
 
   enqueue({

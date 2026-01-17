@@ -76,7 +76,7 @@ function getStackLocation(err: Error): string {
     }
 
     // Match: "at functionName (file:line:col)" or "at file:line:col"
-    const match = line.match(STACK_LOCATION_PATTERN);
+    const match = STACK_LOCATION_PATTERN.exec(line);
     if (match) {
       const file = match[2];
       const lineNum = match[3];

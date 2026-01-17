@@ -90,7 +90,7 @@ interface FetchMsgpackOptions extends RequestInit {
 
 async function fetchMsgpack<T>(
   url: string,
-  payload: unknown | Uint8Array,
+  payload: unknown,
   init?: FetchMsgpackOptions
 ): Promise<T> {
   const { timeoutMs = 60_000, ...fetchInit } = init ?? {};

@@ -54,7 +54,7 @@ export function ChallengeBanner({
   totalChallenges,
   hint,
   className,
-}: ChallengeBannerProps) {
+}: Readonly<ChallengeBannerProps>) {
   const config = CHALLENGE_CONFIG[challenge];
   const Icon = config.Icon;
 
@@ -95,7 +95,10 @@ interface CountdownOverlayProps {
 /**
  * Full-screen countdown overlay shown before capturing baseline.
  */
-export function CountdownOverlay({ count, className }: CountdownOverlayProps) {
+export function CountdownOverlay({
+  count,
+  className,
+}: Readonly<CountdownOverlayProps>) {
   return (
     <div
       aria-atomic="true"
@@ -134,7 +137,7 @@ export function StatusBadge({
   icon,
   variant = "default",
   className,
-}: StatusBadgeProps) {
+}: Readonly<StatusBadgeProps>) {
   const variantStyles = {
     default: "bg-black/70 text-white",
     warning: "bg-amber-500/90 text-white",

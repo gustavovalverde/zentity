@@ -619,7 +619,7 @@ export const opaque = (options: OpaquePluginOptions) => {
         {
           method: "POST",
           body: z.object({
-            email: z.string().email(),
+            email: z.email(),
             registrationRequest: z.string().base64url(),
           }),
         },

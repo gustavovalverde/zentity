@@ -10,11 +10,11 @@ interface SignOutClientProps {
   redirectTo: string;
 }
 
-export function SignOutClient({ redirectTo }: SignOutClientProps) {
+export function SignOutClient({ redirectTo }: Readonly<SignOutClientProps>) {
   useEffect(() => {
     completeSignOut({ redirectTo }).catch(() => {
       // If sign-out fails, still redirect to avoid trapping the user
-      window.location.assign(redirectTo);
+      globalThis.window.location.assign(redirectTo);
     });
   }, [redirectTo]);
 

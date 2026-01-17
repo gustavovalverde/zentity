@@ -24,7 +24,10 @@ interface TokenStatusProps {
   walletAddress: string;
 }
 
-export function TokenStatus({ networkId, walletAddress }: TokenStatusProps) {
+export function TokenStatus({
+  networkId,
+  walletAddress,
+}: Readonly<TokenStatusProps>) {
   const { data: tokenInfo, isLoading: tokenLoading } =
     trpcReact.token.info.useQuery({ networkId });
 

@@ -8,9 +8,9 @@ import { TrpcProvider } from "@/components/providers/trpc-provider";
 
 export default function AuthLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-border border-b">

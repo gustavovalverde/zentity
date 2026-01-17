@@ -26,7 +26,9 @@ interface BetterAuthUIProviderProps {
  * passkey flow for FHE key derivation. The custom PasskeySignInForm and
  * PasskeyManagementSection components handle passkey operations with PRF extension.
  */
-export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
+export function BetterAuthUIProvider({
+  children,
+}: Readonly<BetterAuthUIProviderProps>) {
   const router = useRouter();
   const authUiClient = useMemo(() => {
     const signIn = authClient.signIn as typeof authClient.signIn & {
@@ -192,8 +194,8 @@ export function BetterAuthUIProvider({ children }: BetterAuthUIProviderProps) {
   }, []);
 
   const baseURL =
-    typeof window !== "undefined"
-      ? window.location.origin
+    globalThis.window !== undefined
+      ? globalThis.window.location.origin
       : process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "";
 
   return (

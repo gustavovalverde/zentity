@@ -75,11 +75,11 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
   documentResult,
   previewUrl,
   onRemove,
-}: {
+}: Readonly<{
   documentResult: DocumentResult;
   previewUrl: string | null;
   onRemove: (e: React.MouseEvent) => void;
-}) {
+}>) {
   return (
     <div className="space-y-4">
       <Alert className="flex items-center" variant="success">
@@ -539,8 +539,8 @@ export function StepIdUpload() {
                   {documentResult.validationIssues.map((issue) => {
                     const issueKey = issue
                       .toLowerCase()
-                      .replace(/\s+/g, "_")
-                      .replace(/[^a-z_]/g, "");
+                      .replaceAll(/\s+/g, "_")
+                      .replaceAll(/[^a-z_]/g, "");
                     const tip =
                       ERROR_RECOVERY_TIPS[issueKey] ||
                       ERROR_RECOVERY_TIPS[issueKey.split("_")[0]] ||

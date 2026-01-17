@@ -48,7 +48,7 @@ export function PasswordSignUpForm({
   onSuccess,
   onBack,
   disabled = false,
-}: PasswordSignUpFormProps) {
+}: Readonly<PasswordSignUpFormProps>) {
   const passwordId = useId();
   const confirmPasswordId = useId();
   const [error, setError] = useState<string | null>(null);

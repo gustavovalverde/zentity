@@ -165,7 +165,7 @@ export default function Page() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   {scenario.requiredClaims.slice(0, 4).map((claim) => (
                     <Badge key={claim} variant="outline" className="text-xs">
-                      {claim.replace(/_/g, " ")}
+                      {claim.replaceAll("_", " ")}
                     </Badge>
                   ))}
                 </div>

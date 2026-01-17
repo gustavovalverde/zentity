@@ -39,7 +39,7 @@ function buildTimeoutSignal(
 
 export async function fetchMsgpack<T>(
   url: string,
-  payload?: unknown | Uint8Array,
+  payload?: unknown,
   options?: BinaryRequestOptions
 ): Promise<T> {
   const { timeoutMs, ...fetchInit } = options ?? {};
@@ -53,7 +53,7 @@ export async function fetchMsgpack<T>(
 
   const { signal, cleanup } = buildTimeoutSignal(fetchInit.signal, timeoutMs);
   let body: ArrayBuffer | undefined;
-  if (typeof payload !== "undefined") {
+  if (payload !== undefined) {
     const bytes = payload instanceof Uint8Array ? payload : encode(payload);
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);

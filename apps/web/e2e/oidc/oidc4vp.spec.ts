@@ -11,44 +11,44 @@ import {
   originHeaders,
 } from "./oidc-helpers";
 
-test.describe("OIDC4VP verifier", () => {
-  async function issueCredentialForPresentation(request: APIRequestContext) {
-    const { cookieHeader, userId } = await createIssuerSession(request);
-    const clientId = await createWalletClient(request, cookieHeader);
-    const { preAuthorizedCode } = await createCredentialOffer(request, {
-      cookieHeader,
-      clientId,
-      userId,
-      credentialConfigurationId: "zentity_identity",
-    });
+async function issueCredentialForPresentation(request: APIRequestContext) {
+  const { cookieHeader, userId } = await createIssuerSession(request);
+  const clientId = await createWalletClient(request, cookieHeader);
+  const { preAuthorizedCode } = await createCredentialOffer(request, {
+    cookieHeader,
+    clientId,
+    userId,
+    credentialConfigurationId: "zentity_identity",
+  });
 
-    const tokenRes = await exchangePreAuthorizedCode(request, {
-      preAuthorizedCode,
-      clientId,
-    });
-    expect(tokenRes.status()).toBe(200);
-    const tokens = (await tokenRes.json()) as {
-      access_token: string;
-      c_nonce: string;
-    };
+  const tokenRes = await exchangePreAuthorizedCode(request, {
+    preAuthorizedCode,
+    clientId,
+  });
+  expect(tokenRes.status()).toBe(200);
+  const tokens = (await tokenRes.json()) as {
+    access_token: string;
+    c_nonce: string;
+  };
 
-    const { proofJwt } = await createProofJwt(tokens.c_nonce);
-    const credentialRes = await issueCredential(request, {
-      accessToken: tokens.access_token,
-      credentialConfigurationId: "zentity_identity",
-      proofJwt,
-    });
-    expect(credentialRes.status()).toBe(200);
-    const issued = (await credentialRes.json()) as {
-      credentials?: Array<{ credential?: string }>;
-    };
-    const credential = issued.credentials?.[0]?.credential;
-    if (!credential) {
-      throw new Error("missing credential in issuance response");
-    }
-    return credential;
+  const { proofJwt } = await createProofJwt(tokens.c_nonce);
+  const credentialRes = await issueCredential(request, {
+    accessToken: tokens.access_token,
+    credentialConfigurationId: "zentity_identity",
+    proofJwt,
+  });
+  expect(credentialRes.status()).toBe(200);
+  const issued = (await credentialRes.json()) as {
+    credentials?: Array<{ credential?: string }>;
+  };
+  const credential = issued.credentials?.[0]?.credential;
+  if (!credential) {
+    throw new Error("missing credential in issuance response");
   }
+  return credential;
+}
 
+test.describe("OIDC4VP verifier", () => {
   test("verifies an SD-JWT presentation", async ({ request }) => {
     const credential = await issueCredentialForPresentation(request);
 
@@ -113,7 +113,7 @@ test.describe("OIDC4VP verifier", () => {
     if (!jwt) {
       throw new Error("credential missing jwt");
     }
-    const suffix = jwt.slice(-1) === "a" ? "b" : "a";
+    const suffix = jwt.at(-1) === "a" ? "b" : "a";
     const tamperedJwt = `${jwt.slice(0, -1)}${suffix}`;
     const tamperedCredential = [tamperedJwt, ...rest].join("~");
 

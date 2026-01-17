@@ -90,7 +90,7 @@ const developmentNavItems: NavItem[] = [
   },
 ];
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user }: Readonly<AppSidebarProps>) {
   const pathname = usePathname();
   const router = useRouter();
   const web3Enabled = isWeb3Enabled();

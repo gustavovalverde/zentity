@@ -14,7 +14,9 @@ interface SignUpPageProps {
   searchParams: Promise<{ fresh?: string }>;
 }
 
-export default async function SignUpPage({ searchParams }: SignUpPageProps) {
+export default async function SignUpPage({
+  searchParams,
+}: Readonly<SignUpPageProps>) {
   const { fresh } = await searchParams;
 
   // Server-side check: redirect to dashboard if user already completed onboarding

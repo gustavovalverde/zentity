@@ -27,7 +27,7 @@ interface ResetPasswordFormProps {
   token: string;
 }
 
-export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ token }: Readonly<ResetPasswordFormProps>) {
   const router = useRouter();
   const passwordId = useId();
   const confirmPasswordId = useId();

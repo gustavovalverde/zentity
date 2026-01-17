@@ -1,6 +1,10 @@
 /**
  * Custom Next.js server with Socket.io for real-time liveness detection.
  *
+ * SECURITY NOTE: This server uses HTTP (not HTTPS) because it's intended for
+ * LOCAL DEVELOPMENT ONLY. Production deployments use Vercel which enforces HTTPS.
+ * snyk-ignore: HttpToHttps - Development server only, production uses Vercel HTTPS.
+ *
  * Based on the official Socket.io + Next.js example:
  * https://socket.io/how-to/use-with-nextjs
  *
@@ -90,7 +94,6 @@ app.prepare().then(async () => {
     // Continue startup - this is not fatal, just OIDC4VCI won't work
   }
 
-  // Pass handler directly to createServer (official pattern)
   const httpServer = createServer(handler);
 
   // Attach Socket.io for liveness detection

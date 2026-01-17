@@ -140,8 +140,10 @@ test.describe("walt.id Interoperability", () => {
     expect(offerData.offer.grants).toBeDefined();
   });
 
-  test("should send credential offer to walt.id wallet", async ({ request }) => {
-    test.skip(!waltidToken || !waltidWalletId, "walt.id setup failed");
+  test("should send credential offer to walt.id wallet", async ({
+    request,
+  }) => {
+    test.skip(!(waltidToken && waltidWalletId), "walt.id setup failed");
 
     // Seed identity
     await request.post(`${DEMO_HUB_URL}/api/demo/seed`, {
@@ -185,7 +187,7 @@ test.describe("walt.id Interoperability", () => {
   test("should verify credential was stored in walt.id wallet", async ({
     request,
   }) => {
-    test.skip(!waltidToken || !waltidWalletId, "walt.id setup failed");
+    test.skip(!(waltidToken && waltidWalletId), "walt.id setup failed");
 
     // Seed identity
     await request.post(`${DEMO_HUB_URL}/api/demo/seed`, {
@@ -217,7 +219,10 @@ test.describe("walt.id Interoperability", () => {
     );
 
     if (!exchangeRes.ok()) {
-      test.skip(true, "Credential exchange failed - may need protocol adjustments");
+      test.skip(
+        true,
+        "Credential exchange failed - may need protocol adjustments"
+      );
       return;
     }
 

@@ -34,7 +34,10 @@ interface MintFormProps {
   walletAddress: string;
 }
 
-export function MintForm({ networkId, walletAddress }: MintFormProps) {
+export function MintForm({
+  networkId,
+  walletAddress,
+}: Readonly<MintFormProps>) {
   const [amount, setAmount] = useState("");
   const [amountError, setAmountError] = useState<string | null>(null);
   const utils = trpcReact.useUtils();

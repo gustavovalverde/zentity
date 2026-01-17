@@ -20,9 +20,7 @@ export const oidc4idaVerifiedClaims = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => ({
-    userIdIdx: index("oidc4ida_verified_claim_user_id_idx").on(table.userId),
-  })
+  (table) => [index("oidc4ida_verified_claim_user_id_idx").on(table.userId)]
 );
 
 export type Oidc4idaVerifiedClaim = typeof oidc4idaVerifiedClaims.$inferSelect;

@@ -37,7 +37,9 @@ interface DeleteAccountSectionProps {
   email: string;
 }
 
-export function DeleteAccountSection({ email }: DeleteAccountSectionProps) {
+export function DeleteAccountSection({
+  email,
+}: Readonly<DeleteAccountSectionProps>) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");

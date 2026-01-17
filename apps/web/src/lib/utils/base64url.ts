@@ -1,7 +1,7 @@
 import { base64ToBytes, bytesToBase64 } from "./base64";
 
 function normalizeBase64(base64: string): string {
-  const normalized = base64.replace(/-/g, "+").replace(/_/g, "/");
+  const normalized = base64.replaceAll("-", "+").replaceAll("_", "/");
   const padLength = normalized.length % 4;
   if (padLength === 0) {
     return normalized;
@@ -11,9 +11,9 @@ function normalizeBase64(base64: string): string {
 
 export function bytesToBase64Url(bytes: Uint8Array): string {
   return bytesToBase64(bytes)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll(/=+$/g, "");
 }
 
 export function base64UrlToBytes(base64Url: string): Uint8Array {

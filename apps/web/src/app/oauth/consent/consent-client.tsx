@@ -27,10 +27,10 @@ function formatClientId(clientId: string | null): string {
 export function OAuthConsentClient({
   clientId,
   scopeParam,
-}: {
+}: Readonly<{
   clientId: string | null;
   scopeParam: string;
-}) {
+}>) {
   const scopes = useMemo(
     () =>
       scopeParam
@@ -67,7 +67,7 @@ export function OAuthConsentClient({
         throw new Error("Missing redirect URL from consent response.");
       }
 
-      window.location.assign(redirectUri);
+      globalThis.window.location.assign(redirectUri);
     } catch (err) {
       setError(
         err instanceof Error

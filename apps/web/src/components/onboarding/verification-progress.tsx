@@ -63,10 +63,10 @@ type StepStatus = "pending" | "active" | "complete";
 function StepIndicatorIcon({
   status,
   icon,
-}: {
+}: Readonly<{
   status: StepStatus;
   icon: React.ReactNode;
-}) {
+}>) {
   if (status === "complete") {
     return <Check className="h-4 w-4" />;
   }
@@ -80,11 +80,11 @@ function StepIndicator({
   label,
   status,
   icon,
-}: {
+}: Readonly<{
   label: string;
   status: StepStatus;
   icon: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="flex items-center gap-3">
       <div
@@ -135,7 +135,7 @@ interface VerificationProgressProps {
 export const VerificationProgress = memo(function VerificationProgress({
   status,
   hasIdentityDocs,
-}: VerificationProgressProps) {
+}: Readonly<VerificationProgressProps>) {
   const progressStatus = useMemo(() => {
     // Steps for status progression tracking
     // Note: "unlocking-prf" only triggers in fallback flow (passkey already registered)
@@ -183,7 +183,7 @@ export const VerificationProgress = memo(function VerificationProgress({
         "uploading-keys",
         "registering-keys",
       ]),
-      secrets: stepStatus(7, "storing-secrets"),
+      secrets: stepStatus(7, ["storing-secrets"]),
       verify: stepStatus(8, "finalizing-identity"),
       proofs: stepStatus(9, "generating-proofs"),
       store: stepStatus(10, "storing-proofs"),

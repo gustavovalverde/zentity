@@ -42,7 +42,7 @@ interface OpaqueChangePasswordSectionProps {
 
 export function OpaqueChangePasswordSection({
   onPasswordChanged,
-}: OpaqueChangePasswordSectionProps) {
+}: Readonly<OpaqueChangePasswordSectionProps>) {
   const currentPasswordId = useId();
   const newPasswordId = useId();
   const confirmPasswordId = useId();

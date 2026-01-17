@@ -80,7 +80,7 @@ interface NationalityProofInput {
 export async function generateAgeProofNoir(
   input: AgeProofInput
 ): Promise<NoirProofResult> {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("ZK proofs can only be generated in the browser");
   }
 
@@ -123,7 +123,7 @@ export async function generateAgeProofNoir(
 export async function generateDocValidityProofNoir(
   input: DocValidityInput
 ): Promise<NoirProofResult> {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("ZK proofs can only be generated in the browser");
   }
 
@@ -147,7 +147,7 @@ export async function generateDocValidityProofNoir(
 export async function generateFaceMatchProofNoir(
   input: FaceMatchInput
 ): Promise<NoirProofResult> {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("ZK proofs can only be generated in the browser");
   }
 
@@ -189,7 +189,7 @@ export async function generateFaceMatchProofNoir(
 export async function generateNationalityProofNoir(
   input: NationalityProofInput
 ): Promise<NoirProofResult> {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("ZK proofs can only be generated in the browser");
   }
 
@@ -217,7 +217,7 @@ export async function generateNationalityProofNoir(
  * the first proof is needed, reducing perceived latency.
  */
 function _preloadNoirCircuits(): void {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return;
   }
 
@@ -236,7 +236,7 @@ function _preloadNoirCircuits(): void {
  * Check if Noir proving is available in the current environment
  */
 function _isNoirAvailable(): boolean {
-  return typeof window !== "undefined";
+  return globalThis.window !== undefined;
 }
 
 /**

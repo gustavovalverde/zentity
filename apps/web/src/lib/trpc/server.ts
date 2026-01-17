@@ -25,6 +25,8 @@ import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
 
 export type { Logger } from "@/lib/logging/logger";
 
+type SpanAttributes = Record<string, string | number | boolean>;
+
 /** Base context available to all procedures (public and protected). */
 interface TrpcContext {
   req: Request;
@@ -80,7 +82,7 @@ const withTracing = trpc.middleware(({ path, type, input, ctx, next }) => {
   const tracer = getTracer();
   const inputMeta = extractInputMeta(input);
 
-  const attributes: Record<string, string | number | boolean> = {
+  const attributes: SpanAttributes = {
     "rpc.system": "trpc",
     "rpc.method": path,
     "rpc.type": type,

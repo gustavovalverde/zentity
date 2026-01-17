@@ -99,7 +99,7 @@ function parseEncryptedPayload(
 ): EncryptedSecretPayload {
   if (format === "msgpack") {
     const parsed = decode(blob) as Partial<EncryptedSecretPayload>;
-    if (!parsed || parsed.version !== PASSKEY_VAULT_VERSION) {
+    if (parsed?.version !== PASSKEY_VAULT_VERSION) {
       throw new Error("Unsupported encrypted secret version.");
     }
     return {
@@ -113,7 +113,7 @@ function parseEncryptedPayload(
   const parsed = JSON.parse(
     textDecoder.decode(blob)
   ) as EncryptedSecretPayloadJson;
-  if (!parsed || parsed.version !== PASSKEY_VAULT_VERSION) {
+  if (parsed?.version !== PASSKEY_VAULT_VERSION) {
     throw new Error("Unsupported encrypted secret version.");
   }
   return {
@@ -126,7 +126,7 @@ function parseEncryptedPayload(
 
 export function parseWrappedDek(blob: string): WrappedDekPayload {
   const parsed = JSON.parse(blob) as WrappedDekPayload;
-  if (!parsed || parsed.version !== WRAP_VERSION) {
+  if (parsed?.version !== WRAP_VERSION) {
     throw new Error("Unsupported wrapped DEK version.");
   }
   return parsed;

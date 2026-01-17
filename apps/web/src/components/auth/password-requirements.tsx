@@ -54,11 +54,11 @@ function Requirement({
   ok,
   label,
   tone = "neutral",
-}: {
+}: Readonly<{
   ok: boolean;
   label: string;
   tone?: "neutral" | "danger" | "success";
-}) {
+}>) {
   return (
     <div className="flex items-center gap-2 text-xs">
       <span
@@ -88,7 +88,7 @@ export function PasswordRequirements({
   documentNumber,
   breachCheckKey,
   onBreachStatusChange,
-}: {
+}: Readonly<{
   password: string;
   email?: string | null;
   documentNumber?: string | null;
@@ -105,7 +105,7 @@ export function PasswordRequirements({
     status: PwnedStatus["state"],
     checkedPassword: string | null
   ) => void;
-}) {
+}>) {
   const [pwned, setPwned] = useState<PwnedStatus>({ state: "idle" });
   const abortRef = useRef<AbortController | null>(null);
   const checkedPasswordRef = useRef<string | null>(null);
@@ -197,7 +197,10 @@ export function PasswordRequirements({
     onBreachStatusChangeRef.current?.("checking", null);
 
     let isActive = true;
-    const timeoutId = window.setTimeout(() => controller.abort(), 6000);
+    const timeoutId = globalThis.window.setTimeout(
+      () => controller.abort(),
+      6000
+    );
 
     (async () => {
       try {
@@ -234,7 +237,7 @@ export function PasswordRequirements({
 
     return () => {
       isActive = false;
-      window.clearTimeout(timeoutId);
+      globalThis.window.clearTimeout(timeoutId);
       controller.abort();
     };
   }, [breachCheckKey, password]);

@@ -33,7 +33,7 @@ const ARROW_ICONS = {
 export function DirectionalNudge({
   direction,
   className,
-}: DirectionalNudgeProps) {
+}: Readonly<DirectionalNudgeProps>) {
   if (!direction) {
     return null;
   }
@@ -86,11 +86,11 @@ export function DirectionalNudgeContainer({
   children,
   showNudges = false,
   className,
-}: {
-  readonly children: React.ReactNode;
-  readonly showNudges?: boolean;
-  readonly className?: string;
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+  showNudges?: boolean;
+  className?: string;
+}>) {
   return (
     <div
       className={cn(

@@ -56,10 +56,10 @@ interface TxHistoryData {
 function TxDetailLine({
   tx,
   formatAddress,
-}: {
+}: Readonly<{
   tx: Transfer;
   formatAddress: (address: string) => string;
-}) {
+}>) {
   if (tx.type === "transfer_out") {
     return <>To: {formatAddress(tx.to)}</>;
   }
@@ -84,7 +84,7 @@ function TxHistoryContent({
   getTypeLabel,
   formatAddress,
   onMintClick,
-}: {
+}: Readonly<{
   isLoading: boolean;
   error: unknown;
   data: TxHistoryData | undefined;
@@ -92,7 +92,7 @@ function TxHistoryContent({
   getTypeLabel: (type: string) => string;
   formatAddress: (address: string) => string;
   onMintClick?: () => void;
-}) {
+}>) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -182,7 +182,7 @@ export function TxHistory({
   networkId,
   walletAddress,
   onMintClick,
-}: TxHistoryProps) {
+}: Readonly<TxHistoryProps>) {
   const { data, isLoading, error } = trpcReact.token.history.useQuery({
     networkId,
     walletAddress,

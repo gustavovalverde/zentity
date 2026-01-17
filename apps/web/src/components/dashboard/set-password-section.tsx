@@ -41,7 +41,9 @@ interface SetPasswordSectionProps {
  * Component for passwordless users to set an initial password.
  * This enables password sign-in as an alternative to passkeys.
  */
-export function SetPasswordSection({ onPasswordSet }: SetPasswordSectionProps) {
+export function SetPasswordSection({
+  onPasswordSet,
+}: Readonly<SetPasswordSectionProps>) {
   const passwordId = useId();
   const confirmPasswordId = useId();
   const [error, setError] = useState<string | null>(null);

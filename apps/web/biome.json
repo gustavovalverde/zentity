@@ -82,24 +82,14 @@
       }
     },
     {
-      "includes": ["src/app/**/error.tsx"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noShadowRestrictedNames": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["src/components/onboarding/**/*.tsx"],
+      "includes": [
+        "src/components/onboarding/step-id-upload.tsx",
+        "src/components/onboarding/face-verification-card.tsx"
+      ],
       "linter": {
         "rules": {
           "performance": {
             "noImgElement": "off"
-          },
-          "nursery": {
-            "noFloatingPromises": "off"
           }
         }
       }
@@ -135,27 +125,11 @@
       }
     },
     {
-      "includes": [
-        "src/lib/crypto/webauthn-prf.ts",
-        "src/lib/zk/*.ts",
-        "src/lib/blockchain/providers/*.ts",
-        "src/lib/trpc/routers/token.ts",
-        "src/test/passkey-test-utils.ts"
-      ],
+      "includes": ["src/lib/crypto/webauthn-prf.ts"],
       "linter": {
         "rules": {
           "suspicious": {
             "noBitwiseOperators": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["src/lib/fhevm/fhevm-decryption-signature.ts"],
-      "linter": {
-        "rules": {
-          "style": {
-            "useReadonlyClassProperties": "off"
           }
         }
       }

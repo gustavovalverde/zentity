@@ -47,7 +47,7 @@ export function TransparencySection({
   proofTypes = [],
   encryptedAttributes = [],
   signedClaimTypes = [],
-}: TransparencySectionProps) {
+}: Readonly<TransparencySectionProps>) {
   const [isOpen, setIsOpen] = useState(false);
 
   const truncateHash = (hash: string) => {

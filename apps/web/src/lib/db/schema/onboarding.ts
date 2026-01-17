@@ -25,11 +25,7 @@ export const onboardingSessions = sqliteTable(
     updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
     expiresAt: integer("expires_at").notNull(),
   },
-  (table) => ({
-    expiresAtIdx: index("idx_onboarding_sessions_expires_at").on(
-      table.expiresAt
-    ),
-  })
+  (table) => [index("idx_onboarding_sessions_expires_at").on(table.expiresAt)]
 );
 
 export type OnboardingSession = typeof onboardingSessions.$inferSelect;

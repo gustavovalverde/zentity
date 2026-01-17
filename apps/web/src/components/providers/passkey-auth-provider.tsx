@@ -58,7 +58,9 @@ interface PasskeyAuthProviderProps {
   readonly children: ReactNode;
 }
 
-export function PasskeyAuthProvider({ children }: PasskeyAuthProviderProps) {
+export function PasskeyAuthProvider({
+  children,
+}: Readonly<PasskeyAuthProviderProps>) {
   const [state, setState] = useState<PasskeyAuthState>({
     prfSupport: null,
     prfOutput: null,

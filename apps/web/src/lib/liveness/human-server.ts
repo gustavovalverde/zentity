@@ -99,18 +99,16 @@ export function getHumanServer(): Promise<Human> {
   if (humanInstance) {
     return Promise.resolve(humanInstance);
   }
-  if (!initPromise) {
-    initPromise = (async () => {
-      // Load TensorFlow native backend only on the server.
-      await import("@tensorflow/tfjs-node");
-      const mod = await import("@vladmandic/human");
-      const human = new mod.Human(serverConfig);
-      await human.load();
-      await human.warmup();
-      humanInstance = human;
-      return human;
-    })();
-  }
+  initPromise ??= (async () => {
+    // Load TensorFlow native backend only on the server.
+    await import("@tensorflow/tfjs-node");
+    const mod = await import("@vladmandic/human");
+    const human = new mod.Human(serverConfig);
+    await human.load();
+    await human.warmup();
+    humanInstance = human;
+    return human;
+  })();
   return initPromise;
 }
 

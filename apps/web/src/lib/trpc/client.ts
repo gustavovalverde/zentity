@@ -24,6 +24,8 @@ import { createTRPCReact } from "@trpc/react-query";
 
 import { getOnboardingFlowId } from "@/lib/observability/flow-client";
 
+type LogMeta = Record<string, string | number | boolean>;
+
 function getTrpcUrl(): string {
   // Same-origin requests to avoid CORS; routed via Next.js API handler.
   return "/api/trpc";
@@ -73,7 +75,7 @@ const links = [
         opts.direction === "down" && opts.result instanceof Error
           ? opts.result.name
           : undefined;
-      const meta: Record<string, string | number | boolean> = {
+      const meta: LogMeta = {
         direction: opts.direction,
       };
       if (errorName) {

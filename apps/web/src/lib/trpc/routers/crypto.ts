@@ -209,7 +209,7 @@ function computeProofSetHash(args: {
   policyHash: string;
 }): string {
   const hash = crypto.createHash("sha256");
-  const normalized = [...args.proofHashes].sort();
+  const normalized = [...args.proofHashes].sort((a, b) => a.localeCompare(b));
   hash.update(JSON.stringify(normalized));
   hash.update(args.policyHash);
   return hash.digest("hex");

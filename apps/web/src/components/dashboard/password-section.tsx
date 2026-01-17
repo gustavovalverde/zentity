@@ -14,7 +14,9 @@ interface PasswordSectionProps {
  * - OpaqueChangePasswordSection (for users with existing password)
  * - SetPasswordSection (custom, for passwordless users to set initial password)
  */
-export function PasswordSection({ hasPassword }: PasswordSectionProps) {
+export function PasswordSection({
+  hasPassword,
+}: Readonly<PasswordSectionProps>) {
   const router = useRouter();
 
   if (!hasPassword) {

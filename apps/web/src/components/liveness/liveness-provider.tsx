@@ -211,7 +211,7 @@ export function LivenessProvider({
   onVerified,
   onReset,
   onSessionError,
-}: LivenessProviderProps) {
+}: Readonly<LivenessProviderProps>) {
   // Refs to avoid stale closures
   const onVerifiedRef = useRef(onVerified);
   const onResetRef = useRef(onReset);

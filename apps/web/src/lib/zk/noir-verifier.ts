@@ -35,7 +35,7 @@ const CIRCUITS = {
 } as const;
 
 /** Matches one or more digits (for decimal number validation) */
-const DECIMAL_NUMBER_PATTERN = /^[0-9]+$/;
+const DECIMAL_NUMBER_PATTERN = /^\d+$/;
 /** Matches hexadecimal characters (0-9, a-f, A-F) */
 const HEX_CHARS_PATTERN = /^[0-9a-fA-F]+$/;
 
@@ -296,9 +296,7 @@ function ensureBbWorkerPool(): BbWorkerState[] {
     bbWorkerPool.push(null);
   }
   for (let i = 0; i < bbWorkerPoolSize; i += 1) {
-    if (!bbWorkerPool[i]) {
-      bbWorkerPool[i] = spawnBbWorker(i);
-    }
+    bbWorkerPool[i] ??= spawnBbWorker(i);
   }
   return bbWorkerPool.filter(Boolean) as BbWorkerState[];
 }

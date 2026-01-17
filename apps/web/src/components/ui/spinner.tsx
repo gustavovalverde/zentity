@@ -16,7 +16,7 @@ interface SpinnerProps extends Omit<React.ComponentProps<"svg">, "size"> {
   size?: SpinnerSize;
 }
 
-function Spinner({ className, size = "sm", ...props }: SpinnerProps) {
+function Spinner({ className, size = "sm", ...props }: Readonly<SpinnerProps>) {
   return (
     <Loader2Icon
       aria-label="Loading"

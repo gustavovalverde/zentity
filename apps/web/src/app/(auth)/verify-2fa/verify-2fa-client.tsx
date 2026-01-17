@@ -37,7 +37,7 @@ interface VerifyTwoFactorClientProps {
 export function VerifyTwoFactorClient({
   redirectTo,
   totpUri,
-}: VerifyTwoFactorClientProps) {
+}: Readonly<VerifyTwoFactorClientProps>) {
   const isSetup = Boolean(totpUri);
   const [code, setCode] = useState("");
   const [mode, setMode] = useState<"totp" | "backup">("totp");
@@ -123,7 +123,7 @@ export function VerifyTwoFactorClient({
         return;
       }
 
-      window.location.assign(redirectTo);
+      globalThis.window.location.assign(redirectTo);
     } catch (err) {
       const fallbackMessage =
         mode === "totp"

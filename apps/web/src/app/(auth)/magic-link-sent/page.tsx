@@ -16,7 +16,7 @@ interface MagicLinkSentPageProps {
 
 export default async function MagicLinkSentPage({
   searchParams,
-}: MagicLinkSentPageProps) {
+}: Readonly<MagicLinkSentPageProps>) {
   const params = await searchParams;
   const email = params.email || "your email";
 

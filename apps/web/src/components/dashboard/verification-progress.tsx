@@ -42,7 +42,9 @@ interface VerificationProgressProps {
   checks: VerificationChecks;
 }
 
-export function VerificationProgress({ checks }: VerificationProgressProps) {
+export function VerificationProgress({
+  checks,
+}: Readonly<VerificationProgressProps>) {
   const refreshAttemptsRef = useRef(0);
   const shouldPoll = !(checks.fheEncryption || checks.fheError);
   const { data: fheStatus } = trpcReact.identity.fheStatus.useQuery(undefined, {
@@ -90,7 +92,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
       case "liveness_score_fhe_service_unavailable":
         return "Liveness encryption unavailable";
       default:
-        return issue.replace(/_/g, " ");
+        return issue.replaceAll("_", " ");
     }
   };
 
@@ -197,7 +199,7 @@ export function VerificationProgress({ checks }: VerificationProgressProps) {
               : null;
             return (
               <div className="flex items-center gap-3" key={check.id}>
-                <div className="flex-shrink-0">
+                <div className="shrink-0">
                   {(() => {
                     if (check.completed) {
                       return <CheckCircle className="h-5 w-5 text-success" />;

@@ -156,7 +156,9 @@ async function main() {
   startDevServer(contracts);
 }
 
-main().catch((error) => {
+try {
+  await main();
+} catch (error) {
   console.error(error);
   process.exit(1);
-});
+}

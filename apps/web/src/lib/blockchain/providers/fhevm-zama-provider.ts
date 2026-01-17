@@ -13,12 +13,10 @@ import type {
   IAttestationProvider,
 } from "./types";
 
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
+
 import { BaseProvider } from "./base-provider";
-import {
-  categorizeError,
-  getErrorSummary,
-  IDENTITY_REGISTRY_ABI,
-} from "./fhevm-utils";
+import { categorizeError, getErrorSummary } from "./fhevm-utils";
 
 /**
  * Provider for FHEVM networks.
@@ -182,7 +180,7 @@ export class FhevmZamaProvider
       const toHex = (bytes: Uint8Array): `0x${string}` =>
         `0x${Array.from(bytes)
           .map((b) => b.toString(16).padStart(2, "0"))
-          .join("")}` as `0x${string}`;
+          .join("")}`;
 
       // Convert handles and inputProof to hex strings
       const handles = encrypted.handles.map(toHex);
@@ -191,7 +189,7 @@ export class FhevmZamaProvider
       // Submit transaction
       const txHash = await client.writeContract({
         address: contractAddress,
-        abi: IDENTITY_REGISTRY_ABI,
+        abi: IdentityRegistryABI,
         functionName: "attestIdentity",
         args: [
           params.userAddress as `0x${string}`,

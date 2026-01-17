@@ -1,74 +1,89 @@
 "use client";
 
+import type { DemoScenario } from "@/lib/scenarios";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import type { DemoScenario } from "@/lib/scenarios";
 import { cn } from "@/lib/utils";
 
-const CLAIM_EXPLANATIONS: Record<string, { label: string; explanation: string }> = {
+const CLAIM_EXPLANATIONS: Record<
+  string,
+  { label: string; explanation: string }
+> = {
   verification_level: {
     label: "Verification Level",
-    explanation: "The assurance tier achieved (none, basic, full). Enables risk-based access control.",
+    explanation:
+      "The assurance tier achieved (none, basic, full). Enables risk-based access control.",
   },
   verified: {
     label: "Verified",
-    explanation: "Basic compliance gate confirming identity verification was completed.",
+    explanation:
+      "Basic compliance gate confirming identity verification was completed.",
   },
   document_verified: {
     label: "Document Verified",
-    explanation: "Government ID was validated for authenticity and not flagged as fraudulent.",
+    explanation:
+      "Government ID was validated for authenticity and not flagged as fraudulent.",
   },
   liveness_verified: {
     label: "Liveness Verified",
-    explanation: "Real person was present during verification (anti-deepfake, anti-replay).",
+    explanation:
+      "Real person was present during verification (anti-deepfake, anti-replay).",
   },
   age_proof_verified: {
     label: "Age Proof",
-    explanation: "ZK proof that birthdate >= threshold. No actual birthdate revealed.",
+    explanation:
+      "ZK proof that birthdate >= threshold. No actual birthdate revealed.",
   },
   doc_validity_proof_verified: {
     label: "Document Validity",
-    explanation: "ZK proof that document is not expired. No expiry date revealed.",
+    explanation:
+      "ZK proof that document is not expired. No expiry date revealed.",
   },
   nationality_proof_verified: {
     label: "Nationality Proof",
-    explanation: "ZK proof that nationality is in approved country list. No specific country revealed.",
+    explanation:
+      "ZK proof that nationality is in approved country list. No specific country revealed.",
   },
   face_match_verified: {
     label: "Face Match",
-    explanation: "ZK proof that selfie matches document photo. Neither image is shared.",
+    explanation:
+      "ZK proof that selfie matches document photo. Neither image is shared.",
   },
 };
 
-function ClaimBadge({ claim }: { claim: string }) {
+function ClaimBadge({ claim }: Readonly<{ claim: string }>) {
   const info = CLAIM_EXPLANATIONS[claim];
   return (
     <div className="group relative">
-      <Badge variant="outline" className="cursor-help text-xs">
-        {claim.replace(/_/g, " ")}
+      <Badge className="cursor-help text-xs" variant="outline">
+        {claim.replaceAll("_", " ")}
       </Badge>
       {info && (
         <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-2 text-xs opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
           <div className="font-medium text-slate-900">{info.label}</div>
           <div className="mt-1 text-slate-600">{info.explanation}</div>
-          <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-white" />
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-white" />
         </div>
       )}
     </div>
   );
 }
 
-function TechnicalDetails({ children, title }: { children: React.ReactNode; title: string }) {
+function TechnicalDetails({
+  children,
+  title,
+}: Readonly<{ children: React.ReactNode; title: string }>) {
   return (
     <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50/50 text-sm">
       <summary className="cursor-pointer px-3 py-2 font-medium text-slate-700 hover:text-slate-900">
         {title}
       </summary>
-      <div className="border-t border-slate-200 px-3 py-2 text-slate-600">
+      <div className="border-slate-200 border-t px-3 py-2 text-slate-600">
         {children}
       </div>
     </details>
@@ -120,14 +135,27 @@ type RequestResponse = {
   requestId?: string;
 };
 
-const walletUrl =
-  process.env.NEXT_PUBLIC_WALLET_URL ?? "http://localhost:3101";
+const walletUrl = process.env.NEXT_PUBLIC_WALLET_URL ?? "http://localhost:3101";
 const issuerPortalUrl =
   process.env.NEXT_PUBLIC_ZENTITY_BASE_URL ?? "http://localhost:3000";
+
+function sanitizeUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 const demoSubjectEmail =
   process.env.NEXT_PUBLIC_DEMO_SUBJECT_EMAIL ?? "demo-subject@zentity.dev";
 
-export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
+export function ScenarioFlow({
+  scenario,
+}: Readonly<{ scenario: DemoScenario }>) {
   const [status, setStatus] = useState<DemoStatusResponse | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [offerId, setOfferId] = useState<string | null>(null);
@@ -141,12 +169,14 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
 
   const walletOfferUrl = useMemo(() => {
     if (!offerId) return null;
-    return `${walletUrl}/?offerId=${offerId}`;
+    return sanitizeUrl(`${walletUrl}/?offerId=${encodeURIComponent(offerId)}`);
   }, [offerId]);
 
   const walletRequestUrl = useMemo(() => {
     if (!request?.id) return null;
-    return `${walletUrl}/?requestId=${request.id}`;
+    return sanitizeUrl(
+      `${walletUrl}/?requestId=${encodeURIComponent(request.id)}`
+    );
   }, [request]);
 
   const loadStatus = useCallback(async () => {
@@ -218,7 +248,7 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
         }),
       });
       const body = (await res.json()) as RequestResponse;
-      if (!res.ok || !body.request) {
+      if (!(res.ok && body.request)) {
         throw new Error("Unable to create request");
       }
       setRequest(body.request);
@@ -251,36 +281,34 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
       <Card className="border-white/10 bg-white/70 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.6)] backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight">
+            <h2 className="font-semibold text-2xl tracking-tight">
               {scenario.title}
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {scenario.subtitle}
-            </p>
+            <p className="text-muted-foreground text-sm">{scenario.subtitle}</p>
           </div>
-          <Badge variant="outline" className="text-xs">
+          <Badge className="text-xs" variant="outline">
             Assurance: {scenario.assurance}
           </Badge>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-[1.1fr_1fr]">
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">{scenario.purpose}</p>
-            <div className="rounded-xl border border-dashed border-muted/60 bg-muted/30 p-4">
+            <p className="text-muted-foreground text-sm">{scenario.purpose}</p>
+            <div className="rounded-xl border border-muted/60 border-dashed bg-muted/30 p-4">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">Verification</Badge>
-                <span className="text-sm text-muted-foreground">
+                <span className="text-muted-foreground text-sm">
                   Level: {verificationLevel}
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                 {Object.entries(verificationChecks).map(([key, value]) => (
                   <div
-                    key={key}
                     className="flex items-center justify-between rounded-md border border-muted/60 bg-white/50 px-2 py-1"
+                    key={key}
                   >
                     <span className="capitalize">
-                      {key.replace(/_/g, " ")}
+                      {key.replaceAll("_", " ")}
                     </span>
                     <span
                       className={
@@ -292,68 +320,69 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
                   </div>
                 ))}
               </div>
-              <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+              <div className="mt-3 flex items-center justify-between text-muted-foreground text-xs">
                 <span>FHE status</span>
                 <span className="font-medium">{fheStatus}</span>
               </div>
               {statusError && (
-                <p className="mt-2 text-xs text-destructive">{statusError}</p>
+                <p className="mt-2 text-destructive text-xs">{statusError}</p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
+                  data-testid="refresh-status"
+                  onClick={loadStatus}
                   size="sm"
                   variant="outline"
-                  onClick={loadStatus}
-                  data-testid="refresh-status"
                 >
                   Refresh status
                 </Button>
                 <Button
+                  data-testid="seed-demo"
+                  disabled={seedBusy}
+                  onClick={seedDemo}
                   size="sm"
                   variant="secondary"
-                  onClick={seedDemo}
-                  disabled={seedBusy}
-                  data-testid="seed-demo"
                 >
                   {seedBusy ? "Seeding…" : "Seed demo identity"}
                 </Button>
                 <a
-                  href={issuerPortalUrl}
-                  target="_blank"
-                  rel="noreferrer"
                   className={cn(
                     buttonVariants({ size: "sm", variant: "ghost" })
                   )}
+                  href={issuerPortalUrl}
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   Open issuer portal
                 </a>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Demo subject: <span className="font-medium">{demoSubjectEmail}</span>
+              <p className="mt-2 text-muted-foreground text-xs">
+                Demo subject:{" "}
+                <span className="font-medium">{demoSubjectEmail}</span>
               </p>
               {seedError && (
-                <p className="mt-2 text-xs text-destructive">{seedError}</p>
+                <p className="mt-2 text-destructive text-xs">{seedError}</p>
               )}
             </div>
           </div>
 
-          <div className="rounded-xl border border-muted/40 bg-gradient-to-br from-white via-white/80 to-blue-50/60 p-4">
+          <div className="rounded-xl border border-muted/40 bg-linear-to-br from-white via-white/80 to-blue-50/60 p-4">
             <div className="flex items-center justify-between">
               <Badge className="bg-slate-900 text-white">
                 {scenario.highlight}
               </Badge>
             </div>
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p className="mt-3 text-muted-foreground text-sm">
               This scenario issues a verifiable credential, lets the wallet
               selectively disclose only required fields, and verifies the
               presentation against issuer status and assurance rules.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {scenario.requiredClaims.map((claim) => (
-                <ClaimBadge key={claim} claim={claim} />
+                <ClaimBadge claim={claim} key={claim} />
               ))}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-muted-foreground text-xs">
               Hover over claims to see what each proves.
             </p>
           </div>
@@ -363,17 +392,17 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
       <Card className="border-white/10 bg-white/70 p-6 backdrop-blur">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold">Step 1 — Issue credential</h3>
-            <p className="text-sm text-muted-foreground">
+            <h3 className="font-semibold text-lg">Step 1 — Issue credential</h3>
+            <p className="text-muted-foreground text-sm">
               Generate an OIDC4VCI pre-authorized offer.
             </p>
           </div>
           <Button
-            variant="default"
-            size="sm"
-            onClick={createOffer}
-            disabled={offerBusy}
             data-testid="create-offer"
+            disabled={offerBusy}
+            onClick={createOffer}
+            size="sm"
+            variant="default"
           >
             {offerBusy ? "Creating…" : "Create offer"}
           </Button>
@@ -384,42 +413,43 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
             <Badge variant="secondary">Offer ready</Badge>
             {walletOfferUrl && (
               <a
-                href={walletOfferUrl}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="open-wallet-offer"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "sm" })
                 )}
+                data-testid="open-wallet-offer"
+                href={walletOfferUrl}
+                rel="noreferrer"
+                target="_blank"
               >
                 Open wallet to issue
               </a>
             )}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Offer ID: {offerId}
             </span>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             No offer generated yet.
           </p>
         )}
         <TechnicalDetails title="What's happening technically?">
           <div className="space-y-2">
             <p>
-              <strong>OIDC4VCI Pre-authorized Flow:</strong> The issuer creates a
-              credential offer containing a pre-authorized code. This code can be
-              exchanged for an access token without user interaction.
+              <strong>OIDC4VCI Pre-authorized Flow:</strong> The issuer creates
+              a credential offer containing a pre-authorized code. This code can
+              be exchanged for an access token without user interaction.
             </p>
             <p>
-              <strong>Holder Binding:</strong> When the wallet claims the credential,
-              it generates a key pair and proves ownership via a proof JWT. The
-              credential is cryptographically bound to this holder key.
+              <strong>Holder Binding:</strong> When the wallet claims the
+              credential, it generates a key pair and proves ownership via a
+              proof JWT. The credential is cryptographically bound to this
+              holder key.
             </p>
             <p>
-              <strong>SD-JWT Format:</strong> The credential uses Selective Disclosure
-              JWT format—each claim can be independently revealed or hidden during
-              presentation.
+              <strong>SD-JWT Format:</strong> The credential uses Selective
+              Disclosure JWT format—each claim can be independently revealed or
+              hidden during presentation.
             </p>
           </div>
         </TechnicalDetails>
@@ -428,19 +458,19 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
       <Card className="border-white/10 bg-white/70 p-6 backdrop-blur">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold">
+            <h3 className="font-semibold text-lg">
               Step 2 — Request presentation
             </h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Ask the wallet to disclose only required fields.
             </p>
           </div>
           <Button
-            variant="default"
-            size="sm"
-            onClick={createRequest}
-            disabled={requestBusy}
             data-testid="create-request"
+            disabled={requestBusy}
+            onClick={createRequest}
+            size="sm"
+            variant="default"
           >
             {requestBusy ? "Creating…" : "Create request"}
           </Button>
@@ -452,29 +482,29 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
               <Badge variant="secondary">Request {request.status}</Badge>
               {walletRequestUrl && (
                 <a
-                  href={walletRequestUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-testid="open-wallet-request"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "sm" })
                   )}
+                  data-testid="open-wallet-request"
+                  href={walletRequestUrl}
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   Open wallet to present
                 </a>
               )}
               <Button
+                data-testid="refresh-request"
+                onClick={refreshRequest}
                 size="sm"
                 variant="ghost"
-                onClick={refreshRequest}
-                data-testid="refresh-request"
               >
                 Refresh
               </Button>
             </div>
-            <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+            <div className="grid gap-2 text-muted-foreground text-xs md:grid-cols-2">
               {request.requiredClaims.map((claim) => (
-                <ClaimBadge key={claim} claim={claim} />
+                <ClaimBadge claim={claim} key={claim} />
               ))}
             </div>
             {request.status !== "pending" && (
@@ -482,32 +512,33 @@ export function ScenarioFlow({ scenario }: { scenario: DemoScenario }) {
                 <div className="mb-2 font-medium text-emerald-700">
                   Verified — No PII transmitted
                 </div>
-                <pre className="whitespace-pre-wrap text-xs text-muted-foreground">
+                <pre className="whitespace-pre-wrap text-muted-foreground text-xs">
                   {JSON.stringify(request.result ?? {}, null, 2)}
                 </pre>
               </div>
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             No presentation request created yet.
           </p>
         )}
         <TechnicalDetails title="What's happening technically?">
           <div className="space-y-2">
             <p>
-              <strong>OIDC4VP Presentation Request:</strong> The verifier creates a
-              request specifying required claims and a nonce for replay protection.
+              <strong>OIDC4VP Presentation Request:</strong> The verifier
+              creates a request specifying required claims and a nonce for
+              replay protection.
             </p>
             <p>
-              <strong>Selective Disclosure:</strong> The wallet filters the SD-JWT to
-              include only the requested claims. Hidden claims remain cryptographically
-              hidden—the verifier cannot infer them.
+              <strong>Selective Disclosure:</strong> The wallet filters the
+              SD-JWT to include only the requested claims. Hidden claims remain
+              cryptographically hidden—the verifier cannot infer them.
             </p>
             <p>
-              <strong>Verification:</strong> The verifier validates the issuer signature,
-              holder binding, claim presence, and checks the credential status list to
-              ensure it hasn't been revoked.
+              <strong>Verification:</strong> The verifier validates the issuer
+              signature, holder binding, claim presence, and checks the
+              credential status list to ensure it hasn&apos;t been revoked.
             </p>
           </div>
         </TechnicalDetails>

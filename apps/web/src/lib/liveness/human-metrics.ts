@@ -1,8 +1,8 @@
-import type { HumanDetectionResult, HumanFaceResult } from "@/types/human";
-
 import {
   type EmbeddingData,
   getBoxArea,
+  type HumanDetectionResult,
+  type HumanFaceResult,
   normalizeEmbedding,
 } from "@/types/human";
 

@@ -11,6 +11,8 @@ import {
 import { currentSpan, hashIdentifier } from "@/lib/observability/telemetry";
 
 type FlowIdSource = "header" | "cookie" | "query" | "none";
+type SpanAttributeValue = string | number | boolean | undefined;
+type SpanAttributes = Record<string, SpanAttributeValue>;
 
 export interface RequestContext {
   requestId: string;
@@ -77,7 +79,7 @@ export function getRequestLogBindings(
 
 export function getSpanAttributesFromContext(
   context: RequestContext
-): Record<string, string | number | boolean | undefined> {
+): SpanAttributes {
   return {
     "request.id": context.requestId,
     "flow.id_hash": context.flowId ? hashIdentifier(context.flowId) : undefined,

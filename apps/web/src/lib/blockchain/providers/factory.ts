@@ -42,27 +42,21 @@ export function createProvider(networkId: string): IAttestationProvider {
   }
 
   // Create appropriate provider based on network type
+  if (network.type !== "fhevm") {
+    throw new Error(
+      `Unsupported provider type: ${network.type}. Only "fhevm" is supported.`
+    );
+  }
+
+  const providerId = network.providerId ?? "zama";
   let provider: IAttestationProvider;
 
-  switch (network.type) {
-    case "fhevm": {
-      const providerId = network.providerId ?? "zama";
-      switch (providerId) {
-        case "zama":
-          provider = new FhevmZamaProvider(network);
-          break;
-        case "mock":
-          provider = new FhevmMockProvider(network);
-          break;
-        default:
-          throw new Error(`Unknown FHEVM provider: ${providerId}`);
-      }
-      break;
-    }
-    default:
-      throw new Error(
-        `Unsupported provider type: ${network.type}. Only "fhevm" is supported.`
-      );
+  if (providerId === "zama") {
+    provider = new FhevmZamaProvider(network);
+  } else if (providerId === "mock") {
+    provider = new FhevmMockProvider(network);
+  } else {
+    throw new Error(`Unknown FHEVM provider: ${providerId}`);
   }
 
   // Cache and return

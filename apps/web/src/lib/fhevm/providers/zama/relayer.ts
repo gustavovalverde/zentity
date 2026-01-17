@@ -6,78 +6,76 @@ const DEFAULT_ZAMA_SDK_URL = "/fhevm/relayer-sdk-js.umd.js";
 let zamaSdkLoadPromise: Promise<void> | null = null;
 
 async function ensureZamaRelayerSdkLoaded(signal?: AbortSignal): Promise<void> {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     throw new Error("Zama relayer SDK can only be loaded in the browser");
   }
 
-  if (window.relayerSDK) {
+  if (globalThis.window.relayerSDK) {
     return;
   }
 
-  if (!zamaSdkLoadPromise) {
-    const sdkUrl =
-      process.env.NEXT_PUBLIC_FHEVM_ZAMA_SDK_URL || DEFAULT_ZAMA_SDK_URL;
+  const sdkUrl =
+    process.env.NEXT_PUBLIC_FHEVM_ZAMA_SDK_URL || DEFAULT_ZAMA_SDK_URL;
 
-    zamaSdkLoadPromise = new Promise<void>((resolve, reject) => {
-      if (signal?.aborted) {
-        reject(new Error("Zama relayer SDK load aborted"));
-        return;
-      }
+  zamaSdkLoadPromise ??= new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("Zama relayer SDK load aborted"));
+      return;
+    }
 
-      const abortHandler = () => {
-        reject(new Error("Zama relayer SDK load aborted"));
-      };
+    const abortHandler = () => {
+      reject(new Error("Zama relayer SDK load aborted"));
+    };
 
+    if (signal) {
+      signal.addEventListener("abort", abortHandler, { once: true });
+    }
+
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[data-fhevm-sdk="zama"]'
+    );
+
+    const handleLoad = () => {
       if (signal) {
-        signal.addEventListener("abort", abortHandler, { once: true });
+        signal.removeEventListener("abort", abortHandler);
       }
-
-      const existing = document.querySelector<HTMLScriptElement>(
-        'script[data-fhevm-sdk="zama"]'
-      );
-
-      const handleLoad = () => {
-        if (signal) {
-          signal.removeEventListener("abort", abortHandler);
-        }
-        if (!window.relayerSDK) {
-          reject(new Error("Zama relayer SDK failed to initialize"));
-          return;
-        }
-        resolve();
-      };
-
-      if (existing) {
-        if (window.relayerSDK) {
-          resolve();
-          return;
-        }
-        existing.addEventListener("load", handleLoad, { once: true });
-        existing.addEventListener(
-          "error",
-          () => reject(new Error("Failed to load Zama relayer SDK")),
-          { once: true }
-        );
+      if (!globalThis.window.relayerSDK) {
+        reject(new Error("Zama relayer SDK failed to initialize"));
         return;
       }
+      resolve();
+    };
 
-      const script = document.createElement("script");
-      script.src = sdkUrl;
-      script.async = true;
-      script.defer = true;
-      script.dataset.fhevmSdk = "zama";
-      script.addEventListener("load", handleLoad, { once: true });
-      script.addEventListener(
+    if (existing) {
+      if (globalThis.window.relayerSDK) {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", handleLoad, { once: true });
+      existing.addEventListener(
         "error",
         () => reject(new Error("Failed to load Zama relayer SDK")),
         { once: true }
       );
-      document.head.appendChild(script);
-    }).catch((error) => {
-      zamaSdkLoadPromise = null;
-      throw error;
-    });
-  }
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = sdkUrl;
+    script.async = true;
+    script.defer = true;
+    script.dataset.fhevmSdk = "zama";
+    script.addEventListener("load", handleLoad, { once: true });
+    script.addEventListener(
+      "error",
+      () => reject(new Error("Failed to load Zama relayer SDK")),
+      { once: true }
+    );
+    document.head.appendChild(script);
+  }).catch((error) => {
+    zamaSdkLoadPromise = null;
+    throw error;
+  });
 
   if (signal?.aborted) {
     throw new Error("Zama relayer SDK load aborted");
@@ -92,7 +90,7 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
 }) => {
   await ensureZamaRelayerSdkLoaded(signal);
 
-  const sdk = window.relayerSDK;
+  const sdk = globalThis.window.relayerSDK;
   if (!sdk) {
     throw new Error("Zama relayer SDK failed to initialize");
   }
@@ -131,7 +129,7 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
       ? { verifyingContractAddressInputVerification }
       : {}),
     ...(relayerUrl ? { relayerUrl } : {}),
-    network: provider as unknown,
+    network: provider,
   })) as FhevmInstance;
 
   return instance;

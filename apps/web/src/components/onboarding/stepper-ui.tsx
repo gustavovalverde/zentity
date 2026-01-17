@@ -35,7 +35,9 @@ type OnboardingStepper = Stepper<typeof steps>;
  * Renders horizontal step indicators with numbered buttons and separators.
  * Completed steps are clickable (with server validation).
  */
-export function StepperNavigation({ stepper }: { stepper: OnboardingStepper }) {
+export function StepperNavigation({
+  stepper,
+}: Readonly<{ stepper: OnboardingStepper }>) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [pendingBack, setPendingBack] = useState<{
     stepId: StepId;
@@ -237,7 +239,7 @@ export function StepperControls({
   disableNext = false,
   isSubmitting = false,
   hideBack = false,
-}: {
+}: Readonly<{
   stepper: OnboardingStepper;
   onNext?: () => void | Promise<void>;
   onSkip?: () => void | Promise<void>;
@@ -247,7 +249,7 @@ export function StepperControls({
   disableNext?: boolean;
   isSubmitting?: boolean;
   hideBack?: boolean;
-}) {
+}>) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [pendingBack, setPendingBack] = useState<{
     stepId: StepId;
@@ -452,13 +454,13 @@ function BackConfirmDialog({
   isNavigating,
   onConfirm,
   onCancel,
-}: {
+}: Readonly<{
   open: boolean;
   warning?: string;
   isNavigating: boolean;
   onConfirm: () => void;
   onCancel: () => void;
-}) {
+}>) {
   return (
     <Dialog onOpenChange={(isOpen) => !isOpen && onCancel()} open={open}>
       <DialogContent>

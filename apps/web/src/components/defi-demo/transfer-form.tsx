@@ -56,7 +56,7 @@ export function TransferForm({
   networkId,
   contractAddress,
   accessGranted = true,
-}: TransferFormProps) {
+}: Readonly<TransferFormProps>) {
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [recipientChecked, setRecipientChecked] = useState(false);

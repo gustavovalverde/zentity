@@ -21,7 +21,7 @@ export function CredentialChoice({
   onSelect,
   prfSupported,
   disabled = false,
-}: CredentialChoiceProps) {
+}: Readonly<CredentialChoiceProps>) {
   return (
     <div className="space-y-6">
       <div className="text-center">

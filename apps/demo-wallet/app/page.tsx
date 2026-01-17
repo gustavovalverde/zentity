@@ -568,7 +568,7 @@ function WalletPageContent() {
                       key={claim}
                       className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
                     >
-                      {claim.replace(/_/g, " ")}
+                      {claim.replaceAll("_", " ")}
                     </span>
                   ))}
                 </div>
@@ -588,7 +588,7 @@ function WalletPageContent() {
                         key={claim}
                         className="rounded-full bg-emerald-200 px-2 py-0.5 text-xs text-emerald-900"
                       >
-                        {claim.replace(/_/g, " ")}
+                        {claim.replaceAll("_", " ")}
                       </span>
                     ))}
                   </div>

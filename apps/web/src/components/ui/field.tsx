@@ -9,7 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils/utils";
 
-function FieldSet({ className, ...props }: ComponentProps<"fieldset">) {
+function FieldSet({
+  className,
+  ...props
+}: Readonly<ComponentProps<"fieldset">>) {
   return (
     <fieldset
       className={cn(
@@ -27,7 +30,7 @@ function FieldLegend({
   className,
   variant = "legend",
   ...props
-}: ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
+}: Readonly<ComponentProps<"legend"> & { variant?: "legend" | "label" }>) {
   return (
     <legend
       className={cn(
@@ -43,7 +46,7 @@ function FieldLegend({
   );
 }
 
-function FieldGroup({ className, ...props }: ComponentProps<"div">) {
+function FieldGroup({ className, ...props }: Readonly<ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -84,7 +87,7 @@ function Field({
   className,
   orientation = "vertical",
   ...props
-}: ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
+}: Readonly<ComponentProps<"div"> & VariantProps<typeof fieldVariants>>) {
   return (
     <div
       className={cn(fieldVariants({ orientation }), className)}
@@ -96,7 +99,10 @@ function Field({
   );
 }
 
-function FieldContent({ className, ...props }: ComponentProps<"div">) {
+function FieldContent({
+  className,
+  ...props
+}: Readonly<ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -109,7 +115,10 @@ function FieldContent({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-function FieldLabel({ className, ...props }: ComponentProps<typeof Label>) {
+function FieldLabel({
+  className,
+  ...props
+}: Readonly<ComponentProps<typeof Label>>) {
   return (
     <Label
       className={cn(
@@ -124,7 +133,7 @@ function FieldLabel({ className, ...props }: ComponentProps<typeof Label>) {
   );
 }
 
-function FieldTitle({ className, ...props }: ComponentProps<"div">) {
+function FieldTitle({ className, ...props }: Readonly<ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -137,7 +146,10 @@ function FieldTitle({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-function FieldDescription({ className, ...props }: ComponentProps<"p">) {
+function FieldDescription({
+  className,
+  ...props
+}: Readonly<ComponentProps<"p">>) {
   return (
     <p
       className={cn(
@@ -156,7 +168,7 @@ function FieldSeparator({
   children,
   className,
   ...props
-}: ComponentProps<"div"> & { children?: ReactNode }) {
+}: Readonly<ComponentProps<"div"> & { children?: ReactNode }>) {
   return (
     <div
       className={cn(
@@ -185,9 +197,11 @@ function FieldError({
   children,
   errors,
   ...props
-}: ComponentProps<"div"> & {
-  errors?: Array<{ message?: string } | undefined>;
-}) {
+}: Readonly<
+  ComponentProps<"div"> & {
+    errors?: Array<{ message?: string } | undefined>;
+  }
+>) {
   const content = useMemo(() => {
     if (children) {
       return children;

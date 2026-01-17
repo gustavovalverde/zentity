@@ -162,7 +162,14 @@ async function runSql(dbUrl: string, sql: string) {
     }
     const firstKey = Object.keys(row)[0];
     const value = firstKey ? row[firstKey] : undefined;
-    return value === undefined || value === null ? "" : String(value);
+    if (value === undefined || value === null) {
+      return "";
+    }
+    if (typeof value === "object") {
+      return JSON.stringify(value);
+    }
+    const primitive = value as string | number | boolean | bigint;
+    return String(primitive);
   } catch (error) {
     throw new Error(
       `E2E DB query failed: ${error instanceof Error ? error.message : String(error)}`
@@ -181,7 +188,7 @@ async function runSql(dbUrl: string, sql: string) {
 async function seedVerifiedIdentity(dbUrl: string, email: string) {
   const userId = await runSql(
     dbUrl,
-    `SELECT id FROM "user" WHERE email = '${email.replace(/'/g, "''")}';`
+    `SELECT id FROM "user" WHERE email = '${email.replaceAll("'", "''")}';`
   );
 
   if (!userId) {
@@ -191,8 +198,8 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
   const now = new Date().toISOString();
   const documentId = randomUUID();
   const bundleId = userId;
-  const docHash = `doc_${randomUUID().replace(/-/g, "")}`;
-  const nameCommitment = `name_${randomUUID().replace(/-/g, "")}`;
+  const docHash = `doc_${randomUUID().replaceAll("-", "")}`;
+  const nameCommitment = `name_${randomUUID().replaceAll("-", "")}`;
   const policyVersion = "poc-v1";
 
   const identityBundleSql = `
@@ -298,7 +305,7 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
       '${userId}',
       '${documentId}',
       'age_verification',
-      'proof_${randomUUID().replace(/-/g, "")}',
+      'proof_${randomUUID().replaceAll("-", "")}',
       'mock-proof',
       '["${new Date().getFullYear()}","18","${randomUUID()}","1"]',
       1,
@@ -346,7 +353,7 @@ async function seedVerifiedIdentity(dbUrl: string, email: string) {
 async function resetTwoFactor(dbUrl: string, email: string) {
   const userId = await runSql(
     dbUrl,
-    `SELECT id FROM "user" WHERE email = '${email.replace(/'/g, "''")}';`
+    `SELECT id FROM "user" WHERE email = '${email.replaceAll("'", "''")}';`
   );
   if (!userId) {
     return;
@@ -361,7 +368,7 @@ async function resetTwoFactor(dbUrl: string, email: string) {
 async function resetRecoveryState(dbUrl: string, email: string) {
   const userId = await runSql(
     dbUrl,
-    `SELECT id FROM "user" WHERE email = '${email.replace(/'/g, "''")}';`
+    `SELECT id FROM "user" WHERE email = '${email.replaceAll("'", "''")}';`
   );
   if (!userId) {
     return;
@@ -403,9 +410,7 @@ async function resetBlockchainState(dbUrl: string) {
 }
 
 export default async function globalSetup(config: FullConfig) {
-  const baseURL =
-    (config.projects[0]?.use?.baseURL as string | undefined) ??
-    "http://localhost:3000";
+  const baseURL = config.projects[0]?.use?.baseURL ?? "http://localhost:3000";
 
   mkdirSync(dirname(AUTH_STATE_PATH), { recursive: true });
 

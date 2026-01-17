@@ -64,8 +64,8 @@ export function sanitizeLogMessage(message: string): string {
 
   let output = message;
   output = redactEmails(output);
-  output = output.replace(LONG_HEX_PATTERN, "[redacted-hex]");
-  output = output.replace(LONG_DIGIT_PATTERN, "[redacted-number]");
+  output = output.replaceAll(LONG_HEX_PATTERN, "[redacted-hex]");
+  output = output.replaceAll(LONG_DIGIT_PATTERN, "[redacted-number]");
 
   if (output.length > 500) {
     output = `${output.slice(0, 200)}…[truncated:${output.length}]`;
@@ -158,7 +158,7 @@ function isDomainEmailChar(char: string): boolean {
 }
 
 function isAlphaNumeric(char: string): boolean {
-  const code = char.charCodeAt(0);
+  const code = char.codePointAt(0) ?? -1;
   return (
     (code >= 48 && code <= 57) ||
     (code >= 65 && code <= 90) ||

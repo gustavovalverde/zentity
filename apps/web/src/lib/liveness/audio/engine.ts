@@ -18,7 +18,7 @@ const DEBOUNCE_MS: Partial<Record<EarconType, number>> = {
 };
 
 /** Earcons to skip when speech is playing (non-critical) */
-const SKIP_DURING_SPEECH: EarconType[] = [
+const SKIP_DURING_SPEECH = new Set<EarconType>([
   "countdown",
   "countdown3",
   "countdown2",
@@ -26,7 +26,7 @@ const SKIP_DURING_SPEECH: EarconType[] = [
   "challengeProgress",
   "faceDetected",
   "faceLost",
-];
+]);
 
 class LivenessAudioEngine {
   private audioContext: AudioContext | null = null;
@@ -42,7 +42,7 @@ class LivenessAudioEngine {
    * Must be called from a user interaction event due to browser autoplay policies.
    */
   init(): boolean {
-    if (typeof window === "undefined") {
+    if (globalThis.window === undefined) {
       return false;
     }
 
@@ -93,7 +93,7 @@ class LivenessAudioEngine {
     // Skip non-critical earcons during speech to avoid overlap
     if (
       earconType &&
-      SKIP_DURING_SPEECH.includes(earconType) &&
+      SKIP_DURING_SPEECH.has(earconType) &&
       this.speechEngineRef?.isSpeaking()
     ) {
       return;
@@ -198,7 +198,7 @@ class LivenessAudioEngine {
    * Check if audio is supported in this environment.
    */
   isSupported(): boolean {
-    return typeof window !== "undefined" && "AudioContext" in window;
+    return globalThis.window !== undefined && "AudioContext" in globalThis;
   }
 
   /**

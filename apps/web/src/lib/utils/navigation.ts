@@ -1,9 +1,9 @@
 export function redirectTo(path: string): void {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return;
   }
 
-  window.location.assign(path);
+  globalThis.window.location.assign(path);
 }
 
 export function getSafeRedirectPath(

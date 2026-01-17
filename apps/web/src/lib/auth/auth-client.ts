@@ -22,9 +22,9 @@ import { getSafeRedirectPath } from "@/lib/utils/navigation";
 // Node.js v17+ prefers IPv6, so browser may be at [::1] while env says localhost
 const getAuthBaseURL = () => {
   const base =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    globalThis.window === undefined
+      ? process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      : globalThis.window.location.origin;
   return new URL("/api/auth", base).toString();
 };
 
@@ -45,16 +45,16 @@ export const authClient = createAuthClient({
     twoFactorClient({
       // Redirect to 2FA verification page when TOTP is required
       onTwoFactorRedirect: () => {
-        if (typeof window !== "undefined") {
+        if (globalThis.window !== undefined) {
           // Preserve intended destination in URL
-          const redirectTo = new URLSearchParams(window.location.search).get(
-            "redirectTo"
-          );
+          const redirectTo = new URLSearchParams(
+            globalThis.window.location.search
+          ).get("redirectTo");
           const safeRedirect = getSafeRedirectPath(redirectTo, "");
           const url = safeRedirect
             ? `/verify-2fa?redirectTo=${encodeURIComponent(safeRedirect)}`
             : "/verify-2fa";
-          window.location.href = url;
+          globalThis.window.location.href = url;
         }
       },
     }),

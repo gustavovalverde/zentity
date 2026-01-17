@@ -167,10 +167,10 @@ export function StepAccount() {
     if (noirIsolationWarningRef.current) {
       return;
     }
-    if (typeof window === "undefined") {
+    if (globalThis.window === undefined) {
       return;
     }
-    if (window.crossOriginIsolated) {
+    if (globalThis.window.crossOriginIsolated) {
       return;
     }
     noirIsolationWarningRef.current = true;

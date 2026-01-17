@@ -45,13 +45,14 @@ export async function POST(request: NextRequest) {
       iv = bytes.slice(rsaKeyBytes, rsaKeyBytes + 12);
       encryptedData = bytes.slice(rsaKeyBytes + 12);
     } else {
-      iv = Uint8Array.from(atob(encryptedPii.iv), (c) => c.charCodeAt(0));
-      encryptedData = Uint8Array.from(atob(encryptedPii.encryptedData), (c) =>
-        c.charCodeAt(0)
+      iv = Uint8Array.from(atob(encryptedPii.iv), (c) => c.codePointAt(0) ?? 0);
+      encryptedData = Uint8Array.from(
+        atob(encryptedPii.encryptedData),
+        (c) => c.codePointAt(0) ?? 0
       );
       encryptedAesKey = Uint8Array.from(
         atob(encryptedPii.encryptedAesKey),
-        (c) => c.charCodeAt(0)
+        (c) => c.codePointAt(0) ?? 0
       );
     }
 

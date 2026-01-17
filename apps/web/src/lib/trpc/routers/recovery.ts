@@ -92,7 +92,7 @@ function buildRecoveryMessage(params: {
 }
 
 function normalizeOtpCode(code: string): string {
-  return code.replace(/\s+/g, "");
+  return code.replaceAll(/\s+/g, "");
 }
 
 function normalizeRecoveryId(value: string): string {
@@ -100,7 +100,7 @@ function normalizeRecoveryId(value: string): string {
 }
 
 function normalizeBackupCode(code: string): string {
-  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return code.replaceAll(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
 function generateRecoveryId(): string {
@@ -271,7 +271,7 @@ export const recoveryRouter = router({
     }),
 
   addGuardianEmail: protectedProcedure
-    .input(z.object({ email: z.string().email() }))
+    .input(z.object({ email: z.email() }))
     .mutation(async ({ ctx, input }) => {
       const config = await getRecoveryConfigByUserId(ctx.userId);
       if (!config) {
@@ -679,7 +679,7 @@ export const recoveryRouter = router({
         approvalsCount >= config.threshold
       ) {
         const sortedApproved = approved
-          .sort((a, b) => {
+          .toSorted((a, b) => {
             const timeA = new Date(a.approvedAt ?? 0).getTime();
             const timeB = new Date(b.approvedAt ?? 0).getTime();
             return timeA - timeB;
