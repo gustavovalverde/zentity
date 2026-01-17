@@ -402,7 +402,9 @@ mod tests {
             logger
                 .append(
                     AuditEventType::DkgRound1,
-                    AuditActor::Participant { participant_id: i },
+                    AuditActor::Participant {
+                        participant_id: ParticipantId::new_unwrap(i),
+                    },
                     Some(uuid::Uuid::new_v4()),
                     AuditOutcome::Success,
                     None,

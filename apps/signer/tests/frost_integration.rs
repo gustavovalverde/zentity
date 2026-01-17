@@ -13,8 +13,9 @@ use tempfile::TempDir;
 
 use signer_service::config::{Ciphersuite, Settings};
 use signer_service::frost::{
-    Coordinator, DkgInitRequest, DkgRound1Request, DkgRound2Request, GroupKeyRecord, SignerService,
-    SigningAggregateRequest, SigningCommitRequest, SigningInitRequest, SigningSubmitPartialRequest,
+    Coordinator, DkgInitRequest, DkgRound1Request, DkgRound2Request, GroupKeyRecord, ParticipantId,
+    SignerService, SigningAggregateRequest, SigningCommitRequest, SigningInitRequest,
+    SigningSubmitPartialRequest,
 };
 use signer_service::storage::Storage;
 
@@ -33,7 +34,7 @@ fn create_test_coordinator(temp_dir: &TempDir) -> (Coordinator, Storage) {
 fn create_test_signer(
     temp_dir: &TempDir,
     signer_id: &str,
-    participant_id: u16,
+    participant_id: ParticipantId,
     ciphersuite: Ciphersuite,
 ) -> SignerService {
     let db_path = temp_dir.path().join(format!("{signer_id}.redb"));
@@ -51,9 +52,24 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
 
     // Create services
     let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, ciphersuite);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, ciphersuite);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, ciphersuite);
+    let signer1 = create_test_signer(
+        &signer1_dir,
+        "signer-1",
+        ParticipantId::new_unwrap(1),
+        ciphersuite,
+    );
+    let signer2 = create_test_signer(
+        &signer2_dir,
+        "signer-2",
+        ParticipantId::new_unwrap(2),
+        ciphersuite,
+    );
+    let signer3 = create_test_signer(
+        &signer3_dir,
+        "signer-3",
+        ParticipantId::new_unwrap(3),
+        ciphersuite,
+    );
 
     // Get HPKE public keys from signers
     let hpke1 = signer1.hpke_pubkey_base64();
@@ -64,14 +80,23 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
 
     // 1. Initialize DKG session
     let mut participant_endpoints = HashMap::new();
-    participant_endpoints.insert(1, "http://localhost:5101".to_string());
-    participant_endpoints.insert(2, "http://localhost:5102".to_string());
-    participant_endpoints.insert(3, "http://localhost:5103".to_string());
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(1),
+        "http://localhost:5101".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(2),
+        "http://localhost:5102".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(3),
+        "http://localhost:5103".to_string(),
+    );
 
     let mut participant_hpke_pubkeys = HashMap::new();
-    participant_hpke_pubkeys.insert(1, hpke1.clone());
-    participant_hpke_pubkeys.insert(2, hpke2.clone());
-    participant_hpke_pubkeys.insert(3, hpke3.clone());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(1), hpke1.clone());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(2), hpke2.clone());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(3), hpke3.clone());
 
     let init_resp = coordinator
         .init_dkg(DkgInitRequest {
@@ -104,7 +129,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     coordinator
         .submit_round1(DkgRound1Request {
             session_id,
-            participant_id: 1,
+            participant_id: ParticipantId::new_unwrap(1),
             package: r1_resp1.package.clone(),
         })
         .await
@@ -113,7 +138,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     coordinator
         .submit_round1(DkgRound1Request {
             session_id,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             package: r1_resp2.package.clone(),
         })
         .await
@@ -122,7 +147,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     let r1_final = coordinator
         .submit_round1(DkgRound1Request {
             session_id,
-            participant_id: 3,
+            participant_id: ParticipantId::new_unwrap(3),
             package: r1_resp3.package.clone(),
         })
         .await
@@ -132,9 +157,9 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
 
     // Build round1_packages map for signers
     let mut round1_packages = HashMap::new();
-    round1_packages.insert(1, r1_resp1.package.clone());
-    round1_packages.insert(2, r1_resp2.package.clone());
-    round1_packages.insert(3, r1_resp3.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(1), r1_resp1.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(2), r1_resp2.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(3), r1_resp3.package.clone());
 
     // 4. Get round 2 packages from each signer
     let r2_resp1 = signer1
@@ -150,7 +175,11 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
         .expect("Signer 3 round2 failed");
 
     // 5. Submit round 2 packages to coordinator
-    for (from, r2_resp) in [(1u16, &r2_resp1), (2, &r2_resp2), (3, &r2_resp3)] {
+    for (from, r2_resp) in [
+        (ParticipantId::new_unwrap(1), &r2_resp1),
+        (ParticipantId::new_unwrap(2), &r2_resp2),
+        (ParticipantId::new_unwrap(3), &r2_resp3),
+    ] {
         for (&to, pkg) in &r2_resp.packages {
             coordinator
                 .submit_round2(DkgRound2Request {
@@ -166,16 +195,58 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
 
     // 6. Finalize DKG on each signer
     let mut r2_for_1 = HashMap::new();
-    r2_for_1.insert(2, r2_resp2.packages.get(&1).unwrap().clone());
-    r2_for_1.insert(3, r2_resp3.packages.get(&1).unwrap().clone());
+    r2_for_1.insert(
+        ParticipantId::new_unwrap(2),
+        r2_resp2
+            .packages
+            .get(&ParticipantId::new_unwrap(1))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_1.insert(
+        ParticipantId::new_unwrap(3),
+        r2_resp3
+            .packages
+            .get(&ParticipantId::new_unwrap(1))
+            .unwrap()
+            .clone(),
+    );
 
     let mut r2_for_2 = HashMap::new();
-    r2_for_2.insert(1, r2_resp1.packages.get(&2).unwrap().clone());
-    r2_for_2.insert(3, r2_resp3.packages.get(&2).unwrap().clone());
+    r2_for_2.insert(
+        ParticipantId::new_unwrap(1),
+        r2_resp1
+            .packages
+            .get(&ParticipantId::new_unwrap(2))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_2.insert(
+        ParticipantId::new_unwrap(3),
+        r2_resp3
+            .packages
+            .get(&ParticipantId::new_unwrap(2))
+            .unwrap()
+            .clone(),
+    );
 
     let mut r2_for_3 = HashMap::new();
-    r2_for_3.insert(1, r2_resp1.packages.get(&3).unwrap().clone());
-    r2_for_3.insert(2, r2_resp2.packages.get(&3).unwrap().clone());
+    r2_for_3.insert(
+        ParticipantId::new_unwrap(1),
+        r2_resp1
+            .packages
+            .get(&ParticipantId::new_unwrap(3))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_3.insert(
+        ParticipantId::new_unwrap(2),
+        r2_resp2
+            .packages
+            .get(&ParticipantId::new_unwrap(3))
+            .unwrap()
+            .clone(),
+    );
 
     let fin1 = signer1
         .dkg_finalize(&session_id, &round1_packages, &r2_for_1)
@@ -234,7 +305,10 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),
             message: message.clone(),
-            selected_signers: Some(vec![1, 2]),
+            selected_signers: Some(vec![
+                ParticipantId::new_unwrap(1),
+                ParticipantId::new_unwrap(2),
+            ]),
         })
         .await
         .expect("Signing init failed");
@@ -257,7 +331,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     coordinator
         .submit_commitment(SigningCommitRequest {
             session_id: sign_session,
-            participant_id: 1,
+            participant_id: ParticipantId::new_unwrap(1),
             commitment: commit1.commitment.clone(),
         })
         .await
@@ -266,7 +340,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     let commit_resp = coordinator
         .submit_commitment(SigningCommitRequest {
             session_id: sign_session,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             commitment: commit2.commitment.clone(),
         })
         .await
@@ -276,8 +350,8 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
 
     // 4. Generate partial signatures
     let mut all_commitments = HashMap::new();
-    all_commitments.insert(1, commit1.commitment.clone());
-    all_commitments.insert(2, commit2.commitment.clone());
+    all_commitments.insert(ParticipantId::new_unwrap(1), commit1.commitment.clone());
+    all_commitments.insert(ParticipantId::new_unwrap(2), commit2.commitment.clone());
 
     let message_bytes = BASE64.decode(&message).unwrap();
 
@@ -307,7 +381,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     coordinator
         .submit_partial(SigningSubmitPartialRequest {
             session_id: sign_session,
-            participant_id: 1,
+            participant_id: ParticipantId::new_unwrap(1),
             partial_signature: partial1.partial_signature.clone(),
         })
         .await
@@ -316,7 +390,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     let partial_resp = coordinator
         .submit_partial(SigningSubmitPartialRequest {
             session_id: sign_session,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             partial_signature: partial2.partial_signature.clone(),
         })
         .await
@@ -360,19 +434,43 @@ async fn test_dkg_with_3_of_3_threshold() {
     let signer3_dir = TempDir::new().unwrap();
 
     let (coordinator, _coordinator_storage) = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
+    let signer1 = create_test_signer(
+        &signer1_dir,
+        "signer-1",
+        ParticipantId::new_unwrap(1),
+        Ciphersuite::Secp256k1,
+    );
+    let signer2 = create_test_signer(
+        &signer2_dir,
+        "signer-2",
+        ParticipantId::new_unwrap(2),
+        Ciphersuite::Secp256k1,
+    );
+    let signer3 = create_test_signer(
+        &signer3_dir,
+        "signer-3",
+        ParticipantId::new_unwrap(3),
+        Ciphersuite::Secp256k1,
+    );
 
     let mut participant_endpoints = HashMap::new();
-    participant_endpoints.insert(1, "http://localhost:5101".to_string());
-    participant_endpoints.insert(2, "http://localhost:5102".to_string());
-    participant_endpoints.insert(3, "http://localhost:5103".to_string());
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(1),
+        "http://localhost:5101".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(2),
+        "http://localhost:5102".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(3),
+        "http://localhost:5103".to_string(),
+    );
 
     let mut participant_hpke_pubkeys = HashMap::new();
-    participant_hpke_pubkeys.insert(1, signer1.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(2, signer2.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(3, signer3.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(1), signer1.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(2), signer2.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(3), signer3.hpke_pubkey_base64());
 
     // Initialize with 3-of-3 threshold
     let init_resp = coordinator
@@ -397,19 +495,43 @@ async fn test_invalid_participant_rejected() {
     let signer3_dir = TempDir::new().unwrap();
 
     let (coordinator, _coordinator_storage) = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
+    let signer1 = create_test_signer(
+        &signer1_dir,
+        "signer-1",
+        ParticipantId::new_unwrap(1),
+        Ciphersuite::Secp256k1,
+    );
+    let signer2 = create_test_signer(
+        &signer2_dir,
+        "signer-2",
+        ParticipantId::new_unwrap(2),
+        Ciphersuite::Secp256k1,
+    );
+    let signer3 = create_test_signer(
+        &signer3_dir,
+        "signer-3",
+        ParticipantId::new_unwrap(3),
+        Ciphersuite::Secp256k1,
+    );
 
     let mut participant_endpoints = HashMap::new();
-    participant_endpoints.insert(1, "http://localhost:5101".to_string());
-    participant_endpoints.insert(2, "http://localhost:5102".to_string());
-    participant_endpoints.insert(3, "http://localhost:5103".to_string());
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(1),
+        "http://localhost:5101".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(2),
+        "http://localhost:5102".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(3),
+        "http://localhost:5103".to_string(),
+    );
 
     let mut participant_hpke_pubkeys = HashMap::new();
-    participant_hpke_pubkeys.insert(1, signer1.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(2, signer2.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(3, signer3.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(1), signer1.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(2), signer2.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(3), signer3.hpke_pubkey_base64());
 
     let init_resp = coordinator
         .init_dkg(DkgInitRequest {
@@ -426,7 +548,7 @@ async fn test_invalid_participant_rejected() {
     let result = coordinator
         .submit_round1(DkgRound1Request {
             session_id: init_resp.session_id,
-            participant_id: 99,
+            participant_id: ParticipantId::new_unwrap(99),
             package: "invalid".to_string(),
         })
         .await;
@@ -449,20 +571,44 @@ async fn test_signing_with_different_signer_subset() {
     let signer3_dir = TempDir::new().unwrap();
 
     let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
+    let signer1 = create_test_signer(
+        &signer1_dir,
+        "signer-1",
+        ParticipantId::new_unwrap(1),
+        Ciphersuite::Secp256k1,
+    );
+    let signer2 = create_test_signer(
+        &signer2_dir,
+        "signer-2",
+        ParticipantId::new_unwrap(2),
+        Ciphersuite::Secp256k1,
+    );
+    let signer3 = create_test_signer(
+        &signer3_dir,
+        "signer-3",
+        ParticipantId::new_unwrap(3),
+        Ciphersuite::Secp256k1,
+    );
 
     // Setup participants
     let mut participant_endpoints = HashMap::new();
-    participant_endpoints.insert(1, "http://localhost:5101".to_string());
-    participant_endpoints.insert(2, "http://localhost:5102".to_string());
-    participant_endpoints.insert(3, "http://localhost:5103".to_string());
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(1),
+        "http://localhost:5101".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(2),
+        "http://localhost:5102".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(3),
+        "http://localhost:5103".to_string(),
+    );
 
     let mut participant_hpke_pubkeys = HashMap::new();
-    participant_hpke_pubkeys.insert(1, signer1.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(2, signer2.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(3, signer3.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(1), signer1.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(2), signer2.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(3), signer3.hpke_pubkey_base64());
 
     // Complete DKG with all 3 signers
     let init = coordinator
@@ -484,14 +630,14 @@ async fn test_signing_with_different_signer_subset() {
     let r1_3 = signer3.dkg_round1(&session_id, 2, 3).unwrap();
 
     let mut round1_packages = HashMap::new();
-    round1_packages.insert(1, r1_1.package.clone());
-    round1_packages.insert(2, r1_2.package.clone());
-    round1_packages.insert(3, r1_3.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(1), r1_1.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(2), r1_2.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(3), r1_3.package.clone());
 
     coordinator
         .submit_round1(DkgRound1Request {
             session_id,
-            participant_id: 1,
+            participant_id: ParticipantId::new_unwrap(1),
             package: r1_1.package.clone(),
         })
         .await
@@ -499,7 +645,7 @@ async fn test_signing_with_different_signer_subset() {
     coordinator
         .submit_round1(DkgRound1Request {
             session_id,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             package: r1_2.package.clone(),
         })
         .await
@@ -507,7 +653,7 @@ async fn test_signing_with_different_signer_subset() {
     coordinator
         .submit_round1(DkgRound1Request {
             session_id,
-            participant_id: 3,
+            participant_id: ParticipantId::new_unwrap(3),
             package: r1_3.package.clone(),
         })
         .await
@@ -525,7 +671,11 @@ async fn test_signing_with_different_signer_subset() {
         .unwrap();
 
     // Submit all round2 packages
-    for (from, r2_resp) in [(1u16, &r2_1), (2, &r2_2), (3, &r2_3)] {
+    for (from, r2_resp) in [
+        (ParticipantId::new_unwrap(1), &r2_1),
+        (ParticipantId::new_unwrap(2), &r2_2),
+        (ParticipantId::new_unwrap(3), &r2_3),
+    ] {
         for (&to, pkg) in &r2_resp.packages {
             coordinator
                 .submit_round2(DkgRound2Request {
@@ -541,16 +691,52 @@ async fn test_signing_with_different_signer_subset() {
 
     // Finalize
     let mut r2_for_1 = HashMap::new();
-    r2_for_1.insert(2, r2_2.packages.get(&1).unwrap().clone());
-    r2_for_1.insert(3, r2_3.packages.get(&1).unwrap().clone());
+    r2_for_1.insert(
+        ParticipantId::new_unwrap(2),
+        r2_2.packages
+            .get(&ParticipantId::new_unwrap(1))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_1.insert(
+        ParticipantId::new_unwrap(3),
+        r2_3.packages
+            .get(&ParticipantId::new_unwrap(1))
+            .unwrap()
+            .clone(),
+    );
 
     let mut r2_for_2 = HashMap::new();
-    r2_for_2.insert(1, r2_1.packages.get(&2).unwrap().clone());
-    r2_for_2.insert(3, r2_3.packages.get(&2).unwrap().clone());
+    r2_for_2.insert(
+        ParticipantId::new_unwrap(1),
+        r2_1.packages
+            .get(&ParticipantId::new_unwrap(2))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_2.insert(
+        ParticipantId::new_unwrap(3),
+        r2_3.packages
+            .get(&ParticipantId::new_unwrap(2))
+            .unwrap()
+            .clone(),
+    );
 
     let mut r2_for_3 = HashMap::new();
-    r2_for_3.insert(1, r2_1.packages.get(&3).unwrap().clone());
-    r2_for_3.insert(2, r2_2.packages.get(&3).unwrap().clone());
+    r2_for_3.insert(
+        ParticipantId::new_unwrap(1),
+        r2_1.packages
+            .get(&ParticipantId::new_unwrap(3))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_3.insert(
+        ParticipantId::new_unwrap(2),
+        r2_2.packages
+            .get(&ParticipantId::new_unwrap(3))
+            .unwrap()
+            .clone(),
+    );
 
     let fin1 = signer1
         .dkg_finalize(&session_id, &round1_packages, &r2_for_1)
@@ -585,7 +771,10 @@ async fn test_signing_with_different_signer_subset() {
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),
             message: message.clone(),
-            selected_signers: Some(vec![2, 3]), // Note: not signer 1
+            selected_signers: Some(vec![
+                ParticipantId::new_unwrap(2),
+                ParticipantId::new_unwrap(3),
+            ]), // Note: not signer 1
         })
         .await
         .unwrap();
@@ -605,7 +794,7 @@ async fn test_signing_with_different_signer_subset() {
     coordinator
         .submit_commitment(SigningCommitRequest {
             session_id: sign_session,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             commitment: commit2.commitment.clone(),
         })
         .await
@@ -613,7 +802,7 @@ async fn test_signing_with_different_signer_subset() {
     coordinator
         .submit_commitment(SigningCommitRequest {
             session_id: sign_session,
-            participant_id: 3,
+            participant_id: ParticipantId::new_unwrap(3),
             commitment: commit3.commitment.clone(),
         })
         .await
@@ -621,8 +810,8 @@ async fn test_signing_with_different_signer_subset() {
 
     // Partial signatures from signers 2 and 3
     let mut all_commitments = HashMap::new();
-    all_commitments.insert(2, commit2.commitment.clone());
-    all_commitments.insert(3, commit3.commitment.clone());
+    all_commitments.insert(ParticipantId::new_unwrap(2), commit2.commitment.clone());
+    all_commitments.insert(ParticipantId::new_unwrap(3), commit3.commitment.clone());
 
     let message_bytes = BASE64.decode(&message).unwrap();
 
@@ -650,7 +839,7 @@ async fn test_signing_with_different_signer_subset() {
     coordinator
         .submit_partial(SigningSubmitPartialRequest {
             session_id: sign_session,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             partial_signature: partial2.partial_signature,
         })
         .await
@@ -658,7 +847,7 @@ async fn test_signing_with_different_signer_subset() {
     coordinator
         .submit_partial(SigningSubmitPartialRequest {
             session_id: sign_session,
-            participant_id: 3,
+            participant_id: ParticipantId::new_unwrap(3),
             partial_signature: partial3.partial_signature,
         })
         .await
@@ -677,6 +866,282 @@ async fn test_signing_with_different_signer_subset() {
     println!("Signing with 2+3 succeeded!");
 }
 
+/// Test that submit_partial rejects expired sessions.
+#[tokio::test]
+async fn test_submit_partial_rejects_expired_session() {
+    let coord_dir = TempDir::new().unwrap();
+
+    let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
+
+    // Store a group key for signing
+    let group_pubkey = "test_group_pubkey_for_expiry_test";
+    coordinator_storage
+        .put_group_key(
+            group_pubkey,
+            &GroupKeyRecord {
+                group_pubkey: group_pubkey.to_string(),
+                public_key_package: "fake_package".to_string(),
+                ciphersuite: Ciphersuite::Secp256k1,
+                threshold: 2,
+                total_participants: 2,
+                created_at: chrono::Utc::now(),
+            },
+        )
+        .unwrap();
+
+    // Initialize signing session
+    let message = BASE64.encode("Test message");
+    let sign_init = coordinator
+        .init_signing(SigningInitRequest {
+            group_pubkey: group_pubkey.to_string(),
+            message: message.clone(),
+            selected_signers: Some(vec![
+                ParticipantId::new_unwrap(1),
+                ParticipantId::new_unwrap(2),
+            ]),
+        })
+        .await
+        .unwrap();
+
+    let sign_session = sign_init.session_id;
+
+    // Modify session to be expired AND in AwaitingPartials state with fake commitments
+    let mut session: signer_service::frost::SigningSession = coordinator_storage
+        .get_signing_session(&sign_session.to_string())
+        .unwrap()
+        .unwrap();
+    session.expires_at = chrono::Utc::now() - chrono::Duration::hours(1);
+    session.state = signer_service::frost::SigningState::AwaitingPartials;
+    session.commitments.insert(
+        ParticipantId::new_unwrap(1),
+        "fake_commitment_1".to_string(),
+    );
+    session.commitments.insert(
+        ParticipantId::new_unwrap(2),
+        "fake_commitment_2".to_string(),
+    );
+    coordinator_storage
+        .put_signing_session(&sign_session.to_string(), &session)
+        .unwrap();
+
+    // Attempt to submit partial - should fail with SessionExpired
+    let result = coordinator
+        .submit_partial(SigningSubmitPartialRequest {
+            session_id: sign_session,
+            participant_id: ParticipantId::new_unwrap(1),
+            partial_signature: "fake_partial".to_string(),
+        })
+        .await;
+
+    assert!(result.is_err(), "Should reject expired session");
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("expired"),
+        "Error should mention expiry: {err}"
+    );
+}
+
+/// Test that finalize_dkg rejects expired sessions.
+#[tokio::test]
+async fn test_finalize_dkg_rejects_expired_session() {
+    let coord_dir = TempDir::new().unwrap();
+    let signer1_dir = TempDir::new().unwrap();
+    let signer2_dir = TempDir::new().unwrap();
+
+    let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
+    let signer1 = create_test_signer(
+        &signer1_dir,
+        "signer-1",
+        ParticipantId::new_unwrap(1),
+        Ciphersuite::Secp256k1,
+    );
+    let signer2 = create_test_signer(
+        &signer2_dir,
+        "signer-2",
+        ParticipantId::new_unwrap(2),
+        Ciphersuite::Secp256k1,
+    );
+
+    let mut participant_endpoints = HashMap::new();
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(1),
+        "http://localhost:5101".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(2),
+        "http://localhost:5102".to_string(),
+    );
+
+    let mut participant_hpke_pubkeys = HashMap::new();
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(1), signer1.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(2), signer2.hpke_pubkey_base64());
+
+    // Initialize DKG
+    let init = coordinator
+        .init_dkg(DkgInitRequest {
+            threshold: 2,
+            total_participants: 2,
+            ciphersuite: Ciphersuite::default(),
+            participant_endpoints: Some(participant_endpoints),
+            participant_hpke_pubkeys: participant_hpke_pubkeys.clone(),
+        })
+        .await
+        .unwrap();
+
+    let session_id = init.session_id;
+
+    // Complete round 1
+    let r1_1 = signer1.dkg_round1(&session_id, 2, 2).unwrap();
+    let r1_2 = signer2.dkg_round1(&session_id, 2, 2).unwrap();
+
+    coordinator
+        .submit_round1(DkgRound1Request {
+            session_id,
+            participant_id: ParticipantId::new_unwrap(1),
+            package: r1_1.package.clone(),
+        })
+        .await
+        .unwrap();
+    coordinator
+        .submit_round1(DkgRound1Request {
+            session_id,
+            participant_id: ParticipantId::new_unwrap(2),
+            package: r1_2.package.clone(),
+        })
+        .await
+        .unwrap();
+
+    // Complete round 2
+    let mut round1_packages = HashMap::new();
+    round1_packages.insert(ParticipantId::new_unwrap(1), r1_1.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(2), r1_2.package.clone());
+
+    let r2_1 = signer1
+        .dkg_round2(&session_id, &round1_packages, &participant_hpke_pubkeys)
+        .unwrap();
+    let r2_2 = signer2
+        .dkg_round2(&session_id, &round1_packages, &participant_hpke_pubkeys)
+        .unwrap();
+
+    for (from, r2_resp) in [
+        (ParticipantId::new_unwrap(1), &r2_1),
+        (ParticipantId::new_unwrap(2), &r2_2),
+    ] {
+        for (&to, pkg) in &r2_resp.packages {
+            coordinator
+                .submit_round2(DkgRound2Request {
+                    session_id,
+                    from_participant_id: from,
+                    to_participant_id: to,
+                    encrypted_package: pkg.clone(),
+                })
+                .await
+                .unwrap();
+        }
+    }
+
+    // Modify session to be expired
+    let mut session: signer_service::frost::DkgSession = coordinator_storage
+        .get_dkg_session(&session_id.to_string())
+        .unwrap()
+        .unwrap();
+    session.expires_at = chrono::Utc::now() - chrono::Duration::hours(1);
+    coordinator_storage
+        .put_dkg_session(&session_id.to_string(), &session)
+        .unwrap();
+
+    // Attempt to finalize - should fail with SessionExpired
+    let result = coordinator
+        .finalize_dkg(signer_service::frost::DkgFinalizeRequest { session_id })
+        .await;
+
+    assert!(result.is_err(), "Should reject expired session");
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("expired"),
+        "Error should mention expiry: {err}"
+    );
+}
+
+/// Test that aggregate_signatures rejects expired sessions.
+#[tokio::test]
+async fn test_aggregate_signatures_rejects_expired_session() {
+    let coord_dir = TempDir::new().unwrap();
+
+    let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
+
+    // Store a group key for signing
+    let group_pubkey = "test_group_pubkey_for_agg_expiry_test";
+    coordinator_storage
+        .put_group_key(
+            group_pubkey,
+            &GroupKeyRecord {
+                group_pubkey: group_pubkey.to_string(),
+                public_key_package: "fake_package".to_string(),
+                ciphersuite: Ciphersuite::Secp256k1,
+                threshold: 2,
+                total_participants: 2,
+                created_at: chrono::Utc::now(),
+            },
+        )
+        .unwrap();
+
+    // Initialize signing session
+    let message = BASE64.encode("Test message for aggregation expiry");
+    let sign_init = coordinator
+        .init_signing(SigningInitRequest {
+            group_pubkey: group_pubkey.to_string(),
+            message: message.clone(),
+            selected_signers: Some(vec![
+                ParticipantId::new_unwrap(1),
+                ParticipantId::new_unwrap(2),
+            ]),
+        })
+        .await
+        .unwrap();
+
+    let sign_session = sign_init.session_id;
+
+    // Modify session to be expired and in AwaitingPartials state with fake partials
+    let mut session: signer_service::frost::SigningSession = coordinator_storage
+        .get_signing_session(&sign_session.to_string())
+        .unwrap()
+        .unwrap();
+    session.expires_at = chrono::Utc::now() - chrono::Duration::hours(1);
+    session.state = signer_service::frost::SigningState::AwaitingPartials;
+    session.commitments.insert(
+        ParticipantId::new_unwrap(1),
+        "fake_commitment_1".to_string(),
+    );
+    session.commitments.insert(
+        ParticipantId::new_unwrap(2),
+        "fake_commitment_2".to_string(),
+    );
+    session
+        .partial_signatures
+        .insert(ParticipantId::new_unwrap(1), "fake_partial_1".to_string());
+    session
+        .partial_signatures
+        .insert(ParticipantId::new_unwrap(2), "fake_partial_2".to_string());
+    coordinator_storage
+        .put_signing_session(&sign_session.to_string(), &session)
+        .unwrap();
+
+    // Attempt to aggregate - should fail with SessionExpired
+    let result = coordinator
+        .aggregate_signatures(SigningAggregateRequest {
+            session_id: sign_session,
+        })
+        .await;
+
+    assert!(result.is_err(), "Should reject expired session");
+    let err = result.unwrap_err();
+    assert!(
+        err.to_string().contains("expired"),
+        "Error should mention expiry: {err}"
+    );
+}
+
 /// Test that invalid signature shares correctly identify the culprit participant.
 ///
 /// This test exercises the error path in `aggregate_signatures` when a participant
@@ -691,20 +1156,44 @@ async fn test_invalid_signature_share_identifies_culprit() {
     let signer3_dir = TempDir::new().unwrap();
 
     let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
-    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
-    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
-    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
+    let signer1 = create_test_signer(
+        &signer1_dir,
+        "signer-1",
+        ParticipantId::new_unwrap(1),
+        Ciphersuite::Secp256k1,
+    );
+    let signer2 = create_test_signer(
+        &signer2_dir,
+        "signer-2",
+        ParticipantId::new_unwrap(2),
+        Ciphersuite::Secp256k1,
+    );
+    let signer3 = create_test_signer(
+        &signer3_dir,
+        "signer-3",
+        ParticipantId::new_unwrap(3),
+        Ciphersuite::Secp256k1,
+    );
 
     // Setup participants
     let mut participant_endpoints = HashMap::new();
-    participant_endpoints.insert(1, "http://localhost:5101".to_string());
-    participant_endpoints.insert(2, "http://localhost:5102".to_string());
-    participant_endpoints.insert(3, "http://localhost:5103".to_string());
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(1),
+        "http://localhost:5101".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(2),
+        "http://localhost:5102".to_string(),
+    );
+    participant_endpoints.insert(
+        ParticipantId::new_unwrap(3),
+        "http://localhost:5103".to_string(),
+    );
 
     let mut participant_hpke_pubkeys = HashMap::new();
-    participant_hpke_pubkeys.insert(1, signer1.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(2, signer2.hpke_pubkey_base64());
-    participant_hpke_pubkeys.insert(3, signer3.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(1), signer1.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(2), signer2.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(ParticipantId::new_unwrap(3), signer3.hpke_pubkey_base64());
 
     // === Complete DKG ===
     let init = coordinator
@@ -726,9 +1215,9 @@ async fn test_invalid_signature_share_identifies_culprit() {
     let r1_3 = signer3.dkg_round1(&session_id, 2, 3).unwrap();
 
     let mut round1_packages = HashMap::new();
-    round1_packages.insert(1, r1_1.package.clone());
-    round1_packages.insert(2, r1_2.package.clone());
-    round1_packages.insert(3, r1_3.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(1), r1_1.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(2), r1_2.package.clone());
+    round1_packages.insert(ParticipantId::new_unwrap(3), r1_3.package.clone());
 
     for (id, pkg) in &round1_packages {
         coordinator
@@ -752,7 +1241,11 @@ async fn test_invalid_signature_share_identifies_culprit() {
         .dkg_round2(&session_id, &round1_packages, &participant_hpke_pubkeys)
         .unwrap();
 
-    for (from, r2_resp) in [(1u16, &r2_1), (2, &r2_2), (3, &r2_3)] {
+    for (from, r2_resp) in [
+        (ParticipantId::new_unwrap(1), &r2_1),
+        (ParticipantId::new_unwrap(2), &r2_2),
+        (ParticipantId::new_unwrap(3), &r2_3),
+    ] {
         for (&to, pkg) in &r2_resp.packages {
             coordinator
                 .submit_round2(DkgRound2Request {
@@ -768,12 +1261,36 @@ async fn test_invalid_signature_share_identifies_culprit() {
 
     // Finalize
     let mut r2_for_1 = HashMap::new();
-    r2_for_1.insert(2, r2_2.packages.get(&1).unwrap().clone());
-    r2_for_1.insert(3, r2_3.packages.get(&1).unwrap().clone());
+    r2_for_1.insert(
+        ParticipantId::new_unwrap(2),
+        r2_2.packages
+            .get(&ParticipantId::new_unwrap(1))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_1.insert(
+        ParticipantId::new_unwrap(3),
+        r2_3.packages
+            .get(&ParticipantId::new_unwrap(1))
+            .unwrap()
+            .clone(),
+    );
 
     let mut r2_for_2 = HashMap::new();
-    r2_for_2.insert(1, r2_1.packages.get(&2).unwrap().clone());
-    r2_for_2.insert(3, r2_3.packages.get(&2).unwrap().clone());
+    r2_for_2.insert(
+        ParticipantId::new_unwrap(1),
+        r2_1.packages
+            .get(&ParticipantId::new_unwrap(2))
+            .unwrap()
+            .clone(),
+    );
+    r2_for_2.insert(
+        ParticipantId::new_unwrap(3),
+        r2_3.packages
+            .get(&ParticipantId::new_unwrap(2))
+            .unwrap()
+            .clone(),
+    );
 
     let fin1 = signer1
         .dkg_finalize(&session_id, &round1_packages, &r2_for_1)
@@ -804,7 +1321,10 @@ async fn test_invalid_signature_share_identifies_culprit() {
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),
             message: message.clone(),
-            selected_signers: Some(vec![1, 2]),
+            selected_signers: Some(vec![
+                ParticipantId::new_unwrap(1),
+                ParticipantId::new_unwrap(2),
+            ]),
         })
         .await
         .unwrap();
@@ -824,7 +1344,7 @@ async fn test_invalid_signature_share_identifies_culprit() {
     coordinator
         .submit_commitment(SigningCommitRequest {
             session_id: sign_session,
-            participant_id: 1,
+            participant_id: ParticipantId::new_unwrap(1),
             commitment: commit1.commitment.clone(),
         })
         .await
@@ -832,7 +1352,7 @@ async fn test_invalid_signature_share_identifies_culprit() {
     coordinator
         .submit_commitment(SigningCommitRequest {
             session_id: sign_session,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             commitment: commit2.commitment.clone(),
         })
         .await
@@ -840,8 +1360,8 @@ async fn test_invalid_signature_share_identifies_culprit() {
 
     // Get partial signatures
     let mut all_commitments = HashMap::new();
-    all_commitments.insert(1, commit1.commitment.clone());
-    all_commitments.insert(2, commit2.commitment.clone());
+    all_commitments.insert(ParticipantId::new_unwrap(1), commit1.commitment.clone());
+    all_commitments.insert(ParticipantId::new_unwrap(2), commit2.commitment.clone());
 
     let message_bytes = BASE64.decode(&message).unwrap();
 
@@ -871,7 +1391,7 @@ async fn test_invalid_signature_share_identifies_culprit() {
     coordinator
         .submit_partial(SigningSubmitPartialRequest {
             session_id: sign_session,
-            participant_id: 1,
+            participant_id: ParticipantId::new_unwrap(1),
             partial_signature: partial1.partial_signature,
         })
         .await
@@ -889,7 +1409,7 @@ async fn test_invalid_signature_share_identifies_culprit() {
     coordinator
         .submit_partial(SigningSubmitPartialRequest {
             session_id: sign_session,
-            participant_id: 2,
+            participant_id: ParticipantId::new_unwrap(2),
             partial_signature: corrupted_partial,
         })
         .await

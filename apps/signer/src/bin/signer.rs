@@ -62,11 +62,14 @@ async fn main() -> std::io::Result<()> {
         .map_or_else(|| "unknown".to_string(), String::from);
 
     // Parse participant ID from signer_id (e.g., "signer-1" -> 1)
-    let participant_id: u16 = signer_id
-        .split('-')
-        .next_back()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    let participant_id = signer_service::frost::types::ParticipantId::new(
+        signer_id
+            .split('-')
+            .next_back()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1),
+    )
+    .expect("Participant ID cannot be 0");
 
     let ciphersuite = settings.ciphersuite();
     let jwt_verification_enabled = settings.jwks_url().is_some();
