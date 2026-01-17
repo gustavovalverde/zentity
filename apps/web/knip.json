@@ -8,23 +8,26 @@
     "src/lib/zk/noir-worker-manager.ts",
     "scripts/**",
     "public/coi-serviceworker.js",
-    "src/test/client-only.ts",
-    "src/test/server-only.ts"
+    "src/test/**",
+    "e2e/**",
+    "vitest.unit.config.mts"
   ],
   "ignoreDependencies": [
     "@vladmandic/human-models",
     "tfhe",
     "pino-pretty",
-    "lint-staged"
+    "lint-staged",
+    "@synthetixio/synpress-cache",
+    "fs-extra",
+    "@types/fs-extra"
   ],
   "ignoreBinaries": ["nargo"],
   "entry": [
     "src/app/**/page.{ts,tsx}",
     "src/app/**/layout.{ts,tsx}",
     "src/app/**/route.{ts,tsx}",
-    "e2e/automation/start-web3-dev.ts",
-    "e2e/automation/start-oidc-dev.ts",
-    "e2e/wallet-setup/hardhat.setup.ts"
+    "src/**/*.test.{ts,tsx}",
+    "src/**/*.integration.test.{ts,tsx}"
   ],
   "ignoreExportsUsedInFile": true
 }

@@ -1,11 +1,3 @@
-/**
- * Vitest configuration for integration tests.
- *
- * Integration tests use real database connections and run serially
- * to avoid conflicts. Use `pnpm test:integration` to run these tests.
- *
- * For unit tests (parallel, no DB), use `pnpm test:unit`.
- */
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,18 +29,25 @@ export default defineConfig({
     globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.mts"],
 
-    // Integration tests: only .integration.test.ts files
-    include: ["src/**/*.integration.test.ts", "src/**/*.integration.test.tsx"],
-    exclude: ["node_modules", ".next"],
+    // Unit tests: exclude integration tests
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    exclude: [
+      "node_modules",
+      ".next",
+      "src/**/*.integration.test.ts",
+      "src/**/*.integration.test.tsx",
+    ],
 
-    // Integration tests run serially to avoid DB conflicts
-    pool: "threads",
+    // Use vmThreads pool with explicit memory limit support
+    pool: "vmThreads",
     fileParallelism: false,
     maxWorkers: 1,
     isolate: true,
+    // Memory limit for VM pools - recycle worker when exceeded
+    vmMemoryLimit: 0.8, // 80% of available memory
 
-    // Longer timeouts for DB operations
-    testTimeout: 30_000,
+    // Timeouts
+    testTimeout: 15_000,
     hookTimeout: 10_000,
     teardownTimeout: 5000,
 
