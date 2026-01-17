@@ -60,7 +60,7 @@ export default async function RootLayout({
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.coi = Object.assign({}, window.coi, { coop: ${JSON.stringify(
+            __html: `globalThis.window.coi = Object.assign({}, globalThis.window.coi, { coop: ${JSON.stringify(
               coopHeader
             )} });`,
           }}

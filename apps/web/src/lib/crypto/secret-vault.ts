@@ -173,7 +173,9 @@ async function resolvePasskeyUnlock(params: {
     return cached;
   }
 
-  const pendingKey = [...credentialIds].sort().join("|");
+  const pendingKey = [...credentialIds]
+    .sort((a, b) => a.localeCompare(b))
+    .join("|");
   if (pendingUnlock && pendingUnlockKey === pendingKey) {
     return pendingUnlock;
   }
@@ -236,7 +238,7 @@ export function mergeSecretMetadata(params: {
   metadata?: Record<string, unknown> | null;
 }): Record<string, unknown> {
   return {
-    ...(params.metadata ?? {}),
+    ...params.metadata,
     [ENVELOPE_FORMAT_METADATA_KEY]: params.envelopeFormat,
   };
 }
@@ -545,9 +547,7 @@ export async function loadSecret(params: {
       const sessionUserId =
         params.userId ?? (await authClient.getSession()).data?.user?.id;
       if (sessionUserId) {
-        if (cachedOpaqueExport.userId !== sessionUserId) {
-          resetOpaqueExportCache();
-        } else {
+        if (cachedOpaqueExport.userId === sessionUserId) {
           const exportKey = getCachedOpaqueExportKey(sessionUserId);
           if (exportKey) {
             const plaintext = await decryptSecretWithOpaqueExport({
@@ -567,6 +567,8 @@ export async function loadSecret(params: {
               envelopeFormat,
             };
           }
+        } else {
+          resetOpaqueExportCache();
         }
       }
     }

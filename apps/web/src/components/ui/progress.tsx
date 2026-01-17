@@ -11,9 +11,11 @@ function Progress({
   indicatorClassName,
   value,
   ...props
-}: React.ComponentProps<typeof ProgressPrimitive.Root> & {
-  indicatorClassName?: string;
-}) {
+}: Readonly<
+  React.ComponentProps<typeof ProgressPrimitive.Root> & {
+    indicatorClassName?: string;
+  }
+>) {
   return (
     <ProgressPrimitive.Root
       className={cn(

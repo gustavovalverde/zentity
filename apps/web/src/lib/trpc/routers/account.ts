@@ -64,7 +64,7 @@ export const accountRouter = router({
   deleteAccount: protectedProcedure
     .input(
       z.object({
-        confirmEmail: z.string().email(),
+        confirmEmail: z.email(),
       })
     )
     .mutation(async ({ ctx, input }) => {

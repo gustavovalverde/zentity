@@ -54,7 +54,7 @@ export const DOCUMENT_TYPE_LABELS: Record<
 // Helper to get the base URL for API calls (works both client and server side)
 function getBaseUrl(): string {
   // Server-side: use environment variable
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   }
   // Client-side: use relative URL (browser adds hostname)

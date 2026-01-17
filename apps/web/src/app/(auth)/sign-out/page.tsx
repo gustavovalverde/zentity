@@ -6,7 +6,9 @@ interface SignOutPageProps {
   searchParams: Promise<{ redirectTo?: string }>;
 }
 
-export default async function SignOutPage({ searchParams }: SignOutPageProps) {
+export default async function SignOutPage({
+  searchParams,
+}: Readonly<SignOutPageProps>) {
   const { redirectTo } = await searchParams;
   const safeRedirectTo = getSafeRedirectPath(redirectTo, "/");
 

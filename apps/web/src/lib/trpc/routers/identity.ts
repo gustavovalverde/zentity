@@ -71,6 +71,9 @@ import { getNationalityCode } from "@/lib/zk/nationality-data";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
+/** Status of FHE encryption operations */
+type FheStatus = "pending" | "complete" | "error";
+
 /**
  * Cached verification status with 5-minute TTL.
  * Uses unstable_cache with tag-based invalidation.
@@ -178,7 +181,7 @@ interface VerifyIdentityResponse {
 
   processingTimeMs: number;
   issues: string[];
-  fheStatus?: "pending" | "complete" | "error";
+  fheStatus?: FheStatus;
   fheErrors?: Array<{
     operation: string;
     issue: string;
@@ -197,7 +200,7 @@ interface VerifyIdentityResponse {
 function normalizeName(name: string): string {
   return name
     .normalize("NFD")
-    .replace(DIACRITICS_PATTERN, "")
+    .replaceAll(DIACRITICS_PATTERN, "")
     .toUpperCase()
     .split(WHITESPACE_PATTERN)
     .filter(Boolean)
@@ -331,7 +334,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         .run();
 
       const job = await getIdentityVerificationJobById(jobId);
-      if (!job || job.status !== "running" || job.startedAt !== claimTime) {
+      if (job?.status !== "running" || job.startedAt !== claimTime) {
         span.setAttribute("identity.job_skipped", true);
         return;
       }
@@ -398,7 +401,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         let documentHashField = draft.documentHashField ?? null;
         if (!documentHashField && documentHash) {
           try {
-            documentHashField = await getDocumentHashField(documentHash);
+            documentHashField = getDocumentHashField(documentHash);
             await updateIdentityDraft(draft.id, { documentHashField });
           } catch (error) {
             logger.error(
@@ -557,9 +560,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         const birthYearOffsetEncrypted = false;
         const countryCodeEncrypted = false;
         const livenessScoreEncrypted = false;
-        const fheStatus: "pending" | "complete" | "error" = job.fheKeyId
-          ? "pending"
-          : "error";
+        const fheStatus: FheStatus = job.fheKeyId ? "pending" : "error";
         if (!job.fheKeyId) {
           issues.push("fhe_key_missing");
         }
@@ -797,7 +798,7 @@ export const identityRouter = router({
       let documentHashField: string | null = null;
       if (documentHash) {
         try {
-          documentHashField = await getDocumentHashField(documentHash);
+          documentHashField = getDocumentHashField(documentHash);
         } catch (error) {
           logger.error(
             { error: String(error), documentHash },
@@ -1306,7 +1307,7 @@ export const identityRouter = router({
       let documentHashField: string | null = null;
       if (documentHash) {
         try {
-          documentHashField = await getDocumentHashField(documentHash);
+          documentHashField = getDocumentHashField(documentHash);
         } catch (error) {
           logger.error(
             { error: String(error), documentHash },
@@ -1400,9 +1401,7 @@ export const identityRouter = router({
       const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
       const countryCodeEncrypted = false;
       const livenessScoreEncrypted = false;
-      const fheStatus: "pending" | "complete" | "error" = hasFheKeyMaterial
-        ? "pending"
-        : "error";
+      const fheStatus: FheStatus = hasFheKeyMaterial ? "pending" : "error";
       const verified =
         documentProcessed &&
         isDocumentValid &&

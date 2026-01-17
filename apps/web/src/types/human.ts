@@ -173,7 +173,7 @@ export function normalizeEmbedding(emb: EmbeddingData): number[] | null {
     return Array.from(emb);
   }
   if (typeof emb === "object" && "data" in emb && Array.isArray(emb.data)) {
-    return emb.data.map((n) => Number(n));
+    return emb.data.map(Number);
   }
   return null;
 }

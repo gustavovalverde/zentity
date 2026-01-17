@@ -67,8 +67,7 @@ function getProjectId(): string {
   }
 
   // Use demo project ID for localhost development (client-side check)
-  const isLocalhost =
-    typeof window !== "undefined" && window.location.hostname === "localhost";
+  const isLocalhost = globalThis.window?.location.hostname === "localhost";
 
   if (isLocalhost || process.env.NODE_ENV === "development") {
     return LOCALHOST_DEMO_PROJECT_ID;
@@ -120,7 +119,7 @@ export function getWagmiStorageKey(scope?: string | null) {
 
 export function createWagmiAdapter(storageScope?: string | null) {
   const injectedConnector =
-    typeof window !== "undefined" ? injected({ shimDisconnect: true }) : null;
+    globalThis.window === undefined ? null : injected({ shimDisconnect: true });
 
   return new WagmiAdapter({
     storage: createStorage({

@@ -77,7 +77,10 @@ interface QualityAlertProps {
  * - Face not centered
  * - Face occluded
  */
-export function QualityAlert({ issue, className }: QualityAlertProps) {
+export function QualityAlert({
+  issue,
+  className,
+}: Readonly<QualityAlertProps>) {
   if (!issue) {
     return null;
   }

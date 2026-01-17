@@ -20,6 +20,8 @@ import {
 
 export const runtime = "nodejs";
 
+type MetricAttributes = Record<string, string | number | boolean>;
+
 const MAX_EVENTS = 50;
 const MAX_DURATION_MS = 5 * 60_000;
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -41,10 +43,7 @@ const handlers: Record<
   ClientMetricName,
   {
     unit: "ms" | "By";
-    record: (
-      value: number,
-      attributes?: Record<string, string | number | boolean>
-    ) => void;
+    record: (value: number, attributes?: MetricAttributes) => void;
     attributes: Set<string>;
   }
 > = {
@@ -123,11 +122,11 @@ const handlers: Record<
 function sanitizeAttributes(
   attributes: Record<string, unknown> | undefined,
   allowed: Set<string>
-): Record<string, string | number | boolean> | undefined {
+): MetricAttributes | undefined {
   if (!attributes) {
     return;
   }
-  const sanitized: Record<string, string | number | boolean> = {};
+  const sanitized: MetricAttributes = {};
   for (const [key, value] of Object.entries(attributes)) {
     if (!allowed.has(key)) {
       continue;
@@ -165,7 +164,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   for (const event of parsed.data.events) {
     const handler = handlers[event.name as ClientMetricName];
-    if (!handler || handler.unit !== event.unit) {
+    if (handler?.unit !== event.unit) {
       continue;
     }
     if (!isValueWithinLimits(handler.unit, event.value)) {

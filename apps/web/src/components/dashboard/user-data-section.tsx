@@ -41,10 +41,10 @@ import { trpcReact } from "@/lib/trpc/client";
 const VerificationBadge = memo(function VerificationBadge({
   passed,
   label,
-}: {
+}: Readonly<{
   passed: boolean;
   label: string;
-}) {
+}>) {
   return (
     <Badge variant={passed ? "success" : "outline"}>
       {passed ? (

@@ -3,10 +3,10 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import {
+  type Attributes,
   context,
   propagation,
   type Span,
-  type SpanAttributes,
   SpanStatusCode,
   trace,
 } from "@opentelemetry/api";
@@ -229,7 +229,7 @@ export function currentSpan(): Span | undefined {
   return trace.getSpan(context.active()) ?? undefined;
 }
 
-export function addSpanEvent(name: string, attributes?: SpanAttributes): void {
+export function addSpanEvent(name: string, attributes?: Attributes): void {
   const span = currentSpan();
   if (!span) {
     return;
@@ -241,7 +241,7 @@ export function addSpanEvent(name: string, attributes?: SpanAttributes): void {
 
   const filtered = Object.fromEntries(
     Object.entries(attributes).filter(([, value]) => value !== undefined)
-  ) as SpanAttributes;
+  ) as Attributes;
   span.addEvent(name, filtered);
 }
 
@@ -259,13 +259,13 @@ export function injectTraceHeaders(
 
 export function withSpan<T>(
   name: string,
-  attributes: SpanAttributes,
+  attributes: Attributes,
   run: (span: Span) => Promise<T> | T
 ): Promise<T> {
   const tracer = getTracer();
   const filtered = Object.fromEntries(
     Object.entries(attributes).filter(([, value]) => value !== undefined)
-  ) as SpanAttributes;
+  ) as Attributes;
   return tracer.startActiveSpan(
     name,
     { attributes: filtered },

@@ -18,6 +18,8 @@ interface PasswordPwnedResult {
 
 async function sha1HexUpper(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
+  // This is NOT for password storage - OPAQUE handles secure password handling.
+  // @see https://haveibeenpwned.com/API/v3#SearchingPwnedPasswordsByRange
   const digest = await crypto.subtle.digest("SHA-1", data);
   const bytes = new Uint8Array(digest);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))

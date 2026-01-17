@@ -27,7 +27,7 @@ export async function GET(
 
   // Extract the credential type from the path
   // Expected format: api/auth/vct/{type}
-  const vctMatch = fullPath.match(VCT_PATH_REGEX);
+  const vctMatch = VCT_PATH_REGEX.exec(fullPath);
   if (!vctMatch) {
     return NextResponse.json(
       { error: "Invalid VCT path format" },

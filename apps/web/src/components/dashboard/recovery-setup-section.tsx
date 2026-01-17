@@ -48,9 +48,9 @@ interface WrapperSecret {
  */
 const RecoveryIdSection = memo(function RecoveryIdSection({
   recoveryId,
-}: {
+}: Readonly<{
   recoveryId: string | null;
-}) {
+}>) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -125,13 +125,13 @@ const GuardiansSection = memo(function GuardiansSection({
   filledSlots,
   totalSlots,
   onRefetch,
-}: {
+}: Readonly<{
   guardians: Guardian[];
   isLoading: boolean;
   filledSlots: number;
   totalSlots: number;
   onRefetch: () => Promise<void>;
-}) {
+}>) {
   const [email, setEmail] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -261,11 +261,11 @@ const TwoFactorGuardianSection = memo(function TwoFactorGuardianSection({
   isTwoFactorConfigured,
   hasTwoFactorGuardian,
   onRefetch,
-}: {
+}: Readonly<{
   isTwoFactorConfigured: boolean;
   hasTwoFactorGuardian: boolean;
   onRefetch: () => Promise<void>;
-}) {
+}>) {
   const [isLinking, setIsLinking] = useState(false);
 
   const buttonLabel = useMemo(() => {
@@ -355,12 +355,12 @@ const RecoveryWrappersSection = memo(function RecoveryWrappersSection({
   wrappedCount,
   totalSecrets,
   secrets,
-}: {
+}: Readonly<{
   isLoading: boolean;
   wrappedCount: number;
   totalSecrets: number;
   secrets: WrapperSecret[];
-}) {
+}>) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between font-medium text-sm">

@@ -13,19 +13,19 @@ import {
 } from "@/components/ui/card";
 import { getOnboardingFlowId } from "@/lib/observability/flow-client";
 
-export default function Error({
+export default function ErrorPage({
   error,
   reset,
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   reset: () => void;
-}) {
+}>) {
   useEffect(() => {
     const payload = {
       name: error.name,
       message: error.message,
       digest: error.digest,
-      path: window.location.pathname,
+      path: globalThis.window.location.pathname,
       stack: error.stack,
     };
 

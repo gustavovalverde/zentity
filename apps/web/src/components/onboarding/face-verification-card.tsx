@@ -41,7 +41,7 @@ export const FaceVerificationCard = memo(function FaceVerificationCard({
   status,
   result,
   selfieImage,
-}: FaceVerificationCardProps) {
+}: Readonly<FaceVerificationCardProps>) {
   return (
     <div className="space-y-4 rounded-lg border p-4">
       <div className="flex items-center gap-2">

@@ -168,10 +168,10 @@ function createWorkerState(index: number): WorkerState {
     new URL("./noir-prover.worker.ts", import.meta.url),
     { type: "module" }
   );
-  if (typeof window !== "undefined") {
+  if (globalThis.window !== undefined) {
     newWorker.postMessage({
       type: "init",
-      origin: window.location.origin,
+      origin: globalThis.window.location.origin,
     } satisfies WorkerInitMessage);
   }
 
@@ -264,8 +264,9 @@ function getWorkerPool(): Promise<WorkerState[]> {
 
 async function getLeastBusyWorker(): Promise<WorkerState> {
   const pool = await getWorkerPool();
-  return pool.reduce((best, current) =>
-    current.inflight < best.inflight ? current : best
+  return pool.reduce(
+    (best, current) => (current.inflight < best.inflight ? current : best),
+    pool[0]
   );
 }
 

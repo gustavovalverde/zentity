@@ -26,7 +26,7 @@ import { POST } from "../route";
 const makeRequest = (payload?: unknown) =>
   new Request("http://localhost/api/fhe/verify-age", {
     method: "POST",
-    body: typeof payload === "undefined" ? undefined : encode(payload),
+    body: payload === undefined ? undefined : encode(payload),
   });
 
 describe("fhe verify-age route", () => {

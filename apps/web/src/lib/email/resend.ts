@@ -23,9 +23,7 @@ function getResendClient(): Resend {
   if (!resendApiKey) {
     throw new Error("RESEND_API_KEY is not configured.");
   }
-  if (!resendClient) {
-    resendClient = new Resend(resendApiKey);
-  }
+  resendClient ??= new Resend(resendApiKey);
   return resendClient;
 }
 

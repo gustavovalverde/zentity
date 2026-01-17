@@ -9,7 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils/utils";
 
-function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+function InputGroup({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"div">>) {
   return (
     <div
       className={cn(
@@ -64,7 +67,9 @@ function InputGroupAddon({
   onClick,
   onKeyDown,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
+}: Readonly<
+  React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>
+>) {
   const focusInput = (element: HTMLElement) => {
     element.closest("[data-slot=input-group]")?.querySelector("input")?.focus();
   };
@@ -132,7 +137,10 @@ function InputGroupButton({
   );
 }
 
-function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
+function InputGroupText({
+  className,
+  ...props
+}: Readonly<React.ComponentProps<"span">>) {
   return (
     <span
       className={cn(
@@ -147,7 +155,7 @@ function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
 function InputGroupInput({
   className,
   ...props
-}: React.ComponentProps<"input">) {
+}: Readonly<React.ComponentProps<"input">>) {
   return (
     <Input
       className={cn(
@@ -163,7 +171,7 @@ function InputGroupInput({
 function InputGroupTextarea({
   className,
   ...props
-}: React.ComponentProps<"textarea">) {
+}: Readonly<React.ComponentProps<"textarea">>) {
   return (
     <Textarea
       className={cn(

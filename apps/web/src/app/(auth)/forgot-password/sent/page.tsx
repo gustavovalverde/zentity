@@ -16,7 +16,7 @@ interface PageProps {
 
 export default async function ForgotPasswordSentPage({
   searchParams,
-}: PageProps) {
+}: Readonly<PageProps>) {
   const { identifier } = await searchParams;
 
   return (

@@ -22,7 +22,7 @@ interface ScreenReaderAnnouncerProps {
 export function ScreenReaderAnnouncer({
   message,
   priority = "polite",
-}: ScreenReaderAnnouncerProps) {
+}: Readonly<ScreenReaderAnnouncerProps>) {
   const [announcement, setAnnouncement] = useState("");
   const prevMessageRef = useRef<string | null>(null);
 

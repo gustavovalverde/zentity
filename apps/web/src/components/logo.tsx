@@ -8,7 +8,11 @@ interface LogoProps {
   size?: "sm" | "md" | "lg";
 }
 
-export function Logo({ variant = "full", className, size = "md" }: LogoProps) {
+export function Logo({
+  variant = "full",
+  className,
+  size = "md",
+}: Readonly<LogoProps>) {
   const isFull = variant === "full";
 
   // Logo SVG aspect ratio ~1.83:1, Icon is square (1:1)

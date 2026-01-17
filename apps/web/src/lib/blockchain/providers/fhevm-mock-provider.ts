@@ -14,13 +14,10 @@ import type {
 } from "./types";
 
 import { FhevmType } from "@fhevm/mock-utils";
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 
 import { BaseProvider } from "./base-provider";
-import {
-  categorizeError,
-  getErrorSummary,
-  IDENTITY_REGISTRY_ABI,
-} from "./fhevm-utils";
+import { categorizeError, getErrorSummary } from "./fhevm-utils";
 
 export class FhevmMockProvider
   extends BaseProvider
@@ -113,8 +110,8 @@ export class FhevmMockProvider
       // Convert bigint to bytes (big-endian)
       let v = value;
       for (let i = byteLength - 1; i >= 0; i--) {
-        valueBytes[i] = Number(v & BigInt(0xff));
-        v >>= BigInt(8);
+        valueBytes[i] = Number(v % BigInt(256));
+        v /= BigInt(256);
       }
       const random32 = randomBytes(32);
       parts.push(fheTypeByte, valueBytes, random32);
@@ -171,8 +168,8 @@ export class FhevmMockProvider
       `0x${numHandles.toString(16).padStart(2, "0")}${numSigners.toString(16).padStart(2, "0")}${handlesHex}${signaturesHex}${extraDataHex}` as `0x${string}`;
 
     // Add 0x prefix to handles for use as bytes32 in contract call
-    const handlesWithPrefix = response.handles.map(
-      (h) => `0x${h}` as `0x${string}`
+    const handlesWithPrefix: `0x${string}`[] = response.handles.map(
+      (h): `0x${string}` => `0x${h}`
     );
 
     return {
@@ -208,7 +205,7 @@ export class FhevmMockProvider
 
       const txHash = await client.writeContract({
         address: contractAddress,
-        abi: IDENTITY_REGISTRY_ABI,
+        abi: IdentityRegistryABI,
         functionName: "attestIdentity",
         args: [
           params.userAddress as `0x${string}`,

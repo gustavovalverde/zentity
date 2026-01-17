@@ -53,7 +53,7 @@ export function SocialLoginButtons() {
   );
 }
 
-function GoogleIcon({ className }: { className?: string }) {
+function GoogleIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg aria-hidden="true" className={className} viewBox="0 0 24 24">
       <path
@@ -76,7 +76,7 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
-function GithubIcon({ className }: { className?: string }) {
+function GithubIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       aria-hidden="true"

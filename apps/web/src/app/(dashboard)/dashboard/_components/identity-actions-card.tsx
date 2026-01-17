@@ -23,7 +23,7 @@ interface IdentityActionsCardProps {
 export function IdentityActionsCard({
   isVerified,
   web3Enabled,
-}: IdentityActionsCardProps) {
+}: Readonly<IdentityActionsCardProps>) {
   if (!isVerified) {
     return null;
   }

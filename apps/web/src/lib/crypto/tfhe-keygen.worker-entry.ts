@@ -63,42 +63,59 @@ type TfheModule = TfheModuleStatic;
 let tfheInitPromise: Promise<TfheModule> | null = null;
 
 function loadTfhe(): Promise<TfheModule> {
-  if (!tfheInitPromise) {
-    tfheInitPromise = (async () => {
-      const tfheUrl = "/tfhe/tfhe.js";
-      const tfhe = (await import(
-        /* webpackIgnore: true */
-        /* @vite-ignore */
-        tfheUrl
-      )) as TfheModule;
+  tfheInitPromise ??= (async () => {
+    const tfheUrl = "/tfhe/tfhe.js";
+    const tfhe = (await import(
+      /* webpackIgnore: true */
+      /* @vite-ignore */
+      tfheUrl
+    )) as TfheModule;
 
-      await tfhe.default();
+    await tfhe.default();
 
-      if (self.crossOriginIsolated) {
-        const threads = navigator.hardwareConcurrency || 4;
-        try {
-          await tfhe.initThreadPool(threads);
-        } catch {
-          // Thread pool init can fail; continue single-threaded in worker.
-        }
-      }
-
+    if (globalThis.crossOriginIsolated) {
+      const threads = navigator.hardwareConcurrency || 4;
       try {
-        tfhe.init_panic_hook();
+        await tfhe.initThreadPool(threads);
       } catch {
-        // Optional
+        // Thread pool init can fail; continue single-threaded in worker.
       }
+    }
 
-      return tfhe;
-    })();
-  }
+    try {
+      tfhe.init_panic_hook();
+    } catch {
+      // Optional
+    }
+
+    return tfhe;
+  })();
 
   return tfheInitPromise;
 }
 
+/**
+ * Web Workers are same-origin restricted by browser security model.
+ * Messages can only be received from the document that created this worker,
+ * which is guaranteed to be same-origin. We still validate origin and message
+ * structure for defense-in-depth.
+ */
 self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
+  // Verify origin: in dedicated workers, origin is "" (empty) since messages
+  // can only come from the parent document. Reject unexpected origins.
+  if (event.origin !== "" && event.origin !== self.location.origin) {
+    return;
+  }
+
   const message = event.data;
-  if (!message || message.type !== "generate_key_material") {
+
+  // Validate message structure (defense-in-depth for postMessage security)
+  if (
+    !message ||
+    typeof message !== "object" ||
+    typeof message.id !== "number" ||
+    message.type !== "generate_key_material"
+  ) {
     return;
   }
 

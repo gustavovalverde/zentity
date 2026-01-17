@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type MetricAttributes, metrics } from "@opentelemetry/api";
+import { type Attributes, metrics } from "@opentelemetry/api";
 
 import {
   getServiceName,
@@ -163,9 +163,9 @@ const clientPasskeyDuration = meter.createHistogram(
 );
 
 function recordSafe(
-  histogram: { record: (value: number, attributes?: MetricAttributes) => void },
+  histogram: { record: (value: number, attributes?: Attributes) => void },
   value: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ) {
   if (!Number.isFinite(value) || value < 0) {
     return;
@@ -175,119 +175,119 @@ function recordSafe(
 
 export function recordLivenessDetectDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(livenessDetectDuration, durationMs, attributes);
 }
 
 export function recordOcrDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(ocrRequestDuration, durationMs, attributes);
 }
 
 export function recordOcrPayloadBytes(
   bytes: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(ocrPayloadBytes, bytes, attributes);
 }
 
 export function recordOcrImageBytes(
   bytes: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(ocrImageBytes, bytes, attributes);
 }
 
 export function recordFheDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(fheRequestDuration, durationMs, attributes);
 }
 
 export function recordFhePayloadBytes(
   bytes: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(fhePayloadBytes, bytes, attributes);
 }
 
 export function recordZkVerifyDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(zkVerifyDuration, durationMs, attributes);
 }
 
 export function recordClientNoirProofDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientNoirProofDuration, durationMs, attributes);
 }
 
 export function recordClientNoirProofBytes(
   bytes: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientNoirProofBytes, bytes, attributes);
 }
 
 export function recordClientFhevmEncryptDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientFhevmEncryptDuration, durationMs, attributes);
 }
 
 export function recordClientFhevmEncryptProofBytes(
   bytes: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientFhevmEncryptProofBytes, bytes, attributes);
 }
 
 export function recordClientFhevmDecryptDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientFhevmDecryptDuration, durationMs, attributes);
 }
 
 export function recordClientFhevmInitDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientFhevmInitDuration, durationMs, attributes);
 }
 
 export function recordClientTfheLoadDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientTfheLoadDuration, durationMs, attributes);
 }
 
 export function recordClientTfheLoadRetry(
   delayMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientTfheLoadRetry, delayMs, attributes);
 }
 
 export function recordClientTfheKeygenDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientTfheKeygenDuration, durationMs, attributes);
 }
 
 export function recordClientPasskeyDuration(
   durationMs: number,
-  attributes?: MetricAttributes
+  attributes?: Attributes
 ): void {
   recordSafe(clientPasskeyDuration, durationMs, attributes);
 }

@@ -5,9 +5,9 @@ import { getCachedSession } from "@/lib/auth/cached-session";
 
 export default async function Web3Layout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const headersObj = await headers();
   const session = await getCachedSession(headersObj);
   const cookies = headersObj.get("cookie");

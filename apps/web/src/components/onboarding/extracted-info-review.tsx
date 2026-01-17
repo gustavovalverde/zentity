@@ -40,7 +40,7 @@ export const ExtractedInfoReview = memo(function ExtractedInfoReview({
   extractedName,
   extractedDOB,
   extractedNationality,
-}: ExtractedInfoReviewProps) {
+}: Readonly<ExtractedInfoReviewProps>) {
   const age = calculateAge(extractedDOB);
 
   return (

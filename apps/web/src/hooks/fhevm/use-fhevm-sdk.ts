@@ -26,7 +26,7 @@
  * @example
  * ```tsx
  * const { instance, status } = useFhevmSdk({
- *   provider: window.ethereum,
+ *   provider: globalThis.window.ethereum,
  *   chainId: 11155111, // Sepolia
  * });
  *
@@ -42,6 +42,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveFhevmProviderFactory } from "@/lib/fhevm/providers/registry";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
+type MetricAttributes = Record<string, string | number | boolean>;
+
 function assert(condition: boolean, message?: string): asserts condition {
   if (!condition) {
     const m = message ? `Assertion failed: ${message}` : "Assertion failed.";
@@ -49,7 +51,7 @@ function assert(condition: boolean, message?: string): asserts condition {
   }
 }
 
-/** EIP-1193 provider interface (window.ethereum standard) */
+/** EIP-1193 provider interface (globalThis.window.ethereum standard) */
 interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
 }
@@ -63,8 +65,8 @@ type FhevmRelayerStatusType =
   | "creating";
 
 interface UseFhevmSdkParams {
-  /** EIP-1193 provider (window.ethereum or wallet provider) */
-  provider: unknown | undefined;
+  /** EIP-1193 provider (globalThis.window.ethereum or wallet provider) */
+  provider: unknown;
   /** Current chain ID - triggers re-init on change */
   chainId: number | undefined;
   /** Enable/disable SDK initialization (default: true) */
@@ -103,7 +105,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
   const [isRunning, setIsRunning] = useState<boolean>(enabled);
   const [refreshCount, setRefreshCount] = useState<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const providerRef = useRef<unknown | undefined>(provider);
+  const providerRef = useRef<unknown>(provider);
   const chainIdRef = useRef<number | undefined>(chainId);
   const providerIdRef = useRef<string | undefined>(providerId);
   const refreshCountRef = useRef<number>(refreshCount);
@@ -170,9 +172,7 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
       return;
     }
 
-    if (!abortControllerRef.current) {
-      abortControllerRef.current = new AbortController();
-    }
+    abortControllerRef.current ??= new AbortController();
 
     assert(
       !abortControllerRef.current.signal.aborted,
@@ -291,12 +291,14 @@ async function createFhevmInstance(
   // Real encryption would require the FHEVM coprocessor which only runs on testnet/mainnet
   const defaultMockChains: Record<number, string> = {
     31337: "http://127.0.0.1:8545",
-    ...(mockChains ?? {}),
+    ...mockChains,
   };
 
   // Query chainId from provider to determine mock vs production
   if (typeof providerOrUrl === "string") {
-    throw new Error("String RPC URLs not supported, use window.ethereum");
+    throw new TypeError(
+      "String RPC URLs not supported, use globalThis.window.ethereum"
+    );
   }
   try {
     const chainIdHex = await (providerOrUrl as Eip1193Provider).request({
@@ -347,7 +349,7 @@ async function createFhevmInstance(
     }
     throw error;
   } finally {
-    const attributes: Record<string, string | number | boolean> = {
+    const attributes: MetricAttributes = {
       result,
     };
     if (providerIdAttr) {

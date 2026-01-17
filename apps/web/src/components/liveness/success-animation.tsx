@@ -58,7 +58,7 @@ export function SuccessAnimation({
   showConfetti = true,
   autoHideDuration = 0,
   onComplete,
-}: SuccessAnimationProps) {
+}: Readonly<SuccessAnimationProps>) {
   const [confetti] = useState(() => generateConfetti(12));
   const [visible, setVisible] = useState(true);
 
@@ -138,7 +138,7 @@ export function ChallengeSuccessFlash({
   className,
   duration = 400,
   onComplete,
-}: ChallengeSuccessFlashProps) {
+}: Readonly<ChallengeSuccessFlashProps>) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {

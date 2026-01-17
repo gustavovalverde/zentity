@@ -13,6 +13,7 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
+import { CompliantERC20ABI } from "@zentity/fhevm-contracts";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { hardhat, sepolia } from "viem/chains";
 import { z } from "zod";
@@ -27,7 +28,6 @@ import {
   canCreateProvider,
   createProvider,
 } from "@/lib/blockchain/providers/factory";
-import { CompliantERC20ABI } from "@/lib/contracts";
 import { getBlockchainAttestationByUserAndNetwork } from "@/lib/db/queries/attestation";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 
@@ -49,7 +49,7 @@ const MINT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 // uint64.max = ~18.4 * 10^18, so max total supply is ~18 tokens.
 // We limit per-mint to 10 tokens to allow multiple mints before hitting cap.
 const MAX_MINT_AMOUNT = BigInt(10) * BigInt(10) ** BigInt(18); // 10 tokens
-const UINT64_MAX = (BigInt(1) << BigInt(64)) - BigInt(1); // Max supply for euint64 balances
+const UINT64_MAX = BigInt(2) ** BigInt(64) - BigInt(1); // Max supply for euint64 balances
 
 const mintAttemptTracker = new Map<
   string,
@@ -214,7 +214,7 @@ export const tokenRouter = router({
         ctx.userId,
         input.networkId
       );
-      if (!attestation || attestation.status !== "confirmed") {
+      if (attestation?.status !== "confirmed") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "Register your identity on-chain before minting tokens",
@@ -501,7 +501,7 @@ export const tokenRouter = router({
 
         // Sort by block number descending and limit
         const sorted = allEvents
-          .sort((a, b) => b.blockNumber - a.blockNumber)
+          .toSorted((a, b) => b.blockNumber - a.blockNumber)
           .slice(0, input.limit);
 
         return { transfers: sorted, demo: false };
@@ -595,11 +595,13 @@ export const tokenRouter = router({
 
         const latestLog =
           logs.length > 0
-            ? logs.reduce((latest, log) =>
-                (log.blockNumber ?? BigInt(0)) >
-                (latest.blockNumber ?? BigInt(0))
-                  ? log
-                  : latest
+            ? logs.reduce(
+                (latest, log) =>
+                  (log.blockNumber ?? BigInt(0)) >
+                  (latest.blockNumber ?? BigInt(0))
+                    ? log
+                    : latest,
+                logs[0]
               )
             : null;
 

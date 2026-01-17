@@ -83,7 +83,9 @@ interface OnChainAttestationProps {
   isVerified: boolean;
 }
 
-export function OnChainAttestation({ isVerified }: OnChainAttestationProps) {
+export function OnChainAttestation({
+  isVerified,
+}: Readonly<OnChainAttestationProps>) {
   const { address, isConnected } = useAppKitAccount();
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
@@ -462,7 +464,7 @@ const AttestationContentBody = memo(function AttestationContentBody({
   complianceTxHash,
   complianceExplorerUrl,
   invalidateComplianceAccess,
-}: AttestationContentBodyProps) {
+}: Readonly<AttestationContentBodyProps>) {
   // Guard: Wallet not connected
   if (!isConnected) {
     return (
@@ -628,11 +630,11 @@ const NetworkCard = memo(function NetworkCard({
   network,
   isSelected,
   onSelect,
-}: {
+}: Readonly<{
   network: ApiNetworkStatus;
   isSelected: boolean;
   onSelect: () => void;
-}) {
+}>) {
   const status = network.attestation?.status ?? undefined;
   const statusIcon = getStatusIcon(status);
 
@@ -682,7 +684,7 @@ const NetworkActions = memo(function NetworkActions({
   isSubmitting,
   isRefreshing,
   error,
-}: {
+}: Readonly<{
   network: NetworkStatus;
   walletAddress: string;
   attestedWalletAddress?: string;
@@ -691,7 +693,7 @@ const NetworkActions = memo(function NetworkActions({
   isSubmitting: boolean;
   isRefreshing: boolean;
   error?: string;
-}) {
+}>) {
   const { disconnect } = useDisconnect();
   const attestation = network.attestation;
 

@@ -16,9 +16,7 @@ import { logger } from "@/lib/logging/logger";
 let bbInstance: BarretenbergSync | null = null;
 
 export async function getBarretenberg(): Promise<BarretenbergSync> {
-  if (!bbInstance) {
-    bbInstance = await BarretenbergSync.initSingleton();
-  }
+  bbInstance ??= await BarretenbergSync.initSingleton();
   return bbInstance;
 }
 

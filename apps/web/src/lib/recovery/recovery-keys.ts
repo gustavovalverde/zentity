@@ -38,7 +38,7 @@ function ensureKeyDir(filePath: string) {
 
 function loadOrCreatePrivateKeyPem(): string {
   if (KEY_ENV?.trim()) {
-    return KEY_ENV.trim().replace(/\\n/g, "\n");
+    return KEY_ENV.trim().replaceAll(String.raw`\n`, "\n");
   }
 
   if (existsSync(KEY_PATH)) {

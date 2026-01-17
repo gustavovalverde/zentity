@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-import { resolve } from "node:path";
-
 import bundleAnalyzer from "@next/bundle-analyzer";
 
 const withBundleAnalyzer = bundleAnalyzer({
@@ -59,30 +57,6 @@ const nextConfig: NextConfig = {
     "thread-stream",
     "pino-pretty",
   ],
-
-  turbopack: {
-    resolveAlias: {
-      // Node.js polyfill for browser compatibility
-      "node:buffer": "buffer",
-      // Optional deps referenced by wallet tooling - provide empty stubs
-      "pino-pretty": "./src/lib/wagmi/empty-module",
-      lokijs: "./src/lib/wagmi/empty-module",
-      encoding: "./src/lib/wagmi/empty-module",
-      "@opentelemetry/winston-transport": "./src/lib/wagmi/empty-module",
-    },
-  },
-
-  webpack: (config) => {
-    config.resolve = config.resolve ?? {};
-    config.resolve.alias = {
-      ...(config.resolve.alias ?? {}),
-      "@opentelemetry/winston-transport": resolve(
-        __dirname,
-        "src/lib/wagmi/empty-module"
-      ),
-    };
-    return config;
-  },
 
   headers() {
     // Security headers applied to all routes.

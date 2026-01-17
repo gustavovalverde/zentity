@@ -67,7 +67,10 @@ interface FhevmProviderProps {
  * }
  * ```
  */
-export function FhevmProvider({ children, mockChains }: FhevmProviderProps) {
+export function FhevmProvider({
+  children,
+  mockChains,
+}: Readonly<FhevmProviderProps>) {
   const chainId = useChainId();
   const { isConnected } = useAppKitAccount();
   const isMounted = useIsMounted();
@@ -77,13 +80,13 @@ export function FhevmProvider({ children, mockChains }: FhevmProviderProps) {
   const [provider, setProvider] = useState<unknown | undefined>(undefined);
 
   useEffect(() => {
-    if (!(isMounted && isConnected) || typeof window === "undefined") {
+    if (!(isMounted && isConnected) || globalThis.window === undefined) {
       setProvider(undefined);
       return;
     }
 
-    if (window.ethereum) {
-      setProvider(window.ethereum);
+    if (globalThis.window.ethereum) {
+      setProvider(globalThis.window.ethereum);
       return;
     }
 
@@ -95,20 +98,20 @@ export function FhevmProvider({ children, mockChains }: FhevmProviderProps) {
       provider ||
       !isMounted ||
       !isConnected ||
-      typeof window === "undefined"
+      globalThis.window === undefined
     ) {
       return;
     }
 
-    const interval = window.setInterval(() => {
-      if (window.ethereum) {
-        setProvider(window.ethereum);
-        window.clearInterval(interval);
+    const interval = globalThis.window.setInterval(() => {
+      if (globalThis.window.ethereum) {
+        setProvider(globalThis.window.ethereum);
+        globalThis.window.clearInterval(interval);
         return;
       }
     }, 200);
 
-    return () => window.clearInterval(interval);
+    return () => globalThis.window.clearInterval(interval);
   }, [provider, isMounted, isConnected]);
 
   // Default mock chains for development

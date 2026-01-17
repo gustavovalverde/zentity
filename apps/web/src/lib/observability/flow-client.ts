@@ -6,14 +6,14 @@ let cachedFlowId: string | null = null;
 
 export function setOnboardingFlowId(flowId: string | null): void {
   cachedFlowId = flowId;
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return;
   }
   try {
     if (flowId) {
-      window.sessionStorage.setItem(FLOW_STORAGE_KEY, flowId);
+      globalThis.window.sessionStorage.setItem(FLOW_STORAGE_KEY, flowId);
     } else {
-      window.sessionStorage.removeItem(FLOW_STORAGE_KEY);
+      globalThis.window.sessionStorage.removeItem(FLOW_STORAGE_KEY);
     }
   } catch {
     // Storage is best-effort; ignore failures.
@@ -24,11 +24,11 @@ export function getOnboardingFlowId(): string | null {
   if (cachedFlowId) {
     return cachedFlowId;
   }
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return null;
   }
   try {
-    const stored = window.sessionStorage.getItem(FLOW_STORAGE_KEY);
+    const stored = globalThis.window.sessionStorage.getItem(FLOW_STORAGE_KEY);
     if (stored) {
       cachedFlowId = stored;
       return stored;

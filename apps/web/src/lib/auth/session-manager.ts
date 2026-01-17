@@ -33,9 +33,9 @@ export function clearClientCaches(): void {
   clearSecretVaultCaches();
 
   // Clear onboarding storage (sessionStorage only)
-  if (typeof window !== "undefined") {
+  if (globalThis.window !== undefined) {
     try {
-      window.sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
+      globalThis.window.sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
     } catch {
       // Ignore storage failures
     }
@@ -50,16 +50,19 @@ export function clearClientCaches(): void {
  * Must be called from client-side code.
  */
 export function clearSessionCookies(): void {
-  if (typeof document === "undefined") {
+  if (globalThis.document === undefined) {
     return;
   }
+
+  const secureFlag =
+    globalThis.window.location.protocol === "https:" ? "; Secure" : "";
 
   for (const name of SESSION_COOKIES) {
     // Clear with various path combinations to ensure removal
     // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie clearing for session isolation
-    document.cookie = `${name}=; Max-Age=0; Path=/`;
+    document.cookie = `${name}=; Max-Age=0; Path=/${secureFlag}`;
     // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie clearing for session isolation
-    document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`;
+    document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax${secureFlag}`;
   }
 }
 

@@ -11,11 +11,6 @@ import {
   WebSocketRequestError,
 } from "viem";
 
-import { IdentityRegistryABI } from "@/lib/contracts";
-
-// Full IdentityRegistry ABI (kept in sync with contracts package)
-export const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
-
 /**
  * Categorize error message for better frontend handling.
  */
@@ -24,7 +19,7 @@ function findViemError(
   predicate: (err: unknown) => boolean
 ): Error | null {
   if (error instanceof BaseError) {
-    return (error.walk(predicate) as Error | null) ?? null;
+    return error.walk(predicate) ?? null;
   }
   return null;
 }

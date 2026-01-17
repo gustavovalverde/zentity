@@ -52,7 +52,7 @@ interface IdentityCardProps {
  * Identity Card - The source of truth for user's verification status.
  * Displays verification progress, identity summary, and transparency info.
  */
-export async function IdentityCard({ userId }: IdentityCardProps) {
+export async function IdentityCard({ userId }: Readonly<IdentityCardProps>) {
   // First batch: parallelize independent queries
   const [identityBundle, latestDocument, encryptedAttributes, birthYearCipher] =
     userId

@@ -39,7 +39,7 @@ export function DefiDemoClient({
   isVerified,
   attestedNetworkId,
   attestedWallet,
-}: DefiDemoClientProps) {
+}: Readonly<DefiDemoClientProps>) {
   const { address, isConnected } = useAppKitAccount();
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(
     attestedNetworkId

@@ -25,10 +25,10 @@ export const recoveryConfigs = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    userIdIdx: index("recovery_configs_user_id_idx").on(table.userId),
-    statusIdx: index("recovery_configs_status_idx").on(table.status),
-  })
+  (table) => [
+    index("recovery_configs_user_id_idx").on(table.userId),
+    index("recovery_configs_status_idx").on(table.status),
+  ]
 );
 
 export const recoveryChallenges = sqliteTable(
@@ -49,13 +49,11 @@ export const recoveryChallenges = sqliteTable(
     expiresAt: text("expires_at").notNull(),
     completedAt: text("completed_at"),
   },
-  (table) => ({
-    userIdIdx: index("recovery_challenges_user_id_idx").on(table.userId),
-    configIdx: index("recovery_challenges_config_id_idx").on(
-      table.recoveryConfigId
-    ),
-    statusIdx: index("recovery_challenges_status_idx").on(table.status),
-  })
+  (table) => [
+    index("recovery_challenges_user_id_idx").on(table.userId),
+    index("recovery_challenges_config_id_idx").on(table.recoveryConfigId),
+    index("recovery_challenges_status_idx").on(table.status),
+  ]
 );
 
 export const recoveryGuardians = sqliteTable(
@@ -72,15 +70,11 @@ export const recoveryGuardians = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    recoveryConfigIdx: index("recovery_guardians_config_idx").on(
-      table.recoveryConfigId
-    ),
-    emailIdx: index("recovery_guardians_email_idx").on(table.email),
-    participantIdx: index("recovery_guardians_participant_idx").on(
-      table.participantIndex
-    ),
-  })
+  (table) => [
+    index("recovery_guardians_config_idx").on(table.recoveryConfigId),
+    index("recovery_guardians_email_idx").on(table.email),
+    index("recovery_guardians_participant_idx").on(table.participantIndex),
+  ]
 );
 
 export const recoveryGuardianApprovals = sqliteTable(
@@ -98,15 +92,11 @@ export const recoveryGuardianApprovals = sqliteTable(
     approvedAt: text("approved_at"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    challengeIdx: index("recovery_approvals_challenge_idx").on(
-      table.challengeId
-    ),
-    guardianIdx: index("recovery_approvals_guardian_idx").on(table.guardianId),
-    tokenHashIdx: index("recovery_approvals_token_hash_idx").on(
-      table.tokenHash
-    ),
-  })
+  (table) => [
+    index("recovery_approvals_challenge_idx").on(table.challengeId),
+    index("recovery_approvals_guardian_idx").on(table.guardianId),
+    index("recovery_approvals_token_hash_idx").on(table.tokenHash),
+  ]
 );
 
 export const recoverySecretWrappers = sqliteTable(
@@ -122,12 +112,10 @@ export const recoverySecretWrappers = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    userIdIdx: index("recovery_wrappers_user_id_idx").on(table.userId),
-    secretIdUnique: uniqueIndex("recovery_wrappers_secret_id_unique").on(
-      table.secretId
-    ),
-  })
+  (table) => [
+    index("recovery_wrappers_user_id_idx").on(table.userId),
+    uniqueIndex("recovery_wrappers_secret_id_unique").on(table.secretId),
+  ]
 );
 
 export const recoveryIdentifiers = sqliteTable(
@@ -141,12 +129,10 @@ export const recoveryIdentifiers = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    userIdIdx: index("recovery_identifiers_user_id_idx").on(table.userId),
-    recoveryIdUnique: uniqueIndex("recovery_identifiers_recovery_id_unique").on(
-      table.recoveryId
-    ),
-  })
+  (table) => [
+    index("recovery_identifiers_user_id_idx").on(table.userId),
+    uniqueIndex("recovery_identifiers_recovery_id_unique").on(table.recoveryId),
+  ]
 );
 
 export type RecoveryConfig = typeof recoveryConfigs.$inferSelect;

@@ -14,6 +14,7 @@ import { Eye, EyeOff, KeyRound, Lock, RefreshCw } from "lucide-react";
 /** Matches a valid hex string with 0x prefix */
 const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
 
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useChainId, useReadContract } from "wagmi";
 
@@ -37,14 +38,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
 import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
-import { IdentityRegistryABI } from "@/lib/contracts";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/utils";
 import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
 import { getCountryName } from "@/lib/zk/nationality-data";
-
-// IdentityRegistry ABI (kept in sync with contracts package)
-const IDENTITY_REGISTRY_ABI = IdentityRegistryABI;
 
 function normalizeHandle(handle: unknown): `0x${string}` | undefined {
   if (!handle) {
@@ -86,11 +83,11 @@ function getTooltipMessage({
   walletMismatch,
   canDecrypt,
   isVisible,
-}: {
+}: Readonly<{
   walletMismatch: boolean;
   canDecrypt: boolean;
   isVisible: boolean;
-}): string {
+}>): string {
   if (walletMismatch) {
     return "Connect the wallet that created the attestation";
   }
@@ -106,10 +103,10 @@ function getTooltipMessage({
 function DecryptButtonContent({
   isDecrypting,
   isVisible,
-}: {
+}: Readonly<{
   isDecrypting: boolean;
   isVisible: boolean;
-}) {
+}>) {
   const label = isVisible ? "Hide Data" : "Decrypt & View";
   if (isDecrypting) {
     return (
@@ -209,7 +206,7 @@ export function ViewIdentityData() {
     refetch: refetchIsAttested,
   } = useReadContract({
     address: contractAddress,
-    abi: IDENTITY_REGISTRY_ABI,
+    abi: IdentityRegistryABI,
     functionName: "isAttested",
     args: address ? [address] : undefined,
     account: address,
@@ -222,7 +219,7 @@ export function ViewIdentityData() {
     refetch: refetchBirthYear,
   } = useReadContract({
     address: contractAddress,
-    abi: IDENTITY_REGISTRY_ABI,
+    abi: IdentityRegistryABI,
     functionName: "getBirthYearOffset",
     args: address ? [address] : undefined,
     account: address,
@@ -235,7 +232,7 @@ export function ViewIdentityData() {
     refetch: refetchCountry,
   } = useReadContract({
     address: contractAddress,
-    abi: IDENTITY_REGISTRY_ABI,
+    abi: IdentityRegistryABI,
     functionName: "getCountryCode",
     args: address ? [address] : undefined,
     account: address,
@@ -248,7 +245,7 @@ export function ViewIdentityData() {
     refetch: refetchCompliance,
   } = useReadContract({
     address: contractAddress,
-    abi: IDENTITY_REGISTRY_ABI,
+    abi: IdentityRegistryABI,
     functionName: "getComplianceLevel",
     args: address ? [address] : undefined,
     account: address,
@@ -261,7 +258,7 @@ export function ViewIdentityData() {
     refetch: refetchBlacklist,
   } = useReadContract({
     address: contractAddress,
-    abi: IDENTITY_REGISTRY_ABI,
+    abi: IdentityRegistryABI,
     functionName: "getBlacklistStatus",
     args: address ? [address] : undefined,
     account: address,
@@ -617,13 +614,13 @@ const IdentityField = memo(function IdentityField({
   isVisible,
   icon,
   variant = "default",
-}: {
+}: Readonly<{
   label: string;
   value: string | undefined;
   isVisible: boolean;
   icon: string;
   variant?: "default" | "destructive" | "success";
-}) {
+}>) {
   return (
     <div className="flex items-center justify-between border-b py-2 last:border-0">
       <span className="flex items-center gap-2 text-muted-foreground text-sm">

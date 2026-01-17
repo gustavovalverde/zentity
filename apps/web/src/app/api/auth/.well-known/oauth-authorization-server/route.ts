@@ -1,5 +1,19 @@
 import { auth } from "@/lib/auth/auth";
 
+const AUTH_PATH_SUFFIX = /\/api\/auth$/;
+
+/**
+ * Get the base URL from environment variables (SSRF-safe - no request data used).
+ * Falls back to localhost for development.
+ */
+function getBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.BETTER_AUTH_URL?.replace(AUTH_PATH_SUFFIX, "") ||
+    "http://localhost:3000"
+  );
+}
+
 /**
  * Workaround endpoint for walt.id's RFC 8414 non-compliance
  *
@@ -16,15 +30,13 @@ import { auth } from "@/lib/auth/auth";
  * @see https://www.rfc-editor.org/rfc/rfc8414#section-3
  * @see https://github.com/walt-id/waltid-identity (walt.id's non-compliant implementation)
  */
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   if (!auth.publicHandler) {
     return new Response("Not Found", { status: 404 });
   }
 
-  // Forward to better-auth's OAuth AS metadata endpoint
-  // The actual metadata is served by the [[...all]] catch-all route
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // Use environment-configured base URL (SSRF-safe: no request data flows to fetch)
+  const baseUrl = getBaseUrl();
 
   // Fetch the metadata from the correct RFC 8414 location
   const metadataUrl = `${baseUrl}/.well-known/oauth-authorization-server/api/auth`;

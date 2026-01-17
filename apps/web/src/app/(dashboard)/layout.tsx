@@ -18,9 +18,9 @@ import { getCachedSession } from "@/lib/auth/cached-session";
 
 export default async function DashboardLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const headersObj = await headers();
   const session = await getCachedSession(headersObj);
 

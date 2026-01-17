@@ -166,7 +166,8 @@ export default function RecoverSocialPage() {
   }, [phase]);
 
   const approvalLinks = useMemo(() => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const origin =
+      globalThis.window === undefined ? "" : globalThis.window.location.origin;
     return approvalEntries
       .filter((approval) => approval.guardianType === "email")
       .map((approval) => ({
@@ -294,8 +295,8 @@ export default function RecoverSocialPage() {
     }
     const trimmed =
       deviceMode === "totp"
-        ? deviceCode.replace(/\s+/g, "")
-        : deviceCode.replace(/[^a-zA-Z0-9]/g, "");
+        ? deviceCode.replaceAll(/\s+/g, "")
+        : deviceCode.replaceAll(/[^a-zA-Z0-9]/g, "");
     if (!trimmed) {
       setDeviceError(
         deviceMode === "totp"

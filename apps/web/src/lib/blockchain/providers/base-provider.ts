@@ -13,11 +13,10 @@ import type {
   TransactionStatus,
 } from "./types";
 
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
-
-import { IdentityRegistryABI } from "@/lib/contracts";
 
 // Chain configurations for viem
 const VIEM_CHAINS = {

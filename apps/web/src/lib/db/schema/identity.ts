@@ -60,9 +60,7 @@ export const identityBundles = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    statusIdx: index("idx_identity_bundles_status").on(table.status),
-  })
+  (table) => [index("idx_identity_bundles_status").on(table.status)]
 );
 
 export const identityDocuments = sqliteTable(
@@ -86,12 +84,10 @@ export const identityDocuments = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    userIdIdx: index("idx_identity_documents_user_id").on(table.userId),
-    documentHashIdx: index("idx_identity_documents_doc_hash").on(
-      table.documentHash
-    ),
-  })
+  (table) => [
+    index("idx_identity_documents_user_id").on(table.userId),
+    index("idx_identity_documents_doc_hash").on(table.documentHash),
+  ]
 );
 
 export const identityVerificationDrafts = sqliteTable(
@@ -133,13 +129,11 @@ export const identityVerificationDrafts = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    sessionIdx: index("idx_identity_drafts_session").on(
-      table.onboardingSessionId
-    ),
-    userIdx: index("idx_identity_drafts_user").on(table.userId),
-    documentIdx: index("idx_identity_drafts_document").on(table.documentId),
-  })
+  (table) => [
+    index("idx_identity_drafts_session").on(table.onboardingSessionId),
+    index("idx_identity_drafts_user").on(table.userId),
+    index("idx_identity_drafts_document").on(table.documentId),
+  ]
 );
 
 export const identityVerificationJobs = sqliteTable(
@@ -162,11 +156,11 @@ export const identityVerificationJobs = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => ({
-    draftIdx: index("idx_identity_jobs_draft").on(table.draftId),
-    statusIdx: index("idx_identity_jobs_status").on(table.status),
-    userIdx: index("idx_identity_jobs_user").on(table.userId),
-  })
+  (table) => [
+    index("idx_identity_jobs_draft").on(table.draftId),
+    index("idx_identity_jobs_status").on(table.status),
+    index("idx_identity_jobs_user").on(table.userId),
+  ]
 );
 
 export type IdentityBundle = typeof identityBundles.$inferSelect;
