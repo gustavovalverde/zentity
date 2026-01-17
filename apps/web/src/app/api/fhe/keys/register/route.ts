@@ -1,12 +1,12 @@
 import { decode, encode } from "@msgpack/msgpack";
 
 import { auth } from "@/lib/auth/auth";
-import { isRegistrationTokenValid } from "@/lib/auth/onboarding-context";
-import { registerFheKey } from "@/lib/crypto/fhe-client";
+import { isRegistrationTokenValid } from "@/lib/auth/onboarding-tokens";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
 } from "@/lib/db/queries/crypto";
+import { registerFheKey } from "@/lib/privacy/crypto/fhe-client";
 
 export const runtime = "nodejs";
 

@@ -12,19 +12,25 @@
 
 "use client";
 
-import type { SpeechKey, SupportedLanguage } from "@/lib/liveness/speech/texts";
+import type {
+  SpeechKey,
+  SupportedLanguage,
+} from "@/lib/identity/liveness/speech/texts";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { EARCONS, type EarconType } from "@/lib/liveness/audio/earcons";
-import { audioEngine } from "@/lib/liveness/audio/engine";
+import {
+  EARCONS,
+  type EarconType,
+} from "@/lib/identity/liveness/audio/earcons";
+import { audioEngine } from "@/lib/identity/liveness/audio/engine";
 import {
   HAPTIC_PATTERNS,
   type HapticType,
   isHapticsSupported,
   vibrate,
-} from "@/lib/liveness/haptics/patterns";
-import { speechEngine } from "@/lib/liveness/speech/engine";
+} from "@/lib/identity/liveness/haptics/patterns";
+import { speechEngine } from "@/lib/identity/liveness/speech/engine";
 
 export type FeedbackType = EarconType;
 

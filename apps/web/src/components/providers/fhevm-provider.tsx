@@ -17,9 +17,9 @@ import {
 } from "react";
 import { useChainId } from "wagmi";
 
-import "@/lib/fhevm/providers/global";
+import "@/lib/privacy/fhe/providers/global";
 
-import type { FhevmGoState, FhevmInstance } from "@/lib/fhevm/types";
+import type { FhevmGoState, FhevmInstance } from "@/lib/privacy/fhe/types";
 
 import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { useIsMounted } from "@/hooks/use-is-mounted";

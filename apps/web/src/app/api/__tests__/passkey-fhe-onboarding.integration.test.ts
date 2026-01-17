@@ -19,7 +19,7 @@ import {
   createOnboardingContext,
   getOnboardingContext,
   isRegistrationTokenValid,
-} from "@/lib/auth/onboarding-context";
+} from "@/lib/auth/onboarding-tokens";
 import { db } from "@/lib/db/connection";
 import { getEncryptedSecretByUserAndType } from "@/lib/db/queries/crypto";
 import { secretWrappers } from "@/lib/db/schema/crypto";

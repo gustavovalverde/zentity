@@ -13,7 +13,7 @@ const onboardingMocks = vi.hoisted(() => ({
   isRegistrationTokenValid: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/onboarding-context", () => onboardingMocks);
+vi.mock("@/lib/auth/onboarding-tokens", () => onboardingMocks);
 
 const fheMocks = vi.hoisted(() => ({
   registerFheKey: vi.fn(),

@@ -55,7 +55,7 @@ require.cache[require.resolve("server-only")] = {
 // Import liveness handler dynamically AFTER the server-only shim is installed.
 // This is required because static imports are hoisted before any code runs.
 const { handleLivenessConnection } = await import(
-  "./src/lib/liveness/socket/handler.ts"
+  "./src/lib/identity/liveness/socket/handler.ts"
 );
 
 // Import OIDC4VCI wallet client setup
@@ -85,84 +85,84 @@ if (dev) {
   }
 }
 
-app.prepare().then(async () => {
-  // Ensure OIDC4VCI wallet client is registered for credential issuance
-  try {
-    await ensureWalletClientExists();
-  } catch (err) {
-    console.error("> Failed to ensure wallet client:", err);
-    // Continue startup - this is not fatal, just OIDC4VCI won't work
-  }
+await app.prepare();
 
-  const httpServer = createServer(handler);
+// Ensure OIDC4VCI wallet client is registered for credential issuance
+try {
+  await ensureWalletClientExists();
+} catch (err) {
+  console.error("> Failed to ensure wallet client:", err);
+  // Continue startup - this is not fatal, just OIDC4VCI won't work
+}
 
-  // Attach Socket.io for liveness detection
-  const io = new SocketServer(httpServer, {
-    path: "/api/liveness/socket",
-    cors: {
-      origin: process.env.NEXT_PUBLIC_APP_URL || "*",
-      methods: ["GET", "POST"],
-    },
-    maxHttpBufferSize: 1e6, // 1MB max frame size
-  });
+const httpServer = createServer(handler);
 
-  io.on("connection", (socket) => {
-    handleLivenessConnection(socket);
-  });
-
-  httpServer
-    .once("error", (err) => {
-      console.error(err);
-      process.exit(1);
-    })
-    .listen(port, hostname, () => {
-      console.log(`> Ready on http://${hostname}:${port}`);
-      console.log("> Socket.io liveness endpoint: /api/liveness/socket");
-      console.log("> Environment:", dev ? "development" : "production");
-    });
-
-  // Graceful shutdown with timeout and proper Next.js cleanup
-  const SHUTDOWN_TIMEOUT_MS = 10_000;
-  let isShuttingDown = false;
-
-  const shutdown = async () => {
-    if (isShuttingDown) {
-      return;
-    }
-    isShuttingDown = true;
-    console.log("\n> Shutting down...");
-
-    // Force exit if shutdown takes too long
-    const forceExitTimeout = setTimeout(() => {
-      console.error("> Shutdown timed out, forcing exit");
-      process.exit(1);
-    }, SHUTDOWN_TIMEOUT_MS);
-    forceExitTimeout.unref();
-
-    try {
-      // 1. Stop accepting new Socket.IO connections and close existing ones
-      io.close();
-
-      // 2. Stop accepting new HTTP connections
-      httpServer.close();
-
-      // 3. Force close all HTTP connections (browsers keep keep-alive open)
-      // closeAllConnections() added in Node.js 18.2.0
-      httpServer.closeAllConnections();
-
-      // 4. Close Next.js app (flushes TurboPack cache, closes watchers)
-      await app.close();
-
-      clearTimeout(forceExitTimeout);
-      console.log("> Server closed");
-      process.exit(0);
-    } catch (err) {
-      console.error("> Shutdown error:", err);
-      clearTimeout(forceExitTimeout);
-      process.exit(1);
-    }
-  };
-
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+// Attach Socket.io for liveness detection
+const io = new SocketServer(httpServer, {
+  path: "/api/liveness/socket",
+  cors: {
+    origin: process.env.NEXT_PUBLIC_APP_URL || "*",
+    methods: ["GET", "POST"],
+  },
+  maxHttpBufferSize: 1e6, // 1MB max frame size
 });
+
+io.on("connection", (socket) => {
+  handleLivenessConnection(socket);
+});
+
+httpServer
+  .once("error", (err) => {
+    console.error(err);
+    process.exit(1);
+  })
+  .listen(port, hostname, () => {
+    console.log(`> Ready on http://${hostname}:${port}`);
+    console.log("> Socket.io liveness endpoint: /api/liveness/socket");
+    console.log("> Environment:", dev ? "development" : "production");
+  });
+
+// Graceful shutdown with timeout and proper Next.js cleanup
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+let isShuttingDown = false;
+
+const shutdown = async () => {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  console.log("\n> Shutting down...");
+
+  // Force exit if shutdown takes too long
+  const forceExitTimeout = setTimeout(() => {
+    console.error("> Shutdown timed out, forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceExitTimeout.unref();
+
+  try {
+    // 1. Stop accepting new Socket.IO connections and close existing ones
+    io.close();
+
+    // 2. Stop accepting new HTTP connections
+    httpServer.close();
+
+    // 3. Force close all HTTP connections (browsers keep keep-alive open)
+    // closeAllConnections() added in Node.js 18.2.0
+    httpServer.closeAllConnections();
+
+    // 4. Close Next.js app (flushes TurboPack cache, closes watchers)
+    await app.close();
+
+    clearTimeout(forceExitTimeout);
+    console.log("> Server closed");
+    process.exit(0);
+  } catch (err) {
+    console.error("> Shutdown error:", err);
+    clearTimeout(forceExitTimeout);
+    process.exit(1);
+  }
+};
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

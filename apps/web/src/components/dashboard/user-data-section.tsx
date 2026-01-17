@@ -30,8 +30,8 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
-import { getStoredProfile } from "@/lib/crypto/profile-secret";
-import { hasCachedPasskeyUnlock } from "@/lib/crypto/secret-vault";
+import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
+import { hasCachedPasskeyUnlock } from "@/lib/privacy/crypto/secret-vault";
 import { trpcReact } from "@/lib/trpc/client";
 
 /**

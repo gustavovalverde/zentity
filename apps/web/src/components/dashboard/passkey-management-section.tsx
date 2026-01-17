@@ -59,11 +59,11 @@ import {
   renamePasskey,
   signInWithPasskey,
 } from "@/lib/auth/passkey";
-import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
-import { generatePrfSalt } from "@/lib/crypto/key-derivation";
-import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
-import { addWrapperForSecretType } from "@/lib/crypto/secret-vault";
-import { checkPrfSupport } from "@/lib/crypto/webauthn-prf";
+import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
+import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
+import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
+import { addWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
+import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
 
 interface PasskeyCredential {
   id: string;

@@ -3,7 +3,7 @@
 import { Fingerprint, KeyRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 export type CredentialType = "passkey" | "password";
 

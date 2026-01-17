@@ -5,18 +5,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   findPreferredDevice,
   savePreferredCamera,
-} from "@/lib/liveness/camera/device-storage";
+} from "@/lib/identity/liveness/camera/device-storage";
 import {
   getFrameRateMessage,
   MIN_FRAMERATE,
   validateFrameRate,
-} from "@/lib/liveness/camera/framerate-validation";
+} from "@/lib/identity/liveness/camera/framerate-validation";
 import {
   checkForVirtualCamera,
   filterPhysicalCameras,
   getVirtualCameraMessage,
-} from "@/lib/liveness/camera/virtual-detection";
-import { LivenessErrorState } from "@/lib/liveness/errors";
+} from "@/lib/identity/liveness/camera/virtual-detection";
+import { LivenessErrorState } from "@/lib/identity/liveness/errors";
 
 type PermissionState = "checking" | "granted" | "denied" | "prompt";
 

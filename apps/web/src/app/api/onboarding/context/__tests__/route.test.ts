@@ -12,7 +12,7 @@ const contextMocks = vi.hoisted(() => ({
   createOnboardingContext: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/onboarding-context", () => contextMocks);
+vi.mock("@/lib/auth/onboarding-tokens", () => contextMocks);
 
 import { POST } from "../route";
 

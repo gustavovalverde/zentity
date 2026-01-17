@@ -28,7 +28,7 @@ const prfMocks = vi.hoisted(() => ({
   extractPrfOutputFromClientResults: vi.fn(),
 }));
 
-vi.mock("@/lib/crypto/webauthn-prf", () => prfMocks);
+vi.mock("@/lib/privacy/crypto/webauthn-prf", () => prfMocks);
 
 import { registerPasskeyWithPrf, signInWithPasskey } from "@/lib/auth/passkey";
 

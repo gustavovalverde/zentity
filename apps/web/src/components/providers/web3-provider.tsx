@@ -24,7 +24,7 @@ import {
   getWagmiStorageKey,
   networks,
   projectId,
-} from "@/lib/wagmi/config";
+} from "@/lib/blockchain/wagmi/config";
 
 import { FhevmProvider } from "./fhevm-provider";
 import { SiweBridge } from "./siwe-bridge";

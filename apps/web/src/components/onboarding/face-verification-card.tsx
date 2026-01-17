@@ -2,7 +2,7 @@
 
 /* eslint @next/next/no-img-element: off */
 
-import type { FaceMatchResult } from "@/lib/liveness/face-match";
+import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
 
 import { ArrowLeftRight, Check, UserCheck, XCircle } from "lucide-react";
 import { memo } from "react";
@@ -10,7 +10,7 @@ import { memo } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 export type FaceMatchStatus =
   | "idle"

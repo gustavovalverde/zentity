@@ -7,11 +7,11 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { verifyNoirProof } from "@/lib/zk/noir-verifier";
+import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
   CIRCUIT_SPECS,
   parsePublicInputToNumber,
-} from "@/lib/zk/zk-circuit-spec";
+} from "@/lib/privacy/zk/zk-circuit-spec";
 
 interface Proof {
   proof: string; // Base64 encoded UltraHonk ZK proof

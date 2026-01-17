@@ -6,13 +6,13 @@ import { toast } from "sonner";
 
 import { Spinner } from "@/components/ui/spinner";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { prewarmTfheWorker } from "@/lib/crypto/tfhe-keygen.client";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
-import { useOnboardingStore } from "@/lib/onboarding/store";
+import { prewarmTfheWorker } from "@/lib/privacy/crypto/tfhe-keygen.client";
 import { trpc } from "@/lib/trpc/client";
+import { useOnboardingStore } from "@/store/onboarding";
 
 import { StepEmail } from "./step-email";
-import { Stepper, steps, useStepper } from "./stepper-context";
+import { Stepper, steps, useStepper } from "./stepper-config";
 import { StepperNavigation } from "./stepper-ui";
 
 // Direct store access for effects (avoids dependency array issues)
@@ -42,6 +42,14 @@ const StepAccount = dynamic(
   () => import("./step-account").then((mod) => mod.StepAccount),
   { ssr: false, loading: () => <StepLoading label="Loading account step…" /> }
 );
+
+// Step renderers - defined outside component to avoid recreating on each render
+const STEP_RENDERERS = {
+  email: () => <StepEmail />,
+  "id-upload": () => <StepIdUpload />,
+  liveness: () => <StepLiveness />,
+  account: () => <StepAccount />,
+} as const;
 
 /**
  * WizardContent - Inner component that uses the stepper context
@@ -131,7 +139,6 @@ function WizardContent() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedData && isInProgress) {
         e.preventDefault();
-        e.returnValue = "";
       }
     };
 
@@ -159,12 +166,7 @@ function WizardContent() {
       <StepperNavigation stepper={stepper} />
 
       {/* Step content - stepperize switch pattern */}
-      {stepper.switch({
-        email: () => <StepEmail />,
-        "id-upload": () => <StepIdUpload />,
-        liveness: () => <StepLiveness />,
-        account: () => <StepAccount />,
-      })}
+      {stepper.switch(STEP_RENDERERS)}
     </div>
   );
 }

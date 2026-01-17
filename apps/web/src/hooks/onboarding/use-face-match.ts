@@ -4,7 +4,10 @@ import type { FaceMatchStatus } from "@/components/onboarding/face-verification-
 
 import { useEffect, useRef, useState } from "react";
 
-import { type FaceMatchResult, matchFaces } from "@/lib/liveness/face-match";
+import {
+  type FaceMatchResult,
+  matchFaces,
+} from "@/lib/identity/liveness/face-match";
 
 /**
  * Result from the useFaceMatch hook.

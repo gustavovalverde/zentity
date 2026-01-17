@@ -12,16 +12,16 @@ import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import {
   getCountriesInGroup,
   isNationalityInGroup,
   listGroups,
-} from "@/lib/zk/nationality-data";
+} from "@/lib/privacy/zk/nationality-data";
 import {
   generateNationalityProofInputs,
   getMerkleRoot,
-} from "@/lib/zk/nationality-merkle";
+} from "@/lib/privacy/zk/nationality-merkle";
+import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 /**
  * POST - Get Merkle proof inputs for nationality membership

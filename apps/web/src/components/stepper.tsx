@@ -22,7 +22,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
 
 const StepperContext = createContext<StepperConfigProps | null>(null);
 
@@ -63,30 +63,43 @@ const defineStepper = <const Steps extends StepperizeStep[]>(
     );
   };
 
+  const StepperProvider = ({
+    variant = "horizontal",
+    labelOrientation = "horizontal",
+    tracking = false,
+    children,
+    className,
+    initialStep,
+    initialMetadata,
+    ...providerRest
+  }: Omit<ScopedProps<Steps>, "children"> &
+    Omit<ComponentProps<"div">, "children"> &
+    StepperConfigProps & {
+      children:
+        | ReactNode
+        | ((props: { methods: StepperizeContext<Steps> }) => ReactNode);
+    }) => {
+    const contextValue = useMemo(
+      () => ({ variant, labelOrientation, tracking }),
+      [variant, labelOrientation, tracking]
+    );
+
+    return (
+      <StepperContext.Provider value={contextValue}>
+        <Scoped initialMetadata={initialMetadata} initialStep={initialStep}>
+          <StepperContainer className={className} {...providerRest}>
+            {children}
+          </StepperContainer>
+        </Scoped>
+      </StepperContext.Provider>
+    );
+  };
+
   return {
     ...rest,
     useStepper,
     Stepper: {
-      Provider: ({
-        variant = "horizontal",
-        labelOrientation = "horizontal",
-        tracking = false,
-        children,
-        className,
-        initialStep,
-        initialMetadata,
-        ...providerRest
-      }) => (
-        <StepperContext.Provider
-          value={{ variant, labelOrientation, tracking }}
-        >
-          <Scoped initialMetadata={initialMetadata} initialStep={initialStep}>
-            <StepperContainer className={className} {...providerRest}>
-              {children}
-            </StepperContainer>
-          </Scoped>
-        </StepperContext.Provider>
-      ),
+      Provider: StepperProvider,
       Navigation: ({
         children,
         "aria-label": ariaLabel = "Stepper Navigation",
@@ -123,6 +136,8 @@ const defineStepper = <const Steps extends StepperizeStep[]>(
         const isActive = current.id === props.of;
 
         const dataState = getStepState(currentIndex, stepIndex);
+        const isAccessible =
+          dataState === "active" || dataState === "completed";
         const childMap = useStepChildren(children);
 
         const title = childMap.get("title");
@@ -187,9 +202,9 @@ const defineStepper = <const Steps extends StepperizeStep[]>(
                 }
                 role="tab"
                 size="icon"
-                tabIndex={dataState !== "inactive" ? 0 : -1}
+                tabIndex={isAccessible ? 0 : -1}
                 type="button"
-                variant={dataState !== "inactive" ? "default" : "secondary"}
+                variant={isAccessible ? "default" : "secondary"}
                 {...props}
               >
                 {icon ?? stepIndex + 1}
@@ -224,7 +239,7 @@ const defineStepper = <const Steps extends StepperizeStep[]>(
             {variant === "vertical" && (
               <div className="flex gap-4">
                 {!isLast && (
-                  <div className="flex justify-center ps-[calc(var(--spacing)_*_4.5_-_1px)]">
+                  <div className="flex justify-center ps-[calc(var(--spacing)*4.5-1px)]">
                     <StepperSeparator
                       disabled={props.disabled}
                       isLast={isLast}
@@ -346,6 +361,9 @@ const CircleStepIndicator = ({
   const circumference = radius * 2 * Math.PI;
   const fillPercentage = (currentStep / totalSteps) * 100;
   const dashOffset = circumference - (circumference * fillPercentage) / 100;
+  // Native <progress> cannot be styled as a circular SVG indicator.
+  // Using role="progressbar" with ARIA attributes is the WAI-ARIA pattern for custom progress UIs.
+  // sonar-ignore:S6853 - circular SVG requires custom markup with ARIA
   return (
     <div
       aria-valuemax={totalSteps}
@@ -402,7 +420,7 @@ const classForNavigationList = cva("flex gap-2", {
 const classForSeparator = cva(
   [
     "bg-muted",
-    "data-[state=completed]:bg-primary data-[disabled]:opacity-50",
+    "data-[state=completed]:bg-primary data-disabled:opacity-50",
     "transition-all duration-300 ease-in-out",
   ],
   {
@@ -474,8 +492,7 @@ const onStepKeyDown = (
       return;
     }
 
-    const isActive =
-      stepElement.parentElement?.getAttribute("data-state") !== "inactive";
+    const isActive = stepElement.parentElement?.dataset.state !== "inactive";
     if (isActive || direction === "prev") {
       stepElement.focus();
     }
