@@ -72,15 +72,9 @@ afterEach(() => {
   }
 });
 
-afterAll(async () => {
-  // Close database connection to prevent leaks
-  try {
-    const { dbClient } = await import("@/lib/db/connection");
-    dbClient.close();
-  } catch {
-    // Connection may not have been initialized in this test file
-  }
-
+afterAll(() => {
+  // Note: DB connection cleanup is handled by Vitest's isolation.
+  // Importing @/lib/db/connection in afterAll pulls in too many modules.
   vi.restoreAllMocks();
 });
 

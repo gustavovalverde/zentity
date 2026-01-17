@@ -4,9 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { expect, test } from "./fixtures/synpress";
-import { connectWalletIfNeeded } from "./helpers/connect-wallet";
-import { confirmSignature, confirmTransaction } from "./helpers/metamask";
+import { expect, test } from "../fixtures/synpress";
+import { connectWalletIfNeeded } from "../helpers/connect-wallet";
+import { confirmSignature, confirmTransaction } from "../helpers/metamask";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
 const WELCOME_OR_SIGN_IN_PATTERN = /welcome back|sign in/i;

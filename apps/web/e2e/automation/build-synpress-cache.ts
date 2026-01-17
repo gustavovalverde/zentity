@@ -1,22 +1,11 @@
 import type { ChildProcess } from "node:child_process";
 
-import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-
-import {
-  createCache,
-  ensureCacheDirExists,
-  prepareExtension,
-} from "@synthetixio/synpress-cache";
-import fs from "fs-extra";
-import { glob } from "glob";
-import ts from "typescript";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
-const TS_JS_MJS_EXTENSION_PATTERN = /\.(ts|js|mjs)$/;
-const WALLET_SETUP_CALL_PATTERN = /defineWalletSetup\s*\(/;
+const NEWLINE_PATTERN = /\r?\n/;
 
 const webRoot = process.cwd();
 const repoRoot = path.resolve(webRoot, "..", "..");
@@ -81,214 +70,99 @@ function stopHardhat() {
   }
 }
 
-function extractWalletSetupFunction(sourceCode: string): string {
-  const callMatch = WALLET_SETUP_CALL_PATTERN.exec(sourceCode);
-  if (callMatch?.index === undefined) {
-    throw new Error("Could not find defineWalletSetup call");
-  }
-  const openParen = callMatch.index + callMatch[0].lastIndexOf("(");
-
-  let depth = 1;
-  let commaIndex = -1;
-  let closeParen = -1;
-  let inSingle = false;
-  let inDouble = false;
-  let inTemplate = false;
-  let escapeChar = false;
-
-  for (let i = openParen + 1; i < sourceCode.length; i += 1) {
-    const ch = sourceCode[i];
-
-    if (escapeChar) {
-      escapeChar = false;
-      continue;
-    }
-
-    if (inSingle) {
-      if (ch === "\\") {
-        escapeChar = true;
-      } else if (ch === "'") {
-        inSingle = false;
-      }
-      continue;
-    }
-    if (inDouble) {
-      if (ch === "\\") {
-        escapeChar = true;
-      } else if (ch === '"') {
-        inDouble = false;
-      }
-      continue;
-    }
-    if (inTemplate) {
-      if (ch === "\\") {
-        escapeChar = true;
-      } else if (ch === "`") {
-        inTemplate = false;
-      }
-      continue;
-    }
-
-    if (ch === "'") {
-      inSingle = true;
-      continue;
-    }
-    if (ch === '"') {
-      inDouble = true;
-      continue;
-    }
-    if (ch === "`") {
-      inTemplate = true;
-      continue;
-    }
-
-    if (ch === "(") {
-      depth += 1;
-      continue;
-    }
-    if (ch === ")") {
-      depth -= 1;
-      if (depth === 0) {
-        closeParen = i;
-        break;
-      }
-      continue;
-    }
-
-    if (ch === "," && depth === 1 && commaIndex === -1) {
-      commaIndex = i;
-    }
-  }
-
-  if (commaIndex === -1 || closeParen === -1) {
-    throw new Error("Could not extract defineWalletSetup callback");
-  }
-
-  return sourceCode.slice(commaIndex + 1, closeParen).trim();
+interface ContractsEnv {
+  identityRegistry?: string;
+  complianceRules?: string;
+  compliantErc20?: string;
 }
 
-function buildWalletSetupFunction(walletSetupFunctionString: string): string {
-  const source = `(${walletSetupFunctionString})`;
-  const result = ts.transpileModule(source, {
-    compilerOptions: {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-      removeComments: true,
-    },
+function deployContracts(): ContractsEnv {
+  // Contracts repo uses bun as package manager
+  const deploy = spawnSync("bun", ["run", "deploy:local", "--", "--reset"], {
+    cwd: contractsPath,
+    stdio: "inherit",
+    env: process.env,
   });
-  return result.outputText.trim();
-}
+  if (deploy.status !== 0) {
+    process.exit(deploy.status ?? 1);
+  }
 
-function getWalletSetupFuncHash(walletSetupString: string): string {
-  const hash = createHash("shake256", { outputLength: 10 });
-  return hash.update(walletSetupString).digest("hex");
-}
-
-async function compileWalletSetupFunctions(): Promise<{
-  outDir: string;
-  fileList: string[];
-}> {
-  const _cacheDir = ensureCacheDirExists();
-  const outDir = path.join(webRoot, ".synpress-wallet-setup-dist");
-  await fs.ensureDir(outDir);
-
-  const walletSetupDir = path.join(webRoot, "e2e", "wallet-setup");
-  console.log(
-    "[synpress-cache] compiling wallet setup files from",
-    walletSetupDir
+  const printed = spawnSync(
+    "bun",
+    ["run", "print:deployments", "localhost", "--env"],
+    {
+      cwd: contractsPath,
+      encoding: "utf8",
+      env: process.env,
+    }
   );
-  const fileList = (
-    await glob(path.join(walletSetupDir, "**", "*.setup.{ts,js,mjs}"))
-  ).toSorted((a, b) => a.localeCompare(b));
-  if (!fileList.length) {
-    throw new Error(
-      `No wallet setup files found at ${walletSetupDir}. Ensure files end with .setup.ts/.js/.mjs`
-    );
+  if (printed.status !== 0) {
+    console.error(printed.stderr || printed.stdout);
+    process.exit(printed.status ?? 1);
   }
 
-  for (const filePath of fileList) {
-    const source = await fs.readFile(filePath, "utf8");
-    const result = ts.transpileModule(source, {
-      compilerOptions: {
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.ESNext,
-        sourceMap: false,
-        inlineSourceMap: false,
-      },
-      fileName: filePath,
-    });
-    const base = path
-      .basename(filePath)
-      .replace(TS_JS_MJS_EXTENSION_PATTERN, ".mjs");
-    const outPath = path.join(outDir, base);
-    await fs.writeFile(outPath, result.outputText, "utf8");
+  const env: Record<string, string> = {};
+  for (const line of printed.stdout.trim().split(NEWLINE_PATTERN)) {
+    const [key, value] = line.split("=");
+    if (key && value) {
+      env[key.trim()] = value.trim();
+    }
   }
 
-  console.log("[synpress-cache] compiled wallet setup files", fileList);
-  return { outDir, fileList };
-}
-
-interface WalletSetupModule {
-  default?: {
-    hash?: string;
+  return {
+    identityRegistry: env.IDENTITY_REGISTRY_LOCALHOST,
+    complianceRules: env.COMPLIANCE_RULES_LOCALHOST,
+    compliantErc20: env.COMPLIANT_ERC20_LOCALHOST,
   };
 }
 
-async function buildSynpressCache() {
-  console.log("[synpress-cache] building cache");
-  const { outDir, fileList } = await compileWalletSetupFunctions();
-  const hashes: string[] = [];
-  const hashMappings: Array<{ compiledHash: string; sourceHash: string }> = [];
-  for (const filePath of fileList) {
-    const base = path
-      .basename(filePath)
-      .replace(TS_JS_MJS_EXTENSION_PATTERN, ".mjs");
-    const compiledPath = path.join(outDir, base);
-    console.log("[synpress-cache] loading compiled setup", compiledPath);
-    const mod = (await import(pathToFileURL(compiledPath).href)) as
-      | WalletSetupModule
-      | undefined;
-    console.log("[synpress-cache] loaded compiled setup", compiledPath);
-    const hash = mod?.default?.hash;
-    if (!hash || typeof hash !== "string") {
-      throw new Error(
-        `Missing hash for compiled wallet setup: ${compiledPath}`
-      );
-    }
-    hashes.push(hash);
+function buildSynpressCache() {
+  const cacheDir = path.join(webRoot, ".cache-synpress");
+  const walletSetupDir = path.join(webRoot, "e2e", "wallet-setup");
 
-    const sourceCode = await fs.readFile(filePath, "utf8");
-    const callbackSource = extractWalletSetupFunction(sourceCode);
-    const built = buildWalletSetupFunction(callbackSource);
-    const sourceHash = getWalletSetupFuncHash(built);
-    hashMappings.push({ compiledHash: hash, sourceHash });
-  }
-
-  console.log("[synpress-cache] create cache for hashes", hashes, hashMappings);
-  console.log("[synpress-cache] createCache start");
-  await createCache(outDir, hashes, prepareExtension, true);
-  console.log("[synpress-cache] createCache done");
-
-  for (const { compiledHash, sourceHash } of hashMappings) {
-    if (!sourceHash || sourceHash === compiledHash) {
-      continue;
-    }
-    const cacheDir = ensureCacheDirExists();
-    const compiledPath = path.join(cacheDir, compiledHash);
-    const sourcePath = path.join(cacheDir, sourceHash);
-    const sourceExists = await fs.pathExists(sourcePath);
-    if (!sourceExists) {
-      await fs.copy(compiledPath, sourcePath);
+  // Check if cache already exists (any hash directory means cache is present)
+  if (existsSync(cacheDir)) {
+    const entries = readdirSync(cacheDir);
+    const hasCache = entries.some(
+      (entry: string) =>
+        !(
+          entry.startsWith("metamask-chrome-") ||
+          entry.endsWith(".zip") ||
+          entry.startsWith(".")
+        )
+    );
+    if (hasCache) {
+      console.log("[synpress-cache] cache already exists, skipping build");
+      return;
     }
   }
+
+  console.log("[synpress-cache] building cache using synpress CLI");
+
+  // Use synpress CLI directly - this is the official way
+  const result = spawnSync("pnpm", ["exec", "synpress", walletSetupDir], {
+    cwd: webRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      // Run headless in CI, headed locally for debugging
+      HEADLESS: process.env.CI === "true" ? "true" : "false",
+    },
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      `synpress cache build failed with exit code ${result.status}`
+    );
+  }
+  console.log("[synpress-cache] cache built successfully");
 }
 
 async function main() {
   console.log("[synpress-cache] start");
   const started = await ensureHardhatNode();
-  process.env.SYNPRESS_NETWORK_RPC_URL = hardhatUrl;
-  process.env.SYNPRESS_NETWORK_CHAIN_ID = "31337";
-  await buildSynpressCache();
+  deployContracts();
+  buildSynpressCache();
 
   if (started) {
     stopHardhat();

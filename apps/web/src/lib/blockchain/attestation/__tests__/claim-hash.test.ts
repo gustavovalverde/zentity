@@ -1,13 +1,16 @@
 import { Fr } from "@aztec/bb.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Mock server-only for test environment
+vi.mock("server-only", () => ({}));
 
 import { getDocumentHashField } from "@/lib/blockchain/attestation/claim-hash";
 
 describe("claim-hash", () => {
-  it("reduces document hash into the field range", async () => {
+  it("reduces document hash into the field range", () => {
     const maxHash =
       "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-    const field = await getDocumentHashField(maxHash);
+    const field = getDocumentHashField(maxHash);
     expect(field.startsWith("0x")).toBe(true);
     const fieldValue = BigInt(field);
     expect(fieldValue).toBeLessThan(Fr.MODULUS);

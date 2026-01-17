@@ -1,7 +1,22 @@
-import { expect, test } from "./fixtures/synpress";
-import { connectWalletIfNeeded } from "./helpers/connect-wallet";
-import { confirmSignature, confirmTransaction } from "./helpers/metamask";
-import { readTestUserId } from "./helpers/test-user";
+/**
+ * Web3 Hardhat workflow E2E test
+ *
+ * IMPORTANT: These tests require MetaMask and synpress which have known caching issues.
+ * Skip by default in CI due to synpress cache bugs: https://github.com/Synthetixio/synpress/issues/1103
+ *
+ * To run locally:
+ * 1. Ensure Hardhat is running: pnpm exec tsx e2e/automation/start-web3-dev.ts
+ * 2. Build synpress cache: pnpm exec synpress e2e/wallet-setup
+ * 3. Run with: E2E_RUN_WEB3=true E2E_EXTERNAL_WEB_SERVER=true pnpm test:e2e --project=web3-hardhat
+ */
+import { expect, test } from "../fixtures/synpress";
+import { connectWalletIfNeeded } from "../helpers/connect-wallet";
+import { confirmSignature, confirmTransaction } from "../helpers/metamask";
+import { readTestUserId } from "../helpers/test-user";
+
+// Skip Web3 tests by default due to synpress caching bugs
+// Set E2E_RUN_WEB3=true to run these tests
+const skipWeb3Tests = process.env.E2E_RUN_WEB3 !== "true";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
 const WELCOME_HEADING_PATTERN = /welcome/i;
@@ -26,16 +41,19 @@ const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
 const TRANSFER_SUCCESS_TEXT = /Transfer submitted!/i;
 const TRANSFER_REVERTED_TEXT = /transfer.*reverted/i;
 
+// Default to Account 1 (index 0) from the standard Hardhat test seed phrase
 const senderAddress =
   process.env.E2E_SENDER_ADDRESS ??
-  "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+  "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+// Recipient is Account 2 (index 1) - for transfer tests
 const recipientAddress =
   process.env.E2E_RECIPIENT_ADDRESS ??
-  "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+  "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+// Use default Account 1 name from MetaMask
 const senderAccountName =
   process.env.E2E_ACCOUNT_NAME ??
   process.env.SYNPRESS_ACCOUNT_NAME ??
-  "Account 2";
+  "Account 1";
 const hardhatNetwork = {
   name: process.env.SYNPRESS_NETWORK_NAME ?? "Hardhat Local",
   rpcUrl: process.env.SYNPRESS_NETWORK_RPC_URL ?? "http://127.0.0.1:8545",
@@ -45,6 +63,14 @@ const hardhatNetwork = {
 
 test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
   test.describe.configure({ timeout: 180_000 });
+
+  // Skip by default due to synpress caching bugs
+  // Set E2E_RUN_WEB3=true to run these tests
+  test.skip(
+    () => skipWeb3Tests,
+    "Web3 tests skipped. Set E2E_RUN_WEB3=true to run. See file header for instructions."
+  );
+
   test("attest, grant compliance, mint, and transfer", async ({
     page,
     metamask,
