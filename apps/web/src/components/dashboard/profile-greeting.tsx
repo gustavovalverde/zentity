@@ -9,8 +9,8 @@ import {
   getServerProfileSnapshot,
   getStoredProfile,
   subscribeToProfileCache,
-} from "@/lib/crypto/profile-secret";
-import { hasCachedPasskeyUnlock } from "@/lib/crypto/secret-vault";
+} from "@/lib/privacy/crypto/profile-secret";
+import { hasCachedPasskeyUnlock } from "@/lib/privacy/crypto/secret-vault";
 
 /**
  * Displays the user's first name from their passkey-encrypted profile.

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { ocrDocumentOcr } from "@/lib/document/ocr-client";
+import { ocrDocumentOcr } from "@/lib/identity/document/ocr-client";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,

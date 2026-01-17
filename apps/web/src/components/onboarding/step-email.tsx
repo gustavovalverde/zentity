@@ -12,14 +12,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { emailSchema } from "@/features/auth/schemas/sign-up.schema";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { emailSchema } from "@/lib/auth/sign-up.schema";
 import { setOnboardingFlowId } from "@/lib/observability/flow-client";
-import { useOnboardingStore } from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
-import { makeFieldValidator } from "@/lib/utils/validation";
+import { makeFieldValidator } from "@/lib/utils/form-field-validator";
+import { useOnboardingStore } from "@/store/onboarding";
 
-import { useStepper } from "./stepper-context";
+import { useStepper } from "./stepper-config";
 import { StepperControls } from "./stepper-ui";
 
 /**
@@ -174,7 +174,7 @@ export function StepEmail() {
             const isInvalid =
               field.state.meta.isTouched && !field.state.meta.isValid;
             const errorMessage = isInvalid
-              ? (field.state.meta.errors?.[0] as string | undefined)
+              ? field.state.meta.errors?.[0]
               : undefined;
             return (
               <Field data-invalid={isInvalid}>

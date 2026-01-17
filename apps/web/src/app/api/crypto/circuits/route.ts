@@ -4,8 +4,11 @@ import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { getBbJsVersion, getCircuitIdentity } from "@/lib/zk/noir-verifier";
-import { CIRCUIT_SPECS } from "@/lib/zk/zk-circuit-spec";
+import {
+  getBbJsVersion,
+  getCircuitIdentity,
+} from "@/lib/privacy/zk/noir-verifier";
+import { CIRCUIT_SPECS } from "@/lib/privacy/zk/zk-circuit-spec";
 
 export async function GET(request: Request) {
   const requestContext = await resolveRequestContext(request.headers);

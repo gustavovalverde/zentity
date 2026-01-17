@@ -16,9 +16,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth/auth-client";
-import { FHE_SECRET_TYPE } from "@/lib/crypto/fhe-key-store";
-import { PROFILE_SECRET_TYPE } from "@/lib/crypto/profile-secret";
-import { addRecoveryWrapperForSecretType } from "@/lib/crypto/secret-vault";
+import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
+import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
+import { addRecoveryWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 

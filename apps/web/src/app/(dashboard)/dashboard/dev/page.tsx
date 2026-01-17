@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgeProofFull } from "@/lib/crypto/age-proof-types";
+import type { AgeProofFull } from "@/lib/privacy/crypto/age-proof-types";
 
 import {
   AlertTriangle,
@@ -49,7 +49,7 @@ import {
   ItemSeparator,
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
-import { getUserProof } from "@/lib/crypto/crypto-client";
+import { getUserProof } from "@/lib/privacy/crypto/crypto-client";
 
 export default function DevViewPage() {
   const [proofData, setProofData] = useState<AgeProofFull | null>(null);

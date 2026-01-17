@@ -17,17 +17,17 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  type OnboardingStore,
-  useOnboardingStore,
-} from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils/utils";
+import { cn } from "@/lib/utils/classname";
+import { type OnboardingStore, useOnboardingStore } from "@/store/onboarding";
 
-import { type StepId, steps, utils } from "./stepper-context";
+import { type StepId, steps, utils } from "./stepper-config";
 
 /** Stepper instance type inferred from our step definitions */
 type OnboardingStepper = Stepper<typeof steps>;
+
+/** 1-indexed step number for server validation */
+type StepNumber = 1 | 2 | 3 | 4 | 5;
 
 /**
  * StepperNavigation - Step indicators following stepperize/shadcn pattern
@@ -55,7 +55,7 @@ export function StepperNavigation({
     setIsNavigating(true);
     try {
       const result = await trpc.onboarding.validateStep.mutate({
-        targetStep: (targetIndex + 1) as 1 | 2 | 3 | 4 | 5,
+        targetStep: (targetIndex + 1) as StepNumber,
       });
 
       if (!result.valid) {
@@ -87,7 +87,7 @@ export function StepperNavigation({
     try {
       const targetIndex = utils.getIndex(pendingBack.stepId);
       await trpc.onboarding.resetToStep.mutate({
-        step: (targetIndex + 1) as 1 | 2 | 3 | 4 | 5,
+        step: (targetIndex + 1) as StepNumber,
       });
 
       const resetState: Partial<OnboardingStore> = {};
@@ -270,7 +270,7 @@ export function StepperControls({
       const targetStepId = steps[targetIndex].id;
 
       const result = await trpc.onboarding.validateStep.mutate({
-        targetStep: (targetIndex + 1) as 1 | 2 | 3 | 4 | 5,
+        targetStep: (targetIndex + 1) as StepNumber,
       });
 
       if (!result.valid) {
@@ -303,7 +303,7 @@ export function StepperControls({
       const targetIndex = utils.getIndex(pendingBack.stepId);
 
       await trpc.onboarding.resetToStep.mutate({
-        step: (targetIndex + 1) as 1 | 2 | 3 | 4 | 5,
+        step: (targetIndex + 1) as StepNumber,
       });
 
       // Reset downstream flags in store
@@ -346,7 +346,7 @@ export function StepperControls({
         // Default: validate with server, then advance
         const currentIndex = utils.getIndex(stepper.current.id);
         const result = await trpc.onboarding.validateStep.mutate({
-          targetStep: (currentIndex + 2) as 1 | 2 | 3 | 4 | 5,
+          targetStep: (currentIndex + 2) as StepNumber,
         });
 
         if (!result.valid) {

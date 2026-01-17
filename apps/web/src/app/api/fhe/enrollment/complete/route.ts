@@ -6,7 +6,7 @@ import {
   consumeOnboardingContext,
   consumeRegistrationBlob,
   getOnboardingContext,
-} from "@/lib/auth/onboarding-context";
+} from "@/lib/auth/onboarding-tokens";
 import {
   deleteEncryptedSecretByUserAndType,
   getEncryptedSecretByUserAndType,

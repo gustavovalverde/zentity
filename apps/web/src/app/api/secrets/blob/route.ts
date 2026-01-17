@@ -4,15 +4,15 @@ import { requireSession } from "@/lib/auth/api-auth";
 import {
   isRegistrationTokenValid,
   storeRegistrationBlob,
-} from "@/lib/auth/onboarding-context";
-import {
-  readSecretBlob,
-  writeSecretBlob,
-} from "@/lib/crypto/secret-blob-store";
+} from "@/lib/auth/onboarding-tokens";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
 } from "@/lib/db/queries/crypto";
+import {
+  readSecretBlob,
+  writeSecretBlob,
+} from "@/lib/privacy/crypto/secret-blob-store";
 
 export const runtime = "nodejs";
 

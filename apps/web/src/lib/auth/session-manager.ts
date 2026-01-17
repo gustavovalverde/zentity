@@ -3,10 +3,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { signOut as betterAuthSignOut } from "@/lib/auth/auth-client";
-import { resetFheKeyStoreCache } from "@/lib/crypto/fhe-key-store";
-import { resetProfileSecretCache } from "@/lib/crypto/profile-secret";
-import { clearAllCaches as clearSecretVaultCaches } from "@/lib/crypto/secret-vault";
 import { resetOnboardingFlowId } from "@/lib/observability/flow-client";
+import { resetFheKeyStoreCache } from "@/lib/privacy/crypto/fhe-key-store";
+import { resetProfileSecretCache } from "@/lib/privacy/crypto/profile-secret";
+import { clearAllCaches as clearSecretVaultCaches } from "@/lib/privacy/crypto/secret-vault";
 import { redirectTo as navigateTo } from "@/lib/utils/navigation";
 
 const ONBOARDING_STORAGE_KEY = "zentity-onboarding";

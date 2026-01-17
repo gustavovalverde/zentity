@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { createOnboardingContext } from "@/lib/auth/onboarding-context";
+import { createOnboardingContext } from "@/lib/auth/onboarding-tokens";
 
 export const runtime = "nodejs";
 

@@ -11,8 +11,8 @@
  */
 "use client";
 
-import type { ChallengeType } from "@/lib/liveness/challenges";
-import type { LivenessError } from "@/lib/liveness/errors";
+import type { ChallengeType } from "@/lib/identity/liveness/challenges";
+import type { LivenessError } from "@/lib/identity/liveness/errors";
 
 import {
   createContext,

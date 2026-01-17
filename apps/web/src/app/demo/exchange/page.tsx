@@ -25,8 +25,8 @@ import {
   generateFaceMatchProof,
   getProofChallenge,
   getSignedClaims,
-} from "@/lib/crypto/crypto-client";
-import { getStoredProfile } from "@/lib/crypto/profile-secret";
+} from "@/lib/privacy/crypto/crypto-client";
+import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
 
 // Types for the demo
 interface ExchangeKeypair {

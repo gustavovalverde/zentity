@@ -8,7 +8,7 @@ import "server-only";
 
 import type { IAttestationProvider } from "./types";
 
-import { getNetworkById, isNetworkAvailable } from "../config/networks";
+import { getNetworkById, isNetworkAvailable } from "../networks";
 import { FhevmMockProvider } from "./fhevm-mock-provider";
 import { FhevmZamaProvider } from "./fhevm-zama-provider";
 

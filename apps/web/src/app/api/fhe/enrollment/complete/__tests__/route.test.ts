@@ -14,7 +14,7 @@ const onboardingMocks = vi.hoisted(() => ({
   getOnboardingContext: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/onboarding-context", () => onboardingMocks);
+vi.mock("@/lib/auth/onboarding-tokens", () => onboardingMocks);
 
 const cryptoMocks = vi.hoisted(() => ({
   deleteEncryptedSecretByUserAndType: vi.fn(),

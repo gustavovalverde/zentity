@@ -1,8 +1,8 @@
 import { decode, encode } from "@msgpack/msgpack";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { verifyAgeFhe } from "@/lib/crypto/fhe-client";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
+import { verifyAgeFhe } from "@/lib/privacy/crypto/fhe-client";
 
 export const runtime = "nodejs";
 

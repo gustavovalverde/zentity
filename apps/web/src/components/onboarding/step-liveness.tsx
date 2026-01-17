@@ -4,12 +4,12 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useOnboardingStore } from "@/lib/onboarding/store";
 import { trpc } from "@/lib/trpc/client";
+import { useOnboardingStore } from "@/store/onboarding";
 
 import { LivenessFlow } from "../liveness/liveness-flow";
 import { LivenessProvider } from "../liveness/liveness-provider";
-import { useStepper } from "./stepper-context";
+import { useStepper } from "./stepper-config";
 import { StepperControls } from "./stepper-ui";
 
 /**

@@ -12,7 +12,7 @@ import {
   ItemSeparator,
   ItemTitle,
 } from "@/components/ui/item";
-import { calculateAge } from "@/lib/identity/date-utils";
+import { calculateAge } from "@/lib/identity/verification/date-utils";
 
 interface ExtractedInfoReviewProps {
   /** User's email address (from store or session) */

@@ -38,10 +38,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
 import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
+import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
+import { getCountryName } from "@/lib/privacy/zk/nationality-data";
 import { trpcReact } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils/utils";
-import { useEthersSigner } from "@/lib/wagmi/use-ethers-signer";
-import { getCountryName } from "@/lib/zk/nationality-data";
+import { cn } from "@/lib/utils/classname";
 
 function normalizeHandle(handle: unknown): `0x${string}` | undefined {
   if (!handle) {

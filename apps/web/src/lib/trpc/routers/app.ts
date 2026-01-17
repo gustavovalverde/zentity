@@ -21,11 +21,11 @@ import { router } from "../server";
 import { accountRouter } from "./account";
 import { attestationRouter } from "./attestation";
 import { credentialsRouter } from "./credentials";
-import { cryptoRouter } from "./crypto";
-import { identityRouter } from "./identity";
+import { cryptoRouter } from "./crypto/router";
+import { identityRouter } from "./identity/router";
 import { livenessRouter } from "./liveness";
 import { onboardingRouter } from "./onboarding";
-import { recoveryRouter } from "./recovery";
+import { recoveryRouter } from "./recovery/router";
 import { secretsRouter } from "./secrets";
 import { tokenRouter } from "./token";
 

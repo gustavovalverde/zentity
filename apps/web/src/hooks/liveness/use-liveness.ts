@@ -6,7 +6,7 @@
  */
 "use client";
 
-import type { ChallengeType } from "@/lib/liveness/challenges";
+import type { ChallengeType } from "@/lib/identity/liveness/challenges";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
@@ -17,7 +17,7 @@ import {
   getAutoRetryCount,
   type LivenessError,
   mapLegacyErrorCode,
-} from "@/lib/liveness/errors";
+} from "@/lib/identity/liveness/errors";
 
 // State types matching server session.ts
 export type LivenessPhase =

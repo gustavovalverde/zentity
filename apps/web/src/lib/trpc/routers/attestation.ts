@@ -24,7 +24,7 @@ import {
   getExplorerTxUrl,
   getNetworkById,
   isDemoMode,
-} from "@/lib/blockchain/config/networks";
+} from "@/lib/blockchain/networks";
 import {
   canCreateProvider,
   createProvider,
@@ -46,7 +46,7 @@ import {
 import {
   countryCodeToNumeric,
   getComplianceLevel,
-} from "@/lib/identity/compliance";
+} from "@/lib/identity/verification/compliance";
 
 import { protectedProcedure, router } from "../server";
 
