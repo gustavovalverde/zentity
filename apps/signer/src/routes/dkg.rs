@@ -28,7 +28,7 @@ pub async fn init_dkg(
 /// POST /dkg/round1
 ///
 /// Submit a round 1 package from a participant.
-#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, participant = request.participant_id))]
+#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, participant = %request.participant_id))]
 pub async fn submit_round1(
     coordinator: web::Data<Coordinator>,
     request: web::Json<DkgRound1Request>,
@@ -45,7 +45,7 @@ pub async fn submit_round1(
 /// POST /dkg/round2
 ///
 /// Submit an encrypted round 2 package from a participant.
-#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, from = request.from_participant_id, to = request.to_participant_id))]
+#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, from = %request.from_participant_id, to = %request.to_participant_id))]
 pub async fn submit_round2(
     coordinator: web::Data<Coordinator>,
     request: web::Json<DkgRound2Request>,

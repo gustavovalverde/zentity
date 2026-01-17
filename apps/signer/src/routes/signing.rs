@@ -29,7 +29,7 @@ pub async fn init_signing(
 /// POST /signing/commit
 ///
 /// Submit a signing commitment from a participant.
-#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, participant = request.participant_id))]
+#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, participant = %request.participant_id))]
 pub async fn submit_commitment(
     coordinator: web::Data<Coordinator>,
     request: web::Json<SigningCommitRequest>,
@@ -46,7 +46,7 @@ pub async fn submit_commitment(
 /// POST /signing/partial
 ///
 /// Submit a partial signature from a signer.
-#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, participant = request.participant_id))]
+#[tracing::instrument(skip(coordinator, request), fields(session_id = %request.session_id, participant = %request.participant_id))]
 pub async fn submit_partial(
     coordinator: web::Data<Coordinator>,
     request: web::Json<SigningSubmitPartialRequest>,
