@@ -676,3 +676,249 @@ async fn test_signing_with_different_signer_subset() {
     assert!(agg.signature.is_some());
     println!("Signing with 2+3 succeeded!");
 }
+
+/// Test that invalid signature shares correctly identify the culprit participant.
+///
+/// This test exercises the error path in `aggregate_signatures` when a participant
+/// submits a corrupted partial signature. The error should correctly identify
+/// which participant submitted the invalid share.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn test_invalid_signature_share_identifies_culprit() {
+    let coord_dir = TempDir::new().unwrap();
+    let signer1_dir = TempDir::new().unwrap();
+    let signer2_dir = TempDir::new().unwrap();
+    let signer3_dir = TempDir::new().unwrap();
+
+    let (coordinator, coordinator_storage) = create_test_coordinator(&coord_dir);
+    let signer1 = create_test_signer(&signer1_dir, "signer-1", 1, Ciphersuite::Secp256k1);
+    let signer2 = create_test_signer(&signer2_dir, "signer-2", 2, Ciphersuite::Secp256k1);
+    let signer3 = create_test_signer(&signer3_dir, "signer-3", 3, Ciphersuite::Secp256k1);
+
+    // Setup participants
+    let mut participant_endpoints = HashMap::new();
+    participant_endpoints.insert(1, "http://localhost:5101".to_string());
+    participant_endpoints.insert(2, "http://localhost:5102".to_string());
+    participant_endpoints.insert(3, "http://localhost:5103".to_string());
+
+    let mut participant_hpke_pubkeys = HashMap::new();
+    participant_hpke_pubkeys.insert(1, signer1.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(2, signer2.hpke_pubkey_base64());
+    participant_hpke_pubkeys.insert(3, signer3.hpke_pubkey_base64());
+
+    // === Complete DKG ===
+    let init = coordinator
+        .init_dkg(DkgInitRequest {
+            threshold: 2,
+            total_participants: 3,
+            ciphersuite: Ciphersuite::default(),
+            participant_endpoints: Some(participant_endpoints),
+            participant_hpke_pubkeys: participant_hpke_pubkeys.clone(),
+        })
+        .await
+        .unwrap();
+
+    let session_id = init.session_id;
+
+    // Round 1
+    let r1_1 = signer1.dkg_round1(&session_id, 2, 3).unwrap();
+    let r1_2 = signer2.dkg_round1(&session_id, 2, 3).unwrap();
+    let r1_3 = signer3.dkg_round1(&session_id, 2, 3).unwrap();
+
+    let mut round1_packages = HashMap::new();
+    round1_packages.insert(1, r1_1.package.clone());
+    round1_packages.insert(2, r1_2.package.clone());
+    round1_packages.insert(3, r1_3.package.clone());
+
+    for (id, pkg) in &round1_packages {
+        coordinator
+            .submit_round1(DkgRound1Request {
+                session_id,
+                participant_id: *id,
+                package: pkg.clone(),
+            })
+            .await
+            .unwrap();
+    }
+
+    // Round 2
+    let r2_1 = signer1
+        .dkg_round2(&session_id, &round1_packages, &participant_hpke_pubkeys)
+        .unwrap();
+    let r2_2 = signer2
+        .dkg_round2(&session_id, &round1_packages, &participant_hpke_pubkeys)
+        .unwrap();
+    let r2_3 = signer3
+        .dkg_round2(&session_id, &round1_packages, &participant_hpke_pubkeys)
+        .unwrap();
+
+    for (from, r2_resp) in [(1u16, &r2_1), (2, &r2_2), (3, &r2_3)] {
+        for (&to, pkg) in &r2_resp.packages {
+            coordinator
+                .submit_round2(DkgRound2Request {
+                    session_id,
+                    from_participant_id: from,
+                    to_participant_id: to,
+                    encrypted_package: pkg.clone(),
+                })
+                .await
+                .unwrap();
+        }
+    }
+
+    // Finalize
+    let mut r2_for_1 = HashMap::new();
+    r2_for_1.insert(2, r2_2.packages.get(&1).unwrap().clone());
+    r2_for_1.insert(3, r2_3.packages.get(&1).unwrap().clone());
+
+    let mut r2_for_2 = HashMap::new();
+    r2_for_2.insert(1, r2_1.packages.get(&2).unwrap().clone());
+    r2_for_2.insert(3, r2_3.packages.get(&2).unwrap().clone());
+
+    let fin1 = signer1
+        .dkg_finalize(&session_id, &round1_packages, &r2_for_1)
+        .unwrap();
+    let _fin2 = signer2
+        .dkg_finalize(&session_id, &round1_packages, &r2_for_2)
+        .unwrap();
+
+    let group_pubkey = fin1.group_pubkey;
+
+    coordinator_storage
+        .put_group_key(
+            &group_pubkey,
+            &GroupKeyRecord {
+                group_pubkey: group_pubkey.clone(),
+                public_key_package: fin1.public_key_package.clone(),
+                ciphersuite: Ciphersuite::Secp256k1,
+                threshold: 2,
+                total_participants: 3,
+                created_at: chrono::Utc::now(),
+            },
+        )
+        .unwrap();
+
+    // === Signing with corrupted partial from signer 2 ===
+    let message = BASE64.encode("Test message for culprit identification");
+    let sign_init = coordinator
+        .init_signing(SigningInitRequest {
+            group_pubkey: group_pubkey.clone(),
+            message: message.clone(),
+            selected_signers: Some(vec![1, 2]),
+        })
+        .await
+        .unwrap();
+
+    let sign_session = sign_init.session_id;
+
+    // Get commitments
+    let commit1 = signer1
+        .sign_commit(&sign_session, &group_pubkey, None)
+        .await
+        .unwrap();
+    let commit2 = signer2
+        .sign_commit(&sign_session, &group_pubkey, None)
+        .await
+        .unwrap();
+
+    coordinator
+        .submit_commitment(SigningCommitRequest {
+            session_id: sign_session,
+            participant_id: 1,
+            commitment: commit1.commitment.clone(),
+        })
+        .await
+        .unwrap();
+    coordinator
+        .submit_commitment(SigningCommitRequest {
+            session_id: sign_session,
+            participant_id: 2,
+            commitment: commit2.commitment.clone(),
+        })
+        .await
+        .unwrap();
+
+    // Get partial signatures
+    let mut all_commitments = HashMap::new();
+    all_commitments.insert(1, commit1.commitment.clone());
+    all_commitments.insert(2, commit2.commitment.clone());
+
+    let message_bytes = BASE64.decode(&message).unwrap();
+
+    let partial1 = signer1
+        .sign_partial(
+            &sign_session,
+            &group_pubkey,
+            &message_bytes,
+            &all_commitments,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let partial2 = signer2
+        .sign_partial(
+            &sign_session,
+            &group_pubkey,
+            &message_bytes,
+            &all_commitments,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Submit valid partial from signer 1
+    coordinator
+        .submit_partial(SigningSubmitPartialRequest {
+            session_id: sign_session,
+            participant_id: 1,
+            partial_signature: partial1.partial_signature,
+        })
+        .await
+        .unwrap();
+
+    // Corrupt signer 2's partial signature by flipping bits
+    // Partial signatures are base64-encoded
+    let mut corrupted_bytes = BASE64.decode(&partial2.partial_signature).unwrap();
+    // Flip bits in the middle of the signature to corrupt it
+    if corrupted_bytes.len() > 16 {
+        corrupted_bytes[16] ^= 0xFF;
+    }
+    let corrupted_partial = BASE64.encode(&corrupted_bytes);
+
+    coordinator
+        .submit_partial(SigningSubmitPartialRequest {
+            session_id: sign_session,
+            participant_id: 2,
+            partial_signature: corrupted_partial,
+        })
+        .await
+        .unwrap();
+
+    // Attempt aggregation - should fail and identify signer 2 as culprit
+    let result = coordinator
+        .aggregate_signatures(SigningAggregateRequest {
+            session_id: sign_session,
+        })
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Aggregation should fail with corrupted partial"
+    );
+
+    let err = result.unwrap_err();
+    let err_str = err.to_string();
+
+    // Verify the error identifies participant 2 as the culprit
+    assert!(
+        err_str.contains("Invalid signature share") || err_str.contains("culprits"),
+        "Error should indicate invalid signature share: {err_str}"
+    );
+    assert!(
+        err_str.contains('2') || err_str.contains("[2]"),
+        "Error should identify participant 2 as culprit: {err_str}"
+    );
+
+    println!("Cheater identification test passed: {err_str}");
+}

@@ -702,10 +702,19 @@ impl Coordinator {
             )));
         }
 
+        // RFC 9591 §5.1: Reject duplicate commitment values
+        if session
+            .commitments
+            .values()
+            .any(|c| c == &request.commitment)
+        {
+            return Err(SignerError::DuplicateCommitment);
+        }
+
         // Store commitment
         session
             .commitments
-            .insert(request.participant_id, request.commitment);
+            .insert(request.participant_id, request.commitment.clone());
 
         // Check if all commitments received
         if session.commitments_complete() {
@@ -889,8 +898,22 @@ impl Coordinator {
 
                 let signature =
                     frost_secp::aggregate(&signing_package, &signature_shares, &pubkey_package)
-                        .map_err(|e| {
-                            SignerError::AggregationFailed(format!("Aggregation failed: {e}"))
+                        .map_err(|e| match &e {
+                            frost_secp::Error::InvalidSignatureShare { culprit } => {
+                                // FROST Identifiers serialize as big-endian scalars (32 bytes)
+                                // The participant ID (u16) is in the last 2 bytes
+                                let bytes = culprit.serialize();
+                                let len = bytes.len();
+                                let culprit_id = if len >= 2 {
+                                    u16::from_be_bytes([bytes[len - 2], bytes[len - 1]])
+                                } else {
+                                    0
+                                };
+                                SignerError::InvalidSignatureShare {
+                                    culprits: vec![culprit_id],
+                                }
+                            }
+                            _ => SignerError::AggregationFailed(format!("Aggregation failed: {e}")),
                         })?;
 
                 let verifying_key = pubkey_package.verifying_key();
@@ -971,8 +994,22 @@ impl Coordinator {
 
                 let signature =
                     frost_ed::aggregate(&signing_package, &signature_shares, &pubkey_package)
-                        .map_err(|e| {
-                            SignerError::AggregationFailed(format!("Aggregation failed: {e}"))
+                        .map_err(|e| match &e {
+                            frost_ed::Error::InvalidSignatureShare { culprit } => {
+                                // FROST Identifiers serialize as big-endian scalars (32 bytes)
+                                // The participant ID (u16) is in the last 2 bytes
+                                let bytes = culprit.serialize();
+                                let len = bytes.len();
+                                let culprit_id = if len >= 2 {
+                                    u16::from_be_bytes([bytes[len - 2], bytes[len - 1]])
+                                } else {
+                                    0
+                                };
+                                SignerError::InvalidSignatureShare {
+                                    culprits: vec![culprit_id],
+                                }
+                            }
+                            _ => SignerError::AggregationFailed(format!("Aggregation failed: {e}")),
                         })?;
 
                 let verifying_key = pubkey_package.verifying_key();

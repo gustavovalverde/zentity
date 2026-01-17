@@ -27,6 +27,9 @@ pub enum SignerError {
     #[error("Participant already submitted: {0}")]
     ParticipantAlreadySubmitted(String),
 
+    #[error("Duplicate commitment value detected")]
+    DuplicateCommitment,
+
     #[error("Missing participants: {0:?}")]
     MissingParticipants(Vec<String>),
 
@@ -46,6 +49,15 @@ pub enum SignerError {
 
     #[error("Aggregation failed: {0}")]
     AggregationFailed(String),
+
+    #[error("Invalid signature share from participant(s): {culprits:?}")]
+    InvalidSignatureShare { culprits: Vec<u16> },
+
+    #[error("Nonces already exist for session {session_id} and group {group_pubkey}")]
+    NoncesAlreadyExist {
+        session_id: String,
+        group_pubkey: String,
+    },
 
     // Key share errors
     #[error("Key share not found: {0}")]
@@ -132,12 +144,15 @@ impl SignerError {
             Self::InvalidSessionState { .. } => Some("INVALID_SESSION_STATE"),
             Self::InvalidParticipant(_) => Some("INVALID_PARTICIPANT"),
             Self::ParticipantAlreadySubmitted(_) => Some("PARTICIPANT_ALREADY_SUBMITTED"),
+            Self::DuplicateCommitment => Some("DUPLICATE_COMMITMENT"),
             Self::MissingParticipants(_) => Some("MISSING_PARTICIPANTS"),
             Self::DkgFailed(_) => Some("DKG_FAILED"),
             Self::InvalidDkgPackage(_) => Some("INVALID_DKG_PACKAGE"),
             Self::SigningFailed(_) => Some("SIGNING_FAILED"),
             Self::InsufficientSignatures { .. } => Some("INSUFFICIENT_SIGNATURES"),
             Self::AggregationFailed(_) => Some("AGGREGATION_FAILED"),
+            Self::InvalidSignatureShare { .. } => Some("INVALID_SIGNATURE_SHARE"),
+            Self::NoncesAlreadyExist { .. } => Some("NONCES_ALREADY_EXIST"),
             Self::KeyShareNotFound(_) => Some("KEY_SHARE_NOT_FOUND"),
             Self::KeyShareDecryptionFailed(_) => Some("KEY_SHARE_DECRYPTION_FAILED"),
             Self::Unauthorized => Some("UNAUTHORIZED"),
@@ -170,6 +185,7 @@ impl ResponseError for SignerError {
             | Self::InvalidDkgPackage(_)
             | Self::InvalidParticipant(_)
             | Self::ParticipantAlreadySubmitted(_)
+            | Self::DuplicateCommitment
             | Self::Serialization(_)
             | Self::Deserialization(_) => StatusCode::BAD_REQUEST,
 
@@ -185,12 +201,15 @@ impl ResponseError for SignerError {
             Self::SessionNotFound(_) | Self::KeyShareNotFound(_) => StatusCode::NOT_FOUND,
 
             // 409 Conflict - State conflicts
-            Self::InvalidSessionState { .. } | Self::SessionExpired(_) => StatusCode::CONFLICT,
+            Self::InvalidSessionState { .. }
+            | Self::SessionExpired(_)
+            | Self::NoncesAlreadyExist { .. } => StatusCode::CONFLICT,
 
             // 422 Unprocessable Entity - Business logic errors
             Self::DkgFailed(_)
             | Self::SigningFailed(_)
             | Self::AggregationFailed(_)
+            | Self::InvalidSignatureShare { .. }
             | Self::InsufficientSignatures { .. }
             | Self::MissingParticipants(_)
             | Self::InvalidSignature(_) => StatusCode::UNPROCESSABLE_ENTITY,
