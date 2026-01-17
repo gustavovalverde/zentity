@@ -202,7 +202,7 @@ async function ensureUserExists(
     userId = randomUUID();
     await runSql(
       dbUrl,
-      `INSERT INTO "user" (id, email, name, email_verified, created_at, updated_at)
+      `INSERT INTO "user" (id, email, name, emailVerified, createdAt, updatedAt)
        VALUES ('${userId}', '${email.replaceAll("'", "''")}', '${name.replaceAll("'", "''")}', 1, '${now}', '${now}');`
     );
     console.log(
