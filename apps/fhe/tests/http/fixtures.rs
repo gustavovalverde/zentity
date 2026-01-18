@@ -28,70 +28,43 @@ pub fn register_key_request(server_key: &[u8], public_key: &[u8]) -> RegisterKey
 }
 
 // ============================================================================
-// Birth Year Offset (Age) Encryption Fixtures
+// DOB Days Fixtures
 // ============================================================================
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptBirthYearOffsetRequest {
-    pub birth_year_offset: u16,
+pub struct EncryptDobDaysRequest {
+    pub dob_days: u32,
     pub key_id: String,
 }
 
-/// Build a valid birth year offset encryption request.
-pub fn encrypt_birth_year_offset_request(
-    offset: u16,
-    key_id: &str,
-) -> EncryptBirthYearOffsetRequest {
-    EncryptBirthYearOffsetRequest {
-        birth_year_offset: offset,
+pub fn encrypt_dob_days_request(dob_days: u32, key_id: &str) -> EncryptDobDaysRequest {
+    EncryptDobDaysRequest {
+        dob_days,
         key_id: key_id.to_string(),
     }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAgeOffsetRequest {
+pub struct VerifyAgeFromDobRequest {
     #[serde(with = "serde_bytes")]
     pub ciphertext: Vec<u8>,
-    pub current_year: u16,
+    pub current_days: u32,
     pub min_age: u16,
     pub key_id: String,
 }
 
-/// Build a valid age verification request.
-pub fn verify_age_offset_request(
+pub fn verify_age_from_dob_request(
     ciphertext: &[u8],
-    current_year: u16,
+    current_days: u32,
     min_age: u16,
     key_id: &str,
-) -> VerifyAgeOffsetRequest {
-    VerifyAgeOffsetRequest {
+) -> VerifyAgeFromDobRequest {
+    VerifyAgeFromDobRequest {
         ciphertext: ciphertext.to_vec(),
-        current_year,
+        current_days,
         min_age,
-        key_id: key_id.to_string(),
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyAgeOffsetDefaultMinAgeRequest {
-    #[serde(with = "serde_bytes")]
-    pub ciphertext: Vec<u8>,
-    pub current_year: u16,
-    pub key_id: String,
-}
-
-/// Build an age verification request without minAge (uses default 18).
-pub fn verify_age_offset_request_default_min_age(
-    ciphertext: &[u8],
-    current_year: u16,
-    key_id: &str,
-) -> VerifyAgeOffsetDefaultMinAgeRequest {
-    VerifyAgeOffsetDefaultMinAgeRequest {
-        ciphertext: ciphertext.to_vec(),
-        current_year,
         key_id: key_id.to_string(),
     }
 }
@@ -176,6 +149,23 @@ pub fn verify_liveness_threshold_request(
 }
 
 // ============================================================================
+// Batch Fixtures
+// ============================================================================
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmptyBatchRequest {
+    pub key_id: String,
+}
+
+/// Build an empty batch request (no encryption fields set) to trigger InvalidInput.
+pub fn empty_batch_request(key_id: &str) -> EmptyBatchRequest {
+    EmptyBatchRequest {
+        key_id: key_id.to_string(),
+    }
+}
+
+// ============================================================================
 // Malformed Request Fixtures (for negative tests)
 // ============================================================================
 
@@ -206,7 +196,7 @@ pub fn malformed_json() -> &'static str {
 /// Build an encrypt request with invalid key id.
 pub fn with_invalid_key_id_format() -> serde_json::Value {
     serde_json::json!({
-        "birthYearOffset": 100,
+        "dobDays": 40_000,
         "keyId": "not-valid-key-id"
     })
 }
@@ -214,26 +204,26 @@ pub fn with_invalid_key_id_format() -> serde_json::Value {
 /// Build an encrypt request with valid key id format but not registered.
 pub fn with_invalid_key_content() -> serde_json::Value {
     serde_json::json!({
-        "birthYearOffset": 100,
+        "dobDays": 40_000,
         "keyId": "00000000-0000-0000-0000-000000000001"
     })
 }
 
 /// Build a verify request with an invalid/non-existent key ID.
-pub fn with_invalid_key_id(ciphertext: &[u8]) -> VerifyAgeOffsetRequest {
-    VerifyAgeOffsetRequest {
+pub fn with_invalid_key_id(ciphertext: &[u8]) -> VerifyAgeFromDobRequest {
+    VerifyAgeFromDobRequest {
         ciphertext: ciphertext.to_vec(),
-        current_year: 2025,
+        current_days: 45_650,
         min_age: 18,
         key_id: "00000000-0000-0000-0000-000000000000".to_string(),
     }
 }
 
 /// Build a verify request with corrupted ciphertext.
-pub fn with_corrupted_ciphertext(key_id: &str) -> VerifyAgeOffsetRequest {
-    VerifyAgeOffsetRequest {
+pub fn with_corrupted_ciphertext(key_id: &str) -> VerifyAgeFromDobRequest {
+    VerifyAgeFromDobRequest {
         ciphertext: b"this is not a valid ciphertext".to_vec(),
-        current_year: 2025,
+        current_days: 45_650,
         min_age: 18,
         key_id: key_id.to_string(),
     }
@@ -243,12 +233,11 @@ pub fn with_corrupted_ciphertext(key_id: &str) -> VerifyAgeOffsetRequest {
 // Boundary Value Fixtures
 // ============================================================================
 
-/// Age offset boundary values
-pub mod age_boundaries {
-    pub const MIN_OFFSET: u16 = 0; // Year 1900
-    pub const MAX_OFFSET: u16 = 255; // Year 2155
-    pub const OVER_MAX_OFFSET: u16 = 256;
-    pub const TYPICAL_OFFSET: u16 = 100; // Year 2000
+/// DOB days boundary values
+pub mod dob_days_boundaries {
+    pub const MIN_DAYS: u32 = 0; // 1900-01-01
+    pub const TYPICAL_DAYS: u32 = 40_000; // ~2009
+    pub const MAX_DAYS: u32 = 150_000; // ~2310
 }
 
 /// Country code boundary values

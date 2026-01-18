@@ -1,49 +1,53 @@
-//! Age verification endpoint HTTP tests.
+//! Liveness score endpoint HTTP tests.
 //!
-//! Tests the /encrypt-birth-year-offset and /verify-age-offset endpoints.
+//! Tests the /encrypt-liveness and /verify-liveness-threshold endpoints.
+//! Includes full roundtrip integration tests with decryption.
 
-mod common;
-mod http;
+use tfhe::prelude::FheDecrypt;
 
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use http::fixtures::age_boundaries::*;
 use serde::Deserialize;
 use tower::ServiceExt;
 
+use crate::{common, http};
+use http::fixtures::liveness_boundaries::*;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct EncryptBirthYearOffsetResponse {
+struct EncryptLivenessResponse {
     #[serde(with = "serde_bytes")]
     ciphertext: Vec<u8>,
+    score: f64,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct VerifyAgeOffsetResponse {
+struct VerifyLivenessThresholdResponse {
     #[serde(with = "serde_bytes")]
-    result_ciphertext: Vec<u8>,
+    passes_ciphertext: Vec<u8>,
+    threshold: f64,
 }
 
 // ============================================================================
-// Encrypt Birth Year Offset - Happy Path Tests
+// Encrypt Liveness Score - Happy Path Tests
 // ============================================================================
 
-/// Encrypt birth year offset returns 200 with valid inputs.
+/// Encrypt liveness score returns 200 with valid inputs.
 #[tokio::test]
-async fn encrypt_birth_year_offset_success() {
+async fn encrypt_liveness_success() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(TYPICAL_OFFSET, &key_id);
+    let body = http::fixtures::encrypt_liveness_request(TYPICAL_SCORE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -53,23 +57,24 @@ async fn encrypt_birth_year_offset_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body: EncryptBirthYearOffsetResponse = http::parse_msgpack_body(response).await;
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
     assert!(!body.ciphertext.is_empty());
+    assert_eq!(body.score, TYPICAL_SCORE);
 }
 
-/// Encrypt with minimum offset (0) succeeds.
+/// Encrypt with minimum score (0.0) succeeds.
 #[tokio::test]
-async fn encrypt_birth_year_offset_boundary_zero() {
+async fn encrypt_liveness_boundary_zero() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(MIN_OFFSET, &key_id);
+    let body = http::fixtures::encrypt_liveness_request(MIN_SCORE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -78,21 +83,24 @@ async fn encrypt_birth_year_offset_boundary_zero() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.score, MIN_SCORE);
 }
 
-/// Encrypt with maximum offset (255) succeeds.
+/// Encrypt with maximum score (1.0) succeeds.
 #[tokio::test]
-async fn encrypt_birth_year_offset_boundary_max() {
+async fn encrypt_liveness_boundary_one() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(MAX_OFFSET, &key_id);
+    let body = http::fixtures::encrypt_liveness_request(MAX_SCORE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -101,25 +109,83 @@ async fn encrypt_birth_year_offset_boundary_max() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
+    assert_eq!(body.score, MAX_SCORE);
 }
 
-// ============================================================================
-// Encrypt Birth Year Offset - Validation Error Tests
-// ============================================================================
-
-/// Offset over max (256) returns 400.
+/// Encrypt with precision score preserves 4 decimal places.
 #[tokio::test]
-async fn encrypt_birth_year_offset_over_max() {
+async fn encrypt_liveness_precision() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let body = http::fixtures::encrypt_birth_year_offset_request(OVER_MAX_OFFSET, &key_id);
+    let body = http::fixtures::encrypt_liveness_request(PRECISION_SCORE, &key_id);
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
+    let echoed_score = body.score;
+    assert!(
+        (echoed_score - PRECISION_SCORE).abs() < 0.0001,
+        "Score precision not preserved: {} vs {}",
+        echoed_score,
+        PRECISION_SCORE
+    );
+}
+
+// ============================================================================
+// Encrypt Liveness Score - Validation Error Tests
+// ============================================================================
+
+/// Score over max (1.5) returns 400.
+#[tokio::test]
+async fn encrypt_liveness_over_max() {
+    let app = http::test_app();
+    let key_id = common::get_registered_key_id();
+
+    let body = http::fixtures::encrypt_liveness_request(OVER_MAX_SCORE, &key_id);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Negative score returns 400.
+#[tokio::test]
+async fn encrypt_liveness_negative() {
+    let app = http::test_app();
+    let key_id = common::get_registered_key_id();
+
+    let body = http::fixtures::encrypt_liveness_request(NEGATIVE_SCORE, &key_id);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -132,38 +198,19 @@ async fn encrypt_birth_year_offset_over_max() {
 
 /// Invalid key id returns 404.
 #[tokio::test]
-async fn encrypt_birth_year_offset_invalid_key_id() {
+async fn encrypt_liveness_invalid_key_id() {
     let app = http::test_app();
 
-    let body = http::fixtures::with_invalid_key_id_format();
+    let body = serde_json::json!({
+        "score": 0.85,
+        "keyId": "not-valid-key-id"
+    });
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-/// Valid key ID format but unregistered key returns 404.
-#[tokio::test]
-async fn encrypt_birth_year_offset_invalid_key_content() {
-    let app = http::test_app();
-
-    let body = http::fixtures::with_invalid_key_content();
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -176,7 +223,7 @@ async fn encrypt_birth_year_offset_invalid_key_content() {
 
 /// Missing fields returns 400/422.
 #[tokio::test]
-async fn encrypt_birth_year_offset_missing_fields() {
+async fn encrypt_liveness_missing_fields() {
     let app = http::test_app();
 
     let body = http::fixtures::empty_object();
@@ -185,7 +232,7 @@ async fn encrypt_birth_year_offset_missing_fields() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -199,14 +246,14 @@ async fn encrypt_birth_year_offset_missing_fields() {
     );
 }
 
-/// String instead of number for birthYearOffset returns 400/422.
+/// String instead of number for score returns 400/422.
 #[tokio::test]
-async fn encrypt_birth_year_offset_wrong_type() {
+async fn encrypt_liveness_wrong_type() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
     let body = serde_json::json!({
-        "birthYearOffset": "not-a-number",
+        "score": "not-a-number",
         "keyId": key_id
     });
 
@@ -214,7 +261,7 @@ async fn encrypt_birth_year_offset_wrong_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -229,27 +276,23 @@ async fn encrypt_birth_year_offset_wrong_type() {
 }
 
 // ============================================================================
-// Verify Age Offset - Happy Path Tests
+// Verify Liveness Threshold - Happy Path Tests
 // ============================================================================
 
-/// Verify age offset returns 200 with valid inputs.
+/// Verify liveness threshold returns 200 with valid inputs.
 #[tokio::test]
-async fn verify_age_offset_success() {
+async fn verify_liveness_threshold_success() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    // First encrypt a birth year offset
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(
-        100, // Year 2000
-        &key_id,
-    );
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.9, &key_id);
 
     let encrypt_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
@@ -258,73 +301,18 @@ async fn verify_age_offset_success() {
         .unwrap();
 
     assert_eq!(encrypt_response.status(), StatusCode::OK);
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_body.ciphertext;
 
-    // Now verify age
-    let verify_body = http::fixtures::verify_age_offset_request(
-        &ciphertext,
-        2025, // Current year
-        18,   // Min age
-        &key_id,
-    );
-
-    let app = http::test_app();
-    let verify_response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/verify-age-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&verify_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(verify_response.status(), StatusCode::OK);
-
-    let verify_body: VerifyAgeOffsetResponse = http::parse_msgpack_body(verify_response).await;
-    assert!(!verify_body.result_ciphertext.is_empty());
-}
-
-/// Verify age with default minAge (18) works.
-#[tokio::test]
-async fn verify_age_offset_default_min_age() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    // Encrypt birth year offset
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
-
-    // Verify without minAge field (should use default 18)
     let verify_body =
-        http::fixtures::verify_age_offset_request_default_min_age(&ciphertext, 2025, &key_id);
+        http::fixtures::verify_liveness_threshold_request(&ciphertext, TYPICAL_THRESHOLD, &key_id);
 
     let app = http::test_app();
     let verify_response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/verify-age-offset")
+                .uri("/verify-liveness-threshold")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
@@ -333,77 +321,30 @@ async fn verify_age_offset_default_min_age() {
         .unwrap();
 
     assert_eq!(verify_response.status(), StatusCode::OK);
-}
 
-/// Verify with custom minAge (21) works.
-#[tokio::test]
-async fn verify_age_offset_custom_min_age() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    // Encrypt birth year offset
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
-
-    // Verify with minAge = 21
-    let verify_body = http::fixtures::verify_age_offset_request(
-        &ciphertext,
-        2025,
-        21, // Legal drinking age in US
-        &key_id,
-    );
-
-    let app = http::test_app();
-    let verify_response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/verify-age-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&verify_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(verify_response.status(), StatusCode::OK);
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
+    assert!(!body.passes_ciphertext.is_empty());
+    assert_eq!(body.threshold, TYPICAL_THRESHOLD);
 }
 
 // ============================================================================
-// Verify Age Offset - Error Tests
+// Verify Liveness Threshold - Error Tests
 // ============================================================================
 
 /// Non-existent key ID returns 404.
 #[tokio::test]
-async fn verify_age_offset_invalid_key_id() {
+async fn verify_liveness_threshold_invalid_key_id() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.85, &key_id);
 
     let encrypt_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
@@ -411,19 +352,21 @@ async fn verify_age_offset_invalid_key_id() {
         .await
         .unwrap();
 
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_body.ciphertext;
 
-    // Try to verify with invalid key ID
-    let verify_body = http::fixtures::with_invalid_key_id(&ciphertext);
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: ciphertext.clone(),
+        threshold: 0.8,
+        key_id: "00000000-0000-0000-0000-000000000000".to_string(),
+    };
 
     let app = http::test_app();
     let verify_response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/verify-age-offset")
+                .uri("/verify-liveness-threshold")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
@@ -434,120 +377,115 @@ async fn verify_age_offset_invalid_key_id() {
     assert_eq!(verify_response.status(), StatusCode::NOT_FOUND);
 }
 
+/// Threshold over max (1.5) returns 400.
+#[tokio::test]
+async fn verify_liveness_threshold_over_max() {
+    let app = http::test_app();
+    let key_id = common::get_registered_key_id();
+
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.85, &key_id);
+
+    let encrypt_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
+
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: ciphertext.clone(),
+        threshold: 1.5,
+        key_id: key_id.clone(),
+    };
+
+    let app = http::test_app();
+    let verify_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/verify-liveness-threshold")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(verify_response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// Negative threshold returns 400.
+#[tokio::test]
+async fn verify_liveness_threshold_negative() {
+    let app = http::test_app();
+    let key_id = common::get_registered_key_id();
+
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.85, &key_id);
+
+    let encrypt_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
+
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: ciphertext.clone(),
+        threshold: -0.1,
+        key_id: key_id.clone(),
+    };
+
+    let app = http::test_app();
+    let verify_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/verify-liveness-threshold")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(verify_response.status(), StatusCode::BAD_REQUEST);
+}
+
 /// Corrupted ciphertext returns 400.
 #[tokio::test]
-async fn verify_age_offset_invalid_ciphertext() {
+async fn verify_liveness_threshold_invalid_ciphertext() {
     let app = http::test_app();
-    let key_id = common::get_registered_key_id();
+    let (_, _, key_id) = common::get_test_keys();
 
-    let verify_body = http::fixtures::with_corrupted_ciphertext(&key_id);
-
-    let verify_response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/verify-age-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&verify_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(verify_response.status(), StatusCode::BAD_REQUEST);
-}
-
-/// Year before base year (1900) returns 400.
-#[tokio::test]
-async fn verify_age_offset_year_before_1900() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
-
-    // Try to verify with year before base year
-    let verify_body = http::fixtures::VerifyAgeOffsetRequest {
-        ciphertext: ciphertext.clone(),
-        current_year: 1800,
-        min_age: 18,
-        key_id: key_id.clone(),
+    let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
+        ciphertext: b"this is not a valid ciphertext".to_vec(),
+        threshold: 0.8,
+        key_id,
     };
 
-    let app = http::test_app();
     let verify_response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/verify-age-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&verify_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(verify_response.status(), StatusCode::BAD_REQUEST);
-}
-
-/// Min age exceeding current offset returns 400.
-#[tokio::test]
-async fn verify_age_offset_min_age_exceeds_offset() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-birth-year-offset")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
-
-    // Try to verify with min age greater than possible offset
-    // currentYear=1920 gives offset=20, but minAge=25 > 20
-    let verify_body = http::fixtures::VerifyAgeOffsetRequest {
-        ciphertext: ciphertext.clone(),
-        current_year: 1920,
-        min_age: 25,
-        key_id: key_id.clone(),
-    };
-
-    let app = http::test_app();
-    let verify_response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/verify-age-offset")
+                .uri("/verify-liveness-threshold")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
@@ -560,7 +498,7 @@ async fn verify_age_offset_min_age_exceeds_offset() {
 
 /// Missing required fields returns 400/422.
 #[tokio::test]
-async fn verify_age_offset_missing_fields() {
+async fn verify_liveness_threshold_missing_fields() {
     let app = http::test_app();
 
     let verify_body = http::fixtures::empty_object();
@@ -569,7 +507,7 @@ async fn verify_age_offset_missing_fields() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/verify-age-offset")
+                .uri("/verify-liveness-threshold")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
@@ -584,19 +522,177 @@ async fn verify_age_offset_missing_fields() {
 }
 
 // ============================================================================
+// Full Roundtrip Integration Tests (with decryption)
+// ============================================================================
+
+/// Roundtrip test: score passes threshold (0.9 >= 0.8).
+#[tokio::test]
+async fn liveness_roundtrip_passes_threshold() {
+    use tfhe::FheBool;
+
+    let app = http::test_app();
+    let (client_key, _, key_id) = common::get_test_keys();
+
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.9, &key_id);
+
+    let encrypt_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
+
+    let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
+
+    let app = http::test_app();
+    let verify_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/verify-liveness-threshold")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(verify_response.status(), StatusCode::OK);
+
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
+    let passes_ciphertext = body.passes_ciphertext;
+
+    let passes_encrypted: FheBool = bincode::deserialize(&passes_ciphertext).unwrap();
+    let passes: bool = passes_encrypted.decrypt(&client_key);
+
+    assert!(passes, "Score 0.9 should pass threshold 0.8");
+}
+
+/// Roundtrip test: score fails threshold (0.7 < 0.8).
+#[tokio::test]
+async fn liveness_roundtrip_fails_threshold() {
+    use tfhe::FheBool;
+
+    let app = http::test_app();
+    let (client_key, _, key_id) = common::get_test_keys();
+
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.7, &key_id);
+
+    let encrypt_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
+
+    let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
+
+    let app = http::test_app();
+    let verify_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/verify-liveness-threshold")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(verify_response.status(), StatusCode::OK);
+
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
+
+    let passes_encrypted: FheBool = bincode::deserialize(&body.passes_ciphertext).unwrap();
+    let passes: bool = passes_encrypted.decrypt(&client_key);
+
+    assert!(!passes, "Score 0.7 should fail threshold 0.8");
+}
+
+/// Roundtrip test: exact threshold boundary (0.8 >= 0.8).
+#[tokio::test]
+async fn liveness_roundtrip_exact_threshold() {
+    use tfhe::FheBool;
+
+    let app = http::test_app();
+    let (client_key, _, key_id) = common::get_test_keys();
+
+    let encrypt_body = http::fixtures::encrypt_liveness_request(0.8, &key_id);
+
+    let encrypt_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-liveness")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&encrypt_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
+    let ciphertext = encrypt_body.ciphertext;
+
+    let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
+
+    let app = http::test_app();
+    let verify_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/verify-liveness-threshold")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(http::msgpack_body(&verify_body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(verify_response.status(), StatusCode::OK);
+
+    let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
+
+    let passes_encrypted: FheBool = bincode::deserialize(&body.passes_ciphertext).unwrap();
+    let passes: bool = passes_encrypted.decrypt(&client_key);
+
+    assert!(passes, "Score 0.8 should pass threshold 0.8 (>=)");
+}
+
+// ============================================================================
 // HTTP Method Tests
 // ============================================================================
 
 /// GET on encrypt endpoint returns 405.
 #[tokio::test]
-async fn encrypt_birth_year_offset_rejects_get() {
+async fn encrypt_liveness_rejects_get() {
     let app = http::test_app();
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-liveness")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -608,14 +704,14 @@ async fn encrypt_birth_year_offset_rejects_get() {
 
 /// GET on verify endpoint returns 405.
 #[tokio::test]
-async fn verify_age_offset_rejects_get() {
+async fn verify_liveness_threshold_rejects_get() {
     let app = http::test_app();
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/verify-age-offset")
+                .uri("/verify-liveness-threshold")
                 .body(Body::empty())
                 .unwrap(),
         )

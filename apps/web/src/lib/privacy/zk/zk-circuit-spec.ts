@@ -26,7 +26,7 @@ interface CircuitSpec {
  * IMPORTANT: These indices must match the order produced by bb.js for the compiled circuits.
  */
 export const CIRCUIT_SPECS: Record<CircuitType, CircuitSpec> = {
-  // [current_year, min_age, nonce, claim_hash, is_old_enough]
+  // [current_days, min_age_days, nonce, claim_hash, is_old_enough]
   age_verification: {
     minPublicInputs: 5,
     nonceIndex: 2,

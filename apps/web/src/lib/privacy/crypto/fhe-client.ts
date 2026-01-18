@@ -37,10 +37,10 @@ function getInternalServiceAuthHeaders(
 export type FheOperation =
   | "register_key"
   | "encrypt_batch"
-  | "encrypt_birth_year_offset"
+  | "encrypt_dob_days"
   | "encrypt_country_code"
   | "encrypt_compliance_level"
-  | "verify_age_offset";
+  | "verify_age_from_dob";
 
 export class FheServiceError extends Error {
   readonly operation: FheOperation;
@@ -220,12 +220,9 @@ async function withFheError<T>(
   }
 }
 
-interface FheCiphertextResult {
-  ciphertext: Uint8Array;
-}
-
 interface FheBatchEncryptResponse {
-  birthYearOffsetCiphertext?: Uint8Array | null;
+  /** Encrypted DOB days (days since 1900-01-01, UTC) */
+  dobDaysCiphertext?: Uint8Array | null;
   countryCodeCiphertext?: Uint8Array | null;
   complianceLevelCiphertext?: Uint8Array | null;
   livenessScoreCiphertext?: Uint8Array | null;
@@ -253,7 +250,8 @@ function buildMsgpackHeaders(
 
 export function encryptBatchFhe(args: {
   keyId: string;
-  birthYearOffset?: number;
+  /** Full DOB as days since 1900-01-01 (UTC) */
+  dobDays?: number;
   countryCode?: number;
   complianceLevel?: number;
   livenessScore?: number;
@@ -263,7 +261,7 @@ export function encryptBatchFhe(args: {
   const url = `${getFheServiceUrl()}/encrypt-batch`;
   const payload = {
     keyId: args.keyId,
-    birthYearOffset: args.birthYearOffset,
+    dobDays: args.dobDays,
     countryCode: args.countryCode,
     complianceLevel: args.complianceLevel,
     livenessScore: args.livenessScore,
@@ -288,29 +286,6 @@ export function encryptBatchFhe(args: {
         })
     )
   );
-}
-
-export async function encryptBirthYearOffsetFhe(args: {
-  birthYearOffset: number;
-  keyId: string;
-  requestId?: string;
-  flowId?: string;
-}): Promise<FheCiphertextResult> {
-  const result = await encryptBatchFhe({
-    keyId: args.keyId,
-    birthYearOffset: args.birthYearOffset,
-    requestId: args.requestId,
-    flowId: args.flowId,
-  });
-  const ciphertext = result.birthYearOffsetCiphertext;
-  if (!ciphertext) {
-    throw new FheServiceError({
-      operation: "encrypt_birth_year_offset",
-      message: "Missing birth year ciphertext from FHE batch response",
-      kind: "unknown",
-    });
-  }
-  return { ciphertext };
 }
 
 export function registerFheKey(args: {
@@ -349,30 +324,33 @@ export function registerFheKey(args: {
   );
 }
 
-export function verifyAgeFhe(args: {
+/**
+ * Verify age using DOB days format.
+ */
+export function verifyAgeFromDobFhe(args: {
   ciphertext: Uint8Array;
-  currentYear: number;
+  currentDays: number;
   minAge: number;
   keyId: string;
   requestId?: string;
   flowId?: string;
 }): Promise<FheVerifyAgeResult> {
-  const url = `${getFheServiceUrl()}/verify-age-offset`;
+  const url = `${getFheServiceUrl()}/verify-age-from-dob`;
   const payload = {
     ciphertext: args.ciphertext,
-    currentYear: args.currentYear,
+    currentDays: args.currentDays,
     minAge: args.minAge,
     keyId: args.keyId,
   };
   const encoded = encode(payload);
   const payloadBytes = encoded.byteLength;
   const ciphertextBytes = args.ciphertext.byteLength;
-  recordFhePayloadBytes(payloadBytes, { operation: "verify_age_offset" });
-  return withFheError("verify_age_offset", () =>
+  recordFhePayloadBytes(payloadBytes, { operation: "verify_age_from_dob" });
+  return withFheError("verify_age_from_dob", () =>
     withSpan(
-      "fhe.verify_age_offset",
+      "fhe.verify_age_from_dob",
       {
-        "fhe.operation": "verify_age_offset",
+        "fhe.operation": "verify_age_from_dob",
         "fhe.request_bytes": payloadBytes,
         "fhe.ciphertext_bytes": ciphertextBytes,
         "fhe.key_id_hash": hashIdentifier(args.keyId),

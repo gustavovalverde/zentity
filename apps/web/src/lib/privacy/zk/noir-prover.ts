@@ -24,9 +24,12 @@ interface NoirProofResult {
 }
 
 interface AgeProofInput {
-  birthYear: number;
-  currentYear: number;
-  minAge: number;
+  /** DOB encoded as days since 1900-01-01 (UTC). */
+  dobDays: number;
+  /** Current date encoded as days since 1900-01-01 (UTC). */
+  currentDays: number;
+  /** Minimum age threshold encoded in days. */
+  minAgeDays: number;
   nonce: string; // Hex nonce for replay resistance
   documentHashField: string;
   claimHash: string;
@@ -61,7 +64,7 @@ interface NationalityProofInput {
  *
  * Uses a Web Worker to keep the UI responsive during proof generation.
  *
- * @param input - Birth year, current year, minimum age, and nonce from challenge API
+ * @param input - DOB days, current days, minimum age (days), and nonce from challenge API
  * @returns Proof and public inputs that can be sent to server for verification
  *
  * @example
@@ -69,9 +72,9 @@ interface NationalityProofInput {
  * const challenge = await getProofChallenge('age_verification');
  *
  * const result = await generateAgeProofNoir({
- *   birthYear: 1990,
- *   currentYear: 2025,
- *   minAge: 18,
+ *   dobDays: 32872, // 1990-01-01 (example)
+ *   currentDays: 46000, // today (example)
+ *   minAgeDays: 6574, // 18y (example)
  *   nonce: challenge.nonce
  * });
  * // result.publicInputs contains the verification result
@@ -87,9 +90,9 @@ export async function generateAgeProofNoir(
   const startTime = performance.now();
 
   const result = await generateAgeProofWorker({
-    birthYear: input.birthYear,
-    currentYear: input.currentYear,
-    minAge: input.minAge,
+    dobDays: input.dobDays,
+    currentDays: input.currentDays,
+    minAgeDays: input.minAgeDays,
     nonce: input.nonce,
     documentHashField: input.documentHashField,
     claimHash: input.claimHash,

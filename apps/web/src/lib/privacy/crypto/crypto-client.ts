@@ -16,6 +16,11 @@ import type { EnvelopeFormat } from "@/lib/privacy/crypto/passkey-vault";
 import type { PasskeyEnrollmentContext } from "@/lib/privacy/crypto/secret-vault";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
+import {
+  dobToDaysSince1900,
+  getTodayDobDays,
+  minAgeYearsToDays,
+} from "@/lib/identity/verification/birth-year";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { fetchMsgpack } from "@/lib/privacy/crypto/binary-transport";
 import { createFheKeyEnvelope } from "@/lib/privacy/crypto/fhe-key-store";
@@ -137,16 +142,14 @@ function cleanupStaleEntries(): void {
  * Generate a zero-knowledge proof of age (CLIENT-SIDE)
  *
  * The proof is generated entirely in the browser using a Web Worker.
- * Birth year NEVER leaves the device - only the cryptographic proof is returned.
+ * DOB NEVER leaves the device - only the cryptographic proof is returned.
  *
- * @param birthYear - The user's birth year (will NOT be stored or sent anywhere)
- * @param currentYear - The current year (defaults to current year)
- * @param minAge - Minimum age to prove (defaults to 18)
+ * @param dateOfBirth - User DOB string (will NOT be stored or sent anywhere)
+ * @param minAgeYears - Minimum age to prove (years)
  */
 export async function generateAgeProof(
-  birthYear: number,
-  currentYear: number,
-  minAge: number,
+  dateOfBirth: string,
+  minAgeYears: number,
   options: {
     /** Server-issued nonce to bind the proof to a challenge. */
     nonce: string;
@@ -160,10 +163,17 @@ export async function generateAgeProof(
   const startTime = performance.now();
 
   try {
+    const dobDays = dobToDaysSince1900(dateOfBirth);
+    if (dobDays === undefined) {
+      throw new Error("Invalid date of birth for age proof");
+    }
+    const currentDays = getTodayDobDays();
+    const minAgeDays = minAgeYearsToDays(minAgeYears);
+
     const result = await generateAgeProofNoir({
-      birthYear,
-      currentYear,
-      minAge,
+      dobDays,
+      currentDays,
+      minAgeDays,
       nonce,
       documentHashField: options.documentHashField,
       claimHash: options.claimHash,

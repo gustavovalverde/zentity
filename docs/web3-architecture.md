@@ -110,7 +110,7 @@ sequenceDiagram
 - ACL-gated access to ciphertexts
 - Encrypted compliance checks (no plaintext)
 - Optional encrypted asset transfers (demo)
-- Typical encrypted fields: birth year offset, country code, compliance tier, and sanctions status
+- Typical encrypted fields: date of birth (dobDays), country code, compliance tier, and sanctions status
 
 ### Encryption boundaries
 
@@ -203,7 +203,7 @@ Configuration details live in [Blockchain Setup](blockchain-setup.md).
 
 Encrypted:
 
-- Birth year offset and nationality
+- Date of birth (dobDays) and nationality
 - Compliance level and sanctions status
 - Compliance results and encrypted balances
 
@@ -273,7 +273,7 @@ flowchart TD
   AttIn --> IR["IdentityRegistry"]
   EncIn --> ERC["CompliantERC20"]
 
-  IR -- "Stores encrypted attrs" --> IRState["birthYearOffset, country, compliance"]
+  IR -- "Stores encrypted attrs" --> IRState["dobDays, country, compliance"]
   IR -- "ACL grants" --> ACL
   ERC --> CR["ComplianceRules"]
   CR --> IR

@@ -56,12 +56,11 @@ pub fn build_router(settings: &Settings) -> Router {
         .route("/build-info", get(routes::build_info))
         .route("/keys/register", post(routes::register_key))
         .route("/keys/debug", get(routes::debug_keys))
-        .route(
-            "/encrypt-birth-year-offset",
-            post(routes::encrypt_birth_year_offset),
-        )
+        // DOB days (days since 1900-01-01 - full precision)
+        .route("/encrypt-dob-days", post(routes::encrypt_dob_days))
+        .route("/verify-age-from-dob", post(routes::verify_age_from_dob))
+        // Batch encryption
         .route("/encrypt-batch", post(routes::encrypt_batch))
-        .route("/verify-age-offset", post(routes::verify_age_offset))
         .route("/encrypt-country-code", post(routes::encrypt_country_code))
         .route(
             "/encrypt-compliance-level",

@@ -23,7 +23,7 @@ import {
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
 import { processDocumentOcr } from "@/lib/identity/document/ocr-client";
-import { calculateBirthYearOffset } from "@/lib/identity/verification/birth-year";
+import { dobToDaysSince1900 } from "@/lib/identity/verification/birth-year";
 import {
   computeClaimHashes,
   storeVerificationClaims,
@@ -36,11 +36,7 @@ import { scheduleFheEncryption } from "@/lib/privacy/crypto/fhe-encryption";
 import { getNationalityCode } from "@/lib/privacy/zk/nationality-data";
 
 import { protectedProcedure } from "../../server";
-import {
-  generateNameCommitment,
-  parseBirthYear,
-  parseDateToInt,
-} from "./helpers/date-parsing";
+import { generateNameCommitment, parseDateToInt } from "./helpers/date-parsing";
 import { invalidateVerificationCache } from "./helpers/verification-cache";
 
 /**
@@ -143,9 +139,10 @@ export const verifyProcedure = protectedProcedure
     }
 
     // Compute claim hashes and store signed claims
-    const birthYear = parseBirthYear(
-      documentResult?.extractedData?.dateOfBirth
-    );
+    const dateOfBirth = documentResult?.extractedData?.dateOfBirth ?? null;
+    const dobDays = dateOfBirth
+      ? (dobToDaysSince1900(dateOfBirth) ?? null)
+      : null;
     const expiryDateInt = parseDateToInt(
       documentResult?.extractedData?.expirationDate
     );
@@ -164,7 +161,7 @@ export const verifyProcedure = protectedProcedure
     if (documentHashField) {
       const hashResult = await computeClaimHashes({
         documentHashField,
-        birthYear,
+        dobDays,
         expiryDateInt,
         nationalityCodeNumeric,
       });
@@ -221,7 +218,6 @@ export const verifyProcedure = protectedProcedure
     const livenessPassed = faceValidation.livenessPassed;
     const facesMatch = faceValidation.faceMatchPassed;
     const ageProofGenerated = false;
-    const birthYearOffsetEncrypted = false;
     const docValidityProofGenerated = false;
     const nationalityCommitmentGenerated = Boolean(nationalityCommitment);
     const countryCodeEncrypted = false;
@@ -290,9 +286,11 @@ export const verifyProcedure = protectedProcedure
     }
 
     if (fheKeyId) {
-      const birthYearOffset = calculateBirthYearOffset(
-        documentResult?.extractedData?.dateOfBirth
-      );
+      const dateOfBirth = documentResult?.extractedData?.dateOfBirth;
+
+      // Full DOB as days since 1900-01-01 - provides day-level precision
+      const dobDays = dobToDaysSince1900(dateOfBirth);
+
       const countryCodeSource =
         documentResult?.documentOrigin ||
         documentResult?.extractedData?.nationalityCode ||
@@ -300,12 +298,13 @@ export const verifyProcedure = protectedProcedure
       const resolvedCountryCode = countryCodeSource
         ? countryCodeToNumeric(countryCodeSource)
         : 0;
+
       scheduleFheEncryption({
         userId,
         requestId: ctx.requestId,
         flowId: ctx.flowId ?? undefined,
         reason: "identity_verify",
-        birthYearOffset: birthYearOffset ?? null,
+        dobDays: dobDays ?? null,
         countryCodeNumeric:
           resolvedCountryCode > 0 ? resolvedCountryCode : null,
       });
@@ -326,7 +325,6 @@ export const verifyProcedure = protectedProcedure
         faceMatched: facesMatch,
         isDuplicateDocument,
         ageProofGenerated,
-        birthYearOffsetEncrypted,
         docValidityProofGenerated,
         nationalityCommitmentGenerated,
         countryCodeEncrypted,

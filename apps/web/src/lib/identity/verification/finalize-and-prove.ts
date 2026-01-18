@@ -15,10 +15,7 @@ import {
 } from "@/lib/privacy/crypto/crypto-client";
 import { trpc } from "@/lib/trpc/client";
 
-import {
-  calculateBirthYearOffsetFromYear,
-  parseBirthYearFromDob,
-} from "./birth-year";
+import { dobToDaysSince1900 } from "./birth-year";
 import { countryCodeToNumeric } from "./compliance";
 import { parseDateToInt } from "./date-utils";
 
@@ -153,18 +150,15 @@ async function generateAllProofs(params: {
   const ageClaimHash = ocrData.claimHashes?.age;
   const docValidityClaimHash = ocrData.claimHashes?.docValidity;
   const nationalityClaimHash = ocrData.claimHashes?.nationality;
-  const birthYear =
-    profilePayload?.birthYear ??
-    parseBirthYearFromDob(extractedDOB ?? undefined) ??
-    null;
+  const dateOfBirth = profilePayload?.dateOfBirth ?? extractedDOB ?? null;
   const expiryDateInt =
     profilePayload?.expiryDateInt ?? parseDateToInt(extractedExpirationDate);
   const nationalityCode =
     profilePayload?.nationalityCode ?? extractedNationalityCode ?? null;
 
   // Validate required data
-  if (birthYear === null || birthYear === undefined || !ageClaimHash) {
-    throw new Error("Missing birth year claim for age proof");
+  if (!(dateOfBirth && ageClaimHash)) {
+    throw new Error("Missing date of birth claim for age proof");
   }
   if (
     expiryDateInt === null ||
@@ -241,16 +235,11 @@ async function generateAllProofs(params: {
     ]);
 
   // Generate proofs sequentially (CPU-bound WASM work)
-  const ageProof = await generateAgeProof(
-    birthYear,
-    new Date().getFullYear(),
-    18,
-    {
-      nonce: ageChallenge.nonce,
-      documentHashField,
-      claimHash: ageClaimHash,
-    }
-  );
+  const ageProof = await generateAgeProof(dateOfBirth, 18, {
+    nonce: ageChallenge.nonce,
+    documentHashField,
+    claimHash: ageClaimHash,
+  });
   enqueueStore({ circuitType: "age_verification", ...ageProof });
 
   const now = new Date();
@@ -345,11 +334,9 @@ export async function finalizeIdentityAndGenerateProofs(
   // Start identity finalization
   onStatus("finalizing-identity");
 
-  const profileBirthYear =
-    profilePayload?.birthYear ??
-    parseBirthYearFromDob(extractedDOB ?? undefined) ??
-    null;
-  const birthYearOffset = calculateBirthYearOffsetFromYear(profileBirthYear);
+  const profileDob = profilePayload?.dateOfBirth ?? extractedDOB ?? null;
+  const dobDays =
+    profileDob !== null ? dobToDaysSince1900(profileDob) : undefined;
   const profileNationalityCode =
     profilePayload?.nationalityCode ?? extractedNationalityCode ?? null;
   const countryCodeNumeric = profileNationalityCode
@@ -359,7 +346,7 @@ export async function finalizeIdentityAndGenerateProofs(
   const job = await trpc.identity.finalizeAsync.mutate({
     draftId,
     fheKeyId,
-    birthYearOffset: birthYearOffset ?? undefined,
+    dobDays: dobDays ?? undefined,
     countryCodeNumeric: countryCodeNumeric > 0 ? countryCodeNumeric : undefined,
   });
 

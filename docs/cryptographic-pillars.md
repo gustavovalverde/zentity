@@ -48,7 +48,7 @@ flowchart LR
 1. **Passkey** unlocks the sealed profile (DOB stays client-side).
 2. **ZK proof** shows "age >= 18" without revealing the birth year.
 3. **Commitment** allows later integrity checks without storing DOB.
-4. **FHE** encrypts birth-year offsets so policy checks can be run later without re-collecting PII.
+4. **FHE** encrypts the full DOB (dobDays) so policy checks can be run later without re-collecting PII.
 
 ## Pillar Details
 
@@ -67,7 +67,7 @@ Deleting the sealed profile **breaks linkability** while commitments remain non-
 
 FHE allows policy checks on encrypted data:
 
-1. Encrypt sensitive attributes (e.g., birth-year offset, country code).
+1. Encrypt sensitive attributes (e.g., DOB days, country code).
 2. Store ciphertexts server-side or on-chain.
 3. Evaluate compliance under encryption (no plaintext exposure).
 
@@ -183,7 +183,7 @@ See [ZK Architecture](zk-architecture.md) for circuit flows and verifier isolati
 
 **Off-chain FHE (Web2)**
 
-- TFHE-rs encrypts sensitive attributes (birth year offset, country code, compliance level).
+- TFHE-rs encrypts sensitive attributes (DOB days, country code, compliance level).
 - Ciphertexts are stored server-side but only decryptable by the user's keys.
 
 **On-chain FHE (Web3 / fhEVM)**

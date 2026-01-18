@@ -8,6 +8,8 @@ import { buildDisplayName } from "@/lib/utils/name-utils";
 export type DisclosureField =
   | "fullName"
   | "dateOfBirth"
+  | "residentialAddress"
+  | "addressCountryCode"
   | "nationality"
   | "documentNumber"
   | "documentType";
@@ -46,6 +48,8 @@ export function buildDisclosurePayload(options: DisclosurePayloadOptions): {
   const fieldMap: Record<DisclosureField, string | null> = {
     fullName,
     dateOfBirth: profile.dateOfBirth ?? null,
+    residentialAddress: profile.residentialAddress ?? null,
+    addressCountryCode: profile.addressCountryCode ?? null,
     nationality: profile.nationality ?? profile.nationalityCode ?? null,
     documentNumber: profile.documentNumber ?? null,
     documentType: profile.documentType ?? null,

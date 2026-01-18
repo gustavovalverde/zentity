@@ -11,7 +11,7 @@
  * - ZK proofs (face match, age) are included but not encrypted
  *
  * USE CASE:
- * Crypto exchanges/banks need Name, DOB, Nationality for identity/AML compliance.
+ * Crypto exchanges/banks need Name, DOB, and Address for identity/AML compliance.
  * This enables that while:
  * 1. Protecting user privacy (E2E encryption)
  * 2. Providing cryptographic proofs (ZK)
@@ -87,8 +87,8 @@ interface DisclosureResponse {
       proof: string;
       publicSignals: string[];
       isOver18: boolean;
-      minAge: number;
-      currentYear: number;
+      minAgeDays: number;
+      currentDays: number;
     };
     docValidityProof?: {
       proof: string;
@@ -265,10 +265,12 @@ export async function POST(
       documentId
     );
     if (ageProofPayload) {
-      const currentYear = parsePublicInputToNumber(
+      const currentDays = parsePublicInputToNumber(
         ageProofPayload.publicSignals[0]
       );
-      const minAge = parsePublicInputToNumber(ageProofPayload.publicSignals[1]);
+      const minAgeDays = parsePublicInputToNumber(
+        ageProofPayload.publicSignals[1]
+      );
       const isOver18 =
         parsePublicInputToNumber(
           ageProofPayload.publicSignals[
@@ -279,8 +281,8 @@ export async function POST(
         proof: ageProofPayload.proof,
         publicSignals: ageProofPayload.publicSignals,
         isOver18,
-        minAge,
-        currentYear,
+        minAgeDays,
+        currentDays,
       };
     }
 
