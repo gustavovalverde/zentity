@@ -8,10 +8,11 @@
  * Only cryptographic proofs are returned to the main thread.
  */
 
-import { Buffer } from "node:buffer";
+// Buffer polyfill for browser environment
+// bb.js requires Buffer with BigInt methods (writeBigUInt64BE, etc.)
+// Turbopack's FreeVarReference injects this globally, but we also set it explicitly for safety
+import { Buffer } from "buffer";
 
-// bb.js expects `Buffer` to exist in the browser/worker runtime.
-// Turbopack polyfills node:buffer to the npm `buffer` package which has BigInt methods.
 globalThis.Buffer = Buffer;
 
 import type { InitInput as AcvmInitInput } from "@noir-lang/acvm_js";
