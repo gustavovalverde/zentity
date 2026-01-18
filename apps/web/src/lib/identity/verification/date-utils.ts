@@ -23,27 +23,3 @@ export function parseDateToInt(
   const dateInt = Number(digits.slice(0, 8));
   return Number.isFinite(dateInt) ? dateInt : null;
 }
-
-/**
- * Calculates age from a date of birth string.
- * Returns null if the date is invalid.
- */
-export function calculateAge(dob: string | null): number | null {
-  if (!dob) {
-    return null;
-  }
-  const birthDate = new Date(dob);
-  if (Number.isNaN(birthDate.getTime())) {
-    return null;
-  }
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < birthDate.getDate())
-  ) {
-    age--;
-  }
-  return age;
-}

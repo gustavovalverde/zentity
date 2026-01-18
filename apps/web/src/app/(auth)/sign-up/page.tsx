@@ -1,6 +1,7 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
+import { SignUpWizard } from "@/components/sign-up/sign-up-wizard";
 import {
   Card,
   CardContent,
@@ -8,7 +9,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { loadWizardState } from "@/lib/db/onboarding-session";
+import { getCachedSession } from "@/lib/auth/cached-session";
+import { hasCompletedSignUp } from "@/lib/db/queries/identity";
+import { loadWizardState } from "@/lib/db/sign-up-session";
 
 interface SignUpPageProps {
   searchParams: Promise<{ fresh?: string }>;
@@ -19,9 +22,20 @@ export default async function SignUpPage({
 }: Readonly<SignUpPageProps>) {
   const { fresh } = await searchParams;
 
-  // Server-side check: redirect to dashboard if user already completed onboarding
-  // This prevents the flash where email step shows before client-side hydration kicks in
+  // fresh=1 bypasses all checks - allows starting a new sign-up flow
   if (fresh !== "1") {
+    // Primary check: identity bundle (authoritative source)
+    const headersObj = await headers();
+    const session = await getCachedSession(headersObj);
+
+    if (session?.user?.id) {
+      const completed = await hasCompletedSignUp(session.user.id);
+      if (completed) {
+        redirect("/dashboard");
+      }
+    }
+
+    // Secondary check: wizard state cookie (backwards compatibility)
     const { state } = await loadWizardState();
     if (state?.keysSecured) {
       redirect("/dashboard");
@@ -37,7 +51,7 @@ export default async function SignUpPage({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <OnboardingWizard forceReset={fresh === "1"} />
+        <SignUpWizard forceReset={fresh === "1"} />
       </CardContent>
     </Card>
   );

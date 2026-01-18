@@ -22,7 +22,7 @@ import type { AppRouter } from "@/lib/trpc/routers/app";
 import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 
-import { getOnboardingFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-client";
 
 type LogMeta = Record<string, string | number | boolean>;
 
@@ -90,7 +90,7 @@ const links = [
     fetch(url, options) {
       // Include credentials so session cookies are sent with requests.
       const { signal, cleanup } = createTimeoutSignal(options?.signal);
-      const flowId = getOnboardingFlowId();
+      const flowId = getFlowId();
       const headers = new Headers(options?.headers ?? {});
       if (flowId) {
         headers.set("X-Zentity-Flow-Id", flowId);

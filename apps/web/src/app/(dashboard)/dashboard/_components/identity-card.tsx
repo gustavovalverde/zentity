@@ -123,7 +123,7 @@ export async function IdentityCard({ userId }: Readonly<IdentityCardProps>) {
             </EmptyHeader>
             <EmptyContent>
               <Button asChild>
-                <Link href="/sign-up?fresh=1">
+                <Link href="/dashboard/verify">
                   Start Verification
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>

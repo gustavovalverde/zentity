@@ -8,13 +8,13 @@ vi.mock("@/lib/auth/api-auth", () => ({
   requireSession: authMocks.requireSession,
 }));
 
-const onboardingMocks = vi.hoisted(() => ({
+const enrollmentMocks = vi.hoisted(() => ({
   consumeRegistrationBlob: vi.fn(),
-  consumeOnboardingContext: vi.fn(),
-  getOnboardingContext: vi.fn(),
+  consumeFheEnrollmentContext: vi.fn(),
+  getFheEnrollmentContext: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/onboarding-tokens", () => onboardingMocks);
+vi.mock("@/lib/auth/fhe-enrollment-tokens", () => enrollmentMocks);
 
 const cryptoMocks = vi.hoisted(() => ({
   deleteEncryptedSecretByUserAndType: vi.fn(),
@@ -71,7 +71,7 @@ describe("fhe enrollment completion route", () => {
       ok: true,
       session: { user: { id: "user-1" } },
     });
-    onboardingMocks.consumeRegistrationBlob.mockRejectedValue(
+    enrollmentMocks.consumeRegistrationBlob.mockRejectedValue(
       new Error("Registration token invalid.")
     );
 
@@ -94,12 +94,12 @@ describe("fhe enrollment completion route", () => {
     });
   });
 
-  it("rejects mismatched onboarding context", async () => {
+  it("rejects mismatched enrollment context", async () => {
     authMocks.requireSession.mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     });
-    onboardingMocks.consumeRegistrationBlob.mockResolvedValue({
+    enrollmentMocks.consumeRegistrationBlob.mockResolvedValue({
       contextToken: "ctx-token",
       blob: {
         secretId: "secret-1",
@@ -109,7 +109,7 @@ describe("fhe enrollment completion route", () => {
         blobSize: 123,
       },
     });
-    onboardingMocks.getOnboardingContext.mockResolvedValue({
+    enrollmentMocks.getFheEnrollmentContext.mockResolvedValue({
       userId: "user-2",
       email: null,
       registrationToken: "reg-token",
@@ -131,7 +131,7 @@ describe("fhe enrollment completion route", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
-      error: "Onboarding context does not match session.",
+      error: "FHE enrollment context does not match session.",
     });
   });
 
@@ -140,7 +140,7 @@ describe("fhe enrollment completion route", () => {
       ok: true,
       session: { user: { id: "user-1" } },
     });
-    onboardingMocks.consumeRegistrationBlob.mockResolvedValue({
+    enrollmentMocks.consumeRegistrationBlob.mockResolvedValue({
       contextToken: "ctx-token",
       blob: {
         secretId: "secret-1",
@@ -150,7 +150,7 @@ describe("fhe enrollment completion route", () => {
         blobSize: 123,
       },
     });
-    onboardingMocks.getOnboardingContext.mockResolvedValue({
+    enrollmentMocks.getFheEnrollmentContext.mockResolvedValue({
       userId: "user-1",
       email: null,
       registrationToken: "reg-token",
@@ -206,7 +206,7 @@ describe("fhe enrollment completion route", () => {
       secretType: "fhe_keys",
       metadata: { envelopeFormat: "msgpack", keyId: "key" },
     });
-    expect(onboardingMocks.consumeOnboardingContext).toHaveBeenCalledWith(
+    expect(enrollmentMocks.consumeFheEnrollmentContext).toHaveBeenCalledWith(
       "ctx-token"
     );
   });

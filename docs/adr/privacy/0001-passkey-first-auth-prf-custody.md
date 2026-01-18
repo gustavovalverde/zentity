@@ -20,7 +20,7 @@ We needed a default authentication model that reinforces user-controlled key cus
 
 ## Decision Outcome
 
-Chosen option: implement passkey-first authentication with PRF key custody as the default sign-in and onboarding path.
+Chosen option: implement passkey-first authentication with PRF key custody as the default sign-in and sign-up path.
 
 Passkey PRF output anchors encryption/decryption of user secrets and aligns authentication with privacy-preserving key ownership.
 

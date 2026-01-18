@@ -51,7 +51,7 @@ const SCREEN_SHARE_PATTERNS = [
 /**
  * Check if a device appears to be a virtual camera.
  */
-export function isVirtualCamera(device: MediaDeviceInfo): boolean {
+function isVirtualCamera(device: MediaDeviceInfo): boolean {
   if (!device.label) {
     // Can't determine without label - allow by default
     // (labels require getUserMedia permission first)
@@ -72,7 +72,7 @@ export function isVirtualCamera(device: MediaDeviceInfo): boolean {
 /**
  * Check if a device appears to be screen capture.
  */
-export function isScreenCapture(device: MediaDeviceInfo): boolean {
+function isScreenCapture(device: MediaDeviceInfo): boolean {
   if (!device.label) {
     return false;
   }

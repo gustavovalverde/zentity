@@ -47,29 +47,31 @@ export function VerificationProgress({
 }: Readonly<VerificationProgressProps>) {
   const refreshAttemptsRef = useRef(0);
   const shouldPoll = !(checks.fheEncryption || checks.fheError);
-  const { data: fheStatus } = trpcReact.identity.fheStatus.useQuery(undefined, {
-    enabled: shouldPoll,
-    refetchInterval: (query) => {
-      if (!shouldPoll) {
-        return false;
-      }
-      const data = query.state.data;
-      if (data?.status === "complete" || data?.status === "error") {
-        return false;
-      }
-      if (refreshAttemptsRef.current >= 8) {
-        return false;
-      }
-      refreshAttemptsRef.current += 1;
-      return 4000;
-    },
-  });
+  const { data: assuranceProfile } = trpcReact.assurance.profile.useQuery(
+    undefined,
+    {
+      enabled: shouldPoll,
+      refetchInterval: (query) => {
+        if (!shouldPoll) {
+          return false;
+        }
+        const data = query.state.data;
+        if (data?.assurance.proof.fheComplete || (data?.tier ?? 0) >= 3) {
+          return false;
+        }
+        if (refreshAttemptsRef.current >= 8) {
+          return false;
+        }
+        refreshAttemptsRef.current += 1;
+        return 4000;
+      },
+    }
+  );
 
   const fheEncryption =
-    checks.fheEncryption || fheStatus?.status === "complete";
-  const fheError =
-    checks.fheError ??
-    (fheStatus?.status === "error" ? (fheStatus.error ?? null) : null);
+    checks.fheEncryption ||
+    (assuranceProfile?.assurance.proof.fheComplete ?? false);
+  const fheError = checks.fheError ?? null;
   const effectiveChecks: VerificationChecks = {
     ...checks,
     fheEncryption,

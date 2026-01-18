@@ -219,6 +219,3 @@ class LivenessAudioEngine {
 
 // Singleton instance for the liveness audio engine
 export const audioEngine = new LivenessAudioEngine();
-
-// Re-export for direct usage
-export { LivenessAudioEngine };

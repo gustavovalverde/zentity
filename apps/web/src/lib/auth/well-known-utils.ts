@@ -12,7 +12,7 @@ const LEADING_SLASHES_REGEX = /^\/+/;
 
 export const DEFAULT_AUTH_BASE_PATH = "/api/auth";
 
-export function normalizePath(value: string): string {
+function normalizePath(value: string): string {
   return value
     .replace(TRAILING_SLASHES_REGEX, "")
     .replace(LEADING_SLASHES_REGEX, "");

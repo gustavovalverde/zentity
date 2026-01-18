@@ -11,7 +11,7 @@ import {
 import { CIRCUIT_SPECS } from "@/lib/privacy/zk/zk-circuit-spec";
 
 export async function GET(request: Request) {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const bbVersion = getBbJsVersion();
   const [age, docValidity, nationality, faceMatch] = await Promise.all([

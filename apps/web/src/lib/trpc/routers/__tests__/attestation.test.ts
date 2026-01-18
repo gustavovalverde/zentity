@@ -2,9 +2,18 @@
  * Integration tests for attestation router (demo + error flows).
  */
 
+import type { TierProfile } from "@/lib/assurance/types";
 import type { Session } from "@/lib/auth/auth";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const mockIsDemoMode = vi.fn();
 const mockGetEnabledNetworks = vi.fn();
@@ -12,7 +21,19 @@ const mockGetNetworkById = vi.fn();
 const mockCanCreateProvider = vi.fn();
 const mockCreateProvider = vi.fn();
 const mockGetExplorerTxUrl = vi.fn();
+const mockGetVerificationStatus = vi.fn();
+const mockGetSelectedIdentityDocumentByUserId = vi.fn();
+const mockGetBlockchainAttestationsByUserId = vi.fn();
+const mockGetBlockchainAttestationByUserAndNetwork = vi.fn();
+const mockCreateBlockchainAttestation = vi.fn();
+const mockResetBlockchainAttestationForRetry = vi.fn();
+const mockUpdateBlockchainAttestationSubmitted = vi.fn();
+const mockUpdateBlockchainAttestationFailed = vi.fn();
+const mockUpdateBlockchainAttestationConfirmed = vi.fn();
+const mockUpdateBlockchainAttestationWallet = vi.fn();
+const mockGetTierProfile = vi.fn();
 
+// All mocks must be hoisted before any imports
 vi.mock("@/lib/blockchain/networks", () => ({
   isDemoMode: () => mockIsDemoMode(),
   getEnabledNetworks: (...args: unknown[]) => mockGetEnabledNetworks(...args),
@@ -25,16 +46,6 @@ vi.mock("@/lib/blockchain/providers/factory", () => ({
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));
 
-const mockGetVerificationStatus = vi.fn();
-const mockGetSelectedIdentityDocumentByUserId = vi.fn();
-const mockGetBlockchainAttestationsByUserId = vi.fn();
-const mockGetBlockchainAttestationByUserAndNetwork = vi.fn();
-const mockCreateBlockchainAttestation = vi.fn();
-const mockResetBlockchainAttestationForRetry = vi.fn();
-const mockUpdateBlockchainAttestationSubmitted = vi.fn();
-const mockUpdateBlockchainAttestationFailed = vi.fn();
-const mockUpdateBlockchainAttestationConfirmed = vi.fn();
-
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/db/queries/identity")>();
@@ -46,8 +57,6 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
       mockGetSelectedIdentityDocumentByUserId(...args),
   };
 });
-
-const mockUpdateBlockchainAttestationWallet = vi.fn();
 
 vi.mock("@/lib/db/queries/attestation", async (importOriginal) => {
   const actual =
@@ -73,9 +82,66 @@ vi.mock("@/lib/db/queries/attestation", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/assurance/data", () => ({
+  getTierProfile: (...args: unknown[]) => mockGetTierProfile(...args),
+  getAssuranceProfile: vi.fn(),
+}));
+
+function createTier3Profile(): TierProfile {
+  return {
+    tier: 3,
+    aal: 2,
+    label: "Auditable",
+    assurance: {
+      auth: { level: 2, method: "passkey", isAnonymous: false, has2FA: true },
+      identity: {
+        level: 2,
+        documentVerified: true,
+        livenessPassed: true,
+        faceMatchPassed: true,
+      },
+      proof: {
+        level: 2,
+        signedClaims: true,
+        zkProofsComplete: true,
+        fheComplete: true,
+        onChainAttested: false,
+      },
+    },
+    nextTierRequirements: null,
+  };
+}
+
+function createTier1Profile(): TierProfile {
+  return {
+    tier: 1,
+    aal: 1,
+    label: "Account",
+    assurance: {
+      auth: { level: 1, method: "opaque", isAnonymous: false, has2FA: false },
+      identity: {
+        level: 0,
+        documentVerified: false,
+        livenessPassed: false,
+        faceMatchPassed: false,
+      },
+      proof: {
+        level: 0,
+        signedClaims: false,
+        zkProofsComplete: false,
+        fheComplete: false,
+        onChainAttested: false,
+      },
+    },
+    nextTierRequirements: [
+      { id: "document", label: "Doc", description: "...", completed: false },
+    ],
+  };
+}
+
 const authedSession = {
-  user: { id: "test-user" },
-  session: { id: "test-session" },
+  user: { id: "test-user", twoFactorEnabled: true },
+  session: { id: "test-session", lastLoginMethod: "passkey" },
 } as unknown as Session;
 
 async function createCaller(session: Session | null) {
@@ -87,13 +153,18 @@ async function createCaller(session: Session | null) {
     requestId: "test-request-id",
     flowId: null,
     flowIdSource: "none",
-    onboardingSessionId: null,
   });
 }
 
 describe("attestation router", () => {
+  beforeAll(() => {
+    vi.resetModules();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default to Tier 3 + AAL2 for most tests (attestation requirement)
+    mockGetTierProfile.mockResolvedValue(createTier3Profile());
   });
 
   afterEach(() => {
@@ -142,20 +213,9 @@ describe("attestation router", () => {
     expect(result.txHash?.startsWith("0xdemo")).toBe(true);
   });
 
-  it("rejects submission when user is not verified", async () => {
-    mockIsDemoMode.mockReturnValue(false);
-    mockGetVerificationStatus.mockReturnValue({
-      verified: false,
-      level: "none",
-      checks: {
-        document: false,
-        liveness: false,
-        ageProof: false,
-        docValidityProof: false,
-        nationalityProof: false,
-        faceMatchProof: false,
-      },
-    });
+  it("rejects submission when user lacks required tier", async () => {
+    // User at Tier 1 trying to access attestation (requires Tier 3 + AAL2)
+    mockGetTierProfile.mockResolvedValue(createTier1Profile());
 
     const caller = await createCaller(authedSession);
     await expect(
@@ -164,7 +224,7 @@ describe("attestation router", () => {
         walletAddress: "0x0000000000000000000000000000000000000001",
         birthYearOffset: 90,
       })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("rejects submission when network is unavailable", async () => {

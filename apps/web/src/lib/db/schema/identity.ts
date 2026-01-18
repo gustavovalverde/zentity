@@ -137,10 +137,9 @@ export const identityVerificationDrafts = sqliteTable(
   "identity_verification_drafts",
   {
     id: text("id").primaryKey(),
-    onboardingSessionId: text("onboarding_session_id").notNull(),
-    userId: text("user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     documentId: text("document_id").notNull(),
     documentProcessed: integer("document_processed", { mode: "boolean" })
       .notNull()
@@ -181,7 +180,6 @@ export const identityVerificationDrafts = sqliteTable(
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
-    index("idx_identity_drafts_session").on(table.onboardingSessionId),
     index("idx_identity_drafts_user").on(table.userId),
     index("idx_identity_drafts_document").on(table.documentId),
   ]

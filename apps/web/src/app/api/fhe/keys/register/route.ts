@@ -1,7 +1,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 
 import { auth } from "@/lib/auth/auth";
-import { isRegistrationTokenValid } from "@/lib/auth/onboarding-tokens";
+import { isRegistrationTokenValid } from "@/lib/auth/fhe-enrollment-tokens";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,

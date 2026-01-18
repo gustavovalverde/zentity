@@ -5,10 +5,10 @@ import { symmetricEncrypt } from "better-auth/crypto";
 import { z } from "zod";
 
 import {
-  consumeOnboardingContext,
-  createOnboardingContext,
-  getOnboardingContext,
-} from "@/lib/auth/onboarding-tokens";
+  consumeFheEnrollmentContext,
+  createFheEnrollmentContext,
+  getFheEnrollmentContext,
+} from "@/lib/auth/fhe-enrollment-tokens";
 import {
   listEncryptedSecretsByUserId,
   upsertSecretWrapper,
@@ -158,15 +158,15 @@ export const startProcedure = publicProcedure
       })),
     });
 
-    const onboarding = await createOnboardingContext({
+    const enrollment = await createFheEnrollmentContext({
       userId: user.id,
       email: user.email,
     });
 
     return {
       challengeId: challenge.id,
-      contextToken: onboarding.contextToken,
-      expiresAt: onboarding.expiresAt,
+      contextToken: enrollment.contextToken,
+      expiresAt: enrollment.expiresAt,
       approvals: approvalTokens,
       threshold: config.threshold,
       delivery: delivery.mode,
@@ -405,7 +405,7 @@ export const finalizeProcedure = publicProcedure
       });
     }
 
-    const context = await getOnboardingContext(input.contextToken);
+    const context = await getFheEnrollmentContext(input.contextToken);
     if (!context || context.userId !== challenge.userId) {
       throw new TRPCError({
         code: "UNAUTHORIZED",
@@ -493,7 +493,7 @@ export const finalizeProcedure = publicProcedure
     const rewrappedCount = rewrapResults.filter(Boolean).length;
 
     await markRecoveryChallengeApplied({ id: challenge.id });
-    await consumeOnboardingContext(input.contextToken);
+    await consumeFheEnrollmentContext(input.contextToken);
 
     return { rewrappedCount };
   });

@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   deletePasskey,
   listUserPasskeys,
@@ -62,7 +63,10 @@ import {
 import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
 import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
-import { addWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
+import {
+  addWrapperForSecretType,
+  cacheOpaqueExportKey,
+} from "@/lib/privacy/crypto/secret-vault";
 import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
 
 interface PasskeyCredential {
@@ -114,6 +118,9 @@ export function PasskeyManagementSection() {
   const [error, setError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
+  const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>(INITIAL_EDIT_STATE);
 
@@ -159,15 +166,57 @@ export function PasskeyManagementSection() {
       });
   }, [loadPasskeys]);
 
+  const addPasskeyAndWrapSecrets = async (params?: {
+    userId?: string;
+    exportKey?: Uint8Array;
+  }) => {
+    const prfSalt = generatePrfSalt();
+    const registration = await registerPasskeyWithPrf({
+      name: `Passkey ${optimisticPasskeys.length + 1}`,
+      prfSalt,
+    });
+
+    if (!registration.ok) {
+      throw new Error(registration.message);
+    }
+
+    const { credentialId, prfOutput } = registration;
+
+    await addWrapperForSecretType({
+      secretType: FHE_SECRET_TYPE,
+      newCredentialId: credentialId,
+      newPrfOutput: prfOutput,
+      newPrfSalt: prfSalt,
+      userId: params?.userId,
+      opaqueExportKey: params?.exportKey,
+    });
+
+    await addWrapperForSecretType({
+      secretType: PROFILE_SECRET_TYPE,
+      newCredentialId: credentialId,
+      newPrfOutput: prfOutput,
+      newPrfSalt: prfSalt,
+      userId: params?.userId,
+      opaqueExportKey: params?.exportKey,
+    });
+  };
+
   const handleAddPasskey = async () => {
     if (!prfSupported) {
       toast.error("Your device doesn't support the required passkey features.");
       return;
     }
 
-    setIsAdding(true);
     setError(null);
+    setPasswordError(null);
 
+    // First passkey for password-only users: step up with password.
+    if (optimisticPasskeys.length === 0) {
+      setPasswordPromptOpen(true);
+      return;
+    }
+
+    setIsAdding(true);
     try {
       // Step-up authentication: verify user identity with existing passkey
       // before allowing new passkey registration. This prevents session hijacking
@@ -179,31 +228,7 @@ export function PasskeyManagementSection() {
         );
       }
 
-      const prfSalt = generatePrfSalt();
-      const registration = await registerPasskeyWithPrf({
-        name: `Passkey ${optimisticPasskeys.length + 1}`,
-        prfSalt,
-      });
-
-      if (!registration.ok) {
-        throw new Error(registration.message);
-      }
-
-      const { credentialId, prfOutput } = registration;
-
-      await addWrapperForSecretType({
-        secretType: FHE_SECRET_TYPE,
-        newCredentialId: credentialId,
-        newPrfOutput: prfOutput,
-        newPrfSalt: prfSalt,
-      });
-
-      await addWrapperForSecretType({
-        secretType: PROFILE_SECRET_TYPE,
-        newCredentialId: credentialId,
-        newPrfOutput: prfOutput,
-        newPrfSalt: prfSalt,
-      });
+      await addPasskeyAndWrapSecrets();
 
       toast.success("Passkey added successfully!");
       await loadPasskeys();
@@ -223,6 +248,66 @@ export function PasskeyManagementSection() {
 
       setError(message);
       toast.error("Failed to add passkey", { description: message });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleConfirmPassword = async () => {
+    if (!passwordValue) {
+      setPasswordError("Password is required");
+      return;
+    }
+
+    setIsAdding(true);
+    setPasswordError(null);
+    setError(null);
+
+    try {
+      const sessionResult = await authClient.getSession();
+      const identifier = sessionResult.data?.user?.email ?? null;
+
+      if (!identifier) {
+        throw new Error("Unable to determine account identifier.");
+      }
+
+      const result = await authClient.signIn.opaque({
+        identifier,
+        password: passwordValue,
+      });
+
+      if (!result.data || result.error) {
+        const message =
+          result.error?.message ||
+          "Password verification failed. Please try again.";
+        throw new Error(message);
+      }
+
+      const userId = result.data.user?.id ?? null;
+      const exportKey = result.data.exportKey ?? null;
+
+      if (!(userId && exportKey)) {
+        throw new Error(
+          "Password verification succeeded but export key was missing."
+        );
+      }
+
+      cacheOpaqueExportKey({ userId, exportKey });
+
+      await addPasskeyAndWrapSecrets({ userId, exportKey });
+
+      setPasswordPromptOpen(false);
+      setPasswordValue("");
+      toast.success("Passkey added successfully!");
+      await loadPasskeys();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to verify password. Please try again.";
+
+      setPasswordError(message);
+      toast.error("Failed to verify password", { description: message });
     } finally {
       setIsAdding(false);
     }
@@ -458,6 +543,58 @@ export function PasskeyManagementSection() {
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Password confirmation dialog (first passkey for password-only users) */}
+        <AlertDialog
+          onOpenChange={(open: boolean) => {
+            setPasswordPromptOpen(open);
+            if (!open) {
+              setPasswordValue("");
+              setPasswordError(null);
+            }
+          }}
+          open={passwordPromptOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm your password</AlertDialogTitle>
+              <AlertDialogDescription>
+                To add your first passkey, confirm your password. This prevents
+                someone with a stolen session from adding their own passkey.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <Input
+                autoComplete="current-password"
+                disabled={isAdding}
+                onChange={(event) => setPasswordValue(event.target.value)}
+                placeholder="Enter your password"
+                type="password"
+                value={passwordValue}
+              />
+              {passwordError ? (
+                <p className="text-destructive text-sm">{passwordError}</p>
+              ) : null}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isAdding}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isAdding}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleConfirmPassword().catch(() => {
+                    // handled via state
+                  });
+                }}
+              >
+                {isAdding ? (
+                  <Spinner aria-hidden="true" className="mr-2" size="sm" />
+                ) : null}
+                Verify & Add Passkey
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Delete confirmation dialog */}
         <AlertDialog

@@ -20,12 +20,12 @@ import {
 } from "better-auth/plugins";
 import { SiweMessage } from "siwe";
 
+import { getFheEnrollmentContext } from "@/lib/auth/fhe-enrollment-tokens";
 import {
   buildOidcVerifiedClaims,
   buildVcClaims,
   VC_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
-import { getOnboardingContext } from "@/lib/auth/onboarding-tokens";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
 import {
@@ -412,23 +412,23 @@ export const auth = betterAuth({
     passkey({
       origin: getTrustedOrigins(),
       // Disable fresh session requirement for passkey registration.
-      // During onboarding, users have anonymous sessions that may not be "fresh"
-      // by the time they reach the passkey creation step. Instead, we validate
-      // the onboarding context token which proves they completed verification.
+      // During sign-up, users have anonymous sessions that may not be "fresh"
+      // by the time they reach passkey creation. Instead, we validate the
+      // short-lived FHE enrollment context token created for that session.
       registration: {
         requireSession: false,
         resolveUser: async ({ context }) => {
           if (!context || typeof context !== "string") {
-            throw new Error("Missing onboarding context");
+            throw new Error("Missing FHE enrollment context");
           }
-          const onboardingCtx = await getOnboardingContext(context);
-          if (!onboardingCtx) {
-            throw new Error("Invalid or expired onboarding context");
+          const enrollmentCtx = await getFheEnrollmentContext(context);
+          if (!enrollmentCtx) {
+            throw new Error("Invalid or expired FHE enrollment context");
           }
           return {
-            id: onboardingCtx.userId,
-            name: onboardingCtx.email || onboardingCtx.userId,
-            displayName: onboardingCtx.email || onboardingCtx.userId,
+            id: enrollmentCtx.userId,
+            name: enrollmentCtx.email || enrollmentCtx.userId,
+            displayName: enrollmentCtx.email || enrollmentCtx.userId,
           };
         },
       },

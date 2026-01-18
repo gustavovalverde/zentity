@@ -117,7 +117,10 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     ageProof: zkProofTypes.includes("age_verification"),
     docValidityProof: zkProofTypes.includes("doc_validity"),
     nationalityProof: zkProofTypes.includes("nationality_membership"),
-    faceMatchProof: zkProofTypes.includes("face_match"),
+    // Accept either ZK proof (Tier 3) or signed claim (Tier 2) for face match
+    faceMatchProof:
+      zkProofTypes.includes("face_match") ||
+      signedClaimTypes.includes("face_match_score"),
   };
 
   const passedChecks = Object.values(checks).filter(Boolean).length;
@@ -151,6 +154,17 @@ export const getIdentityBundleByUserId = cache(
     return row ?? null;
   }
 );
+
+/**
+ * Check if user has completed sign-up by verifying identity bundle exists.
+ * The identity bundle is created only when FHE enrollment completes (passkey or password flow).
+ */
+export const hasCompletedSignUp = cache(async function hasCompletedSignUp(
+  userId: string
+): Promise<boolean> {
+  const bundle = await getIdentityBundleByUserId(userId);
+  return bundle !== null;
+});
 
 export async function getLatestIdentityDocumentByUserId(
   userId: string
@@ -282,20 +296,6 @@ export async function getIdentityDraftById(
   return row ?? null;
 }
 
-export async function getIdentityDraftBySessionId(
-  sessionId: string
-): Promise<IdentityVerificationDraft | null> {
-  const row = await db
-    .select()
-    .from(identityVerificationDrafts)
-    .where(eq(identityVerificationDrafts.onboardingSessionId, sessionId))
-    .orderBy(desc(identityVerificationDrafts.updatedAt))
-    .limit(1)
-    .get();
-
-  return row ?? null;
-}
-
 export async function getLatestIdentityDraftByUserId(
   userId: string
 ): Promise<IdentityVerificationDraft | null> {
@@ -333,7 +333,7 @@ export async function getLatestIdentityDraftByUserAndDocument(
 export async function upsertIdentityDraft(
   data: Partial<IdentityVerificationDraft> & {
     id: string;
-    onboardingSessionId: string;
+    userId: string;
     documentId: string;
   }
 ): Promise<IdentityVerificationDraft> {
@@ -342,8 +342,7 @@ export async function upsertIdentityDraft(
     .insert(identityVerificationDrafts)
     .values({
       id: data.id,
-      onboardingSessionId: data.onboardingSessionId,
-      userId: data.userId ?? null,
+      userId: data.userId,
       documentId: data.documentId,
       documentProcessed: data.documentProcessed ?? false,
       isDocumentValid: data.isDocumentValid ?? false,
@@ -363,13 +362,14 @@ export async function upsertIdentityDraft(
       livenessPassed: data.livenessPassed ?? null,
       faceMatchConfidence: data.faceMatchConfidence ?? null,
       faceMatchPassed: data.faceMatchPassed ?? null,
+      dobDays: data.dobDays ?? null,
       createdAt: now,
       updatedAt: now,
     })
     .onConflictDoUpdate({
       target: identityVerificationDrafts.id,
       set: {
-        userId: data.userId ?? null,
+        userId: data.userId,
         documentId: data.documentId,
         documentProcessed: data.documentProcessed ?? false,
         isDocumentValid: data.isDocumentValid ?? false,
@@ -389,6 +389,7 @@ export async function upsertIdentityDraft(
         livenessPassed: data.livenessPassed ?? null,
         faceMatchConfidence: data.faceMatchConfidence ?? null,
         faceMatchPassed: data.faceMatchPassed ?? null,
+        dobDays: data.dobDays ?? null,
         updatedAt: sql`datetime('now')`,
       },
     })
@@ -592,6 +593,31 @@ export async function createIdentityDocument(
     .insert(identityDocuments)
     .values({
       ...data,
+    })
+    .run();
+}
+
+export async function upsertIdentityDocument(
+  data: Omit<IdentityDocument, "createdAt" | "updatedAt">
+): Promise<void> {
+  await db
+    .insert(identityDocuments)
+    .values({
+      ...data,
+    })
+    .onConflictDoUpdate({
+      target: identityDocuments.id,
+      set: {
+        userId: data.userId,
+        documentType: data.documentType,
+        issuerCountry: data.issuerCountry,
+        documentHash: data.documentHash,
+        nameCommitment: data.nameCommitment,
+        verifiedAt: data.verifiedAt,
+        confidenceScore: data.confidenceScore,
+        status: data.status,
+        updatedAt: sql`datetime('now')`,
+      },
     })
     .run();
 }

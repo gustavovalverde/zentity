@@ -141,7 +141,7 @@ interface DisclosureResponse {
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<DisclosureResponse>> {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const log = createRequestLogger(
     requestContext.requestId,

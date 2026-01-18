@@ -330,25 +330,45 @@ async function seedVerifiedIdentity(
       bb_version,
       verified,
       created_at
-    ) VALUES (
-      '${randomUUID()}',
-      '${userId}',
-      '${documentId}',
-      'age_verification',
-      'proof_${randomUUID().replaceAll("-", "")}',
-      'mock-proof',
-      '["${new Date().getFullYear()}","18","${randomUUID()}","1"]',
-      1,
-      1240,
-      '${randomUUID()}',
-      '${policyVersion}',
-      'age_verification',
-      null,
-      null,
-      null,
-      1,
-      '${now}'
-    );
+    ) VALUES
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${documentId}',
+        'age_verification',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        'mock-proof',
+        '["${new Date().getFullYear()}","18","${randomUUID()}","1"]',
+        1,
+        1240,
+        '${randomUUID()}',
+        '${policyVersion}',
+        'age_verification',
+        null,
+        null,
+        null,
+        1,
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${documentId}',
+        'face_match',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        'mock-proof',
+        '["0.95","${randomUUID()}"]',
+        null,
+        980,
+        '${randomUUID()}',
+        '${policyVersion}',
+        'face_match',
+        null,
+        null,
+        null,
+        1,
+        '${now}'
+      );
   `;
 
   const encryptedAttributesSql = `

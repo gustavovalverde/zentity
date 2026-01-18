@@ -1,9 +1,7 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../connection";
 import { accounts, users } from "../schema/auth";
-import { identityVerificationDrafts } from "../schema/identity";
-import { onboardingSessions } from "../schema/onboarding";
 
 export async function getUserCreatedAt(userId: string): Promise<string | null> {
   const row = await db
@@ -43,8 +41,7 @@ export async function userHasPassword(userId: string): Promise<boolean> {
  *
  * Cascade behavior:
  * - Most tables (sessions, accounts, passkeys, zkProofs, etc.) cascade on user delete
- * - identityVerificationDrafts has onDelete: "set null" - requires manual cleanup
- * - onboardingSessions references drafts, not users - requires manual cleanup
+ * - identityVerificationDrafts cascades on user delete
  *
  * Passkey note: If a passkey was registered before failure, deleting the user
  * cascade-deletes the server-side passkey record. The client-side credential
@@ -54,30 +51,7 @@ export async function userHasPassword(userId: string): Promise<boolean> {
  * cleaned from the authenticator.
  */
 export async function deleteIncompleteSignup(userId: string): Promise<void> {
-  // 1. Find all identity drafts for this user (needed for onboarding session cleanup)
-  const drafts = await db
-    .select({ id: identityVerificationDrafts.id })
-    .from(identityVerificationDrafts)
-    .where(eq(identityVerificationDrafts.userId, userId))
-    .all();
-
-  const draftIds = drafts.map((d) => d.id);
-
-  // 2. Delete onboarding sessions that reference these drafts
-  if (draftIds.length > 0) {
-    await db
-      .delete(onboardingSessions)
-      .where(inArray(onboardingSessions.identityDraftId, draftIds))
-      .run();
-  }
-
-  // 3. Delete identity verification drafts (not cascaded, uses set null)
-  await db
-    .delete(identityVerificationDrafts)
-    .where(eq(identityVerificationDrafts.userId, userId))
-    .run();
-
-  // 4. Delete the user - cascades to:
+  // Delete the user - cascades to:
   //    - sessions, accounts, passkeys (auth)
   //    - zkProofs, encryptedAttributes, signedClaims, encryptedSecrets, secretWrappers (crypto)
   //    - identityBundles, identityDocuments, identityVerificationJobs (identity)

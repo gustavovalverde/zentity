@@ -1,4 +1,4 @@
-export const HKDF_INFO = {
+const HKDF_INFO = {
   PASSKEY_KEK: "zentity-passkey-kek-v1",
   OPAQUE_KEK: "zentity-opaque-kek-v1",
 } as const;

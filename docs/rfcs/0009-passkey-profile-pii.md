@@ -17,7 +17,7 @@ This consolidates PII encryption to a single method (passkey vault) and aligns s
 
 The current implementation stores and/or can decrypt PII in multiple places:
 
-- `users.name`, `onboarding_sessions.encrypted_pii`, `identity_verification_drafts.birthYear`, `signed_claims.claimPayload`, and `identity_documents.firstNameEncrypted` + `userSalt`.
+- `users.name`, `sign_up_sessions.encrypted_pii`, `identity_verification_drafts.birthYear`, `signed_claims.claimPayload`, and `identity_documents.firstNameEncrypted` + `userSalt`.
 - These fields enable the server to recover user PII, which contradicts our privacy model and increases breach risk.
 - Encryption methods are fragmented (JWE for wizard PII, passkey vault for FHE keys), increasing cognitive load and maintenance risk.
 
@@ -28,7 +28,7 @@ We need a simple, privacy-preserving architecture that still supports UX (first 
 - **Eliminate server-decryptable PII at rest**.
 - **Consolidate PII encryption** to the passkey vault.
 - Keep **email** in auth DB when provided (used for recovery + magic link), with Recovery ID as the email-less fallback.
-- Preserve **resume after refresh** for onboarding.
+- Preserve **resume after refresh** for sign-up.
 - Preserve **proof generation** using client-only private inputs, bound to server-signed claim hashes.
 
 ## Non-goals
@@ -41,7 +41,7 @@ We need a simple, privacy-preserving architecture that still supports UX (first 
 
 1. **Single PII storage method**
    - Use passkey vault (`encrypted_secrets` + `secret_wrappers`) for all user profile PII.
-   - Remove JWE-encrypted PII storage (`onboarding_sessions.encrypted_pii`).
+   - Remove JWE-encrypted PII storage (`sign_up_sessions.encrypted_pii`).
 
 2. **Email remains in auth DB**
    - Keep `users.email` and `verification.identifier/value` for auth flows.
@@ -93,7 +93,7 @@ profile_v1 payload
 
 ## Flow Changes
 
-### Onboarding
+### Sign-Up
 
 1. OCR processes document → returns extracted fields + commitments.
 2. Client stores extracted fields in local state.
@@ -112,7 +112,7 @@ profile_v1 payload
 
 ## Schema Changes
 
-- Remove `onboarding_sessions.encrypted_pii` and `onboarding_sessions.email`.
+- Remove `sign_up_sessions.encrypted_pii` and `sign_up_sessions.email`.
 - Remove `identity_verification_drafts.birthYear`, `expiryDateInt`, `nationalityCode`, `nationalityCodeNumeric`, `countryCodeNumeric`, `firstNameEncrypted`, `userSalt`.
 - Remove `identity_documents.firstNameEncrypted` and `identity_documents.userSalt`.
 - Update `signed_claims.claimPayload` to only store hashes + metadata.
@@ -122,7 +122,7 @@ profile_v1 payload
 
 - Delete existing DB or run `drizzle-kit push` against a fresh DB.
 - No backward compatibility.
-- Update docs to remove references to encrypted onboarding PII storage.
+- Update docs to remove references to encrypted sign-up PII storage.
 
 ## Risks
 
@@ -133,7 +133,7 @@ profile_v1 payload
 ## Testing Plan
 
 - Unit tests for profile secret encryption/decryption.
-- E2E onboarding flow verifies:
+- E2E sign-up flow verifies:
   - Profile decrypted after passkey creation.
   - Claims stored without raw PII.
   - Dashboard shows first name after unlock.

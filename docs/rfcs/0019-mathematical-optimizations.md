@@ -317,7 +317,7 @@ const getUserFriendlyError = (error: unknown): string => {
 
 ### 10. Conditional Rendering Config
 
-**File**: `apps/web/src/components/onboarding/face-verification-card.tsx` (lines 87-126)
+**File**: `apps/web/src/components/verification/face-verification-card.tsx` (lines 87-126)
 
 ```typescript
 // Before: Multiple {status === "x" ? <Component/> : null} blocks
@@ -341,7 +341,7 @@ return <div>{STATUS_INDICATORS[status]}</div>;
 
 ### 11. Boolean Expression Extraction
 
-**File**: `apps/web/src/components/onboarding/step-account.tsx` (lines 602-677)
+**File**: `apps/web/src/components/sign-up/step-account.tsx` (lines 602-677)
 
 ```typescript
 // Before: Repeated compound conditions in JSX

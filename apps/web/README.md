@@ -7,9 +7,8 @@ Next.js 16 and React 19.
 
 This is the main web application for Zentity, providing:
 
-- **User onboarding flow** — 4-step wizard for identity verification
-- **Document upload** — ID capture with OCR extraction
-- **Liveness verification** — Selfie capture with anti-spoofing
+- **Sign-up** — 2-step wizard (email optional → account + FHE key enrollment)
+- **Dashboard verification** — Document upload + liveness + proof generation
 - **Dashboard** — View verification status and privacy proofs
 - **Partner integrations** — OAuth provider flow for third-party verification
   checks
@@ -178,18 +177,18 @@ pnpm exec synpress ./e2e/wallet-setup --force
 ```text
 src/
 ├── app/                    # Next.js App Router
-│   ├── (auth)/             # Auth routes (sign-in, sign-up)
+│   ├── (auth)/             # Auth routes (sign-in, sign-up, recovery)
+│   ├── (dashboard)/        # Dashboard routes (authenticated)
 │   ├── api/                # API routes
 │   │   ├── auth/           # Authentication endpoints (better-auth)
 │   │   ├── trpc/           # Internal app API (tRPC)
 │   │   ├── crypto/         # ZK artifacts + nationality helpers
 │   │   ├── identity/       # Disclosure endpoints
 │   │   └── password/       # Password pwned checks
-│   ├── dashboard/          # User dashboard
-│   └── onboarding/         # Verification wizard
 ├── components/
 │   ├── dashboard/          # Dashboard components
-│   ├── onboarding/         # Wizard step components
+│   ├── sign-up/            # Sign-up wizard components
+│   ├── verification/       # Dashboard verification components
 │   └── ui/                 # Shared UI components (shadcn)
 ├── features/
 │   └── auth/               # Authentication logic
@@ -202,8 +201,8 @@ src/
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/auth/*` | Various | Auth (Better Auth, passkey, OAuth) |
-| `/api/trpc/*` | Various | Internal APIs (crypto, onboarding, identity) |
-| `/api/onboarding/context` | POST | Create onboarding context + token |
+| `/api/trpc/*` | Various | Internal APIs (crypto, sign-up, verification) |
+| `/api/fhe-enrollment/context` | POST | Create FHE enrollment context + token |
 | `/api/identity/disclosure` | POST | Disclosure bundle (demo/integrations) |
 | `/api/crypto/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
 | `/api/crypto/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |

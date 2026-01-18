@@ -50,7 +50,7 @@ function readPackageVersion(packageName: string): string | null {
   return null;
 }
 
-export function getNoirArtifactVersions(): string[] {
+function getNoirArtifactVersions(): string[] {
   const versions = new Set<string>();
   for (const circuit of CIRCUIT_ARTIFACTS) {
     const version = normalizeVersion(

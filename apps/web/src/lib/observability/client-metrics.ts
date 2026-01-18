@@ -5,7 +5,7 @@ import {
   type ClientMetricName,
   type ClientMetricUnit,
 } from "@/lib/observability/client-metric-definitions";
-import { getOnboardingFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-client";
 
 type MetricAttributes = Record<string, string | number | boolean>;
 
@@ -52,7 +52,7 @@ function normalizeAttributes(
 }
 
 function getBaseAttributes(): MetricAttributes {
-  return { flow_present: Boolean(getOnboardingFlowId()) };
+  return { flow_present: Boolean(getFlowId()) };
 }
 
 function enqueue(event: ClientMetricEvent): void {

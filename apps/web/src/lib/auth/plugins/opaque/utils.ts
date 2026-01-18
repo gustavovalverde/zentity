@@ -14,7 +14,7 @@ export const LOGIN_REQUEST_LENGTH = 96;
 const LOGIN_STATE_TTL_MS = 15 * 60 * 1000;
 const LOGIN_STATE_PAD_LENGTH = 1024;
 
-export function base64UrlDecode(str: string): Buffer {
+function base64UrlDecode(str: string): Buffer {
   const padded = str + "=".repeat((4 - (str.length % 4)) % 4);
   const normalized = padded.replaceAll("-", "+").replaceAll("_", "/");
   return Buffer.from(normalized, "base64");

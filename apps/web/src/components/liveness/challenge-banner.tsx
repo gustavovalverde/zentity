@@ -4,7 +4,7 @@ import { ArrowLeftIcon, ArrowRightIcon, SmileIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils/classname";
 
-export type ChallengeType = "smile" | "turn_left" | "turn_right";
+type ChallengeType = "smile" | "turn_left" | "turn_right";
 
 interface ChallengeBannerProps {
   /** The type of challenge being performed */
@@ -115,49 +115,5 @@ export function CountdownOverlay({
       </span>
       <p className="mt-4 text-lg text-white/70">Hold still...</p>
     </div>
-  );
-}
-
-interface StatusBadgeProps {
-  /** Status message to display */
-  message: string;
-  /** Optional icon component */
-  icon?: React.ReactNode;
-  /** Visual variant */
-  variant?: "default" | "warning" | "success" | "error";
-  /** Optional class name */
-  className?: string;
-}
-
-/**
- * Small status badge for quick feedback messages.
- */
-export function StatusBadge({
-  message,
-  icon,
-  variant = "default",
-  className,
-}: Readonly<StatusBadgeProps>) {
-  const variantStyles = {
-    default: "bg-black/70 text-white",
-    warning: "bg-amber-500/90 text-white",
-    success: "bg-green-500/90 text-white",
-    error: "bg-red-500/90 text-white",
-  };
-
-  return (
-    <output
-      aria-atomic="true"
-      aria-live="polite"
-      className={cn(
-        "inline-flex items-center gap-2 rounded-full px-4 py-2",
-        "font-medium text-sm shadow-lg backdrop-blur-sm",
-        variantStyles[variant],
-        className
-      )}
-    >
-      {icon}
-      <span>{message}</span>
-    </output>
   );
 }

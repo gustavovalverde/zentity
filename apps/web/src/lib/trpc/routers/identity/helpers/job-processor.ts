@@ -11,12 +11,12 @@ import { ISSUER_ID, POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
-  createIdentityDocument,
   getIdentityDraftById,
   getIdentityVerificationJobById,
   updateIdentityDraft,
   updateIdentityVerificationJobStatus,
   upsertIdentityBundle,
+  upsertIdentityDocument,
 } from "@/lib/db/queries/identity";
 import { identityVerificationJobs } from "@/lib/db/schema/identity";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
@@ -89,7 +89,7 @@ export function scheduleIdentityJob(jobId: string): void {
   }, 0);
 }
 
-export function processIdentityVerificationJob(jobId: string): Promise<void> {
+function processIdentityVerificationJob(jobId: string): Promise<void> {
   return withSpan(
     "identity.finalize_job",
     {
@@ -138,15 +138,6 @@ export function processIdentityVerificationJob(jobId: string): Promise<void> {
           });
           span.setAttribute("identity.draft_missing", true);
           return;
-        }
-
-        span.setAttribute(
-          "onboarding.session_id_hash",
-          hashIdentifier(draft.onboardingSessionId)
-        );
-
-        if (!draft.userId) {
-          await updateIdentityDraft(draft.id, { userId: job.userId });
         }
 
         const documentProcessed = Boolean(draft.documentProcessed);
@@ -378,7 +369,7 @@ export function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         if (documentProcessed && draft.documentId) {
           try {
-            await createIdentityDocument({
+            await upsertIdentityDocument({
               id: draft.documentId,
               userId: job.userId,
               documentType: draft.documentType ?? null,
@@ -399,9 +390,9 @@ export function processIdentityVerificationJob(jobId: string): Promise<void> {
                 userId: job.userId,
                 documentId: draft.documentId,
               },
-              "Failed to create identity document in finalize job"
+              "Failed to upsert identity document in finalize job"
             );
-            issues.push("failed_to_create_identity_document");
+            issues.push("failed_to_upsert_identity_document");
           }
         }
 

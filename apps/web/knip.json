@@ -3,12 +3,9 @@
   "ignore": [
     ".synpress-wallet-setup-dist/**",
     "src/components/ui/**",
-    "src/components/liveness/**",
-    "src/lib/liveness/**",
     "src/lib/zk/noir-worker-manager.ts",
     "scripts/**",
     "public/coi-serviceworker.js",
-    "src/test/**",
     "e2e/**",
     "vitest.unit.config.mts"
   ],
@@ -19,7 +16,8 @@
     "lint-staged",
     "@synthetixio/synpress-cache",
     "fs-extra",
-    "@types/fs-extra"
+    "@types/fs-extra",
+    "buffer"
   ],
   "ignoreBinaries": ["nargo"],
   "entry": [
@@ -28,6 +26,5 @@
     "src/app/**/route.{ts,tsx}",
     "src/**/*.test.{ts,tsx}",
     "src/**/*.integration.test.{ts,tsx}"
-  ],
-  "ignoreExportsUsedInFile": true
+  ]
 }

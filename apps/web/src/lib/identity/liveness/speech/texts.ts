@@ -28,10 +28,7 @@ export type SupportedLanguage = "en" | "es" | "pt";
  * Speech texts organized by language.
  * Kept concise for quick TTS delivery.
  */
-export const SPEECH_TEXTS: Record<
-  SupportedLanguage,
-  Record<SpeechKey, string>
-> = {
+const SPEECH_TEXTS: Record<SupportedLanguage, Record<SpeechKey, string>> = {
   en: {
     positionFace: "Position your face in the oval",
     holdStill: "Hold still",

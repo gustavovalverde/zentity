@@ -34,7 +34,7 @@ const ASSETS: AssetCheck[] = [
   },
 ];
 
-export function checkNoirWasmAssets(): {
+function checkNoirWasmAssets(): {
   ok: boolean;
   missing: string[];
   invalid: string[];

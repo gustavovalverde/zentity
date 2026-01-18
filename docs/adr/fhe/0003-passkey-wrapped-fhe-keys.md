@@ -17,7 +17,7 @@ We need a privacy-preserving way to store FHE keys without the server ever holdi
 * Server must never see plaintext client FHE keys
 * Multi-device access with passkeys
 * Key rotation without re-encrypting ciphertexts
-* Low friction for onboarding
+* Low friction for sign-up
 
 ## Decision Outcome
 

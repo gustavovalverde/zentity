@@ -40,7 +40,7 @@ export function savePreferredCamera(device: MediaDeviceInfo): void {
 /**
  * Get the user's previously saved camera preference.
  */
-export function getPreferredCamera(): StoredCameraPreference | null {
+function getPreferredCamera(): StoredCameraPreference | null {
   if (typeof localStorage === "undefined") {
     return null;
   }

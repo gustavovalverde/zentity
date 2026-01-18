@@ -19,7 +19,7 @@ const getCachedOcrHealth = unstable_cache(
  * Proxy to OCR service /health endpoint
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
     const data = await getCachedOcrHealth();

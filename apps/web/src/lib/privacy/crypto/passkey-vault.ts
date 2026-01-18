@@ -11,7 +11,7 @@ import { deriveKekFromPrf } from "./key-derivation";
 
 export const PASSKEY_VAULT_VERSION = "v2";
 export const WRAP_VERSION = "v1";
-export const SECRET_AAD_VERSION = "zentity-secret-aad-v1";
+const SECRET_AAD_VERSION = "zentity-secret-aad-v1";
 export const WRAP_AAD_VERSION = "zentity-wrap-aad-v1";
 
 export type EnvelopeFormat = "json" | "msgpack";

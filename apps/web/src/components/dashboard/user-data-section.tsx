@@ -30,8 +30,12 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
+import { useSession } from "@/lib/auth/auth-client";
 import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
-import { hasCachedPasskeyUnlock } from "@/lib/privacy/crypto/secret-vault";
+import {
+  getCachedOpaqueExportKey,
+  hasCachedPasskeyUnlock,
+} from "@/lib/privacy/crypto/secret-vault";
 import { trpcReact } from "@/lib/trpc/client";
 
 /**
@@ -55,6 +59,36 @@ const VerificationBadge = memo(function VerificationBadge({
       {label}
     </Badge>
   );
+});
+
+const VERIFICATION_LEVEL_VARIANTS = {
+  full: "success",
+  basic: "warning",
+} as const;
+
+const VERIFICATION_LEVEL_LABELS = {
+  full: "Fully Verified",
+  basic: "Partially Verified",
+} as const;
+
+const VerificationLevelBadge = memo(function VerificationLevelBadge({
+  level,
+}: Readonly<{
+  level: string | null;
+}>) {
+  const variant =
+    (level &&
+      VERIFICATION_LEVEL_VARIANTS[
+        level as keyof typeof VERIFICATION_LEVEL_VARIANTS
+      ]) ||
+    "outline";
+  const label =
+    (level &&
+      VERIFICATION_LEVEL_LABELS[
+        level as keyof typeof VERIFICATION_LEVEL_LABELS
+      ]) ||
+    "Not Verified";
+  return <Badge variant={variant}>{label}</Badge>;
 });
 
 function formatDate(dateString: string | null): string {
@@ -94,6 +128,9 @@ export function UserDataSection() {
   } = trpcReact.account.getData.useQuery();
   const error = queryError?.message ?? null;
 
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? null;
+
   const [profileName, setProfileName] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -121,13 +158,16 @@ export function UserDataSection() {
     if (profileName) {
       return;
     }
-    if (!hasCachedPasskeyUnlock()) {
+    const hasOpaqueUnlock = userId
+      ? Boolean(getCachedOpaqueExportKey(userId))
+      : false;
+    if (!(hasCachedPasskeyUnlock() || hasOpaqueUnlock)) {
       return;
     }
     loadProfile().catch(() => {
       // Ignore auto-unlock errors; user can retry manually.
     });
-  }, [data, profileName, loadProfile]);
+  }, [data, profileName, loadProfile, userId]);
 
   if (loading) {
     return (
@@ -171,8 +211,7 @@ export function UserDataSection() {
           Your Information
         </CardTitle>
         <CardDescription>
-          Data we've verified about you (commitments + encrypted profile,
-          passkey required to unlock)
+          Data we've verified about you (commitments + encrypted profile)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -201,7 +240,7 @@ export function UserDataSection() {
                     {profileLoading ? (
                       <Spinner aria-hidden="true" className="mr-2" size="sm" />
                     ) : null}
-                    Unlock with passkey
+                    Unlock
                   </Button>
                   {profileError ? (
                     <span className="text-destructive text-xs">
@@ -276,27 +315,7 @@ export function UserDataSection() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="font-medium text-sm">Verification Status</p>
-            <Badge
-              variant={(() => {
-                if (data.verification.level === "full") {
-                  return "success";
-                }
-                if (data.verification.level === "basic") {
-                  return "warning";
-                }
-                return "outline";
-              })()}
-            >
-              {(() => {
-                if (data.verification.level === "full") {
-                  return "Fully Verified";
-                }
-                if (data.verification.level === "basic") {
-                  return "Partially Verified";
-                }
-                return "Not Verified";
-              })()}
-            </Badge>
+            <VerificationLevelBadge level={data.verification.level} />
           </div>
           <div className="flex flex-wrap gap-2">
             <VerificationBadge

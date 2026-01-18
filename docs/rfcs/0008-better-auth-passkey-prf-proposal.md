@@ -67,7 +67,7 @@ This duplication leads to:
 
 Zentity uses FHE for encrypted identity data. Users need to:
 
-- Create a passkey during onboarding
+- Create a passkey during sign-up
 - Derive a key-encryption-key (KEK) from passkey PRF
 - Wrap FHE client keys with the KEK
 - Store wrapped keys server-side (zero-knowledge)

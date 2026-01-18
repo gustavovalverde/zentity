@@ -76,7 +76,7 @@ export const COUNTRY_CODES: Record<string, number> = {
 };
 
 // Reverse mapping: numeric code → country name
-export const COUNTRY_NAMES: Record<number, string> = {
+const COUNTRY_NAMES: Record<number, string> = {
   // EU countries
   40: "Austria",
   56: "Belgium",
