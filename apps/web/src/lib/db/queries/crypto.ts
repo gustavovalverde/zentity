@@ -98,10 +98,17 @@ export async function getUserAgeProof(
     return null;
   }
 
-  const encrypted = await getLatestEncryptedAttributeByUserAndType(
+  // Check for dob_days first (new format), then fall back to birth_year_offset (legacy)
+  let encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
-    "birth_year_offset"
+    "dob_days"
   );
+  if (!encrypted) {
+    encrypted = await getLatestEncryptedAttributeByUserAndType(
+      userId,
+      "birth_year_offset"
+    );
+  }
   const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   return {
@@ -149,10 +156,17 @@ export async function getUserAgeProofFull(
     return null;
   }
 
-  const encrypted = await getLatestEncryptedAttributeByUserAndType(
+  // Check for dob_days first (new format), then fall back to birth_year_offset (legacy)
+  let encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
-    "birth_year_offset"
+    "dob_days"
   );
+  if (!encrypted) {
+    encrypted = await getLatestEncryptedAttributeByUserAndType(
+      userId,
+      "birth_year_offset"
+    );
+  }
   const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   let publicSignals: string[] | null = null;

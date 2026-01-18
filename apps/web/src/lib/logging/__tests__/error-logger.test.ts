@@ -24,7 +24,11 @@ describe("error logger", () => {
     err.stack =
       "Error: Contact test@example.com id 1234567\n    at handler (src/app.ts:10:5)";
 
-    const fingerprint = logError(err, { path: "identity.verify" }, log as any);
+    const fingerprint = logError(
+      err,
+      { path: "identity.finalize" },
+      log as any
+    );
 
     expect(fingerprint).toMatch(FINGERPRINT_PATTERN);
     expect(log.error).toHaveBeenCalled();

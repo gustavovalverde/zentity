@@ -1,21 +1,4 @@
-import { revalidateTag, unstable_cache } from "next/cache";
-
-import { getVerificationStatus } from "@/lib/db/queries/identity";
-
-/**
- * Cached verification status with 5-minute TTL.
- * Uses unstable_cache with tag-based invalidation.
- */
-export function getCachedVerificationStatus(userId: string) {
-  return unstable_cache(
-    () => getVerificationStatus(userId),
-    [`user-verification-${userId}`],
-    {
-      revalidate: 300, // 5-minute TTL
-      tags: [`user-verification-${userId}`],
-    }
-  )();
-}
+import { revalidateTag } from "next/cache";
 
 /**
  * Invalidate cached verification status for a user.

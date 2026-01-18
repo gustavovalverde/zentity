@@ -25,7 +25,7 @@ Currently, all operations are synchronous within request handlers:
    ```
 
 3. **No Scheduled Tasks**: Cleanup of expired data requires manual intervention:
-   - Expired onboarding sessions (30-minute TTL)
+   - Expired sign-up sessions (30-minute TTL)
    - Used RP authorization codes
    - Old ZK challenge nonces
 
@@ -281,7 +281,7 @@ async function cleanupExpiredSessions(olderThanMinutes: number): Promise<number>
   const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString();
 
   const result = db.run(`
-    DELETE FROM onboarding_sessions
+    DELETE FROM sign_up_sessions
     WHERE created_at < ? OR expires_at < datetime('now')
   `, [cutoff]);
 

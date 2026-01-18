@@ -7,9 +7,11 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth";
+import { db } from "@/lib/db/connection";
 import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
 import {
@@ -17,10 +19,25 @@ import {
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
+import { passkeys } from "@/lib/db/schema/auth";
 
 import { protectedProcedure, router } from "../server";
 
 export const accountRouter = router({
+  /**
+   * Check if user has any registered passkeys.
+   * Used to determine if "Unlock with Passkey" UI should be shown.
+   */
+  hasPasskeys: protectedProcedure.query(async ({ ctx }) => {
+    const result = await db
+      .select({ id: passkeys.id })
+      .from(passkeys)
+      .where(eq(passkeys.userId, ctx.userId))
+      .limit(1)
+      .get();
+    return { hasPasskeys: !!result };
+  }),
+
   /**
    * Get current user's account data for display
    */
@@ -59,7 +76,6 @@ export const accountRouter = router({
    * - Identity proofs (salt, commitments - makes all data unlinkable)
    * - Age proofs (ZK proofs, FHE ciphertexts)
    * - User account (cascades to sessions, linked accounts)
-   * - Any orphaned onboarding sessions
    */
   deleteAccount: protectedProcedure
     .input(

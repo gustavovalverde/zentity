@@ -28,7 +28,7 @@ function sanitizePath(path: string | undefined): string | undefined {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const log = createRequestLogger(
     requestContext.requestId,

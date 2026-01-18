@@ -95,14 +95,14 @@ src/lib/db/
 │   ├── identity.ts         # identity_bundles, identity_documents
 │   ├── crypto.ts           # zk_proofs, encrypted_attributes, signed_claims, zk_challenges
 │   ├── attestation.ts      # attestation_evidence, blockchain_attestations
-│   ├── onboarding.ts       # onboarding_sessions
+│   ├── sign-up.ts          # sign_up_sessions
 │   ├── rp.ts               # rp_authorization_codes
 │   └── index.ts            # Re-export all tables
 ├── queries/
 │   ├── identity.ts         # getVerificationStatus, getSelectedDocument, etc.
 │   ├── crypto.ts           # insertZkProof, getEncryptedAttribute, etc.
 │   ├── attestation.ts      # upsertEvidence, getBlockchainAttestation, etc.
-│   ├── onboarding.ts       # Session CRUD
+│   ├── sign-up.ts          # Session CRUD
 │   ├── rp.ts               # Authorization code CRUD
 │   └── index.ts            # Re-export all queries
 ├── drizzle.config.ts       # Drizzle Kit configuration
@@ -283,7 +283,7 @@ Create schema files for each domain (see Architecture section):
 - `schema/identity.ts` - identity_bundles, identity_documents
 - `schema/crypto.ts` - zk_proofs, encrypted_attributes, signed_claims, zk_challenges
 - `schema/attestation.ts` - attestation_evidence, blockchain_attestations
-- `schema/onboarding.ts` - onboarding_sessions
+- `schema/sign-up.ts` - sign_up_sessions
 - `schema/rp.ts` - rp_authorization_codes
 
 ### Step 4: Configure Drizzle Kit
@@ -324,7 +324,7 @@ Migrate each query function from `db.ts` to appropriate query module:
 | `insertZkProofRecord()` | `queries/crypto.ts` |
 | `insertSignedClaim()` | `queries/crypto.ts` |
 | `upsertAttestationEvidence()` | `queries/attestation.ts` |
-| `createOnboardingSession()` | `queries/onboarding.ts` |
+| `createSignUpSession()` | `queries/sign-up.ts` |
 | `consumeRpAuthorizationCode()` | `queries/rp.ts` |
 
 ### Step 7: Add Transaction Boundaries
@@ -383,13 +383,13 @@ afterEach(() => {
 | `src/lib/db/schema/identity.ts` | Create | Identity tables |
 | `src/lib/db/schema/crypto.ts` | Create | Crypto tables |
 | `src/lib/db/schema/attestation.ts` | Create | Attestation tables |
-| `src/lib/db/schema/onboarding.ts` | Create | Onboarding table |
+| `src/lib/db/schema/sign-up.ts` | Create | Sign-up table |
 | `src/lib/db/schema/rp.ts` | Create | RP auth codes table |
 | `src/lib/db/schema/index.ts` | Create | Re-export all schemas |
 | `src/lib/db/queries/identity.ts` | Create | Identity query functions |
 | `src/lib/db/queries/crypto.ts` | Create | Crypto query functions |
 | `src/lib/db/queries/attestation.ts` | Create | Attestation queries |
-| `src/lib/db/queries/onboarding.ts` | Create | Onboarding queries |
+| `src/lib/db/queries/sign-up.ts` | Create | Sign-up queries |
 | `src/lib/db/queries/rp.ts` | Create | RP auth queries |
 | `src/lib/db/queries/index.ts` | Create | Re-export all queries |
 | `src/lib/db/index.ts` | Modify | New public API |

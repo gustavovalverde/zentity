@@ -3,10 +3,10 @@ import z from "zod";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import {
-  consumeOnboardingContext,
+  consumeFheEnrollmentContext,
   consumeRegistrationBlob,
-  getOnboardingContext,
-} from "@/lib/auth/onboarding-tokens";
+  getFheEnrollmentContext,
+} from "@/lib/auth/fhe-enrollment-tokens";
 import {
   deleteEncryptedSecretByUserAndType,
   getEncryptedSecretByUserAndType,
@@ -68,17 +68,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const context = await getOnboardingContext(registration.contextToken);
+  const context = await getFheEnrollmentContext(registration.contextToken);
   if (!context) {
     return NextResponse.json(
-      { error: "Onboarding context expired." },
+      { error: "FHE enrollment context expired." },
       { status: 400 }
     );
   }
 
   if (context.userId !== sessionUserId) {
     return NextResponse.json(
-      { error: "Onboarding context does not match session." },
+      { error: "FHE enrollment context does not match session." },
       { status: 403 }
     );
   }
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
     },
   });
 
-  await consumeOnboardingContext(registration.contextToken);
+  await consumeFheEnrollmentContext(registration.contextToken);
 
   return NextResponse.json(
     {

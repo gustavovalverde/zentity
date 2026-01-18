@@ -37,9 +37,9 @@ Currently, if a user loses all their passkeys, they have no way to recover their
 - Async signing (no real-time coordination required)
 - Support multiple guardian types with different security properties
 
-## Onboarding Integration
+## Setup Integration
 
-Recovery setup is available from **Settings → Security**. Onboarding enforcement is planned but not enabled in the current implementation.
+Recovery setup is available from **Settings → Security**. Sign-up enforcement is planned but not enabled in the current implementation.
 
 ### Current Setup Flow
 

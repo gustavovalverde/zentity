@@ -4,6 +4,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const ADD_PASSKEY_LABEL = /add passkey/i;
+const PASSWORD_PLACEHOLDER = /enter your password/i;
+const VERIFY_ADD_PASSKEY_LABEL = /verify & add passkey/i;
 
 const passkeyMocks = vi.hoisted(() => ({
   listUserPasskeys: vi.fn(),
@@ -23,9 +25,21 @@ vi.mock("@/lib/auth/passkey", () => ({
 
 const vaultMocks = vi.hoisted(() => ({
   addWrapperForSecretType: vi.fn(),
+  cacheOpaqueExportKey: vi.fn(),
 }));
 
 vi.mock("@/lib/privacy/crypto/secret-vault", () => vaultMocks);
+
+const authClientMocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  signIn: {
+    opaque: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/auth/auth-client", () => ({
+  authClient: authClientMocks,
+}));
 
 vi.mock("@/lib/privacy/crypto/key-derivation", () => ({
   generatePrfSalt: vi.fn().mockReturnValue(new Uint8Array(32).fill(7)),
@@ -52,7 +66,12 @@ import { PasskeyManagementSection } from "@/components/dashboard/passkey-managem
 describe("PasskeyManagementSection integration", () => {
   it("adds a passkey and wraps secrets", async () => {
     passkeyMocks.listUserPasskeys.mockResolvedValue({ data: [] });
-    passkeyMocks.signInWithPasskey.mockResolvedValue({ ok: true });
+    authClientMocks.getSession.mockResolvedValue({
+      data: { user: { email: "anon@anon.zentity.app" } },
+    });
+    authClientMocks.signIn.opaque.mockResolvedValue({
+      data: { user: { id: "user-1" }, exportKey: new Uint8Array(32).fill(2) },
+    });
     passkeyMocks.registerPasskeyWithPrf.mockResolvedValue({
       ok: true,
       credentialId: "cred-1",
@@ -67,6 +86,15 @@ describe("PasskeyManagementSection integration", () => {
     });
 
     fireEvent.click(addButton);
+
+    const passwordInput =
+      await screen.findByPlaceholderText(PASSWORD_PLACEHOLDER);
+    fireEvent.change(passwordInput, { target: { value: "hunter2" } });
+
+    const confirmButton = screen.getByRole("button", {
+      name: VERIFY_ADD_PASSKEY_LABEL,
+    });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => {
       expect(passkeyMocks.registerPasskeyWithPrf).toHaveBeenCalled();

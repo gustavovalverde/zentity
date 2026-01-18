@@ -200,7 +200,7 @@ erDiagram
   IDENTITY_DOCUMENTS ||--o{ ATTESTATION_EVIDENCE : evidences
   IDENTITY_DOCUMENTS ||--o{ IDENTITY_VERIFICATION_DRAFTS : drafts
 
-  ONBOARDING_SESSIONS ||--o{ IDENTITY_VERIFICATION_DRAFTS : tracks
+  USERS ||--o{ IDENTITY_VERIFICATION_DRAFTS : owns
   IDENTITY_VERIFICATION_DRAFTS ||--o{ IDENTITY_VERIFICATION_JOBS : spawns
 
   ENCRYPTED_SECRETS ||--o{ SECRET_WRAPPERS : wrapped_by
@@ -227,9 +227,10 @@ erDiagram
     text id PK
     text draft_id
   }
-  ONBOARDING_SESSIONS {
+  SIGN_UP_SESSIONS {
     text id PK
-    text step
+    integer step
+    integer keys_secured
   }
   ZK_PROOFS {
     text id PK

@@ -24,7 +24,7 @@ export function buildRecoveryMessage(params: {
   return `recovery:${params.challengeId}:${params.challengeNonce}`;
 }
 
-export function normalizeOtpCode(code: string): string {
+function normalizeOtpCode(code: string): string {
   return code.replaceAll(/\s+/g, "");
 }
 
@@ -32,7 +32,7 @@ export function normalizeRecoveryId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function normalizeBackupCode(code: string): string {
+function normalizeBackupCode(code: string): string {
   return code.replaceAll(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 

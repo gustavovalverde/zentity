@@ -246,7 +246,7 @@ export function OnChainAttestation({
 
     if (birthYearOffset === undefined) {
       setClientError(
-        "Unlock your passkey to continue. We need your birth year locally to attest on-chain."
+        "Unlock your profile to continue. We need your birth year locally to attest on-chain."
       );
       return;
     }

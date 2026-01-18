@@ -24,7 +24,7 @@ test.describe("Authentication Flow", () => {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    // Sign-up starts with onboarding step 1 (email only)
+    // Sign-up starts with step 1 (email only)
     await expect(page.locator('input[type="email"]')).toBeVisible({
       timeout: 30_000,
     });
@@ -71,7 +71,9 @@ test.describe("Authentication Flow", () => {
     await expect(page).toHaveURL(SIGN_IN_URL_PATTERN);
   });
 
-  test("should accept email and proceed to upload step", async ({ page }) => {
+  test("should accept email and proceed to account step (RFC-0017)", async ({
+    page,
+  }) => {
     const testEmail = `e2e-auth-${Date.now()}@example.com`;
 
     await page.goto("/sign-up?fresh=1", {
@@ -99,8 +101,9 @@ test.describe("Authentication Flow", () => {
       .first()
       .evaluate((form) => (form as HTMLFormElement).requestSubmit());
 
+    // RFC-0017: 2-step flow goes directly to account creation (no document upload)
     await expect(
-      page.getByRole("heading", { name: "Upload ID Document" })
+      page.getByRole("heading", { name: "Create Your Account" })
     ).toBeVisible({ timeout: 15_000 });
   });
 });

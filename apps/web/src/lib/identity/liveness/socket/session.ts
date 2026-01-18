@@ -41,6 +41,10 @@ export interface SessionState {
   face: FaceState;
   countdown: number | null;
 
+  // Identity draft linkage (for dashboard verification flow)
+  draftId: string | null;
+  userId: string | null;
+
   // Internal tracking
   challenges: ChallengeType[];
   currentIndex: number;
@@ -89,7 +93,7 @@ export interface SessionTimeouts {
   countdownDurationMs: number;
 }
 
-export const DEFAULT_TIMEOUTS: SessionTimeouts = {
+const DEFAULT_TIMEOUTS: SessionTimeouts = {
   sessionTimeoutMs: 60_000, // 60 seconds max
   challengeTimeoutMs: 15_000, // 15 seconds per challenge
   countdownDurationMs: 2000, // 2 second countdown (reduced from 3)
@@ -105,7 +109,8 @@ const MAX_CHALLENGES = 3;
  */
 export function createSession(
   numChallenges = 2,
-  timeouts: Partial<SessionTimeouts> = {}
+  timeouts: Partial<SessionTimeouts> = {},
+  options?: { draftId?: string; userId?: string }
 ): SessionState {
   // Silently clamp to valid range (security: prevent DoS)
   const count = Math.max(
@@ -121,6 +126,9 @@ export function createSession(
     challenge: null,
     face: { detected: false, box: null },
     countdown: null,
+
+    draftId: options?.draftId ?? null,
+    userId: options?.userId ?? null,
 
     challenges,
     currentIndex: 0,

@@ -3,7 +3,7 @@ status: "accepted"
 date: "2026-01-10"
 category: "technical"
 domains: [platform, security, privacy, web3]
-builds-on: "[Better Auth Passkey Integration + Anonymous Onboarding](../privacy/0008-better-auth-passkey-integration.md)"
+builds-on: "[Better Auth Passkey Integration + Anonymous Sign-Up](../privacy/0008-better-auth-passkey-integration.md)"
 ---
 
 # Better Auth patches for passkey-first recovery and 2FA UX
@@ -29,7 +29,7 @@ We apply small, targeted patches to the published packages and commit the patch 
 
 1) **@better-auth/passkey**
    * Enables pre-auth registration and returns WebAuthn response extensions for PRF output.
-   * Required for passkey-first onboarding and key custody.
+   * Required for passkey-first sign-up and key custody.
 
 2) **better-auth**
    * Adds `allowPasswordless` support for two-factor backup code generation so passkey-only users can enable TOTP + backup codes.
@@ -56,7 +56,7 @@ We apply small, targeted patches to the published packages and commit the patch 
 
 * **Fork and vendor Better Auth**: Higher maintenance burden and divergence risk.
 * **Custom 2FA implementation**: Duplicates audited logic and adds security risk.
-* **Wait for upstream**: Blocks recovery UX and passkey-first onboarding requirements.
+* **Wait for upstream**: Blocks recovery UX and passkey-first sign-up requirements.
 
 ## More Information
 

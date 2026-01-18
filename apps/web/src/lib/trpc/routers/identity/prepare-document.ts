@@ -1,253 +1,117 @@
-import { TRPCError } from "@trpc/server";
-import { v4 as uuidv4 } from "uuid";
 import z from "zod";
 
 import {
-  computeClaimHash,
-  getDocumentHashField,
-} from "@/lib/blockchain/attestation/claim-hash";
-import {
-  getSessionFromCookie,
-  updateWizardProgress,
-  validateStepAccess,
-} from "@/lib/db/onboarding-session";
-import {
-  documentHashExists,
-  getIdentityDraftById,
-  getIdentityDraftBySessionId,
+  createIdentityDocument,
+  getLatestIdentityDraftByUserId,
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
-import { processDocumentOcr } from "@/lib/identity/document/ocr-client";
+import { processDocumentWithOcr } from "@/lib/identity/document/process-document";
 import { logger } from "@/lib/logging/logger";
-import { getNationalityCode } from "@/lib/privacy/zk/nationality-data";
 
-import { publicProcedure } from "../../server";
-import { parseBirthYear, parseDateToInt } from "./helpers/date-parsing";
+import { protectedProcedure } from "../../server";
 
 /**
- * OCR + draft creation for onboarding.
+ * Document verification procedure.
  *
- * Performs document OCR, computes commitments, and persists a draft that can be
- * finalized later once the user account exists.
+ * For authenticated users verifying identity from the dashboard (post-sign-up).
+ * Requires authenticated session.
+ *
+ * Authentication: `protectedProcedure` (authenticated user via better-auth)
  */
-export const prepareDocumentProcedure = publicProcedure
+export const prepareDocumentProcedure = protectedProcedure
   .input(z.object({ image: z.string().min(1, "Image is required") }))
   .mutation(async ({ ctx, input }) => {
-    const session = await getSessionFromCookie();
-    const validation = validateStepAccess(session, "process-document");
-    if (!(validation.valid && validation.session)) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: validation.error || "Session required",
-      });
-    }
+    const userId = ctx.session.user.id;
 
     ctx.span?.setAttribute(
-      "onboarding.document_image_bytes",
+      "dashboard.document_image_bytes",
       Buffer.byteLength(input.image)
     );
 
-    const issues: string[] = [];
-    const sessionId = validation.session.id;
+    // Look up existing draft for this user
+    const existingDraft = await getLatestIdentityDraftByUserId(userId);
 
-    // Parallelize OCR and draft lookup - they are independent operations
-    const [ocrResult, existingDraft] = await Promise.all([
-      processDocumentOcr({
-        image: input.image,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-      }).catch((error) => {
-        logger.error(
-          { error: String(error), requestId: ctx.requestId },
-          "Document OCR processing failed in prepareDocument"
-        );
-        return null;
-      }),
-      validation.session.identityDraftId !== null &&
-      validation.session.identityDraftId !== undefined
-        ? getIdentityDraftById(validation.session.identityDraftId)
-        : getIdentityDraftBySessionId(sessionId),
-    ]);
-
-    // Process OCR result
-    const documentResult = ocrResult;
-    if (documentResult) {
-      issues.push(...(documentResult.validationIssues || []));
-    } else {
-      issues.push("document_processing_failed");
-    }
-
-    const draftId = existingDraft?.id ?? uuidv4();
-    const documentId = existingDraft?.documentId ?? uuidv4();
-
-    const documentProcessed = Boolean(documentResult?.commitments);
-    const documentHash = documentResult?.commitments?.documentHash ?? null;
-    let documentHashField: string | null = null;
-    if (documentHash) {
-      try {
-        documentHashField = getDocumentHashField(documentHash);
-      } catch (error) {
-        logger.error(
-          { error: String(error), documentHash },
-          "Failed to generate document hash field in prepareDocument"
-        );
-        issues.push("document_hash_field_failed");
-      }
-    }
-
-    let isDuplicateDocument = false;
-    if (documentHash) {
-      const hashExists = await documentHashExists(documentHash);
-      if (hashExists) {
-        isDuplicateDocument = true;
-        issues.push("duplicate_document");
-      }
-    }
-
-    const birthYear = parseBirthYear(
-      documentResult?.extractedData?.dateOfBirth
-    );
-    const expiryDateInt = parseDateToInt(
-      documentResult?.extractedData?.expirationDate
-    );
-    const nationalityCode =
-      documentResult?.extractedData?.nationalityCode ?? null;
-    const nationalityCodeNumeric = nationalityCode
-      ? (getNationalityCode(nationalityCode) ?? null)
-      : null;
-
-    let ageClaimHash: string | null = null;
-    let docValidityClaimHash: string | null = null;
-    let nationalityClaimHash: string | null = null;
-    if (documentHashField) {
-      const hashTasks: Promise<void>[] = [];
-      if (birthYear !== null) {
-        hashTasks.push(
-          (async () => {
-            try {
-              ageClaimHash = await computeClaimHash({
-                value: birthYear,
-                documentHashField,
-              });
-            } catch (error) {
-              logger.error(
-                { error: String(error), birthYear },
-                "Failed to compute age claim hash"
-              );
-              issues.push("age_claim_hash_failed");
-            }
-          })()
-        );
-      }
-      if (expiryDateInt !== null) {
-        hashTasks.push(
-          (async () => {
-            try {
-              docValidityClaimHash = await computeClaimHash({
-                value: expiryDateInt,
-                documentHashField,
-              });
-            } catch (error) {
-              logger.error(
-                { error: String(error), expiryDateInt },
-                "Failed to compute doc validity claim hash"
-              );
-              issues.push("doc_validity_claim_hash_failed");
-            }
-          })()
-        );
-      }
-      if (nationalityCodeNumeric) {
-        hashTasks.push(
-          (async () => {
-            try {
-              nationalityClaimHash = await computeClaimHash({
-                value: nationalityCodeNumeric,
-                documentHashField,
-              });
-            } catch (error) {
-              logger.error(
-                { error: String(error), nationalityCodeNumeric },
-                "Failed to compute nationality claim hash"
-              );
-              issues.push("nationality_claim_hash_failed");
-            }
-          })()
-        );
-      }
-      if (hashTasks.length) {
-        await Promise.all(hashTasks);
-      }
-    }
-    const issuerCountry =
-      documentResult?.documentOrigin ||
-      documentResult?.extractedData?.nationalityCode ||
-      null;
-
-    const hasExpiredDocument = Boolean(
-      documentResult?.validationIssues?.includes("document_expired")
-    );
-    const isDocumentValid =
-      documentProcessed &&
-      (documentResult?.confidence ?? 0) > 0.3 &&
-      Boolean(documentResult?.extractedData?.documentNumber) &&
-      !isDuplicateDocument &&
-      !hasExpiredDocument;
-
-    ctx.span?.setAttribute("onboarding.document_processed", documentProcessed);
-    ctx.span?.setAttribute("onboarding.document_valid", isDocumentValid);
-    ctx.span?.setAttribute(
-      "onboarding.document_duplicate",
-      isDuplicateDocument
-    );
-    ctx.span?.setAttribute("onboarding.issues_count", issues.length);
-
-    await upsertIdentityDraft({
-      id: draftId,
-      onboardingSessionId: sessionId,
-      documentId,
-      documentProcessed,
-      isDocumentValid,
-      isDuplicateDocument,
-      documentType: documentResult?.documentType ?? null,
-      issuerCountry,
-      documentHash,
-      documentHashField,
-      nameCommitment: documentResult?.commitments?.nameCommitment ?? null,
-      ageClaimHash,
-      docValidityClaimHash,
-      nationalityClaimHash,
-      confidenceScore: documentResult?.confidence ?? null,
-      ocrIssues: issues.length ? JSON.stringify(issues) : null,
+    // Process document using shared logic
+    const result = await processDocumentWithOcr({
+      image: input.image,
+      requestId: ctx.requestId,
+      flowId: ctx.flowId ?? undefined,
+      existingDraftId: existingDraft?.id,
+      existingDocumentId: existingDraft?.documentId,
     });
 
-    await updateWizardProgress(
-      validation.session.id,
-      {
-        documentProcessed: isDocumentValid,
-        documentHash: documentHash ?? undefined,
-        identityDraftId: draftId,
-        step: Math.max(validation.session.step ?? 1, 2),
-      },
-      ctx.resHeaders
+    ctx.span?.setAttribute(
+      "dashboard.document_processed",
+      result.documentProcessed
     );
+    ctx.span?.setAttribute("dashboard.document_valid", result.isDocumentValid);
+    ctx.span?.setAttribute(
+      "dashboard.document_duplicate",
+      result.isDuplicateDocument
+    );
+    ctx.span?.setAttribute("dashboard.issues_count", result.issues.length);
+
+    // Persist draft with user reference
+    await upsertIdentityDraft({
+      id: result.draftId,
+      userId,
+      documentId: result.documentId,
+      documentProcessed: result.documentProcessed,
+      isDocumentValid: result.isDocumentValid,
+      isDuplicateDocument: result.isDuplicateDocument,
+      documentType: result.ocrResult?.documentType ?? null,
+      issuerCountry: result.issuerCountry,
+      documentHash: result.documentHash,
+      documentHashField: result.documentHashField,
+      nameCommitment: result.ocrResult?.commitments?.nameCommitment ?? null,
+      ageClaimHash: result.claimHashes.ageClaimHash,
+      docValidityClaimHash: result.claimHashes.docValidityClaimHash,
+      nationalityClaimHash: result.claimHashes.nationalityClaimHash,
+      confidenceScore: result.ocrResult?.confidence ?? null,
+      ocrIssues: result.issues.length ? JSON.stringify(result.issues) : null,
+      dobDays: result.parsedDates.dobDays,
+    });
+
+    // Create identity_documents record with "pending" status for navigation
+    // This allows the user to proceed to liveness verification
+    if (result.isDocumentValid && result.ocrResult?.commitments) {
+      try {
+        await createIdentityDocument({
+          id: result.documentId,
+          userId,
+          documentType: result.ocrResult.documentType ?? null,
+          issuerCountry: result.issuerCountry,
+          documentHash: result.ocrResult.commitments.documentHash ?? null,
+          nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
+          verifiedAt: null,
+          confidenceScore: result.ocrResult.confidence ?? null,
+          status: "pending",
+        });
+      } catch (error) {
+        // Document might already exist from a previous attempt
+        logger.debug(
+          { error: String(error), userId, documentId: result.documentId },
+          "Identity document already exists or failed to create"
+        );
+      }
+    }
 
     return {
       success: true,
-      draftId,
-      documentId,
-      documentProcessed,
-      isDocumentValid,
-      isDuplicateDocument,
-      issues,
-      userSalt: documentResult?.commitments?.userSalt ?? null,
-      documentResult: documentResult
+      draftId: result.draftId,
+      documentId: result.documentId,
+      documentProcessed: result.documentProcessed,
+      isDocumentValid: result.isDocumentValid,
+      isDuplicateDocument: result.isDuplicateDocument,
+      issues: result.issues,
+      userSalt: result.ocrResult?.commitments?.userSalt ?? null,
+      documentResult: result.ocrResult
         ? {
-            documentType: documentResult.documentType,
-            documentOrigin: documentResult.documentOrigin,
-            confidence: documentResult.confidence,
-            extractedData: documentResult.extractedData,
-            validationIssues: documentResult.validationIssues,
+            documentType: result.ocrResult.documentType,
+            documentOrigin: result.ocrResult.documentOrigin,
+            confidence: result.ocrResult.confidence,
+            extractedData: result.ocrResult.extractedData,
+            validationIssues: result.ocrResult.validationIssues,
           }
         : {
             documentType: "unknown",

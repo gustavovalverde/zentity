@@ -1,10 +1,10 @@
 "use client";
 
-const FLOW_STORAGE_KEY = "zentity.onboarding.flow";
+const FLOW_STORAGE_KEY = "zentity.flow";
 
 let cachedFlowId: string | null = null;
 
-export function setOnboardingFlowId(flowId: string | null): void {
+export function setFlowId(flowId: string | null): void {
   cachedFlowId = flowId;
   if (globalThis.window === undefined) {
     return;
@@ -20,7 +20,7 @@ export function setOnboardingFlowId(flowId: string | null): void {
   }
 }
 
-export function getOnboardingFlowId(): string | null {
+export function getFlowId(): string | null {
   if (cachedFlowId) {
     return cachedFlowId;
   }
@@ -40,10 +40,10 @@ export function getOnboardingFlowId(): string | null {
 }
 
 /**
- * Clear the onboarding flow ID cache.
+ * Clear the flow ID cache.
  * Call this during sign-out and before sign-in to ensure clean state
  * when users switch on shared browsers.
  */
-export function resetOnboardingFlowId(): void {
-  setOnboardingFlowId(null);
+export function resetFlowId(): void {
+  setFlowId(null);
 }

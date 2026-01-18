@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils/classname";
  * Live password requirements / strength UI.
  *
  * This component is intentionally split from the auth flows so we can reuse it
- * for onboarding sign-up, reset password, and change password.
+ * for sign-up, reset password, and change password.
  *
  * The breached-password check is:
  * - Triggered by the parent via `breachCheckKey` (e.g., on confirm-password blur

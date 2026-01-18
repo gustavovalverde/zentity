@@ -24,7 +24,7 @@ Previously, FHE keys (client, public, server) were stored in plaintext IndexedDB
 - **Fallback**: Require PRF support (no fallback - PRF-capable browsers only)
 - **Multi-device**: Yes - server-stored encrypted keys, decrypted via PRF on each device
 - **Multi-passkey**: Any registered passkey can decrypt (wrap the DEK for each new passkey)
-- **UX**: Explicit onboarding step for "Secure your encryption keys"
+- **UX**: Explicit sign-up step for "Secure your encryption keys"
 - **User verification**: Required for all PRF evaluations (no UV-less PRF)
 - **Create vs. get**: Treat PRF outputs during registration as opportunistic; always support PRF evaluation during assertions
 
@@ -469,8 +469,8 @@ CREATE TABLE secret_wrappers (
   UNIQUE(secret_id, credential_id)
 );
 
--- Onboarding: add a keys_secured flag to gate Step 5 completion
-ALTER TABLE onboarding_sessions ADD COLUMN keys_secured INTEGER DEFAULT false NOT NULL;
+-- Sign-up: add a keys_secured flag to gate step completion
+ALTER TABLE sign_up_sessions ADD COLUMN keys_secured INTEGER DEFAULT false NOT NULL;
 ```
 
 ### Step 6: tRPC Router (`src/lib/trpc/routers/secrets.ts`)
@@ -507,7 +507,7 @@ export async function persistFheKeyId(keyId: string): Promise<void>;
 - Caches decrypted keys in-memory (short TTL)
 - Passkey rotation is handled via `addWrapper` when account settings UI is added
 
-### Step 8: Onboarding Step (`src/components/onboarding/steps/step-secure-keys.tsx`)
+### Step 8: Sign-Up Step (`src/components/sign-up/step-secure-keys.tsx`)
 
 New explicit step:
 
@@ -541,11 +541,11 @@ This keeps authentication and key-unlock in a single gesture and lets future flo
 | `src/lib/utils/base64url.ts` | Create | Base64url helpers for WebAuthn IDs |
 | `src/types/webauthn-prf.d.ts` | Create | WebAuthn PRF type augmentation |
 | `src/lib/db/schema/crypto.ts` | Modify | Add encrypted_secrets + secret_wrappers tables |
-| `src/lib/db/schema/onboarding.ts` | Modify | Add keys_secured flag |
+| `src/lib/db/schema/sign-up.ts` | Modify | Add keys_secured flag |
 | `src/lib/db/queries/crypto.ts` | Modify | Encrypted secret + wrapper queries |
-| `src/lib/db/queries/onboarding.ts` | Modify | Persist keys_secured updates |
+| `src/lib/db/queries/sign-up.ts` | Modify | Persist keys_secured updates |
 | `src/lib/trpc/routers/secrets.ts` | Create | tRPC router for encrypted secrets |
-| `src/components/onboarding/steps/step-secure-keys.tsx` | Create | New onboarding step |
+| `src/components/sign-up/step-secure-keys.tsx` | Create | New sign-up step |
 | `src/lib/crypto/__tests__/*.test.ts` | Create | Tests for each layer |
 
 ## Security Considerations

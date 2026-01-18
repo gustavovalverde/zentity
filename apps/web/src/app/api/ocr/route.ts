@@ -17,7 +17,7 @@ interface OCRRequest {
  * Proxy to OCR service /ocr endpoint for document processing
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
     const body: OCRRequest = await request.json();

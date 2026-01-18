@@ -7,11 +7,18 @@
  */
 import "server-only";
 
+import type { FeatureName } from "@/lib/assurance/types";
+
 import { randomUUID } from "node:crypto";
 
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 
+import { getTierProfile } from "@/lib/assurance/data";
+import {
+  getFeatureRequirementMessage,
+  isFeatureUnlocked,
+} from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
@@ -23,8 +30,6 @@ import {
 } from "@/lib/observability/request-context";
 import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
 
-export type { Logger } from "@/lib/logging/logger";
-
 type SpanAttributes = Record<string, string | number | boolean>;
 
 /** Base context available to all procedures (public and protected). */
@@ -34,9 +39,6 @@ interface TrpcContext {
   requestId: string;
   flowId: string | null;
   flowIdSource: "header" | "cookie" | "query" | "none";
-  onboardingSessionId: string | null;
-  onboardingStep?: number;
-  identityDraftId?: string | null;
   traceId?: string;
   spanId?: string;
   span?: Span;
@@ -52,7 +54,7 @@ export async function createTrpcContext(args: {
   req: Request;
   resHeaders?: Headers;
 }): Promise<TrpcContext> {
-  const requestContext = await resolveRequestContext(args.req.headers);
+  const requestContext = resolveRequestContext(args.req.headers);
   let session: Session | null = null;
   try {
     session = await auth.api.getSession({ headers: args.req.headers });
@@ -69,9 +71,6 @@ export async function createTrpcContext(args: {
     requestId: requestContext.requestId,
     flowId: requestContext.flowId,
     flowIdSource: requestContext.flowIdSource,
-    onboardingSessionId: requestContext.onboardingSessionId,
-    onboardingStep: requestContext.onboardingStep,
-    identityDraftId: requestContext.identityDraftId,
     resHeaders: args.resHeaders ?? new Headers(),
   };
 }
@@ -146,8 +145,7 @@ const DEBUG_ONLY_PATHS = new Set([
   "crypto.challengeStatus",
   "attestation.networks",
   "attestation.status",
-  "onboarding.getSession",
-  "identity.status",
+  "signUp.getSession",
   "token.networks",
 ]);
 
@@ -156,12 +154,10 @@ const DEBUG_ONLY_PATHS = new Set([
  * These get timing logged in debug mode.
  */
 const CRITICAL_PATHS = new Set([
-  "identity.verify",
   "identity.prepareDocument",
-  "identity.prepareLiveness",
-  "identity.finalizeAsync",
+  "identity.livenessStatus",
+  "identity.finalize",
   "identity.finalizeStatus",
-  "identity.processDocument",
   "attestation.submit",
   "crypto.storeProof",
   "crypto.verifyProof",
@@ -284,3 +280,51 @@ export const protectedProcedure = trpc.procedure
   .use(withTracing)
   .use(withLogging)
   .use(enforceAuth);
+
+/**
+ * Creates a middleware that guards a procedure by feature requirements.
+ *
+ * Checks the user's tier and AAL against the feature requirements.
+ * If requirements aren't met, throws a FORBIDDEN error with a descriptive message.
+ *
+ * @param feature - The feature name to check access for
+ * @returns tRPC middleware that adds tierProfile to context
+ *
+ * @example
+ * ```ts
+ * export const attestationRouter = router({
+ *   submit: protectedProcedure
+ *     .use(requireFeature("attestation"))
+ *     .mutation(async ({ ctx }) => {
+ *       // ctx.tierProfile is available
+ *     }),
+ * });
+ * ```
+ */
+export function requireFeature(feature: FeatureName) {
+  return trpc.middleware(async ({ ctx, next }) => {
+    const tierContext = ctx as typeof ctx & {
+      userId: string;
+      session: Session;
+    };
+
+    const tierProfile = await getTierProfile(
+      tierContext.userId,
+      tierContext.session
+    );
+
+    if (!isFeatureUnlocked(feature, tierProfile.tier, tierProfile.aal)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: getFeatureRequirementMessage(feature, tierProfile),
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        tierProfile,
+      },
+    });
+  });
+}

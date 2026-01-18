@@ -3,17 +3,17 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import { signOut as betterAuthSignOut } from "@/lib/auth/auth-client";
-import { resetOnboardingFlowId } from "@/lib/observability/flow-client";
+import { resetFlowId } from "@/lib/observability/flow-client";
 import { resetFheKeyStoreCache } from "@/lib/privacy/crypto/fhe-key-store";
 import { resetProfileSecretCache } from "@/lib/privacy/crypto/profile-secret";
 import { clearAllCaches as clearSecretVaultCaches } from "@/lib/privacy/crypto/secret-vault";
 import { redirectTo as navigateTo } from "@/lib/utils/navigation";
 
-const ONBOARDING_STORAGE_KEY = "zentity-onboarding";
+const SIGN_UP_STORAGE_KEY = "zentity-sign-up";
 
 /**
  * Cookie names to clear during session transitions.
- * These are set by Better Auth and onboarding flows.
+ * These are set by Better Auth and sign-up flows.
  */
 const SESSION_COOKIES = [
   "better-auth.session_token",
@@ -26,30 +26,30 @@ const SESSION_COOKIES = [
  * Call this during sign-out and before sign-in to ensure clean state
  * when users switch on shared browsers.
  */
-export function clearClientCaches(): void {
+function clearClientCaches(): void {
   // Clear module-level crypto caches
   resetFheKeyStoreCache();
   resetProfileSecretCache();
   clearSecretVaultCaches();
 
-  // Clear onboarding storage (sessionStorage only)
+  // Clear sign-up wizard storage (sessionStorage only)
   if (globalThis.window !== undefined) {
     try {
-      globalThis.window.sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
+      globalThis.window.sessionStorage.removeItem(SIGN_UP_STORAGE_KEY);
     } catch {
       // Ignore storage failures
     }
   }
 
   // Clear sessionStorage (flow ID)
-  resetOnboardingFlowId();
+  resetFlowId();
 }
 
 /**
  * Clear all session cookies.
  * Must be called from client-side code.
  */
-export function clearSessionCookies(): void {
+function clearSessionCookies(): void {
   if (globalThis.document === undefined) {
     return;
   }
@@ -70,7 +70,7 @@ export function clearSessionCookies(): void {
  * Clear React Query cache.
  * Must be called with the queryClient instance.
  */
-export function clearQueryCache(queryClient: QueryClient): void {
+function clearQueryCache(queryClient: QueryClient): void {
   queryClient.clear();
 }
 

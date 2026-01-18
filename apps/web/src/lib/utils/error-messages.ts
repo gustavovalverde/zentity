@@ -11,7 +11,7 @@ const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
 /**
  * Check if an error indicates user rejected the transaction.
  */
-export function isUserRejectedError(error: unknown): boolean {
+function isUserRejectedError(error: unknown): boolean {
   const msg = getErrorMessage(error).toLowerCase();
   return (
     msg.includes("user rejected") ||
@@ -23,7 +23,7 @@ export function isUserRejectedError(error: unknown): boolean {
 /**
  * Extract message from various error types.
  */
-export function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }

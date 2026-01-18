@@ -15,30 +15,13 @@
 import "server-only";
 
 import { router } from "../../server";
-import {
-  fheStatusProcedure,
-  finalizeAsyncProcedure,
-  finalizeStatusProcedure,
-  prepareLivenessProcedure,
-  statusProcedure,
-} from "./finalize";
+import { finalizeProcedure, finalizeStatusProcedure } from "./finalize";
+import { livenessStatusProcedure } from "./liveness-status";
 import { prepareDocumentProcedure } from "./prepare-document";
-import { processDocumentProcedure } from "./process-document";
-import { verifyNameProcedure, verifyProcedure } from "./verify";
-
-export type {
-  FheStatus,
-  VerifyIdentityResponse,
-} from "./helpers/job-processor";
 
 export const identityRouter = router({
-  processDocument: processDocumentProcedure,
   prepareDocument: prepareDocumentProcedure,
-  status: statusProcedure,
-  fheStatus: fheStatusProcedure,
-  prepareLiveness: prepareLivenessProcedure,
-  finalizeAsync: finalizeAsyncProcedure,
+  livenessStatus: livenessStatusProcedure,
+  finalize: finalizeProcedure,
   finalizeStatus: finalizeStatusProcedure,
-  verify: verifyProcedure,
-  verifyName: verifyNameProcedure,
 });

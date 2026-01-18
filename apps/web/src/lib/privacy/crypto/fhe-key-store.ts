@@ -136,7 +136,7 @@ export async function storeFheKeys(params: {
 
 /**
  * Store FHE keys with support for both passkey and OPAQUE credential types.
- * This is the recommended function for new code during onboarding.
+ * This is the recommended function for new code during sign-up.
  */
 export async function storeFheKeysWithCredential(params: {
   keys: StoredFheKeys;

@@ -2,7 +2,7 @@ import type { FhevmInstance } from "../types";
 
 export type FhevmProviderId = "zama" | "mock" | (string & Record<never, never>);
 
-export interface FhevmProviderInitParams {
+interface FhevmProviderInitParams {
   provider: unknown;
   chainId: number;
   rpcUrl?: string;

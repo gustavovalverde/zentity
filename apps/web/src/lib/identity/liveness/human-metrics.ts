@@ -32,7 +32,7 @@ export function getLargestFace(result: unknown): HumanFaceResult | null {
   }, faces[0]);
 }
 
-export function getGestureNames(result: unknown): string[] {
+function getGestureNames(result: unknown): string[] {
   const res = result as HumanDetectionResult | null;
   const gestures = Array.isArray(res?.gesture) ? res.gesture : [];
   return gestures

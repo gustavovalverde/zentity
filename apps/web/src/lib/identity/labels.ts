@@ -4,7 +4,7 @@
  */
 
 /** Labels for ZK proof types */
-export const PROOF_TYPE_LABELS: Record<string, string> = {
+const PROOF_TYPE_LABELS: Record<string, string> = {
   age_verification: "Age ≥ 18",
   doc_validity: "Document Valid",
   nationality_membership: "Nationality Group",
@@ -12,13 +12,13 @@ export const PROOF_TYPE_LABELS: Record<string, string> = {
 };
 
 /** Labels for signed claim types */
-export const CLAIM_TYPE_LABELS: Record<string, string> = {
+const CLAIM_TYPE_LABELS: Record<string, string> = {
   liveness_score: "Liveness Score",
   face_match_score: "Face Match Score",
 };
 
 /** Labels for FHE encrypted attributes */
-export const ENCRYPTED_ATTRIBUTE_LABELS: Record<string, string> = {
+const ENCRYPTED_ATTRIBUTE_LABELS: Record<string, string> = {
   dob_days: "Date of Birth",
   country_code: "Country Code",
   compliance_level: "Compliance Level",
@@ -26,7 +26,7 @@ export const ENCRYPTED_ATTRIBUTE_LABELS: Record<string, string> = {
 };
 
 /** Fallback country names when backend doesn't provide display name */
-export const COUNTRY_NAMES: Record<string, string> = {
+const COUNTRY_NAMES: Record<string, string> = {
   DOM: "Dominican Republic",
   USA: "United States",
   ESP: "Spain",
