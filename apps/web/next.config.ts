@@ -7,6 +7,19 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  // Turbopack configuration for Buffer polyfill
+  // ISSUE: Next.js ships buffer@5.6.0 at "next/dist/compiled/buffer" which LACKS BigInt methods
+  // The free variable `Buffer` maps to "node:buffer" which aliases to the compiled buffer
+  // We override BOTH to use our buffer@6.0.3 with BigInt methods (writeBigUInt64BE, etc.)
+  turbopack: {
+    resolveAlias: {
+      // Override Next.js's internal buffer alias (v5.6.0 → v6.0.3)
+      "next/dist/compiled/buffer": "buffer",
+      // Also override direct buffer imports
+      "node:buffer": "buffer",
+    },
+  },
+
   experimental: {
     // Required for large tRPC payloads (e.g., encrypted secrets) when using proxy.ts
     proxyClientMaxBodySize: "100mb",
