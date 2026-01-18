@@ -158,7 +158,7 @@ contract SchnorrRegistrar {
         address user,
         bytes32 e,
         bytes32 s,
-        einput encryptedBirthYearOffset,
+        einput encryptedDobDays,
         einput encryptedCountryCode,
         einput encryptedComplianceLevel,
         einput encryptedLivenessScore,
@@ -167,7 +167,7 @@ contract SchnorrRegistrar {
         bytes calldata inputProof
     ) external {
         bytes32 messageHash = keccak256(abi.encodePacked(
-            user, encryptedBirthYearOffset, encryptedCountryCode,
+            user, encryptedDobDays, encryptedCountryCode,
             encryptedComplianceLevel, encryptedLivenessScore,
             proofSetHash, policyHash
         ));
@@ -179,7 +179,7 @@ contract SchnorrRegistrar {
         emit AttestationSubmitted(user, messageHash);
 
         identityRegistry.attestIdentity(
-            user, encryptedBirthYearOffset, encryptedCountryCode,
+            user, encryptedDobDays, encryptedCountryCode,
             encryptedComplianceLevel, encryptedLivenessScore,
             proofSetHash, policyHash, inputProof
         );
@@ -203,7 +203,7 @@ contract SchnorrRegistrar {
 interface IIdentityRegistry {
     function attestIdentity(
         address user,
-        einput encryptedBirthYearOffset,
+        einput encryptedDobDays,
         einput encryptedCountryCode,
         einput encryptedComplianceLevel,
         einput encryptedLivenessScore,

@@ -43,7 +43,6 @@ export interface VerifyIdentityResponse {
     faceMatched: boolean;
     isDuplicateDocument: boolean;
     ageProofGenerated: boolean;
-    birthYearOffsetEncrypted: boolean;
     docValidityProofGenerated: boolean;
     nationalityCommitmentGenerated: boolean;
     countryCodeEncrypted: boolean;
@@ -338,7 +337,6 @@ export function processIdentityVerificationJob(jobId: string): Promise<void> {
           }
         }
 
-        const birthYearOffsetEncrypted = false;
         const countryCodeEncrypted = false;
         const livenessScoreEncrypted = false;
         const fheStatus: FheStatus = job.fheKeyId ? "pending" : "error";
@@ -420,7 +418,6 @@ export function processIdentityVerificationJob(jobId: string): Promise<void> {
             faceMatched: faceMatchPassed,
             isDuplicateDocument,
             ageProofGenerated: false,
-            birthYearOffsetEncrypted,
             docValidityProofGenerated: false,
             nationalityCommitmentGenerated: Boolean(draft.nationalityClaimHash),
             countryCodeEncrypted,

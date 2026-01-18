@@ -19,7 +19,7 @@ const fheMocks = vi.hoisted(() => ({
   registerFheKey: vi.fn(),
 }));
 
-vi.mock("@/lib/crypto/fhe-client", () => fheMocks);
+vi.mock("@/lib/privacy/crypto/fhe-client", () => fheMocks);
 
 const dbMocks = vi.hoisted(() => ({
   getEncryptedSecretByUserAndType: vi.fn(),

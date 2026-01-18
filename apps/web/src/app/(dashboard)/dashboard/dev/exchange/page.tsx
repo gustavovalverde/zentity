@@ -52,6 +52,8 @@ interface DisclosurePackage {
 interface DecryptedPii {
   fullName: string;
   dateOfBirth: string;
+  residentialAddress: string;
+  addressCountryCode: string;
   nationality: string;
   documentNumber: string;
 }
@@ -142,6 +144,8 @@ export default function ExchangeDemoPage() {
       const scope: DisclosureField[] = [
         "fullName",
         "dateOfBirth",
+        "residentialAddress",
+        "addressCountryCode",
         "nationality",
         "documentNumber",
       ];

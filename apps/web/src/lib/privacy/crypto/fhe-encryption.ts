@@ -30,7 +30,8 @@ export interface FheEncryptionSchedule {
   requestId?: string;
   flowId?: string;
   reason?: string;
-  birthYearOffset?: number | null;
+  /** Full DOB as days since 1900-01-01 (UTC) */
+  dobDays?: number | null;
   countryCodeNumeric?: number | null;
 }
 
@@ -90,13 +91,13 @@ async function runFheEncryption(
           )
         : await getLatestIdentityDraftByUserId(userId);
 
-      // Resolve birthYearOffset: context > draft fallback
-      const birthYearOffset = (() => {
-        if (typeof context?.birthYearOffset === "number") {
-          return context.birthYearOffset;
+      // Resolve dobDays: context > draft fallback
+      const dobDays = (() => {
+        if (typeof context?.dobDays === "number") {
+          return context.dobDays;
         }
-        if (typeof draft?.birthYearOffset === "number") {
-          return draft.birthYearOffset;
+        if (typeof draft?.dobDays === "number") {
+          return draft.dobDays;
         }
         return null;
       })();
@@ -119,30 +120,30 @@ async function runFheEncryption(
 
       // Parallelize independent attribute lookups
       const [
-        existingBirthYearOffset,
+        existingDobDays,
         existingCountryCode,
         existingLivenessScore,
         existingCompliance,
       ] = await Promise.all([
-        getLatestEncryptedAttributeByUserAndType(userId, "birth_year_offset"),
+        getLatestEncryptedAttributeByUserAndType(userId, "dob_days"),
         getLatestEncryptedAttributeByUserAndType(userId, "country_code"),
         getLatestEncryptedAttributeByUserAndType(userId, "liveness_score"),
         getLatestEncryptedAttributeByUserAndType(userId, "compliance_level"),
       ]);
 
-      const hasBirthYearOffsetValue =
-        typeof birthYearOffset === "number" &&
-        Number.isInteger(birthYearOffset) &&
-        birthYearOffset >= 0 &&
-        birthYearOffset <= 255;
+      // DOB days: bounded integer (base 1900-01-01).
+      const hasDobDaysValue =
+        typeof dobDays === "number" &&
+        Number.isInteger(dobDays) &&
+        dobDays >= 0 &&
+        dobDays <= 150_000;
       const hasCountryCodeValue =
         typeof countryCodeNumeric === "number" &&
         Number.isInteger(countryCodeNumeric) &&
         countryCodeNumeric > 0;
 
-      const shouldEncryptBirthYearOffset =
-        hasBirthYearOffsetValue &&
-        shouldEncryptWithKey(existingBirthYearOffset, keyId);
+      const shouldEncryptDobDays =
+        hasDobDaysValue && shouldEncryptWithKey(existingDobDays, keyId);
       const shouldEncryptCountryCode =
         hasCountryCodeValue && shouldEncryptWithKey(existingCountryCode, keyId);
       const shouldEncryptLivenessScore =
@@ -153,10 +154,7 @@ async function runFheEncryption(
         complianceLevel !== null &&
         shouldEncryptWithKey(existingCompliance, keyId);
 
-      span.setAttribute(
-        "fhe.request_birth_year_offset",
-        shouldEncryptBirthYearOffset
-      );
+      span.setAttribute("fhe.request_dob_days", shouldEncryptDobDays);
       span.setAttribute("fhe.request_country_code", shouldEncryptCountryCode);
       span.setAttribute(
         "fhe.request_liveness_score",
@@ -168,19 +166,17 @@ async function runFheEncryption(
       );
 
       const needsEncryption =
-        shouldEncryptBirthYearOffset ||
+        shouldEncryptDobDays ||
         shouldEncryptCountryCode ||
         shouldEncryptLivenessScore ||
         shouldEncryptCompliance;
 
       if (!needsEncryption) {
-        const missingBirthYearOffset = !(
-          hasBirthYearOffsetValue || existingBirthYearOffset
-        );
+        const missingDobDays = !(hasDobDaysValue || existingDobDays);
         const missingCountryCode = !(
           hasCountryCodeValue || existingCountryCode
         );
-        const missingInputs = missingBirthYearOffset || missingCountryCode;
+        const missingInputs = missingDobDays || missingCountryCode;
         await updateIdentityBundleFheStatus({
           userId,
           fheStatus:
@@ -206,9 +202,7 @@ async function runFheEncryption(
       try {
         const result = await encryptBatchFhe({
           keyId,
-          birthYearOffset: shouldEncryptBirthYearOffset
-            ? (birthYearOffset ?? undefined)
-            : undefined,
+          dobDays: shouldEncryptDobDays ? (dobDays ?? undefined) : undefined,
           countryCode: shouldEncryptCountryCode
             ? countryCodeNumeric
             : undefined,
@@ -223,19 +217,19 @@ async function runFheEncryption(
 
         const missingCiphertexts: string[] = [];
 
-        if (shouldEncryptBirthYearOffset) {
-          if (result.birthYearOffsetCiphertext) {
+        if (shouldEncryptDobDays) {
+          if (result.dobDaysCiphertext) {
             await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
-              attributeType: "birth_year_offset",
-              ciphertext: Buffer.from(result.birthYearOffsetCiphertext),
+              attributeType: "dob_days",
+              ciphertext: Buffer.from(result.dobDaysCiphertext),
               keyId,
               encryptionTimeMs: durationMs,
             });
           } else {
-            missingCiphertexts.push("birth_year_offset");
+            missingCiphertexts.push("dob_days");
           }
         }
 
@@ -339,7 +333,7 @@ export function scheduleFheEncryption(args: FheEncryptionSchedule): void {
     requestId: args.requestId,
     flowId: args.flowId,
     reason: args.reason,
-    birthYearOffset: args.birthYearOffset ?? undefined,
+    dobDays: args.dobDays ?? undefined,
     countryCodeNumeric: args.countryCodeNumeric ?? undefined,
   });
   if (activeFheJobs.has(args.userId)) {

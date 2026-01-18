@@ -622,10 +622,10 @@ async function generateAgeProof(
   const noir = await getNoirInstance("age_verification");
   logWorker("proof", "Executing age witness");
   const { witness } = await noir.execute({
-    birth_year: payload.birthYear.toString(),
+    dob_days: payload.dobDays.toString(),
     document_hash: payload.documentHashField,
-    current_year: payload.currentYear.toString(),
-    min_age: payload.minAge.toString(),
+    current_days: payload.currentDays.toString(),
+    min_age_days: payload.minAgeDays.toString(),
     nonce: nonceToField(payload.nonce),
     claim_hash: payload.claimHash,
   });

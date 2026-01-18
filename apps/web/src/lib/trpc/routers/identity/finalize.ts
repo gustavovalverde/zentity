@@ -155,7 +155,7 @@ export const finalizeAsyncProcedure = protectedProcedure
     z.object({
       draftId: z.string().min(1),
       fheKeyId: z.string().min(1),
-      birthYearOffset: z.number().int().min(0).max(255).optional(),
+      dobDays: z.number().int().min(0).max(150_000).optional(),
       countryCodeNumeric: z.number().int().min(0).max(999).optional(),
     })
   )
@@ -196,10 +196,10 @@ export const finalizeAsyncProcedure = protectedProcedure
       });
     }
 
-    // Store birthYearOffset in draft for later FHE encryption (deferred to proof_stored)
-    if (typeof input.birthYearOffset === "number") {
+    // Store DOB days in draft for later FHE encryption (deferred to proof_stored)
+    if (typeof input.dobDays === "number") {
       await updateIdentityDraft(draft.id, {
-        birthYearOffset: input.birthYearOffset,
+        dobDays: input.dobDays,
       });
     }
 

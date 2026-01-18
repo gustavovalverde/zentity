@@ -318,7 +318,7 @@ const spanAttributes = {
 
   // FHE context
   "fhe.operation": "encrypt",
-  "fhe.attribute": "birth_year_offset",
+  "fhe.attribute": "dob_days",
 
   // Error context
   "error.type": "FheServiceError",

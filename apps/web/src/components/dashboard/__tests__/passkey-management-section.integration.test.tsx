@@ -8,6 +8,7 @@ const ADD_PASSKEY_LABEL = /add passkey/i;
 const passkeyMocks = vi.hoisted(() => ({
   listUserPasskeys: vi.fn(),
   registerPasskeyWithPrf: vi.fn(),
+  signInWithPasskey: vi.fn(),
   renamePasskey: vi.fn(),
   deletePasskey: vi.fn(),
 }));
@@ -15,6 +16,7 @@ const passkeyMocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/passkey", () => ({
   listUserPasskeys: passkeyMocks.listUserPasskeys,
   registerPasskeyWithPrf: passkeyMocks.registerPasskeyWithPrf,
+  signInWithPasskey: passkeyMocks.signInWithPasskey,
   renamePasskey: passkeyMocks.renamePasskey,
   deletePasskey: passkeyMocks.deletePasskey,
 }));
@@ -50,6 +52,7 @@ import { PasskeyManagementSection } from "@/components/dashboard/passkey-managem
 describe("PasskeyManagementSection integration", () => {
   it("adds a passkey and wraps secrets", async () => {
     passkeyMocks.listUserPasskeys.mockResolvedValue({ data: [] });
+    passkeyMocks.signInWithPasskey.mockResolvedValue({ ok: true });
     passkeyMocks.registerPasskeyWithPrf.mockResolvedValue({
       ok: true,
       credentialId: "cred-1",

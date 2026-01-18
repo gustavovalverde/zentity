@@ -19,7 +19,7 @@ export const CLAIM_TYPE_LABELS: Record<string, string> = {
 
 /** Labels for FHE encrypted attributes */
 export const ENCRYPTED_ATTRIBUTE_LABELS: Record<string, string> = {
-  birth_year_offset: "Birth Year Offset",
+  dob_days: "Date of Birth",
   country_code: "Country Code",
   compliance_level: "Compliance Level",
   liveness_score: "Liveness Score",

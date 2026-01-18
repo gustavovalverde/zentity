@@ -1,4 +1,4 @@
-//! Age verification endpoints (birth year offset).
+//! Date of Birth endpoints (`dobDays`).
 
 use axum::body::Bytes;
 use axum::http::HeaderMap;
@@ -13,47 +13,42 @@ use crate::transport;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptBirthYearOffsetRequest {
-    /// Years since 1900 (0-255)
-    birth_year_offset: u16,
+pub struct EncryptDobDaysRequest {
+    /// Days since 1900-01-01 (UTC)
+    dob_days: u32,
     /// Registered key ID for public key lookup.
     key_id: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptBirthYearOffsetResponse {
+pub struct EncryptDobDaysResponse {
     #[serde(with = "serde_bytes")]
     ciphertext: Vec<u8>,
 }
 
 #[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
-pub async fn encrypt_birth_year_offset(
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Response, FheError> {
-    let payload: EncryptBirthYearOffsetRequest = transport::decode_msgpack(&headers, body)?;
-    let EncryptBirthYearOffsetRequest {
-        birth_year_offset,
-        key_id,
-    } = payload;
+pub async fn encrypt_dob_days(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
+    let payload: EncryptDobDaysRequest = transport::decode_msgpack(&headers, body)?;
+    let EncryptDobDaysRequest { dob_days, key_id } = payload;
     let ciphertext = run_cpu_bound(move || {
         let public_key = info_span!("fhe.get_public_key", key_id = %key_id)
             .in_scope(|| crypto::get_public_key_for_encryption(&key_id))?;
-        info_span!("fhe.encrypt.birth_year_offset", value = birth_year_offset)
-            .in_scope(|| crypto::encrypt_birth_year_offset(birth_year_offset, &public_key))
+        info_span!("fhe.encrypt.dob_days", value = dob_days)
+            .in_scope(|| crypto::encrypt_dob_days(dob_days, &public_key))
     })
     .await?;
 
-    transport::encode_msgpack(&headers, &EncryptBirthYearOffsetResponse { ciphertext })
+    transport::encode_msgpack(&headers, &EncryptDobDaysResponse { ciphertext })
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAgeOffsetRequest {
+pub struct VerifyAgeFromDobRequest {
     #[serde(with = "serde_bytes")]
     ciphertext: Vec<u8>,
-    current_year: u16,
+    /// Today's date as days since 1900-01-01 (UTC)
+    current_days: u32,
     #[serde(default = "default_min_age")]
     min_age: u16,
     key_id: String,
@@ -65,32 +60,32 @@ fn default_min_age() -> u16 {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAgeOffsetResponse {
+pub struct VerifyAgeFromDobResponse {
     #[serde(with = "serde_bytes")]
     result_ciphertext: Vec<u8>,
 }
 
 #[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
-pub async fn verify_age_offset(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
-    let payload: VerifyAgeOffsetRequest = transport::decode_msgpack(&headers, body)?;
-    let VerifyAgeOffsetRequest {
+pub async fn verify_age_from_dob(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
+    let payload: VerifyAgeFromDobRequest = transport::decode_msgpack(&headers, body)?;
+    let VerifyAgeFromDobRequest {
         ciphertext,
-        current_year,
+        current_days,
         min_age,
         key_id,
     } = payload;
     let ciphertext_bytes = ciphertext.len();
     let result_ciphertext = run_cpu_bound(move || {
         info_span!(
-            "fhe.verify.age_offset",
+            "fhe.verify.age_from_dob",
             key_id = %key_id,
-            current_year = current_year,
+            current_days = current_days,
             min_age = min_age,
             ciphertext_bytes = ciphertext_bytes
         )
-        .in_scope(|| crypto::verify_age_offset(&ciphertext, current_year, min_age, &key_id))
+        .in_scope(|| crypto::verify_age_from_dob(&ciphertext, current_days, min_age, &key_id))
     })
     .await?;
 
-    transport::encode_msgpack(&headers, &VerifyAgeOffsetResponse { result_ciphertext })
+    transport::encode_msgpack(&headers, &VerifyAgeFromDobResponse { result_ciphertext })
 }

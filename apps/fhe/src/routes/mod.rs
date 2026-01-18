@@ -1,9 +1,9 @@
 //! HTTP Route handlers
 
-mod age;
 mod batch;
 mod compliance;
 mod country;
+mod dob;
 mod health;
 mod keys;
 mod liveness;
@@ -16,10 +16,10 @@ use tokio::task;
 
 use crate::error::FheError;
 
-pub use age::{encrypt_birth_year_offset, verify_age_offset};
 pub use batch::encrypt_batch;
 pub use compliance::encrypt_compliance_level;
 pub use country::encrypt_country_code;
+pub use dob::{encrypt_dob_days, verify_age_from_dob};
 pub use health::{build_info, health};
 pub use keys::{debug_keys, register_key};
 pub use liveness::{encrypt_liveness, verify_liveness_threshold};
