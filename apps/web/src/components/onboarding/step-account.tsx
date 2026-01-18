@@ -13,7 +13,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { useFaceMatch } from "@/hooks/onboarding/use-face-match";
 import {
   ensureAuthSession,
@@ -75,6 +77,8 @@ function buildProfilePayload(args: {
   extractedNationalityCode: string | null;
   documentType: string | null;
   documentOrigin: string | null;
+  residentialAddress: string | null;
+  addressCountryCode: string | null;
   userSalt: string | null;
 }): ProfileSecretPayload | null {
   const firstName = getFirstPart(args.extractedName) || null;
@@ -88,11 +92,15 @@ function buildProfilePayload(args: {
   const nationality = args.extractedNationality || null;
   const documentType = args.documentType || null;
   const documentOrigin = args.documentOrigin || null;
+  const residentialAddress = args.residentialAddress || null;
+  const addressCountryCode = args.addressCountryCode || null;
 
   const hasAny =
     Boolean(fullName) ||
     Boolean(firstName) ||
     birthYear !== null ||
+    Boolean(residentialAddress) ||
+    Boolean(addressCountryCode) ||
     expiryDateInt !== null ||
     Boolean(documentNumber) ||
     Boolean(nationality) ||
@@ -110,6 +118,8 @@ function buildProfilePayload(args: {
     firstName,
     birthYear,
     dateOfBirth,
+    residentialAddress,
+    addressCountryCode,
     expiryDateInt,
     documentNumber,
     documentType,
@@ -132,6 +142,10 @@ export function StepAccount() {
   const [credentialType, setCredentialType] = useState<CredentialType | null>(
     null
   );
+
+  // Optional address collection for regulated disclosure (CIP/AML)
+  const [residentialAddress, setResidentialAddress] = useState("");
+  const [addressCountryCode, setAddressCountryCode] = useState("");
 
   // Passkey/secure keys state
   const [supportStatus, setSupportStatus] = useState<{
@@ -223,6 +237,8 @@ export function StepAccount() {
         extractedNationalityCode: store.extractedNationalityCode,
         documentType: documentResult?.documentType ?? null,
         documentOrigin: documentResult?.documentOrigin ?? null,
+        residentialAddress: residentialAddress.trim() || null,
+        addressCountryCode: addressCountryCode.trim().toUpperCase() || null,
         userSalt: store.userSalt,
       });
 
@@ -408,6 +424,8 @@ export function StepAccount() {
         extractedNationalityCode: store.extractedNationalityCode,
         documentType: documentResult?.documentType ?? null,
         documentOrigin: documentResult?.documentOrigin ?? null,
+        residentialAddress: residentialAddress.trim() || null,
+        addressCountryCode: addressCountryCode.trim().toUpperCase() || null,
         userSalt: store.userSalt,
       });
 
@@ -589,6 +607,41 @@ export function StepAccount() {
           extractedNationality={store.extractedNationality}
           isAnonymous={isAnonymousSession && !store.email}
         />
+      )}
+
+      {/* Optional address collection (used for regulated RP disclosures) */}
+      {status === "idle" && sessionReady && (
+        <div className="space-y-3 rounded-lg border p-4">
+          <div className="space-y-1">
+            <h4 className="font-medium text-muted-foreground text-sm uppercase tracking-wide">
+              Residential Address (Optional)
+            </h4>
+            <p className="text-muted-foreground text-xs">
+              Stored end-to-end encrypted in your vault and only shared when you
+              explicitly consent to disclose to a bank or exchange.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Textarea
+              aria-label="Residential address"
+              onChange={(e) => setResidentialAddress(e.target.value)}
+              placeholder="Street address, city, region/state, postal code"
+              value={residentialAddress}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Input
+              aria-label="Country code (ISO alpha-3)"
+              className="max-w-[180px]"
+              maxLength={3}
+              onChange={(e) => setAddressCountryCode(e.target.value)}
+              placeholder="Country code (e.g., USA)"
+              value={addressCountryCode}
+            />
+          </div>
+        </div>
       )}
 
       {/* Face Matching UI - only show when idle and has docs */}

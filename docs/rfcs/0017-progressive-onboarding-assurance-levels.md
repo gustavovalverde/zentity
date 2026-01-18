@@ -99,7 +99,7 @@ Zentity already treats “verification” as a **set of independent artifacts** 
     - `apps/web/src/lib/trpc/routers/crypto.ts`
     - Circuits: `apps/web/noir-circuits/*/src/main.nr`
 - **FHE ciphertexts**
-  - Stored in `encrypted_attributes` (types include `birth_year_offset`, `country_code`, `liveness_score`, `compliance_level`)
+  - Stored in `encrypted_attributes` (types include `dob_days`, `country_code`, `liveness_score`, `compliance_level`)
   - Produced asynchronously by `scheduleFheEncryption`:
     - `apps/web/src/lib/crypto/fhe-encryption.ts`
 
@@ -263,7 +263,7 @@ From dashboard, user enters a “Complete verification” flow:
 1) Upload document → OCR signed claim(s) + draft
 2) Liveness + face match → signed claim(s)
 3) Generate ZK proofs client-side (Noir) + store server-side
-4) Trigger FHE encryption job (birth-year offset, country code, liveness score, compliance level)
+4) Trigger FHE encryption job (DOB days, country code, liveness score, compliance level)
 5) Reach **Tier 3**
 
 **Phase C: audit / Web3 optional**
@@ -348,7 +348,7 @@ The job can run later because:
 
 Important detail:
 
-- Some inputs (birth-year offset, country code) are not stored in plaintext by design; they must be computed at verification time from OCR output and/or sealed profile.
+- Some inputs (DOB days, country code) are not stored in plaintext by design; they must be computed at verification time from OCR output and/or sealed profile.
 - Therefore, post-onboarding verification must ensure those values are available to the server-side encryption scheduler (as they are today in `identity.verify` and `identity.finalizeAsync` flows).
 
 ### Evidence bundle hashes: why “later” works

@@ -2,16 +2,15 @@
 //!
 //! Tests the /encrypt-country-code endpoint.
 
-mod common;
-mod http;
-
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use http::fixtures::country_code_boundaries::*;
 use serde::Deserialize;
 use tower::ServiceExt;
+
+use crate::{common, http};
+use http::fixtures::country_code_boundaries::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +48,6 @@ async fn encrypt_country_code_success() {
 
     let body: EncryptCountryCodeResponse = http::parse_msgpack_body(response).await;
     assert!(!body.ciphertext.is_empty());
-    // Country code is echoed back for confirmation
     assert_eq!(body.country_code, USA);
 }
 
@@ -105,7 +103,7 @@ async fn encrypt_country_code_boundary_max() {
     assert_eq!(body.country_code, MAX_CODE);
 }
 
-/// Encrypt with Germany code (276) - another valid ISO code.
+/// Encrypt with Germany code (276).
 #[tokio::test]
 async fn encrypt_country_code_germany() {
     let app = http::test_app();
@@ -158,7 +156,7 @@ async fn encrypt_country_code_over_max() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Invalid key id returns 400.
+/// Invalid key id returns 404.
 #[tokio::test]
 async fn encrypt_country_code_invalid_key_id() {
     let app = http::test_app();
@@ -183,7 +181,7 @@ async fn encrypt_country_code_invalid_key_id() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-/// Non-existent key id returns 400.
+/// Non-existent key id returns 404.
 #[tokio::test]
 async fn encrypt_country_code_invalid_key_content() {
     let app = http::test_app();

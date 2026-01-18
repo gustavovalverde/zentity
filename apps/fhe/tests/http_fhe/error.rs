@@ -3,9 +3,6 @@
 //! Validates that FheError variants map to correct HTTP status codes
 //! and that error responses have the expected JSON format.
 
-mod common;
-mod http;
-
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -13,9 +10,11 @@ use axum::{
 use serde::Deserialize;
 use tower::ServiceExt;
 
+use crate::{common, http};
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct EncryptBirthYearOffsetResponse {
+struct EncryptDobDaysResponse {
     #[serde(with = "serde_bytes")]
     ciphertext: Vec<u8>,
 }
@@ -30,14 +29,13 @@ async fn error_format_key_not_found() {
     let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    // Encrypt first
-    let encrypt_body = http::fixtures::encrypt_birth_year_offset_request(100, &key_id);
+    let encrypt_body = http::fixtures::encrypt_dob_days_request(45000, &key_id);
     let encrypt_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-dob-days")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&encrypt_body)))
                 .unwrap(),
@@ -45,11 +43,9 @@ async fn error_format_key_not_found() {
         .await
         .unwrap();
 
-    let encrypt_body: EncryptBirthYearOffsetResponse =
-        http::parse_msgpack_body(encrypt_response).await;
+    let encrypt_body: EncryptDobDaysResponse = http::parse_msgpack_body(encrypt_response).await;
     let ciphertext = encrypt_body.ciphertext;
 
-    // Use non-existent key ID
     let verify_body = http::fixtures::with_invalid_key_id(&ciphertext);
 
     let app = http::test_app();
@@ -57,7 +53,7 @@ async fn error_format_key_not_found() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/verify-age-offset")
+                .uri("/verify-age-from-dob")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&verify_body)))
                 .unwrap(),
@@ -81,16 +77,14 @@ async fn error_format_key_not_found() {
 #[tokio::test]
 async fn error_format_invalid_input() {
     let app = http::test_app();
-    let key_id = common::get_registered_key_id();
 
-    // Use out-of-range birth year offset
-    let body = http::fixtures::encrypt_birth_year_offset_request(256, &key_id);
+    let body = http::fixtures::empty_batch_request(&common::get_registered_key_id());
 
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-batch")
                 .header("content-type", "application/msgpack")
                 .body(Body::from(http::msgpack_body(&body)))
                 .unwrap(),
@@ -151,7 +145,7 @@ async fn msgpack_parse_error() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-dob-days")
                 .header("content-type", "application/msgpack")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
@@ -171,7 +165,7 @@ async fn empty_body_error() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-dob-days")
                 .header("content-type", "application/msgpack")
                 .body(Body::empty())
                 .unwrap(),
@@ -195,7 +189,7 @@ async fn missing_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-dob-days")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
@@ -214,7 +208,7 @@ async fn wrong_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-dob-days")
                 .header("content-type", "text/plain")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
@@ -234,7 +228,7 @@ async fn html_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-birth-year-offset")
+                .uri("/encrypt-dob-days")
                 .header("content-type", "text/html")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
@@ -264,7 +258,7 @@ async fn status_codes_mapping() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/verify-age-offset")
+                    .uri("/verify-age-from-dob")
                     .header("content-type", "application/msgpack")
                     .body(Body::from(http::msgpack_body(&body)))
                     .unwrap(),
@@ -284,13 +278,13 @@ async fn status_codes_mapping() {
         let app = http::test_app();
         let key_id = common::get_registered_key_id();
 
-        let body = http::fixtures::encrypt_birth_year_offset_request(256, &key_id);
+        let body = http::fixtures::empty_batch_request(&key_id);
 
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/encrypt-birth-year-offset")
+                    .uri("/encrypt-batch")
                     .header("content-type", "application/msgpack")
                     .body(Body::from(http::msgpack_body(&body)))
                     .unwrap(),
@@ -344,24 +338,23 @@ async fn error_response_structure() {
     let key_id = common::get_registered_key_id();
     let error_cases = vec![
         (
-            "/encrypt-birth-year-offset",
+            "/encrypt-batch",
             serde_json::json!({
-                "birthYearOffset": 1000,
                 "keyId": key_id.clone()
             }),
         ),
         (
-            "/encrypt-birth-year-offset",
+            "/encrypt-dob-days",
             serde_json::json!({
-                "birthYearOffset": 100,
+                "dobDays": 45000,
                 "keyId": "00000000-0000-0000-0000-000000000000"
             }),
         ),
         (
-            "/verify-age-offset",
+            "/verify-age-from-dob",
             serde_json::json!({
                 "ciphertext": "not-a-valid-ciphertext",
-                "currentYear": 2025,
+                "currentDays": 45000,
                 "minAge": 18,
                 "keyId": key_id.clone()
             }),
@@ -383,7 +376,6 @@ async fn error_response_structure() {
             .await
             .unwrap();
 
-        // Errors should be 400 or 404 depending on failure type
         assert!(
             response.status() == StatusCode::BAD_REQUEST
                 || response.status() == StatusCode::NOT_FOUND
@@ -391,13 +383,11 @@ async fn error_response_structure() {
 
         let json = http::parse_json_body(response).await;
 
-        // All should have "error" field
         assert!(
             json["error"].is_string(),
             "Error response should have 'error' string field"
         );
 
-        // Error message should not be empty
         let error_msg = json["error"].as_str().unwrap();
         assert!(!error_msg.is_empty(), "Error message should not be empty");
     }

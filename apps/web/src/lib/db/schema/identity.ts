@@ -39,6 +39,19 @@ export const identityJobStatusEnum = [
 
 export type IdentityJobStatus = (typeof identityJobStatusEnum)[number];
 
+export const screeningResultEnum = [
+  "pending",
+  "clear",
+  "match",
+  "error",
+] as const;
+
+export type ScreeningResult = (typeof screeningResultEnum)[number];
+
+export const riskLevelEnum = ["low", "medium", "high", "critical"] as const;
+
+export type RiskLevel = (typeof riskLevelEnum)[number];
+
 export const identityBundles = sqliteTable(
   "identity_bundles",
   {
@@ -57,6 +70,36 @@ export const identityBundles = sqliteTable(
       enum: fheStatusEnum,
     }),
     fheError: text("fhe_error"),
+
+    // Compliance commitments (SHA256 hashes - never store plaintext)
+    dobCommitment: text("dob_commitment"),
+    addressCommitment: text("address_commitment"),
+    addressCountryCode: integer("address_country_code"),
+
+    // Screening results (PEP/Sanctions)
+    pepScreeningResult: text("pep_screening_result", {
+      enum: screeningResultEnum,
+    }),
+    pepScreenedAt: text("pep_screened_at"),
+    pepScreeningProvider: text("pep_screening_provider"),
+    sanctionsScreeningResult: text("sanctions_screening_result", {
+      enum: screeningResultEnum,
+    }),
+    sanctionsScreenedAt: text("sanctions_screened_at"),
+    sanctionsScreeningProvider: text("sanctions_screening_provider"),
+
+    // Risk assessment
+    riskLevel: text("risk_level", {
+      enum: riskLevelEnum,
+    }),
+    riskScore: integer("risk_score"),
+    riskAssessedAt: text("risk_assessed_at"),
+
+    // Re-verification tracking
+    lastVerifiedAt: text("last_verified_at"),
+    nextVerificationDue: text("next_verification_due"),
+    verificationCount: integer("verification_count").default(0),
+
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
@@ -125,7 +168,15 @@ export const identityVerificationDrafts = sqliteTable(
     livenessPassed: integer("liveness_passed", { mode: "boolean" }),
     faceMatchConfidence: real("face_match_confidence"),
     faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
-    birthYearOffset: integer("birth_year_offset"),
+
+    // Full DOB as days since 1900-01-01 (UTC)
+    dobDays: integer("dob_days"),
+    dobCommitment: text("dob_commitment"),
+
+    // Address (collected for CIP compliance)
+    addressCommitment: text("address_commitment"),
+    addressCountryCode: integer("address_country_code"),
+
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },

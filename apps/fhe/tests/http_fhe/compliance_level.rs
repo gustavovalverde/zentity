@@ -2,16 +2,15 @@
 //!
 //! Tests the /encrypt-compliance-level endpoint.
 
-mod common;
-mod http;
-
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use http::fixtures::compliance_boundaries::*;
 use serde::Deserialize;
 use tower::ServiceExt;
+
+use crate::{common, http};
+use http::fixtures::compliance_boundaries::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +48,6 @@ async fn encrypt_compliance_level_success() {
 
     let body: EncryptComplianceLevelResponse = http::parse_msgpack_body(response).await;
     assert!(!body.ciphertext.is_empty());
-    // Compliance level is echoed back for confirmation
     assert_eq!(body.compliance_level, TYPICAL_LEVEL);
 }
 
@@ -185,7 +183,7 @@ async fn encrypt_compliance_level_way_over_max() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Invalid key id returns 400.
+/// Invalid key id returns 404.
 #[tokio::test]
 async fn encrypt_compliance_level_invalid_key_id() {
     let app = http::test_app();
@@ -210,7 +208,7 @@ async fn encrypt_compliance_level_invalid_key_id() {
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-/// Non-existent key id returns 400.
+/// Non-existent key id returns 404.
 #[tokio::test]
 async fn encrypt_compliance_level_invalid_key_content() {
     let app = http::test_app();
@@ -341,7 +339,6 @@ async fn encrypt_compliance_level_float_value() {
         .await
         .unwrap();
 
-    // JSON number 5.5 cannot deserialize to u8
     assert!(
         response.status() == StatusCode::BAD_REQUEST
             || response.status() == StatusCode::UNPROCESSABLE_ENTITY

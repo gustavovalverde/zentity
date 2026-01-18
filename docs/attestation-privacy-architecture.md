@@ -6,14 +6,23 @@
 
 Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These four cryptographic pillars are used together throughout the system.
 
-- **ZK proofs**: age, document validity, nationality membership, face match threshold.
-- **FHE encryption**: birth year offset, country code, compliance level, liveness score.
-- **Commitments + hashes**: document hash, name commitment, proof hashes.
+- **ZK proofs**: age (day-precise), document validity, nationality membership, address jurisdiction, face match threshold.
+- **FHE encryption**: full DOB (days since 1900-01-01), country code, address country, compliance level, liveness score, risk score.
+- **Commitments + hashes**: document hash, name commitment, DOB commitment, address commitment, proof hashes.
+- **Screening attestations**: PEP/sanctions screening results stored as signed claims (boolean + provider + timestamp).
 - **Passkeys + OPAQUE (auth + key custody)**: passkeys for passwordless auth and PRF‑derived KEKs; OPAQUE for password auth with client‑derived export keys that wrap secrets.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
 - **User-only decryption**: client keys are stored server-side as passkey‑ or OPAQUE‑wrapped encrypted secrets—only the user can unwrap them in the browser.
 
-This model supports **multi-document identities**, **revocable attestations**, and **auditable disclosures** across Web2 and Web3.
+This model supports **multi-document identities**, **revocable attestations**, **periodic re-verification**, and **auditable disclosures** across Web2 and Web3.
+
+### Regulatory Compliance
+
+This architecture supports:
+
+- **US (FinCEN CIP Rule)**: Full DOB precision, address collection, name verification
+- **EU (AMLD5/AMLD6)**: 5-year retention, PEP/sanctions screening, re-verification scheduling
+- **FATF Travel Rule**: Address and jurisdiction proofs without exposing exact addresses
 
 ---
 
@@ -60,23 +69,67 @@ This model supports **multi-document identities**, **revocable attestations**, a
 **Legend:** ✅ primary form, ◐ optional/derived, — not used.
 **Vault** = passkey‑sealed profile or passkey‑wrapped encrypted secrets **stored in the server DB as encrypted blobs** and only decryptable client‑side after a passkey PRF unlock.
 
+### Core Identity & Eligibility
+
 | Data / Claim | ZK | FHE | Commit | Vault | Notes |
 |---|---|---|---|---|---|
-| Age >= threshold | ✅ | ◐ | Proof hash | — | Boolean eligibility; no DOB stored. |
+| Age >= threshold | ✅ | ◐ | Proof hash | — | Boolean eligibility; no DOB revealed. Uses `dobDays` for day-level precision. |
 | Document validity | ✅ | — | Proof hash | — | Binary eligibility; no expiry disclosure. |
-| Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only. |
+| Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only (EU, US, etc.). |
+| Address in jurisdiction | ✅ | — | Merkle root | — | **NEW**: Proves residence in allowed jurisdiction. |
 | Face match >= threshold | ✅ | — | Proof hash | — | Pass/fail only. |
 | Liveness score | — | ✅ | Signed claim | — | Score stays private; server attests. |
 | Compliance level | — | ✅ | Server-derived | — | Policy gating input. |
-| Birth year offset | ◐ | ✅ | — | — | Enables encrypted checks. |
+
+### DOB Storage (Production)
+
+| Data | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
+| DOB days since 1900-01-01 | ◐ | ✅ | — | — | Full date precision for compliance. u32 days since 1900-01-01 (UTC). |
+| DOB commitment | — | — | ✅ | — | SHA256(dob + salt) for audit trail. |
+
+### Geographic & Address
+
+| Data | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
 | Country code (numeric) | ◐ | ✅ | — | — | Enables encrypted allowlist checks. |
+| Address country code | ◐ | ✅ | — | — | **NEW**: Country code from residential address. |
+| Address commitment | — | — | ✅ | — | **NEW**: SHA256(address + salt) for audit. |
+
+### Screening & Risk (Server-Side)
+
+| Data | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
+| PEP screening result | — | — | Signed claim | — | **NEW**: Boolean result + attestation. |
+| Sanctions screening result | — | — | Signed claim | — | **NEW**: Boolean result + attestation. |
+| Risk level | — | — | Server-derived | — | **NEW**: low/medium/high/critical. |
+| Risk score | — | ✅ | — | — | **NEW**: Numeric score (0-100). |
+
+### Identity & Vault
+
+| Data | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
 | Name (full name) | — | — | ✅ | ✅ | Commitment for audit; plaintext only in vault. |
 | Profile PII (DOB, document #, nationality) | — | — | — | ✅ | Stored only in vault. |
+| Address (full plaintext) | — | — | — | ✅ | **NEW**: Plaintext only in vault. |
 | User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
 | FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
+
+### Auth & System
+
+| Data | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
 | Passkey credential metadata | — | — | — | — | Stored in the `passkey` table for WebAuthn verification. |
 | OPAQUE registration record | — | — | — | — | Stored in the `account` table; not a password hash and not plaintext. |
 | Raw images / biometrics | — | — | — | — | Never stored; transient only. |
+
+### Re-verification Tracking
+
+| Data | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
+| Last verified at | — | — | — | — | **NEW**: Timestamp of last verification. |
+| Next verification due | — | — | — | — | **NEW**: Scheduled re-verification date. |
+| Verification count | — | — | — | — | **NEW**: Number of verifications performed. |
 
 **Note:** Passkey credential metadata (public keys, counters, transports) is stored in the `passkey` table for authentication and key custody.
 
@@ -295,7 +348,7 @@ This supports upgrades and re-verification without overwriting previous evidence
 
 ## Web3 Attestation Schema
 
-Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **birth year offset**, **country code**, **compliance level**, and optional flags.
+Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **date of birth (dobDays)**, **country code**, **compliance level**, and optional flags.
 Public metadata includes **proofSetHash**, **policyHash**, **issuerId**, and timestamps for auditability.
 
 The encrypted attributes allow compliance checks **under encryption**. The public metadata enables audits without revealing PII. See [Web3 Architecture](web3-architecture.md) for the implementation details.

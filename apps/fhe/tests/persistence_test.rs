@@ -73,6 +73,10 @@ fn keystore_file_can_be_reloaded() {
         "Key should exist in original store"
     );
 
+    // Drop the first keystore handle before reopening the same redb file.
+    // redb uses a file lock that prevents multiple concurrent opens.
+    drop(key_store);
+
     let reloaded_store = keystore::create_test_keystore_with_load(keys_dir);
     assert!(
         reloaded_store.get_server_key(&key_id).is_some(),
@@ -104,6 +108,8 @@ fn multiple_keys_persisted() {
             key_id
         );
     }
+
+    drop(key_store);
 
     let reloaded_store = keystore::create_test_keystore_with_load(keys_dir);
     for key_id in &key_ids {

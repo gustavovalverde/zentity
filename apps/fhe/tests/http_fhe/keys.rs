@@ -2,9 +2,6 @@
 //!
 //! Tests the /keys/register endpoint with various valid and invalid inputs.
 
-mod common;
-mod http;
-
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -12,6 +9,8 @@ use axum::{
 use serde::Deserialize;
 use tower::ServiceExt;
 use uuid::Uuid;
+
+use crate::{common, http};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,9 +27,8 @@ struct RegisterKeyResponse {
 async fn register_key_returns_uuid() {
     let app = http::test_app();
 
-    // Get a valid server key from test utilities
-    let (_, _, _) = common::get_test_keys(); // This registers a key internally
-    let server_key = get_server_key_bytes();
+    let (_, _, _) = common::get_test_keys();
+    let server_key = common::get_server_key_bytes();
     let public_key = common::get_public_key_bytes();
 
     let body = http::fixtures::register_key_request(&server_key, &public_key);
@@ -51,7 +49,6 @@ async fn register_key_returns_uuid() {
 
     let body: RegisterKeyResponse = http::parse_msgpack_body(response).await;
 
-    // Verify it's a valid UUID
     let key_id = body.key_id;
     assert!(
         Uuid::parse_str(&key_id).is_ok(),
@@ -62,7 +59,7 @@ async fn register_key_returns_uuid() {
 /// Multiple key registrations return unique UUIDs.
 #[tokio::test]
 async fn register_key_unique_ids() {
-    let server_key = get_server_key_bytes();
+    let server_key = common::get_server_key_bytes();
     let public_key = common::get_public_key_bytes();
     let mut key_ids = Vec::new();
 
@@ -88,7 +85,6 @@ async fn register_key_unique_ids() {
         key_ids.push(body.key_id);
     }
 
-    // All key IDs should be unique
     let unique_count = key_ids
         .iter()
         .collect::<std::collections::HashSet<_>>()
@@ -193,7 +189,6 @@ async fn register_key_missing_field() {
         .await
         .unwrap();
 
-    // Axum returns 422 for missing required fields
     assert!(
         response.status() == StatusCode::BAD_REQUEST
             || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
@@ -232,7 +227,7 @@ async fn register_key_null_field() {
     );
 }
 
-/// Wrong type for serverKey (number instead of string) returns 400/422.
+/// Wrong type for serverKey returns 400/422.
 #[tokio::test]
 async fn register_key_wrong_type() {
     let app = http::test_app();
@@ -322,7 +317,7 @@ async fn register_key_invalid_msgpack() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Missing content type header with invalid payload returns 400.
+/// Missing content type with invalid payload returns 400.
 #[tokio::test]
 async fn register_key_missing_content_type() {
     let app = http::test_app();
@@ -332,7 +327,6 @@ async fn register_key_missing_content_type() {
             Request::builder()
                 .method("POST")
                 .uri("/keys/register")
-                // No content-type header
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
@@ -392,14 +386,4 @@ async fn register_key_error_format() {
         json["error"].is_string(),
         "Error response should have 'error' field"
     );
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Get a valid server key for testing (serialized bytes).
-/// Uses the cached key from common module for performance.
-fn get_server_key_bytes() -> Vec<u8> {
-    common::get_server_key_bytes()
 }

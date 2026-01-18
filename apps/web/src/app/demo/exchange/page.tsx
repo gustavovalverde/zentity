@@ -166,7 +166,7 @@ export default function ExchangeSimulatorPage() {
         };
       };
       const profile = await getStoredProfile();
-      const birthYear = profile?.birthYear ?? null;
+      const dateOfBirth = profile?.dateOfBirth ?? null;
       const expiryDate = profile?.expiryDateInt ?? null;
       const faceData = claims.faceMatch.data as {
         confidence?: number;
@@ -182,7 +182,7 @@ export default function ExchangeSimulatorPage() {
 
       if (
         !documentHashField ||
-        typeof birthYear !== "number" ||
+        typeof dateOfBirth !== "string" ||
         typeof expiryDate !== "number" ||
         !ageClaimHash ||
         !docClaimHash ||
@@ -228,7 +228,7 @@ export default function ExchangeSimulatorPage() {
         getProofChallenge("doc_validity"),
       ]);
       const results = await Promise.allSettled([
-        generateAgeProof(birthYear, new Date().getFullYear(), 18, {
+        generateAgeProof(dateOfBirth, 18, {
           nonce: ageChallenge.nonce,
           documentHashField,
           claimHash: ageClaimHash,

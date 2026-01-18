@@ -21,7 +21,7 @@ vi.mock("@/lib/db/onboarding-session", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/document/document-ocr", () => ({
+vi.mock("@/lib/identity/document/document-ocr", () => ({
   processDocument: (...args: unknown[]) => mockProcessDocument(...args),
 }));
 

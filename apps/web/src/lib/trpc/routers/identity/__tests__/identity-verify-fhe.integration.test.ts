@@ -24,40 +24,33 @@ vi.mock("@/lib/db/onboarding-session", async (importOriginal) => {
 });
 
 const mockProcessDocumentOcr = vi.fn();
-vi.mock("@/lib/document/ocr-client", () => ({
+vi.mock("@/lib/identity/document/ocr-client", () => ({
   processDocumentOcr: (...args: unknown[]) => mockProcessDocumentOcr(...args),
 }));
 
-vi.mock("@/lib/document/image-processing", () => ({
-  cropFaceRegion: vi.fn().mockResolvedValue("data:image/png;base64,face"),
-}));
-
-vi.mock("@/lib/liveness/human-server", () => ({
-  detectFromBase64: vi.fn().mockResolvedValue({ faces: [] }),
-  getHumanServer: vi.fn().mockResolvedValue({
-    match: { similarity: vi.fn().mockReturnValue(0.9) },
+vi.mock("@/lib/identity/verification/face-validation", () => ({
+  validateFaces: vi.fn().mockResolvedValue({
+    antispoofScore: 0.9,
+    liveScore: 0.9,
+    livenessPassed: true,
+    faceMatchConfidence: 0.9,
+    faceMatchPassed: true,
+    issues: [],
   }),
 }));
 
-vi.mock("@/lib/liveness/human-metrics", () => ({
-  getLargestFace: vi.fn().mockReturnValue({}),
-  getEmbeddingVector: vi.fn().mockReturnValue([1, 2, 3]),
-  getLiveScore: vi.fn().mockReturnValue(0.9),
-  getRealScore: vi.fn().mockReturnValue(0.9),
-}));
-
 const mockScheduleFheEncryption = vi.fn();
-vi.mock("@/lib/crypto/fhe-encryption", () => ({
+vi.mock("@/lib/privacy/crypto/fhe-encryption", () => ({
   scheduleFheEncryption: (...args: unknown[]) =>
     mockScheduleFheEncryption(...args),
 }));
 
-vi.mock("@/lib/crypto/signed-claims", () => ({
+vi.mock("@/lib/privacy/crypto/signed-claims", () => ({
   signAttestationClaim: vi.fn().mockResolvedValue("signature"),
 }));
 
-vi.mock("@/lib/attestation/claim-hash", () => ({
-  getDocumentHashField: vi.fn().mockResolvedValue("0x1234"),
+vi.mock("@/lib/blockchain/attestation/claim-hash", () => ({
+  getDocumentHashField: vi.fn().mockReturnValue("0x1234"),
   computeClaimHash: vi.fn().mockResolvedValue("0x5678"),
 }));
 
@@ -133,12 +126,13 @@ describe("identity.verify (FHE)", () => {
       expect.objectContaining({
         userId: authedSession.user.id,
         reason: "identity_verify",
+        dobDays: expect.any(Number),
       })
     );
 
-    const birthYearOffset = await getLatestEncryptedAttributeByUserAndType(
+    const dobDays = await getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
-      "birth_year_offset"
+      "dob_days"
     );
     const countryCode = await getLatestEncryptedAttributeByUserAndType(
       authedSession.user.id,
@@ -149,7 +143,7 @@ describe("identity.verify (FHE)", () => {
       "liveness_score"
     );
 
-    expect(birthYearOffset).toBeNull();
+    expect(dobDays).toBeNull();
     expect(countryCode).toBeNull();
     expect(liveness).toBeNull();
 

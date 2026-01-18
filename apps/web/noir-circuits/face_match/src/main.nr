@@ -104,7 +104,8 @@ fn test_face_match_high_precision() {
     let result = main(7345, doc_hash, 7344, 55555, claim_hash);
     assert(result == true);
 
-    let result2 = main(7343, doc_hash, 7344, 66666, claim_hash);
+    let claim_hash2 = poseidon2([7343, doc_hash]);
+    let result2 = main(7343, doc_hash, 7344, 66666, claim_hash2);
     assert(result2 == false);
 }
 

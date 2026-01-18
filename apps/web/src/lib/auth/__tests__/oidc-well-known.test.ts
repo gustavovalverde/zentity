@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
+import { unwrapMetadata } from "@/lib/auth/well-known-utils";
 
 describe("oidc4vci well-known metadata", () => {
   it("serves credential issuer metadata from the public handler", async () => {
@@ -26,7 +27,17 @@ describe("oidc4vci well-known metadata", () => {
   });
 
   it("keeps OpenID config issuer aligned with auth base path", async () => {
-    const config = await auth.api.getOpenIdConfig();
+    const metadata = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const config =
+      metadata instanceof Response
+        ? ((await metadata.json()) as {
+            issuer?: string;
+            token_endpoint?: string;
+          })
+        : (metadata as {
+            issuer?: string;
+            token_endpoint?: string;
+          });
 
     expect(config.issuer).toBe("http://localhost:3000/api/auth");
     expect(config.token_endpoint).toBe(

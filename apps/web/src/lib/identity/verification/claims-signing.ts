@@ -81,16 +81,12 @@ export interface FaceMatchClaimInput {
  */
 export async function computeClaimHashes(params: {
   documentHashField: string;
-  birthYear: number | null;
+  dobDays: number | null;
   expiryDateInt: number | null;
   nationalityCodeNumeric: number | null;
 }): Promise<{ hashes: ClaimHashes; issues: string[] }> {
-  const {
-    documentHashField,
-    birthYear,
-    expiryDateInt,
-    nationalityCodeNumeric,
-  } = params;
+  const { documentHashField, dobDays, expiryDateInt, nationalityCodeNumeric } =
+    params;
 
   const hashes: ClaimHashes = {
     age: null,
@@ -102,12 +98,12 @@ export async function computeClaimHashes(params: {
   // Compute hashes in parallel for independent values
   const hashTasks: Promise<void>[] = [];
 
-  if (birthYear !== null) {
+  if (dobDays !== null) {
     hashTasks.push(
       (async () => {
         const result = await safeExecute(
-          () => computeClaimHash({ value: birthYear, documentHashField }),
-          { hashType: "age", birthYear }
+          () => computeClaimHash({ value: dobDays, documentHashField }),
+          { hashType: "age", dobDays }
         );
         if (result.success) {
           hashes.age = result.value;

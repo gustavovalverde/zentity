@@ -2,7 +2,8 @@ import { decode, encode } from "@msgpack/msgpack";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
-import { verifyAgeFhe } from "@/lib/privacy/crypto/fhe-client";
+import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
+import { verifyAgeFromDobFhe } from "@/lib/privacy/crypto/fhe-client";
 
 export const runtime = "nodejs";
 
@@ -47,10 +48,10 @@ export async function POST(req: Request) {
 
   const encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
-    "birth_year_offset"
+    "dob_days"
   );
-  if (!encrypted?.ciphertext) {
-    return jsonError("Encrypted birth year offset not found.", 404);
+  if (!encrypted?.ciphertext || encrypted.ciphertext.byteLength === 0) {
+    return jsonError("Encrypted date of birth not found.", 404);
   }
 
   const keyId = payload.keyId ?? encrypted.keyId ?? null;
@@ -63,13 +64,16 @@ export async function POST(req: Request) {
 
   try {
     const start = Date.now();
-    const result = await verifyAgeFhe({
+    const requestId = req.headers.get("x-request-id") ?? undefined;
+    const flowId = req.headers.get("x-zentity-flow-id") ?? undefined;
+
+    const result = await verifyAgeFromDobFhe({
       ciphertext: encrypted.ciphertext,
-      currentYear: payload.currentYear ?? new Date().getFullYear(),
+      currentDays: getTodayDobDays(),
       minAge: payload.minAge ?? 18,
       keyId,
-      requestId: req.headers.get("x-request-id") ?? undefined,
-      flowId: req.headers.get("x-zentity-flow-id") ?? undefined,
+      requestId,
+      flowId,
     });
 
     return msgpackResponse({

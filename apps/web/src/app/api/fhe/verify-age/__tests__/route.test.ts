@@ -11,9 +11,10 @@ vi.mock("@/lib/auth/api-auth", () => ({
 
 const fheMocks = vi.hoisted(() => ({
   verifyAgeFhe: vi.fn(),
+  verifyAgeFromDobFhe: vi.fn(),
 }));
 
-vi.mock("@/lib/crypto/fhe-client", () => fheMocks);
+vi.mock("@/lib/privacy/crypto/fhe-client", () => fheMocks);
 
 const dbMocks = vi.hoisted(() => ({
   getLatestEncryptedAttributeByUserAndType: vi.fn(),
@@ -73,7 +74,7 @@ describe("fhe verify-age route", () => {
     const response = await POST(makeRequest());
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
-      error: "Encrypted birth year offset not found.",
+      error: "Encrypted date of birth not found.",
     });
   });
 
@@ -103,7 +104,7 @@ describe("fhe verify-age route", () => {
       ciphertext: Buffer.from([1, 2, 3]),
       keyId: "key-1",
     });
-    fheMocks.verifyAgeFhe.mockResolvedValue({
+    fheMocks.verifyAgeFromDobFhe.mockResolvedValue({
       resultCiphertext: new Uint8Array([9, 9]),
     });
 
@@ -116,7 +117,7 @@ describe("fhe verify-age route", () => {
     };
     expect(payload.resultCiphertext).toEqual(new Uint8Array([9, 9]));
     expect(typeof payload.computationTimeMs).toBe("number");
-    expect(fheMocks.verifyAgeFhe).toHaveBeenCalledWith(
+    expect(fheMocks.verifyAgeFromDobFhe).toHaveBeenCalledWith(
       expect.objectContaining({
         ciphertext: Buffer.from([1, 2, 3]),
         minAge: 21,

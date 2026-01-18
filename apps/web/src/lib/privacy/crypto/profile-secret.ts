@@ -22,6 +22,8 @@ export interface ProfileSecretPayload {
   lastName?: string | null;
   dateOfBirth?: string | null;
   birthYear?: number | null;
+  residentialAddress?: string | null;
+  addressCountryCode?: string | null;
   expiryDateInt?: number | null;
   documentNumber?: string | null;
   documentType?: string | null;

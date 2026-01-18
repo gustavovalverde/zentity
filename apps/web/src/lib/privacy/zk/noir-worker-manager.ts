@@ -49,9 +49,12 @@ export interface WorkerRequest {
 }
 
 export interface AgeProofPayload {
-  birthYear: number;
-  currentYear: number;
-  minAge: number;
+  /** DOB encoded as days since 1900-01-01 (UTC). */
+  dobDays: number;
+  /** Current date encoded as days since 1900-01-01 (UTC). */
+  currentDays: number;
+  /** Minimum age threshold encoded in days (e.g., floor(years * 365.25)). */
+  minAgeDays: number;
   nonce: string; // Hex string for replay resistance
   documentHashField: string; // Field element (hex) binding to document commitment
   claimHash: string; // Field element (hex) binding to signed claim

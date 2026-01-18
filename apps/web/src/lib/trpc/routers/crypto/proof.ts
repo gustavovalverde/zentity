@@ -23,6 +23,10 @@ import {
   updateIdentityBundleStatus,
 } from "@/lib/db/queries/identity";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import {
+  getTodayDobDays,
+  minAgeYearsToDays,
+} from "@/lib/identity/verification/birth-year";
 import { withSpan } from "@/lib/observability/telemetry";
 import { consumeChallenge } from "@/lib/privacy/crypto/challenge-store";
 import { scheduleFheEncryption } from "@/lib/privacy/crypto/fhe-encryption";
@@ -106,21 +110,23 @@ async function verifyProofInternal(args: {
   const claimHashBigInt = parseFieldToBigInt(claimHashInput);
 
   if (circuitType === "age_verification") {
-    const providedYear = parsePublicInputToNumber(args.publicInputs[0]);
-    const providedMinAge = parsePublicInputToNumber(args.publicInputs[1]);
-    const actualYear = new Date().getFullYear();
+    const providedCurrentDays = parsePublicInputToNumber(args.publicInputs[0]);
+    const providedMinAgeDays = parsePublicInputToNumber(args.publicInputs[1]);
+    const actualCurrentDays = getTodayDobDays();
 
-    if (Math.abs(providedYear - actualYear) > 1) {
+    // Allow minor drift to avoid timezone edge cases.
+    if (Math.abs(providedCurrentDays - actualCurrentDays) > 2) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: `Invalid current_year: ${providedYear} (expected ~${actualYear})`,
+        message: `Invalid current_days: ${providedCurrentDays} (expected ~${actualCurrentDays})`,
       });
     }
 
-    if (providedMinAge < MIN_AGE_POLICY) {
+    const minAgePolicyDays = minAgeYearsToDays(MIN_AGE_POLICY);
+    if (providedMinAgeDays < minAgePolicyDays) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: `min_age ${providedMinAge} below policy minimum ${MIN_AGE_POLICY}`,
+        message: `min_age_days ${providedMinAgeDays} below policy minimum ${minAgePolicyDays}`,
       });
     }
 
