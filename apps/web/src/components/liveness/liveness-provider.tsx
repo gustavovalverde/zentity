@@ -33,7 +33,7 @@ import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 // Types
 // ============================================================================
 
-export interface ChallengeState {
+interface ChallengeState {
   type: ChallengeType;
   index: number;
   total: number;
@@ -89,12 +89,6 @@ interface LivenessCameraContextValue {
   isStreaming: boolean;
 }
 
-// Legacy combined type for backwards compatibility
-interface LivenessContextValue
-  extends LivenessStateContextValue,
-    LivenessActionsContextValue,
-    LivenessCameraContextValue {}
-
 // Three separate contexts for optimized re-renders
 const LivenessStateContext = createContext<LivenessStateContextValue | null>(
   null
@@ -113,7 +107,7 @@ const LivenessCameraContext = createContext<LivenessCameraContextValue | null>(
  * State context - use when you need phase, face, challenge, error, etc.
  * This context updates frequently during detection.
  */
-export function useLivenessState(): LivenessStateContextValue {
+function useLivenessState(): LivenessStateContextValue {
   const context = useContext(LivenessStateContext);
   if (!context) {
     throw new Error("useLivenessState must be used within LivenessProvider");
@@ -125,7 +119,7 @@ export function useLivenessState(): LivenessStateContextValue {
  * Actions context - use for buttons and controls.
  * This context is stable after mount (never causes re-renders).
  */
-export function useLivenessActions(): LivenessActionsContextValue {
+function useLivenessActions(): LivenessActionsContextValue {
   const context = useContext(LivenessActionsContext);
   if (!context) {
     throw new Error("useLivenessActions must be used within LivenessProvider");
@@ -137,7 +131,7 @@ export function useLivenessActions(): LivenessActionsContextValue {
  * Camera context - use for video rendering.
  * This context is stable after camera starts streaming.
  */
-export function useLivenessCameraContext(): LivenessCameraContextValue {
+function useLivenessCameraContext(): LivenessCameraContextValue {
   const context = useContext(LivenessCameraContext);
   if (!context) {
     throw new Error(
@@ -148,35 +142,16 @@ export function useLivenessCameraContext(): LivenessCameraContextValue {
 }
 
 /**
- * Combined context - use when you need everything (legacy compatibility).
+ * Combined context - use when you need everything.
  * Consider using the specific hooks above for better performance.
  */
-export function useLivenessContext(): LivenessContextValue {
+function useLivenessContext(): LivenessStateContextValue &
+  LivenessActionsContextValue &
+  LivenessCameraContextValue {
   const state = useLivenessState();
   const actions = useLivenessActions();
   const camera = useLivenessCameraContext();
   return { ...state, ...actions, ...camera };
-}
-
-// Selective hooks for specific use cases
-export function useLivenessPhase(): LivenessPhase {
-  return useLivenessState().phase;
-}
-
-export function useLivenessFace(): {
-  faceDetected: boolean;
-  faceBox: FaceBox | null;
-} {
-  const { faceDetected, faceBox } = useLivenessState();
-  return { faceDetected, faceBox };
-}
-
-export function useLivenessChallenge(): {
-  challenge: ChallengeState | null;
-  progress: number;
-} {
-  const { challenge } = useLivenessState();
-  return { challenge, progress: challenge?.progress ?? 0 };
 }
 
 // ============================================================================
@@ -189,6 +164,10 @@ export interface LivenessProviderProps {
   numChallenges?: number;
   /** Enable debug logging */
   debug?: boolean;
+  /** Identity draft ID for dashboard flow - enables server-side result persistence */
+  draftId?: string;
+  /** User ID for dashboard flow - required if draftId is provided */
+  userId?: string;
   /** Called when verification succeeds */
   onVerified?: (result: {
     selfieImage: string;
@@ -208,6 +187,8 @@ export function LivenessProvider({
   children,
   numChallenges = 2,
   debug = process.env.NODE_ENV === "development",
+  draftId,
+  userId,
   onVerified,
   onReset,
   onSessionError,
@@ -266,6 +247,8 @@ export function LivenessProvider({
     stopCamera: camera.stopCamera,
     numChallenges,
     debugEnabled: debug,
+    draftId,
+    userId,
     onVerified: (result) => {
       onVerifiedRef.current?.(result);
     },
@@ -429,12 +412,36 @@ export function LivenessProvider({
   // Split Context Values (for optimized re-renders)
   // ============================================================================
 
-  // State context - changes frequently during detection
-  const stateValue: LivenessStateContextValue = useMemo(
-    () => ({
+  // Extract primitive values from face object to avoid object reference changes
+  // triggering re-renders on every detection frame (~10-12x/sec)
+  const faceDetected = liveness.face.detected;
+  const faceBoxSource = liveness.face.box;
+  const faceBoxX = faceBoxSource?.x ?? null;
+  const faceBoxY = faceBoxSource?.y ?? null;
+  const faceBoxWidth = faceBoxSource?.width ?? null;
+  const faceBoxHeight = faceBoxSource?.height ?? null;
+
+  // State context - changes frequently during detection.
+  // Primitive face values control memoization to avoid recomputing on every
+  // object reference change from face detection (~10-12fps).
+  const stateValue: LivenessStateContextValue = useMemo(() => {
+    const faceBox: FaceBox | null =
+      faceBoxX !== null &&
+      faceBoxY !== null &&
+      faceBoxWidth !== null &&
+      faceBoxHeight !== null
+        ? {
+            x: faceBoxX,
+            y: faceBoxY,
+            width: faceBoxWidth,
+            height: faceBoxHeight,
+          }
+        : null;
+
+    return {
       phase: liveness.phase,
-      faceDetected: liveness.face.detected,
-      faceBox: liveness.face.box,
+      faceDetected,
+      faceBox,
       countdown: localCountdown,
       challenge: liveness.challenge,
       selfieImage: liveness.selfieImage,
@@ -445,19 +452,22 @@ export function LivenessProvider({
       retryCount: 0,
       audioEnabled,
       speechEnabled,
-    }),
-    [
-      liveness.phase,
-      liveness.face,
-      localCountdown,
-      liveness.challenge,
-      liveness.selfieImage,
-      liveness.error,
-      liveness.hint,
-      audioEnabled,
-      speechEnabled,
-    ]
-  );
+    };
+  }, [
+    liveness.phase,
+    faceDetected,
+    faceBoxX,
+    faceBoxY,
+    faceBoxWidth,
+    faceBoxHeight,
+    localCountdown,
+    liveness.challenge,
+    liveness.selfieImage,
+    liveness.error,
+    liveness.hint,
+    audioEnabled,
+    speechEnabled,
+  ]);
 
   // Actions context - stable after mount (empty deps = never changes)
   const actionsValue: LivenessActionsContextValue = useMemo(

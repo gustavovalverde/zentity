@@ -9,11 +9,11 @@ vi.mock("@/lib/auth/auth", () => ({
   auth: { api: { getSession: authMocks.getSession } },
 }));
 
-const onboardingMocks = vi.hoisted(() => ({
+const enrollmentMocks = vi.hoisted(() => ({
   isRegistrationTokenValid: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/onboarding-tokens", () => onboardingMocks);
+vi.mock("@/lib/auth/fhe-enrollment-tokens", () => enrollmentMocks);
 
 const fheMocks = vi.hoisted(() => ({
   registerFheKey: vi.fn(),
@@ -40,7 +40,7 @@ describe("fhe keys/register route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMocks.getSession.mockResolvedValue(null);
-    onboardingMocks.isRegistrationTokenValid.mockResolvedValue(false);
+    enrollmentMocks.isRegistrationTokenValid.mockResolvedValue(false);
     dbMocks.getEncryptedSecretByUserAndType.mockResolvedValue(null);
   });
 
@@ -106,7 +106,7 @@ describe("fhe keys/register route", () => {
   });
 
   it("rejects invalid registration token", async () => {
-    onboardingMocks.isRegistrationTokenValid.mockResolvedValue(false);
+    enrollmentMocks.isRegistrationTokenValid.mockResolvedValue(false);
 
     const response = await POST(
       makeRequest({

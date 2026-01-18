@@ -134,7 +134,7 @@ Zentity supports two usage modes that share the same core cryptography but diffe
 
 ## Data Flows
 
-### Onboarding
+### Sign-Up and Verification
 
 ```mermaid
 sequenceDiagram
@@ -147,18 +147,10 @@ sequenceDiagram
   participant FHE as FHE Service
   participant OCR as OCR Service
 
-  Note over U,OCR: Phase 1 - Verification (OCR + liveness + proofs)
-  U->>UI: Upload ID + selfie
-  UI->>API: Submit document + liveness
-  API->>OCR: OCR + parse (transient)
-  OCR-->>API: Extracted fields
-  API->>DB: Store commitments + signed claims
-  API-->>UI: Verification complete
-
-  Note over UI,AUTH: Phase 2 - Passkey + key custody
+  Note over UI,AUTH: Phase 1 - Sign-up (account + key custody)
   UI->>AUTH: signIn.anonymous (if needed)
-  UI->>API: POST /api/onboarding/context
-  API->>DB: Store context + registration tokens
+  UI->>API: POST /api/fhe-enrollment/context
+  API->>DB: Store enrollment context + registration tokens
   API-->>UI: contextToken + registrationToken
 
   UI->>AUTH: GET /api/auth/passkey/generate-register-options?context=...
@@ -174,10 +166,20 @@ sequenceDiagram
   API->>FHE: Register keys
   FHE-->>API: key_id
   API->>DB: Attach encrypted secret + wrapper
-  API-->>UI: Enrollment complete
+  API-->>UI: Enrollment complete → redirect /dashboard
+
+  Note over U,OCR: Phase 2 - Dashboard verification (OCR + liveness + proofs)
+  U->>UI: Upload ID + selfie
+  UI->>API: Submit document + liveness
+  API->>OCR: OCR + parse (transient)
+  OCR-->>API: Extracted fields
+  API->>DB: Store commitments + signed claims
+  UI->>UI: Generate ZK proofs (client-side)
+  UI->>API: Store proofs
+  API-->>UI: Verification complete (Tier progression)
 ```
 
-**Password (OPAQUE) onboarding**
+**Password (OPAQUE) sign-up**
 
 OPAQUE sign-up mirrors the passkey flow but uses a password-derived export key:
 
@@ -252,14 +254,14 @@ See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Iden
 
 ## State Durability & Shared Devices
 
-Onboarding uses **cookies + local storage** for short-lived progress and previews. Pre-auth onboarding context and registration tokens are stored in the Better Auth verification table with a short TTL to support the passkey-first flow. If local state is cleared (shared devices, private windows), the user may need to restart onboarding. The only durable, user-controlled source of profile data is the **passkey-sealed profile**.
+Sign-up uses **encrypted cookies + session storage** for short-lived wizard progress. Enrollment context and registration tokens are stored in the Better Auth verification table with a short TTL to support the passkey-first flow. Dashboard verification progress is stored in first-party tables keyed by user ID (drafts, claims, proofs). If local state is cleared (shared devices, private windows), the user may need to restart sign-up or re-run verification. The only durable, user-controlled source of profile data is the **passkey-sealed profile**.
 
 ---
 
 ## Observability
 
 - Distributed tracing via OpenTelemetry across Web, FHE, and OCR
-- Onboarding spans for step timing + duplicate-work signals
+- Sign-up and verification spans for step timing + duplicate-work signals
 - Privacy-safe telemetry (hashed IDs only; no PII)
 
 See [RFC: Observability](rfcs/0006-observability.md) for configuration details.

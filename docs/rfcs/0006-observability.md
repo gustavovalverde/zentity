@@ -9,7 +9,7 @@
 
 ## Summary
 
-Add distributed tracing across Zentity services (Web, FHE, OCR) using OpenTelemetry OTLP exporters (collector-first), with auto-instrumentation plus domain spans for onboarding, FHE payload sizing, and async identity finalization to make performance bottlenecks and duplicate work visible.
+Add distributed tracing across Zentity services (Web, FHE, OCR) using OpenTelemetry OTLP exporters (collector-first), with auto-instrumentation plus domain spans for sign-up, verification, FHE payload sizing, and async identity finalization to make performance bottlenecks and duplicate work visible.
 
 ## Problem Statement
 
@@ -420,7 +420,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 | `apps/web/src/lib/trpc/server.ts` | Modify | Attach tracing middleware + user hash |
 | `apps/web/src/lib/crypto/fhe-client.ts` | Modify | FHE spans + payload sizing |
 | `apps/web/src/lib/document/ocr-client.ts` | Modify | OCR spans + payload sizing |
-| `apps/web/src/lib/db/onboarding-session.ts` | Modify | Onboarding progress events |
+| `apps/web/src/lib/db/sign-up-session.ts` | Modify | Sign-up progress events |
 | `apps/fhe/src/telemetry.rs` | Create | OTLP exporter + resource tags |
 | `apps/fhe/src/main.rs` | Modify | Trace propagation + shutdown |
 | `apps/ocr/src/ocr_service/telemetry.py` | Create | OTEL provider + FastAPI instrumentation |

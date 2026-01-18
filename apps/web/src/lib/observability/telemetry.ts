@@ -90,7 +90,7 @@ function metricsEnabled(): boolean {
   );
 }
 
-export function telemetryEnabled(): boolean {
+function telemetryEnabled(): boolean {
   return tracingEnabled() || metricsEnabled();
 }
 

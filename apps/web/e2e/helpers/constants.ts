@@ -20,11 +20,10 @@ export const PATTERNS = {
   SIGN_IN_URL: /\/sign-in/,
   SIGN_UP_URL: /\/sign-up/,
   DASHBOARD_URL: /\/dashboard/,
-  ONBOARDING_URL: /\/onboarding/,
-  VERIFICATION_URL: /\/verify/,
+  VERIFICATION_URL: /\/dashboard\/verify/,
   SETTINGS_URL: /\/settings/,
 
-  // Onboarding steps
+  // Verification steps
   DOCUMENT_UPLOAD_STEP: /upload.*document|document.*upload|scan.*id/i,
   LIVENESS_STEP: /liveness|face.*check|verify.*identity/i,
   REVIEW_STEP: /review|confirm|summary/i,
@@ -43,9 +42,8 @@ export const URLS = {
   SIGN_IN: "/sign-in",
   SIGN_UP: "/sign-up",
   DASHBOARD: "/dashboard",
-  ONBOARDING: "/onboarding",
   SETTINGS: "/settings",
-  VERIFICATION: "/verify",
+  VERIFICATION: "/dashboard/verify",
   WEB3_DEMO: "/demo",
   DEFI_DEMO: "/defi-demo",
 } as const;
@@ -102,7 +100,7 @@ export const TIMEOUTS = {
 } as const;
 
 /**
- * Test document data for onboarding tests.
+ * Test document data for verification tests.
  */
 export const TEST_DOCUMENTS = {
   PASSPORT: {

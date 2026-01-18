@@ -48,7 +48,7 @@ import {
   getComplianceLevel,
 } from "@/lib/identity/verification/compliance";
 
-import { protectedProcedure, router } from "../server";
+import { protectedProcedure, requireFeature, router } from "../server";
 
 // Rate limiting: max 3 attestation attempts per hour per network
 const RATE_LIMIT_MAX_ATTEMPTS = 3;
@@ -168,7 +168,7 @@ export const attestationRouter = router({
    * Submit attestation to a specific network.
    *
    * Requirements:
-   * - User must be fully verified
+   * - User must be Tier 3 with AAL2 (passkey auth) - enforced by requireFeature middleware
    * - Network must be enabled and provider available
    * - No existing confirmed attestation on this network
    * - Rate limit not exceeded
@@ -176,6 +176,7 @@ export const attestationRouter = router({
    * In demo mode, simulates a successful submission.
    */
   submit: protectedProcedure
+    .use(requireFeature("attestation"))
     .input(
       z.object({
         networkId: z.string(),
@@ -204,18 +205,12 @@ export const attestationRouter = router({
         };
       }
 
-      // Parallelize verification status and identity document queries
+      // Tier guard ensures user is verified (Tier 3 + AAL2)
+      // Get identity document and verification status for attestation data
       const [verificationStatus, identityDocument] = await Promise.all([
         getVerificationStatus(ctx.userId),
         getSelectedIdentityDocumentByUserId(ctx.userId),
       ]);
-
-      if (!verificationStatus?.verified) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Complete identity verification before attesting on-chain",
-        });
-      }
 
       if (!identityDocument) {
         throw new TRPCError({

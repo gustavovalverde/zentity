@@ -180,7 +180,7 @@ Proofs are generated in Web Workers to keep the UI responsive.
 2. **Uniqueness:** Same person could generate multiple proofs
 3. **Timeliness:** Nonce provides session binding, not timestamp
 
-### Integration with KYC / Regulated Onboarding
+### Integration with KYC / Regulated Verification
 
 In Zentity's flow:
 

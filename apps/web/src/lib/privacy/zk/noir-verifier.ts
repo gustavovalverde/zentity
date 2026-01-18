@@ -170,7 +170,7 @@ const DEFAULT_BB_WORKER_PATH = (() => {
   try {
     return fileURLToPath(new URL("./bb-worker.mjs", import.meta.url));
   } catch {
-    return resolve(process.cwd(), "src/lib/zk/bb-worker.mjs");
+    return resolve(process.cwd(), "src/lib/privacy/zk/bb-worker.mjs");
   }
 })();
 

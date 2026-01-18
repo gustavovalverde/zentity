@@ -77,6 +77,10 @@ export interface UseLivenessArgs {
   numChallenges?: number;
   /** Enable debug logging */
   debugEnabled?: boolean;
+  /** Identity draft ID for dashboard flow - enables server-side result persistence */
+  draftId?: string;
+  /** User ID for dashboard flow - required if draftId is provided */
+  userId?: string;
   onVerified: (args: { selfieImage: string; bestSelfieFrame: string }) => void;
   onReset: () => void;
   onSessionError?: () => void;
@@ -199,6 +203,8 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
     stopCamera,
     numChallenges = 2,
     debugEnabled = false,
+    draftId,
+    userId,
     onVerified,
     onReset,
     onSessionError,
@@ -270,8 +276,12 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
         console.log("[liveness] Connected");
       }
       setIsConnected(true);
-      // Start session
-      socket.emit("start", { challenges: numChallenges });
+      // Start session with optional draft linkage for dashboard flow
+      socket.emit("start", {
+        challenges: numChallenges,
+        draftId,
+        userId,
+      });
     });
 
     socket.on("disconnect", (reason) => {
@@ -394,7 +404,7 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
         onSessionErrorRef.current?.();
       }
     });
-  }, [cleanup, numChallenges, debugEnabled, stopCamera]);
+  }, [cleanup, numChallenges, debugEnabled, stopCamera, draftId, userId]);
 
   // Send frames to server
   const startFrameStreaming = useCallback(() => {

@@ -8,6 +8,7 @@ import {
   createOpaqueWrapper,
   decryptSecretWithOpaqueExport,
   OPAQUE_CREDENTIAL_ID,
+  unwrapDekWithOpaqueExport,
 } from "./opaque-vault";
 import {
   decryptSecretEnvelope,
@@ -37,7 +38,7 @@ export type EnrollmentCredential =
   | { type: "passkey"; context: PasskeyEnrollmentContext }
   | { type: "opaque"; context: OpaqueEnrollmentContext };
 
-export const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
+const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
 const PASSKEY_CACHE_TTL_MS = 15 * 60 * 1000;
 const OPAQUE_CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -226,14 +227,14 @@ async function resolvePasskeyUnlock(params: {
   }
 }
 
-export function readEnvelopeFormat(
+function readEnvelopeFormat(
   metadata: Record<string, unknown> | null | undefined
 ): EnvelopeFormat | null {
   const value = metadata?.[ENVELOPE_FORMAT_METADATA_KEY];
   return value === "json" || value === "msgpack" ? value : null;
 }
 
-export function mergeSecretMetadata(params: {
+function mergeSecretMetadata(params: {
   envelopeFormat: EnvelopeFormat;
   metadata?: Record<string, unknown> | null;
 }): Record<string, unknown> {
@@ -589,6 +590,12 @@ export async function addWrapperForSecretType(params: {
   newPrfOutput: Uint8Array;
   newPrfSalt: Uint8Array;
   kekVersion?: string;
+  /**
+   * Required when the secret is only protected by an OPAQUE wrapper.
+   * Used to unwrap the DEK with the current password session key.
+   */
+  userId?: string;
+  opaqueExportKey?: Uint8Array;
 }): Promise<boolean> {
   const bundle = await trpc.secrets.getSecretBundle.query({
     secretType: params.secretType,
@@ -601,7 +608,46 @@ export async function addWrapperForSecretType(params: {
   // Only include PRF-based wrappers (those with prfSalt)
   const prfWrappers = bundle.wrappers.filter((w) => w.prfSalt);
   if (prfWrappers.length === 0) {
-    throw new Error("No passkeys are registered for this secret.");
+    const opaqueWrapper = bundle.wrappers.find(
+      (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
+    );
+    if (!opaqueWrapper) {
+      throw new Error("No credentials are registered for this secret.");
+    }
+
+    const userId =
+      params.userId ?? (await authClient.getSession()).data?.user?.id ?? null;
+    if (!(userId && params.opaqueExportKey)) {
+      throw new Error(
+        "Please sign in again with your password to add a passkey to this secret."
+      );
+    }
+
+    const dek = await unwrapDekWithOpaqueExport({
+      secretId: bundle.secret.id,
+      userId,
+      wrappedDek: opaqueWrapper.wrappedDek,
+      exportKey: params.opaqueExportKey,
+    });
+
+    const wrappedDek = await wrapDekWithPrf({
+      secretId: bundle.secret.id,
+      credentialId: params.newCredentialId,
+      dek,
+      prfOutput: params.newPrfOutput,
+    });
+
+    await trpc.secrets.addWrapper.mutate({
+      secretId: bundle.secret.id,
+      secretType: params.secretType,
+      credentialId: params.newCredentialId,
+      wrappedDek,
+      prfSalt: bytesToBase64(params.newPrfSalt),
+      kekVersion: params.kekVersion ?? WRAP_VERSION,
+      kekSource: "prf",
+    });
+
+    return true;
   }
 
   const saltByCredential: Record<string, Uint8Array> = {};
@@ -645,6 +691,7 @@ export async function addWrapperForSecretType(params: {
     wrappedDek,
     prfSalt: bytesToBase64(params.newPrfSalt),
     kekVersion: params.kekVersion ?? WRAP_VERSION,
+    kekSource: "prf",
   });
 
   return true;

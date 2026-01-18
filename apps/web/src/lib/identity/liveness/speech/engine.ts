@@ -232,6 +232,3 @@ class LivenessSpeechEngine {
 
 // Singleton instance
 export const speechEngine = new LivenessSpeechEngine();
-
-// Re-export for direct usage
-export { LivenessSpeechEngine };

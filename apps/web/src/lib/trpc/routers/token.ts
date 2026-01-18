@@ -29,9 +29,8 @@ import {
   createProvider,
 } from "@/lib/blockchain/providers/factory";
 import { getBlockchainAttestationByUserAndNetwork } from "@/lib/db/queries/attestation";
-import { getVerificationStatus } from "@/lib/db/queries/identity";
 
-import { protectedProcedure, router } from "../server";
+import { protectedProcedure, requireFeature, router } from "../server";
 
 // Chain configurations for viem
 const VIEM_CHAINS = {
@@ -175,9 +174,10 @@ export const tokenRouter = router({
 
   /**
    * Mint tokens to the user's attested wallet.
-   * Requires: user is authenticated, verified, and attested on the network.
+   * Requires: Tier 3 + AAL2 (passkey auth), verified, and attested on the network.
    */
   mint: protectedProcedure
+    .use(requireFeature("token_minting"))
     .input(
       z.object({
         networkId: z.string(),
@@ -200,14 +200,7 @@ export const tokenRouter = router({
         };
       }
 
-      // Check verification status
-      const verificationStatus = await getVerificationStatus(ctx.userId);
-      if (!verificationStatus.verified) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: "Complete identity verification before minting tokens",
-        });
-      }
+      // Tier guard ensures user is verified (Tier 3 + AAL2)
 
       // Check attestation on this network
       const attestation = await getBlockchainAttestationByUserAndNetwork(

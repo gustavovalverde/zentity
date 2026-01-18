@@ -68,7 +68,7 @@ interface TfheModuleStatic {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TfheModule = TfheModuleStatic;
 
-export interface FheKeyMaterial {
+interface FheKeyMaterial {
   clientKey: TfheClientKey;
   publicKey: TfheCompressedPublicKey;
   serverKey: TfheCompressedServerKey;
@@ -185,7 +185,7 @@ function loadTfhe(): Promise<TfheModule> {
   return tfheInitPromise;
 }
 
-export async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
+async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
   const tfhe = await loadTfhe();
   const existing = await getStoredFheKeys();
 

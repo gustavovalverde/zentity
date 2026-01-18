@@ -1,24 +1,30 @@
-# RFC-0017: Progressive Onboarding + Assurance Levels (Auth/Identity/Proof)
+# RFC-0017: Progressive Sign-Up + Assurance Levels (Auth/Identity/Proof)
 
 | Field | Value |
 |---|---|
-| **Status** | Proposed |
+| **Status** | Implemented |
 | **Created** | 2026-01-12 |
-| **Updated** | 2026-01-12 |
+| **Updated** | 2026-01-18 |
 | **Owner** | Zentity product + platform |
 
 ## Summary
 
-Today, Zentity’s primary onboarding path strongly encourages (and in practice, requires) **document upload** and **liveness** early. Many users are uncomfortable providing sensitive identity inputs upfront, especially before they understand the product.
+Previously, Zentity’s primary sign-up path strongly encouraged (and in practice, required) **document upload** and **liveness** early. Many users are uncomfortable providing sensitive identity inputs upfront, especially before they understand the product.
 
 This RFC proposes:
 
-1) A **progressive onboarding model** where users can create an account and access a limited dashboard first, then complete verification incrementally.
+1) A **progressive sign-up model** where users can create an account and access a limited dashboard first, then complete verification incrementally.
 2) A standardized, explainable “level” system based on widely used assurance concepts:
    - **Authentication strength** (AAL-like)
    - **Identity proofing strength** (IAL-like)
    - **Cryptographic proof/evidence completeness** (ZK/FHE/on-chain attestation)
 3) A cryptography impact analysis showing what must change (and what **does not** need to change) to support incremental verification.
+
+**Implementation note (2026-01-18):** Sign-up has been simplified to a 2-step flow
+(`email` → `account`) under `apps/web/src/components/sign-up`, and identity
+verification is performed from the dashboard under `/dashboard/verify`. Legacy
+"onboarding session" gating has been removed in favor of user-owned drafts,
+claims, and proofs.
 
 ## Why this matters
 
@@ -29,7 +35,7 @@ This RFC proposes:
 ## Goals
 
 - Allow users to:
-  - start with **anonymous or email-optional** onboarding,
+  - start with **anonymous or email-optional** sign-up,
   - create an account (passkey/OPAQUE),
   - reach a “dashboard-access” state **without** document upload or liveness,
   - later complete verification inside the dashboard to unlock regulated/audit features.
@@ -49,37 +55,31 @@ This RFC proposes:
 
 ## Current system (code-grounded analysis)
 
-### 1) Onboarding flow and where it is “hard-gated”
+### 1) Sign-up flow and where it is “hard-gated”
 
-**UI stepper**
+**Sign-up stepper (2 steps)**
 
-- Steps are currently: `email` → `id-upload` → `liveness` → `account`
-  - `apps/web/src/components/onboarding/stepper-context.tsx`
-  - `apps/web/src/components/onboarding/onboarding-wizard.tsx`
+- Steps are: `email` → `account`
+  - `apps/web/src/components/sign-up/stepper-config.tsx`
+  - `apps/web/src/components/sign-up/sign-up-wizard.tsx`
 
 **Email can already be skipped**
 
 - The email step supports “Continue without email”.
-  - `apps/web/src/components/onboarding/step-email.tsx`
+  - `apps/web/src/components/sign-up/step-email.tsx`
 
-**Liveness can be skipped (design intent), document cannot**
+**Identity verification is not part of sign-up**
 
-- Server-side onboarding gating is defined in:
-  - `apps/web/src/lib/db/onboarding-session.ts` (`STEP_REQUIREMENTS`)
-  - `apps/web/src/lib/trpc/routers/onboarding.ts` (`validateStep`)
-- Current invariants:
-  - `documentProcessed` is required before accessing liveness endpoints and before reaching `account`.
-  - `liveness` is not required before reaching `account` (liveness can be “skipped”).
+- Document OCR, liveness, face match, and proof generation happen from the dashboard:
+  - `/dashboard/verify` (hub)
+  - `/dashboard/verify/document`
+  - `/dashboard/verify/liveness`
 
-**Important nuance: account creation already supports “no identity docs”**
+**Server-side state**
 
-`StepAccount` is written to operate even when no identity draft exists:
-
-- It always performs key custody + account creation.
-- It only runs “finalize identity + generate proofs” when `hasIdentityDocs` is true.
-  - `apps/web/src/components/onboarding/step-account.tsx` (`if (hasIdentityDocs) { ... }`)
-
-So the *main UX barrier* is **step access policy**, not the underlying account/crypto client logic.
+- Sign-up wizard state is stored in an encrypted cookie + SQLite:
+  - `apps/web/src/lib/db/sign-up-session.ts`
+  - `apps/web/src/lib/trpc/routers/sign-up.ts`
 
 ### 2) How verification artifacts are modeled today
 
@@ -245,7 +245,7 @@ This keeps the UX simple without losing the safety benefits of explicit axes.
 
 ---
 
-## Progressive onboarding UX (what changes)
+## Progressive sign-up UX (what changes)
 
 ### Proposed user journey
 
@@ -279,7 +279,7 @@ The most sensitive actions already require full verification:
 - `token.mint` rejects if `getVerificationStatus().verified` is false:
   - `apps/web/src/lib/trpc/routers/token.ts`
 
-So progressive onboarding can be introduced mostly by:
+So progressive sign-up can be introduced mostly by:
 
 - relaxing “must do doc early” gating for basic dashboard access,
 - ensuring dashboard communicates clearly *why* a feature is locked.
@@ -349,7 +349,7 @@ The job can run later because:
 Important detail:
 
 - Some inputs (DOB days, country code) are not stored in plaintext by design; they must be computed at verification time from OCR output and/or sealed profile.
-- Therefore, post-onboarding verification must ensure those values are available to the server-side encryption scheduler (as they are today in `identity.verify` and `identity.finalizeAsync` flows).
+- Therefore, post-sign-up verification must ensure those values are available to the server-side encryption scheduler.
 
 ### Evidence bundle hashes: why “later” works
 
@@ -360,7 +360,7 @@ When a proof is stored, the server computes/updates an evidence hash:
 
 Adding proofs later naturally updates the proof set and therefore the evidence hash.
 
-This is compatible with progressive onboarding and is aligned with RFC-0013 (verification bundle UX).
+This is compatible with progressive sign-up and is aligned with RFC-0013 (verification bundle UX).
 
 ---
 
@@ -369,8 +369,8 @@ This is compatible with progressive onboarding and is aligned with RFC-0013 (ver
 ### Option 1 (recommended): Split “Account” from “Verification”
 
 - `/sign-up` creates account + key custody only (Tier 1).
-- `/dashboard/verification` runs the existing verification flow, but as an in-dashboard experience.
-- Verification uses its own “verification session” concept (can reuse current wizard session model; no need to unify with Better Auth yet).
+- `/dashboard/verify` runs the verification flow, as an in-dashboard experience.
+- Verification progress is derived from user-owned drafts, claims, and proofs (no separate “verification session” cookie required).
 
 Pros:
 
@@ -431,3 +431,32 @@ Not required for progressive onboarding; defer unless we need cross-device resum
    - either by allowing the existing wizard session to be started from dashboard,
    - or by introducing a new verification session mechanism.
 5) Keep `getVerificationStatus()` for backwards compatibility (OAuth claims), but consider augmenting it with assurance axes over time.
+
+---
+
+## Phase 2 - Pending Items
+
+The following items from this RFC are tracked but not yet fully implemented:
+
+### OIDC4IDA Integration
+
+- `getVerificationStatus()` returns verification level for OAuth userinfo
+- Assurance tiers (AAL/IAL/PAL) are not yet exposed via OIDC4IDA claims
+- Recommended: Map tier profile to OIDC4IDA `verified_claims` format
+
+### PAL3 (On-Chain Attestation)
+
+- `proof.onChainAttested` flag is tracked in `AssuranceProfile`
+- Not yet factored into PAL level computation (remains boolean)
+- Recommended: Factor into tier 3 requirements or create tier 4
+
+### Reserved Levels
+
+- IAL3 (in-person / issuer-backed credentials) - reserved
+- AAL3 (hardware-backed + strict verifier impersonation resistance) - reserved
+
+### Re-verification Constraints
+
+- Document data is not persisted after initial verification
+- Users at Tier 2 without ZK proofs must complete new verification to reach Tier 3
+- This is by design (privacy-first), but could be improved with optional document caching

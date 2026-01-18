@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/api-auth";
 import {
   isRegistrationTokenValid,
   storeRegistrationBlob,
-} from "@/lib/auth/onboarding-tokens";
+} from "@/lib/auth/fhe-enrollment-tokens";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,

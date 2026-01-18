@@ -33,7 +33,7 @@ import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
  * to generate a ZK proof that their nationality is in the group.
  */
 export async function POST(request: NextRequest) {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
     const authResult = await requireSession();
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
  * - code=DEU&group=EU: Check if country is in group (without proof)
  */
 export async function GET(request: NextRequest) {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
     const authResult = await requireSession();

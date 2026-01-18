@@ -40,7 +40,7 @@ export const LivenessErrorState = {
 export type LivenessErrorState =
   (typeof LivenessErrorState)[keyof typeof LivenessErrorState];
 
-export type RecoveryType =
+type RecoveryType =
   | "retry"
   | "change_camera"
   | "adjust_position"
@@ -66,7 +66,7 @@ export interface LivenessError {
 
 type ErrorConfigEntry = Omit<LivenessError, "state" | "details">;
 
-export const ERROR_CONFIG: Record<LivenessErrorState, ErrorConfigEntry> = {
+const ERROR_CONFIG: Record<LivenessErrorState, ErrorConfigEntry> = {
   // Connection errors
   [LivenessErrorState.CONNECTION_TIMEOUT]: {
     message: "Connection timed out. Check your network.",

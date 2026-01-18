@@ -32,7 +32,7 @@ import {
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
 } from "@/lib/db/schema/oidc4vci";
-import { onboardingSessions } from "@/lib/db/schema/onboarding";
+import { signUpSessions } from "@/lib/db/schema/sign-up";
 
 export interface CreateUserInput {
   id?: string;
@@ -64,7 +64,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(accounts).run();
     await tx.delete(sessions).run();
     await tx.delete(verifications).run();
-    await tx.delete(onboardingSessions).run();
+    await tx.delete(signUpSessions).run();
     await tx.delete(passkeys).run();
     await tx.delete(users).run();
   });

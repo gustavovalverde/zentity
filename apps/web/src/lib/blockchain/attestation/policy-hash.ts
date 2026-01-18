@@ -49,4 +49,3 @@ function computePolicyHash(config: PolicyConfig): string {
 }
 
 export const POLICY_HASH = computePolicyHash(POLICY_CONFIG);
-export { POLICY_CONFIG };

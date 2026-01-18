@@ -32,7 +32,7 @@ export type ResolveUserByIdentifier = (
   ctx: OpaqueEndpointContext
 ) => Promise<OpaqueResolvedUser | null>;
 
-export interface OpaquePasswordResetOptions {
+interface OpaquePasswordResetOptions {
   /**
    * Send password reset instructions to the user.
    */

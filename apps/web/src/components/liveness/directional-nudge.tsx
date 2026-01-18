@@ -9,7 +9,7 @@ import {
 
 import { cn } from "@/lib/utils/classname";
 
-export type NudgeDirection = "left" | "right" | "up" | "down" | null;
+type NudgeDirection = "left" | "right" | "up" | "down" | null;
 
 interface DirectionalNudgeProps {
   /** Direction to nudge the user */
@@ -74,33 +74,6 @@ export function DirectionalNudge({
           )}
         />
       </div>
-    </div>
-  );
-}
-
-/**
- * Container wrapper that provides proper spacing for directional nudges.
- * Use this to wrap the video container when directional nudges are enabled.
- */
-export function DirectionalNudgeContainer({
-  children,
-  showNudges = false,
-  className,
-}: Readonly<{
-  children: React.ReactNode;
-  showNudges?: boolean;
-  className?: string;
-}>) {
-  return (
-    <div
-      className={cn(
-        "relative",
-        // Add padding when nudges might appear to prevent layout shift
-        showNudges && "mx-16",
-        className
-      )}
-    >
-      {children}
     </div>
   );
 }

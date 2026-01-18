@@ -22,9 +22,9 @@ import * as oidc4idaSchema from "./schema/oidc4ida";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as oidc4vciSchema from "./schema/oidc4vci";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as onboardingSchema from "./schema/onboarding";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as recoverySchema from "./schema/recovery";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as signUpSchema from "./schema/sign-up";
 
 const schema = {
   ...attestationSchema,
@@ -34,7 +34,7 @@ const schema = {
   ...jwksSchema,
   ...oidc4idaSchema,
   ...oidc4vciSchema,
-  ...onboardingSchema,
+  ...signUpSchema,
   ...oauthProviderSchema,
   ...recoverySchema,
 };
@@ -52,15 +52,14 @@ function isBuildTime() {
  *
  * Build-time uses an in-memory database to avoid SQLite locks across Next.js build workers.
  */
-export function getDatabaseUrl(): string {
+function getDatabaseUrl(): string {
   if (isBuildTime()) {
     return "file::memory:";
   }
   return process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
 }
 
-/** Raw libsql client - exported for test cleanup (close connections) */
-export const dbClient = createClient({
+const dbClient = createClient({
   url: getDatabaseUrl(),
   authToken: process.env.TURSO_AUTH_TOKEN,
 });

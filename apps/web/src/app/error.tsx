@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getOnboardingFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-client";
 
 export default function ErrorPage({
   error,
@@ -29,7 +29,7 @@ export default function ErrorPage({
       stack: error.stack,
     };
 
-    const flowId = getOnboardingFlowId();
+    const flowId = getFlowId();
     fetch("/api/log-client-error", {
       method: "POST",
       headers: {

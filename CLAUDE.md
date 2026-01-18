@@ -203,13 +203,24 @@ cd apps/ocr && source venv/bin/activate && PYTHONPATH=src uvicorn ocr_service.ma
 
 ## Key Data Flow
 
-The main verification flow is orchestrated via `trpc.identity.verify`:
+The system has two distinct flows: **sign-up** (account creation) and **verification** (identity proofing).
 
-1. **OCR Service** → Extract document data, generate SHA256 commitments
-2. **FHE Service** → Encrypt DOB, country code, compliance level, liveness score with TFHE-rs (binary transport)
-3. **Client-side Noir** → Generate UltraHonk proofs (age, document validity, nationality, face match) in browser
-4. **Human.js** (built-in) → Multi-gesture liveness challenges (smile, blink, head turns), face matching
-5. **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
+**Sign-Up Flow** (`/sign-up` → `/dashboard`):
+
+1. **Email step** (optional) → User provides email or continues without
+2. **Account step** → Create passkey/OPAQUE credentials, generate FHE keys
+3. **FHE enrollment** → Encrypt and store passkey-wrapped FHE key bundle
+4. User reaches **Tier 1** (account + keys secured) and lands on dashboard
+
+**Verification Flow** (from `/dashboard/verify/*`):
+
+1. **Document OCR** → `trpc.identity.prepareDocument` extracts data, generates commitments
+2. **Liveness + Face Match** → `trpc.liveness.*` runs multi-gesture challenges, server verifies
+3. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
+4. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
+5. User reaches **Tier 2/3** depending on proof completeness
+
+**Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
 
 All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trpc.attestation.*`, etc.).
 
@@ -237,9 +248,10 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | Router | Purpose |
 |--------|---------|
 | `crypto` | FHE encryption, ZK proof verification, challenge nonces |
-| `identity` | Full identity verification (document + selfie + liveness) |
+| `identity` | Identity verification (document OCR, liveness, face match, proofs) |
 | `liveness` | Multi-gesture liveness detection sessions |
-| `onboarding` | Wizard state management and step validation |
+| `signUp` | Progressive account creation wizard (email → account → keys secured) |
+| `assurance` | Tier profile, AAL computation, and feature gating |
 | `attestation` | On-chain identity attestation (submit, refresh, networks) |
 | `account` | User account management |
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |

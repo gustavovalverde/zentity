@@ -1,28 +1,21 @@
 /**
  * Liveness Router
  *
- * Handles multi-gesture liveness detection to verify a real person is present.
+ * Liveness verification for authenticated users (post-sign-up).
  *
- * Flow:
- * 1. createSession: Generates a random challenge sequence (smile, turn_left, turn_right)
- * 2. verify: Validates all challenge responses against baseline
- *    - Smile detection via happy score delta
- *    - Head turn detection via yaw angle change
- *    - Anti-spoofing via real/live scores
- *
- * Also provides standalone faceMatch for ID photo ↔ selfie comparison.
+ * Security: Face match results are written directly to the identity draft
+ * by the server - never accepted from client-provided "pre-validated" results.
  */
 import "server-only";
 
 import type { ChallengeType } from "@/lib/identity/liveness/challenges";
 
-import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
-  getSessionFromCookie,
-  validateStepAccess,
-} from "@/lib/db/onboarding-session";
+  getIdentityDraftById,
+  updateIdentityDraft,
+} from "@/lib/db/queries/identity";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
   getEmbeddingVector,
@@ -55,7 +48,7 @@ import {
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/identity/liveness/policy";
 
-import { publicProcedure, router } from "../server";
+import { protectedProcedure, router } from "../server";
 
 const challengeTypeSchema = z.enum(["smile", "turn_left", "turn_right"]);
 
@@ -71,8 +64,6 @@ const verifySchema = z.object({
     z.object({
       challengeType: challengeTypeSchema,
       image: z.string().min(1),
-      // Client-provided turn start yaw for turn challenges
-      // Server validates delta from this baseline instead of session baseline
       turnStartYaw: z.number().optional(),
     })
   ),
@@ -82,28 +73,18 @@ const faceMatchSchema = z.object({
   idImage: z.string().min(1),
   selfieImage: z.string().min(1),
   minConfidence: z.number().min(0).max(1).optional(),
+  /** Identity draft ID - when provided, results are written directly to DB */
+  draftId: z.string().min(1).optional(),
 });
 
 export const livenessRouter = router({
   /**
-   * Creates a new liveness session with random challenge sequence.
-   * Returns session ID and challenge list for the client to complete.
+   * Creates a new liveness session for dashboard verification.
+   * Requires authenticated user.
    */
-  createSession: publicProcedure
+  createSession: protectedProcedure
     .input(createSessionSchema.optional())
-    .mutation(async ({ input }) => {
-      const onboardingSession = await getSessionFromCookie();
-      const validation = validateStepAccess(
-        onboardingSession,
-        "liveness-session"
-      );
-      if (!validation.valid) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: validation.error || "Document verification required first",
-        });
-      }
-
+    .mutation(({ input }) => {
       const session = createLivenessSession(
         input?.numChallenges ?? 2,
         input?.requireHeadTurn ?? false
@@ -122,37 +103,21 @@ export const livenessRouter = router({
     }),
 
   /**
-   * Verifies all challenge responses against the baseline image.
-   *
-   * Checks:
-   * - Challenge sequence matches session
-   * - Smile challenges: happy score increased from baseline
-   * - Turn challenges: yaw angle changed in correct direction
-   * - Anti-spoofing: real ≥ 50%, live ≥ 50%
+   * Verifies liveness challenges for dashboard users.
+   * Requires authenticated user.
    */
-  verify: publicProcedure
+  verify: protectedProcedure
     .input(verifySchema)
     .mutation(async ({ ctx, input }) => {
       const start = Date.now();
 
-      const onboardingSession = await getSessionFromCookie();
-      const validation = validateStepAccess(
-        onboardingSession,
-        "liveness-verify"
-      );
-      if (!validation.valid) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: validation.error || "Document verification required first",
-        });
-      }
-
       const livenessSession = getLivenessSession(input.sessionId);
       if (!livenessSession) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Invalid or expired liveness session",
-        });
+        return {
+          verified: false,
+          error: "Invalid or expired liveness session",
+          processingTimeMs: Date.now() - start,
+        };
       }
 
       const expected = livenessSession.challenges;
@@ -163,10 +128,11 @@ export const livenessRouter = router({
         expected.length === received.length &&
         expected.every((c, i) => c === received[i]);
       if (!matches) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Challenge sequence mismatch",
-        });
+        return {
+          verified: false,
+          error: "Challenge sequence mismatch",
+          processingTimeMs: Date.now() - start,
+        };
       }
 
       const baselineResult = await detectFromBase64(input.baselineImage);
@@ -184,7 +150,6 @@ export const livenessRouter = router({
       const baselineLive = getLiveScore(baselineFace);
       const baselineYaw = getYawDegrees(baselineFace);
 
-      // Debug: log non-PII metadata only (no biometric values)
       if (ctx.debug) {
         ctx.log.debug(
           {
@@ -192,11 +157,10 @@ export const livenessRouter = router({
             faceDetected: true,
             challengeCount: input.challenges.length,
           },
-          "Liveness baseline processed"
+          "Dashboard liveness baseline processed"
         );
       }
 
-      // Run all face detections in parallel for ~2-4x speedup
       const detectionResults = await Promise.all(
         input.challenges.map((challenge) => detectFromBase64(challenge.image))
       );
@@ -213,7 +177,6 @@ export const livenessRouter = router({
       let allPassed = true;
       const failureReasons: string[] = [];
 
-      // Process detection results in order
       for (const [index, challenge] of input.challenges.entries()) {
         const res = detectionResults[index];
         const face = getPrimaryFace(res);
@@ -228,7 +191,6 @@ export const livenessRouter = router({
           continue;
         }
 
-        // Debug: log non-PII metadata only (no biometric values)
         if (ctx.debug) {
           ctx.log.debug(
             {
@@ -237,7 +199,7 @@ export const livenessRouter = router({
               index,
               faceDetected: true,
             },
-            "Liveness challenge processed"
+            "Dashboard liveness challenge processed"
           );
         }
 
@@ -258,11 +220,7 @@ export const livenessRouter = router({
           if (!passed) {
             allPassed = false;
             failureReasons.push(
-              `smile: happy ${(happy * 100).toFixed(0)}% Δ${(delta * 100).toFixed(0)}% (req ≥${Math.round(
-                SMILE_SCORE_THRESHOLD * 100
-              )}%+Δ≥${Math.round(SMILE_DELTA_THRESHOLD * 100)}% OR ≥${Math.round(
-                SMILE_HIGH_THRESHOLD * 100
-              )}%)`
+              `smile: happy ${(happy * 100).toFixed(0)}% Δ${(delta * 100).toFixed(0)}%`
             );
           }
         } else if (
@@ -272,12 +230,9 @@ export const livenessRouter = router({
           const yaw = getYawDegrees(face);
           const dir = getFacingDirection(res, face);
 
-          // Use client-provided turn start yaw if available, otherwise fall back to baseline
-          // This aligns server validation with what the client detected during the challenge
           const referenceYaw = challenge.turnStartYaw ?? baselineYaw;
           const yawDelta = Math.abs(yaw - referenceYaw);
 
-          // When using client turn start, we trust that client verified centering
           const baselineWasCentered =
             challenge.turnStartYaw !== undefined ||
             Math.abs(baselineYaw) <= BASELINE_CENTERED_THRESHOLD_DEG;
@@ -309,7 +264,7 @@ export const livenessRouter = router({
           if (!passed) {
             allPassed = false;
             failureReasons.push(
-              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° ref ${referenceYaw.toFixed(1)}° (baseCentered=${baselineWasCentered ? "yes" : "no"} abs=${yawPassesAbsolute ? "yes" : "no"} delta=${yawPassesDelta ? "yes" : "no"} dir=${turnedCorrectDirection ? "yes" : "no"})`
+              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° ref ${referenceYaw.toFixed(1)}°`
             );
           }
         }
@@ -321,7 +276,7 @@ export const livenessRouter = router({
       if (!livenessPassed) {
         allPassed = false;
         failureReasons.push(
-          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}% (req ≥${Math.round(ANTISPOOF_REAL_THRESHOLD * 100)}%/${Math.round(ANTISPOOF_LIVE_THRESHOLD * 100)}%)`
+          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}%`
         );
       }
 
@@ -355,17 +310,45 @@ export const livenessRouter = router({
     }),
 
   /**
-   * Compares face embeddings between ID document and selfie.
-   * Crops face region from ID for better accuracy.
-   * Returns match result with confidence score.
+   * Face matching for dashboard verification.
+   * When draftId is provided, results are written directly to the database.
+   * This is the secure path - server validates and writes, not client.
    */
-  faceMatch: publicProcedure
+  faceMatch: protectedProcedure
     .input(faceMatchSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
+      const userId = ctx.session.user.id;
 
       const human = await getHumanServer();
       const minConfidence = input.minConfidence ?? FACE_MATCH_MIN_CONFIDENCE;
+
+      // Validate draft ownership if draftId provided
+      if (input.draftId) {
+        const draft = await getIdentityDraftById(input.draftId);
+        if (!draft) {
+          return {
+            matched: false,
+            confidence: 0,
+            distance: 1,
+            threshold: minConfidence,
+            processingTimeMs: Date.now() - startTime,
+            idFaceExtracted: false,
+            error: "Identity draft not found",
+          };
+        }
+        if (draft.userId !== userId) {
+          return {
+            matched: false,
+            confidence: 0,
+            distance: 1,
+            threshold: minConfidence,
+            processingTimeMs: Date.now() - startTime,
+            idFaceExtracted: false,
+            error: "Draft does not belong to this user",
+          };
+        }
+      }
 
       const idResultInitial = await detectFromBase64(input.idImage);
       const idFaceInitial = getLargestFace(idResultInitial);
@@ -431,6 +414,16 @@ export const livenessRouter = router({
 
       const confidence = human.match.similarity(idEmb, selfieEmb);
       const matched = confidence >= minConfidence;
+
+      // Write face match results directly to database if draftId provided
+      // This is the secure path - server writes results, not client
+      if (input.draftId) {
+        await updateIdentityDraft(input.draftId, {
+          userId,
+          faceMatchConfidence: confidence,
+          faceMatchPassed: matched,
+        });
+      }
 
       return {
         matched,

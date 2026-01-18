@@ -210,9 +210,7 @@ export default function ExchangeSimulatorPage() {
         return;
       }
       if (!noirIsolationWarningRef.current) {
-        const isIsolated =
-          globalThis.window !== undefined &&
-          globalThis.window.crossOriginIsolated === true;
+        const isIsolated = globalThis.window?.crossOriginIsolated === true;
         if (!isIsolated) {
           noirIsolationWarningRef.current = true;
           toast.warning("ZK proofs may be slower in this session", {

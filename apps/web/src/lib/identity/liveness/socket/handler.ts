@@ -3,9 +3,18 @@
  *
  * Each connection is a liveness session. The client sends video frames,
  * and the server does all face detection and challenge evaluation.
+ *
+ * For dashboard verification flow: When draftId is provided, liveness results
+ * are written directly to the identity draft in the database. This ensures
+ * server-side trust - clients cannot forge liveness results.
  */
 
 import type { Socket } from "socket.io";
+
+import {
+  getIdentityDraftById,
+  updateIdentityDraft,
+} from "@/lib/db/queries/identity";
 
 import { LivenessErrorState } from "../errors";
 import {
@@ -75,15 +84,46 @@ export function handleLivenessConnection(socket: Socket): void {
   // Start session
   socket.on(
     "start",
-    (config?: { challenges?: number; timeouts?: Partial<SessionTimeouts> }) => {
+    async (config?: {
+      challenges?: number;
+      timeouts?: Partial<SessionTimeouts>;
+      draftId?: string;
+      userId?: string;
+    }) => {
       const numChallenges = config?.challenges ?? 2;
       const timeouts = config?.timeouts ?? {};
-      session = createSession(numChallenges, timeouts);
+
+      // Validate draftId/userId linkage for dashboard flow
+      let validatedDraftId: string | undefined;
+      let validatedUserId: string | undefined;
+
+      if (config?.draftId && config?.userId) {
+        const draft = await getIdentityDraftById(config.draftId);
+        if (draft && draft.userId === config.userId) {
+          validatedDraftId = config.draftId;
+          validatedUserId = config.userId;
+          log.info(
+            { draftId: validatedDraftId },
+            "Linked liveness session to identity draft"
+          );
+        } else {
+          log.warn(
+            { draftId: config.draftId, userId: config.userId },
+            "Draft validation failed - ignoring linkage"
+          );
+        }
+      }
+
+      session = createSession(numChallenges, timeouts, {
+        draftId: validatedDraftId,
+        userId: validatedUserId,
+      });
       log.info(
         {
           sessionId: session.id,
           challenges: session.challenges,
           timeouts: session.timeouts,
+          hasDraftLink: Boolean(validatedDraftId),
         },
         "Session started"
       );
@@ -308,14 +348,14 @@ export function handleLivenessConnection(socket: Socket): void {
 /**
  * Process frame based on current session phase.
  */
-function processPhase(
+async function processPhase(
   socket: Socket,
   session: SessionState,
   result: Awaited<ReturnType<typeof detectFromBuffer>>,
   face: ReturnType<typeof getPrimaryFace>,
   frameDataUrl: string,
   log: Logger
-): void {
+): Promise<void> {
   switch (session.phase) {
     case "detecting":
       handleDetectingPhase(socket, session, face, frameDataUrl);
@@ -334,7 +374,7 @@ function processPhase(
       break;
 
     case "verifying":
-      handleVerifyingPhase(socket, session, result, face, log);
+      await handleVerifyingPhase(socket, session, result, face, log);
       break;
 
     case "completed":
@@ -592,14 +632,15 @@ function handleChallengePhase(
 
 /**
  * Handle verifying phase - final anti-spoof checks.
+ * When draftId is linked, writes liveness results directly to the database.
  */
-function handleVerifyingPhase(
+async function handleVerifyingPhase(
   socket: Socket,
   session: SessionState,
   _result: Awaited<ReturnType<typeof detectFromBuffer>>,
   face: ReturnType<typeof getPrimaryFace>,
   log: Logger
-): void {
+): Promise<void> {
   if (!face) {
     socket.emit("state", {
       ...toClientState(session),
@@ -627,6 +668,35 @@ function handleVerifyingPhase(
     return;
   }
 
+  // Write liveness results directly to database if draft is linked
+  // This is the secure path - server writes results, not client
+  let draftUpdated = false;
+  if (session.draftId && session.userId) {
+    try {
+      await updateIdentityDraft(session.draftId, {
+        userId: session.userId,
+        antispoofScore: realScore,
+        liveScore,
+        livenessPassed: true,
+      });
+      draftUpdated = true;
+      log.info(
+        {
+          sessionId: session.id,
+          draftId: session.draftId,
+          realScore,
+          liveScore,
+        },
+        "Liveness results written to draft"
+      );
+    } catch (err) {
+      log.error(
+        { sessionId: session.id, draftId: session.draftId, err },
+        "Failed to write liveness results to draft"
+      );
+    }
+  }
+
   // Success! Send with acknowledgment to ensure client receives it.
   session.phase = "completed";
   const completionData = {
@@ -636,6 +706,7 @@ function handleVerifyingPhase(
     confidence: Math.min(realScore, liveScore),
     antispoofPassed,
     livenessPassed,
+    draftUpdated,
   };
 
   socket

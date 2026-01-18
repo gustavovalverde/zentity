@@ -1,16 +1,8 @@
 "use client";
 
 import type { EnvelopeFormat } from "./passkey-vault";
-import type {
-  EnrollmentCredential,
-  PasskeyEnrollmentContext,
-} from "./secret-vault";
 
-import {
-  loadSecret,
-  storeSecret,
-  storeSecretWithCredential,
-} from "./secret-vault";
+import { loadSecret } from "./secret-vault";
 
 export const PROFILE_SECRET_TYPE = "profile_v1";
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
@@ -81,12 +73,7 @@ export function getServerProfileSnapshot(): ProfileSecretPayload | null {
   return null;
 }
 
-const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
-
-function serializeProfile(profile: ProfileSecretPayload): Uint8Array {
-  return textEncoder.encode(JSON.stringify(profile));
-}
 
 function deserializeProfile(payload: Uint8Array): ProfileSecretPayload {
   const parsed = JSON.parse(
@@ -109,47 +96,9 @@ function getCachedProfile(): ProfileSecretPayload | null {
   return cached.profile;
 }
 
-function cacheProfile(secretId: string, profile: ProfileSecretPayload) {
-  cached = { profile, secretId, cachedAt: Date.now() };
+function cacheProfile(profile: ProfileSecretPayload) {
+  cached = { profile, secretId: "cached", cachedAt: Date.now() };
   notifyListeners();
-}
-
-export async function storeProfileSecret(params: {
-  profile: ProfileSecretPayload;
-  enrollment: PasskeyEnrollmentContext;
-}): Promise<{ secretId: string }> {
-  const secretPayload = serializeProfile(params.profile);
-  const result = await storeSecret({
-    secretType: PROFILE_SECRET_TYPE,
-    plaintext: secretPayload,
-    enrollment: params.enrollment,
-    envelopeFormat: PROFILE_ENVELOPE_FORMAT,
-  });
-
-  cacheProfile(result.secretId, params.profile);
-
-  return { secretId: result.secretId };
-}
-
-/**
- * Store profile secret with support for both passkey and OPAQUE credential types.
- * This is the recommended function for new code during onboarding.
- */
-export async function storeProfileSecretWithCredential(params: {
-  profile: ProfileSecretPayload;
-  credential: EnrollmentCredential;
-}): Promise<{ secretId: string }> {
-  const secretPayload = serializeProfile(params.profile);
-  const result = await storeSecretWithCredential({
-    secretType: PROFILE_SECRET_TYPE,
-    plaintext: secretPayload,
-    credential: params.credential,
-    envelopeFormat: PROFILE_ENVELOPE_FORMAT,
-  });
-
-  cacheProfile(result.secretId, params.profile);
-
-  return { secretId: result.secretId };
 }
 
 export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
@@ -181,7 +130,7 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
     }
 
     const profile = deserializeProfile(result.plaintext);
-    cacheProfile(result.secretId, profile);
+    cacheProfile(profile);
     return profile;
   };
 

@@ -13,96 +13,17 @@ import {
   getSignedClaims,
   storeProof,
 } from "@/lib/privacy/crypto/crypto-client";
-import { trpc } from "@/lib/trpc/client";
 
-import { dobToDaysSince1900 } from "./birth-year";
-import { countryCodeToNumeric } from "./compliance";
 import { parseDateToInt } from "./date-utils";
-
-/**
- * Status values for identity finalization and proof generation.
- */
-export type FinalizeStatus =
-  | "finalizing-identity"
-  | "generating-proofs"
-  | "storing-proofs";
-
-/**
- * Input parameters for identity finalization.
- */
-export interface FinalizeIdentityParams {
-  /** The identity draft ID from document processing */
-  draftId: string;
-  /** The FHE key ID to use for encryption */
-  fheKeyId: string;
-  /** Profile payload with extracted identity data */
-  profilePayload: ProfileSecretPayload | null;
-  /** Extracted DOB from store (fallback if not in profile) */
-  extractedDOB: string | null;
-  /** Extracted expiration date from store */
-  extractedExpirationDate: string | null;
-  /** Extracted nationality code from store */
-  extractedNationalityCode: string | null;
-  /** Callback for status updates */
-  onStatus: (status: FinalizeStatus) => void;
-  /** Callback to warn about Noir isolation */
-  onWarnIsolation?: () => void;
-  /** Callback to update document ID in store */
-  onDocumentId: (documentId: string) => void;
-}
-
-/**
- * Result from identity finalization.
- */
-export interface FinalizeIdentityResult {
-  /** The finalized document ID */
-  documentId: string;
-  /** Whether identity was verified */
-  verified: boolean;
-}
-
-/**
- * Wait for an async identity finalization job to complete.
- * Polls with exponential backoff up to 5 minutes.
- */
-async function waitForFinalization(jobId: string): Promise<{
-  verified: boolean;
-  documentId?: string | null;
-  issues?: string[];
-}> {
-  const start = Date.now();
-  let attempt = 0;
-  const maxWaitMs = 5 * 60 * 1000; // 5 minutes
-
-  while (Date.now() - start < maxWaitMs) {
-    const jobStatus = await trpc.identity.finalizeStatus.query({ jobId });
-
-    if (jobStatus.status === "complete") {
-      if (!jobStatus.result) {
-        throw new Error("Finalization completed without a result.");
-      }
-      return jobStatus.result;
-    }
-
-    if (jobStatus.status === "error") {
-      throw new Error(jobStatus.error || "Identity finalization failed.");
-    }
-
-    const delay = Math.min(1000 + attempt * 500, 4000);
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    attempt += 1;
-  }
-
-  throw new Error(
-    "Finalization is taking longer than expected. Please try again shortly."
-  );
-}
 
 /**
  * Generate all ZK proofs for identity verification.
  * Generates age, document validity, nationality, and face match proofs.
+ *
+ * Exported for use in dashboard verification flow where finalization
+ * and proof generation happen in separate steps.
  */
-async function generateAllProofs(params: {
+export async function generateAllProofs(params: {
   documentId: string;
   profilePayload: ProfileSecretPayload | null;
   extractedDOB: string | null;
@@ -283,113 +204,4 @@ async function generateAllProofs(params: {
 
   // Store all proofs
   await Promise.all(storeTasks);
-}
-
-/**
- * Convert ZK proof errors to user-friendly messages.
- */
-function formatZkError(error: unknown): string {
-  const errorMessage = error instanceof Error ? error.message : "Unknown error";
-  const isTimeout = errorMessage.includes("timed out");
-  const isWasmError =
-    errorMessage.toLowerCase().includes("wasm") ||
-    errorMessage.toLowerCase().includes("module");
-
-  if (isTimeout) {
-    return "Privacy verification is taking too long. This may be due to network issues loading cryptographic libraries. Please refresh the page and try again.";
-  }
-  if (isWasmError) {
-    return "Unable to load cryptographic libraries. Please try refreshing the page. If using a VPN or content blocker, it may be blocking required resources.";
-  }
-  return "Privacy verification services are temporarily unavailable. Please try again in a few minutes.";
-}
-
-/**
- * Finalize identity verification and generate ZK proofs.
- *
- * This is the shared logic between passkey and password signup flows.
- * It handles:
- * 1. Starting the async identity finalization job
- * 2. Polling for completion
- * 3. Generating all ZK proofs (age, doc validity, nationality, face match)
- * 4. Storing proofs
- *
- * @throws Error if finalization fails or proofs cannot be generated
- */
-export async function finalizeIdentityAndGenerateProofs(
-  params: FinalizeIdentityParams
-): Promise<FinalizeIdentityResult> {
-  const {
-    draftId,
-    fheKeyId,
-    profilePayload,
-    extractedDOB,
-    extractedExpirationDate,
-    extractedNationalityCode,
-    onStatus,
-    onWarnIsolation,
-    onDocumentId,
-  } = params;
-
-  // Start identity finalization
-  onStatus("finalizing-identity");
-
-  const profileDob = profilePayload?.dateOfBirth ?? extractedDOB ?? null;
-  const dobDays =
-    profileDob !== null ? dobToDaysSince1900(profileDob) : undefined;
-  const profileNationalityCode =
-    profilePayload?.nationalityCode ?? extractedNationalityCode ?? null;
-  const countryCodeNumeric = profileNationalityCode
-    ? countryCodeToNumeric(profileNationalityCode)
-    : 0;
-
-  const job = await trpc.identity.finalizeAsync.mutate({
-    draftId,
-    fheKeyId,
-    dobDays: dobDays ?? undefined,
-    countryCodeNumeric: countryCodeNumeric > 0 ? countryCodeNumeric : undefined,
-  });
-
-  // Wait for finalization to complete
-  const identityResult = await waitForFinalization(job.jobId);
-
-  if (!identityResult.verified) {
-    const issue =
-      identityResult.issues?.length && identityResult.issues[0]
-        ? identityResult.issues[0]
-        : null;
-    throw new Error(
-      issue ||
-        "Identity verification did not pass. Please retake your ID photo and selfie and try again."
-    );
-  }
-
-  const documentId = identityResult.documentId;
-  if (!documentId) {
-    throw new Error(
-      "Missing document context for proof generation. Please retry verification."
-    );
-  }
-
-  // Update store with document ID
-  onDocumentId(documentId);
-
-  // Generate ZK proofs
-  onStatus("generating-proofs");
-  onWarnIsolation?.();
-
-  try {
-    await generateAllProofs({
-      documentId,
-      profilePayload,
-      extractedDOB,
-      extractedExpirationDate,
-      extractedNationalityCode,
-      onBeforeStore: () => onStatus("storing-proofs"),
-    });
-  } catch (zkError) {
-    throw new Error(formatZkError(zkError));
-  }
-
-  return { documentId, verified: true };
 }

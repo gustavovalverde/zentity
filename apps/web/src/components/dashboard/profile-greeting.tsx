@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { authClient } from "@/lib/auth/auth-client";
 import {
   getProfileSnapshot,
   getServerProfileSnapshot,
@@ -24,7 +23,6 @@ export function ProfileGreetingName({
   fallback?: string;
 }>) {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [lastLoginMethod, setLastLoginMethod] = useState<string | null>(null);
   const attemptedUnlockRef = useRef(false);
 
   // Subscribe to profile cache changes - all instances share the same cache
@@ -34,24 +32,16 @@ export function ProfileGreetingName({
     getServerProfileSnapshot
   );
 
-  // Track when profile loads to transition from skeleton to content
-  useEffect(() => {
-    if (profile) {
-      setIsInitialLoad(false);
-    }
-  }, [profile]);
+  // Note: No effect needed to sync isInitialLoad with profile.
+  // When profile loads, the condition `isInitialLoad && !profile` already evaluates to false.
+  // Adding a sync effect would cause an unnecessary extra render.
 
   // Trigger a fetch on mount if no profile is cached
   useEffect(() => {
-    if (!lastLoginMethod) {
-      const lastUsed = authClient.getLastUsedLoginMethod?.() ?? "unknown";
-      setLastLoginMethod(lastUsed);
-      return;
-    }
     if (!profile) {
-      const shouldAutoUnlock =
-        hasCachedPasskeyUnlock() || lastLoginMethod === "passkey";
-      if (!shouldAutoUnlock) {
+      // Only auto-unlock when it can succeed without prompting the user.
+      // (Prevents unexpected WebAuthn prompts when entering the dashboard.)
+      if (!hasCachedPasskeyUnlock()) {
         setIsInitialLoad(false);
         return;
       }
@@ -63,7 +53,7 @@ export function ProfileGreetingName({
       // Fire and forget - the subscription will pick up the result
       getStoredProfile()
         .catch(() => {
-          // Errors are expected if user hasn't completed onboarding
+          // Errors are expected if the user hasn't completed account setup yet
         })
         .finally(() => {
           // After fetch attempt completes (success or fail), stop showing skeleton
@@ -76,7 +66,7 @@ export function ProfileGreetingName({
         isCancelled = true;
       };
     }
-  }, [profile, lastLoginMethod]);
+  }, [profile]);
 
   // Show skeleton during initial load to avoid "User" flash
   if (isInitialLoad && !profile) {

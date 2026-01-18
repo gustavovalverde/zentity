@@ -44,14 +44,14 @@ async function unwrapIfNeeded(request: Request, response: Response) {
 }
 
 export async function GET(request: Request) {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const response = await authGET(request);
   return unwrapIfNeeded(request, response);
 }
 
 export async function POST(request: Request) {
-  const requestContext = await resolveRequestContext(request.headers);
+  const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const response = await authPOST(request);
   return unwrapIfNeeded(request, response);
