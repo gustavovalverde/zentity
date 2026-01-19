@@ -140,15 +140,26 @@ export function WalletSignUpForm({
 
       {isReady ? (
         <div className="space-y-4">
-          <div className="rounded-lg bg-muted/50 p-3">
-            <p className="text-muted-foreground text-xs">Connected wallet</p>
-            <p className="font-mono text-sm">
-              {address.slice(0, 6)}...{address.slice(-4)}
-            </p>
+          <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+            <div>
+              <p className="text-muted-foreground text-xs">Connected wallet</p>
+              <p className="font-mono text-sm">
+                {address.slice(0, 6)}...{address.slice(-4)}
+              </p>
+            </div>
+            <Button
+              disabled={disabled || isSigning}
+              onClick={handleConnect}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Change
+            </Button>
           </div>
 
           <p className="text-center text-muted-foreground text-sm">
-            Step 2: Sign to create your encryption keys
+            Sign to create your encryption keys
           </p>
 
           <Button
