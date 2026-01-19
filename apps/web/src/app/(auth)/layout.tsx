@@ -7,6 +7,7 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
 import { PasskeyAuthProvider } from "@/components/providers/passkey-auth-provider";
 import { TrpcProvider } from "@/components/providers/trpc-provider";
+import { Web3Provider } from "@/components/providers/web3-provider";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { hasCompletedSignUp } from "@/lib/db/queries/identity";
 
@@ -17,6 +18,8 @@ export default async function AuthLayout({
 }>) {
   const headersObj = await headers();
   const session = await getCachedSession(headersObj);
+  const cookies = headersObj.get("cookie");
+  const walletScopeId = session?.user?.id ?? null;
 
   // Redirect users who completed sign-up to dashboard
   if (session?.user?.id) {
@@ -38,9 +41,11 @@ export default async function AuthLayout({
       </header>
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <TrpcProvider>
-          <PasskeyAuthProvider>
-            <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
-          </PasskeyAuthProvider>
+          <Web3Provider cookies={cookies} walletScopeId={walletScopeId}>
+            <PasskeyAuthProvider>
+              <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
+            </PasskeyAuthProvider>
+          </Web3Provider>
         </TrpcProvider>
       </main>
     </div>

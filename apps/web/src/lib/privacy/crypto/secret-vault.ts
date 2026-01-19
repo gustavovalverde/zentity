@@ -21,6 +21,18 @@ import {
   wrapDekWithPrf,
 } from "./passkey-vault";
 import { downloadSecretBlob, uploadSecretBlob } from "./secret-blob-client";
+import {
+  cacheWalletSignature as cacheWalletSig,
+  createWalletWrapper,
+  decryptSecretWithWalletSignature,
+  getCachedWalletSignature,
+  getWalletCredentialId,
+  parseWalletCredentialId,
+  resetWalletSignatureCache,
+  unwrapDekWithWalletSignature,
+  WALLET_CREDENTIAL_PREFIX,
+  wrapDekWithWalletSignature,
+} from "./wallet-vault";
 import { evaluatePrf } from "./webauthn-prf";
 
 export interface PasskeyEnrollmentContext {
@@ -34,9 +46,19 @@ export interface OpaqueEnrollmentContext {
   exportKey: Uint8Array;
 }
 
+export interface WalletEnrollmentContext {
+  userId: string;
+  address: string;
+  chainId: number;
+  signatureBytes: Uint8Array;
+  signedAt: number;
+  expiresAt: number;
+}
+
 export type EnrollmentCredential =
   | { type: "passkey"; context: PasskeyEnrollmentContext }
-  | { type: "opaque"; context: OpaqueEnrollmentContext };
+  | { type: "opaque"; context: OpaqueEnrollmentContext }
+  | { type: "wallet"; context: WalletEnrollmentContext };
 
 const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
 const PASSKEY_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -146,6 +168,7 @@ function clearCachedRecoveryKey(): void {
 export function clearAllCaches(): void {
   resetPasskeyUnlockCache();
   resetOpaqueExportCache();
+  resetWalletSignatureCache();
   clearCachedRecoveryKey();
 }
 
@@ -368,7 +391,7 @@ export async function storeSecretWithCredential(params: {
   let wrappedDek: string;
   let credentialId: string;
   let prfSalt: string;
-  let kekSource: "prf" | "opaque" | "recovery";
+  let kekSource: "prf" | "opaque" | "wallet" | "recovery";
 
   if (params.credential.type === "passkey") {
     const ctx = params.credential.context;
@@ -381,7 +404,7 @@ export async function storeSecretWithCredential(params: {
     credentialId = ctx.credentialId;
     prfSalt = bytesToBase64(ctx.prfSalt);
     kekSource = "prf";
-  } else {
+  } else if (params.credential.type === "opaque") {
     const ctx = params.credential.context;
     const { wrapDekWithOpaqueExport } = await import("./opaque-vault");
     wrappedDek = await wrapDekWithOpaqueExport({
@@ -393,6 +416,33 @@ export async function storeSecretWithCredential(params: {
     credentialId = OPAQUE_CREDENTIAL_ID;
     prfSalt = ""; // OPAQUE doesn't use PRF salt
     kekSource = "opaque";
+  } else {
+    // Wallet credential
+    const ctx = params.credential.context;
+    wrappedDek = await wrapDekWithWalletSignature({
+      secretId,
+      userId: ctx.userId,
+      address: ctx.address,
+      chainId: ctx.chainId,
+      dek,
+      signatureBytes: ctx.signatureBytes,
+    });
+    credentialId = getWalletCredentialId({
+      address: ctx.address,
+      chainId: ctx.chainId,
+    });
+    prfSalt = ""; // Wallet doesn't use PRF salt
+    kekSource = "wallet";
+
+    // Also cache the signature for later retrieval
+    cacheWalletSig({
+      userId: ctx.userId,
+      address: ctx.address,
+      chainId: ctx.chainId,
+      signatureBytes: ctx.signatureBytes,
+      signedAt: ctx.signedAt,
+      expiresAt: ctx.expiresAt,
+    });
   }
 
   const blobMetadata = await uploadSecretBlob({
@@ -580,7 +630,62 @@ export async function loadSecret(params: {
     );
   }
 
-  // No PRF wrappers and no OPAQUE wrappers
+  // No PRF or OPAQUE wrappers - check for wallet wrapper
+  const walletWrapper = bundle.wrappers.find((w) =>
+    w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
+  );
+
+  if (walletWrapper) {
+    // Parse the wallet credential ID to extract address and chainId
+    const parsed = parseWalletCredentialId(walletWrapper.credentialId);
+    if (!parsed) {
+      throw new Error(
+        `Invalid wallet credential format. Please re-secure your ${label}.`
+      );
+    }
+
+    // Get the current user ID
+    const sessionUserId =
+      params.userId ?? (await authClient.getSession()).data?.user?.id;
+    if (!sessionUserId) {
+      throw new Error(`Please sign in to access your ${label}.`);
+    }
+
+    // Try to get cached wallet signature
+    const signatureBytes = getCachedWalletSignature(
+      sessionUserId,
+      parsed.address,
+      parsed.chainId
+    );
+
+    if (signatureBytes) {
+      const plaintext = await decryptSecretWithWalletSignature({
+        secretId: bundle.secret.id,
+        secretType: params.secretType,
+        userId: sessionUserId,
+        address: parsed.address,
+        chainId: parsed.chainId,
+        encryptedBlob,
+        wrappedDek: walletWrapper.wrappedDek,
+        signatureBytes,
+        envelopeFormat,
+      });
+
+      return {
+        secretId: bundle.secret.id,
+        plaintext,
+        metadata: bundle.secret.metadata,
+        envelopeFormat,
+      };
+    }
+
+    // Wallet wrapper exists but no cached signature
+    throw new Error(
+      `Please sign the key access request with your wallet to access your ${label}.`
+    );
+  }
+
+  // No PRF, OPAQUE, or wallet wrappers
   throw new Error(`No credentials are registered for this ${label}.`);
 }
 
@@ -988,6 +1093,162 @@ export async function updateOpaqueWrapperForSecretType(params: {
     wrappedDek: newWrapper.wrappedDek,
     kekVersion: newWrapper.kekVersion,
     kekSource: newWrapper.kekSource,
+  });
+
+  return true;
+}
+
+/**
+ * Add a wallet-based wrapper for a secret type.
+ * Used when a user adds wallet auth to an existing passkey/OPAQUE account.
+ * The wallet signature is used to derive the KEK that wraps the DEK.
+ */
+async function _addWalletWrapperForSecretType(params: {
+  secretType: string;
+  userId: string;
+  address: string;
+  chainId: number;
+  signatureBytes: Uint8Array;
+  signedAt: number;
+  expiresAt: number;
+}): Promise<boolean> {
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: params.secretType,
+  });
+
+  if (!(bundle.secret && bundle.wrappers?.length)) {
+    return false;
+  }
+
+  // Check if wallet wrapper already exists for this address/chain
+  const walletCredentialId = getWalletCredentialId({
+    address: params.address,
+    chainId: params.chainId,
+  });
+  const existingWalletWrapper = bundle.wrappers.find(
+    (w) => w.credentialId === walletCredentialId
+  );
+  if (existingWalletWrapper) {
+    // Already has this wallet wrapper, skip
+    return true;
+  }
+
+  // Try to get DEK from an existing wrapper (prefer PRF > OPAQUE > other wallet)
+  let dek: Uint8Array | null = null;
+
+  // Try PRF wrappers first
+  const prfWrappers = bundle.wrappers.filter(
+    (w) => w.prfSalt && !w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
+  );
+  if (prfWrappers.length > 0) {
+    const saltByCredential: Record<string, Uint8Array> = {};
+    for (const wrapper of prfWrappers) {
+      if (wrapper.prfSalt) {
+        saltByCredential[wrapper.credentialId] = base64ToBytes(wrapper.prfSalt);
+      }
+    }
+
+    const { credentialId: unlockedCredentialId, prfOutput } =
+      await resolvePasskeyUnlock({
+        credentialIdToSalt: saltByCredential,
+      });
+
+    const selectedWrapper = prfWrappers.find(
+      (wrapper) => wrapper.credentialId === unlockedCredentialId
+    );
+    if (selectedWrapper) {
+      dek = await unwrapDekWithPrf({
+        secretId: bundle.secret.id,
+        credentialId: selectedWrapper.credentialId,
+        wrappedDek: selectedWrapper.wrappedDek,
+        prfOutput,
+      });
+    }
+  }
+
+  // If no PRF, try OPAQUE
+  if (!dek) {
+    const opaqueWrapper = bundle.wrappers.find(
+      (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
+    );
+    if (opaqueWrapper) {
+      const exportKey = getCachedOpaqueExportKey(params.userId);
+      if (exportKey) {
+        dek = await unwrapDekWithOpaqueExport({
+          secretId: bundle.secret.id,
+          userId: params.userId,
+          wrappedDek: opaqueWrapper.wrappedDek,
+          exportKey,
+        });
+      }
+    }
+  }
+
+  // If no OPAQUE, try other wallet wrappers
+  if (!dek) {
+    const otherWalletWrapper = bundle.wrappers.find(
+      (w) =>
+        w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX) &&
+        w.credentialId !== walletCredentialId
+    );
+    if (otherWalletWrapper) {
+      const parsed = parseWalletCredentialId(otherWalletWrapper.credentialId);
+      if (parsed) {
+        const cachedSig = getCachedWalletSignature(
+          params.userId,
+          parsed.address,
+          parsed.chainId
+        );
+        if (cachedSig) {
+          dek = await unwrapDekWithWalletSignature({
+            secretId: bundle.secret.id,
+            userId: params.userId,
+            address: parsed.address,
+            chainId: parsed.chainId,
+            wrappedDek: otherWalletWrapper.wrappedDek,
+            signatureBytes: cachedSig,
+          });
+        }
+      }
+    }
+  }
+
+  if (!dek) {
+    throw new Error(
+      "Unable to add wallet wrapper. Please unlock with an existing credential first."
+    );
+  }
+
+  // Create wallet wrapper
+  const walletWrapper = await createWalletWrapper({
+    secretId: bundle.secret.id,
+    userId: params.userId,
+    address: params.address,
+    chainId: params.chainId,
+    dek,
+    signatureBytes: params.signatureBytes,
+    signedAt: params.signedAt,
+    expiresAt: params.expiresAt,
+  });
+
+  // Store the wrapper
+  await trpc.secrets.addWrapper.mutate({
+    secretId: bundle.secret.id,
+    secretType: params.secretType,
+    credentialId: walletWrapper.credentialId,
+    wrappedDek: walletWrapper.wrappedDek,
+    kekVersion: walletWrapper.kekVersion,
+    kekSource: walletWrapper.kekSource,
+  });
+
+  // Cache the signature for later use
+  cacheWalletSig({
+    userId: params.userId,
+    address: params.address,
+    chainId: params.chainId,
+    signatureBytes: params.signatureBytes,
+    signedAt: params.signedAt,
+    expiresAt: params.expiresAt,
   });
 
   return true;

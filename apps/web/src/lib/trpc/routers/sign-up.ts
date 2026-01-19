@@ -399,4 +399,32 @@ export const signUpRouter = router({
       });
       return { success: true };
     }),
+
+  /**
+   * Completes enrollment for wallet (web3) users.
+   * Creates the identity bundle to establish Tier 1 status.
+   *
+   * Wallet users store FHE keys via storeFheKeysWithCredential with wallet
+   * signature-derived KEK. This procedure records wallet metadata and creates
+   * the identity bundle for tier progression.
+   */
+  completeWalletEnrollment: protectedProcedure
+    .input(
+      z.object({
+        fheKeyId: z.string().min(1),
+        address: z.string().min(1),
+        chainId: z.number().int().positive(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await upsertIdentityBundle({
+        userId: ctx.userId,
+        status: "pending",
+        fheKeyId: input.fheKeyId,
+        fheStatus: "pending",
+        issuerId: ISSUER_ID,
+        policyVersion: POLICY_VERSION,
+      });
+      return { success: true };
+    }),
 });

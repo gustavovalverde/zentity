@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zentity is a privacy-preserving compliance/KYC platform using passkeys for authentication and key custody, zero-knowledge proofs (ZKPs), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
+Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE passwords, or wallet signatures (EIP-712) for authentication and key custody, zero-knowledge proofs (ZKPs), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
 
 ## Key Documentation
 
@@ -26,13 +26,19 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys for authe
 
 ## Architecture
 
-Monorepo with 3 active services communicating via REST APIs:
+Monorepo with services communicating via REST APIs:
 
 | Service | Location | Stack | Port |
 |---------|----------|-------|------|
 | Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
+| FROST Signer | `apps/signer` | Rust, Actix, FROST (coordinator + signers) | 5002, 5101+ |
+
+Additional apps (not core services):
+
+- `apps/landing` — Marketing landing page (deploys to Vercel)
+- `apps/demo-hub` / `apps/demo-wallet` — Demo applications for integration testing
 
 The frontend handles:
 
@@ -49,14 +55,20 @@ The frontend handles:
 ```bash
 pnpm dev             # Start dev server
 pnpm build           # Production build
-pnpm lint            # Biome linting
-pnpm lint:fix        # Fix lint issues
-pnpm test            # Run unit tests (Vitest)
-pnpm test path/to/file.test.ts              # Run single test file
-pnpm test -t "test name pattern"            # Run tests matching pattern
-pnpm test:e2e        # Run Playwright tests
+pnpm lint            # Biome linting (with write)
+pnpm lint:check      # Check lint issues (no write)
+pnpm lint:fix        # Fix lint issues (with unsafe fixes)
 pnpm typecheck       # TypeScript type checking
-pnpm check-all       # Run typecheck + lint + build + circuit version check
+pnpm check-all       # Run typecheck + lint + markdown + build + circuit version check
+
+# Testing
+pnpm test            # Run unit + integration tests
+pnpm test:unit       # Run unit tests only (vitest.unit.config.mts)
+pnpm test:integration # Run integration tests only (vitest.config.mts)
+pnpm test:unit path/to/file.test.ts         # Run single test file
+pnpm test:unit -t "test name pattern"       # Run tests matching pattern
+pnpm test:e2e        # Run Playwright E2E tests
+pnpm test:e2e:ui     # Run E2E with Playwright UI
 ```
 
 ### E2E Notes (Hardhat vs Sepolia)
@@ -87,8 +99,10 @@ pnpm check-all       # Run typecheck + lint + build + circuit version check
 
 ```bash
 # From apps/web directory:
-pnpm circuits:compile  # Compile all circuits
-pnpm circuits:test     # Run circuit tests
+pnpm circuits:compile        # Compile all circuits
+pnpm circuits:test           # Run circuit tests
+pnpm circuits:check-versions # Verify Noir/BB versions match artifacts
+pnpm circuits:profile        # Profile circuit gate counts
 ```
 
 ### FHE Service (apps/fhe)
@@ -112,6 +126,19 @@ pytest tests/test_x.py    # Run single test file
 ruff check src            # Lint (if dev deps installed)
 ruff format src           # Format
 ```
+
+### FROST Signer Service (apps/signer)
+
+FROST threshold signature service for guardian-based key recovery. Consists of a coordinator and multiple signer instances.
+
+```bash
+cargo build --release              # Build
+cargo run --bin coordinator        # Run coordinator (port 5002)
+cargo run --bin signer             # Run signer instance (port 5101+)
+cargo test                         # Run tests
+```
+
+See [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) and [Railway Signer Deployment](docs/railway-signer-deployment.md).
 
 ### Docker (all services)
 
@@ -208,8 +235,8 @@ The system has two distinct flows: **sign-up** (account creation) and **verifica
 **Sign-Up Flow** (`/sign-up` → `/dashboard`):
 
 1. **Email step** (optional) → User provides email or continues without
-2. **Account step** → Create passkey/OPAQUE credentials, generate FHE keys
-3. **FHE enrollment** → Encrypt and store passkey-wrapped FHE key bundle
+2. **Account step** → Create passkey/OPAQUE/wallet credentials, generate FHE keys
+3. **FHE enrollment** → Encrypt and store credential-wrapped FHE key bundle
 4. User reaches **Tier 1** (account + keys secured) and lands on dashboard
 
 **Verification Flow** (from `/dashboard/verify/*`):
@@ -226,7 +253,7 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 
 **Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
 
-**User-controlled encryption**: FHE keys are generated client-side and stored server-side as passkey-wrapped encrypted secrets. The server cannot decrypt these keys—only the user with their passkey can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
+**User-controlled encryption**: FHE keys are generated client-side and stored server-side as credential-wrapped encrypted secrets (passkey PRF, OPAQUE export key, or wallet signature via HKDF). The server cannot decrypt these keys—only the user with their passkey, password, or wallet can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
 
 ## Code Conventions
 
@@ -235,11 +262,10 @@ All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trp
 - **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
-- **Database**: Drizzle ORM with SQLite local files or Turso in production; schema is applied with `pnpm db:push` (no runtime migrations; containers do not run drizzle-kit)
-- **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db` (no `DATABASE_PATH` fallback)
-- **Railway**: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service, then run `pnpm db:push` from CI or local (no volume mounts or db-init container required)
-- **SQLite driver**: `drizzle-kit push` needs a driver; this repo uses `@libsql/client`
-- **Auth**: better-auth with passkey support
+- **Database**: Drizzle ORM with SQLite local files or Turso in production. Schema source of truth: `apps/web/src/lib/db/schema/`. Apply schema with `pnpm db:push` (no runtime migrations)
+- **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db`
+- **SQLite driver**: uses `@libsql/client`
+- **Auth**: better-auth with passkey, OPAQUE, and wallet support
 
 ## tRPC API Structure
 
@@ -255,6 +281,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `attestation` | On-chain identity attestation (submit, refresh, networks) |
 | `account` | User account management |
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
+| `credentials` | WebAuthn credential management |
 | `token` | Session/token operations |
 | `recovery` | FROST guardian-based key recovery flow |
 | `app` | Application-level operations |

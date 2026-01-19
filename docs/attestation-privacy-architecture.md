@@ -4,15 +4,15 @@
 
 ## Executive Summary
 
-Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These four cryptographic pillars are used together throughout the system.
+Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE + Wallet)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These cryptographic pillars are used together throughout the system.
 
 - **ZK proofs**: age (day-precise), document validity, nationality membership, address jurisdiction, face match threshold.
 - **FHE encryption**: full DOB (days since 1900-01-01), country code, address country, compliance level, liveness score, risk score.
 - **Commitments + hashes**: document hash, name commitment, DOB commitment, address commitment, proof hashes.
 - **Screening attestations**: PEP/sanctions screening results stored as signed claims (boolean + provider + timestamp).
-- **Passkeys + OPAQUE (auth + key custody)**: passkeys for passwordless auth and PRF‑derived KEKs; OPAQUE for password auth with client‑derived export keys that wrap secrets.
+- **Passkeys + OPAQUE + Wallet (auth + key custody)**: passkeys for passwordless auth and PRF‑derived KEKs; OPAQUE for password auth with client‑derived export keys; wallet signatures (EIP-712) for Web3‑native auth with HKDF‑derived KEKs. All three methods wrap secrets client‑side.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
-- **User-only decryption**: client keys are stored server-side as passkey‑ or OPAQUE‑wrapped encrypted secrets—only the user can unwrap them in the browser.
+- **User-only decryption**: client keys are stored server-side as passkey‑, OPAQUE‑, or wallet‑wrapped encrypted secrets—only the user can unwrap them in the browser.
 
 This model supports **multi-document identities**, **revocable attestations**, **periodic re-verification**, and **auditable disclosures** across Web2 and Web3.
 
@@ -31,8 +31,8 @@ This architecture supports:
 ### Core trust model
 
 - **Browser is untrusted for integrity** (users can tamper with client code).
-- **Browser is best for privacy** (ZK proofs + passkey/OPAQUE-based key custody).
-- **Passkeys + OPAQUE are the auth + key custody anchors** (WebAuthn signatures prove user presence; PRF outputs and OPAQUE export keys derive KEKs locally and never leave the client).
+- **Browser is best for privacy** (ZK proofs + passkey/OPAQUE/wallet-based key custody).
+- **Passkeys + OPAQUE + Wallet are the auth + key custody anchors** (WebAuthn signatures prove user presence; PRF outputs, OPAQUE export keys, and wallet signatures derive KEKs locally and never leave the client).
 - **Server is trusted for integrity** (verification, signing, policy enforcement).
 - **Server is not trusted for plaintext access** (only commitments + ciphertext).
 
@@ -43,13 +43,13 @@ This architecture supports:
 | **Web2 (off-chain)** | TFHE encryption via FHE service using client public key | **User only** (client key in browser) | Server can compute on ciphertext without decryption. |
 | **Web3 (on-chain)** | Attestation encryption via registrar (server relayer SDK); client SDK used for wallet-initiated ops (transfers, decrypt) | **User only** (wallet signature auth) | On-chain compliance checks operate on ciphertext; decryption is user-authorized. |
 
-**Important**: The server persists **encrypted key bundles** (passkey‑ or OPAQUE‑wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
+**Important**: The server persists **encrypted key bundles** (passkey‑, OPAQUE‑, or wallet‑wrapped) and registers **public + server keys** with the FHE service under a `key_id`. Client keys are only decryptable in the browser.
 
-### Why the server can’t decrypt
+### Why the server can't decrypt
 
 - The browser encrypts data with a random **data key (DEK)**.
-- That DEK is wrapped by a **key‑encryption key (KEK)** derived from either a passkey PRF output or an OPAQUE export key.
-- The server stores only the encrypted blob + wrapped DEK, but **never sees the PRF output or export key**.
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived client‑side.
+- The server stores only the encrypted blob + wrapped DEK, but **never sees the KEK source material**.
 - Result: the server can store and verify, but cannot decrypt user data.
 
 ### Integrity controls
@@ -121,6 +121,7 @@ This architecture supports:
 |---|---|---|---|---|---|
 | Passkey credential metadata | — | — | — | — | Stored in the `passkey` table for WebAuthn verification. |
 | OPAQUE registration record | — | — | — | — | Stored in the `account` table; not a password hash and not plaintext. |
+| Wallet address | — | — | — | — | Stored in the `wallet_address` table for wallet-based auth. |
 | Raw images / biometrics | — | — | — | — | Never stored; transient only. |
 
 ### Re-verification Tracking
@@ -131,20 +132,20 @@ This architecture supports:
 | Next verification due | — | — | — | — | **NEW**: Scheduled re-verification date. |
 | Verification count | — | — | — | — | **NEW**: Number of verifications performed. |
 
-**Note:** Passkey credential metadata (public keys, counters, transports) is stored in the `passkey` table for authentication and key custody.
+**Note:** Passkey credential metadata (public keys, counters, transports) is stored in the `passkey` table for authentication and key custody. Wallet addresses are stored in the `wallet_address` table for wallet-based authentication.
 
 ---
 
 ## Storage Boundaries
 
-This system intentionally splits data across **server storage** and **client‑only access** suggesting “vault” does **not** mean “local‑only.” The vault is **stored server‑side in encrypted form**, but only the user can decrypt it using their passkey or OPAQUE export key.
+This system intentionally splits data across **server storage** and **client‑only access** suggesting "vault" does **not** mean "local‑only." The vault is **stored server‑side in encrypted form**, but only the user can decrypt it using their passkey, OPAQUE export key, or wallet signature.
 
 ### Summary view
 
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
 | **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), document metadata (type, issuer), status fields | Server readable | Required for basic UX, auth, and workflow state |
-| **Server DB (encrypted)** | Passkey‑sealed profile, passkey‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑derived keys) | User‑controlled privacy + encrypted computation |
+| **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑, OPAQUE‑, or wallet‑derived keys) | User‑controlled privacy + encrypted computation |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
 | **On‑chain (optional)** | Encrypted attestations + public metadata | User‑decrypt only | Auditable compliance checks without PII |
@@ -154,9 +155,9 @@ This system intentionally splits data across **server storage** and **client‑o
 - **Commitment + vault plaintext** is intentional: the server can **verify/dedup** using commitments, while the user retains **full control** of disclosure via the passkey vault.
 - **Encrypted secrets + wrappers** live in the DB for **multi‑device access**, but the **decrypting key never leaves the user’s authenticator**.
 
-### What “vault” means here
+### What "vault" means here
 
-The vault is **not** a separate storage system. It is a **server‑stored encrypted blob** (`encrypted_secrets` + `secret_wrappers`) that can **only be decrypted client‑side** after WebAuthn + PRF or OPAQUE export‑key derivation.
+The vault is **not** a separate storage system. It is a **server‑stored encrypted blob** (`encrypted_secrets` + `secret_wrappers`) that can **only be decrypted client‑side** after WebAuthn + PRF, OPAQUE export‑key derivation, or wallet signature + HKDF derivation.
 
 ---
 
@@ -412,5 +413,5 @@ See [SSI Architecture](ssi-architecture.md) for the full credential model.
 
 ## Implementation Notes
 
-- **FHE keys** are generated in the browser and stored server‑side as passkey‑wrapped encrypted secrets (no plaintext at rest).
-- **Passkey‑wrapped key storage** uses `encrypted_secrets` + `secret_wrappers` for multi‑passkey access. See [RFC: passkey‑wrapped FHE keys](rfcs/0001-passkey-wrapped-fhe-keys.md).
+- **FHE keys** are generated in the browser and stored server‑side as credential‑wrapped encrypted secrets (no plaintext at rest).
+- **Key‑wrapped storage** uses `encrypted_secrets` + `secret_wrappers` for multi‑credential access. The `kek_source` field indicates the wrapping method (`prf`, `opaque`, or `wallet`).

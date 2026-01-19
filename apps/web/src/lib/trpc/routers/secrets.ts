@@ -60,7 +60,7 @@ export const secretsRouter = router({
         metadata: metadataSchema,
         version: z.string().min(1),
         kekVersion: z.string().min(1),
-        kekSource: z.enum(["prf", "opaque", "recovery"]).optional(),
+        kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -108,7 +108,7 @@ export const secretsRouter = router({
         wrappedDek: z.string().min(1),
         prfSalt: z.string().min(1).optional(),
         kekVersion: z.string().min(1),
-        kekSource: z.enum(["prf", "opaque", "recovery"]).optional(),
+        kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

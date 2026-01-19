@@ -46,10 +46,17 @@ SSI operates through three roles forming a "trust triangle":
 
 ### Holder (User)
 
-- Controls cryptographic keys via passkey
+- Controls cryptographic keys via passkey, OPAQUE password, or Web3 wallet
 - Stores credentials in wallet (internal or external)
 - Chooses which claims to reveal during presentation
 - Authorizes all disclosures explicitly
+
+**Note on wallets**: The term "wallet" can refer to two distinct concepts:
+
+1. **Credential wallet** — stores and presents verifiable credentials (SSI context)
+2. **Web3 wallet** — signs transactions and can be used for authentication (EIP-712 signatures)
+
+These are not mutually exclusive—a Web3 wallet user can also hold credentials in a credential wallet.
 
 ### Verifier (Relying Party)
 

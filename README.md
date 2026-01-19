@@ -22,7 +22,7 @@ Every database is a breach waiting to happen. The model itself is broken.
 ---
 
 **Zentity** proves you can verify identity claims without storing plaintext
-underlying data. Built with passkeys **and OPAQUE** for authentication and key custody,
+underlying data. Built with passkeys, **OPAQUE**, and **wallet signatures (EIP-712)** for authentication and key custody,
 zero-knowledge proofs, fully homomorphic encryption, and cryptographic
 commitments.
 
@@ -79,8 +79,9 @@ PII**.
 
 ### What this project demonstrates
 
-- Four cryptographic pillars—passkeys + OPAQUE (auth + key custody), ZK proofs, FHE,
+- Four cryptographic pillars—passkeys + OPAQUE + wallet (auth + key custody), ZK proofs, FHE,
   and commitments—work together in a real flow.
+- Three authentication methods (passkeys, passwords, wallets) all derive client-held keys for sealing secrets.
 - Merkle trees extend those pillars for private group membership proofs.
 - Privacy-preserving compliance can be practical without sacrificing usability.
 
@@ -91,10 +92,12 @@ PII**.
    - OCR and liveness checks produce verified attributes and scores.
    - Passkey registration creates the account and enables passwordless sign-in.
    - OPAQUE password sign-up is available for users without passkeys.
+   - Wallet sign-up (EIP-712) is available for Web3-native users.
 2. **Encryption and storage**:
    - Sensitive attributes are encrypted before storage.
    - Passkey vaults use PRF-derived keys to seal profiles and wrap FHE keys.
    - OPAQUE export keys provide the same wrapping flow for password users.
+   - Wallet signatures (processed through HKDF-SHA256) provide the same wrapping flow for wallet users.
 3. **Proof layer**:
    - ZK proofs are generated client-side.
    - Proofs are verified server-side.
@@ -105,11 +108,12 @@ PII**.
 ### Key custody in plain English
 
 - The browser encrypts sensitive data with a random **data key (DEK)**.
-- That DEK is wrapped by a **key‑encryption key (KEK)** derived from either:
-  - a **passkey PRF output**, or
-  - an **OPAQUE export key** (password fallback).
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived from one of three sources:
+  - a **passkey PRF output** (hardware-backed, phishing-resistant),
+  - an **OPAQUE export key** (password-derived, zero-knowledge), or
+  - a **wallet signature** (EIP-712 signed message processed through HKDF-SHA256, supports hardware wallets).
 - The server stores only encrypted blobs + wrapped DEKs, so it **cannot decrypt** user data.
-- When a user unlocks with a passkey or password, the browser unwraps the DEK and decrypts locally.
+- When a user unlocks with a passkey, password, or wallet, the browser unwraps the DEK and decrypts locally.
 
 ### Tech choices and rationale
 
@@ -117,7 +121,7 @@ PII**.
 | --- | --- | --- | --- |
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
-| Auth + key custody (passkeys + OPAQUE) | Passkey vaults + PRF-derived keys + OPAQUE export keys | Passwordless or password-based auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
+| Auth + key custody (passkeys + OPAQUE + wallet) | Passkey vaults + PRF-derived keys + OPAQUE export keys + EIP-712 wallet signatures | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
 | Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT | Standards-based interoperability with external wallets; selective disclosure preserves privacy | [SSI Architecture](docs/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
 | Data integrity and dedup | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
 | KYC extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
@@ -248,8 +252,8 @@ This is a proof of concept and will change quickly.
   number, nationality)
 - FHE key registration + encryption for birth_year_offset, country_code,
   compliance_level, liveness score
-- Passkey-first auth + passkey-sealed profile secret for user-controlled PII
-  (client decrypt only)
+- Passkey-first auth with OPAQUE password and wallet (EIP-712) alternatives
+- Credential-sealed profile secret for user-controlled PII (client decrypt only)
 - Passkey-wrapped FHE key storage (multi-device support; explicit user unlock
   required)
 - Social recovery with guardian approvals (email + authenticator) and Recovery
