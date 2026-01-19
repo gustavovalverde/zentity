@@ -1,34 +1,44 @@
 /**
- * Assurance Types
+ * Assurance Types (Simplified)
  *
- * Defines the type system for progressive assurance tiers and auth assurance levels.
- * Tiers are computed dynamically from existing database state - no schema changes needed.
+ * Three-tier system representing user verification states:
+ * - Tier 0: Anonymous (no session)
+ * - Tier 1: Account (authenticated + FHE keys secured)
+ * - Tier 2: Verified (identity proven + ZK proofs + FHE complete)
  *
- * @see RFC-0017 Progressive Onboarding and Assurance Levels
+ * Two auth strength levels:
+ * - basic: OPAQUE, magic link, SIWE
+ * - strong: Passkey (WebAuthn) - required for on-chain operations
  */
 
 /**
- * Account tier levels (0-3)
+ * Account Tier (0-2)
  *
- * | Tier | Name     | Requirements                                    |
- * |------|----------|------------------------------------------------|
- * | 0    | Explore  | No account (unauthenticated)                   |
- * | 1    | Account  | Authenticated + FHE keys secured               |
- * | 2    | Verified | Tier 1 + doc + liveness + face match           |
- * | 3    | Auditable| Tier 2 + all ZK proofs + FHE complete          |
+ * | Tier | Name      | What User Has                                |
+ * |------|-----------|----------------------------------------------|
+ * | 0    | Anonymous | No session                                   |
+ * | 1    | Account   | Authenticated + FHE keys secured             |
+ * | 2    | Verified  | Account + Identity proven + ZK proofs        |
  */
-export type AccountTier = 0 | 1 | 2 | 3;
+export type AccountTier = 0 | 1 | 2;
+
+export const TIER_NAMES = {
+  0: "Anonymous",
+  1: "Account",
+  2: "Verified",
+} as const;
+
+export type TierName = (typeof TIER_NAMES)[AccountTier];
 
 /**
- * Auth Assurance Level (AAL)
+ * Auth Strength - Determines high-security feature access
  *
- * | Level | Method                    | Features                    |
- * |-------|---------------------------|-----------------------------|
- * | 0     | No session                | None                        |
- * | 1     | Password/Magic link       | Tier 1-3 features           |
- * | 2     | Passkey (WebAuthn)        | Tier 1-3 + on-chain attest  |
+ * | Level  | Methods                    | Enables                         |
+ * |--------|----------------------------|---------------------------------|
+ * | basic  | OPAQUE, magic link, SIWE   | All features except on-chain    |
+ * | strong | Passkey (WebAuthn)         | On-chain attestation, minting   |
  */
-export type AuthAAL = 0 | 1 | 2;
+export type AuthStrength = "basic" | "strong";
 
 /**
  * Login methods supported by Better Auth
@@ -42,93 +52,49 @@ export type LoginMethod =
   | "credential"; // Legacy password (disabled in prod)
 
 /**
- * Auth assurance profile - derived from session state
+ * Feature requirements for access control
  */
-export interface AuthAssurance {
-  level: AuthAAL;
-  method: LoginMethod | "none";
-  isAnonymous: boolean;
-  has2FA: boolean;
+export interface FeatureRequirement {
+  minTier: AccountTier;
+  requiresStrongAuth: boolean;
 }
 
 /**
- * Identity verification assurance - derived from documents and signed claims
+ * Verification details - breakdown of what the user has completed
  */
-export interface IdentityAssurance {
-  level: 0 | 1 | 2;
+export interface VerificationDetails {
+  isAuthenticated: boolean;
+  hasSecuredKeys: boolean;
   documentVerified: boolean;
-  livenessPassed: boolean;
-  faceMatchPassed: boolean;
-}
-
-/**
- * Cryptographic proof assurance - derived from ZK proofs and FHE state
- */
-export interface ProofAssurance {
-  level: 0 | 1 | 2;
-  signedClaims: boolean;
+  livenessVerified: boolean;
+  faceMatchVerified: boolean;
   zkProofsComplete: boolean;
   fheComplete: boolean;
+  hasIncompleteProofs: boolean;
   onChainAttested: boolean;
 }
 
 /**
- * Complete assurance profile combining auth, identity, and proof dimensions
+ * User's complete assurance state
+ *
+ * This is the primary type returned by the assurance module.
+ * Use it for feature gating and UI rendering decisions.
  */
-export interface AssuranceProfile {
-  auth: AuthAssurance;
-  identity: IdentityAssurance;
-  proof: ProofAssurance;
-}
-
-/**
- * Human-readable tier labels
- */
-export type TierLabel = "Explore" | "Account" | "Verified" | "Auditable";
-
-/**
- * Requirement for advancing to a higher tier
- */
-export interface TierRequirement {
-  id: string;
-  label: string;
-  description: string;
-  completed: boolean;
-  action?: {
-    label: string;
-    href: string;
-  };
-}
-
-/**
- * Complete tier profile with computed tier, AAL, and next steps
- */
-export interface TierProfile {
+export interface AssuranceState {
   tier: AccountTier;
-  aal: AuthAAL;
-  assurance: AssuranceProfile;
-  label: TierLabel;
-  nextTierRequirements: TierRequirement[] | null;
+  tierName: TierName;
+  authStrength: AuthStrength;
+  loginMethod: LoginMethod | "none";
+  details: VerificationDetails;
 }
 
 /**
- * Feature names that can be gated by tier/AAL
+ * Feature names that can be gated by tier/auth strength
  */
 export type FeatureName =
   | "dashboard"
   | "profile"
-  | "export_bundle"
-  | "basic_disclosures"
+  | "verification"
   | "attestation"
   | "token_minting"
   | "guardian_recovery";
-
-/**
- * Feature gating configuration
- */
-export interface FeatureGate {
-  feature: FeatureName;
-  minTier: AccountTier;
-  minAAL: AuthAAL;
-  description: string;
-}

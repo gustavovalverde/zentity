@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { getTierProfile } from "@/lib/assurance/data";
+import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import {
   getIdentityBundleByUserId,
@@ -24,8 +24,8 @@ export default async function LivenessVerifyPage() {
     redirect("/sign-in");
   }
 
-  const [tierProfile, latestDocument, bundle] = await Promise.all([
-    getTierProfile(userId, session),
+  const [assuranceState, latestDocument, bundle] = await Promise.all([
+    getAssuranceState(userId, session),
     getLatestIdentityDocumentByUserId(userId),
     getIdentityBundleByUserId(userId),
   ]);
@@ -41,13 +41,12 @@ export default async function LivenessVerifyPage() {
   }
 
   // Already completed liveness and face match - redirect to verify hub
-  // Exception: Tier 2 users without proofs need to re-verify to generate proofs
-  const needsProofRegeneration =
-    tierProfile.tier === 2 && !tierProfile.assurance.proof.zkProofsComplete;
+  // Exception: users with incomplete proofs need to re-verify
+  const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
 
   if (
-    tierProfile.assurance.identity.livenessPassed &&
-    tierProfile.assurance.identity.faceMatchPassed &&
+    assuranceState.details.livenessVerified &&
+    assuranceState.details.faceMatchVerified &&
     !needsProofRegeneration
   ) {
     redirect("/dashboard/verify");

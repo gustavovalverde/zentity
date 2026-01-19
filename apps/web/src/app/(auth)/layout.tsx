@@ -39,7 +39,10 @@ export default async function AuthLayout({
           <ModeToggle />
         </nav>
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
+      <main
+        className="flex flex-1 items-center justify-center px-4 py-12"
+        id="main-content"
+      >
         <TrpcProvider>
           <Web3Provider cookies={cookies} walletScopeId={walletScopeId}>
             <PasskeyAuthProvider>

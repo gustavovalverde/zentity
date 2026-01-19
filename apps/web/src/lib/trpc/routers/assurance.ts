@@ -1,7 +1,7 @@
 /**
  * Assurance Router
  *
- * Provides tier profile data for progressive tier UI.
+ * Provides assurance state data for tier-based UI.
  * Uses React.cache() for per-request deduplication.
  */
 import "server-only";
@@ -9,39 +9,38 @@ import "server-only";
 import type { FeatureName } from "@/lib/assurance/types";
 
 import {
-  getTierProfile,
-  getUnauthenticatedTierProfile,
+  getAssuranceState,
+  getUnauthenticatedAssuranceState,
 } from "@/lib/assurance/data";
-import { isFeatureUnlocked } from "@/lib/assurance/tier";
+import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
 export const assuranceRouter = router({
   /**
-   * Get current user's tier profile
+   * Get current user's assurance state
    *
    * Returns:
-   * - tier: 0-3
-   * - aal: 0-2
-   * - label: Human-readable tier name
-   * - nextTierRequirements: Steps to advance (null if at max)
+   * - tier: 0-2
+   * - tierName: "Anonymous" | "Account" | "Verified"
+   * - authStrength: "basic" | "strong"
+   * - details: breakdown of verification checks
    */
   profile: protectedProcedure.query(async ({ ctx }) => {
-    const profile = await getTierProfile(ctx.userId, ctx.session);
-    return profile;
+    return await getAssuranceState(ctx.userId, ctx.session);
   }),
 
   /**
-   * Get tier profile for potentially unauthenticated users
+   * Get assurance state for potentially unauthenticated users
    *
-   * Returns Tier 0 profile for unauthenticated users,
-   * or the real profile for authenticated users.
+   * Returns Tier 0 state for unauthenticated users,
+   * or the real state for authenticated users.
    */
   publicProfile: publicProcedure.query(({ ctx }) => {
     if (!ctx.session?.user?.id) {
-      return getUnauthenticatedTierProfile();
+      return getUnauthenticatedAssuranceState();
     }
-    return getTierProfile(ctx.session.user.id, ctx.session);
+    return getAssuranceState(ctx.session.user.id, ctx.session);
   }),
 
   /**
@@ -57,14 +56,21 @@ export const assuranceRouter = router({
       return val as FeatureName;
     })
     .query(async ({ ctx, input }) => {
-      const profile = await getTierProfile(ctx.userId, ctx.session);
-      const unlocked = isFeatureUnlocked(input, profile.tier, profile.aal);
+      const state = await getAssuranceState(ctx.userId, ctx.session);
+      const accessible = canAccessFeature(
+        input,
+        state.tier,
+        state.authStrength
+      );
 
       return {
         feature: input,
-        unlocked,
-        currentTier: profile.tier,
-        currentAAL: profile.aal,
+        accessible,
+        currentTier: state.tier,
+        authStrength: state.authStrength,
+        blockedReason: accessible
+          ? null
+          : getBlockedReason(input, state.tier, state.authStrength),
       };
     }),
 });

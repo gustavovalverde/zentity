@@ -3,7 +3,7 @@
 import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { toast } from "sonner";
 
 import { LivenessFlow } from "@/components/liveness/liveness-flow";
@@ -72,6 +72,10 @@ export function LivenessVerifyClient() {
   const [faceMatchResult, setFaceMatchResult] =
     useState<FaceMatchResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Key to force LivenessProvider remount on retry
+  const baseId = useId();
+  const [retryCount, setRetryCount] = useState(0);
+  const livenessKey = `${baseId}-${retryCount}`;
 
   const userId = session?.user?.id;
   const draftId = store.draftId;
@@ -140,7 +144,7 @@ export function LivenessVerifyClient() {
     [draftId]
   );
 
-  // Handle reset (user retrying)
+  // Handle reset (user retrying) - increments retryCount to force remount
   const handleReset = useCallback(() => {
     getStoreState().set({
       selfieImage: null,
@@ -149,6 +153,9 @@ export function LivenessVerifyClient() {
     setLivenessCompleted(false);
     setFaceMatchStatus("idle");
     setFaceMatchResult(null);
+    // Increment retry count to change key and remount LivenessProvider
+    // This forces a fresh socket connection and camera restart
+    setRetryCount((c) => c + 1);
   }, []);
 
   // Handle session error
@@ -317,6 +324,7 @@ export function LivenessVerifyClient() {
     <div className="space-y-6">
       <LivenessProvider
         draftId={draftId ?? undefined}
+        key={livenessKey}
         onReset={handleReset}
         onSessionError={handleSessionError}
         onVerified={handleVerified}

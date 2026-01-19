@@ -14,11 +14,8 @@ import { randomUUID } from "node:crypto";
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 
-import { getTierProfile } from "@/lib/assurance/data";
-import {
-  getFeatureRequirementMessage,
-  isFeatureUnlocked,
-} from "@/lib/assurance/tier";
+import { getAssuranceState } from "@/lib/assurance/data";
+import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import { auth, type Session } from "@/lib/auth/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
@@ -308,22 +305,33 @@ export function requireFeature(feature: FeatureName) {
       session: Session;
     };
 
-    const tierProfile = await getTierProfile(
+    const assuranceState = await getAssuranceState(
       tierContext.userId,
       tierContext.session
     );
 
-    if (!isFeatureUnlocked(feature, tierProfile.tier, tierProfile.aal)) {
+    if (
+      !canAccessFeature(
+        feature,
+        assuranceState.tier,
+        assuranceState.authStrength
+      )
+    ) {
+      const reason = getBlockedReason(
+        feature,
+        assuranceState.tier,
+        assuranceState.authStrength
+      );
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: getFeatureRequirementMessage(feature, tierProfile),
+        message: reason ?? `Feature "${feature}" is not accessible`,
       });
     }
 
     return next({
       ctx: {
         ...ctx,
-        tierProfile,
+        assuranceState,
       },
     });
   });

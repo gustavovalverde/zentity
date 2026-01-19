@@ -1,13 +1,13 @@
 /**
  * Assurance Data Access Layer
  *
- * Queries the database to gather all data needed to compute assurance levels.
+ * Queries the database to gather all data needed to compute assurance state.
  * Uses React.cache() for per-request deduplication in server components.
  */
 import "server-only";
 
 import type { Session } from "@/lib/auth/auth";
-import type { AssuranceProfile, TierProfile } from "./types";
+import type { AssuranceState } from "./types";
 
 import { cache } from "react";
 
@@ -18,16 +18,15 @@ import {
   getZkProofTypesByUserAndDocument,
 } from "@/lib/db/queries/crypto";
 import {
+  getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
-  getVerificationStatus,
 } from "@/lib/db/queries/identity";
 
 import {
-  computeAuthAssurance,
-  computeIdentityAssurance,
-  computeProofAssurance,
+  areZkProofsComplete,
+  computeAssuranceState,
+  isFheComplete,
 } from "./compute";
-import { buildTierProfile } from "./tier";
 
 /**
  * Check if user has any confirmed on-chain attestation
@@ -38,31 +37,54 @@ async function hasOnChainAttestation(userId: string): Promise<boolean> {
 }
 
 /**
- * Get the complete assurance profile for a user
+ * Check if user has secured FHE keys
+ *
+ * Keys are considered secured when:
+ * 1. Identity bundle exists
+ * 2. FHE key ID is set (key has been generated)
+ *
+ * Note: We check for fheKeyId rather than fheStatus === "complete"
+ * because key verification happens asynchronously and a newly signed-up
+ * user may have status "pending" while keys are being verified.
+ */
+async function hasSecuredFheKeys(userId: string): Promise<boolean> {
+  const bundle = await getIdentityBundleByUserId(userId);
+  return bundle?.fheKeyId != null;
+}
+
+/**
+ * Get the complete assurance state for a user
  *
  * Gathers data from multiple tables:
  * - Session: auth state, login method
+ * - identity_bundles: FHE key status
  * - identity_documents: document verification status
  * - signed_claims: liveness and face match claims
  * - zk_proofs: proof completion
  * - encrypted_attributes: FHE encryption status
- * - attestation_evidence: on-chain attestation (future)
+ * - blockchain_attestations: on-chain attestation status
  */
-export const getAssuranceProfile = cache(async function getAssuranceProfile(
+export const getAssuranceState = cache(async function getAssuranceState(
   userId: string,
   session: Session | null
-): Promise<AssuranceProfile> {
-  // Get selected document for this user
-  const selectedDocument = await getSelectedIdentityDocumentByUserId(userId);
-  const documentId = selectedDocument?.id ?? null;
+): Promise<AssuranceState> {
+  // Build auth state from session
+  const hasSession = !!session;
+  const lastLoginMethod =
+    (session?.session as { lastLoginMethod?: string } | undefined)
+      ?.lastLoginMethod ?? null;
 
-  // Gather all data in parallel
-  const [verificationStatus, fheAttributeTypes, hasAttestation] =
+  // Gather primary data in parallel
+  const [hasSecuredKeys, selectedDocument, fheAttributeTypes, hasAttestation] =
     await Promise.all([
-      getVerificationStatus(userId),
+      hasSecuredFheKeys(userId),
+      getSelectedIdentityDocumentByUserId(userId),
       getEncryptedAttributeTypesByUserId(userId),
       hasOnChainAttestation(userId),
     ]);
+
+  const documentId = selectedDocument?.id ?? null;
+  const documentVerified = selectedDocument?.status === "verified";
 
   // Get proof types if we have a document
   const [zkProofTypes, signedClaimTypes] = documentId
@@ -72,76 +94,37 @@ export const getAssuranceProfile = cache(async function getAssuranceProfile(
       ])
     : [[], []];
 
-  // Build auth assurance from session
-  const hasSession = !!session;
-  const isAnonymous = session?.user?.isAnonymous ?? false;
-  const lastLoginMethod =
-    (session?.session as { lastLoginMethod?: string } | undefined)
-      ?.lastLoginMethod ?? null;
-  const has2FA = session?.user?.twoFactorEnabled ?? false;
+  const livenessVerified = signedClaimTypes.includes("liveness_score");
+  const faceMatchVerified =
+    signedClaimTypes.includes("face_match_score") ||
+    zkProofTypes.includes("face_match");
 
-  const auth = computeAuthAssurance(
+  return computeAssuranceState({
     hasSession,
-    lastLoginMethod,
-    isAnonymous,
-    has2FA
-  );
-
-  // Build identity assurance from verification checks
-  const identity = computeIdentityAssurance({
-    documentVerified: verificationStatus.checks.document,
-    livenessPassed: verificationStatus.checks.liveness,
-    faceMatchPassed: verificationStatus.checks.faceMatchProof,
-  });
-
-  // Build proof assurance from cryptographic evidence
-  const proof = computeProofAssurance({
-    signedClaimTypes,
-    zkProofTypes,
-    fheAttributeTypes,
+    loginMethod: lastLoginMethod,
+    hasSecuredKeys,
+    documentVerified,
+    livenessVerified,
+    faceMatchVerified,
+    zkProofsComplete: areZkProofsComplete(zkProofTypes),
+    fheComplete: isFheComplete(fheAttributeTypes),
     onChainAttested: hasAttestation,
   });
-
-  return { auth, identity, proof };
 });
 
 /**
- * Get the complete tier profile for a user
- *
- * Convenience function that combines assurance profile with tier computation.
+ * Get assurance state for unauthenticated users (Tier 0)
  */
-export const getTierProfile = cache(async function getTierProfile(
-  userId: string,
-  session: Session | null
-): Promise<TierProfile> {
-  const assurance = await getAssuranceProfile(userId, session);
-  return buildTierProfile(assurance);
-});
-
-/**
- * Get tier profile for unauthenticated users (Tier 0)
- */
-export function getUnauthenticatedTierProfile(): TierProfile {
-  const assurance: AssuranceProfile = {
-    auth: {
-      level: 0,
-      method: "none",
-      isAnonymous: false,
-      has2FA: false,
-    },
-    identity: {
-      level: 0,
-      documentVerified: false,
-      livenessPassed: false,
-      faceMatchPassed: false,
-    },
-    proof: {
-      level: 0,
-      signedClaims: false,
-      zkProofsComplete: false,
-      fheComplete: false,
-      onChainAttested: false,
-    },
-  };
-  return buildTierProfile(assurance);
+export function getUnauthenticatedAssuranceState(): AssuranceState {
+  return computeAssuranceState({
+    hasSession: false,
+    loginMethod: null,
+    hasSecuredKeys: false,
+    documentVerified: false,
+    livenessVerified: false,
+    faceMatchVerified: false,
+    zkProofsComplete: false,
+    fheComplete: false,
+    onChainAttested: false,
+  });
 }
