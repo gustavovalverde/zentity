@@ -95,9 +95,7 @@ PII**.
    - Wallet sign-up (EIP-712) is available for Web3-native users.
 2. **Encryption and storage**:
    - Sensitive attributes are encrypted before storage.
-   - Passkey vaults use PRF-derived keys to seal profiles and wrap FHE keys.
-   - OPAQUE export keys provide the same wrapping flow for password users.
-   - Wallet signatures (processed through HKDF-SHA256) provide the same wrapping flow for wallet users.
+   - All three auth methods derive KEKs to seal profiles and wrap FHE keys.
 3. **Proof layer**:
    - ZK proofs are generated client-side.
    - Proofs are verified server-side.
@@ -108,12 +106,9 @@ PII**.
 ### Key custody in plain English
 
 - The browser encrypts sensitive data with a random **data key (DEK)**.
-- That DEK is wrapped by a **key‑encryption key (KEK)** derived from one of three sources:
-  - a **passkey PRF output** (hardware-backed, phishing-resistant),
-  - an **OPAQUE export key** (password-derived, zero-knowledge), or
-  - a **wallet signature** (EIP-712 signed message processed through HKDF-SHA256, supports hardware wallets).
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived client-side.
 - The server stores only encrypted blobs + wrapped DEKs, so it **cannot decrypt** user data.
-- When a user unlocks with a passkey, password, or wallet, the browser unwraps the DEK and decrypts locally.
+- When a user unlocks, the browser unwraps the DEK and decrypts locally.
 
 ### Tech choices and rationale
 
