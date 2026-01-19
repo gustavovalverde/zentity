@@ -26,7 +26,7 @@ Non-goals:
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
 | FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
-| Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE | Passkey-based authentication and OPAQUE password auth; both derive client-held keys for sealing secrets. |
+| Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + EIP-712 Wallet | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT | Portable credential issuance and presentation with selective disclosure. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
@@ -77,7 +77,7 @@ flowchart LR
 
 ## Cryptographic Pillars
 
-Zentity combines **passkeys (auth + PRF key custody)**, **zero-knowledge proofs**, **FHE**, and **commitments** to minimize plaintext data handling. This document focuses on flow and system boundaries. For cryptographic details, see:
+Zentity combines **passkeys (auth + PRF key custody)**, **OPAQUE passwords**, **wallet signatures (EIP-712)**, **zero-knowledge proofs**, **FHE**, and **commitments** to minimize plaintext data handling. This document focuses on flow and system boundaries. For cryptographic details, see:
 
 - [Cryptographic Pillars](cryptographic-pillars.md)
 - [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
@@ -100,9 +100,9 @@ We persist **only the minimum** required for verification and auditability:
 ### Key custody
 
 - The browser encrypts sensitive data with a random **data key (DEK)**.
-- That DEK is wrapped by a **key‑encryption key (KEK)** derived from either a **passkey PRF output** or an **OPAQUE export key**.
+- That DEK is wrapped by a **key‑encryption key (KEK)** derived client‑side.
 - The server stores only encrypted blobs + wrapped DEKs, so it cannot decrypt user data.
-- Users decrypt locally after an explicit passkey or password unlock.
+- Users decrypt locally after an explicit credential unlock.
 
 We **never store** raw document images, selfies, plaintext PII, or biometric templates. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
 
@@ -187,6 +187,17 @@ OPAQUE sign-up mirrors the passkey flow but uses a password-derived export key:
 - Export key → HKDF → KEK wraps the DEK.
 - Server stores the OPAQUE **registration record** (no plaintext password).
 - Secret wrappers are stored with `kek_source = "opaque"`.
+
+**Wallet (EIP-712) sign-up**
+
+Wallet sign-up uses an EIP-712 signature to derive the KEK:
+
+- User signs a structured EIP-712 message with their connected wallet.
+- Signature bytes are processed through **HKDF-SHA256** to derive the KEK.
+- The private key never leaves the wallet; the signature stays in the browser.
+- Server stores the wallet address for account association.
+- Secret wrappers are stored with `kek_source = "wallet"`.
+- Supports hardware wallets (Ledger/Trezor) for enhanced security.
 
 ### Disclosure
 

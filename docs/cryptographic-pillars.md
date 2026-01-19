@@ -6,15 +6,15 @@ Zentity relies on **four complementary cryptographic pillars**. Each solves a di
 
 | Pillar | What it protects | Where it runs | Why it exists |
 |---|---|---|---|
-| **Auth + key custody (Passkeys + OPAQUE)** | Authentication + key custody | Browser + authenticator | Passkeys for passwordless login and OPAQUE for privacy-preserving passwords; both yield client-held keys that seal profiles and wrap FHE keys. |
+| **Auth + key custody (Passkeys + OPAQUE + Wallet)** | Authentication + key custody | Browser + authenticator / wallet | Passkeys for passwordless login, OPAQUE for privacy-preserving passwords, and wallet signatures (EIP-712) for Web3-native auth; all three yield client-held keys that seal profiles and wrap FHE keys. |
 | **Zero-Knowledge Proofs (ZKPs)** | Eligibility without disclosure | Browser (prove) + server (verify) | Prove age, nationality group, or document validity without revealing the underlying values. |
 | **Fully Homomorphic Encryption (FHE)** | Encrypted computation | Server + fhEVM | Compute on encrypted attributes (age, nationality, compliance level) without decryption. |
 | **Cryptographic Commitments** | Integrity + dedup + erasure | Server DB | One-way hashes bind values without storing them; deleting the salt breaks linkability. |
 
 ## Plain-English snapshot
 
-- **Passkeys + OPAQUE**: log in and derive a key that unlocks your encrypted data on the client. The server stores encrypted blobs only.
-- **ZK proofs**: prove a statement like “over 18” without revealing the birth year.
+- **Passkeys + OPAQUE + Wallet**: log in and derive a key that unlocks your encrypted data on the client. Passkeys use hardware-backed PRF, OPAQUE uses password-derived keys, and wallets use EIP-712 signatures. The server stores encrypted blobs only.
+- **ZK proofs**: prove a statement like "over 18" without revealing the birth year.
 - **FHE**: run policy checks on encrypted data without decrypting it.
 - **Commitments**: store one-way hashes so you can verify later without storing plaintext.
 
@@ -22,7 +22,7 @@ Zentity relies on **four complementary cryptographic pillars**. Each solves a di
 
 Each pillar addresses a different threat boundary:
 
-- **Passkeys + OPAQUE** guarantee user-owned custody of secret material (passwordless or password-based).
+- **Passkeys + OPAQUE + Wallet** guarantee user-owned custody of secret material (passwordless, password-based, or Web3-native).
 - **ZKPs** prove statements without exposing private inputs.
 - **FHE** enables computation on ciphertext when ZKPs are not practical for repeated policy checks.
 - **Commitments** give integrity and deduplication without storing plaintext.
@@ -33,10 +33,10 @@ Removing any one creates a gap (e.g., ZK can prove eligibility but not enable en
 
 ```mermaid
 flowchart LR
-  P["Auth<br/>Passkeys + OPAQUE"] --> V["Vault<br/>client-sealed profile"]
+  P["Auth<br/>Passkeys + OPAQUE + Wallet"] --> V["Vault<br/>client-sealed profile"]
   V --> C["Commitments<br/>hash + salt"]
   V --> Z["ZK Proofs<br/>eligibility"]
-  V --> F["FHE Keys<br/>passkey-wrapped"]
+  V --> F["FHE Keys<br/>credential-wrapped"]
   F --> E["Encrypted Attributes<br/>ciphertexts"]
   Z --> A["Attestation Evidence<br/>proof hashes"]
   C --> A
@@ -45,7 +45,7 @@ flowchart LR
 
 ### Example: Proving age without exposing DOB
 
-1. **Passkey** unlocks the sealed profile (DOB stays client-side).
+1. **Passkey, password, or wallet** unlocks the sealed profile (DOB stays client-side).
 2. **ZK proof** shows "age >= 18" without revealing the birth year.
 3. **Commitment** allows later integrity checks without storing DOB.
 4. **FHE** encrypts the full DOB (dobDays) so policy checks can be run later without re-collecting PII.
@@ -71,17 +71,23 @@ FHE allows policy checks on encrypted data:
 2. Store ciphertexts server-side or on-chain.
 3. Evaluate compliance under encryption (no plaintext exposure).
 
-### Passkey + OPAQUE Key Custody
+### Passkey + OPAQUE + Wallet Key Custody
 
-Passkeys and OPAQUE secure the keys used for encryption and disclosure:
+Passkeys, OPAQUE, and wallet signatures secure the keys used for encryption and disclosure:
 
 | Aspect | What we do |
 |---|---|
 | Key generation | Client generates keys in the browser |
 | Key storage | Encrypted blobs stored server-side |
-| Key protection | PRF-derived KEK (passkey) or OPAQUE export-derived KEK (password) wraps a random DEK |
-| Who can decrypt | Only the user with their passkey or password-derived export key |
+| Key protection | KEK derived from passkey PRF, OPAQUE export key, or wallet signature (HKDF) wraps a random DEK |
+| Who can decrypt | Only the user with their passkey, password, or wallet |
 | Result | User-controlled erasure and multi-device access |
+
+| Method | KEK Source | Security Model |
+|--------|-----------|----------------|
+| Passkey | PRF output from WebAuthn | Hardware-backed, phishing-resistant |
+| Password | OPAQUE export key | Zero-knowledge, server never sees password |
+| Wallet | HKDF(EIP-712 signature) | Hardware wallet support, Web3 native |
 
 ### ZK Proofs
 
@@ -89,9 +95,9 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 
 ## Where Each Pillar Appears in the Flow
 
-- **Sign-Up + Verification**: Passkeys or OPAQUE passwords create the account; commitments + signed claims are stored; ZK proofs are generated client-side.
+- **Sign-Up + Verification**: Passkeys, OPAQUE passwords, or wallet signatures create the account; commitments + signed claims are stored; ZK proofs are generated client-side.
 - **Compliance checks**: FHE ciphertexts allow encrypted evaluation; ZK proofs provide eligibility guarantees.
-- **Disclosure**: Passkeys or OPAQUE-derived keys authorize decryption and re-encryption to relying parties.
+- **Disclosure**: Passkeys, OPAQUE-derived keys, or wallet signatures authorize decryption and re-encryption to relying parties.
 - **Credential issuance**: SD-JWT VCs package derived claims from ZK proofs and signed claims for portable presentation.
 - **Auditability**: Commitments + proof hashes form an evidence pack for compliance.
 
@@ -128,7 +134,17 @@ OPAQUE is an **augmented PAKE** that keeps raw passwords off the server:
 - The client never transmits the plaintext password.
 - The server stores an **OPAQUE registration record**, not a password hash.
 - The client derives an **export key** on registration/login; we use it to derive a KEK (via HKDF) that wraps the DEK, mirroring the passkey PRF flow.
-- Clients verify the server’s static public key (pinned in production) to prevent MITM.
+- Clients verify the server's static public key (pinned in production) to prevent MITM.
+
+### 1c) Wallet (EIP-712 signature authentication)
+
+Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
+
+- The user signs a structured EIP-712 message with their connected wallet.
+- The signature bytes are processed through **HKDF-SHA256** to derive the KEK.
+- The private key never leaves the wallet; the signature stays in the browser.
+- Supports hardware wallets (Ledger/Trezor) for enhanced security.
+- The server stores only the wallet address for account association.
 
 ### 2) Commitments + Hashing
 
@@ -198,7 +214,7 @@ The registrar uses the relayer SDK to encrypt and submit attestation inputs. Dec
 
 ### 5) How the Pillars Bind Together
 
-- Passkeys seal the profile vault and wrap FHE keys.
+- Passkeys, OPAQUE passwords, or wallet signatures seal the profile vault and wrap FHE keys.
 - Commitments let the server verify values without storing them.
 - ZK proofs assert eligibility using vault data + server-signed claims.
 - FHE enables repeated encrypted policy checks without re-collecting PII.

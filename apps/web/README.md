@@ -7,7 +7,7 @@ Next.js 16 and React 19.
 
 This is the main web application for Zentity, providing:
 
-- **Sign-up** — 2-step wizard (email optional → account + FHE key enrollment)
+- **Sign-up** — 2-step wizard (email optional → account + FHE key enrollment) with three authentication methods: passkeys, OPAQUE passwords, or wallet signatures (EIP-712)
 - **Dashboard verification** — Document upload + liveness + proof generation
 - **Dashboard** — View verification status and privacy proofs
 - **Partner integrations** — OAuth provider flow for third-party verification
@@ -26,7 +26,7 @@ This is the main web application for Zentity, providing:
 | Radix UI | Latest | Accessible components |
 | TanStack React Form | 1.x | Form handling |
 | Zod | 4.x | Schema validation |
-| better-auth | Latest | Authentication |
+| better-auth | Latest | Authentication (passkey, OPAQUE, wallet) |
 
 ## Getting Started
 

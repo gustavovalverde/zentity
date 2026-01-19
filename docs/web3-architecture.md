@@ -29,7 +29,8 @@ This doc moves from **high-level system context**, to **transition flow**, and t
 
 - **Wallet connection ≠ session**: Reown AppKit connects a wallet, but it does not create a server session.
 - **SIWE bridge**: the UI performs Sign‑In With Ethereum via Better Auth (`/api/auth/siwe/*`) to mint a session and link the wallet address.
-- **Server gating**: Web3/FHE APIs should require a Better Auth session and only proceed when the user has explicitly unlocked passkey‑sealed data (PRF unlock) for any encrypted payloads.
+- **Wallet-as-auth**: Wallet signatures (EIP-712) can also serve as the **primary authentication method** for account creation—distinct from wallet connection for on-chain operations.
+- **Server gating**: Web3/FHE APIs require a Better Auth session and explicit credential unlock for encrypted payloads.
 
 ---
 

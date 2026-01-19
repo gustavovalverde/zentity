@@ -46,6 +46,7 @@ Key elements of the decision:
 - SRP or SPAKE2+ (other PAKEs without the same export-key integration or standardization fit).
 - Passkey-only authentication (excludes users without passkey support).
 - Magic-link-only authentication (email reliability and phishing tradeoffs).
+- Wallet-only authentication via EIP-712 (now implemented as an additional option for Web3-native users).
 
 ## More Information
 

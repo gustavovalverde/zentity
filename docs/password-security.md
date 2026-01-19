@@ -11,6 +11,8 @@ This repo includes password-based authentication using **OPAQUE** (augmented PAK
 - **Reduce breach impact** if the database is compromised
 - **Prevent MITM on OPAQUE flows** via server public key pinning
 
+Note: For users without passkey support, OPAQUE provides password-based authentication. For Web3-native users, **wallet-based authentication (EIP-712)** is also available as an alternative that requires no password at all—see [Cryptographic Pillars](cryptographic-pillars.md) for the wallet KEK derivation model.
+
 ## OPAQUE-based password authentication
 
 OPAQUE is an **augmented PAKE**: the client never sends the raw password to the server, and the server stores a **registration record** instead of a password hash. During registration and login:
@@ -29,6 +31,8 @@ To prevent man-in-the-middle attacks, the client verifies the server’s static 
 - **DB + server setup compromise**: attackers can attempt offline guesses; Argon2 key stretching increases the cost of each guess.
 - **Server logs** never contain plaintext passwords, because the server never receives them.
 - **Post-quantum note**: current OPAQUE ciphersuites are not PQ; if PQ requirements arise we will evaluate alternative PAKEs or future OPAQUE suites.
+
+All three auth methods (passkey, OPAQUE, wallet) provide equivalent key custody guarantees.
 
 ## Password policy summary
 
@@ -117,5 +121,5 @@ Users can always inspect what *their own browser* sends in the Network tab. The 
 
 - **Avoid duplicate upstream checks**: Better Auth will also run its own HIBP check on submit. We can add short-lived, non-identifying caching on the server-side Route Handler to reduce external calls without weakening enforcement.
 - **Rate limiting**: Add per-IP / per-session limits to the pre-check endpoint to prevent abuse.
-- **Passwordless**: Prefer passkeys or magic links for stronger phishing resistance and less password exposure overall.
+- **Passwordless**: Prefer passkeys, wallet auth, or magic links for stronger phishing resistance and less password exposure overall.
 - **Key-stretching profiles**: make OPAQUE key stretching configurable per environment (with careful migration/compatibility planning).

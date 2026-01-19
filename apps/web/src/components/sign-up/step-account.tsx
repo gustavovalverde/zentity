@@ -53,6 +53,7 @@ import {
 } from "./account-setup-progress";
 import { CredentialChoice, type CredentialType } from "./credential-choice";
 import { PasswordSignUpForm } from "./password-signup-form";
+import { WalletSignUpForm } from "./wallet-signup-form";
 
 export function StepAccount() {
   const router = useRouter();
@@ -321,6 +322,90 @@ export function StepAccount() {
     }
   };
 
+  /**
+   * Handle wallet-based sign-up.
+   * Uses EIP-712 signature to derive KEK for FHE key wrapping.
+   */
+  const handleWalletSignUp = async (result: {
+    userId: string;
+    address: string;
+    chainId: number;
+    signatureBytes: Uint8Array;
+    signedAt: number;
+    expiresAt: number;
+  }) => {
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const credential: EnrollmentCredential = {
+        type: "wallet",
+        context: {
+          userId: result.userId,
+          address: result.address,
+          chainId: result.chainId,
+          signatureBytes: result.signatureBytes,
+          signedAt: result.signedAt,
+          expiresAt: result.expiresAt,
+        },
+      };
+
+      setStatus("generating-keys");
+      const { storedKeys: generatedKeys } =
+        await generateFheKeyMaterialForStorage();
+
+      setStatus("uploading-keys");
+      const storedKeys = { ...generatedKeys };
+
+      const [{ secretId }, fheRegistration] = await Promise.all([
+        storeFheKeysWithCredential({
+          keys: storedKeys,
+          credential,
+        }),
+        fetchMsgpack<{ keyId: string }>(
+          "/api/fhe/keys/register",
+          {
+            publicKey: generatedKeys.publicKey,
+            serverKey: generatedKeys.serverKey,
+          },
+          { credentials: "include" }
+        ),
+      ]);
+
+      storedKeys.keyId = fheRegistration.keyId;
+      cacheFheKeys(secretId, storedKeys);
+
+      setStatus("storing-secrets");
+      await trpc.signUp.completeWalletEnrollment.mutate({
+        fheKeyId: fheRegistration.keyId,
+        address: result.address,
+        chainId: result.chainId,
+      });
+      await trpc.signUp.markKeysSecured.mutate();
+
+      setStatus("complete");
+      setIsRedirecting(true);
+
+      try {
+        await trpc.signUp.clearSession.mutate();
+      } catch {
+        // Ignore clear errors during redirect
+      }
+      signUpStore.reset();
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred while creating your account.";
+      setError(message);
+      setStatus("error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const unsupportedMessage =
     supportStatus && !supportStatus.supported
       ? supportStatus.reason ||
@@ -343,8 +428,8 @@ export function StepAccount() {
       <div className="space-y-2">
         <h3 className="font-medium text-lg">Create Your Account</h3>
         <p className="text-muted-foreground text-sm">
-          Choose a passkey or password to secure your encryption keys and start
-          using your dashboard.
+          Choose how to secure your encryption keys and start using your
+          dashboard.
         </p>
         {!supportStatus && (
           <p className="text-muted-foreground text-xs">
@@ -423,6 +508,19 @@ export function StepAccount() {
           userId={sessionUserId || undefined}
         />
       )}
+
+      {/* Wallet Sign-Up Form - show when wallet credential type selected */}
+      {status === "idle" &&
+        credentialType === "wallet" &&
+        !isSubmitting &&
+        sessionUserId && (
+          <WalletSignUpForm
+            disabled={isSubmitting || !sessionReady}
+            onBack={() => setCredentialType(null)}
+            onSuccess={handleWalletSignUp}
+            userId={sessionUserId}
+          />
+        )}
 
       {/* Passkey Info Card - only show when passkey credential type is selected */}
       {status === "idle" && credentialType === "passkey" && (
