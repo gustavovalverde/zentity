@@ -18,6 +18,10 @@ import type {
 
 /**
  * Required ZK proof types for full verification (Tier 3)
+ *
+ * Note: identity_binding is NOT required for Tier 3 but IS required for
+ * on-chain attestation (prevents replay attacks). It's shown in the UI
+ * when present but doesn't block progression to Tier 3.
  */
 export const REQUIRED_ZK_PROOF_TYPES = [
   "age_verification",

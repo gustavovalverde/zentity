@@ -23,6 +23,7 @@ import {
 } from "./challenge";
 import { healthProcedure } from "./health";
 import {
+  getAllProofsProcedure,
   getSignedClaimsProcedure,
   getUserProofProcedure,
   storeProofProcedure,
@@ -35,6 +36,7 @@ export const cryptoRouter = router({
   createChallenge: createChallengeProcedure,
   challengeStatus: challengeStatusProcedure,
   getUserProof: getUserProofProcedure,
+  getAllProofs: getAllProofsProcedure,
   getSignedClaims: getSignedClaimsProcedure,
   storeProof: storeProofProcedure,
 });

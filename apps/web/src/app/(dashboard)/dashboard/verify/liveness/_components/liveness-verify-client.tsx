@@ -21,6 +21,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
+import { getBindingContext } from "@/lib/privacy/crypto/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
 
@@ -220,12 +221,66 @@ export function LivenessVerifyClient() {
         });
 
         try {
+          // Attempt to get binding context for identity binding proof
+          // This proves the proofs are bound to this user's authentication
+          console.log(
+            "[liveness] Preparing binding context - userId:",
+            userId,
+            "documentId:",
+            documentId
+          );
+
+          if (!userId) {
+            console.warn(
+              "[liveness] userId is null/undefined, skipping binding context"
+            );
+          }
+
+          const bindingResult = userId
+            ? await getBindingContext(userId, documentId)
+            : null;
+
+          console.log(
+            "[liveness] Binding result:",
+            bindingResult?.success
+              ? "SUCCESS"
+              : bindingResult?.reason || "skipped (no userId)"
+          );
+
+          if (bindingResult && !bindingResult.success) {
+            // Log binding context failure but continue with other proofs
+            console.warn(
+              "[liveness] Binding context unavailable:",
+              bindingResult.reason,
+              "-",
+              bindingResult.message
+            );
+            if (bindingResult.reason === "cache_expired") {
+              toast.info("Authentication session expired", {
+                description:
+                  "Identity binding proof skipped. Sign in again to complete all proofs.",
+              });
+            } else if (bindingResult.reason === "no_wrappers") {
+              toast.info("FHE keys not yet enrolled", {
+                description:
+                  "Identity binding proof skipped. Complete account setup first.",
+              });
+            } else {
+              toast.info("Identity binding proof skipped", {
+                description: bindingResult.message,
+              });
+            }
+          }
+
           await generateAllProofs({
             documentId,
             profilePayload: null,
             extractedDOB: storeState.extractedDOB,
             extractedExpirationDate: storeState.extractedExpirationDate,
             extractedNationalityCode: storeState.extractedNationalityCode,
+            bindingContext: bindingResult?.success
+              ? bindingResult.context
+              : undefined,
           });
           toast.success("Verification complete!", {
             description: "Privacy proofs generated successfully.",
@@ -252,7 +307,7 @@ export function LivenessVerifyClient() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [livenessCompleted, draftId, router]);
+  }, [livenessCompleted, draftId, router, userId]);
 
   const isVerified =
     livenessCompleted &&

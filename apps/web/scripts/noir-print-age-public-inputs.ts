@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-import { UltraHonkBackend } from "@aztec/bb.js";
+import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 
 const ageCircuit = JSON.parse(
@@ -20,7 +20,8 @@ const { witness } = await noir.execute({
   min_age: "18",
 });
 
-const backend = new UltraHonkBackend(ageCircuit.bytecode, { threads: 1 });
+const api = await Barretenberg.new();
+const backend = new UltraHonkBackend(ageCircuit.bytecode, api);
 const _proofData = await backend.generateProof(witness);
 
 // bb.js keeps worker threads alive; exit explicitly for scripts.

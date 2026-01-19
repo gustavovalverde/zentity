@@ -1,13 +1,16 @@
 "use client";
 
+import type { BindingSecretResult } from "@/lib/privacy/crypto/binding-secret";
 import type { ProfileSecretPayload } from "@/lib/privacy/crypto/profile-secret";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import { prepareBindingProofInputs } from "@/lib/privacy/crypto/binding-secret";
 import {
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
+  generateIdentityBindingProof,
   generateNationalityProof,
   getProofChallenge,
   getSignedClaims,
@@ -17,8 +20,19 @@ import {
 import { parseDateToInt } from "./date-utils";
 
 /**
+ * Context for identity binding proof generation.
+ * Provided when auth material is available (passkey PRF, OPAQUE export key, or wallet signature).
+ */
+export interface BindingContext {
+  /** Result from deriveBindingSecret() */
+  bindingResult: BindingSecretResult;
+  /** User ID for claim hash binding */
+  userId: string;
+}
+
+/**
  * Generate all ZK proofs for identity verification.
- * Generates age, document validity, nationality, and face match proofs.
+ * Generates age, document validity, nationality, face match, and optionally identity binding proofs.
  *
  * Exported for use in dashboard verification flow where finalization
  * and proof generation happen in separate steps.
@@ -31,6 +45,12 @@ export async function generateAllProofs(params: {
   extractedNationalityCode: string | null;
   /** Called when transitioning to storing phase */
   onBeforeStore?: () => void;
+  /**
+   * Optional binding context for identity binding proof.
+   * If provided, generates an identity binding proof to prevent replay attacks.
+   * Required for on-chain attestation.
+   */
+  bindingContext?: BindingContext;
 }): Promise<void> {
   const {
     documentId,
@@ -39,6 +59,7 @@ export async function generateAllProofs(params: {
     extractedExpirationDate,
     extractedNationalityCode,
     onBeforeStore,
+    bindingContext,
   } = params;
 
   const claims = await getSignedClaims(documentId);
@@ -102,7 +123,8 @@ export async function generateAllProofs(params: {
       | "age_verification"
       | "doc_validity"
       | "nationality_membership"
-      | "face_match";
+      | "face_match"
+      | "identity_binding";
     proof: string;
     publicSignals: string[];
     generationTimeMs: number;
@@ -147,13 +169,17 @@ export async function generateAllProofs(params: {
     faceClaim.documentHashField || documentHashField;
 
   // Fetch all proof challenges in parallel (async-parallel optimization)
+  const challengePromises = [
+    getProofChallenge("age_verification"),
+    getProofChallenge("doc_validity"),
+    getProofChallenge("nationality_membership"),
+    getProofChallenge("face_match"),
+    ...(bindingContext ? [getProofChallenge("identity_binding")] : []),
+  ] as const;
+  const challenges = await Promise.all(challengePromises);
   const [ageChallenge, docChallenge, nationalityChallenge, faceChallenge] =
-    await Promise.all([
-      getProofChallenge("age_verification"),
-      getProofChallenge("doc_validity"),
-      getProofChallenge("nationality_membership"),
-      getProofChallenge("face_match"),
-    ]);
+    challenges;
+  const bindingChallenge = bindingContext ? challenges[4] : null;
 
   // Generate proofs sequentially (CPU-bound WASM work)
   const ageProof = await generateAgeProof(dateOfBirth, 18, {
@@ -198,6 +224,21 @@ export async function generateAllProofs(params: {
     }
   );
   enqueueStore({ circuitType: "face_match", ...faceProof });
+
+  // Generate identity binding proof if context provided
+  if (bindingContext && bindingChallenge) {
+    const bindingInputs = prepareBindingProofInputs(
+      bindingContext.bindingResult
+    );
+    const bindingProof = await generateIdentityBindingProof(
+      bindingInputs.bindingSecretField,
+      bindingInputs.userIdHashField,
+      bindingInputs.documentHashField,
+      bindingContext.bindingResult.authModeNumeric,
+      { nonce: bindingChallenge.nonce }
+    );
+    enqueueStore({ circuitType: "identity_binding", ...bindingProof });
+  }
 
   // Notify caller before storing (so UI can show "storing" status)
   onBeforeStore?.();

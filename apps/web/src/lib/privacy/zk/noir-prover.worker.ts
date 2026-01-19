@@ -10,7 +10,6 @@
 
 // Buffer polyfill for browser environment
 // bb.js requires Buffer with BigInt methods (writeBigUInt64BE, etc.)
-// Turbopack's FreeVarReference injects this globally, but we also set it explicitly for safety
 import { Buffer } from "buffer";
 
 globalThis.Buffer = Buffer;
@@ -21,6 +20,7 @@ import type {
   AgeProofPayload,
   DocValidityPayload,
   FaceMatchPayload,
+  IdentityBindingPayload,
   NationalityClientPayload,
   NationalityProofPayload,
   WorkerInitMessage,
@@ -28,23 +28,20 @@ import type {
   WorkerResponse,
 } from "./noir-worker-manager";
 
-// Circuit artifacts - these are bundled with the worker
+import { getCountryWeightedSum } from "@zkpassport/utils";
+
+import { COUNTRY_GROUPS, TREE_DEPTH } from "@/lib/privacy/country";
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
+import identityBindingCircuit from "@/noir-circuits/identity_binding/artifacts/identity_binding.json";
 import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
-
-import { COUNTRY_CODES, COUNTRY_GROUPS, TREE_DEPTH } from "./nationality-data";
 
 const ENABLE_WORKER_LOGS =
   process.env.NEXT_PUBLIC_NOIR_DEBUG === "true" &&
   (process.env.NODE_ENV === "development" ||
     process.env.NEXT_PUBLIC_APP_ENV === "local");
 
-/**
- * Diagnostic logging (development only).
- * Logs are forwarded to the main thread when explicitly enabled.
- */
 function logWorker(
   stage: string,
   msg: string,
@@ -67,23 +64,22 @@ function logWorker(
 // Module cache for lazy loading
 interface ModuleCache {
   Noir: typeof import("@noir-lang/noir_js").Noir;
+  Barretenberg: typeof import("@aztec/bb.js").Barretenberg;
   UltraHonkBackend: typeof import("@aztec/bb.js").UltraHonkBackend;
-  Fr: typeof import("@aztec/bb.js").Fr;
-  BarretenbergSync: typeof import("@aztec/bb.js").BarretenbergSync;
+  BN254_FR_MODULUS: bigint;
   initACVM: (input?: NoirWasmInitInput) => Promise<unknown>;
   initNoirC: (input?: NoirWasmInitInput) => Promise<unknown>;
 }
 
 let moduleCache: ModuleCache | null = null;
-let bbInstance: Awaited<
-  ReturnType<typeof import("@aztec/bb.js").BarretenbergSync.initSingleton>
-> | null = null;
+let bbApiPromise: Promise<import("@aztec/bb.js").Barretenberg> | null = null;
 let noirRuntimeInitPromise: Promise<void> | null = null;
 
 type CircuitName =
   | "age_verification"
   | "doc_validity"
   | "face_match"
+  | "identity_binding"
   | "nationality_membership";
 
 const noirInstanceCache = new Map<
@@ -96,7 +92,6 @@ const proverBackendCache = new Map<
 >();
 let workerQueue: Promise<void> = Promise.resolve();
 
-const MAX_THREADS = 8;
 let loggedIsolationFallback = false;
 let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
 let activeProofs = 0;
@@ -115,8 +110,6 @@ type NoirWasmInitInput =
 /**
  * Local path for bb.js WASM (copied by setup-coep-assets.ts).
  * Serving locally avoids CDN latency and improves reliability.
- * Note: bb.js appends "-threads" when multi-threading is enabled,
- * so we pass the base path and it requests "barretenberg-threads.wasm.gz".
  */
 const BB_WASM_PATH = "/bb/barretenberg.wasm.gz";
 const NOIR_WASM_BASE_PATH = "/noir";
@@ -136,19 +129,6 @@ function getIsolationSupport() {
     canUseThreads: sharedArrayBuffer && crossOriginIsolated,
   };
 }
-
-function getThreadCount(): number {
-  const { canUseThreads } = getIsolationSupport();
-  if (!canUseThreads) {
-    return 1;
-  }
-  const available = self.navigator?.hardwareConcurrency ?? 4;
-  return Math.max(1, Math.min(MAX_THREADS, available));
-}
-
-const bbLogger = (msg: string) => {
-  logWorker("bb", msg);
-};
 
 // Some bundlers load module workers via `blob:` URLs. In that case, `fetch("/...")`
 // fails because the base URL is non-hierarchical. Normalize absolute-path fetches
@@ -228,15 +208,17 @@ function scheduleIdleCleanup() {
   }
   cancelIdleCleanup();
   cleanupTimer = setTimeout(() => {
-    cleanupProverBackends("idle").catch((error) => {
+    try {
+      cleanupProverBackends("idle");
+    } catch (error) {
       logWorker("cleanup", "Idle cleanup failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-    });
+    }
   }, IDLE_CLEANUP_MS);
 }
 
-async function cleanupProverBackends(reason: string) {
+function cleanupProverBackends(reason: string) {
   if (activeProofs > 0) {
     scheduleIdleCleanup();
     return;
@@ -249,18 +231,6 @@ async function cleanupProverBackends(reason: string) {
     count: backends.length,
     reason,
   });
-  await Promise.allSettled(
-    backends.map(async ([circuit, backend]) => {
-      try {
-        await backend.destroy();
-      } catch (error) {
-        logWorker("cleanup", "Backend destroy failed", {
-          circuit,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    })
-  );
   proverBackendCache.clear();
   logWorker("cleanup", "Prover backends cleared", {
     count: backends.length,
@@ -276,9 +246,6 @@ if (originalFetch) {
   }
 }
 
-/**
- * Initialize Noir.js and bb.js (lazy, once)
- */
 async function getModules(): Promise<ModuleCache> {
   if (moduleCache) {
     logWorker("init", "Using cached modules");
@@ -313,9 +280,9 @@ async function getModules(): Promise<ModuleCache> {
 
     moduleCache = {
       Noir: noirModule.Noir,
+      Barretenberg: bbModule.Barretenberg,
       UltraHonkBackend: bbModule.UltraHonkBackend,
-      Fr: bbModule.Fr,
-      BarretenbergSync: bbModule.BarretenbergSync,
+      BN254_FR_MODULUS: bbModule.BN254_FR_MODULUS,
       initACVM,
       initNoirC,
     };
@@ -379,16 +346,17 @@ function ensureNoirRuntimeReady(): Promise<void> {
   return noirRuntimeInitPromise;
 }
 
-/**
- * Get Barretenberg instance for Poseidon2 hashing
- */
-async function getBarretenberg() {
-  if (bbInstance) {
-    return bbInstance;
+async function getBarretenbergApi(): Promise<
+  import("@aztec/bb.js").Barretenberg
+> {
+  if (bbApiPromise) {
+    return bbApiPromise;
   }
-  const { BarretenbergSync } = await getModules();
+
+  const { Barretenberg } = await getModules();
   const { canUseThreads, sharedArrayBuffer, crossOriginIsolated } =
     getIsolationSupport();
+
   if (!(canUseThreads || loggedIsolationFallback)) {
     loggedIsolationFallback = true;
     logWorker(
@@ -400,8 +368,50 @@ async function getBarretenberg() {
       }
     );
   }
-  bbInstance = await BarretenbergSync.initSingleton(BB_WASM_PATH, bbLogger);
-  return bbInstance;
+
+  bbApiPromise = Barretenberg.new({
+    wasmPath: BB_WASM_PATH,
+  });
+
+  return bbApiPromise;
+}
+
+/**
+ * Convert a bigint to a 32-byte big-endian Uint8Array (Fr field element)
+ */
+function bigIntToFr(value: bigint, modulus: bigint): Uint8Array {
+  const reduced = value % modulus;
+  const hex = reduced.toString(16).padStart(64, "0");
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Poseidon2 hash using Barretenberg API
+ */
+async function poseidon2Hash(values: bigint[]): Promise<bigint> {
+  const api = await getBarretenbergApi();
+  const { BN254_FR_MODULUS } = await getModules();
+  const frValues = values.map((v) => bigIntToFr(v, BN254_FR_MODULUS));
+  const result = await api.poseidon2Hash({ inputs: frValues });
+  const hex = Array.from(result.hash)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return BigInt(`0x${hex}`);
+}
+
+/**
+ * Reduce a hex string to BN254 field element.
+ * Values exceeding field modulus are reduced via modular arithmetic.
+ */
+async function reduceToField(hexValue: string): Promise<string> {
+  const { BN254_FR_MODULUS } = await getModules();
+  const bigIntValue = BigInt(hexValue);
+  const reduced = bigIntValue % BN254_FR_MODULUS;
+  return `0x${reduced.toString(16).padStart(64, "0")}`;
 }
 
 function getCircuitArtifact(circuit: CircuitName) {
@@ -412,6 +422,8 @@ function getCircuitArtifact(circuit: CircuitName) {
       return docValidityCircuit as never;
     case "face_match":
       return faceMatchCircuit as never;
+    case "identity_binding":
+      return identityBindingCircuit as never;
     case "nationality_membership":
       return nationalityCircuit as never;
     default: {
@@ -439,39 +451,11 @@ async function getProverBackend(circuit: CircuitName) {
     return existing;
   }
   const { UltraHonkBackend } = await getModules();
-  const { canUseThreads, sharedArrayBuffer, crossOriginIsolated } =
-    getIsolationSupport();
-  if (!(canUseThreads || loggedIsolationFallback)) {
-    loggedIsolationFallback = true;
-    logWorker(
-      "init",
-      "SharedArrayBuffer unavailable; using single-threaded proving",
-      {
-        sharedArrayBuffer,
-        crossOriginIsolated,
-      }
-    );
-  }
-  const threads = getThreadCount();
+  const api = await getBarretenbergApi();
   const artifact = getCircuitArtifact(circuit) as { bytecode: string };
-  const backend = new UltraHonkBackend(artifact.bytecode, {
-    threads,
-    logger: bbLogger,
-    wasmPath: BB_WASM_PATH,
-  });
+  const backend = new UltraHonkBackend(artifact.bytecode, api);
   proverBackendCache.set(circuit, backend);
   return backend;
-}
-
-/**
- * Compute Poseidon2 hash of values (matches nodash::poseidon2)
- */
-async function poseidon2Hash(values: bigint[]): Promise<bigint> {
-  const bb = await getBarretenberg();
-  const { Fr } = await getModules();
-  const frValues = values.map((v) => new Fr(v));
-  const result = bb.poseidon2Hash(frValues);
-  return BigInt(result.toString());
 }
 
 interface MerkleCacheEntry {
@@ -485,12 +469,14 @@ async function buildMerkleCacheForGroup(
   groupName: string
 ): Promise<MerkleCacheEntry> {
   const upperGroup = groupName.toUpperCase();
-  const countries = COUNTRY_GROUPS[upperGroup];
+  const countries = COUNTRY_GROUPS[upperGroup as keyof typeof COUNTRY_GROUPS];
   if (!countries) {
     throw new Error(`Unknown country group: ${groupName}`);
   }
 
-  const codes = countries.map((c) => COUNTRY_CODES[c]);
+  const codes = countries.map((c) =>
+    getCountryWeightedSum(c as Parameters<typeof getCountryWeightedSum>[0])
+  );
   const treeSize = 2 ** TREE_DEPTH;
   const paddedCodes = [...codes];
   while (paddedCodes.length < treeSize) {
@@ -554,19 +540,17 @@ async function computeMerklePath(
   const upperCode = nationalityCode.toUpperCase();
   const upperGroup = groupName.toUpperCase();
 
-  const numericCode = COUNTRY_CODES[upperCode];
-  if (numericCode === undefined) {
-    throw new Error(`Unknown nationality code: ${nationalityCode}`);
-  }
-
-  const countries = COUNTRY_GROUPS[upperGroup];
+  // Validate the code is in a known group before computing weighted sum
+  const countries = COUNTRY_GROUPS[upperGroup as keyof typeof COUNTRY_GROUPS];
   if (!countries) {
     throw new Error(`Unknown country group: ${groupName}`);
   }
-
-  if (!countries.includes(upperCode)) {
+  if (!countries.some((c) => c === upperCode)) {
     throw new Error(`${nationalityCode} is not a member of ${groupName}`);
   }
+  const numericCode = getCountryWeightedSum(
+    upperCode as Parameters<typeof getCountryWeightedSum>[0]
+  );
 
   const { levels, indexByCode } = await getMerkleCache(upperGroup);
   const leafIndex = indexByCode.get(numericCode);
@@ -603,20 +587,14 @@ async function computeMerklePath(
 
 /**
  * Convert hex nonce to Field-compatible format
- * Noir expects Field values as decimal strings or hex with 0x prefix
  */
 function nonceToField(nonce: string): string {
-  // If already has 0x prefix, use as-is
   if (nonce.startsWith("0x")) {
     return nonce;
   }
-  // Otherwise prepend 0x
   return `0x${nonce}`;
 }
 
-/**
- * Generate an age verification proof
- */
 async function generateAgeProof(
   payload: AgeProofPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
@@ -640,16 +618,12 @@ async function generateAgeProof(
     publicInputs: proof.publicInputs.length,
   });
 
-  // Convert Uint8Array to regular array for transfer
   return {
     proof: Array.from(proof.proof),
     publicInputs: proof.publicInputs,
   };
 }
 
-/**
- * Generate a document validity proof
- */
 async function generateDocValidityProof(
   payload: DocValidityPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
@@ -706,9 +680,6 @@ async function generateFaceMatchProof(
   };
 }
 
-/**
- * Generate a nationality membership proof (with pre-computed Merkle path)
- */
 async function generateNationalityProof(
   payload: NationalityProofPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
@@ -746,13 +717,11 @@ async function generateNationalityProof(
 async function generateNationalityProofClient(
   payload: NationalityClientPayload
 ): Promise<{ proof: number[]; publicInputs: string[] }> {
-  // Compute Merkle path locally - nationality stays in worker
   const merkleData = await computeMerklePath(
     payload.nationalityCode,
     payload.groupName
   );
 
-  // Generate proof with computed Merkle data
   return generateNationalityProof({
     nationalityCode: merkleData.nationalityCodeNumeric,
     merkleRoot: merkleData.merkleRoot,
@@ -765,8 +734,68 @@ async function generateNationalityProofClient(
 }
 
 /**
- * Handle incoming messages from the main thread
+ * Generate an identity binding proof
+ *
+ * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
+ * or wallet signature) stays in this worker. Only the ZK proof is returned.
  */
+async function generateIdentityBindingProof(
+  payload: IdentityBindingPayload
+): Promise<{ proof: number[]; publicInputs: string[] }> {
+  const noir = await getNoirInstance("identity_binding");
+  logWorker("proof", "Executing identity binding witness");
+
+  // Reduce all field values to BN254 field (values may exceed modulus)
+  const [bindingSecretReduced, userIdHashReduced, documentHashReduced] =
+    await Promise.all([
+      reduceToField(payload.bindingSecretField),
+      reduceToField(payload.userIdHashField),
+      reduceToField(payload.documentHashField),
+    ]);
+
+  logWorker("proof", "Reduced field values", {
+    bindingSecret: `${bindingSecretReduced.slice(0, 20)}...`,
+    userIdHash: `${userIdHashReduced.slice(0, 20)}...`,
+    documentHash: `${documentHashReduced.slice(0, 20)}...`,
+  });
+
+  // Compute binding_commitment = Poseidon2(binding_secret, user_id_hash, document_hash)
+  const bindingCommitment = await poseidon2Hash([
+    BigInt(bindingSecretReduced),
+    BigInt(userIdHashReduced),
+    BigInt(documentHashReduced),
+  ]);
+  const bindingCommitmentHex = `0x${bindingCommitment.toString(16)}`;
+  logWorker("proof", "Computed binding commitment", {
+    bindingCommitmentHex,
+  });
+
+  const { witness } = await noir.execute({
+    binding_secret: bindingSecretReduced,
+    user_id_hash: userIdHashReduced,
+    document_hash: documentHashReduced,
+    nonce: nonceToField(payload.nonce),
+    binding_commitment: bindingCommitmentHex,
+    auth_mode: payload.authMode.toString(),
+  });
+  logWorker("proof", "Identity binding witness ready", {
+    size: witness.length,
+  });
+
+  const backend = await getProverBackend("identity_binding");
+  logWorker("proof", "Generating identity binding proof");
+  const proof = await backend.generateProof(witness);
+  logWorker("proof", "Identity binding proof generated", {
+    proofSize: proof.proof.length,
+    publicInputs: proof.publicInputs.length,
+  });
+
+  return {
+    proof: Array.from(proof.proof),
+    publicInputs: proof.publicInputs,
+  };
+}
+
 globalThis.onmessage = (
   event: MessageEvent<WorkerRequest | WorkerInitMessage>
 ) => {
@@ -809,9 +838,12 @@ globalThis.onmessage = (
             payload as NationalityProofPayload
           );
         } else if (type === "nationality_client") {
-          // Client-side Merkle computation - nationality NEVER leaves worker
           result = await generateNationalityProofClient(
             payload as NationalityClientPayload
+          );
+        } else if (type === "identity_binding") {
+          result = await generateIdentityBindingProof(
+            payload as IdentityBindingPayload
           );
         } else {
           throw new Error(`Unknown proof type: ${type}`);
@@ -850,7 +882,6 @@ globalThis.onmessage = (
     });
 };
 
-// Log worker initialization
 logWorker("init", "Worker script loaded", {
   crossOriginIsolated: globalThis.crossOriginIsolated ?? false,
   sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",

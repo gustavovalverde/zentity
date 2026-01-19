@@ -39,7 +39,7 @@ import {
 import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
 import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
 import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
-import { getCountryName } from "@/lib/privacy/zk/nationality-data";
+import { getCountryName } from "@/lib/privacy/country";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";
 
@@ -398,9 +398,10 @@ export function ViewIdentityData() {
     ? 1900 + decryptedData.birthYearOffset
     : undefined;
 
-  // Get country name
+  // Get country name from numeric code
   const countryName = decryptedData
-    ? getCountryName(decryptedData.countryCode)
+    ? (getCountryName(decryptedData.countryCode) ??
+      `Unknown (${decryptedData.countryCode})`)
     : undefined;
 
   // Not connected, no confirmed attestation, or no contract address

@@ -13,14 +13,13 @@ import {
   resolveRequestContext,
 } from "@/lib/observability/request-context";
 import {
-  getCountriesInGroup,
-  isNationalityInGroup,
-  listGroups,
-} from "@/lib/privacy/zk/nationality-data";
-import {
   generateNationalityProofInputs,
+  getCountriesInGroup,
   getMerkleRoot,
-} from "@/lib/privacy/zk/nationality-merkle";
+  isCountryInGroup,
+  listCountryGroups,
+} from "@/lib/privacy/country";
+import { poseidon2Hash } from "@/lib/privacy/crypto/barretenberg";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 /**
@@ -69,13 +68,14 @@ export async function POST(request: NextRequest) {
     // Generate Merkle proof inputs for the Noir circuit
     const proofInputs = await generateNationalityProofInputs(
       nationalityCode,
-      groupName
+      groupName,
+      poseidon2Hash
     );
 
     return NextResponse.json({
       success: true,
       // Inputs for client-side Noir proving
-      nationalityCode: proofInputs.nationalityCodeNumeric,
+      nationalityCode: proofInputs.nationalityCode,
       merkleRoot: proofInputs.merkleRoot,
       pathElements: proofInputs.pathElements,
       pathIndices: proofInputs.pathIndices,
@@ -114,8 +114,10 @@ export async function GET(request: NextRequest) {
 
     // Check membership if both code and group provided
     if (code && group) {
-      const isMember = isNationalityInGroup(code, group);
-      const merkleRoot = isMember ? await getMerkleRoot(group) : null;
+      const isMember = isCountryInGroup(code, group);
+      const merkleRoot = isMember
+        ? await getMerkleRoot(group, poseidon2Hash)
+        : null;
       return NextResponse.json({
         code: code.toUpperCase(),
         group: group.toUpperCase(),
@@ -133,7 +135,7 @@ export async function GET(request: NextRequest) {
           { status: 404 }
         );
       }
-      const merkleRoot = await getMerkleRoot(group);
+      const merkleRoot = await getMerkleRoot(group, poseidon2Hash);
       return NextResponse.json({
         group: group.toUpperCase(),
         countries,
@@ -143,10 +145,10 @@ export async function GET(request: NextRequest) {
     }
 
     // List all groups
-    const groups = listGroups();
+    const groups = listCountryGroups();
     const groupsWithRoots = await Promise.all(
       groups.map(async (g) => {
-        const root = await getMerkleRoot(g);
+        const root = await getMerkleRoot(g, poseidon2Hash);
         const countries = getCountriesInGroup(g);
         return {
           name: g,

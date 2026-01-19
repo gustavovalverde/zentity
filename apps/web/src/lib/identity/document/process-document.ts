@@ -10,7 +10,7 @@ import {
 } from "@/lib/blockchain/attestation/claim-hash";
 import { documentHashExists } from "@/lib/db/queries/identity";
 import { logger } from "@/lib/logging/logger";
-import { getNationalityCode } from "@/lib/privacy/zk/nationality-data";
+import { toNumericCode } from "@/lib/privacy/country";
 
 import { dobToDaysSince1900 } from "../verification/birth-year";
 import { processDocumentOcr } from "./ocr-client";
@@ -138,7 +138,7 @@ function parseDateValues(
   const expiryDateInt = parseDateToInt(extractedData?.expirationDate);
   const nationalityCode = extractedData?.nationalityCode ?? null;
   const nationalityCodeNumeric = nationalityCode
-    ? (getNationalityCode(nationalityCode) ?? null)
+    ? (toNumericCode(nationalityCode) ?? null)
     : null;
 
   return {

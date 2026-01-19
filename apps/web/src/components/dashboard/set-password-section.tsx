@@ -29,8 +29,7 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
-import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
-import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
+import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import { addOpaqueWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
 
 interface SetPasswordSectionProps {
@@ -87,12 +86,12 @@ export function SetPasswordSection({
           try {
             await Promise.all([
               addOpaqueWrapperForSecretType({
-                secretType: FHE_SECRET_TYPE,
+                secretType: SECRET_TYPES.FHE_KEYS,
                 userId,
                 exportKey: result.data.exportKey,
               }),
               addOpaqueWrapperForSecretType({
-                secretType: PROFILE_SECRET_TYPE,
+                secretType: SECRET_TYPES.PROFILE,
                 userId,
                 exportKey: result.data.exportKey,
               }),

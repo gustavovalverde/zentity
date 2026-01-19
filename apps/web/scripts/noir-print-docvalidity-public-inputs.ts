@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-import { UltraHonkBackend } from "@aztec/bb.js";
+import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 
 const circuit = JSON.parse(
@@ -19,6 +19,7 @@ const { witness } = await noir.execute({
   current_date: "20251212",
 });
 
-const backend = new UltraHonkBackend(circuit.bytecode, { threads: 1 });
+const api = await Barretenberg.new();
+const backend = new UltraHonkBackend(circuit.bytecode, api);
 const _proofData = await backend.generateProof(witness);
 process.exit(0);

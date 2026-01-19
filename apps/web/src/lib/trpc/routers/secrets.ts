@@ -17,10 +17,9 @@ import {
   upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
+import { secretTypeSchema } from "@/lib/privacy/crypto/secret-types";
 
 import { protectedProcedure, router } from "../server";
-
-const secretTypeSchema = z.string().min(1);
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 

@@ -87,6 +87,7 @@ export async function IdentityCard({ userId }: Readonly<IdentityCardProps>) {
     docValidityProof: proofTypes.includes("doc_validity"),
     nationalityProof: proofTypes.includes("nationality_membership"),
     faceMatchProof: proofTypes.includes("face_match"),
+    identityBindingProof: proofTypes.includes("identity_binding"),
     fheEncryption:
       fheStatus === "complete" ? true : encryptedAttributes.length > 0,
     fheError,

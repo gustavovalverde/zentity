@@ -96,6 +96,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     docValidityProof: boolean;
     nationalityProof: boolean;
     faceMatchProof: boolean;
+    identityBindingProof: boolean;
   };
 }> {
   const selectedDocument = await getSelectedIdentityDocumentByUserId(userId);
@@ -121,6 +122,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     faceMatchProof:
       zkProofTypes.includes("face_match") ||
       signedClaimTypes.includes("face_match_score"),
+    identityBindingProof: zkProofTypes.includes("identity_binding"),
   };
 
   const passedChecks = Object.values(checks).filter(Boolean).length;

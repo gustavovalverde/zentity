@@ -11,6 +11,7 @@ import {
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
+  getAllVerifiedProofsFull,
   getLatestSignedClaimByUserTypeAndDocument,
   getProofHashesByUserAndDocument,
   getUserAgeProof,
@@ -38,10 +39,9 @@ import {
   verifyNoirProof,
 } from "@/lib/privacy/zk/noir-verifier";
 import {
-  CIRCUIT_SPECS,
   normalizeChallengeNonce,
-  parsePublicInputToNumber,
-} from "@/lib/privacy/zk/zk-circuit-spec";
+  PROOF_TYPE_SPECS,
+} from "@/lib/privacy/zk/proof-types";
 
 import { protectedProcedure } from "../../server";
 import { invalidateVerificationCache } from "../identity/helpers/verification-cache";
@@ -70,7 +70,7 @@ async function verifyProofInternal(args: {
   documentId: string | null;
 }): Promise<{ result: ProofVerificationResult; nonceHex: string }> {
   const circuitType = args.circuitType;
-  const circuitSpec = CIRCUIT_SPECS[circuitType];
+  const circuitSpec = PROOF_TYPE_SPECS[circuitType];
   const circuitMeta = getCircuitMetadata(circuitType);
   const bbVersion = getBbJsVersion();
 
@@ -100,18 +100,46 @@ async function verifyProofInternal(args: {
     },
     nonceHex,
   });
+  // Identity binding uses binding_commitment instead of claim hash
+  // Skip claim hash validation for this circuit type
+  const requiresClaimHash = circuitType !== "identity_binding";
   const claimHashInput = args.publicInputs[circuitSpec.claimHashIndex];
-  if (!claimHashInput) {
+
+  if (requiresClaimHash && !claimHashInput) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "Missing claim hash in public inputs",
     });
   }
-  const claimHashBigInt = parseFieldToBigInt(claimHashInput);
+  const claimHashBigInt = requiresClaimHash
+    ? parseFieldToBigInt(claimHashInput)
+    : BigInt(0);
+
+  // Identity binding validation: binding_commitment and auth_mode
+  if (circuitType === "identity_binding") {
+    const bindingCommitment = parseFieldToBigInt(
+      args.publicInputs[1] // binding_commitment at index 1
+    );
+    const authMode = Number(BigInt(args.publicInputs[2])); // auth_mode at index 2
+
+    if (bindingCommitment === BigInt(0)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Invalid binding commitment (zero)",
+      });
+    }
+
+    if (authMode < 0 || authMode > 2) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid auth_mode: ${authMode} (expected 0, 1, or 2)`,
+      });
+    }
+  }
 
   if (circuitType === "age_verification") {
-    const providedCurrentDays = parsePublicInputToNumber(args.publicInputs[0]);
-    const providedMinAgeDays = parsePublicInputToNumber(args.publicInputs[1]);
+    const providedCurrentDays = Number(BigInt(args.publicInputs[0]));
+    const providedMinAgeDays = Number(BigInt(args.publicInputs[1]));
     const actualCurrentDays = getTodayDobDays();
 
     // Allow minor drift to avoid timezone edge cases.
@@ -153,7 +181,7 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "doc_validity") {
-    const providedDate = parsePublicInputToNumber(args.publicInputs[0]);
+    const providedDate = Number(BigInt(args.publicInputs[0]));
     const actualDate = getTodayAsInt();
     if (providedDate !== actualDate) {
       throw new TRPCError({
@@ -208,7 +236,7 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "face_match") {
-    const providedThreshold = parsePublicInputToNumber(args.publicInputs[0]);
+    const providedThreshold = Number(BigInt(args.publicInputs[0]));
 
     if (providedThreshold < MIN_FACE_MATCH_THRESHOLD) {
       throw new TRPCError({
@@ -283,8 +311,8 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "age_verification") {
-    const isOldEnough = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex]
+    const isOldEnough = Number(
+      BigInt(args.publicInputs[circuitSpec.resultIndex])
     );
     if (isOldEnough !== 1) {
       return failure(
@@ -295,8 +323,8 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "doc_validity") {
-    const isDocValid = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex]
+    const isDocValid = Number(
+      BigInt(args.publicInputs[circuitSpec.resultIndex])
     );
     if (isDocValid !== 1) {
       return failure("Document expired", verificationResult.verificationTimeMs);
@@ -304,9 +332,7 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "nationality_membership") {
-    const isMember = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex]
-    );
+    const isMember = Number(BigInt(args.publicInputs[circuitSpec.resultIndex]));
     if (isMember !== 1) {
       return failure(
         "Nationality not in group",
@@ -316,12 +342,20 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "face_match") {
-    const isMatch = parsePublicInputToNumber(
-      args.publicInputs[circuitSpec.resultIndex]
-    );
+    const isMatch = Number(BigInt(args.publicInputs[circuitSpec.resultIndex]));
     if (isMatch !== 1) {
       return failure(
         "Face match threshold not met",
+        verificationResult.verificationTimeMs
+      );
+    }
+  }
+
+  if (circuitType === "identity_binding") {
+    const isBound = Number(BigInt(args.publicInputs[circuitSpec.resultIndex]));
+    if (isBound !== 1) {
+      return failure(
+        "Identity binding failed",
         verificationResult.verificationTimeMs
       );
     }
@@ -387,6 +421,14 @@ export const getUserProofProcedure = protectedProcedure
       ? await getUserAgeProofFull(ctx.userId)
       : await getUserAgeProof(ctx.userId)
   );
+
+/**
+ * Get all verified ZK proofs for the authenticated user.
+ * Used by the developer view to show all proof types.
+ */
+export const getAllProofsProcedure = protectedProcedure.query(
+  async ({ ctx }) => await getAllVerifiedProofsFull(ctx.userId)
+);
 
 /**
  * Fetch latest signed claims for proof generation (OCR + face match + liveness).

@@ -31,12 +31,38 @@ Zentity generates proofs **client‑side** so private inputs stay in the browser
 
 | Circuit | Purpose | Private Inputs | Public Inputs |
 |---------|---------|----------------|---------------|
-| `age_verification` | Prove age >= threshold | Birth year + document commitment | Current year, min age, nonce, claim hash |
-| `doc_validity` | Prove document not expired | Expiry date + document commitment | Current date, nonce, claim hash |
+| `age_verification` | Prove age >= threshold | DOB (days since 1900) + document hash | Current days, min age days, nonce, claim hash |
+| `doc_validity` | Prove document not expired | Expiry date + document hash | Current date, nonce, claim hash |
 | `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
-| `face_match` | Prove similarity >= threshold | Similarity score + document commitment | Threshold, nonce, claim hash |
+| `address_jurisdiction` | Prove address in jurisdiction | Address country code + Merkle path | Merkle root, nonce, claim hash |
+| `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
+| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, binding commitment, auth mode |
 
-**Why this matters:** The verifier learns only the boolean outcome (e.g., “over 18”), never the underlying PII.
+**Importance:** The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
+
+### Identity Binding Circuit
+
+The `identity_binding` circuit provides replay protection by cryptographically binding proofs to a specific user identity. It works across all three authentication modes:
+
+| Auth Mode | Binding Secret Source | Privacy Level |
+|-----------|----------------------|---------------|
+| **Passkey** | PRF output (32 bytes) | Highest – device-bound, non-extractable |
+| **OPAQUE** | Export key (64 bytes) | Medium – password-derived, deterministic |
+| **Wallet** | EIP-712 signature (65 bytes) | Lower – publicly verifiable by address |
+
+The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as a private input. The TypeScript layer (`binding-secret.ts`) handles per-mode derivation using HKDF with domain separation strings to prevent cross-use attacks.
+
+**Binding commitment formula:**
+
+```typescript
+commitment = Poseidon2(binding_secret || user_id_hash || document_hash)
+```
+
+This ensures that:
+
+- Same user + same document + same auth secret = same commitment (deterministic)
+- Different auth modes produce different commitments (domain separation)
+- Proofs cannot be replayed across users or documents
 
 ## Proof Binding & Integrity
 
@@ -59,6 +85,59 @@ See [Tamper Model](tamper-model.md) for integrity rules and [Attestation & Priva
 - **Claim binding** ties proofs to server‑signed measurements (OCR, liveness, face match).
 - **Range checks** avoid wrap‑around and invalid inputs (dates, scores, thresholds).
 
+## BN254 Field Constraints
+
+All ZK circuits operate over the **BN254 scalar field** (~254 bits). Values exceeding the field modulus will cause proof generation to fail.
+
+### Field Modulus
+
+```text
+BN254_FR_MODULUS = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
+                ≈ 2^254 (actually slightly less)
+```
+
+### Common Pitfalls
+
+| Source | Size | Risk |
+|--------|------|------|
+| Passkey PRF output | 32 bytes (256 bits) | ⚠️ Can exceed modulus |
+| OPAQUE export key | 64 bytes (512 bits) | ⚠️ Must reduce |
+| Wallet signature | 65 bytes (520 bits) | ⚠️ Must reduce |
+| SHA-256 hash | 32 bytes (256 bits) | ⚠️ Can exceed modulus |
+| Poseidon2 output | ~254 bits | ✓ Always valid |
+
+### Required: Field Reduction
+
+Any 256-bit value from cryptographic operations **must** be reduced before use in circuits:
+
+```typescript
+// WRONG: Fr constructor throws if value >= modulus
+const fr = new Fr(rawValue); // Error!
+
+// CORRECT: Reduce first, then construct
+const reduced = rawValue % BN254_FR_MODULUS;
+const fr = new Fr(reduced); // Safe
+```
+
+The worker uses `reduceToField()` to handle this:
+
+```typescript
+async function reduceToField(hexValue: string): Promise<string> {
+  const { BN254_FR_MODULUS } = await getModules();
+  const bigIntValue = BigInt(hexValue);
+  const reduced = bigIntValue % BN254_FR_MODULUS;
+  return `0x${reduced.toString(16).padStart(64, "0")}`;
+}
+```
+
+### Where This Matters
+
+- **Identity binding**: `bindingSecretField`, `userIdHashField` from passkey/OPAQUE/wallet
+- **Document hashes**: SHA-256 outputs before circuit use
+- **Any 32-byte cryptographic output**
+
+See `src/lib/privacy/zk/noir-prover.worker.ts` for implementation and `src/lib/blockchain/attestation/claim-hash.ts` for server-side reduction.
+
 ## Implementation Notes
 
 ### Proving flow (Web Worker)
@@ -75,19 +154,19 @@ Main Thread                    Web Worker
   |                                |
 ```
 
-### Verification flow (bb-worker isolation)
+### Verification flow
 
 ```text
-Next.js API Route              bb-worker.mjs (child process)
-  |                                |
-  |--- spawn Node.js process ----->| Initialize once
-  |                                |
-  |--- send request (JSON-RPC) --->| Load circuit, verify proof
-  |                                |
-  |<-- result (JSON-RPC) ----------|
+Next.js API Route
+  |
+  | 1. Load circuit artifact (cached)
+  | 2. Get/create UltraHonkVerifierBackend (singleton)
+  | 3. Call verifier.verifyProof(proof, publicInputs)
+  | 4. Return boolean result
+  |
 ```
 
-This isolates bb.js work from the request thread and supports timeouts.
+Verification uses Barretenberg's `UltraHonkVerifierBackend` directly in the API route with singleton instances for efficiency.
 
 ### Proof metadata (stored for auditability)
 

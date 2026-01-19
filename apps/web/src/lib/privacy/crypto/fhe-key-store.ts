@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc/client";
 
 import { createSecretEnvelope, type EnvelopeFormat } from "./passkey-vault";
 import { uploadSecretBlob } from "./secret-blob-client";
+import { SECRET_TYPES } from "./secret-types";
 import {
   type EnrollmentCredential,
   loadSecret,
@@ -22,8 +23,7 @@ export interface StoredFheKeys {
   keyId?: string;
 }
 
-export const FHE_SECRET_TYPE = "fhe_keys";
-const SECRET_TYPE = FHE_SECRET_TYPE;
+const SECRET_TYPE = SECRET_TYPES.FHE_KEYS;
 const FHE_ENVELOPE_FORMAT: EnvelopeFormat = "msgpack";
 const CACHE_TTL_MS = 15 * 60 * 1000;
 

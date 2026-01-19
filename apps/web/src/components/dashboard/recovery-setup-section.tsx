@@ -16,15 +16,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth/auth-client";
-import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
-import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
+import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import { addRecoveryWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 
 const SECRET_LABELS: Record<string, string> = {
-  [FHE_SECRET_TYPE]: "FHE key",
-  [PROFILE_SECRET_TYPE]: "Profile key",
+  [SECRET_TYPES.FHE_KEYS]: "FHE key",
+  [SECRET_TYPES.PROFILE]: "Profile key",
 };
 
 // Type for guardian from API
@@ -444,8 +443,8 @@ export function RecoverySetupSection() {
       const result = await trpc.recovery.setup.mutate({});
       await configQuery.refetch();
       Promise.all([
-        addRecoveryWrapperForSecretType({ secretType: FHE_SECRET_TYPE }),
-        addRecoveryWrapperForSecretType({ secretType: PROFILE_SECRET_TYPE }),
+        addRecoveryWrapperForSecretType({ secretType: SECRET_TYPES.FHE_KEYS }),
+        addRecoveryWrapperForSecretType({ secretType: SECRET_TYPES.PROFILE }),
       ]).catch(() => {
         toast.message(
           "Recovery enabled, but wrappers could not be prepared yet."

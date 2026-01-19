@@ -24,7 +24,8 @@ type ProofType =
   | "doc_validity"
   | "nationality"
   | "nationality_client"
-  | "face_match";
+  | "face_match"
+  | "identity_binding";
 
 export interface WorkerInitMessage {
   type: "init";
@@ -45,6 +46,7 @@ export interface WorkerRequest {
     | NationalityProofPayload
     | NationalityClientPayload
     | FaceMatchPayload
+    | IdentityBindingPayload
     | HealthCheckPayload;
 }
 
@@ -97,6 +99,20 @@ export interface FaceMatchPayload {
   nonce: string; // Hex string for replay resistance
   documentHashField: string;
   claimHash: string;
+}
+
+/**
+ * Identity binding proof payload
+ * Binds a proof to a specific user identity via cryptographic commitment.
+ * Works with all auth modes (passkey, OPAQUE, wallet).
+ */
+export interface IdentityBindingPayload {
+  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
+  userIdHashField: string; // Hash of user ID
+  documentHashField: string; // Document commitment
+  bindingCommitment: string; // Pre-computed Poseidon2 commitment
+  authMode: 0 | 1 | 2; // 0=passkey, 1=opaque, 2=wallet
+  nonce: string; // Hex string for replay resistance
 }
 
 export interface WorkerResponse {
@@ -339,16 +355,6 @@ export function generateDocValidityProofWorker(
 }
 
 /**
- * Generate a nationality membership proof using the Web Worker
- * (with pre-computed Merkle path)
- */
-function _generateNationalityProofWorker(
-  payload: NationalityProofPayload
-): Promise<ProofOutput> {
-  return sendProofRequest("nationality", payload);
-}
-
-/**
  * Generate a nationality membership proof with CLIENT-SIDE Merkle computation
  *
  * PRIVACY: The nationality code is processed entirely in the Web Worker.
@@ -365,17 +371,21 @@ export function generateNationalityProofClientWorker(
 }
 
 /**
- * Terminate the worker (cleanup)
+ * Generate an identity binding proof using the Web Worker
+ *
+ * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
+ * or wallet signature) is processed entirely in the Web Worker.
+ * Only the ZK proof is returned.
+ *
+ * @param payload.bindingSecretField - Auth-mode-specific secret as hex field
+ * @param payload.userIdHashField - Hashed user ID as hex field
+ * @param payload.documentHashField - Document commitment as hex field
+ * @param payload.bindingCommitment - Pre-computed Poseidon2 commitment
+ * @param payload.authMode - 0=passkey, 1=opaque, 2=wallet
+ * @param payload.nonce - Hex string for replay resistance
  */
-function _terminateWorker(): void {
-  for (const state of workerPool) {
-    state.worker.terminate();
-  }
-  workerPool = [];
-  workerPoolInitPromise = null;
-  pendingRequests.clear();
+export function generateIdentityBindingProofWorker(
+  payload: IdentityBindingPayload
+): Promise<ProofOutput> {
+  return sendProofRequest("identity_binding", payload);
 }
-
-/**
- * Health check result
- */

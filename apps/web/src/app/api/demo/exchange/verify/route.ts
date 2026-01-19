@@ -8,10 +8,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
-import {
-  CIRCUIT_SPECS,
-  parsePublicInputToNumber,
-} from "@/lib/privacy/zk/zk-circuit-spec";
+import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
 interface Proof {
   proof: string; // Base64 encoded UltraHonk ZK proof
@@ -51,10 +48,12 @@ export async function POST(request: NextRequest) {
         });
         // Check both cryptographic validity AND circuit output
         // Public inputs: [current_year, min_age, nonce, claim_hash, is_old_enough]
-        const isOldEnough = parsePublicInputToNumber(
-          proofs.ageProof.publicSignals[
-            CIRCUIT_SPECS.age_verification.resultIndex
-          ]
+        const isOldEnough = Number(
+          BigInt(
+            proofs.ageProof.publicSignals[
+              PROOF_TYPE_SPECS.age_verification.resultIndex
+            ]
+          )
         );
         results.ageProofValid = data.isValid && isOldEnough === 1;
       } catch {
@@ -72,10 +71,12 @@ export async function POST(request: NextRequest) {
           circuitType: "face_match",
         });
         // Public inputs: [threshold, nonce, claim_hash, is_match]
-        const isMatch = parsePublicInputToNumber(
-          proofs.faceMatchProof.publicSignals[
-            CIRCUIT_SPECS.face_match.resultIndex
-          ]
+        const isMatch = Number(
+          BigInt(
+            proofs.faceMatchProof.publicSignals[
+              PROOF_TYPE_SPECS.face_match.resultIndex
+            ]
+          )
         );
         results.faceMatchValid = data.isValid && isMatch === 1;
       } catch {
@@ -93,10 +94,12 @@ export async function POST(request: NextRequest) {
         });
         // Check both cryptographic validity AND circuit output
         // Public inputs: [current_date, nonce, claim_hash, is_valid]
-        const isDocValid = parsePublicInputToNumber(
-          proofs.docValidityProof.publicSignals[
-            CIRCUIT_SPECS.doc_validity.resultIndex
-          ]
+        const isDocValid = Number(
+          BigInt(
+            proofs.docValidityProof.publicSignals[
+              PROOF_TYPE_SPECS.doc_validity.resultIndex
+            ]
+          )
         );
         results.docValidityValid = data.isValid && isDocValid === 1;
       } catch {

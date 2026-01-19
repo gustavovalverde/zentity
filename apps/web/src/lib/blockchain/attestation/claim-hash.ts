@@ -1,15 +1,26 @@
 import "server-only";
 
-import { Fr } from "@aztec/bb.js";
+import { BN254_FR_MODULUS } from "@aztec/bb.js";
 
 import { getBarretenberg } from "@/lib/privacy/crypto/barretenberg";
 
-function frToHex(fr: Fr): string {
-  return fr.toString();
+type Fr = Uint8Array;
+
+function bigIntToFr(value: bigint): Fr {
+  const reduced = value % BN254_FR_MODULUS;
+  const hex = reduced.toString(16).padStart(64, "0");
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
-function normalizeToFr(value: bigint): Fr {
-  return new Fr(value);
+function frToHex(fr: Fr): string {
+  const hex = Array.from(fr)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `0x${hex}`;
 }
 
 export function getDocumentHashField(documentHashHex: string): string {
@@ -17,8 +28,8 @@ export function getDocumentHashField(documentHashHex: string): string {
     ? documentHashHex.slice(2)
     : documentHashHex;
   const hashBigInt = BigInt(`0x${normalized}`);
-  const reduced = hashBigInt % Fr.MODULUS;
-  return frToHex(normalizeToFr(reduced));
+  const reduced = hashBigInt % BN254_FR_MODULUS;
+  return frToHex(bigIntToFr(reduced));
 }
 
 export async function computeClaimHash(args: {
@@ -29,9 +40,8 @@ export async function computeClaimHash(args: {
   const valueBigInt =
     typeof args.value === "bigint" ? args.value : BigInt(args.value);
   const documentHashBigInt = BigInt(args.documentHashField);
-  const result = bb.poseidon2Hash([
-    normalizeToFr(valueBigInt),
-    normalizeToFr(documentHashBigInt),
-  ]);
-  return frToHex(result);
+  const result = await bb.poseidon2Hash({
+    inputs: [bigIntToFr(valueBigInt), bigIntToFr(documentHashBigInt)],
+  });
+  return frToHex(result.hash);
 }
