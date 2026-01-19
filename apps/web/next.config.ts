@@ -76,7 +76,9 @@ const nextConfig: NextConfig = {
     // COEP/COOP are set server-side for proper SharedArrayBuffer support in nested workers.
     // Service worker approach (coi-serviceworker) cannot intercept nested worker requests.
     // See: https://github.com/w3c/ServiceWorker/issues/1529
-    const baseHeaders = [
+
+    // Base security headers (shared across all routes)
+    const securityHeaders: { key: string; value: string }[] = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "DENY" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -84,26 +86,39 @@ const nextConfig: NextConfig = {
         key: "Permissions-Policy",
         value: "camera=(self), microphone=(), geolocation=()",
       },
-      // Cross-origin isolation for SharedArrayBuffer (required for WASM multi-threading)
       // "credentialless" is more lenient than "require-corp" - allows cross-origin resources
       // without explicit CORP headers while still enabling crossOriginIsolated
       { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
-      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
     ];
 
     if (process.env.NODE_ENV === "production") {
-      baseHeaders.push({
+      securityHeaders.push({
         key: "Strict-Transport-Security",
         value: "max-age=31536000; includeSubDomains",
       });
     } else {
-      baseHeaders.push({
+      securityHeaders.push({
         key: "Content-Security-Policy",
         value:
           "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'; " +
           "worker-src 'self' blob:;",
       });
     }
+
+    // Cross-origin isolated headers for routes needing SharedArrayBuffer (WASM multi-threading)
+    // Used by: TFHE keygen (sign-up), Barretenberg ZK proving (verification)
+    const isolatedHeaders = [
+      ...securityHeaders,
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+    ];
+
+    // Wallet-friendly headers for routes with Web3 popup flows (no WASM needed)
+    // "same-origin-allow-popups" allows wallet SDKs (e.g., Coinbase Smart Wallet) to
+    // communicate via popups while maintaining COOP security for same-origin windows
+    const walletHeaders = [
+      ...securityHeaders,
+      { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+    ];
 
     const wasmHeaders = [
       {
@@ -119,7 +134,14 @@ const nextConfig: NextConfig = {
       },
     ];
 
-    return [...wasmHeaders, { source: "/(.*)", headers: baseHeaders }];
+    return [
+      ...wasmHeaders,
+      // Web3 dashboard routes: wallet popups, no WASM
+      { source: "/dashboard/attestation/:path*", headers: walletHeaders },
+      { source: "/dashboard/defi-demo/:path*", headers: walletHeaders },
+      // All other routes: cross-origin isolated for SharedArrayBuffer
+      { source: "/(.*)", headers: isolatedHeaders },
+    ];
   },
 };
 

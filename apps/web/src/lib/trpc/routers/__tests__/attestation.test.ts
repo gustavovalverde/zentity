@@ -2,7 +2,7 @@
  * Integration tests for attestation router (demo + error flows).
  */
 
-import type { TierProfile } from "@/lib/assurance/types";
+import type { AssuranceState } from "@/lib/assurance/types";
 import type { Session } from "@/lib/auth/auth";
 
 import {
@@ -31,7 +31,7 @@ const mockUpdateBlockchainAttestationSubmitted = vi.fn();
 const mockUpdateBlockchainAttestationFailed = vi.fn();
 const mockUpdateBlockchainAttestationConfirmed = vi.fn();
 const mockUpdateBlockchainAttestationWallet = vi.fn();
-const mockGetTierProfile = vi.fn();
+const mockGetAssuranceState = vi.fn();
 
 // All mocks must be hoisted before any imports
 vi.mock("@/lib/blockchain/networks", () => ({
@@ -83,59 +83,46 @@ vi.mock("@/lib/db/queries/attestation", async (importOriginal) => {
 });
 
 vi.mock("@/lib/assurance/data", () => ({
-  getTierProfile: (...args: unknown[]) => mockGetTierProfile(...args),
-  getAssuranceProfile: vi.fn(),
+  getAssuranceState: (...args: unknown[]) => mockGetAssuranceState(...args),
 }));
 
-function createTier3Profile(): TierProfile {
+function createTier2State(): AssuranceState {
   return {
-    tier: 3,
-    aal: 2,
-    label: "Auditable",
-    assurance: {
-      auth: { level: 2, method: "passkey", isAnonymous: false, has2FA: true },
-      identity: {
-        level: 2,
-        documentVerified: true,
-        livenessPassed: true,
-        faceMatchPassed: true,
-      },
-      proof: {
-        level: 2,
-        signedClaims: true,
-        zkProofsComplete: true,
-        fheComplete: true,
-        onChainAttested: false,
-      },
+    tier: 2,
+    tierName: "Verified",
+    authStrength: "strong",
+    loginMethod: "passkey",
+    details: {
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      documentVerified: true,
+      livenessVerified: true,
+      faceMatchVerified: true,
+      zkProofsComplete: true,
+      fheComplete: true,
+      hasIncompleteProofs: false,
+      onChainAttested: false,
     },
-    nextTierRequirements: null,
   };
 }
 
-function createTier1Profile(): TierProfile {
+function createTier1State(): AssuranceState {
   return {
     tier: 1,
-    aal: 1,
-    label: "Account",
-    assurance: {
-      auth: { level: 1, method: "opaque", isAnonymous: false, has2FA: false },
-      identity: {
-        level: 0,
-        documentVerified: false,
-        livenessPassed: false,
-        faceMatchPassed: false,
-      },
-      proof: {
-        level: 0,
-        signedClaims: false,
-        zkProofsComplete: false,
-        fheComplete: false,
-        onChainAttested: false,
-      },
+    tierName: "Account",
+    authStrength: "basic",
+    loginMethod: "opaque",
+    details: {
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      documentVerified: false,
+      livenessVerified: false,
+      faceMatchVerified: false,
+      zkProofsComplete: false,
+      fheComplete: false,
+      hasIncompleteProofs: false,
+      onChainAttested: false,
     },
-    nextTierRequirements: [
-      { id: "document", label: "Doc", description: "...", completed: false },
-    ],
   };
 }
 
@@ -163,8 +150,8 @@ describe("attestation router", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default to Tier 3 + AAL2 for most tests (attestation requirement)
-    mockGetTierProfile.mockResolvedValue(createTier3Profile());
+    // Default to Tier 2 + strong auth for most tests (attestation requirement)
+    mockGetAssuranceState.mockResolvedValue(createTier2State());
   });
 
   afterEach(() => {
@@ -214,8 +201,8 @@ describe("attestation router", () => {
   });
 
   it("rejects submission when user lacks required tier", async () => {
-    // User at Tier 1 trying to access attestation (requires Tier 3 + AAL2)
-    mockGetTierProfile.mockResolvedValue(createTier1Profile());
+    // User at Tier 1 trying to access attestation (requires Tier 2 + strong auth)
+    mockGetAssuranceState.mockResolvedValue(createTier1State());
 
     const caller = await createCaller(authedSession);
     await expect(

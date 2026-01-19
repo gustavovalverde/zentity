@@ -28,7 +28,10 @@ export default function Home() {
         </nav>
       </header>
 
-      <main className="flex flex-1 flex-col items-center px-4 py-16 sm:py-24">
+      <main
+        className="flex flex-1 flex-col items-center px-4 py-16 sm:py-24"
+        id="main-content"
+      >
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="font-bold text-4xl tracking-tight sm:text-6xl">
             Privacy-First

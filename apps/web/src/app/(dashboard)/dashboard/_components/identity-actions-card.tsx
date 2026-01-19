@@ -1,4 +1,4 @@
-import type { TierProfile } from "@/lib/assurance/types";
+import type { AssuranceState } from "@/lib/assurance/types";
 
 import {
   ArrowRight,
@@ -18,11 +18,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { isFeatureUnlocked } from "@/lib/assurance/tier";
+import { canAccessFeature } from "@/lib/assurance/features";
 import { cn } from "@/lib/utils/classname";
 
 interface IdentityActionsCardProps {
-  tierProfile: TierProfile | null;
+  assuranceState: AssuranceState | null;
   web3Enabled: boolean;
   hasPasskeys: boolean;
 }
@@ -32,20 +32,18 @@ interface IdentityActionsCardProps {
  * Displays available actions with locked state for features requiring higher tiers.
  */
 export function IdentityActionsCard({
-  tierProfile,
+  assuranceState,
   web3Enabled,
   hasPasskeys,
 }: Readonly<IdentityActionsCardProps>) {
-  // Show card even if not verified - just with locked state
-  const tier = tierProfile?.tier ?? 0;
-  const aal = tierProfile?.aal ?? 0;
+  const tier = assuranceState?.tier ?? 0;
+  const authStrength = assuranceState?.authStrength ?? "basic";
 
-  const canExportCredentials = isFeatureUnlocked("export_bundle", tier, aal);
-  const canAttest = isFeatureUnlocked("attestation", tier, aal);
+  const canAttest = canAccessFeature("attestation", tier, authStrength);
 
-  const needsAal2ForAttestation = tier >= 3 && aal < 2;
+  const needsStrongAuthForAttestation = tier >= 2 && authStrength !== "strong";
   let attestationPasskeyAction: "auth" | "enroll" | undefined;
-  if (!canAttest && needsAal2ForAttestation) {
+  if (!canAttest && needsStrongAuthForAttestation) {
     attestationPasskeyAction = hasPasskeys ? "auth" : "enroll";
   }
 
@@ -66,18 +64,18 @@ export function IdentityActionsCard({
         <div
           className={web3Enabled ? "grid gap-3 sm:grid-cols-2" : "space-y-3"}
         >
-          {/* Get Credentials */}
+          {/* Get Credentials - available at Tier 2 */}
           <ActionCard
             actionHref="/dashboard/credentials"
             actionLabel="Get Credentials"
             description="Export your verified claims to any compatible wallet using OIDC4VCI."
             icon={FileCheck2}
-            locked={!canExportCredentials}
+            locked={tier < 2}
             requiredTier={2}
             title="Verifiable Credentials"
           />
 
-          {/* On-Chain Attestation */}
+          {/* On-Chain Attestation - requires Tier 2 + strong auth */}
           {web3Enabled && (
             <ActionCard
               actionHref="/dashboard/attestation"
@@ -87,7 +85,7 @@ export function IdentityActionsCard({
               icon={LinkIcon}
               locked={!canAttest}
               passkeyAction={attestationPasskeyAction}
-              requiredTier={3}
+              requiredTier={2}
               title="On-Chain Attestation"
             />
           )}
@@ -176,7 +174,7 @@ function ActionCard({
   badge,
   passkeyAction,
 }: Readonly<ActionCardProps>) {
-  // When tier is met but AAL is not, show passkey guidance instead of verification.
+  // When tier is met but auth is not, show passkey guidance
   const needsPasskey = locked && Boolean(passkeyAction);
 
   return (
@@ -203,7 +201,7 @@ function ActionCard({
           {needsPasskey && (
             <Badge className="gap-1" variant="outline">
               <Lock className="h-3 w-3" />
-              AAL2
+              Passkey
             </Badge>
           )}
           {locked && !needsPasskey && (
@@ -216,12 +214,12 @@ function ActionCard({
         <p className="text-muted-foreground text-sm">{description}</p>
         {passkeyAction === "auth" && (
           <p className="mt-2 text-warning text-xs">
-            Requires passkey authentication (AAL2)
+            Requires passkey authentication
           </p>
         )}
         {passkeyAction === "enroll" && (
           <p className="mt-2 text-warning text-xs">
-            Add a passkey to unlock on-chain attestation (AAL2)
+            Add a passkey to unlock on-chain attestation
           </p>
         )}
       </div>

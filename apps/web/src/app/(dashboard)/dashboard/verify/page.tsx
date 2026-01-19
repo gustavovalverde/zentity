@@ -20,8 +20,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { getTierProfile } from "@/lib/assurance/data";
-import { getTierProgress } from "@/lib/assurance/tier";
+import { getAssuranceState } from "@/lib/assurance/data";
+import { getTierProgress } from "@/lib/assurance/features";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 import { cn } from "@/lib/utils/classname";
@@ -47,19 +47,19 @@ export default async function VerifyPage() {
     redirect("/sign-in");
   }
 
-  const [tierProfile, bundle] = await Promise.all([
-    getTierProfile(userId, session),
+  const [assuranceState, bundle] = await Promise.all([
+    getAssuranceState(userId, session),
     getIdentityBundleByUserId(userId),
   ]);
 
-  // Already at max tier
-  if (tierProfile.tier >= 3) {
+  // Already at max tier (Tier 2 = Verified)
+  if (assuranceState.tier >= 2) {
     redirect("/dashboard");
   }
 
   const hasFheKeys = !!bundle?.fheKeyId;
-  const progress = getTierProgress(tierProfile);
-  const { assurance } = tierProfile;
+  const progress = getTierProgress(assuranceState);
+  const { details } = assuranceState;
 
   const steps = [
     {
@@ -67,7 +67,7 @@ export default async function VerifyPage() {
       title: "Verify Document",
       description: "Upload and verify your identity document",
       icon: FileText,
-      completed: assurance.identity.documentVerified,
+      completed: details.documentVerified,
       href: "/dashboard/verify/document",
     },
     {
@@ -75,7 +75,7 @@ export default async function VerifyPage() {
       title: "Liveness Check",
       description: "Complete a liveness verification",
       icon: Scan,
-      completed: assurance.identity.livenessPassed,
+      completed: details.livenessVerified,
       href: "/dashboard/verify/liveness",
     },
     {
@@ -83,13 +83,17 @@ export default async function VerifyPage() {
       title: "Face Match",
       description: "Match your face to your document photo",
       icon: User,
-      completed: assurance.identity.faceMatchPassed,
+      completed: details.faceMatchVerified,
       href: "/dashboard/verify/liveness",
     },
   ];
 
   const completedSteps = steps.filter((s) => s.completed).length;
   const nextStep = steps.find((s) => !s.completed);
+  const identityComplete =
+    details.documentVerified &&
+    details.livenessVerified &&
+    details.faceMatchVerified;
 
   return (
     <div className="space-y-6">
@@ -101,11 +105,7 @@ export default async function VerifyPage() {
             Verify your identity to unlock more features
           </p>
         </div>
-        <TierBadge
-          label={tierProfile.label}
-          size="md"
-          tier={tierProfile.tier}
-        />
+        <TierBadge size="md" tier={assuranceState.tier} />
       </div>
 
       {/* FHE Keys Warning */}
@@ -136,7 +136,8 @@ export default async function VerifyPage() {
             </span>
           </CardTitle>
           <CardDescription>
-            Complete all steps to reach Tier 3 and unlock on-chain attestation
+            Complete all steps to reach Verified tier and unlock on-chain
+            attestation
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -217,10 +218,11 @@ export default async function VerifyPage() {
             </Button>
           )}
 
+          {/* Identity complete but proofs pending - show FHE status */}
           {!nextStep &&
-            tierProfile.tier === 2 &&
-            assurance.proof.zkProofsComplete &&
-            !assurance.proof.fheComplete && (
+            identityComplete &&
+            details.zkProofsComplete &&
+            !details.fheComplete && (
               <div className="space-y-3">
                 <FheStatusPoller />
                 <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 p-3 text-blue-700 dark:text-blue-400">
@@ -237,29 +239,28 @@ export default async function VerifyPage() {
               </div>
             )}
 
-          {!nextStep &&
-            tierProfile.tier === 2 &&
-            !assurance.proof.zkProofsComplete && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="h-5 w-5" />
-                  <span className="text-sm">
-                    Identity verified, but ZK proofs were not generated.
-                  </span>
-                </div>
-                <p className="text-muted-foreground text-sm">
-                  To reach Tier 3, you need to complete verification again. ZK
-                  proofs are generated during the verification process and
-                  require your document data, which is not stored for privacy
-                  reasons.
-                </p>
-                <Button asChild className="w-full">
-                  <Link href="/dashboard/verify/document">
-                    Start New Verification
-                  </Link>
-                </Button>
+          {/* Identity complete but proofs missing - need re-verification */}
+          {!nextStep && identityComplete && !details.zkProofsComplete && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-5 w-5" />
+                <span className="text-sm">
+                  Identity verified, but ZK proofs were not generated.
+                </span>
               </div>
-            )}
+              <p className="text-muted-foreground text-sm">
+                To reach Verified tier, you need to complete verification again.
+                ZK proofs are generated during the verification process and
+                require your document data, which is not stored for privacy
+                reasons.
+              </p>
+              <Button asChild className="w-full">
+                <Link href="/dashboard/verify/document">
+                  Start New Verification
+                </Link>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -2,7 +2,7 @@
  * Assurance Data Layer Integration Tests
  *
  * Tests tier computation with real database queries.
- * Covers the full tier progression path from Tier 0 to Tier 3.
+ * Covers the full tier progression path from Tier 0 to Tier 2.
  */
 import crypto from "node:crypto";
 
@@ -17,14 +17,13 @@ import {
   insertSignedClaim,
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
-import { createIdentityDocument } from "@/lib/db/queries/identity";
+import {
+  createIdentityDocument,
+  upsertIdentityBundle,
+} from "@/lib/db/queries/identity";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
-import {
-  getAssuranceProfile,
-  getTierProfile,
-  getUnauthenticatedTierProfile,
-} from "../data";
+import { getAssuranceState, getUnauthenticatedAssuranceState } from "../data";
 
 /**
  * Helper to create a verified identity document with all required fields
@@ -47,61 +46,91 @@ async function createVerifiedDocument(
   });
 }
 
+/**
+ * Helper to create identity bundle with FHE keys (required for Tier 1+)
+ */
+async function createBundleWithKeys(userId: string) {
+  await upsertIdentityBundle({
+    userId,
+    fheKeyId: crypto.randomUUID(),
+    fheStatus: "complete",
+  });
+}
+
 describe("assurance data layer", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  describe("getUnauthenticatedTierProfile", () => {
-    it("returns Tier 0 profile", () => {
-      const profile = getUnauthenticatedTierProfile();
+  describe("getUnauthenticatedAssuranceState", () => {
+    it("returns Tier 0 for unauthenticated users", () => {
+      const state = getUnauthenticatedAssuranceState();
 
-      expect(profile.tier).toBe(0);
-      expect(profile.aal).toBe(0);
-      expect(profile.label).toBe("Explore");
-      expect(profile.nextTierRequirements).not.toBeNull();
+      expect(state.tier).toBe(0);
+      expect(state.tierName).toBe("Anonymous");
+      expect(state.authStrength).toBe("basic");
+      expect(state.loginMethod).toBe("none");
     });
   });
 
-  describe("getAssuranceProfile", () => {
-    it("returns base profile for authenticated user with no verification", async () => {
+  describe("getAssuranceState - authenticated", () => {
+    it("returns Tier 0 for authenticated user without secured keys", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.auth.level).toBe(1);
-      expect(profile.auth.method).toBe("opaque");
-      expect(profile.identity.level).toBe(0);
-      expect(profile.identity.documentVerified).toBe(false);
-      expect(profile.proof.level).toBe(0);
+      expect(state.tier).toBe(0);
+      expect(state.tierName).toBe("Anonymous");
+      expect(state.authStrength).toBe("basic");
+      expect(state.loginMethod).toBe("opaque");
+      expect(state.details.isAuthenticated).toBe(true);
+      expect(state.details.hasSecuredKeys).toBe(false);
     });
 
-    it("returns AAL2 for passkey authentication", async () => {
+    it("returns Tier 1 for authenticated user with secured keys", async () => {
+      const userId = await createTestUser();
+      const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
+
+      const state = await getAssuranceState(userId, mockSession);
+
+      expect(state.tier).toBe(1);
+      expect(state.tierName).toBe("Account");
+      expect(state.authStrength).toBe("basic");
+      expect(state.loginMethod).toBe("opaque");
+      expect(state.details.hasSecuredKeys).toBe(true);
+    });
+
+    it("returns strong auth for passkey authentication", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "passkey");
+      await createBundleWithKeys(userId);
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.auth.level).toBe(2);
-      expect(profile.auth.method).toBe("passkey");
+      expect(state.tier).toBe(1);
+      expect(state.authStrength).toBe("strong");
+      expect(state.loginMethod).toBe("passkey");
     });
 
     it("tracks document verification status", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
       const docId = crypto.randomUUID();
       await createVerifiedDocument(docId, userId);
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.identity.documentVerified).toBe(true);
+      expect(state.details.documentVerified).toBe(true);
     });
 
     it("tracks liveness from signed claims", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
       const docId = crypto.randomUUID();
       await createVerifiedDocument(docId, userId);
@@ -116,38 +145,39 @@ describe("assurance data layer", () => {
         issuedAt: new Date().toISOString(),
       });
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.identity.livenessPassed).toBe(true);
-      // faceMatchPassed requires a ZK proof (face_match type), not a signed claim
-      expect(profile.identity.faceMatchPassed).toBe(false);
+      expect(state.details.livenessVerified).toBe(true);
+      expect(state.details.faceMatchVerified).toBe(false);
     });
 
-    it("tracks face match from ZK proof", async () => {
+    it("tracks face match from signed claims", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
       const docId = crypto.randomUUID();
       await createVerifiedDocument(docId, userId);
 
-      await insertZkProofRecord({
+      await insertSignedClaim({
         id: crypto.randomUUID(),
         userId,
         documentId: docId,
-        proofType: "face_match",
-        proofHash: crypto.randomBytes(32).toString("hex"),
-        proofPayload: crypto.randomBytes(256).toString("hex"),
-        verified: true,
+        claimType: "face_match_score",
+        claimPayload: JSON.stringify({ score: 0.95 }),
+        signature: crypto.randomBytes(64).toString("hex"),
+        issuedAt: new Date().toISOString(),
       });
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.identity.faceMatchPassed).toBe(true);
+      expect(state.details.faceMatchVerified).toBe(true);
     });
 
     it("tracks ZK proof completion", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
       const docId = crypto.randomUUID();
       await createVerifiedDocument(docId, userId);
@@ -170,39 +200,33 @@ describe("assurance data layer", () => {
         });
       }
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.proof.zkProofsComplete).toBe(true);
+      expect(state.details.zkProofsComplete).toBe(true);
     });
 
     it("tracks FHE encryption completion", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
-      const attributeTypes = [
-        "birth_year_offset",
-        "dob_days",
-        "country_code",
-        "compliance_level",
-      ];
-      for (const attributeType of attributeTypes) {
-        await insertEncryptedAttribute({
-          id: crypto.randomUUID(),
-          userId,
-          source: "fhe-service",
-          attributeType,
-          ciphertext: crypto.randomBytes(256),
-        });
-      }
+      await insertEncryptedAttribute({
+        id: crypto.randomUUID(),
+        userId,
+        source: "fhe-service",
+        attributeType: "birth_year_offset",
+        ciphertext: crypto.randomBytes(256),
+      });
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.proof.fheComplete).toBe(true);
+      expect(state.details.fheComplete).toBe(true);
     });
 
     it("tracks on-chain attestation", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
       const attestation = await createBlockchainAttestation({
         userId,
@@ -212,61 +236,59 @@ describe("assurance data layer", () => {
       });
       await updateBlockchainAttestationConfirmed(attestation.id, 12_345);
 
-      const profile = await getAssuranceProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.proof.onChainAttested).toBe(true);
+      expect(state.details.onChainAttested).toBe(true);
     });
   });
 
-  describe("getTierProfile", () => {
-    it("computes Tier 1 for authenticated user", async () => {
+  describe("tier progression", () => {
+    it("computes Tier 1 for authenticated user with keys", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
-      const profile = await getTierProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.tier).toBe(1);
-      expect(profile.label).toBe("Account");
+      expect(state.tier).toBe(1);
+      expect(state.tierName).toBe("Account");
     });
 
-    it("computes Tier 2 for fully verified user", async () => {
+    it("stays at Tier 1 when identity verified but proofs missing", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "opaque");
+      await createBundleWithKeys(userId);
 
       const docId = crypto.randomUUID();
       await createVerifiedDocument(docId, userId);
 
-      // Liveness comes from signed claims
-      await insertSignedClaim({
-        id: crypto.randomUUID(),
-        userId,
-        documentId: docId,
-        claimType: "liveness_score",
-        claimPayload: JSON.stringify({ score: 0.95 }),
-        signature: crypto.randomBytes(64).toString("hex"),
-        issuedAt: new Date().toISOString(),
-      });
+      // Add signed claims for identity verification
+      for (const claimType of ["liveness_score", "face_match_score"]) {
+        await insertSignedClaim({
+          id: crypto.randomUUID(),
+          userId,
+          documentId: docId,
+          claimType,
+          claimPayload: JSON.stringify({ score: 0.95 }),
+          signature: crypto.randomBytes(64).toString("hex"),
+          issuedAt: new Date().toISOString(),
+        });
+      }
 
-      // Face match requires a ZK proof
-      await insertZkProofRecord({
-        id: crypto.randomUUID(),
-        userId,
-        documentId: docId,
-        proofType: "face_match",
-        proofHash: crypto.randomBytes(32).toString("hex"),
-        proofPayload: crypto.randomBytes(256).toString("hex"),
-        verified: true,
-      });
+      const state = await getAssuranceState(userId, mockSession);
 
-      const profile = await getTierProfile(userId, mockSession);
-
-      expect(profile.tier).toBe(2);
-      expect(profile.label).toBe("Verified");
+      expect(state.tier).toBe(1);
+      expect(state.details.hasIncompleteProofs).toBe(true);
+      expect(state.details.documentVerified).toBe(true);
+      expect(state.details.livenessVerified).toBe(true);
+      expect(state.details.faceMatchVerified).toBe(true);
+      expect(state.details.zkProofsComplete).toBe(false);
     });
 
-    it("computes Tier 3 for fully auditable user", async () => {
+    it("computes Tier 2 for fully verified user", async () => {
       const userId = await createTestUser();
       const mockSession = createMockSession(userId, "passkey");
+      await createBundleWithKeys(userId);
 
       const docId = crypto.randomUUID();
       await createVerifiedDocument(docId, userId);
@@ -306,41 +328,21 @@ describe("assurance data layer", () => {
         });
       }
 
-      // All FHE attributes
-      for (const attributeType of [
-        "birth_year_offset",
-        "dob_days",
-        "country_code",
-        "compliance_level",
-      ]) {
-        await insertEncryptedAttribute({
-          id: crypto.randomUUID(),
-          userId,
-          source: "fhe-service",
-          attributeType,
-          ciphertext: crypto.randomBytes(256),
-        });
-      }
+      // FHE attributes
+      await insertEncryptedAttribute({
+        id: crypto.randomUUID(),
+        userId,
+        source: "fhe-service",
+        attributeType: "birth_year_offset",
+        ciphertext: crypto.randomBytes(256),
+      });
 
-      const profile = await getTierProfile(userId, mockSession);
+      const state = await getAssuranceState(userId, mockSession);
 
-      expect(profile.tier).toBe(3);
-      expect(profile.label).toBe("Auditable");
-      expect(profile.aal).toBe(2);
-      expect(profile.nextTierRequirements).toBeNull();
-    });
-
-    it("includes correct next requirements for Tier 1", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-
-      const profile = await getTierProfile(userId, mockSession);
-
-      expect(profile.tier).toBe(1);
-      expect(profile.nextTierRequirements).toHaveLength(3);
-      expect(profile.nextTierRequirements?.map((r) => r.id)).toEqual(
-        expect.arrayContaining(["document", "liveness", "face_match"])
-      );
+      expect(state.tier).toBe(2);
+      expect(state.tierName).toBe("Verified");
+      expect(state.authStrength).toBe("strong");
+      expect(state.details.hasIncompleteProofs).toBe(false);
     });
   });
 });
@@ -370,5 +372,5 @@ function createMockSession(userId: string, loginMethod: string) {
       updatedAt: now,
       token: crypto.randomBytes(32).toString("hex"),
     },
-  } as Parameters<typeof getAssuranceProfile>[1];
+  } as Parameters<typeof getAssuranceState>[1];
 }
