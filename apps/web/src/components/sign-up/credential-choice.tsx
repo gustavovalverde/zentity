@@ -37,28 +37,26 @@ export function CredentialChoice({
 }: Readonly<CredentialChoiceProps>) {
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="font-semibold text-lg">
-          How would you like to sign in?
-        </h2>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Choose your preferred authentication method
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Passkey Option - First position (primacy effect) */}
         <button
           className={cn(
-            "group relative flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all",
+            "group relative flex flex-col items-center gap-3 rounded-lg border p-4 text-center transition-all",
             prfSupported && !disabled
-              ? "cursor-pointer hover:border-primary hover:bg-accent/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              ? "cursor-pointer border-primary/50 hover:border-primary hover:bg-accent/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               : "cursor-not-allowed opacity-60"
           )}
           disabled={disabled || !prfSupported}
           onClick={() => prfSupported && onSelect("passkey")}
           type="button"
         >
+          {/* Corner badge - positioned outside content flow */}
+          <Badge
+            className="absolute -top-2 left-1/2 -translate-x-1/2 text-xs"
+            variant="secondary"
+          >
+            Recommended
+          </Badge>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
             <Fingerprint className="h-5 w-5 text-primary" />
           </div>
@@ -87,9 +85,8 @@ export function CredentialChoice({
               </TooltipContent>
             </Tooltip>
           </div>
-          <Badge variant="secondary">Recommended</Badge>
-          <p className="text-muted-foreground text-sm">
-            Sign in with fingerprint or face
+          <p className="mt-auto text-muted-foreground text-sm">
+            Use fingerprint or face
           </p>
           {!prfSupported && (
             <p className="text-destructive text-xs">
@@ -101,7 +98,7 @@ export function CredentialChoice({
         {/* Password Option - Middle position (familiar fallback) */}
         <button
           className={cn(
-            "group relative flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all",
+            "group relative flex flex-col items-center gap-3 rounded-lg border p-4 text-center transition-all",
             disabled
               ? "cursor-not-allowed opacity-60"
               : "cursor-pointer hover:border-primary hover:bg-accent/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -138,15 +135,15 @@ export function CredentialChoice({
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="text-muted-foreground text-sm">
-            Create a secure password
+          <p className="mt-auto text-muted-foreground text-sm">
+            Use a secure password
           </p>
         </button>
 
         {/* Wallet Option - Last position (specialized audience) */}
         <button
           className={cn(
-            "group relative flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all",
+            "group relative flex flex-col items-center gap-3 rounded-lg border p-4 text-center transition-all",
             disabled
               ? "cursor-not-allowed opacity-60"
               : "cursor-pointer hover:border-primary hover:bg-accent/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -158,8 +155,8 @@ export function CredentialChoice({
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
             <Wallet className="h-5 w-5 text-muted-foreground" />
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium">Web3 Wallet</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="font-medium">Wallet</span>
             <Tooltip>
               <TooltipTrigger asChild>
                 {/* biome-ignore lint/a11y/useSemanticElements: span with role=button avoids nested buttons */}
@@ -183,8 +180,8 @@ export function CredentialChoice({
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="text-muted-foreground text-sm">
-            Sign in with your crypto wallet
+          <p className="mt-auto text-muted-foreground text-sm">
+            Use your crypto wallet
           </p>
         </button>
       </div>
@@ -196,50 +193,17 @@ export function CredentialChoice({
           <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>&]:rotate-180" />
         </CollapsibleTrigger>
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-          <div className="space-y-4 rounded-lg border bg-muted/30 p-4 text-sm">
-            <div>
-              <p className="font-medium">End-to-end encryption you control</p>
-              <p className="mt-1 text-muted-foreground">
-                Your sensitive data is encrypted with a random key before it
-                reaches our servers. That key is then wrapped using your chosen
-                authentication method. We only store the wrapped version.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                  With Passkey
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Your biometric generates a unique cryptographic output that
-                  wraps the key. Only your specific passkey can unwrap it.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                  With Password
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  OPAQUE derives a secret from your password without ever
-                  sending it. That secret wraps your encryption key.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                  With Wallet
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Your wallet signature derives a key that wraps your encryption
-                  key. Only your wallet can recreate it.
-                </p>
-              </div>
-            </div>
-
-            <p className="border-t pt-3 text-muted-foreground text-xs">
-              <strong className="text-foreground">The result:</strong> Even if
-              our servers were compromised, your encrypted data would be
-              useless. Only you can decrypt it.
+          <div className="space-y-3 rounded-lg border bg-muted/30 p-4 text-sm">
+            <p className="text-muted-foreground">
+              Your data is encrypted with a key that only you can access. We
+              store the encrypted version, so even if our servers were
+              compromised your data would be useless without your passkey,
+              password, or wallet.
+            </p>
+            <p className="text-muted-foreground text-xs">
+              Tap the{" "}
+              <Info className="inline-block h-3 w-3 align-text-bottom" /> icon
+              on each option to learn how it protects your keys.
             </p>
           </div>
         </CollapsibleContent>

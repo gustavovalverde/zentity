@@ -426,10 +426,9 @@ export function StepAccount() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h3 className="font-medium text-lg">Create Your Account</h3>
+        <h3 className="font-medium text-lg">Create your account</h3>
         <p className="text-muted-foreground text-sm">
-          Choose how to secure your encryption keys and start using your
-          dashboard.
+          Choose how you'd like to secure your encryption keys.
         </p>
         {!supportStatus && (
           <p className="text-muted-foreground text-xs">
