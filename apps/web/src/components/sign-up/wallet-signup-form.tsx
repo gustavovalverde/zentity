@@ -42,7 +42,7 @@ export function WalletSignUpForm({
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { signTypedDataAsync } = useSignTypedData();
+  const { mutateAsync: signTypedData } = useSignTypedData();
 
   const [error, setError] = useState<string | null>(null);
   const [isSigning, setIsSigning] = useState(false);
@@ -67,15 +67,13 @@ export function WalletSignUpForm({
     setError(null);
 
     try {
-      const signedAt = Math.floor(Date.now() / 1000);
+      // Build deterministic typed data (no timestamp to ensure reproducibility)
       const typedData = buildKekSignatureTypedData({
         userId,
         chainId,
-        timestamp: signedAt,
-        validityDays: KEK_SIGNATURE_VALIDITY_DAYS,
       });
 
-      const signature = await signTypedDataAsync({
+      const signature = await signTypedData({
         domain: typedData.domain,
         types: typedData.types,
         primaryType: typedData.primaryType,
@@ -83,6 +81,9 @@ export function WalletSignUpForm({
       });
 
       const signatureBytes = signatureToBytes(signature);
+
+      // Track when signature was obtained for cache management (not part of message)
+      const signedAt = Math.floor(Date.now() / 1000);
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
 
       onSuccess({
@@ -108,7 +109,7 @@ export function WalletSignUpForm({
     } finally {
       setIsSigning(false);
     }
-  }, [address, chainId, isConnected, onSuccess, signTypedDataAsync, userId]);
+  }, [address, chainId, isConnected, onSuccess, signTypedData, userId]);
 
   useEffect(() => {
     if (isConnected && address && hasInitiatedConnect) {

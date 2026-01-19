@@ -62,17 +62,24 @@ export function parseWalletCredentialId(
 /**
  * EIP-712 typed data structure for KEK derivation signature.
  *
+ * IMPORTANT: This message must be DETERMINISTIC to ensure the user can
+ * regenerate the same KEK after cache expiration. Unlike passkey PRF
+ * (deterministic for same salt) or OPAQUE (deterministic for same password),
+ * wallet signatures are only reproducible if the signed message is identical.
+ *
  * The message includes:
  * - userId: Binds the signature to a specific user (prevents cross-user attacks)
  * - purpose: Human-readable purpose for wallet UI
- * - timestamp: When the signature was requested
- * - validityDays: How long the signature is valid (for user awareness)
  *
  * The domain includes:
  * - name: Application name
  * - version: Protocol version (for future upgrades)
  * - chainId: Network identifier (prevents cross-chain replay)
  * - verifyingContract: Zero address (no on-chain verification needed)
+ *
+ * NOTE: We intentionally exclude timestamp/validityDays to ensure the same
+ * wallet + userId + chainId always produces the same signature and KEK.
+ * This allows key recovery after browser restart or cache expiration.
  */
 export interface WalletKekEIP712TypedData {
   domain: {
@@ -88,24 +95,23 @@ export interface WalletKekEIP712TypedData {
   message: {
     userId: string;
     purpose: string;
-    timestamp: bigint;
-    validityDays: bigint;
   };
 }
 
 /**
  * Build EIP-712 typed data for KEK derivation signature.
  *
- * This creates a deterministic message that:
- * 1. Is human-readable in wallet UI (shows purpose, validity)
+ * This creates a DETERMINISTIC message that:
+ * 1. Is human-readable in wallet UI (shows purpose)
  * 2. Binds the signature to a specific user and chain
- * 3. Produces the same signature when signed with the same wallet (deterministic)
+ * 3. Produces the SAME signature when signed with the same wallet
+ *
+ * CRITICAL: The message must be identical across sessions to regenerate
+ * the same KEK. Never include timestamps or other session-varying data.
  */
 export function buildKekSignatureTypedData(params: {
   userId: string;
   chainId: number;
-  timestamp: number;
-  validityDays: number;
 }): WalletKekEIP712TypedData {
   return {
     domain: {
@@ -118,16 +124,12 @@ export function buildKekSignatureTypedData(params: {
       KeyDerivation: [
         { name: "userId", type: "string" },
         { name: "purpose", type: "string" },
-        { name: "timestamp", type: "uint256" },
-        { name: "validityDays", type: "uint256" },
       ],
     },
     primaryType: "KeyDerivation",
     message: {
       userId: params.userId,
       purpose: "Zentity Encryption Key Derivation",
-      timestamp: BigInt(params.timestamp),
-      validityDays: BigInt(params.validityDays),
     },
   };
 }
@@ -232,6 +234,13 @@ export async function unwrapDekWithWalletSignature(params: {
  * Used when a user adds wallet auth to an existing passkey/OPAQUE account.
  *
  * Returns the wrapper data needed for storage in secret_wrappers table.
+ *
+ * @param signedAt - When the signature was obtained (for cache tracking, NOT part of message)
+ * @param expiresAt - When the cached signature expires (for cache tracking, NOT part of message)
+ *
+ * NOTE: signedAt/expiresAt are stored as metadata for cache management but are NOT
+ * included in the EIP-712 message. The message is deterministic to ensure the same
+ * wallet+userId+chainId always produces the same KEK.
  */
 export async function createWalletWrapper(params: {
   secretId: string;
@@ -316,8 +325,10 @@ export async function decryptSecretWithWalletSignature(params: {
 /**
  * Session cache for wallet signatures.
  *
- * Unlike passkey PRF (which requires authenticator interaction each time),
- * wallet signatures can be cached in memory to avoid repeated signature prompts.
+ * This cache is for UX convenience only (avoids repeated wallet popups).
+ * Unlike previous implementations, the cache is NOT required for key recovery
+ * because the EIP-712 message is deterministic. If the cache expires, the user
+ * simply re-signs the same message to regenerate the same KEK.
  *
  * Security considerations:
  * - In-memory only (cleared on page refresh/tab close)

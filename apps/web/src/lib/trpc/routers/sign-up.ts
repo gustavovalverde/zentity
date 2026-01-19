@@ -22,6 +22,7 @@ import {
   createFheEnrollmentContext,
   getFheEnrollmentContext,
 } from "@/lib/auth/fhe-enrollment-tokens";
+import { linkWalletAddress } from "@/lib/db/queries/auth";
 import {
   deleteEncryptedSecretByUserAndType,
   getEncryptedSecretByUserAndType,
@@ -410,6 +411,10 @@ export const signUpRouter = router({
    * Wallet users store FHE keys via storeFheKeysWithCredential with wallet
    * signature-derived KEK. This procedure records wallet metadata and creates
    * the identity bundle for tier progression.
+   *
+   * CRITICAL: Links the wallet address to the user account. Without this,
+   * SIWE sign-in would create a new account instead of authenticating to
+   * the existing one, making FHE keys inaccessible.
    */
   completeWalletEnrollment: protectedProcedure
     .input(
@@ -420,6 +425,14 @@ export const signUpRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Link wallet address to user account for SIWE sign-in
+      await linkWalletAddress({
+        userId: ctx.userId,
+        address: input.address,
+        chainId: input.chainId,
+        isPrimary: true,
+      });
+
       await upsertIdentityBundle({
         userId: ctx.userId,
         status: "pending",

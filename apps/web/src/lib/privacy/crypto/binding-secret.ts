@@ -184,8 +184,8 @@ async function deriveFromOpaque(
  *
  * The signature is 65 bytes from ECDSA signing. We include userId as HKDF salt
  * to ensure different users with the same wallet derive different secrets
- * (defense in depth, though same message shouldn't produce same signature
- * due to nonce/timestamp in the EIP-712 message).
+ * (defense in depth). The EIP-712 message is deterministic (no timestamp) so
+ * the same wallet+userId+chainId always produces the same signature and KEK.
  */
 async function deriveFromWallet(
   signatureBytes: Uint8Array,

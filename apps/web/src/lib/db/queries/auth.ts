@@ -1,7 +1,7 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../connection";
-import { accounts, users } from "../schema/auth";
+import { accounts, users, walletAddresses } from "../schema/auth";
 
 export async function getUserCreatedAt(userId: string): Promise<string | null> {
   const row = await db
@@ -58,4 +58,43 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
   //    - attestationEvidence, attestationState (attestation)
   //    - recoveryConfigs, recoveryRequests, guardianRelationships, pendingGuardianInvites (recovery)
   await db.delete(users).where(eq(users.id, userId)).run();
+}
+
+/**
+ * Links a wallet address to a user account.
+ *
+ * Called during wallet-based sign-up to store the wallet address in the
+ * wallet_address table. This is critical for SIWE sign-in: without this link,
+ * the user would get a new account on their next login attempt, making their
+ * FHE keys inaccessible.
+ *
+ * Uses INSERT OR IGNORE to handle idempotent calls (unique constraint on
+ * address + chainId prevents duplicates).
+ *
+ * @param params.userId - The user ID to link the wallet to
+ * @param params.address - The Ethereum wallet address (checksummed or lowercase)
+ * @param params.chainId - The chain ID where the signature was made
+ * @param params.isPrimary - Whether this is the user's primary wallet (default: true for first wallet)
+ */
+export async function linkWalletAddress(params: {
+  userId: string;
+  address: string;
+  chainId: number;
+  isPrimary?: boolean;
+}): Promise<void> {
+  const { userId, address, chainId, isPrimary = true } = params;
+
+  // Normalize address to lowercase for consistent lookups
+  const normalizedAddress = address.toLowerCase();
+
+  await db
+    .insert(walletAddresses)
+    .values({
+      userId,
+      address: normalizedAddress,
+      chainId,
+      isPrimary,
+    })
+    .onConflictDoNothing()
+    .run();
 }
