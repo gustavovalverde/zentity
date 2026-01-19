@@ -106,7 +106,8 @@ function getNextTierRequirements(
     ];
   }
 
-  // Tier 1 → 2: Need full identity verification + proofs
+  // Tier 1 → 2: User-facing verification steps only
+  // (ZK proofs and FHE encryption are generated automatically during these flows)
   return [
     {
       id: "document",
@@ -134,18 +135,6 @@ function getNextTierRequirements(
       action: details.faceMatchVerified
         ? undefined
         : { label: "Match Face", href: "/dashboard/verify/liveness" },
-    },
-    {
-      id: "zk_proofs",
-      label: "ZK Proofs",
-      description: "Generate zero-knowledge proofs for all claims",
-      completed: details.zkProofsComplete,
-    },
-    {
-      id: "fhe_encryption",
-      label: "FHE Encryption",
-      description: "Encrypt sensitive attributes with FHE",
-      completed: details.fheComplete,
     },
   ];
 }
