@@ -13,6 +13,7 @@ import {
   generateAgeProofWorker,
   generateDocValidityProofWorker,
   generateFaceMatchProofWorker,
+  generateIdentityBindingProofWorker,
   generateNationalityProofClientWorker,
 } from "./noir-worker-manager";
 
@@ -57,6 +58,14 @@ interface NationalityProofInput {
   nonce: string; // Hex nonce for replay resistance
   documentHashField: string;
   claimHash: string;
+}
+
+interface IdentityBindingInput {
+  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
+  userIdHashField: string; // Hash of user ID
+  documentHashField: string; // Document commitment
+  authMode: 0 | 1 | 2; // 0=passkey, 1=opaque, 2=wallet
+  nonce: string; // Hex nonce for replay resistance
 }
 
 /**
@@ -214,40 +223,47 @@ export async function generateNationalityProofNoir(
 }
 
 /**
- * Preload Noir circuits in the background for better UX
+ * Generate an identity binding proof in the browser
  *
- * This triggers the Web Worker to load Noir.js and bb.js before
- * the first proof is needed, reducing perceived latency.
+ * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
+ * or wallet signature) NEVER leaves the browser. Only the ZK proof is returned.
+ *
+ * @param input - Binding secret, user ID hash, document hash, auth mode, and nonce
+ * @returns Proof of identity binding without revealing the binding secret
+ *
+ * @example
+ * const challenge = await getProofChallenge("identity_binding");
+ * const result = await generateIdentityBindingProofNoir({
+ *   bindingSecretField: "0x...",
+ *   userIdHashField: "0x...",
+ *   documentHashField: "0x...",
+ *   authMode: 0, // passkey
+ *   nonce: challenge.nonce,
+ * });
  */
-function _preloadNoirCircuits(): void {
+export async function generateIdentityBindingProofNoir(
+  input: IdentityBindingInput
+): Promise<NoirProofResult> {
   if (globalThis.window === undefined) {
-    return;
+    throw new Error("ZK proofs can only be generated in the browser");
   }
 
-  try {
-    // Trigger worker initialization by starting (but not awaiting) a proof
-    // The worker will cache the loaded modules for subsequent requests
-    // We use a dummy proof request that will initialize the modules
-    // Actually, just importing the worker manager will trigger lazy init when first used
-    // For now, we don't need to do anything special here
-  } catch {
-    // Ignore preload errors
-  }
-}
+  const startTime = performance.now();
 
-/**
- * Check if Noir proving is available in the current environment
- */
-function _isNoirAvailable(): boolean {
-  return globalThis.window !== undefined;
-}
+  const result = await generateIdentityBindingProofWorker({
+    bindingSecretField: input.bindingSecretField,
+    userIdHashField: input.userIdHashField,
+    documentHashField: input.documentHashField,
+    bindingCommitment: "", // Ignored - computed inside worker via Poseidon2
+    authMode: input.authMode,
+    nonce: input.nonce,
+  });
 
-/**
- * Convert a date string (YYYY-MM-DD) to YYYYMMDD integer format
- */
-function _dateToInt(dateStr: string): number {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  return year * 10_000 + month * 100 + day;
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
 }
 
 /**

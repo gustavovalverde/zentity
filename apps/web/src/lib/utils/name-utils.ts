@@ -9,9 +9,6 @@
  * The actual names are NOT stored - only cryptographic commitments are persisted.
  */
 
-/** Matches one or more whitespace characters for splitting names */
-const WHITESPACE_PATTERN = /\s+/;
-
 /**
  * Extracts the first part (first word) from a name string.
  *
@@ -51,46 +48,4 @@ export function buildDisplayName(
     return `${firstPart} ${lastPart}`;
   }
   return firstPart || lastPart || "";
-}
-
-/**
- * Builds a display name from a full name string by extracting what appears
- * to be the first name and last name portions.
- *
- * This is a fallback when firstName and lastName aren't available separately.
- * It assumes the format is "FirstName(s) LastName(s)" and takes the first
- * word from each portion.
- *
- * @example
- * buildDisplayNameFromFull("Juan Carlos Perez Garcia") // "Juan Perez" (heuristic)
- * buildDisplayNameFromFull("Ana Rodriguez") // "Ana Rodriguez"
- */
-function _buildDisplayNameFromFull(
-  fullName: string | undefined | null
-): string {
-  if (!fullName) {
-    return "";
-  }
-
-  const parts = fullName.trim().split(WHITESPACE_PATTERN);
-
-  // If only one or two words, return as-is
-  if (parts.length <= 2) {
-    return parts.join(" ");
-  }
-
-  // For names with 3+ parts, assume first half is first name, second half is last name
-  // e.g., "Juan Carlos Perez Garcia" -> first: "Juan Carlos", last: "Perez Garcia"
-  const midpoint = Math.ceil(parts.length / 2);
-  const firstNameParts = parts.slice(0, midpoint);
-  const lastNameParts = parts.slice(midpoint);
-
-  // Take first word from each
-  const firstName = firstNameParts[0] || "";
-  const lastName = lastNameParts[0] || "";
-
-  if (firstName && lastName) {
-    return `${firstName} ${lastName}`;
-  }
-  return firstName || lastName;
 }

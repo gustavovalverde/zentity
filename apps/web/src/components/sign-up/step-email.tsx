@@ -1,5 +1,7 @@
 "use client";
 
+import type { ZodType } from "zod";
+
 import { useForm } from "@tanstack/react-form";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
@@ -16,8 +18,22 @@ import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { emailSchema } from "@/lib/auth/sign-up.schema";
 import { setFlowId } from "@/lib/observability/flow-client";
 import { trpc } from "@/lib/trpc/client";
-import { makeFieldValidator } from "@/lib/utils/form-field-validator";
 import { useSignUpStore } from "@/store/sign-up";
+
+function makeFieldValidator<T, V>(
+  schema: ZodType<T>,
+  path: string,
+  build: (value: V) => unknown
+) {
+  return (value: V) => {
+    const result = schema.safeParse(build(value));
+    if (result.success) {
+      return;
+    }
+    const issue = result.error.issues.find((i) => i.path.includes(path));
+    return issue?.message;
+  };
+}
 
 import { useStepper } from "./stepper-config";
 import { StepperControls } from "./stepper-ui";

@@ -54,35 +54,3 @@ export function formatTokenAmount(
   const whole = value / divisor;
   return whole.toLocaleString();
 }
-
-/**
- * Format wei with decimal places (for precise display).
- *
- * @param wei - Wei amount as bigint or string
- * @param decimals - Token decimals (default: 18)
- * @param displayDecimals - Number of decimal places to show (default: 2)
- * @returns Formatted string with decimal places
- *
- * @example
- * formatTokenAmountPrecise(1500000000000000000n, 18, 2) // "1.50"
- */
-function _formatTokenAmountPrecise(
-  wei: bigint | string,
-  decimals: number = DEFAULT_DECIMALS,
-  displayDecimals = 2
-): string {
-  const value = typeof wei === "string" ? BigInt(wei) : wei;
-  const divisor = BigInt(10) ** BigInt(decimals);
-  const whole = value / divisor;
-  const remainder = value % divisor;
-
-  // Calculate decimal portion
-  const decimalDivisor = BigInt(10) ** BigInt(decimals - displayDecimals);
-  const decimalPart = remainder / decimalDivisor;
-
-  if (decimalPart === BigInt(0)) {
-    return whole.toLocaleString();
-  }
-
-  return `${whole.toLocaleString()}.${decimalPart.toString().padStart(displayDecimals, "0")}`;
-}

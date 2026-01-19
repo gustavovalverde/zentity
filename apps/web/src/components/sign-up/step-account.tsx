@@ -30,7 +30,6 @@ import {
 } from "@/lib/privacy/crypto/crypto-client";
 import {
   cacheFheKeys,
-  FHE_SECRET_TYPE,
   storeFheKeysWithCredential,
   uploadSecretBlobWithToken,
 } from "@/lib/privacy/crypto/fhe-key-store";
@@ -39,6 +38,7 @@ import {
   PASSKEY_VAULT_VERSION,
   WRAP_VERSION,
 } from "@/lib/privacy/crypto/passkey-vault";
+import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import {
   cachePasskeyUnlock,
   type EnrollmentCredential,
@@ -186,7 +186,7 @@ export function StepAccount() {
       const [, fheRegistration] = await Promise.all([
         uploadSecretBlobWithToken({
           secretId: fheEnrollment.secretId,
-          secretType: FHE_SECRET_TYPE,
+          secretType: SECRET_TYPES.FHE_KEYS,
           payload: fheEnrollment.encryptedBlob,
           registrationToken: enrollmentContext.registrationToken,
         }),

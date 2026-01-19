@@ -42,10 +42,7 @@ import {
   getRequestLogBindings,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import {
-  CIRCUIT_SPECS,
-  parsePublicInputToNumber,
-} from "@/lib/privacy/zk/zk-circuit-spec";
+import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
 interface DisclosureRequest {
   // RP identification
@@ -265,17 +262,15 @@ export async function POST(
       documentId
     );
     if (ageProofPayload) {
-      const currentDays = parsePublicInputToNumber(
-        ageProofPayload.publicSignals[0]
-      );
-      const minAgeDays = parsePublicInputToNumber(
-        ageProofPayload.publicSignals[1]
-      );
+      const currentDays = Number(BigInt(ageProofPayload.publicSignals[0]));
+      const minAgeDays = Number(BigInt(ageProofPayload.publicSignals[1]));
       const isOver18 =
-        parsePublicInputToNumber(
-          ageProofPayload.publicSignals[
-            CIRCUIT_SPECS.age_verification.resultIndex
-          ]
+        Number(
+          BigInt(
+            ageProofPayload.publicSignals[
+              PROOF_TYPE_SPECS.age_verification.resultIndex
+            ]
+          )
         ) === 1;
       proofs.ageProof = {
         proof: ageProofPayload.proof,
@@ -292,14 +287,14 @@ export async function POST(
       documentId
     );
     if (docValidityPayload) {
-      const currentDate = parsePublicInputToNumber(
-        docValidityPayload.publicSignals[0]
-      );
+      const currentDate = Number(BigInt(docValidityPayload.publicSignals[0]));
       const isValid =
-        parsePublicInputToNumber(
-          docValidityPayload.publicSignals[
-            CIRCUIT_SPECS.doc_validity.resultIndex
-          ]
+        Number(
+          BigInt(
+            docValidityPayload.publicSignals[
+              PROOF_TYPE_SPECS.doc_validity.resultIndex
+            ]
+          )
         ) === 1;
       proofs.docValidityProof = {
         proof: docValidityPayload.proof,
@@ -317,10 +312,12 @@ export async function POST(
     if (nationalityPayload) {
       const groupRoot = nationalityPayload.publicSignals[0];
       const isMember =
-        parsePublicInputToNumber(
-          nationalityPayload.publicSignals[
-            CIRCUIT_SPECS.nationality_membership.resultIndex
-          ]
+        Number(
+          BigInt(
+            nationalityPayload.publicSignals[
+              PROOF_TYPE_SPECS.nationality_membership.resultIndex
+            ]
+          )
         ) === 1;
       proofs.nationalityProof = {
         proof: nationalityPayload.proof,
@@ -336,12 +333,14 @@ export async function POST(
       documentId
     );
     if (faceMatchPayload) {
-      const thresholdScaled = parsePublicInputToNumber(
-        faceMatchPayload.publicSignals[0]
-      );
+      const thresholdScaled = Number(BigInt(faceMatchPayload.publicSignals[0]));
       const isMatch =
-        parsePublicInputToNumber(
-          faceMatchPayload.publicSignals[CIRCUIT_SPECS.face_match.resultIndex]
+        Number(
+          BigInt(
+            faceMatchPayload.publicSignals[
+              PROOF_TYPE_SPECS.face_match.resultIndex
+            ]
+          )
         ) === 1;
       proofs.faceMatchProof = {
         proof: faceMatchPayload.proof,

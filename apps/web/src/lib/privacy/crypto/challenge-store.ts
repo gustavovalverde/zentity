@@ -7,7 +7,7 @@
 
 import "server-only";
 
-import type { CircuitType } from "@/lib/privacy/zk/zk-circuit-spec";
+import type { ProofType } from "@/lib/privacy/zk/proof-types";
 
 import { randomBytes } from "node:crypto";
 
@@ -18,7 +18,7 @@ import { zkChallenges } from "@/lib/db/schema/crypto";
 
 interface Challenge {
   nonce: string; // 128-bit hex string
-  circuitType: CircuitType;
+  circuitType: ProofType;
   userId?: string; // Optional: bind to specific user
   createdAt: number;
   expiresAt: number;
@@ -50,7 +50,7 @@ function generateNonce(): string {
  * @returns The created challenge
  */
 export async function createChallenge(
-  circuitType: CircuitType,
+  circuitType: ProofType,
   userId?: string
 ): Promise<Challenge> {
   await cleanupExpiredChallenges();
@@ -94,7 +94,7 @@ export async function createChallenge(
  */
 export async function consumeChallenge(
   nonce: string,
-  circuitType: CircuitType,
+  circuitType: ProofType,
   userId?: string
 ): Promise<Challenge | null> {
   await cleanupExpiredChallenges();
@@ -167,7 +167,7 @@ async function _getChallenge(nonce: string): Promise<Challenge | null> {
 
   return {
     nonce: row.nonce,
-    circuitType: row.circuitType as CircuitType,
+    circuitType: row.circuitType as ProofType,
     userId: row.userId ?? undefined,
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,

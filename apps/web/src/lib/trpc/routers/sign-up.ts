@@ -41,6 +41,7 @@ import {
   updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/sign-up-session";
+import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
@@ -101,8 +102,10 @@ export const signUpRouter = router({
    * Advances to step 3 (keys secured - final state).
    */
   markKeysSecured: publicProcedure.mutation(async ({ ctx }) => {
-    const session = await getSessionFromCookie();
+    // Pass ctx.req for reliable cookie reading in tRPC context
+    const session = await getSessionFromCookie(ctx.req);
     const validation = validateStepAccess(session, "secure-keys");
+
     if (!(validation.valid && validation.session)) {
       throw new TRPCError({
         code: "FORBIDDEN",
@@ -307,7 +310,7 @@ export const signUpRouter = router({
         });
       }
 
-      const secretType = "fhe_keys";
+      const secretType = SECRET_TYPES.FHE_KEYS;
       if (registration.blob.secretType !== secretType) {
         throw new TRPCError({
           code: "BAD_REQUEST",

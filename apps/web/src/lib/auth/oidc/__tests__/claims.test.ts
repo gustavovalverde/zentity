@@ -11,6 +11,7 @@ vi.mock("@/lib/db/queries/identity", () => ({
       docValidityProof: true,
       nationalityProof: true,
       faceMatchProof: true,
+      identityBindingProof: true,
     },
   }),
   getIdentityBundleByUserId: vi.fn().mockResolvedValue({
@@ -77,6 +78,7 @@ describe("oidc claim mapping", () => {
         docValidityProof: false,
         nationalityProof: false,
         faceMatchProof: false,
+        identityBindingProof: false,
       },
     });
 

@@ -10,10 +10,9 @@ import { requireSession } from "@/lib/auth/api-auth";
 import { consumeChallenge } from "@/lib/privacy/crypto/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
-  CIRCUIT_SPECS,
   normalizeChallengeNonce,
-  parsePublicInputToNumber,
-} from "@/lib/privacy/zk/zk-circuit-spec";
+  PROOF_TYPE_SPECS,
+} from "@/lib/privacy/zk/proof-types";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 /**
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const nonceHex = normalizeChallengeNonce(
-      publicInputs[CIRCUIT_SPECS.nationality_membership.nonceIndex]
+      publicInputs[PROOF_TYPE_SPECS.nationality_membership.nonceIndex]
     );
     const challenge = await consumeChallenge(
       nonceHex,
@@ -96,8 +95,8 @@ export async function POST(request: NextRequest) {
 
     // Enforce circuit output: is_member must be 1
     // Index 3 is is_member (after merkle_root, nonce, claim_hash)
-    const isMember = parsePublicInputToNumber(
-      publicInputs[CIRCUIT_SPECS.nationality_membership.resultIndex]
+    const isMember = Number(
+      BigInt(publicInputs[PROOF_TYPE_SPECS.nationality_membership.resultIndex])
     );
     if (isMember !== 1) {
       return NextResponse.json({

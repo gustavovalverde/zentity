@@ -26,9 +26,8 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
-import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
+import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import { addWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
 import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
 
@@ -151,14 +150,14 @@ export default function RecoverPasskeyPage() {
       const { credentialId, prfOutput } = registration;
 
       await addWrapperForSecretType({
-        secretType: FHE_SECRET_TYPE,
+        secretType: SECRET_TYPES.FHE_KEYS,
         newCredentialId: credentialId,
         newPrfOutput: prfOutput,
         newPrfSalt: prfSalt,
       });
 
       await addWrapperForSecretType({
-        secretType: PROFILE_SECRET_TYPE,
+        secretType: SECRET_TYPES.PROFILE,
         newCredentialId: credentialId,
         newPrfOutput: prfOutput,
         newPrfSalt: prfSalt,

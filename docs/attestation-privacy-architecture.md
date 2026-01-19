@@ -6,7 +6,7 @@
 
 Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE + Wallet)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These cryptographic pillars are used together throughout the system.
 
-- **ZK proofs**: age (day-precise), document validity, nationality membership, address jurisdiction, face match threshold.
+- **ZK proofs**: age (day-precise), document validity, nationality membership, address jurisdiction, face match threshold, identity binding (replay protection).
 - **FHE encryption**: full DOB (days since 1900-01-01), country code, address country, compliance level, liveness score, risk score.
 - **Commitments + hashes**: document hash, name commitment, DOB commitment, address commitment, proof hashes.
 - **Screening attestations**: PEP/sanctions screening results stored as signed claims (boolean + provider + timestamp).
@@ -58,8 +58,9 @@ This architecture supports:
 - Proofs are **verified server-side**; on-chain InputVerifier validates FHE input proofs.
 - High-risk measurements (OCR results, liveness, face match) are **server-signed claims**.
 - Proofs are **bound to a claim hash** to prevent client tampering.
+- **Identity binding proofs** cryptographically link proofs to a specific user via Poseidon2 commitment, preventing proof replay across users or documents. Works with all three auth modes (passkey PRF, OPAQUE export key, wallet signature).
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
-- OPAQUE authentication keeps raw passwords off the server; clients verify the server’s static public key (pinned in production).
+- OPAQUE authentication keeps raw passwords off the server; clients verify the server's static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
 
 ---

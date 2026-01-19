@@ -45,7 +45,7 @@ The frontend handles:
 - Face detection and liveness verification using Human.js (server-side via tfjs-node)
 - **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
 - **tRPC API layer** with type-safe routers for all backend operations
-- RP (Relying Party) redirect flow for OAuth-style integrations
+- OAuth 2.1 / OpenID Connect provider for third-party integrations (via better-auth)
 - **FROST threshold signatures** for guardian-based key recovery
 
 ## Build & Development Commands
@@ -298,16 +298,12 @@ const health = await trpc.crypto.health.query();
 const result = await trpc.liveness.verify.mutate({ sessionId, ... });
 ```
 
-## RP (Relying Party) Flow
+## OAuth Provider (Third-Party Integrations)
 
-OAuth-style redirect flow for third-party integrations in `src/lib/rp-flow.ts`:
+Zentity acts as an OAuth 2.1 / OpenID Connect authorization server via better-auth's `oauthProvider` plugin. Endpoints are under `/api/auth/oauth2/*` with discovery at `/.well-known/*`.
 
-1. `/api/rp/authorize` — Validates `client_id` + `redirect_uri`, creates signed flow cookie
-2. User redirected to `/rp/verify?flow=...` (clean URL, no sensitive params)
-3. After verification, `/api/rp/complete` issues one-time code and redirects back
-4. RP exchanges code at `/api/rp/exchange` for verification flags (no PII)
-
-Configure allowed redirect URIs via `RP_ALLOWED_REDIRECT_URIS` env var.
+- [OAuth Provider Flow](docs/rp-redirect-flow.md) — Authorization flow, endpoints, consent
+- [OAuth Integrations](docs/oauth-integrations.md) — Client setup, Generic OAuth, OIDC4VCI/VP
 
 ## ZK Circuit Development
 
@@ -319,10 +315,14 @@ ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
 
 Circuits available:
 
-- `age_verification` — Prove age >= threshold without revealing birth year
+- `age_verification` — Prove age >= threshold without revealing DOB
 - `doc_validity` — Prove document not expired without revealing expiry date
 - `nationality_membership` — Prove nationality in country group via Merkle proof
+- `address_jurisdiction` — Prove residential address in jurisdiction via Merkle proof
 - `face_match` — Prove face similarity above threshold
+- `identity_binding` — Bind proofs to user identity for replay protection (works with passkey, OPAQUE, and wallet auth)
+
+**Critical: BN254 field constraints** — All circuit inputs must fit the BN254 scalar field (~254 bits). Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256) are 256 bits and **must be reduced** via `value % BN254_FR_MODULUS` before use. See [ZK Architecture](docs/zk-architecture.md#bn254-field-constraints).
 
 ## Environment Variables
 
@@ -334,6 +334,6 @@ OCR_SERVICE_URL=http://localhost:5004
 # Auth (required)
 BETTER_AUTH_SECRET=<random-32-char-string>
 
-# RP Flow (optional, for third-party integrations)
-RP_ALLOWED_REDIRECT_URIS=https://example.com/callback,https://other.com/auth
+# OAuth/OIDC (optional, for third-party integrations)
+OIDC4VCI_WALLET_CLIENT_ID=zentity-wallet  # Default wallet client ID for credential issuance
 ```

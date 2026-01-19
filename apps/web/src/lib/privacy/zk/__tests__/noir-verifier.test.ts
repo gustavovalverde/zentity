@@ -47,11 +47,10 @@ vi.mock("@/noir-circuits/face_match/artifacts/face_match.json", () => ({
 
 import { getBbJsVersion, getCircuitMetadata } from "../noir-verifier";
 import {
-  CIRCUIT_SPECS,
-  isCircuitType,
+  isProofType,
   normalizeChallengeNonce,
-  parsePublicInputToNumber,
-} from "../zk-circuit-spec";
+  PROOF_TYPE_SPECS,
+} from "../proof-types";
 
 describe("noir-verifier", () => {
   describe("getCircuitMetadata", () => {
@@ -113,17 +112,18 @@ describe("noir-verifier", () => {
   });
 });
 
-describe("zk-circuit-spec", () => {
-  describe("CIRCUIT_SPECS", () => {
-    it("defines specs for all circuit types", () => {
-      expect(CIRCUIT_SPECS.age_verification).toBeDefined();
-      expect(CIRCUIT_SPECS.doc_validity).toBeDefined();
-      expect(CIRCUIT_SPECS.nationality_membership).toBeDefined();
-      expect(CIRCUIT_SPECS.face_match).toBeDefined();
+describe("proof-types", () => {
+  describe("PROOF_TYPE_SPECS", () => {
+    it("defines specs for all proof types", () => {
+      expect(PROOF_TYPE_SPECS.age_verification).toBeDefined();
+      expect(PROOF_TYPE_SPECS.doc_validity).toBeDefined();
+      expect(PROOF_TYPE_SPECS.nationality_membership).toBeDefined();
+      expect(PROOF_TYPE_SPECS.face_match).toBeDefined();
+      expect(PROOF_TYPE_SPECS.identity_binding).toBeDefined();
     });
 
     it("age_verification has correct spec", () => {
-      const spec = CIRCUIT_SPECS.age_verification;
+      const spec = PROOF_TYPE_SPECS.age_verification;
       expect(spec.minPublicInputs).toBe(5);
       expect(spec.nonceIndex).toBe(2);
       expect(spec.claimHashIndex).toBe(3);
@@ -131,7 +131,7 @@ describe("zk-circuit-spec", () => {
     });
 
     it("doc_validity has correct spec", () => {
-      const spec = CIRCUIT_SPECS.doc_validity;
+      const spec = PROOF_TYPE_SPECS.doc_validity;
       expect(spec.minPublicInputs).toBe(4);
       expect(spec.nonceIndex).toBe(1);
       expect(spec.claimHashIndex).toBe(2);
@@ -139,7 +139,7 @@ describe("zk-circuit-spec", () => {
     });
 
     it("nationality_membership has correct spec", () => {
-      const spec = CIRCUIT_SPECS.nationality_membership;
+      const spec = PROOF_TYPE_SPECS.nationality_membership;
       expect(spec.minPublicInputs).toBe(4);
       expect(spec.nonceIndex).toBe(1);
       expect(spec.claimHashIndex).toBe(2);
@@ -147,7 +147,7 @@ describe("zk-circuit-spec", () => {
     });
 
     it("face_match has correct spec", () => {
-      const spec = CIRCUIT_SPECS.face_match;
+      const spec = PROOF_TYPE_SPECS.face_match;
       expect(spec.minPublicInputs).toBe(4);
       expect(spec.nonceIndex).toBe(1);
       expect(spec.claimHashIndex).toBe(2);
@@ -155,40 +155,22 @@ describe("zk-circuit-spec", () => {
     });
   });
 
-  describe("isCircuitType", () => {
-    it("returns true for valid circuit types", () => {
-      expect(isCircuitType("age_verification")).toBe(true);
-      expect(isCircuitType("doc_validity")).toBe(true);
-      expect(isCircuitType("nationality_membership")).toBe(true);
-      expect(isCircuitType("face_match")).toBe(true);
+  describe("isProofType", () => {
+    it("returns true for valid proof types", () => {
+      expect(isProofType("age_verification")).toBe(true);
+      expect(isProofType("doc_validity")).toBe(true);
+      expect(isProofType("nationality_membership")).toBe(true);
+      expect(isProofType("face_match")).toBe(true);
+      expect(isProofType("identity_binding")).toBe(true);
     });
 
-    it("returns false for invalid circuit types", () => {
-      expect(isCircuitType("invalid")).toBe(false);
-      expect(isCircuitType("")).toBe(false);
-      expect(isCircuitType(null)).toBe(false);
-      expect(isCircuitType(undefined)).toBe(false);
-      expect(isCircuitType(123)).toBe(false);
-      expect(isCircuitType({})).toBe(false);
-    });
-  });
-
-  describe("parsePublicInputToNumber", () => {
-    it("parses decimal string", () => {
-      expect(parsePublicInputToNumber("12345")).toBe(12_345);
-    });
-
-    it("parses hex string with 0x prefix", () => {
-      expect(parsePublicInputToNumber("0x1234")).toBe(0x12_34);
-    });
-
-    it("parses zero", () => {
-      expect(parsePublicInputToNumber("0")).toBe(0);
-      expect(parsePublicInputToNumber("0x0")).toBe(0);
-    });
-
-    it("parses large decimal values", () => {
-      expect(parsePublicInputToNumber("20251231")).toBe(20_251_231);
+    it("returns false for invalid proof types", () => {
+      expect(isProofType("invalid")).toBe(false);
+      expect(isProofType("")).toBe(false);
+      expect(isProofType(null)).toBe(false);
+      expect(isProofType(undefined)).toBe(false);
+      expect(isProofType(123)).toBe(false);
+      expect(isProofType({})).toBe(false);
     });
   });
 

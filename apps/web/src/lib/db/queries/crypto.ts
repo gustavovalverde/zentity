@@ -103,12 +103,10 @@ export async function getUserAgeProof(
     userId,
     "dob_days"
   );
-  if (!encrypted) {
-    encrypted = await getLatestEncryptedAttributeByUserAndType(
-      userId,
-      "birth_year_offset"
-    );
-  }
+  encrypted ??= await getLatestEncryptedAttributeByUserAndType(
+    userId,
+    "birth_year_offset"
+  );
   const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   return {
@@ -161,12 +159,10 @@ export async function getUserAgeProofFull(
     userId,
     "dob_days"
   );
-  if (!encrypted) {
-    encrypted = await getLatestEncryptedAttributeByUserAndType(
-      userId,
-      "birth_year_offset"
-    );
-  }
+  encrypted ??= await getLatestEncryptedAttributeByUserAndType(
+    userId,
+    "birth_year_offset"
+  );
   const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   let publicSignals: string[] | null = null;
@@ -466,6 +462,76 @@ export async function getZkProofsByUserId(
     .where(eq(zkProofs.userId, userId))
     .orderBy(desc(zkProofs.createdAt))
     .all();
+}
+
+/**
+ * Get all verified ZK proofs for a user with full details.
+ * Used by the dev page to display proof metadata.
+ */
+export async function getAllVerifiedProofsFull(userId: string): Promise<
+  {
+    proofId: string;
+    proofType: string;
+    generationTimeMs: number | null;
+    createdAt: string;
+    proof: string | null;
+    publicSignals: string[] | null;
+    circuitType: string | null;
+    noirVersion: string | null;
+    circuitHash: string | null;
+    verificationKeyHash: string | null;
+    verificationKeyPoseidonHash: string | null;
+    bbVersion: string | null;
+  }[]
+> {
+  const rows = await db
+    .select({
+      id: zkProofs.id,
+      proofType: zkProofs.proofType,
+      generationTimeMs: zkProofs.generationTimeMs,
+      createdAt: zkProofs.createdAt,
+      proofPayload: zkProofs.proofPayload,
+      publicInputs: zkProofs.publicInputs,
+      circuitType: zkProofs.circuitType,
+      noirVersion: zkProofs.noirVersion,
+      circuitHash: zkProofs.circuitHash,
+      verificationKeyHash: zkProofs.verificationKeyHash,
+      verificationKeyPoseidonHash: zkProofs.verificationKeyPoseidonHash,
+      bbVersion: zkProofs.bbVersion,
+    })
+    .from(zkProofs)
+    .where(and(eq(zkProofs.userId, userId), eq(zkProofs.verified, true)))
+    .orderBy(desc(zkProofs.createdAt))
+    .all();
+
+  return rows.map((row) => {
+    let publicSignals: string[] | null = null;
+    if (row.publicInputs) {
+      try {
+        const parsed = JSON.parse(row.publicInputs) as unknown;
+        if (Array.isArray(parsed)) {
+          publicSignals = parsed.map(String);
+        }
+      } catch {
+        publicSignals = null;
+      }
+    }
+
+    return {
+      proofId: row.id,
+      proofType: row.proofType,
+      generationTimeMs: row.generationTimeMs ?? null,
+      createdAt: row.createdAt,
+      proof: row.proofPayload ?? null,
+      publicSignals,
+      circuitType: row.circuitType ?? null,
+      noirVersion: row.noirVersion ?? null,
+      circuitHash: row.circuitHash ?? null,
+      verificationKeyHash: row.verificationKeyHash ?? null,
+      verificationKeyPoseidonHash: row.verificationKeyPoseidonHash ?? null,
+      bbVersion: row.bbVersion ?? null,
+    };
+  });
 }
 
 export async function getZkProofTypesByUserAndDocument(

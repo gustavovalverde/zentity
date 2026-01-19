@@ -8,7 +8,7 @@ import {
   getBbJsVersion,
   getCircuitIdentity,
 } from "@/lib/privacy/zk/noir-verifier";
-import { CIRCUIT_SPECS } from "@/lib/privacy/zk/zk-circuit-spec";
+import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
 export async function GET(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
@@ -27,19 +27,19 @@ export async function GET(request: Request) {
     circuits: {
       age_verification: {
         ...age,
-        spec: CIRCUIT_SPECS.age_verification,
+        spec: PROOF_TYPE_SPECS.age_verification,
       },
       doc_validity: {
         ...docValidity,
-        spec: CIRCUIT_SPECS.doc_validity,
+        spec: PROOF_TYPE_SPECS.doc_validity,
       },
       nationality_membership: {
         ...nationality,
-        spec: CIRCUIT_SPECS.nationality_membership,
+        spec: PROOF_TYPE_SPECS.nationality_membership,
       },
       face_match: {
         ...faceMatch,
-        spec: CIRCUIT_SPECS.face_match,
+        spec: PROOF_TYPE_SPECS.face_match,
       },
     },
   });

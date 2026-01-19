@@ -60,9 +60,8 @@ import {
   renamePasskey,
   signInWithPasskey,
 } from "@/lib/auth/passkey";
-import { FHE_SECRET_TYPE } from "@/lib/privacy/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import { PROFILE_SECRET_TYPE } from "@/lib/privacy/crypto/profile-secret";
+import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import {
   addWrapperForSecretType,
   cacheOpaqueExportKey,
@@ -183,7 +182,7 @@ export function PasskeyManagementSection() {
     const { credentialId, prfOutput } = registration;
 
     await addWrapperForSecretType({
-      secretType: FHE_SECRET_TYPE,
+      secretType: SECRET_TYPES.FHE_KEYS,
       newCredentialId: credentialId,
       newPrfOutput: prfOutput,
       newPrfSalt: prfSalt,
@@ -192,7 +191,7 @@ export function PasskeyManagementSection() {
     });
 
     await addWrapperForSecretType({
-      secretType: PROFILE_SECRET_TYPE,
+      secretType: SECRET_TYPES.PROFILE,
       newCredentialId: credentialId,
       newPrfOutput: prfOutput,
       newPrfSalt: prfSalt,

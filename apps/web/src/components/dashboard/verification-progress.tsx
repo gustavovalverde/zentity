@@ -6,6 +6,7 @@ import {
   Circle,
   FileCheck,
   Key,
+  Link,
   Shield,
   User,
   XCircle,
@@ -34,6 +35,7 @@ export interface VerificationChecks {
   docValidityProof: boolean;
   nationalityProof: boolean;
   faceMatchProof: boolean;
+  identityBindingProof: boolean;
   fheEncryption: boolean;
   fheError?: string | null;
 }
@@ -143,6 +145,13 @@ export function VerificationProgress({
         icon: <Shield className="h-4 w-4" />,
       },
       {
+        id: "identityBindingProof",
+        label: "Identity Binding (ZK)",
+        description: "Proof bound to your credentials",
+        completed: effectiveChecks.identityBindingProof,
+        icon: <Link className="h-4 w-4" />,
+      },
+      {
         id: "fheEncryption",
         label: "FHE Encryption",
         description: "Data encrypted homomorphically",
@@ -157,6 +166,7 @@ export function VerificationProgress({
       effectiveChecks.ageProof,
       effectiveChecks.docValidityProof,
       effectiveChecks.nationalityProof,
+      effectiveChecks.identityBindingProof,
       effectiveChecks.fheEncryption,
     ]
   );
@@ -169,9 +179,10 @@ export function VerificationProgress({
       effectiveChecks.docValidityProof,
       effectiveChecks.nationalityProof,
       effectiveChecks.faceMatchProof,
+      effectiveChecks.identityBindingProof,
       effectiveChecks.fheEncryption,
     ].filter(Boolean).length;
-    return { completedCount: count, progress: (count / 7) * 100 };
+    return { completedCount: count, progress: (count / 8) * 100 };
   }, [
     effectiveChecks.document,
     effectiveChecks.liveness,
@@ -179,6 +190,7 @@ export function VerificationProgress({
     effectiveChecks.docValidityProof,
     effectiveChecks.nationalityProof,
     effectiveChecks.faceMatchProof,
+    effectiveChecks.identityBindingProof,
     effectiveChecks.fheEncryption,
   ]);
 
@@ -187,7 +199,7 @@ export function VerificationProgress({
       <CardHeader className="pb-3">
         <CardTitle className="text-lg">Verification Progress</CardTitle>
         <p className="text-muted-foreground text-sm">
-          {completedCount}/7 verification checks complete
+          {completedCount}/8 verification checks complete
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

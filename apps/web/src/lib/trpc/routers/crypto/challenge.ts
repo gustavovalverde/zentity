@@ -12,6 +12,7 @@ export const circuitTypeSchema = z.enum([
   "doc_validity",
   "nationality_membership",
   "face_match",
+  "identity_binding",
 ]);
 
 /**

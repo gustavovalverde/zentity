@@ -1,4 +1,4 @@
-import { Fr } from "@aztec/bb.js";
+import { BN254_FR_MODULUS } from "@aztec/bb.js";
 import { describe, expect, it, vi } from "vitest";
 
 // Mock server-only for test environment
@@ -13,6 +13,6 @@ describe("claim-hash", () => {
     const field = getDocumentHashField(maxHash);
     expect(field.startsWith("0x")).toBe(true);
     const fieldValue = BigInt(field);
-    expect(fieldValue).toBeLessThan(Fr.MODULUS);
+    expect(fieldValue).toBeLessThan(BN254_FR_MODULUS);
   });
 });

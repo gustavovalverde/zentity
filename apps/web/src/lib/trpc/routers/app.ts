@@ -39,9 +39,9 @@ export const appRouter = router({
   crypto: cryptoRouter,
   identity: identityRouter,
   liveness: livenessRouter,
-  signUp: signUpRouter,
   recovery: recoveryRouter,
   secrets: secretsRouter,
+  signUp: signUpRouter,
   token: tokenRouter,
 });
 

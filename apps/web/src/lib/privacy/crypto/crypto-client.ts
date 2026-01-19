@@ -34,6 +34,7 @@ import {
   generateAgeProofNoir,
   generateDocValidityProofNoir,
   generateFaceMatchProofNoir,
+  generateIdentityBindingProofNoir,
   generateNationalityProofNoir,
 } from "@/lib/privacy/zk/noir-prover";
 import { trpc } from "@/lib/trpc/client";
@@ -56,7 +57,8 @@ type ClientProofType =
   | "age_verification"
   | "doc_validity"
   | "face_match"
-  | "nationality_membership";
+  | "nationality_membership"
+  | "identity_binding";
 
 function recordProofSuccess(
   proofType: ClientProofType,
@@ -87,8 +89,6 @@ interface VerifyAgeFHEResult {
   isOver18: boolean;
   computationTimeMs: number;
 }
-
-type ServiceHealth = CryptoOutputs["health"];
 
 interface ChallengeResponse {
   nonce: string;
@@ -337,10 +337,46 @@ export async function generateFaceMatchProof(
 }
 
 /**
- * Check health of crypto services
+ * Generate a zero-knowledge proof of identity binding (CLIENT-SIDE)
+ *
+ * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
+ * or wallet signature) NEVER leaves the browser. Only the ZK proof and
+ * binding commitment are returned.
+ *
+ * @param bindingSecret - Auth-mode-specific secret as hex field
+ * @param userIdHash - Hashed user ID as hex field
+ * @param documentHash - Document commitment as hex field
+ * @param authMode - 0=passkey, 1=opaque, 2=wallet
+ * @param options.nonce - Server-issued nonce for replay resistance
  */
-async function _checkCryptoHealth(): Promise<ServiceHealth> {
-  return await trpc.crypto.health.query();
+export async function generateIdentityBindingProof(
+  bindingSecret: string,
+  userIdHash: string,
+  documentHash: string,
+  authMode: 0 | 1 | 2,
+  options: { nonce: string }
+): Promise<ProofResult> {
+  const startTime = performance.now();
+
+  try {
+    const result = await generateIdentityBindingProofNoir({
+      bindingSecretField: bindingSecret,
+      userIdHashField: userIdHash,
+      documentHashField: documentHash,
+      authMode,
+      nonce: options.nonce,
+    });
+    recordProofSuccess("identity_binding", result);
+
+    return {
+      proof: bytesToBase64(result.proof),
+      publicSignals: result.publicInputs,
+      generationTimeMs: result.generationTimeMs,
+    };
+  } catch (error) {
+    recordProofError("identity_binding", startTime);
+    throw error;
+  }
 }
 
 export async function getSignedClaims(
@@ -447,6 +483,20 @@ export async function getUserProof(
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to get proof"
+    );
+  }
+}
+
+/**
+ * Get all verified ZK proofs for the authenticated user.
+ * Used by the developer view to display all proof types.
+ */
+export async function getAllProofs(): Promise<CryptoOutputs["getAllProofs"]> {
+  try {
+    return await trpc.crypto.getAllProofs.query();
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "Failed to get proofs"
     );
   }
 }

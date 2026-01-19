@@ -7,7 +7,7 @@
 //   - claim_hash: Poseidon2(nationality_code, document_hash) binding to OCR claim
 //
 // Private inputs:
-//   - nationality_code: The ISO numeric country code (e.g., 276 for Germany)
+//   - nationality_code: Weighted-sum encoding from @zkpassport/utils (e.g., 4474197 for Germany)
 //   - document_hash: Commitment to the document (kept private)
 //   - path_elements: The sibling hashes along the Merkle path
 //   - path_indices: The direction at each level (0=left, 1=right)
@@ -61,7 +61,8 @@ fn main(
 #[test]
 fn test_poseidon_hash() {
     // Test that poseidon2 hashing works as expected
-    let hash = poseidon2([276]); // Germany
+    // Germany: 'D'*65536 + 'E'*256 + 'U' = 68*65536 + 69*256 + 85 = 4474197
+    let hash = poseidon2([4474197]);
     assert(hash != 0);
 }
 
@@ -71,7 +72,8 @@ fn test_merkle_path_computation() {
     // by the JavaScript side from the actual Merkle tree
 
     // Create a simple test case with known values
-    let nationality_code: Field = 276; // Germany
+    // Germany weighted-sum: 'D'*65536 + 'E'*256 + 'U' = 4474197
+    let nationality_code: Field = 4474197;
 
     // Compute the leaf hash
     let leaf = poseidon2([nationality_code]);

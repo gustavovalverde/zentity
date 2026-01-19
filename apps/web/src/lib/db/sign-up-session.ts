@@ -338,10 +338,62 @@ export function validateStepAccess(
 }
 
 /**
- * Get session from wizard cookie for API route validation
+ * Parse cookie value from request headers
  */
-export async function getSessionFromCookie(): Promise<SignUpSession | null> {
-  const navState = await getWizardCookie();
+function parseCookieFromHeaders(
+  cookieHeader: string | null,
+  name: string
+): string | undefined {
+  if (!cookieHeader) {
+    return undefined;
+  }
+  const match = new RegExp(String.raw`(?:^|;\s*)${name}=([^;]*)`).exec(
+    cookieHeader
+  );
+  return match?.[1];
+}
+
+/**
+ * Get wizard cookie from request headers (for tRPC contexts)
+ */
+async function getWizardCookieFromRequest(
+  req: Request
+): Promise<WizardNavState | null> {
+  try {
+    const cookieHeader = req.headers.get("cookie");
+    const token = parseCookieFromHeaders(cookieHeader, WIZARD_COOKIE_NAME);
+    if (!token) {
+      return null;
+    }
+
+    const secret = await getSecret();
+    const { payload } = await jwtDecrypt(token, secret);
+
+    return {
+      sessionId: payload.sessionId as string,
+      step: payload.step as number,
+    };
+  } catch (error) {
+    console.error(
+      "[getWizardCookieFromRequest] error:",
+      error instanceof Error ? error.message : error
+    );
+    return null;
+  }
+}
+
+/**
+ * Get session from wizard cookie for API route validation.
+ * Pass the request object when calling from tRPC handlers for reliable cookie access.
+ */
+export async function getSessionFromCookie(
+  req?: Request
+): Promise<SignUpSession | null> {
+  // Use request-based cookie reading when request is provided (tRPC context)
+  const navState = req
+    ? await getWizardCookieFromRequest(req)
+    : await getWizardCookie();
+
   if (!navState) {
     return null;
   }

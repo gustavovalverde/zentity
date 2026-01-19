@@ -2,9 +2,9 @@
 
 import type { EnvelopeFormat } from "./passkey-vault";
 
+import { SECRET_TYPES } from "./secret-types";
 import { loadSecret } from "./secret-vault";
 
-export const PROFILE_SECRET_TYPE = "profile_v1";
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -120,7 +120,7 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
     }
 
     const result = await loadSecret({
-      secretType: PROFILE_SECRET_TYPE,
+      secretType: SECRET_TYPES.PROFILE,
       expectedEnvelopeFormat: PROFILE_ENVELOPE_FORMAT,
       secretLabel: "profile data",
     });

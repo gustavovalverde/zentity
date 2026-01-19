@@ -1,6 +1,7 @@
 "use client";
 
 import type { AgeProofFull } from "@/lib/privacy/crypto/age-proof-types";
+import type { RouterOutputs } from "@/lib/trpc/types";
 
 import {
   AlertTriangle,
@@ -11,6 +12,7 @@ import {
   Copy,
   Database,
   Key,
+  Link as LinkIcon,
   Shield,
   Zap,
 } from "lucide-react";
@@ -40,30 +42,194 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemSeparator,
-} from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
-import { getUserProof } from "@/lib/privacy/crypto/crypto-client";
+import { getAllProofs, getUserProof } from "@/lib/privacy/crypto/crypto-client";
+import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
-export default function DevViewPage() {
-  const [proofData, setProofData] = useState<AgeProofFull | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+type ProofData = RouterOutputs["crypto"]["getAllProofs"][number];
+
+const PROOF_TYPE_LABELS: Record<string, string> = {
+  age_verification: "Age Verification",
+  doc_validity: "Document Validity",
+  nationality_membership: "Nationality Membership",
+  face_match: "Face Match",
+  identity_binding: "Identity Binding",
+};
+
+const PROOF_TYPE_ICONS: Record<string, React.ReactNode> = {
+  age_verification: <Shield className="h-5 w-5 text-info" />,
+  doc_validity: <Shield className="h-5 w-5 text-success" />,
+  nationality_membership: <Shield className="h-5 w-5 text-warning" />,
+  face_match: <Shield className="h-5 w-5 text-primary" />,
+  identity_binding: <LinkIcon className="h-5 w-5 text-violet-500" />,
+};
+
+function ProofCard({
+  proof,
+  copiedField,
+  onCopy,
+}: Readonly<{
+  proof: ProofData;
+  copiedField: string | null;
+  onCopy: (text: string, field: string) => void;
+}>) {
   const [proofOpen, setProofOpen] = useState(false);
   const [signalsOpen, setSignalsOpen] = useState(false);
 
+  // Proofs are stored as base64-encoded binary (UltraHonk format), not JSON
+  const proofDisplay = proof.proof ?? null;
+  const signalsJson = proof.publicSignals
+    ? JSON.stringify(proof.publicSignals, null, 2)
+    : null;
+
+  const spec =
+    PROOF_TYPE_SPECS[proof.proofType as keyof typeof PROOF_TYPE_SPECS];
+  const label = PROOF_TYPE_LABELS[proof.proofType] ?? proof.proofType;
+  const icon = PROOF_TYPE_ICONS[proof.proofType] ?? (
+    <Shield className="h-5 w-5" />
+  );
+
+  const formatMs = (ms: number | null | undefined): string => {
+    if (ms === null || ms === undefined) {
+      return "N/A";
+    }
+    return `${ms.toFixed(2)}ms`;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {icon}
+          {label}
+        </CardTitle>
+        <CardDescription>{spec?.description ?? "ZK Proof"}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary">UltraHonk</Badge>
+          <Badge variant="secondary">BN254 Curve</Badge>
+          {proof.noirVersion && (
+            <Badge variant="outline">Noir {proof.noirVersion}</Badge>
+          )}
+          <Badge className="text-xs" variant="success">
+            Verified
+          </Badge>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg border p-3">
+            <p className="text-muted-foreground text-xs">Generation Time</p>
+            <p className="font-medium font-mono">
+              {formatMs(proof.generationTimeMs)}
+            </p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-muted-foreground text-xs">Created</p>
+            <p className="font-medium font-mono text-sm">
+              {new Date(proof.createdAt).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        {proofDisplay ? (
+          <Collapsible onOpenChange={setProofOpen} open={proofOpen}>
+            <CollapsibleTrigger asChild>
+              <Button className="w-full justify-between" variant="outline">
+                <span>View Raw Proof (Base64)</span>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${proofOpen ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="relative">
+                <Button
+                  className="absolute top-2 right-2 z-10"
+                  onClick={() => onCopy(proofDisplay, `proof-${proof.proofId}`)}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {copiedField === `proof-${proof.proofId}` ? (
+                    <Check className="h-4 w-4 text-success" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+                <pre className="max-h-64 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
+                  {proofDisplay}
+                </pre>
+                <p className="mt-2 text-muted-foreground text-xs">
+                  UltraHonk proof ({proofDisplay.length} chars base64)
+                </p>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
+
+        {signalsJson ? (
+          <Collapsible onOpenChange={setSignalsOpen} open={signalsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button className="w-full justify-between" variant="outline">
+                <span>View Public Signals</span>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${signalsOpen ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="relative">
+                <Button
+                  className="absolute top-2 right-2 z-10"
+                  onClick={() =>
+                    onCopy(signalsJson, `signals-${proof.proofId}`)
+                  }
+                  size="sm"
+                  variant="ghost"
+                >
+                  {copiedField === `signals-${proof.proofId}` ? (
+                    <Check className="h-4 w-4 text-success" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+                <pre className="max-h-48 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
+                  {signalsJson}
+                </pre>
+                {spec && (
+                  <div className="mt-2 text-muted-foreground text-xs">
+                    Public input order: {spec.publicInputOrder.join(", ")}
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
+
+        <div className="text-muted-foreground text-xs">
+          Proof ID: <code className="text-xs">{proof.proofId}</code>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function DevViewPage() {
+  const [allProofs, setAllProofs] = useState<ProofData[]>([]);
+  const [ageProofData, setAgeProofData] = useState<AgeProofFull | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
   useEffect(() => {
-    async function fetchProof() {
+    async function fetchProofs() {
       try {
-        const data = await getUserProof(true);
-        setProofData(data);
+        const [proofs, ageData] = await Promise.all([
+          getAllProofs(),
+          getUserProof(true),
+        ]);
+        setAllProofs(proofs);
+        setAgeProofData(ageData);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load proof data"
@@ -72,7 +238,7 @@ export default function DevViewPage() {
         setIsLoading(false);
       }
     }
-    fetchProof();
+    fetchProofs();
   }, []);
 
   const copyToClipboard = async (text: string, field: string) => {
@@ -112,7 +278,7 @@ export default function DevViewPage() {
     );
   }
 
-  if (error || !proofData) {
+  if (error || allProofs.length === 0) {
     return (
       <div className="space-y-6">
         <div>
@@ -128,14 +294,14 @@ export default function DevViewPage() {
                 <EmptyMedia variant="icon">
                   <Code />
                 </EmptyMedia>
-                <EmptyTitle>{error || "No Proof Found"}</EmptyTitle>
+                <EmptyTitle>{error || "No Proofs Found"}</EmptyTitle>
                 <EmptyDescription>
-                  Complete the registration process to generate proof data.
+                  Complete the verification process to generate proof data.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button asChild>
-                  <Link href="/sign-up">Complete Registration</Link>
+                  <Link href="/dashboard/verify">Complete Verification</Link>
                 </Button>
               </EmptyContent>
             </Empty>
@@ -145,12 +311,14 @@ export default function DevViewPage() {
     );
   }
 
-  const proofJson = proofData.proof
-    ? JSON.stringify(proofData.proof, null, 2)
-    : null;
-  const signalsJson = proofData.publicSignals
-    ? JSON.stringify(proofData.publicSignals, null, 2)
-    : null;
+  // Group proofs by type, keeping only the latest of each type
+  const proofsByType = new Map<string, ProofData>();
+  for (const proof of allProofs) {
+    if (!proofsByType.has(proof.proofType)) {
+      proofsByType.set(proof.proofType, proof);
+    }
+  }
+  const latestProofs = Array.from(proofsByType.values());
 
   return (
     <div className="space-y-6">
@@ -183,121 +351,56 @@ export default function DevViewPage() {
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="min-w-0 rounded-lg border p-4">
+              <p className="text-muted-foreground text-sm">Total Proofs</p>
+              <p className="truncate font-bold font-mono text-2xl">
+                {latestProofs.length}
+              </p>
+            </div>
+            <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">
-                ZK Proof Generation
+                Avg Generation Time
               </p>
               <p className="truncate font-bold font-mono text-2xl">
-                {formatMs(proofData.generationTimeMs)}
+                {formatMs(
+                  latestProofs.reduce(
+                    (sum, p) => sum + (p.generationTimeMs ?? 0),
+                    0
+                  ) / latestProofs.length
+                )}
               </p>
             </div>
             <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">FHE Encryption</p>
               <p className="truncate font-bold font-mono text-2xl">
-                {formatMs(proofData.fheEncryptionTimeMs)}
-              </p>
-            </div>
-            <div className="min-w-0 rounded-lg border p-4">
-              <p className="text-muted-foreground text-sm">Proof Size</p>
-              <p className="truncate font-bold font-mono text-2xl">
-                {proofJson ? formatBytes(proofJson.length) : "N/A"}
+                {formatMs(ageProofData?.fheEncryptionTimeMs)}
               </p>
             </div>
             <div className="min-w-0 rounded-lg border p-4">
               <p className="text-muted-foreground text-sm">Ciphertext Size</p>
               <p className="truncate font-bold font-mono text-2xl">
-                {formatBytes(proofData.birthYearOffsetCiphertextBytes)}
+                {formatBytes(ageProofData?.birthYearOffsetCiphertextBytes)}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* ZK Proof Data */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-info" />
-            ZK Proof (UltraHonk)
-          </CardTitle>
-          <CardDescription>
-            Zero-knowledge proof of age verification
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">UltraHonk</Badge>
-            <Badge variant="secondary">BN254 Curve</Badge>
-            <Badge variant="secondary">Noir.js</Badge>
-            <Badge className="text-xs" variant="success">
-              Verified
-            </Badge>
-          </div>
-
-          {proofJson ? (
-            <Collapsible onOpenChange={setProofOpen} open={proofOpen}>
-              <CollapsibleTrigger asChild>
-                <Button className="w-full justify-between" variant="outline">
-                  <span>View Raw Proof JSON</span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${proofOpen ? "rotate-180" : ""}`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">
-                <div className="relative">
-                  <Button
-                    className="absolute top-2 right-2 z-10"
-                    onClick={() => copyToClipboard(proofJson, "proof")}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {copiedField === "proof" ? (
-                      <Check className="h-4 w-4 text-success" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <pre className="max-h-64 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
-                    {proofJson}
-                  </pre>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          ) : null}
-
-          {signalsJson ? (
-            <Collapsible onOpenChange={setSignalsOpen} open={signalsOpen}>
-              <CollapsibleTrigger asChild>
-                <Button className="w-full justify-between" variant="outline">
-                  <span>View Public Signals</span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${signalsOpen ? "rotate-180" : ""}`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">
-                <div className="relative">
-                  <Button
-                    className="absolute top-2 right-2 z-10"
-                    onClick={() => copyToClipboard(signalsJson, "signals")}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {copiedField === "signals" ? (
-                      <Check className="h-4 w-4 text-success" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <pre className="max-h-48 overflow-auto break-all rounded-lg bg-muted p-4 font-mono text-xs">
-                    {signalsJson}
-                  </pre>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          ) : null}
-        </CardContent>
-      </Card>
+      {/* ZK Proof Cards */}
+      <div className="space-y-4">
+        <h2 className="font-semibold text-lg">
+          ZK Proofs ({latestProofs.length})
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {latestProofs.map((proof) => (
+            <ProofCard
+              copiedField={copiedField}
+              key={proof.proofId}
+              onCopy={copyToClipboard}
+              proof={proof}
+            />
+          ))}
+        </div>
+      </div>
 
       {/* FHE Ciphertext */}
       <Card>
@@ -311,13 +414,13 @@ export default function DevViewPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {proofData.birthYearOffsetCiphertextBytes ? (
+          {ageProofData?.birthYearOffsetCiphertextBytes ? (
             <>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">TFHE-rs</Badge>
                 <Badge variant="secondary">Fully Homomorphic</Badge>
                 <Badge variant="outline">
-                  Key ID: {proofData.fheKeyId || "unregistered"}
+                  Key ID: {ageProofData.fheKeyId || "unregistered"}
                 </Badge>
               </div>
 
@@ -325,18 +428,18 @@ export default function DevViewPage() {
                 <div className="flex items-center justify-between">
                   <span>Ciphertext size</span>
                   <span>
-                    {formatBytes(proofData.birthYearOffsetCiphertextBytes)}
+                    {formatBytes(ageProofData.birthYearOffsetCiphertextBytes)}
                   </span>
                 </div>
-                {proofData.birthYearOffsetCiphertextHash ? (
+                {ageProofData.birthYearOffsetCiphertextHash ? (
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <span className="break-all">
-                      sha256: {proofData.birthYearOffsetCiphertextHash}
+                      sha256: {ageProofData.birthYearOffsetCiphertextHash}
                     </span>
                     <Button
                       onClick={() =>
                         copyToClipboard(
-                          proofData.birthYearOffsetCiphertextHash || "",
+                          ageProofData.birthYearOffsetCiphertextHash || "",
                           "ciphertext-hash"
                         )
                       }
@@ -367,8 +470,8 @@ export default function DevViewPage() {
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
                 No FHE ciphertext found. This could mean the FHE service was
-                unavailable during registration. Your ZK proof is still valid
-                for age verification.
+                unavailable during registration. Your ZK proofs are still valid
+                for verification.
               </AlertDescription>
             </Alert>
           )}
@@ -384,38 +487,30 @@ export default function DevViewPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ItemGroup>
-            <Item size="sm">
-              <ItemContent>
-                <ItemDescription>Proof ID</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <code className="text-xs">{proofData.proofId}</code>
-              </ItemActions>
-            </Item>
-            <ItemSeparator />
-            <Item size="sm">
-              <ItemContent>
-                <ItemDescription>Created At</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <span className="text-sm">
-                  {new Date(proofData.createdAt).toLocaleString()}
-                </span>
-              </ItemActions>
-            </Item>
-            <ItemSeparator />
-            <Item size="sm">
-              <ItemContent>
-                <ItemDescription>Age Status</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <Badge variant={proofData.isOver18 ? "default" : "destructive"}>
-                  {proofData.isOver18 ? "18+" : "Under 18"}
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Proof Types</span>
+              <span>{latestProofs.map((p) => p.proofType).join(", ")}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Noir Version</span>
+              <span>{latestProofs[0]?.noirVersion ?? "N/A"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">BB Version</span>
+              <span>{latestProofs[0]?.bbVersion ?? "N/A"}</span>
+            </div>
+            {ageProofData && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Age Status</span>
+                <Badge
+                  variant={ageProofData.isOver18 ? "default" : "destructive"}
+                >
+                  {ageProofData.isOver18 ? "18+" : "Under 18"}
                 </Badge>
-              </ItemActions>
-            </Item>
-          </ItemGroup>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

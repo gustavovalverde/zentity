@@ -7,7 +7,9 @@
     "scripts/**",
     "public/coi-serviceworker.js",
     "e2e/**",
-    "vitest.unit.config.mts"
+    "vitest.unit.config.mts",
+    "src/test/client-only.ts",
+    "src/test/server-only.ts"
   ],
   "ignoreDependencies": [
     "@vladmandic/human-models",

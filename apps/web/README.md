@@ -7,7 +7,9 @@ Next.js 16 and React 19.
 
 This is the main web application for Zentity, providing:
 
-- **Sign-up** — 2-step wizard (email optional → account + FHE key enrollment) with three authentication methods: passkeys, OPAQUE passwords, or wallet signatures (EIP-712)
+- **Sign-up** — 2-step wizard (email optional → account + FHE key enrollment)
+  with three authentication methods: passkeys, OPAQUE passwords, or wallet
+  signatures (EIP-712)
 - **Dashboard verification** — Document upload + liveness + proof generation
 - **Dashboard** — View verification status and privacy proofs
 - **Partner integrations** — OAuth provider flow for third-party verification
@@ -219,6 +221,31 @@ src/
 | `/recover-social` | Start social recovery with email or Recovery ID |
 | `/recover-guardian` | Guardian approval link handler |
 | `/verify-2fa` | Two-factor verification UI |
+
+## ZK Proof Development
+
+ZK circuits are in `noir-circuits/` and compiled with `pnpm circuits:compile`.
+
+### BN254 Field Constraints
+
+All circuit inputs must fit within the BN254 scalar field (~254 bits).
+Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256 hashes) are 256
+bits and **must be reduced** before use:
+
+```typescript
+// Values exceeding field modulus cause proof generation to fail
+const reduced = rawValue % BN254_FR_MODULUS;
+```
+
+See `docs/zk-architecture.md#bn254-field-constraints` for details.
+
+### Worker Debug Logs
+
+Enable worker logs in development:
+
+```env
+NEXT_PUBLIC_NOIR_DEBUG=true
+```
 
 ## Privacy Features
 

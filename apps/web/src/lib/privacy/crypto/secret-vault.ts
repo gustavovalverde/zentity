@@ -1,5 +1,7 @@
 "use client";
 
+import type { SecretType } from "./secret-types";
+
 import { authClient } from "@/lib/auth/auth-client";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
@@ -183,6 +185,17 @@ export function hasCachedPasskeyUnlock(): boolean {
   return true;
 }
 
+/**
+ * Get cached passkey PRF output if valid and matches one of the allowed credential IDs.
+ * Use this for binding secret derivation to avoid prompting the user again.
+ */
+export function getCachedPasskeyPrfOutput(
+  allowedCredentialIds: string[]
+): Uint8Array | null {
+  const cached = getCachedUnlock(allowedCredentialIds);
+  return cached?.prfOutput ?? null;
+}
+
 async function resolvePasskeyUnlock(params: {
   credentialIdToSalt: Record<string, Uint8Array>;
   credentialTransports?: Record<string, AuthenticatorTransport[]>;
@@ -307,7 +320,7 @@ async function encryptDekForRecovery(dek: Uint8Array): Promise<{
 }
 
 export async function storeSecret(params: {
-  secretType: string;
+  secretType: SecretType;
   plaintext: Uint8Array;
   enrollment: PasskeyEnrollmentContext;
   envelopeFormat: EnvelopeFormat;
@@ -372,7 +385,7 @@ export async function storeSecret(params: {
  * This is the recommended function for new code that needs to support both credential types.
  */
 export async function storeSecretWithCredential(params: {
-  secretType: string;
+  secretType: SecretType;
   plaintext: Uint8Array;
   credential: EnrollmentCredential;
   envelopeFormat: EnvelopeFormat;
@@ -484,7 +497,7 @@ export async function storeSecretWithCredential(params: {
 }
 
 export async function loadSecret(params: {
-  secretType: string;
+  secretType: SecretType;
   expectedEnvelopeFormat?: EnvelopeFormat;
   secretLabel?: string;
   userId?: string;
@@ -690,7 +703,7 @@ export async function loadSecret(params: {
 }
 
 export async function addWrapperForSecretType(params: {
-  secretType: string;
+  secretType: SecretType;
   newCredentialId: string;
   newPrfOutput: Uint8Array;
   newPrfSalt: Uint8Array;
@@ -803,7 +816,7 @@ export async function addWrapperForSecretType(params: {
 }
 
 export async function addRecoveryWrapperForSecretType(params: {
-  secretType: string;
+  secretType: SecretType;
 }): Promise<boolean> {
   const bundle = await trpc.secrets.getSecretBundle.query({
     secretType: params.secretType,
@@ -869,7 +882,7 @@ export async function addRecoveryWrapperForSecretType(params: {
  * The export key from OPAQUE login/registration is used to wrap the DEK.
  */
 export async function addOpaqueWrapperForSecretType(params: {
-  secretType: string;
+  secretType: SecretType;
   userId: string;
   exportKey: Uint8Array;
 }): Promise<boolean> {
@@ -952,7 +965,7 @@ export async function addOpaqueWrapperForSecretType(params: {
  * @internal Reserved for future use in password-based login flow.
  */
 async function _loadSecretWithOpaqueExport(params: {
-  secretType: string;
+  secretType: SecretType;
   userId: string;
   exportKey: Uint8Array;
   expectedEnvelopeFormat?: EnvelopeFormat;
@@ -1041,7 +1054,7 @@ async function _loadSecretWithOpaqueExport(params: {
  * The old export key is used to unwrap, and new export key re-wraps the DEK.
  */
 export async function updateOpaqueWrapperForSecretType(params: {
-  secretType: string;
+  secretType: SecretType;
   userId: string;
   oldExportKey: Uint8Array;
   newExportKey: Uint8Array;
@@ -1104,7 +1117,7 @@ export async function updateOpaqueWrapperForSecretType(params: {
  * The wallet signature is used to derive the KEK that wraps the DEK.
  */
 async function _addWalletWrapperForSecretType(params: {
-  secretType: string;
+  secretType: SecretType;
   userId: string;
   address: string;
   chainId: number;
