@@ -2,9 +2,9 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Proposed |
+| **Status** | Implemented |
 | **Created** | 2026-01-19 |
-| **Updated** | 2026-01-19 |
+| **Updated** | 2026-01-20 |
 | **Author** | Gustavo Valverde |
 | **Related** | [RFC-0018](0018-pure-ssi-did-bbs-anoncreds.md) |
 
@@ -338,13 +338,53 @@ This phase aligns with RFC-0018 Phase 2 and should be implemented together.
    - Add BBS+ as opt-in "enhanced privacy" mode
    - Store credential format preference in user settings
 
+### Phase 2 Implementation Notes
+
+**Implementation completed in:** `apps/web/src/lib/bbs/`
+
+**Key files:**
+
+| File | Purpose |
+|------|---------|
+| `types.ts` | `WalletIdentitySubject`, `BbsCredential`, `BbsPresentation` types |
+| `signer.ts` | `createWalletCredential()` for issuer-side credential creation |
+| `holder.ts` | `createPresentation()` for client-side selective disclosure |
+| `verifier.ts` | `verifyPresentation()` for server-side validation |
+| `client-storage.ts` | IndexedDB storage with `useBbsCredentials` React hook |
+| `keygen.ts` | BLS12-381 keypair generation for issuer |
+| `serialization.ts` | JSON/base64 encoding for network transport |
+
+**tRPC API:** `crypto.bbs.*` router with 4 procedures:
+
+- `issueCredential` — Issue BBS+ credential for authenticated wallet
+- `createPresentation` — Derive selective disclosure presentation
+- `verifyPresentation` — Verify presentation proof
+- `getIssuerPublicKey` — Retrieve issuer's BLS12-381 public key
+
+**Library:** `@mattrglobal/pairing-crypto` (BLS12-381 SHAKE256 ciphersuite)
+
+**Design deviation from RFC:** The RFC proposed adding `binding_type` as a circuit public input (`0=passkey, 1=opaque, 2=wallet_direct, 3=wallet_bbs`). The actual implementation keeps the identity binding circuit **auth-mode agnostic**:
+
+- Circuit accepts a generic `binding_secret` input
+- Domain separation via HKDF info strings (e.g., `zentity-binding-wallet-bbs-v1`)
+- Auth mode is NOT revealed as a public output (privacy improvement)
+- `AuthMode.WALLET_BBS` enum in `proof-types.ts` for TypeScript layer
+
+This design is architecturally superior:
+
+1. **Privacy**: Auth mode is never exposed in proofs
+2. **Simplicity**: Circuit remains unchanged across auth modes
+3. **Extensibility**: New auth modes require only TypeScript changes, not circuit recompilation
+
+See `src/lib/bbs/README.md` for comprehensive module documentation.
+
 #### Success Criteria
 
-- [ ] BBS+ credentials issued for wallet users
-- [ ] Unlinkable derived proofs verified in tests
-- [ ] Multiple presentations to same verifier are unlinkable
-- [ ] Performance: < 2s for credential issuance, < 500ms for proof derivation
-- [ ] Backward compatible with existing wallet binding
+- [x] BBS+ credentials issued for wallet users
+- [x] Unlinkable derived proofs verified in tests
+- [x] Multiple presentations to same verifier are unlinkable
+- [x] Performance: < 2s for credential issuance, < 500ms for proof derivation
+- [x] Backward compatible with existing wallet binding
 
 ---
 
@@ -409,12 +449,19 @@ This phase aligns with RFC-0018 Phase 2 and should be implemented together.
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. Should BBS+ be the default for new wallet users, or opt-in only?
-2. How should credential refresh work for long-lived wallet associations?
-3. Should we support multiple wallet credentials per user (for multi-chain users)?
-4. Integration with RFC-0018: Should `WalletIdentityCredential` be part of the standard credential set?
+1. **Should BBS+ be the default for new wallet users, or opt-in only?**
+   → **Opt-in** via `BBS_ISSUER_SECRET` environment variable. If the secret is not set, wallet binding uses the existing EIP-712 signature flow.
+
+2. **How should credential refresh work for long-lived wallet associations?**
+   → **Short validity periods** (per Security Considerations) with automatic refresh. Credentials are re-issued during each wallet authentication session.
+
+3. **Should we support multiple wallet credentials per user (for multi-chain users)?**
+   → **Yes**, supported via IndexedDB storage keyed by `${userId}:${credentialId}`. Each wallet/chain combination can have its own credential.
+
+4. **Integration with RFC-0018: Should `WalletIdentityCredential` be part of the standard credential set?**
+   → **Internal-only for now**. Not exposed via OIDC4VCI; used exclusively for identity binding circuit integration. External interoperability deferred to potential future W3C VC-DI-BBS compliant module.
 
 ---
 

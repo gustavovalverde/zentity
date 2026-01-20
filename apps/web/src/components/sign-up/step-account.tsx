@@ -17,11 +17,14 @@ import {
   ensureAuthSession,
   useSignUpSession,
 } from "@/hooks/sign-up/use-sign-up-session";
+import { useCrossOriginIsolated } from "@/hooks/use-cross-origin-isolated";
 import {
   isPasskeyAlreadyRegistered,
   registerPasskeyWithPrf,
   signInWithPasskey,
 } from "@/lib/auth/passkey";
+import { storeBbsCredential } from "@/lib/bbs/client-storage";
+import { deserializeCredential } from "@/lib/bbs/serialization";
 import { fetchMsgpack } from "@/lib/privacy/crypto/binary-transport";
 import {
   generateFheKeyMaterialForStorage,
@@ -43,6 +46,11 @@ import {
   cachePasskeyUnlock,
   type EnrollmentCredential,
 } from "@/lib/privacy/crypto/secret-vault";
+import {
+  computeWalletCommitment,
+  generateWalletCommitmentSalt,
+  walletCommitmentToHex,
+} from "@/lib/privacy/crypto/wallet-vault";
 import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
 import { useSignUpStore } from "@/store/sign-up";
@@ -82,6 +90,10 @@ export function StepAccount() {
     isReady: sessionReady,
     error: sessionError,
   } = useSignUpSession();
+
+  // Detect cross-origin isolation for threading support
+  const { hasThreadSupport, isLoading: threadCheckLoading } =
+    useCrossOriginIsolated();
 
   // Check PRF support on mount
   useEffect(() => {
@@ -375,6 +387,28 @@ export function StepAccount() {
       storedKeys.keyId = fheRegistration.keyId;
       cacheFheKeys(secretId, storedKeys);
 
+      // Issue BBS+ wallet credential for identity binding
+      const commitmentSalt = generateWalletCommitmentSalt();
+      const commitment = await computeWalletCommitment(
+        result.address,
+        commitmentSalt
+      );
+      const walletCommitment = `0x${walletCommitmentToHex(commitment)}`;
+
+      const bbsResult = await trpc.crypto.bbs.issueWalletCredential.mutate({
+        walletCommitment,
+        network: "ethereum",
+        chainId: result.chainId,
+        tier: 1,
+      });
+
+      // Store credential with salt in IndexedDB
+      await storeBbsCredential(
+        result.userId,
+        deserializeCredential(bbsResult.credential),
+        { commitmentSalt }
+      );
+
       setStatus("storing-secrets");
       await trpc.signUp.completeWalletEnrollment.mutate({
         fheKeyId: fheRegistration.keyId,
@@ -476,28 +510,42 @@ export function StepAccount() {
         </Alert>
       )}
 
+      {/* Threading warning when SharedArrayBuffer is unavailable */}
+      {!(threadCheckLoading || hasThreadSupport) && status === "idle" && (
+        <Alert variant="warning">
+          <TriangleAlert className="h-4 w-4" />
+          <AlertDescription>
+            <p className="font-medium">Slower key generation</p>
+            <p className="text-xs">
+              Your browser's security settings prevent multi-threaded
+              processing. Key generation will take longer than usual.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Loading indicator while session is being established */}
-      {!sessionReady && status === "idle" && (
+      {!sessionReady && status === "idle" ? (
         <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
           <Spinner />
           <span>Initializing session...</span>
         </div>
-      )}
+      ) : null}
 
       {/* Credential Choice - show when status is idle and no credential type selected */}
       {status === "idle" &&
-        credentialType === null &&
-        !isSubmitting &&
-        sessionReady && (
-          <CredentialChoice
-            disabled={isSubmitting}
-            onSelect={(type) => setCredentialType(type)}
-            prfSupported={supportStatus?.supported ?? false}
-          />
-        )}
+      credentialType === null &&
+      !isSubmitting &&
+      sessionReady ? (
+        <CredentialChoice
+          disabled={isSubmitting}
+          onSelect={(type) => setCredentialType(type)}
+          prfSupported={supportStatus?.supported ?? false}
+        />
+      ) : null}
 
       {/* Password Sign-Up Form - show when password credential type selected */}
-      {status === "idle" && credentialType === "password" && !isSubmitting && (
+      {status === "idle" && credentialType === "password" && !isSubmitting ? (
         <PasswordSignUpForm
           disabled={isSubmitting || !sessionReady}
           email={signUpStore.email || sessionEmail || ""}
@@ -506,23 +554,23 @@ export function StepAccount() {
           onSuccess={handlePasswordSignUp}
           userId={sessionUserId || undefined}
         />
-      )}
+      ) : null}
 
       {/* Wallet Sign-Up Form - show when wallet credential type selected */}
       {status === "idle" &&
-        credentialType === "wallet" &&
-        !isSubmitting &&
-        sessionUserId && (
-          <WalletSignUpForm
-            disabled={isSubmitting || !sessionReady}
-            onBack={() => setCredentialType(null)}
-            onSuccess={handleWalletSignUp}
-            userId={sessionUserId}
-          />
-        )}
+      credentialType === "wallet" &&
+      !isSubmitting &&
+      sessionUserId ? (
+        <WalletSignUpForm
+          disabled={isSubmitting || !sessionReady}
+          onBack={() => setCredentialType(null)}
+          onSuccess={handleWalletSignUp}
+          userId={sessionUserId}
+        />
+      ) : null}
 
       {/* Passkey Info Card - only show when passkey credential type is selected */}
-      {status === "idle" && credentialType === "passkey" && (
+      {status === "idle" && credentialType === "passkey" ? (
         <div className="space-y-3 rounded-lg border p-4">
           <div className="flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-muted-foreground" />
@@ -536,15 +584,19 @@ export function StepAccount() {
             add a recovery password later in settings.
           </p>
         </div>
-      )}
+      ) : null}
 
       {/* Progress UI - show when creating account */}
-      {status !== "idle" && status !== "error" && (
-        <VerificationProgress credentialType={credentialType} status={status} />
-      )}
+      {status !== "idle" && status !== "error" ? (
+        <VerificationProgress
+          credentialType={credentialType}
+          hasThreadSupport={hasThreadSupport}
+          status={status}
+        />
+      ) : null}
 
       {/* Privacy Info - collapsible for reduced cognitive load */}
-      {!isSubmitting && status === "idle" && (
+      {!isSubmitting && status === "idle" ? (
         <Collapsible>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border p-4 text-left text-sm hover:bg-accent/50">
             <span className="text-muted-foreground">
@@ -561,10 +613,10 @@ export function StepAccount() {
             </div>
           </CollapsibleContent>
         </Collapsible>
-      )}
+      ) : null}
 
       {/* Only show passkey controls when passkey credential type is selected */}
-      {status === "idle" && credentialType === "passkey" && !isSubmitting && (
+      {status === "idle" && credentialType === "passkey" && !isSubmitting ? (
         <div className="flex gap-3">
           <Button
             onClick={() => setCredentialType(null)}
@@ -582,7 +634,7 @@ export function StepAccount() {
             Create Account with Passkey
           </Button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

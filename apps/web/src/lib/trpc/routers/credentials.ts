@@ -1,8 +1,9 @@
 /**
  * Credentials Router
  *
- * Handles verifiable credential issuance for authenticated users.
- * Creates OIDC4VCI credential offers that can be scanned by any compliant wallet.
+ * Handles verifiable credential issuance for authenticated users via OIDC4VCI.
+ * Only SD-JWT credentials are exposed externally; BBS+ is used internally for
+ * wallet binding (RFC-0020) via the crypto.bbs router.
  */
 import "server-only";
 
@@ -25,8 +26,11 @@ const WALLET_CLIENT_ID =
 const OFFER_EXPIRES_IN_SECONDS = 300;
 
 function getAuthBaseUrl(): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  return `${appUrl}/api/auth`;
+  const baseUrl =
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+  return `${baseUrl}/api/auth`;
 }
 
 export const credentialsRouter = router({
@@ -51,17 +55,6 @@ export const credentialsRouter = router({
       level: status.level,
       checks: status.checks,
       verifiedClaims,
-      availableCredentials:
-        status.verified || status.level !== "none"
-          ? [
-              {
-                id: DEFAULT_CREDENTIAL_CONFIG_ID,
-                name: "Zentity Identity Credential",
-                description: "SD-JWT credential with selective disclosure",
-                format: "dc+sd-jwt",
-              },
-            ]
-          : [],
     };
   }),
 
@@ -70,14 +63,8 @@ export const credentialsRouter = router({
    * Returns an OIDC4VCI credential offer URI for wallet scanning.
    */
   createOffer: protectedProcedure
-    .input(
-      z.object({
-        credentialConfigurationId: z
-          .string()
-          .default(DEFAULT_CREDENTIAL_CONFIG_ID),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
+    .input(z.object({}).optional())
+    .mutation(async ({ ctx }) => {
       // Verify user has completed identity verification
       const status = await getVerificationStatus(ctx.userId);
       if (!status.verified && status.level === "none") {
@@ -91,9 +78,6 @@ export const credentialsRouter = router({
       const authBaseUrl = getAuthBaseUrl();
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-      // Create credential offer via OIDC4VCI endpoint
-      // The user authenticates themselves (self-service issuance)
-      // Include Origin header for better-auth CSRF protection
       const offerResponse = await fetch(
         `${authBaseUrl}/oidc4vci/credential-offer`,
         {
@@ -106,7 +90,7 @@ export const credentialsRouter = router({
           body: JSON.stringify({
             client_id: WALLET_CLIENT_ID,
             userId: ctx.userId,
-            credential_configuration_id: input.credentialConfigurationId,
+            credential_configuration_id: DEFAULT_CREDENTIAL_CONFIG_ID,
           }),
         }
       );
@@ -123,12 +107,12 @@ export const credentialsRouter = router({
         });
       }
 
-      const offerData = (await offerResponse.json()) as {
+      const responseData = (await offerResponse.json()) as {
         credential_offer?: Record<string, unknown>;
         credential_offer_uri?: string;
       };
 
-      if (!offerData.credential_offer) {
+      if (!responseData.credential_offer) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Invalid credential offer response.",
@@ -136,16 +120,14 @@ export const credentialsRouter = router({
       }
 
       // Build the credential offer URI for QR code
-      // Format: openid-credential-offer://?credential_offer={encoded_offer}
-      const offerUri = offerData.credential_offer_uri
-        ? `openid-credential-offer://?credential_offer_uri=${encodeURIComponent(offerData.credential_offer_uri)}`
-        : `openid-credential-offer://?credential_offer=${encodeURIComponent(JSON.stringify(offerData.credential_offer))}`;
+      const offerUri = responseData.credential_offer_uri
+        ? `openid-credential-offer://?credential_offer_uri=${encodeURIComponent(responseData.credential_offer_uri)}`
+        : `openid-credential-offer://?credential_offer=${encodeURIComponent(JSON.stringify(responseData.credential_offer))}`;
 
       return {
         offerUri,
-        offer: offerData.credential_offer,
+        offer: responseData.credential_offer,
         expiresIn: OFFER_EXPIRES_IN_SECONDS,
-        credentialConfigurationId: input.credentialConfigurationId,
       };
     }),
 });

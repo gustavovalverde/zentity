@@ -44,7 +44,6 @@ describe("binding-secret", () => {
 
         expect(result.bindingSecret).toHaveLength(32);
         expect(result.userIdHash).toHaveLength(32);
-        expect(result.authModeNumeric).toBe(0);
       });
 
       it("produces deterministic output for same input", async () => {
@@ -109,7 +108,6 @@ describe("binding-secret", () => {
 
         expect(result.bindingSecret).toHaveLength(32);
         expect(result.userIdHash).toHaveLength(32);
-        expect(result.authModeNumeric).toBe(1);
       });
 
       it("produces deterministic output for same input", async () => {
@@ -138,33 +136,24 @@ describe("binding-secret", () => {
     describe("wallet binding", () => {
       it("derives binding secret from signature", async () => {
         const signatureBytes = crypto.getRandomValues(new Uint8Array(65));
-        const walletAddress = "0x1234567890123456789012345678901234567890";
-        const chainId = 1;
 
         const result = await deriveBindingSecret({
           authMode: AuthMode.WALLET,
           signatureBytes,
-          walletAddress,
-          chainId,
           userId: mockUserId,
           documentHash: mockDocumentHash,
         });
 
         expect(result.bindingSecret).toHaveLength(32);
         expect(result.userIdHash).toHaveLength(32);
-        expect(result.authModeNumeric).toBe(2);
       });
 
       it("produces different output for different users with same signature", async () => {
         const signatureBytes = new Uint8Array(65).fill(77);
-        const walletAddress = "0x1234567890123456789012345678901234567890";
-        const chainId = 1;
 
         const result1 = await deriveBindingSecret({
           authMode: AuthMode.WALLET,
           signatureBytes,
-          walletAddress,
-          chainId,
           userId: "user-1",
           documentHash: mockDocumentHash,
         });
@@ -172,8 +161,6 @@ describe("binding-secret", () => {
         const result2 = await deriveBindingSecret({
           authMode: AuthMode.WALLET,
           signatureBytes,
-          walletAddress,
-          chainId,
           userId: "user-2",
           documentHash: mockDocumentHash,
         });
@@ -211,8 +198,6 @@ describe("binding-secret", () => {
         const walletResult = await deriveBindingSecret({
           authMode: AuthMode.WALLET,
           signatureBytes: material.slice(0, 65),
-          walletAddress: "0x1234567890123456789012345678901234567890",
-          chainId: 1,
           userId: mockUserId,
           documentHash: mockDocumentHash,
         });
@@ -235,7 +220,6 @@ describe("binding-secret", () => {
         bindingSecret: new Uint8Array([0x12, 0x34, 0x56, 0x78]),
         userIdHash: new Uint8Array([0xab, 0xcd, 0xef, 0x01]),
         documentHashBytes: new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
-        authModeNumeric: 1,
       };
 
       const inputs = prepareBindingProofInputs(mockResult);
@@ -243,21 +227,6 @@ describe("binding-secret", () => {
       expect(inputs.bindingSecretField).toBe("0x12345678");
       expect(inputs.userIdHashField).toBe("0xabcdef01");
       expect(inputs.documentHashField).toBe("0xdeadbeef");
-      expect(inputs.authModeField).toBe("1");
-    });
-
-    it("handles all auth modes", () => {
-      for (const authMode of [0, 1, 2] as const) {
-        const mockResult: BindingSecretResult = {
-          bindingSecret: new Uint8Array(32),
-          userIdHash: new Uint8Array(32),
-          documentHashBytes: new Uint8Array(16),
-          authModeNumeric: authMode,
-        };
-
-        const inputs = prepareBindingProofInputs(mockResult);
-        expect(inputs.authModeField).toBe(authMode.toString());
-      }
     });
   });
 });

@@ -115,24 +115,16 @@ async function verifyProofInternal(args: {
     ? parseFieldToBigInt(claimHashInput)
     : BigInt(0);
 
-  // Identity binding validation: binding_commitment and auth_mode
+  // Identity binding validation: binding_commitment only (auth_mode removed for privacy)
   if (circuitType === "identity_binding") {
     const bindingCommitment = parseFieldToBigInt(
       args.publicInputs[1] // binding_commitment at index 1
     );
-    const authMode = Number(BigInt(args.publicInputs[2])); // auth_mode at index 2
 
     if (bindingCommitment === BigInt(0)) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Invalid binding commitment (zero)",
-      });
-    }
-
-    if (authMode < 0 || authMode > 2) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: `Invalid auth_mode: ${authMode} (expected 0, 1, or 2)`,
       });
     }
   }
@@ -449,41 +441,52 @@ export const getSignedClaimsProcedure = protectedProcedure
       };
     }
 
-    const ocr = await getLatestSignedClaimByUserTypeAndDocument(
-      ctx.userId,
-      "ocr_result",
-      documentId
-    );
-    const faceMatch = await getLatestSignedClaimByUserTypeAndDocument(
-      ctx.userId,
-      "face_match_score",
-      documentId
-    );
-    const liveness = await getLatestSignedClaimByUserTypeAndDocument(
-      ctx.userId,
-      "liveness_score",
-      documentId
-    );
+    // Parallelize independent DB queries
+    const [ocr, faceMatch, liveness] = await Promise.all([
+      getLatestSignedClaimByUserTypeAndDocument(
+        ctx.userId,
+        "ocr_result",
+        documentId
+      ),
+      getLatestSignedClaimByUserTypeAndDocument(
+        ctx.userId,
+        "face_match_score",
+        documentId
+      ),
+      getLatestSignedClaimByUserTypeAndDocument(
+        ctx.userId,
+        "liveness_score",
+        documentId
+      ),
+    ]);
+
+    // Parallelize independent verification calls
+    const [verifiedOcr, verifiedFaceMatch, verifiedLiveness] =
+      await Promise.all([
+        ocr
+          ? verifyAttestationClaim(ocr.signature, "ocr_result", ctx.userId)
+          : null,
+        faceMatch
+          ? verifyAttestationClaim(
+              faceMatch.signature,
+              "face_match_score",
+              ctx.userId
+            )
+          : null,
+        liveness
+          ? verifyAttestationClaim(
+              liveness.signature,
+              "liveness_score",
+              ctx.userId
+            )
+          : null,
+      ]);
 
     return {
       documentId,
-      ocr: ocr
-        ? await verifyAttestationClaim(ocr.signature, "ocr_result", ctx.userId)
-        : null,
-      faceMatch: faceMatch
-        ? await verifyAttestationClaim(
-            faceMatch.signature,
-            "face_match_score",
-            ctx.userId
-          )
-        : null,
-      liveness: liveness
-        ? await verifyAttestationClaim(
-            liveness.signature,
-            "liveness_score",
-            ctx.userId
-          )
-        : null,
+      ocr: verifiedOcr,
+      faceMatch: verifiedFaceMatch,
+      liveness: verifiedLiveness,
     };
   });
 

@@ -92,6 +92,11 @@ export function Web3Provider({
           process.env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT !== "false",
         enableEIP6963:
           process.env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963 !== "false",
+        // Coinbase Smart Wallet requires popups which conflict with cross-origin
+        // isolation (COOP: same-origin) needed for SharedArrayBuffer/WASM.
+        // Disabled by default; enable with NEXT_PUBLIC_APPKIT_ENABLE_COINBASE=true
+        enableCoinbase:
+          process.env.NEXT_PUBLIC_APPKIT_ENABLE_COINBASE === "true",
         includeWalletIds: process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS
           ? process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS.split(",")
               .map((value) => value.trim())

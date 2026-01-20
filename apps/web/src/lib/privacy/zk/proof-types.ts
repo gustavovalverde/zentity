@@ -30,11 +30,17 @@ export type ProofType = (typeof ProofType)[keyof typeof ProofType];
 /**
  * Auth modes that can generate binding secrets.
  * Each mode derives cryptographic material differently.
+ *
+ * - PASSKEY: Uses PRF output from WebAuthn
+ * - OPAQUE: Uses OPAQUE export key
+ * - WALLET: Uses EIP-712 signature
+ * - WALLET_BBS: Uses BBS+ credential proof hash
  */
 export const AuthMode = {
   PASSKEY: "passkey",
   OPAQUE: "opaque",
   WALLET: "wallet",
+  WALLET_BBS: "wallet_bbs",
 } as const;
 
 export type AuthMode = (typeof AuthMode)[keyof typeof AuthMode];
@@ -115,13 +121,12 @@ export const PROOF_TYPE_SPECS: Record<ProofType, ProofTypeSpec> = {
 
   [ProofType.IDENTITY_BINDING]: {
     circuitName: "identity_binding",
-    minPublicInputs: 4,
+    minPublicInputs: 3,
     nonceIndex: 0,
     claimHashIndex: 1,
-    resultIndex: 3,
-    publicInputOrder: ["nonce", "binding_commitment", "auth_mode", "is_bound"],
-    description:
-      "Binds proof to user identity across passkey/OPAQUE/wallet auth modes",
+    resultIndex: 2,
+    publicInputOrder: ["nonce", "binding_commitment", "is_bound"],
+    description: "Binds proof to user identity without revealing auth mode",
   },
 };
 

@@ -776,7 +776,6 @@ async function generateIdentityBindingProof(
     document_hash: documentHashReduced,
     nonce: nonceToField(payload.nonce),
     binding_commitment: bindingCommitmentHex,
-    auth_mode: payload.authMode.toString(),
   });
   logWorker("proof", "Identity binding witness ready", {
     size: witness.length,

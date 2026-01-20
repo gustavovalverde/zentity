@@ -48,20 +48,27 @@ import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
 const CLAIM_LABELS: Record<string, string> = {
-  verified: "Identity Verified",
-  verification_level: "Verification Level",
-  document_verified: "Document Verified",
-  liveness_verified: "Liveness Verified",
-  age_proof_verified: "Age Proof",
-  nationality_verified: "Nationality Verified",
+  verified: "Identity",
+  verification_level: "Level",
+  document_verified: "Document",
+  liveness_verified: "Liveness",
+  age_proof_verified: "Age",
+  doc_validity_proof_verified: "Document Validity",
+  nationality_proof_verified: "Nationality",
   face_match_verified: "Face Match",
 };
+
+const METADATA_CLAIMS = new Set([
+  "policy_version",
+  "issuer_id",
+  "verification_time",
+  "attestation_expires_at",
+]);
 
 interface CredentialOfferState {
   offerUri: string;
   offer: Record<string, unknown>;
   expiresIn: number;
-  credentialConfigurationId: string;
 }
 
 export function CredentialsContent() {
@@ -120,28 +127,22 @@ export function CredentialsContent() {
     return () => clearInterval(interval);
   }, [offerDialog]);
 
-  const handleGetCredential = useCallback(
-    async (credentialConfigurationId: string) => {
-      try {
-        const result = await createOfferMutation.mutateAsync({
-          credentialConfigurationId,
-        });
+  const handleGetCredential = useCallback(async () => {
+    try {
+      const result = await createOfferMutation.mutateAsync({});
 
-        setOfferDialog({
-          offerUri: result.offerUri,
-          offer: result.offer,
-          expiresIn: result.expiresIn,
-          credentialConfigurationId: result.credentialConfigurationId,
-        });
-      } catch (error) {
-        toast.error("Failed to create credential offer", {
-          description:
-            error instanceof Error ? error.message : "Please try again",
-        });
-      }
-    },
-    [createOfferMutation]
-  );
+      setOfferDialog({
+        offerUri: result.offerUri,
+        offer: result.offer,
+        expiresIn: result.expiresIn,
+      });
+    } catch (error) {
+      toast.error("Failed to create credential offer", {
+        description:
+          error instanceof Error ? error.message : "Please try again",
+      });
+    }
+  }, [createOfferMutation]);
 
   const handleCopyUri = useCallback(async () => {
     if (!offerDialog?.offerUri) {
@@ -203,6 +204,11 @@ export function CredentialsContent() {
 
   const status = statusQuery.data;
 
+  // Filter out metadata claims for display
+  const displayClaims =
+    status?.verifiedClaims?.filter((claim) => !METADATA_CLAIMS.has(claim)) ??
+    [];
+
   if (!status?.verified && status?.level === "none") {
     return (
       <Card>
@@ -230,76 +236,65 @@ export function CredentialsContent() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Status Summary */}
+    <div className="space-y-8">
+      {/* Zentity Identity Credential (SD-JWT) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-success" />
-            Verification Status
+            <FileCheck2 className="h-5 w-5" />
+            Zentity Identity Credential
           </CardTitle>
           <CardDescription>
-            Your verified claims that can be included in credentials
+            Issue a verifiable credential containing your verified identity
+            claims
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {status?.verifiedClaims?.map((claim) => (
-              <Badge key={claim} variant="secondary">
-                <CheckCircle className="mr-1 h-3 w-3" />
-                {CLAIM_LABELS[claim] || claim}
-              </Badge>
-            ))}
-            {status?.level && status.level !== "none" && (
-              <Badge variant="outline">Level: {status.level}</Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Available Credentials */}
-      {status?.availableCredentials?.map((credential) => (
-        <Card key={credential.id}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileCheck2 className="h-5 w-5" />
-              {credential.name}
-            </CardTitle>
-            <CardDescription>{credential.description}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{credential.format}</Badge>
-              <Badge variant="success">Ready to issue</Badge>
+        <CardContent className="space-y-6">
+          {/* Verified Claims */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-sm">Verified Claims</span>
+              {status?.level && status.level !== "none" ? (
+                <Badge className="capitalize" variant="success">
+                  {status.level} verification
+                </Badge>
+              ) : null}
             </div>
-          </CardContent>
-          <CardFooter>
-            <Button
-              className="w-full"
-              disabled={createOfferMutation.isPending}
-              onClick={() => handleGetCredential(credential.id)}
-            >
-              {createOfferMutation.isPending ? (
-                <Spinner aria-hidden="true" className="mr-2" size="sm" />
-              ) : (
-                <QrCode className="mr-2 h-4 w-4" />
-              )}
-              Get Credential
-            </Button>
-          </CardFooter>
-        </Card>
-      ))}
+            <div className="flex flex-wrap gap-2">
+              {displayClaims.map((claim) => (
+                <Badge key={claim} variant="secondary">
+                  <CheckCircle className="mr-1 h-3 w-3" />
+                  {CLAIM_LABELS[claim] || claim}
+                </Badge>
+              ))}
+            </div>
+          </div>
 
-      {/* How It Works */}
-      <Alert>
-        <Wallet className="h-4 w-4" />
-        <AlertDescription>
-          <strong>How it works:</strong> Click &quot;Get Credential&quot; to
-          generate a QR code. Scan it with any OIDC4VCI-compliant wallet to
-          receive your verifiable credential. The credential uses SD-JWT format
-          for selective disclosure.
-        </AlertDescription>
-      </Alert>
+          {/* How It Works */}
+          <Alert className="bg-muted/50">
+            <Wallet className="h-4 w-4" />
+            <AlertDescription>
+              <strong>How it works:</strong> Click &quot;Get Credential&quot; to
+              generate a QR code. Scan it with any OIDC4VCI-compliant wallet to
+              receive your SD-JWT credential with selective disclosure support.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+        <CardFooter>
+          <Button
+            className="w-full"
+            disabled={createOfferMutation.isPending}
+            onClick={handleGetCredential}
+          >
+            {createOfferMutation.isPending ? (
+              <Spinner aria-hidden="true" className="mr-2" size="sm" />
+            ) : (
+              <QrCode className="mr-2 h-4 w-4" />
+            )}
+            Get Credential
+          </Button>
+        </CardFooter>
+      </Card>
 
       {/* Credential Offer Dialog */}
       <Dialog
