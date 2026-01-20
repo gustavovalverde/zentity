@@ -37,60 +37,65 @@ function getRegistrationToken(headers: Headers): string | null {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const registrationToken = getRegistrationToken(request.headers);
-  const authResult = registrationToken ? null : await requireSession();
-  if (!registrationToken && authResult && !authResult.ok) {
-    return authResult.response;
-  }
-  if (
-    registrationToken &&
-    !(await isRegistrationTokenValid(registrationToken))
-  ) {
-    return NextResponse.json(
-      { error: "Invalid or expired registration token." },
-      { status: 401 }
-    );
-  }
+  try {
+    const registrationToken = getRegistrationToken(request.headers);
+    const authResult = registrationToken
+      ? null
+      : await requireSession(request.headers);
+    if (!registrationToken && authResult && !authResult.ok) {
+      return authResult.response;
+    }
+    if (
+      registrationToken &&
+      !(await isRegistrationTokenValid(registrationToken))
+    ) {
+      return NextResponse.json(
+        { error: "Invalid or expired registration token." },
+        { status: 401 }
+      );
+    }
 
-  const secretId = getHeaderValue(request.headers, "x-secret-id");
-  const secretType = getHeaderValue(request.headers, "x-secret-type");
+    const secretId = getHeaderValue(request.headers, "x-secret-id");
+    const secretType = getHeaderValue(request.headers, "x-secret-type");
 
-  if (!(secretId && secretType)) {
-    return NextResponse.json(
-      { error: "Missing secret headers" },
-      { status: 400 }
-    );
-  }
+    if (!(secretId && secretType)) {
+      return NextResponse.json(
+        { error: "Missing secret headers" },
+        { status: 400 }
+      );
+    }
 
-  if (!request.body) {
-    return NextResponse.json({ error: "Missing body" }, { status: 400 });
-  }
+    if (!request.body) {
+      return NextResponse.json({ error: "Missing body" }, { status: 400 });
+    }
 
-  const blobMeta = await writeSecretBlob({
-    secretId,
-    body: request.body,
-  });
+    const blobMeta = await writeSecretBlob({
+      secretId,
+      body: request.body,
+    });
 
-  if (registrationToken) {
-    try {
+    if (registrationToken) {
       await storeRegistrationBlob(registrationToken, {
         secretId,
         secretType,
         ...blobMeta,
       });
-    } catch (error) {
-      return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Invalid token" },
-        { status: 401 }
-      );
     }
-  }
 
-  return NextResponse.json(blobMeta, { status: 201 });
+    return NextResponse.json(blobMeta, { status: 201 });
+  } catch (error) {
+    console.error("[secrets/blob] POST error:", error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const authResult = await requireSession();
+  const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
   }

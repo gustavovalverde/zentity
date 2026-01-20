@@ -30,7 +30,7 @@ function jsonError(message: string, status = 400): Response {
 }
 
 export async function POST(req: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireSession(req.headers);
   if (!authResult.ok) {
     return jsonError("Authentication required.", 401);
   }
