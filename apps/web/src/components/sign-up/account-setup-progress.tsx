@@ -27,7 +27,10 @@ export type SecureStatus =
 /**
  * Get a user-friendly message for the current status.
  */
-function getStatusMessage(status: SecureStatus): string | null {
+function getStatusMessage(
+  status: SecureStatus,
+  hasThreadSupport: boolean
+): string | null {
   switch (status) {
     case "preparing-account":
       return "Preparing your account…";
@@ -36,7 +39,9 @@ function getStatusMessage(status: SecureStatus): string | null {
     case "unlocking-prf":
       return "Deriving encryption keys from your passkey…";
     case "generating-keys":
-      return "Generating FHE keys locally…";
+      return hasThreadSupport
+        ? "Generating FHE keys locally…"
+        : "Generating FHE keys locally (this may take a while)…";
     case "encrypting-keys":
       return "Encrypting FHE keys on-device…";
     case "uploading-keys":
@@ -105,6 +110,8 @@ interface VerificationProgressProps {
   /** Current status of the verification process */
   status: SecureStatus;
   credentialType: CredentialType | null;
+  /** Whether the browser supports multi-threaded execution */
+  hasThreadSupport: boolean;
 }
 
 /**
@@ -124,6 +131,7 @@ interface VerificationProgressProps {
 export const VerificationProgress = memo(function VerificationProgress({
   status,
   credentialType,
+  hasThreadSupport,
 }: Readonly<VerificationProgressProps>) {
   const progressStatus = useMemo(() => {
     const STATUS_ORDER: Record<SecureStatus, number> = {
@@ -181,7 +189,7 @@ export const VerificationProgress = memo(function VerificationProgress({
     };
   }, [credentialType, status]);
 
-  const statusMessage = getStatusMessage(status);
+  const statusMessage = getStatusMessage(status, hasThreadSupport);
 
   // Don't render if idle or error
   if (status === "idle" || status === "error") {

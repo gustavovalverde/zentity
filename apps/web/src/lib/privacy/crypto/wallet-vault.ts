@@ -18,10 +18,109 @@ import {
 
 export const WALLET_CREDENTIAL_PREFIX = "wallet";
 
+/** Salt length for wallet address commitments (32 bytes = 256 bits) */
+const WALLET_COMMITMENT_SALT_LENGTH = 32;
+
+/** Regex to strip 0x prefix from addresses */
+const ADDRESS_PREFIX_REGEX = /^0x/;
+
 const textEncoder = new TextEncoder();
 
 function encodeAad(parts: string[]): Uint8Array {
   return textEncoder.encode(parts.join("|"));
+}
+
+/**
+ * Normalize a wallet address to lowercase without 0x prefix.
+ * Ensures consistent hashing regardless of input format.
+ */
+function normalizeAddress(address: string): string {
+  return address.toLowerCase().replace(ADDRESS_PREFIX_REGEX, "");
+}
+
+/**
+ * Generate a random salt for wallet address commitment.
+ * Each commitment should use a unique salt to prevent correlation.
+ */
+export function generateWalletCommitmentSalt(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(WALLET_COMMITMENT_SALT_LENGTH));
+}
+
+/**
+ * Compute a privacy-preserving commitment to a wallet address.
+ *
+ * The commitment is SHA-256(address || salt) which:
+ * - Hides the wallet address (can't be reversed)
+ * - Is unlinkable across different salts (same address, different commitments)
+ * - Can be verified if you know address + salt
+ *
+ * Used in BBS+ credentials to prove wallet ownership without revealing address.
+ *
+ * @param address - Ethereum wallet address (with or without 0x prefix)
+ * @param salt - Random salt (should be unique per credential)
+ * @returns SHA-256 hash as Uint8Array (32 bytes)
+ */
+export async function computeWalletCommitment(
+  address: string,
+  salt: Uint8Array
+): Promise<Uint8Array> {
+  const normalizedAddress = normalizeAddress(address);
+  const addressBytes = textEncoder.encode(normalizedAddress);
+
+  // Concatenate address bytes and salt
+  const combined = new Uint8Array(addressBytes.length + salt.length);
+  combined.set(addressBytes);
+  combined.set(salt, addressBytes.length);
+
+  const hashBuffer = await crypto.subtle.digest("SHA-256", combined);
+  return new Uint8Array(hashBuffer);
+}
+
+/**
+ * Verify a wallet address commitment.
+ *
+ * @param address - Claimed wallet address
+ * @param salt - Salt used when creating the commitment
+ * @param commitment - The commitment to verify
+ * @returns true if the commitment matches
+ */
+export async function verifyWalletCommitment(
+  address: string,
+  salt: Uint8Array,
+  commitment: Uint8Array
+): Promise<boolean> {
+  const computed = await computeWalletCommitment(address, salt);
+  if (computed.length !== commitment.length) {
+    return false;
+  }
+  // Constant-time comparison to prevent timing attacks
+  let result = 0;
+  for (let i = 0; i < computed.length; i++) {
+    // biome-ignore lint/suspicious/noBitwiseOperators: constant-time comparison requires XOR
+    result |= computed[i] ^ commitment[i];
+  }
+  return result === 0;
+}
+
+/**
+ * Convert wallet commitment to hex string for storage/transmission.
+ */
+export function walletCommitmentToHex(commitment: Uint8Array): string {
+  return Array.from(commitment)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Convert hex string back to wallet commitment bytes.
+ */
+export function hexToWalletCommitment(hex: string): Uint8Array {
+  const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const bytes = new Uint8Array(cleanHex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Number.parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
 /**

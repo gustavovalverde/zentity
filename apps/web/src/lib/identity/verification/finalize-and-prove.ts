@@ -234,7 +234,6 @@ export async function generateAllProofs(params: {
       bindingInputs.bindingSecretField,
       bindingInputs.userIdHashField,
       bindingInputs.documentHashField,
-      bindingContext.bindingResult.authModeNumeric,
       { nonce: bindingChallenge.nonce }
     );
     enqueueStore({ circuitType: "identity_binding", ...bindingProof });

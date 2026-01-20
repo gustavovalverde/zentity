@@ -341,19 +341,17 @@ export async function generateFaceMatchProof(
  *
  * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
  * or wallet signature) NEVER leaves the browser. Only the ZK proof and
- * binding commitment are returned.
+ * binding commitment are returned. Auth mode is NOT revealed.
  *
  * @param bindingSecret - Auth-mode-specific secret as hex field
  * @param userIdHash - Hashed user ID as hex field
  * @param documentHash - Document commitment as hex field
- * @param authMode - 0=passkey, 1=opaque, 2=wallet
  * @param options.nonce - Server-issued nonce for replay resistance
  */
 export async function generateIdentityBindingProof(
   bindingSecret: string,
   userIdHash: string,
   documentHash: string,
-  authMode: 0 | 1 | 2,
   options: { nonce: string }
 ): Promise<ProofResult> {
   const startTime = performance.now();
@@ -363,7 +361,6 @@ export async function generateIdentityBindingProof(
       bindingSecretField: bindingSecret,
       userIdHashField: userIdHash,
       documentHashField: documentHash,
-      authMode,
       nonce: options.nonce,
     });
     recordProofSuccess("identity_binding", result);

@@ -105,6 +105,7 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 
 - **Merkle Trees**: Enable group membership proofs (e.g., EU nationality) without revealing which country. Used inside ZK proofs.
 - **Hash Functions**: Poseidon2 for ZK efficiency, SHA-256 for commitments.
+- **BBS+ Signatures**: Enable selective disclosure credentials for wallet users. A wallet can prove identity without revealing the wallet address, and multiple presentations are unlinkable. Used internally for privacy-preserving wallet binding. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md).
 
 ## Cryptographic Details
 
@@ -145,6 +146,8 @@ Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
 - The private key never leaves the wallet; the signature stays in the browser.
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.
 - The server stores only the wallet address for account association.
+
+**Enhanced privacy mode (BBS+)**: Wallet users can optionally receive BBS+ credentials that enable unlinkable presentations. Multiple presentations to the same verifier cannot be correlated, and the wallet address is never revealed. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md).
 
 ### 2) Commitments + Hashing
 

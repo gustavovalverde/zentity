@@ -105,13 +105,12 @@ export interface FaceMatchPayload {
  * Identity binding proof payload
  * Binds a proof to a specific user identity via cryptographic commitment.
  * Works with all auth modes (passkey, OPAQUE, wallet).
+ * Auth mode is NOT revealed - privacy enhancement.
  */
 export interface IdentityBindingPayload {
   bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
   userIdHashField: string; // Hash of user ID
   documentHashField: string; // Document commitment
-  bindingCommitment: string; // Pre-computed Poseidon2 commitment
-  authMode: 0 | 1 | 2; // 0=passkey, 1=opaque, 2=wallet
   nonce: string; // Hex string for replay resistance
 }
 
@@ -375,13 +374,11 @@ export function generateNationalityProofClientWorker(
  *
  * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
  * or wallet signature) is processed entirely in the Web Worker.
- * Only the ZK proof is returned.
+ * Only the ZK proof is returned. Auth mode is NOT revealed.
  *
  * @param payload.bindingSecretField - Auth-mode-specific secret as hex field
  * @param payload.userIdHashField - Hashed user ID as hex field
  * @param payload.documentHashField - Document commitment as hex field
- * @param payload.bindingCommitment - Pre-computed Poseidon2 commitment
- * @param payload.authMode - 0=passkey, 1=opaque, 2=wallet
  * @param payload.nonce - Hex string for replay resistance
  */
 export function generateIdentityBindingProofWorker(

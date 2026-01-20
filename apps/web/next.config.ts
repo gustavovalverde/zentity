@@ -65,6 +65,9 @@ const nextConfig: NextConfig = {
     "node-tfhe",
     "node-tkms",
 
+    // BBS+ signatures (WASM runtime loading)
+    "@mattrglobal/pairing-crypto",
+
     // Logging (thread-stream ships test files that break bundling)
     "pino",
     "thread-stream",
@@ -136,10 +139,13 @@ const nextConfig: NextConfig = {
 
     return [
       ...wasmHeaders,
-      // Web3 dashboard routes: wallet popups, no WASM
+      // Wallet routes: allow popups for Web3 SDK flows
+      // Note: Coinbase Smart Wallet is disabled globally (enableCoinbase: false in
+      // web3-provider.tsx) because its popup flow conflicts with COOP: same-origin
+      // required for SharedArrayBuffer/WASM on FHE routes like /sign-up.
       { source: "/dashboard/attestation/:path*", headers: walletHeaders },
       { source: "/dashboard/defi-demo/:path*", headers: walletHeaders },
-      // All other routes: cross-origin isolated for SharedArrayBuffer
+      // All other routes: cross-origin isolated for SharedArrayBuffer (WASM multi-threading)
       { source: "/(.*)", headers: isolatedHeaders },
     ];
   },

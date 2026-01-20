@@ -26,6 +26,7 @@ const BINDING_HKDF_INFO = {
   PASSKEY: "zentity-binding-passkey-v1",
   OPAQUE: "zentity-binding-opaque-v1",
   WALLET: "zentity-binding-wallet-v1",
+  WALLET_BBS: "zentity-binding-wallet-bbs-v1",
 } as const;
 
 /**
@@ -54,8 +55,19 @@ interface OpaqueBindingParams {
 interface WalletBindingParams {
   authMode: typeof AuthMode.WALLET;
   signatureBytes: Uint8Array;
-  walletAddress: string;
-  chainId: number;
+  userId: string;
+  documentHash: string;
+}
+
+/**
+ * Parameters for deriving a binding secret from BBS+ credential proof.
+ * This mode provides enhanced privacy by using a derived proof hash
+ * instead of a direct wallet signature.
+ */
+interface WalletBbsBindingParams {
+  authMode: typeof AuthMode.WALLET_BBS;
+  /** Hash of the BBS+ presentation proof (32 bytes) */
+  bbsProofHash: Uint8Array;
   userId: string;
   documentHash: string;
 }
@@ -63,7 +75,8 @@ interface WalletBindingParams {
 export type BindingParams =
   | PasskeyBindingParams
   | OpaqueBindingParams
-  | WalletBindingParams;
+  | WalletBindingParams
+  | WalletBbsBindingParams;
 
 /**
  * Result of binding secret derivation.
@@ -72,7 +85,6 @@ export interface BindingSecretResult {
   bindingSecret: Uint8Array;
   userIdHash: Uint8Array;
   documentHashBytes: Uint8Array;
-  authModeNumeric: 0 | 1 | 2;
 }
 
 /**
@@ -148,12 +160,7 @@ async function deriveFromPasskey(
   const userIdHash = await sha256Hash(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
-  return {
-    bindingSecret,
-    userIdHash,
-    documentHashBytes,
-    authModeNumeric: 0,
-  };
+  return { bindingSecret, userIdHash, documentHashBytes };
 }
 
 /**
@@ -171,12 +178,7 @@ async function deriveFromOpaque(
   const userIdHash = await sha256Hash(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
-  return {
-    bindingSecret,
-    userIdHash,
-    documentHashBytes,
-    authModeNumeric: 1,
-  };
+  return { bindingSecret, userIdHash, documentHashBytes };
 }
 
 /**
@@ -189,8 +191,6 @@ async function deriveFromOpaque(
  */
 async function deriveFromWallet(
   signatureBytes: Uint8Array,
-  _walletAddress: string,
-  _chainId: number,
   userId: string,
   documentHash: string
 ): Promise<BindingSecretResult> {
@@ -202,12 +202,34 @@ async function deriveFromWallet(
   const userIdHash = await sha256Hash(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
-  return {
-    bindingSecret,
-    userIdHash,
-    documentHashBytes,
-    authModeNumeric: 2,
-  };
+  return { bindingSecret, userIdHash, documentHashBytes };
+}
+
+/**
+ * Derive binding secret from BBS+ credential proof hash.
+ *
+ * This provides enhanced privacy compared to direct wallet signatures:
+ * - The BBS+ proof itself reveals only selected claims (selective disclosure)
+ * - The proof hash is unlinkable to the original credential
+ * - Different presentations produce different proof hashes
+ *
+ * The bbsProofHash should be SHA-256(presentation.proof.proof) computed
+ * client-side before calling this function.
+ */
+async function deriveFromWalletBbs(
+  bbsProofHash: Uint8Array,
+  userId: string,
+  documentHash: string
+): Promise<BindingSecretResult> {
+  const bindingSecret = await deriveHkdf(
+    bbsProofHash,
+    BINDING_HKDF_INFO.WALLET_BBS,
+    userId
+  );
+  const userIdHash = await sha256Hash(userId);
+  const documentHashBytes = hexToBytes(documentHash);
+
+  return { bindingSecret, userIdHash, documentHashBytes };
 }
 
 /**
@@ -242,8 +264,6 @@ async function deriveFromWallet(
  * const result = await deriveBindingSecret({
  *   authMode: AuthMode.WALLET,
  *   signatureBytes: sigBytes,
- *   walletAddress: '0x...',
- *   chainId: 1,
  *   userId: 'user-123',
  *   documentHash: '0x...',
  * });
@@ -269,8 +289,13 @@ export async function deriveBindingSecret(
     case AuthMode.WALLET:
       return await deriveFromWallet(
         params.signatureBytes,
-        params.walletAddress,
-        params.chainId,
+        params.userId,
+        params.documentHash
+      );
+
+    case AuthMode.WALLET_BBS:
+      return await deriveFromWalletBbs(
+        params.bbsProofHash,
         params.userId,
         params.documentHash
       );
@@ -303,12 +328,10 @@ export function prepareBindingProofInputs(result: BindingSecretResult): {
   bindingSecretField: string;
   userIdHashField: string;
   documentHashField: string;
-  authModeField: string;
 } {
   return {
     bindingSecretField: bytesToFieldHex(result.bindingSecret),
     userIdHashField: bytesToFieldHex(result.userIdHash),
     documentHashField: bytesToFieldHex(result.documentHashBytes),
-    authModeField: result.authModeNumeric.toString(),
   };
 }

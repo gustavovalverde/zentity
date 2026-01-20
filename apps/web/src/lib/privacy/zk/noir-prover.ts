@@ -64,7 +64,6 @@ interface IdentityBindingInput {
   bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
   userIdHashField: string; // Hash of user ID
   documentHashField: string; // Document commitment
-  authMode: 0 | 1 | 2; // 0=passkey, 1=opaque, 2=wallet
   nonce: string; // Hex nonce for replay resistance
 }
 
@@ -227,9 +226,10 @@ export async function generateNationalityProofNoir(
  *
  * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
  * or wallet signature) NEVER leaves the browser. Only the ZK proof is returned.
+ * Auth mode is NOT revealed in the proof - privacy enhancement.
  *
- * @param input - Binding secret, user ID hash, document hash, auth mode, and nonce
- * @returns Proof of identity binding without revealing the binding secret
+ * @param input - Binding secret, user ID hash, document hash, and nonce
+ * @returns Proof of identity binding without revealing the binding secret or auth mode
  *
  * @example
  * const challenge = await getProofChallenge("identity_binding");
@@ -237,7 +237,6 @@ export async function generateNationalityProofNoir(
  *   bindingSecretField: "0x...",
  *   userIdHashField: "0x...",
  *   documentHashField: "0x...",
- *   authMode: 0, // passkey
  *   nonce: challenge.nonce,
  * });
  */
@@ -254,8 +253,6 @@ export async function generateIdentityBindingProofNoir(
     bindingSecretField: input.bindingSecretField,
     userIdHashField: input.userIdHashField,
     documentHashField: input.documentHashField,
-    bindingCommitment: "", // Ignored - computed inside worker via Poseidon2
-    authMode: input.authMode,
     nonce: input.nonce,
   });
 

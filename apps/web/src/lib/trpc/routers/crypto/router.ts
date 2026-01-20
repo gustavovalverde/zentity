@@ -2,12 +2,13 @@
  * Crypto Router
  *
  * Handles cryptographic operations: FHE encryption, ZK proof verification,
- * and challenge-response anti-replay protection.
+ * BBS+ credentials, and challenge-response anti-replay protection.
  *
  * Key operations:
  * - verifyProof: Verify Noir ZK proofs with policy enforcement
  * - createChallenge: Issue nonces for replay-resistant proof generation
  * - storeProof: Persist verified ZK proofs for authenticated users
+ * - bbs.*: BBS+ credential issuance, presentation creation, and verification
  *
  * Policy enforcement:
  * - MIN_AGE_POLICY: Age proofs must verify age >= 18
@@ -17,6 +18,7 @@
 import "server-only";
 
 import { router } from "../../server";
+import { bbsRouter } from "./bbs";
 import {
   challengeStatusProcedure,
   createChallengeProcedure,
@@ -39,4 +41,5 @@ export const cryptoRouter = router({
   getAllProofs: getAllProofsProcedure,
   getSignedClaims: getSignedClaimsProcedure,
   storeProof: storeProofProcedure,
+  bbs: bbsRouter,
 });

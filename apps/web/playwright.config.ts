@@ -97,6 +97,12 @@ export default defineConfig({
       testMatch: /e2e\/oidc\/.*\.spec\.ts/,
       use: chromeOptions,
     },
+    // BBS+ credential tests
+    {
+      name: "bbs",
+      testMatch: /e2e\/bbs\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
     // Recovery flow tests
     {
       name: "recovery",

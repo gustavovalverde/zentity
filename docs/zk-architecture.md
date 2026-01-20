@@ -36,21 +36,22 @@ Zentity generates proofs **client‑side** so private inputs stay in the browser
 | `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
 | `address_jurisdiction` | Prove address in jurisdiction | Address country code + Merkle path | Merkle root, nonce, claim hash |
 | `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
-| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, binding commitment, auth mode |
+| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, binding commitment, is_bound |
 
 **Importance:** The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
 
 ### Identity Binding Circuit
 
-The `identity_binding` circuit provides replay protection by cryptographically binding proofs to a specific user identity. It works across all three authentication modes:
+The `identity_binding` circuit provides replay protection by cryptographically binding proofs to a specific user identity. It works across all four authentication modes:
 
 | Auth Mode | Binding Secret Source | Privacy Level |
 |-----------|----------------------|---------------|
 | **Passkey** | PRF output (32 bytes) | Highest – device-bound, non-extractable |
-| **OPAQUE** | Export key (64 bytes) | Medium – password-derived, deterministic |
-| **Wallet** | EIP-712 signature (65 bytes) | Lower – publicly verifiable by address |
+| **OPAQUE** | Export key (64 bytes) | High – password-derived, deterministic |
+| **Wallet** | EIP-712 signature (65 bytes) | Medium – wallet address stored for association |
+| **Wallet + BBS+** | BBS+ credential proof hash | Highest – unlinkable presentations, wallet address hidden |
 
-The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as a private input. The TypeScript layer (`binding-secret.ts`) handles per-mode derivation using HKDF with domain separation strings to prevent cross-use attacks.
+The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as a private input. The TypeScript layer (`binding-secret.ts`) handles per-mode derivation using HKDF with domain separation strings (e.g., `zentity-binding-wallet-bbs-v1`) to prevent cross-use attacks. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md) for BBS+ wallet binding details.
 
 **Binding commitment formula:**
 

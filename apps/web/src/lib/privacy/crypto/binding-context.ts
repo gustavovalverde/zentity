@@ -328,8 +328,6 @@ export async function getBindingContext(
       bindingResult = await deriveBindingSecret({
         authMode: AuthMode.WALLET,
         signatureBytes,
-        walletAddress: address,
-        chainId,
         userId,
         documentHash,
       });

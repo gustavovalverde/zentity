@@ -12,6 +12,7 @@ import {
   TwoFactorCard,
 } from "@/components/dashboard/security-cards";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
+import { WalletBindingSection } from "@/components/dashboard/wallet-binding-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { userHasPassword } from "@/lib/db/queries/auth";
@@ -63,6 +64,7 @@ export default async function SettingsPage() {
           <PasskeyManagementSection />
           <TwoFactorCard />
           <PasswordSection hasPassword={hasPassword} />
+          <WalletBindingSection />
         </TabsContent>
 
         {/* RECOVERY TAB - Backup access options */}
