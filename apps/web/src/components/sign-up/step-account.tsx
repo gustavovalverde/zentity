@@ -307,6 +307,7 @@ export function StepAccount() {
       // Create identity bundle for OPAQUE users (establishes Tier 1)
       await trpc.signUp.completeOpaqueEnrollment.mutate({
         fheKeyId: fheRegistration.keyId,
+        email: signUpStore.email || undefined,
       });
       await trpc.signUp.markKeysSecured.mutate();
 
@@ -414,6 +415,7 @@ export function StepAccount() {
         fheKeyId: fheRegistration.keyId,
         address: result.address,
         chainId: result.chainId,
+        email: signUpStore.email || undefined,
       });
       await trpc.signUp.markKeysSecured.mutate();
 

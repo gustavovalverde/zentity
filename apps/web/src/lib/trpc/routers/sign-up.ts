@@ -22,7 +22,7 @@ import {
   createFheEnrollmentContext,
   getFheEnrollmentContext,
 } from "@/lib/auth/fhe-enrollment-tokens";
-import { linkWalletAddress } from "@/lib/db/queries/auth";
+import { linkWalletAddress, updateUserEmail } from "@/lib/db/queries/auth";
 import {
   deleteEncryptedSecretByUserAndType,
   getEncryptedSecretByUserAndType,
@@ -362,6 +362,11 @@ export const signUpRouter = router({
         },
       });
 
+      // Persist email from enrollment context if present
+      if (context.email) {
+        await updateUserEmail(ctx.userId, context.email);
+      }
+
       // Create identity bundle when FHE keys are registered (Tier 1)
       // This ensures users without document verification still have a valid bundle
       await upsertIdentityBundle({
@@ -390,9 +395,15 @@ export const signUpRouter = router({
     .input(
       z.object({
         fheKeyId: z.string().min(1),
+        email: z.email().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Persist email if provided
+      if (input.email) {
+        await updateUserEmail(ctx.userId, input.email);
+      }
+
       await upsertIdentityBundle({
         userId: ctx.userId,
         status: "pending",
@@ -422,9 +433,15 @@ export const signUpRouter = router({
         fheKeyId: z.string().min(1),
         address: z.string().min(1),
         chainId: z.number().int().positive(),
+        email: z.email().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Persist email if provided
+      if (input.email) {
+        await updateUserEmail(ctx.userId, input.email);
+      }
+
       // Link wallet address to user account for SIWE sign-in
       await linkWalletAddress({
         userId: ctx.userId,

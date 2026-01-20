@@ -3,6 +3,25 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "../connection";
 import { accounts, users, walletAddresses } from "../schema/auth";
 
+/**
+ * Updates a user's email and clears the anonymous flag.
+ * Called when completing sign-up to persist the email from sign-up wizard state.
+ */
+export async function updateUserEmail(
+  userId: string,
+  email: string
+): Promise<void> {
+  await db
+    .update(users)
+    .set({
+      email,
+      isAnonymous: false,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(users.id, userId))
+    .run();
+}
+
 export async function getUserCreatedAt(userId: string): Promise<string | null> {
   const row = await db
     .select({ createdAt: users.createdAt })
