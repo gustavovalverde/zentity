@@ -29,7 +29,7 @@ const enrollmentSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
   }

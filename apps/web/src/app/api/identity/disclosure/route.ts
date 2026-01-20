@@ -154,7 +154,7 @@ export async function POST(
   let expiresAt = fallbackExpiresAt;
 
   try {
-    const authResult = await requireSession();
+    const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return NextResponse.json(
         {

@@ -6,7 +6,7 @@ import { createFheEnrollmentContext } from "@/lib/auth/fhe-enrollment-tokens";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const authResult = await requireSession();
+  const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
   }

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
-    const authResult = await requireSession();
+    const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
-    const authResult = await requireSession();
+    const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }

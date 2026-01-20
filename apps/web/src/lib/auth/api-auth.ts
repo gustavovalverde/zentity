@@ -1,14 +1,17 @@
-import { headers } from "next/headers";
+import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { auth, type Session } from "./auth";
 
-export async function requireSession(): Promise<
+export async function requireSession(
+  requestHeaders?: Headers
+): Promise<
   | { ok: true; session: Session }
   | { ok: false; response: NextResponse<{ error: string }> }
 > {
+  const hdrs = requestHeaders ?? (await nextHeaders());
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: hdrs,
   });
 
   if (!session) {

@@ -29,7 +29,7 @@ import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
  */
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireSession();
+    const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }
