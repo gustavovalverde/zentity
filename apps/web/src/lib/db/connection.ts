@@ -64,6 +64,15 @@ const dbClient = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
+// Configure SQLite for better concurrent access (defense in depth)
+// - busy_timeout: wait up to 5s for locks instead of failing immediately
+// - WAL mode: allows concurrent readers during writes
+// Errors ignored: PRAGMAs may fail on Turso (not local SQLite) but that's fine
+if (!isBuildTime()) {
+  dbClient.execute("PRAGMA busy_timeout = 5000;").catch(() => undefined);
+  dbClient.execute("PRAGMA journal_mode = WAL;").catch(() => undefined);
+}
+
 export const db: LibSQLDatabase<typeof schema> = drizzle(dbClient, {
   schema,
   logger: process.env.DRIZZLE_LOG === "true",

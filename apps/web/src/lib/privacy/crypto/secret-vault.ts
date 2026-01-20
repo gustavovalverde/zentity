@@ -186,6 +186,21 @@ export function hasCachedPasskeyUnlock(): boolean {
 }
 
 /**
+ * Check if OPAQUE export key cache is fresh without retrieving the key.
+ * Used to verify cache validity before starting multi-step verification flows.
+ */
+export function isOpaqueCacheFresh(userId: string): boolean {
+  if (!cachedOpaqueExport) {
+    return false;
+  }
+  if (Date.now() - cachedOpaqueExport.cachedAt > OPAQUE_CACHE_TTL_MS) {
+    cachedOpaqueExport = null;
+    return false;
+  }
+  return cachedOpaqueExport.userId === userId;
+}
+
+/**
  * Get cached passkey PRF output if valid and matches one of the allowed credential IDs.
  * Use this for binding secret derivation to avoid prompting the user again.
  */

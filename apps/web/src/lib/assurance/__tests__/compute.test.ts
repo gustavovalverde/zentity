@@ -203,6 +203,7 @@ describe("computeAssuranceState", () => {
         zkProofsComplete: true,
         fheComplete: true,
         hasIncompleteProofs: false,
+        needsDocumentReprocessing: false,
         onChainAttested: true,
       });
     });

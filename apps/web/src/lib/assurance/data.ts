@@ -14,6 +14,7 @@ import { cache } from "react";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import {
   getEncryptedAttributeTypesByUserId,
+  getLatestSignedClaimByUserTypeAndDocument,
   getSignedClaimTypesByUserAndDocument,
   getZkProofTypesByUserAndDocument,
 } from "@/lib/db/queries/crypto";
@@ -49,7 +50,54 @@ async function hasOnChainAttestation(userId: string): Promise<boolean> {
  */
 async function hasSecuredFheKeys(userId: string): Promise<boolean> {
   const bundle = await getIdentityBundleByUserId(userId);
-  return bundle?.fheKeyId != null;
+  return bundle?.fheKeyId !== undefined && bundle.fheKeyId !== null;
+}
+
+/**
+ * OCR claim data structure with claim hashes
+ */
+interface OcrClaimData {
+  claimHashes?: {
+    age?: string | null;
+    docValidity?: string | null;
+    nationality?: string | null;
+  };
+}
+
+/**
+ * Check if OCR claim has valid claim hashes
+ *
+ * Returns false when document was processed but claim hashes failed to compute
+ * (e.g., due to Barretenberg initialization issues in containers).
+ * This indicates the document needs to be re-processed.
+ */
+async function hasValidClaimHashes(
+  userId: string,
+  documentId: string | null
+): Promise<boolean> {
+  if (!documentId) {
+    return true; // No document = no missing hashes
+  }
+
+  const ocrClaim = await getLatestSignedClaimByUserTypeAndDocument(
+    userId,
+    "ocr_result",
+    documentId
+  );
+
+  if (!ocrClaim) {
+    return true; // No OCR claim = will be created during processing
+  }
+
+  try {
+    const payload = JSON.parse(ocrClaim.claimPayload) as OcrClaimData;
+    const hashes = payload.claimHashes;
+
+    // Check if any of the required claim hashes are missing
+    return !!(hashes?.age && hashes?.docValidity && hashes?.nationality);
+  } catch {
+    return false; // Invalid payload = needs reprocessing
+  }
 }
 
 /**
@@ -86,18 +134,22 @@ export const getAssuranceState = cache(async function getAssuranceState(
   const documentId = selectedDocument?.id ?? null;
   const documentVerified = selectedDocument?.status === "verified";
 
-  // Get proof types if we have a document
-  const [zkProofTypes, signedClaimTypes] = documentId
+  // Get proof types and check claim hashes if we have a document
+  const [zkProofTypes, signedClaimTypes, claimHashesValid] = documentId
     ? await Promise.all([
         getZkProofTypesByUserAndDocument(userId, documentId),
         getSignedClaimTypesByUserAndDocument(userId, documentId),
+        hasValidClaimHashes(userId, documentId),
       ])
-    : [[], []];
+    : [[], [], true];
 
   const livenessVerified = signedClaimTypes.includes("liveness_score");
   const faceMatchVerified =
     signedClaimTypes.includes("face_match_score") ||
     zkProofTypes.includes("face_match");
+
+  // Document needs reprocessing if verified but missing claim hashes
+  const needsDocumentReprocessing = documentVerified && !claimHashesValid;
 
   return computeAssuranceState({
     hasSession,
@@ -109,6 +161,7 @@ export const getAssuranceState = cache(async function getAssuranceState(
     zkProofsComplete: areZkProofsComplete(zkProofTypes),
     fheComplete: isFheComplete(fheAttributeTypes),
     onChainAttested: hasAttestation,
+    needsDocumentReprocessing,
   });
 });
 
@@ -126,5 +179,6 @@ export function getUnauthenticatedAssuranceState(): AssuranceState {
     zkProofsComplete: false,
     fheComplete: false,
     onChainAttested: false,
+    needsDocumentReprocessing: false,
   });
 }

@@ -15,6 +15,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 import {
+  BackendType,
   Barretenberg,
   UltraHonkBackend,
   UltraHonkVerifierBackend,
@@ -191,14 +192,20 @@ function getBarretenbergApi(): Promise<Barretenberg> {
   }
 
   if (!bbApiPromise) {
+    // Force WASM backend - native backend fails in containers without bb binary
     bbApiPromise = Barretenberg.new({
       crsPath: CRS_PATH,
+      backend: BackendType.Wasm,
     }).then((api) => {
       bbApi = api;
       return api;
     });
 
-    bbApiPromise.catch(() => {
+    bbApiPromise.catch((error) => {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Failed to initialize Barretenberg for ZK verification"
+      );
       bbApiPromise = null;
     });
   }

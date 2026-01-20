@@ -28,11 +28,16 @@ interface Challenge {
 const CHALLENGE_TTL_MS = 15 * 60 * 1000;
 
 /**
- * Remove expired challenges
+ * Remove expired challenges.
+ * Non-critical operation - failures are silently ignored.
  */
 async function cleanupExpiredChallenges(): Promise<void> {
   const now = Date.now();
-  await db.delete(zkChallenges).where(lt(zkChallenges.expiresAt, now)).run();
+  try {
+    await db.delete(zkChallenges).where(lt(zkChallenges.expiresAt, now)).run();
+  } catch {
+    // Ignore cleanup errors - they're not critical
+  }
 }
 
 /**
@@ -97,9 +102,8 @@ export async function consumeChallenge(
   circuitType: ProofType,
   userId?: string
 ): Promise<Challenge | null> {
-  await cleanupExpiredChallenges();
-
-  return db.transaction(async (tx) => {
+  // Cleanup runs during createChallenge(), so we skip it here
+  return await db.transaction(async (tx) => {
     const row = await tx
       .select({
         nonce: zkChallenges.nonce,
@@ -143,7 +147,6 @@ export async function consumeChallenge(
  * Get a challenge without consuming it (for debugging/inspection)
  */
 async function _getChallenge(nonce: string): Promise<Challenge | null> {
-  await cleanupExpiredChallenges();
   const row = await db
     .select({
       nonce: zkChallenges.nonce,
@@ -178,6 +181,7 @@ async function _getChallenge(nonce: string): Promise<Challenge | null> {
  * Get count of active challenges (for monitoring)
  */
 export async function getActiveChallengeCount(): Promise<number> {
+  // Run cleanup for accurate count since this is a monitoring function
   await cleanupExpiredChallenges();
   const row = await db
     .select({ count: sql<number>`count(*)` })

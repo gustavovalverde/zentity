@@ -9,7 +9,7 @@
 
 import "server-only";
 
-import { Barretenberg, BN254_FR_MODULUS } from "@aztec/bb.js";
+import { BackendType, Barretenberg, BN254_FR_MODULUS } from "@aztec/bb.js";
 
 import { logger } from "@/lib/logging/logger";
 
@@ -29,18 +29,29 @@ function bigIntToFr(value: bigint): Uint8Array {
   return bytes;
 }
 
+const CRS_PATH =
+  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
+
 export function getBarretenberg(): Promise<Barretenberg> {
   if (bbInstance) {
     return Promise.resolve(bbInstance);
   }
 
   if (!bbInitPromise) {
-    bbInitPromise = Barretenberg.new().then((api) => {
+    // Force WASM backend - native backend fails in containers without bb binary
+    bbInitPromise = Barretenberg.new({
+      crsPath: CRS_PATH,
+      backend: BackendType.Wasm,
+    }).then((api) => {
       bbInstance = api;
       return api;
     });
 
-    bbInitPromise.catch(() => {
+    bbInitPromise.catch((error) => {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Failed to initialize Barretenberg WASM"
+      );
       bbInitPromise = null;
     });
   }
@@ -70,9 +81,21 @@ export async function poseidon2Hash(values: bigint[]): Promise<bigint> {
  */
 export async function warmupBarretenberg(): Promise<void> {
   const startTime = Date.now();
-  await getBarretenberg();
-  logger.info(
-    { durationMs: Date.now() - startTime },
-    "Barretenberg WASM preloaded"
-  );
+  try {
+    await getBarretenberg();
+    logger.info(
+      { durationMs: Date.now() - startTime, crsPath: CRS_PATH },
+      "Barretenberg WASM preloaded"
+    );
+  } catch (error) {
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startTime,
+        crsPath: CRS_PATH,
+      },
+      "Failed to preload Barretenberg WASM"
+    );
+    throw error;
+  }
 }

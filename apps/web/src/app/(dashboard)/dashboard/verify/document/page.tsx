@@ -32,10 +32,16 @@ export default async function DocumentVerifyPage() {
   }
 
   // Already verified document - skip to liveness
-  // Exception: users with incomplete proofs need to re-verify
+  // Exceptions: users with incomplete proofs or missing claim hashes need to re-verify
   const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
+  const needsDocumentReprocessing =
+    assuranceState.details.needsDocumentReprocessing;
 
-  if (assuranceState.details.documentVerified && !needsProofRegeneration) {
+  if (
+    assuranceState.details.documentVerified &&
+    !needsProofRegeneration &&
+    !needsDocumentReprocessing
+  ) {
     redirect("/dashboard/verify/liveness");
   }
 
@@ -48,7 +54,9 @@ export default async function DocumentVerifyPage() {
         </p>
       </div>
 
-      <DocumentUploadClient resetOnMount={needsProofRegeneration} />
+      <DocumentUploadClient
+        resetOnMount={needsProofRegeneration || needsDocumentReprocessing}
+      />
     </div>
   );
 }

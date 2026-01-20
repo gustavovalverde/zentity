@@ -116,9 +116,8 @@ export async function generateAllProofs(params: {
     throw new Error("Missing face match claim hash");
   }
 
-  // Collect proofs to store
-  const storeTasks: Promise<unknown>[] = [];
-  const enqueueStore = (proof: {
+  // Proof config type for deferred storage
+  interface ProofToStore {
     circuitType:
       | "age_verification"
       | "doc_validity"
@@ -128,16 +127,12 @@ export async function generateAllProofs(params: {
     proof: string;
     publicSignals: string[];
     generationTimeMs: number;
-  }) => {
-    storeTasks.push(
-      storeProof({
-        circuitType: proof.circuitType,
-        proof: proof.proof,
-        publicSignals: proof.publicSignals,
-        generationTimeMs: proof.generationTimeMs,
-        documentId,
-      })
-    );
+  }
+
+  // Collect proof configs (NOT started promises) for truly sequential storage
+  const proofsToStore: ProofToStore[] = [];
+  const enqueueStore = (proof: ProofToStore) => {
+    proofsToStore.push(proof);
   };
 
   // Prepare face match data upfront (before parallel fetch)
@@ -242,6 +237,15 @@ export async function generateAllProofs(params: {
   // Notify caller before storing (so UI can show "storing" status)
   onBeforeStore?.();
 
-  // Store all proofs
-  await Promise.all(storeTasks);
+  // Store proofs sequentially to avoid SQLITE_BUSY (SQLite single-writer lock)
+  // Each storeProof call does 4-6 DB operations; running them in parallel causes lock contention
+  for (const proof of proofsToStore) {
+    await storeProof({
+      circuitType: proof.circuitType,
+      proof: proof.proof,
+      publicSignals: proof.publicSignals,
+      generationTimeMs: proof.generationTimeMs,
+      documentId,
+    });
+  }
 }

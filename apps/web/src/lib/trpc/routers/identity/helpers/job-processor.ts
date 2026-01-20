@@ -321,7 +321,14 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             });
           } catch (error) {
             logger.error(
-              { error: String(error), jobId, userId: job.userId },
+              {
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                jobId,
+                userId: job.userId,
+                faceMatchConfidence: draft.faceMatchConfidence,
+                documentHashField,
+              },
               "Failed to sign face match claim in finalize job"
             );
             issues.push("signed_face_match_claim_failed");

@@ -84,6 +84,7 @@ export interface AssuranceInput {
   zkProofsComplete: boolean;
   fheComplete: boolean;
   onChainAttested: boolean;
+  needsDocumentReprocessing?: boolean;
 }
 
 /**
@@ -105,6 +106,7 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     zkProofsComplete,
     fheComplete,
     onChainAttested,
+    needsDocumentReprocessing = false,
   } = input;
 
   const authStrength = deriveAuthStrength(loginMethod);
@@ -145,6 +147,7 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     zkProofsComplete,
     fheComplete,
     hasIncompleteProofs,
+    needsDocumentReprocessing,
     onChainAttested,
   };
 

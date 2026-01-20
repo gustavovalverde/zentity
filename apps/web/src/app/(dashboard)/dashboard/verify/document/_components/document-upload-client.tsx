@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { AuthMaterialGate } from "@/components/verification/auth-material-gate";
 import {
   type ProcessingState,
   useDocumentProcessing,
@@ -297,104 +298,109 @@ export function DocumentUploadClient({
     processingState === "converting" || processingState === "processing";
 
   return (
-    <div className="space-y-6">
-      {uploadError ? (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{uploadError}</AlertDescription>
-        </Alert>
-      ) : null}
+    <AuthMaterialGate>
+      <div className="space-y-6">
+        {uploadError ? (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{uploadError}</AlertDescription>
+          </Alert>
+        ) : null}
 
-      {isProcessing && <ProcessingIndicator state={processingState} />}
+        {isProcessing && <ProcessingIndicator state={processingState} />}
 
-      {processingState === "verified" && documentResult ? (
-        <VerifiedDocumentCard
-          documentResult={documentResult}
-          onRemove={onRemove}
-          previewUrl={previewUrl}
-        />
-      ) : null}
-
-      {processingState === "rejected" && documentResult ? (
-        <RejectedDocumentCard
-          documentResult={documentResult}
-          onRemove={onRemove}
-          previewUrl={previewUrl}
-        />
-      ) : null}
-
-      {fileName && !previewUrl && processingState === "idle" ? (
-        <div className="relative rounded-lg border bg-muted/30 p-4">
-          <Button
-            className="absolute top-2 right-2 h-8 w-8"
-            onClick={onRemove}
-            size="icon"
-            variant="ghost"
-          >
-            <X className="h-4 w-4" />
-            <span className="sr-only">Remove file</span>
-          </Button>
-          <div className="flex flex-col items-center gap-3 py-4">
-            <FileText className="h-12 w-12 text-muted-foreground" />
-            <p className="font-medium text-sm">{fileName}</p>
-            <p className="text-muted-foreground text-xs">
-              PDF document uploaded
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      {!fileName && processingState === "idle" ? (
-        <Button
-          aria-describedby="id-upload-help"
-          className={cn(
-            "relative flex min-h-[200px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
-            dragActive
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/25"
-          )}
-          onClick={() => fileInputRef.current?.click()}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-          type="button"
-          variant="outline"
-        >
-          <input
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            id="file-upload"
-            onChange={handleChange}
-            ref={fileInputRef}
-            type="file"
+        {processingState === "verified" && documentResult ? (
+          <VerifiedDocumentCard
+            documentResult={documentResult}
+            onRemove={onRemove}
+            previewUrl={previewUrl}
           />
-          <Upload className="mb-4 h-10 w-10 text-muted-foreground" />
-          <p className="font-medium">Drop your ID here or click to browse</p>
-          <p className="mt-1 text-muted-foreground text-sm" id="id-upload-help">
-            JPEG, PNG, or WebP (max 10MB)
-          </p>
-        </Button>
-      ) : null}
+        ) : null}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Privacy Notice</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CardDescription>
-            Your ID is processed by our private OCR service. Only cryptographic
-            commitments and encrypted data are stored—never your raw document
-            image.
-          </CardDescription>
-        </CardContent>
-      </Card>
+        {processingState === "rejected" && documentResult ? (
+          <RejectedDocumentCard
+            documentResult={documentResult}
+            onRemove={onRemove}
+            previewUrl={previewUrl}
+          />
+        ) : null}
 
-      <div className="flex justify-end gap-3">
-        <Button disabled={!isVerified} onClick={handleContinue}>
-          Continue to Liveness Check
-        </Button>
+        {fileName && !previewUrl && processingState === "idle" ? (
+          <div className="relative rounded-lg border bg-muted/30 p-4">
+            <Button
+              className="absolute top-2 right-2 h-8 w-8"
+              onClick={onRemove}
+              size="icon"
+              variant="ghost"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Remove file</span>
+            </Button>
+            <div className="flex flex-col items-center gap-3 py-4">
+              <FileText className="h-12 w-12 text-muted-foreground" />
+              <p className="font-medium text-sm">{fileName}</p>
+              <p className="text-muted-foreground text-xs">
+                PDF document uploaded
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {!fileName && processingState === "idle" ? (
+          <Button
+            aria-describedby="id-upload-help"
+            className={cn(
+              "relative flex min-h-[200px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
+              dragActive
+                ? "border-primary bg-primary/5"
+                : "border-muted-foreground/25"
+            )}
+            onClick={() => fileInputRef.current?.click()}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            type="button"
+            variant="outline"
+          >
+            <input
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              id="file-upload"
+              onChange={handleChange}
+              ref={fileInputRef}
+              type="file"
+            />
+            <Upload className="mb-4 h-10 w-10 text-muted-foreground" />
+            <p className="font-medium">Drop your ID here or click to browse</p>
+            <p
+              className="mt-1 text-muted-foreground text-sm"
+              id="id-upload-help"
+            >
+              JPEG, PNG, or WebP (max 10MB)
+            </p>
+          </Button>
+        ) : null}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Privacy Notice</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription>
+              Your ID is processed by our private OCR service. Only
+              cryptographic commitments and encrypted data are stored—never your
+              raw document image.
+            </CardDescription>
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end gap-3">
+          <Button disabled={!isVerified} onClick={handleContinue}>
+            Continue to Liveness Check
+          </Button>
+        </div>
       </div>
-    </div>
+    </AuthMaterialGate>
   );
 }

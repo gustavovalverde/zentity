@@ -71,6 +71,7 @@ export interface VerificationDetails {
   zkProofsComplete: boolean;
   fheComplete: boolean;
   hasIncompleteProofs: boolean;
+  needsDocumentReprocessing: boolean;
   onChainAttested: boolean;
 }
 

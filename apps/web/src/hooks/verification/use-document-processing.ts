@@ -59,7 +59,13 @@ export function useDocumentProcessing(
   options: UseDocumentProcessingOptions = {}
 ): UseDocumentProcessingReturn {
   const { resetOnMount = false } = options;
-  const store = useVerificationStore();
+
+  // Select specific state to avoid re-renders on unrelated store changes
+  const idDocument = useVerificationStore((s) => s.idDocument);
+  const documentResult = useVerificationStore((s) => s.documentResult);
+  const storeReset = useVerificationStore((s) => s.reset);
+  const storeSet = useVerificationStore((s) => s.set);
+
   const hasResetRef = useRef(false);
 
   const [processingState, setProcessingState] =
@@ -72,36 +78,49 @@ export function useDocumentProcessing(
   useEffect(() => {
     if (resetOnMount && !hasResetRef.current) {
       hasResetRef.current = true;
-      store.reset();
+      storeReset();
     }
-  }, [resetOnMount, store]);
+  }, [resetOnMount, storeReset]);
 
-  // Initialize state from store after potential reset
+  // Initialize state from store on mount
+  // This effect syncs local state with Zustand store on initial render
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
-    if (!resetOnMount || hasResetRef.current) {
-      if (store.idDocument?.name && !fileName) {
-        setFileName(store.idDocument.name);
-      }
-      if (store.documentResult && processingState === "idle") {
-        setProcessingState("verified");
-      }
+    // Only run once on mount (after potential reset)
+    if (hasInitializedRef.current) {
+      return;
     }
-  }, [
-    store.idDocument,
-    store.documentResult,
-    resetOnMount,
-    fileName,
-    processingState,
-  ]);
+    if (resetOnMount && !hasResetRef.current) {
+      // Wait for reset to complete first
+      return;
+    }
+
+    hasInitializedRef.current = true;
+
+    // If we have an idDocument but no documentResult, clear the stale file.
+    // This happens when navigating away mid-flow - File object stays in memory
+    // but documentResult (not persisted) is lost.
+    if (idDocument && !documentResult) {
+      storeSet({ idDocument: null, idDocumentBase64: null });
+      return;
+    }
+
+    if (idDocument?.name) {
+      setFileName(idDocument.name);
+    }
+    if (documentResult) {
+      setProcessingState("verified");
+    }
+  }, [idDocument, documentResult, storeSet, resetOnMount]);
 
   // Generate preview URL when file is selected
   useEffect(() => {
-    if (store.idDocument?.type.startsWith("image/")) {
-      const url = URL.createObjectURL(store.idDocument);
+    if (idDocument?.type.startsWith("image/")) {
+      const url = URL.createObjectURL(idDocument);
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
-  }, [store.idDocument]);
+  }, [idDocument]);
 
   // Timeout for long-running processing
   useEffect(() => {
@@ -129,7 +148,7 @@ export function useDocumentProcessing(
   );
 
   const clearExtractedData = useCallback(() => {
-    store.set({
+    storeSet({
       userSalt: null,
       extractedName: null,
       extractedDOB: null,
@@ -138,7 +157,7 @@ export function useDocumentProcessing(
       extractedNationalityCode: null,
       extractedExpirationDate: null,
     });
-  }, [store]);
+  }, [storeSet]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -172,15 +191,15 @@ export function useDocumentProcessing(
         });
 
         setFileName(resizedFile.name);
-        store.set({ idDocument: resizedFile, documentResult: null });
+        storeSet({ idDocument: resizedFile, documentResult: null });
         setProcessingState("converting");
 
-        store.set({ idDocumentBase64: dataUrl });
+        storeSet({ idDocumentBase64: dataUrl });
         setProcessingState("processing");
 
         const response = await processDocument(dataUrl);
         const result = response.documentResult as DocumentResult;
-        store.set({
+        storeSet({
           documentResult: result,
           draftId: response.draftId,
           documentId: response.documentId ?? null,
@@ -222,7 +241,7 @@ export function useDocumentProcessing(
           });
 
           if (result.extractedData) {
-            store.set({
+            storeSet({
               extractedName: result.extractedData.fullName || null,
               extractedDOB: result.extractedData.dateOfBirth || null,
               extractedDocNumber: result.extractedData.documentNumber || null,
@@ -252,7 +271,7 @@ export function useDocumentProcessing(
         setProcessingState("idle");
       }
     },
-    [processDocument, store, clearExtractedData]
+    [processDocument, storeSet, clearExtractedData]
   );
 
   const handleRemove = useCallback(() => {
@@ -260,7 +279,7 @@ export function useDocumentProcessing(
     setPreviewUrl(null);
     setProcessingState("idle");
     setUploadError(null);
-    store.set({
+    storeSet({
       idDocument: null,
       idDocumentBase64: null,
       documentResult: null,
@@ -272,14 +291,13 @@ export function useDocumentProcessing(
       extractedExpirationDate: null,
       userSalt: null,
     });
-  }, [store]);
+  }, [storeSet]);
 
   const resetState = useCallback(() => {
     handleRemove();
-    store.reset();
-  }, [handleRemove, store]);
+    storeReset();
+  }, [handleRemove, storeReset]);
 
-  const documentResult = store.documentResult;
   const isVerified = processingState === "verified" && Boolean(documentResult);
 
   return {

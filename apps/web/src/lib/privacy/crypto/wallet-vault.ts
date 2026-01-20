@@ -508,6 +508,18 @@ export function getCachedWalletSignature(
 }
 
 /**
+ * Check if wallet signature cache is fresh without retrieving the signature.
+ * Used to verify cache validity before starting multi-step verification flows.
+ */
+export function isWalletCacheFresh(
+  userId: string,
+  address: string,
+  chainId: number
+): boolean {
+  return getCachedWalletSignature(userId, address, chainId) !== null;
+}
+
+/**
  * Clear the cached wallet signature.
  * Call on sign-out or when user explicitly disconnects wallet.
  */

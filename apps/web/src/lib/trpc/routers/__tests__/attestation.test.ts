@@ -101,6 +101,7 @@ function createTier2State(): AssuranceState {
       zkProofsComplete: true,
       fheComplete: true,
       hasIncompleteProofs: false,
+      needsDocumentReprocessing: false,
       onChainAttested: false,
     },
   };
@@ -121,6 +122,7 @@ function createTier1State(): AssuranceState {
       zkProofsComplete: false,
       fheComplete: false,
       hasIncompleteProofs: false,
+      needsDocumentReprocessing: false,
       onChainAttested: false,
     },
   };
