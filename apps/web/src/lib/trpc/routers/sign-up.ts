@@ -362,23 +362,23 @@ export const signUpRouter = router({
         },
       });
 
-      // Persist email from enrollment context if present
-      if (context.email) {
-        await updateUserEmail(ctx.userId, context.email);
-      }
-
-      // Create identity bundle when FHE keys are registered (Tier 1)
-      // This ensures users without document verification still have a valid bundle
-      await upsertIdentityBundle({
-        userId: ctx.userId,
-        status: "pending",
-        fheKeyId: input.keyId,
-        fheStatus: "pending",
-        issuerId: ISSUER_ID,
-        policyVersion: POLICY_VERSION,
-      });
-
-      await consumeFheEnrollmentContext(registration.contextToken);
+      // Parallelize independent DB operations
+      await Promise.all([
+        // Persist email from enrollment context if present
+        context.email
+          ? updateUserEmail(ctx.userId, context.email)
+          : Promise.resolve(),
+        // Create identity bundle (Tier 1) - users without doc verification still need one
+        upsertIdentityBundle({
+          userId: ctx.userId,
+          status: "pending",
+          fheKeyId: input.keyId,
+          fheStatus: "pending",
+          issuerId: ISSUER_ID,
+          policyVersion: POLICY_VERSION,
+        }),
+        consumeFheEnrollmentContext(registration.contextToken),
+      ]);
 
       return { success: true, keyId: input.keyId };
     }),
@@ -399,19 +399,19 @@ export const signUpRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Persist email if provided
-      if (input.email) {
-        await updateUserEmail(ctx.userId, input.email);
-      }
-
-      await upsertIdentityBundle({
-        userId: ctx.userId,
-        status: "pending",
-        fheKeyId: input.fheKeyId,
-        fheStatus: "pending",
-        issuerId: ISSUER_ID,
-        policyVersion: POLICY_VERSION,
-      });
+      await Promise.all([
+        input.email
+          ? updateUserEmail(ctx.userId, input.email)
+          : Promise.resolve(),
+        upsertIdentityBundle({
+          userId: ctx.userId,
+          status: "pending",
+          fheKeyId: input.fheKeyId,
+          fheStatus: "pending",
+          issuerId: ISSUER_ID,
+          policyVersion: POLICY_VERSION,
+        }),
+      ]);
       return { success: true };
     }),
 
@@ -437,27 +437,26 @@ export const signUpRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Persist email if provided
-      if (input.email) {
-        await updateUserEmail(ctx.userId, input.email);
-      }
-
-      // Link wallet address to user account for SIWE sign-in
-      await linkWalletAddress({
-        userId: ctx.userId,
-        address: input.address,
-        chainId: input.chainId,
-        isPrimary: true,
-      });
-
-      await upsertIdentityBundle({
-        userId: ctx.userId,
-        status: "pending",
-        fheKeyId: input.fheKeyId,
-        fheStatus: "pending",
-        issuerId: ISSUER_ID,
-        policyVersion: POLICY_VERSION,
-      });
+      await Promise.all([
+        input.email
+          ? updateUserEmail(ctx.userId, input.email)
+          : Promise.resolve(),
+        // Link wallet address for SIWE sign-in
+        linkWalletAddress({
+          userId: ctx.userId,
+          address: input.address,
+          chainId: input.chainId,
+          isPrimary: true,
+        }),
+        upsertIdentityBundle({
+          userId: ctx.userId,
+          status: "pending",
+          fheKeyId: input.fheKeyId,
+          fheStatus: "pending",
+          issuerId: ISSUER_ID,
+          policyVersion: POLICY_VERSION,
+        }),
+      ]);
       return { success: true };
     }),
 });
