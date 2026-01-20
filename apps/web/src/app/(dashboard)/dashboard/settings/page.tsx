@@ -9,8 +9,8 @@ import { RecoverySetupSection } from "@/components/dashboard/recovery-setup-sect
 import {
   ConnectedAccountsCard,
   SessionsCard,
-  TwoFactorCard,
 } from "@/components/dashboard/security-cards";
+import { TwoFactorCard } from "@/components/dashboard/two-factor-card";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { WalletBindingSection } from "@/components/dashboard/wallet-binding-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,7 +62,7 @@ export default async function SettingsPage() {
             title="Authentication"
           />
           <PasskeyManagementSection />
-          <TwoFactorCard />
+          <TwoFactorCard hasPassword={hasPassword} />
           <PasswordSection hasPassword={hasPassword} />
           <WalletBindingSection />
         </TabsContent>

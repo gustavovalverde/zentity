@@ -176,6 +176,9 @@
     ]
   },
   "pnpm": {
+    "patchedDependencies": {
+      "@daveyplate/better-auth-ui@3.3.12": "vendor/@daveyplate+better-auth-ui@3.3.12.patch"
+    },
     "overrides": {
       "ws": ">=8.17.1",
       "esbuild": ">=0.25.0",

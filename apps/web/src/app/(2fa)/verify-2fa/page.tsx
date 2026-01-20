@@ -13,7 +13,7 @@ export default async function VerifyTwoFactorPage({
   const isSetup = Boolean(totpURI);
   const safeRedirectTo = getSafeRedirectPath(
     redirectTo,
-    isSetup ? "/dashboard/settings" : "/dashboard"
+    isSetup ? "/backup-codes" : "/dashboard"
   );
 
   return (

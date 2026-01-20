@@ -218,7 +218,7 @@ export function BetterAuthUIProvider({
       social={{
         providers: ["google", "github"],
       }}
-      twoFactor={["totp"]}
+      twoFactor={{ methods: ["totp"], allowPasswordless: true }}
       viewPaths={{
         SIGN_IN: "sign-in",
         SIGN_UP: "sign-up",

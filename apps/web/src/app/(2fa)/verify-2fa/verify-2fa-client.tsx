@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { toDataURL } from "qrcode";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -50,12 +49,6 @@ export function VerifyTwoFactorClient({
   const fieldError = error;
 
   useEffect(() => {
-    if (isSetup) {
-      setMode("totp");
-    }
-  }, [isSetup]);
-
-  useEffect(() => {
     if (!totpUri) {
       setQrCodeDataUrl(null);
       setIsGeneratingQr(false);
@@ -64,7 +57,9 @@ export function VerifyTwoFactorClient({
 
     let active = true;
     setIsGeneratingQr(true);
-    toDataURL(totpUri, { width: 200, margin: 1 })
+
+    import("qrcode")
+      .then(({ toDataURL }) => toDataURL(totpUri, { width: 200, margin: 1 }))
       .then((dataUrl) => {
         if (active) {
           setQrCodeDataUrl(dataUrl);
@@ -270,7 +265,18 @@ export function VerifyTwoFactorClient({
             Verify
           </Button>
 
-          {isSetup ? null : (
+          {isSetup ? (
+            <Button
+              className="w-full"
+              disabled={isVerifying}
+              onClick={() =>
+                globalThis.window.location.assign("/dashboard/settings")
+              }
+              variant="outline"
+            >
+              Cancel
+            </Button>
+          ) : (
             <Button
               className="w-full"
               disabled={isVerifying}
