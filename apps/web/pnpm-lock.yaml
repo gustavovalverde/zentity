@@ -181,9 +181,6 @@ importers:
       '@zentity/fhevm-contracts':
         specifier: 0.2.1
         version: 0.2.1(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(viem@2.43.5(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.4))
-      '@zkpassport/poseidon2':
-        specifier: 0.6.2
-        version: 0.6.2
       '@zkpassport/utils':
         specifier: ^0.32.1
         version: 0.32.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)

@@ -9,15 +9,15 @@ export async function register() {
     );
     await warmupHumanServer();
 
-    // Preload ZK verification keys and CRS cache for faster first proof verification
-    const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
-    await warmupCRS();
-
-    // Preload Barretenberg for server-side hashing (claim hashes, Merkle trees)
+    // Preload shared Barretenberg instance for server-side crypto (ZK verification, hashing)
     const { warmupBarretenberg } = await import(
       "@/lib/privacy/crypto/barretenberg"
     );
     await warmupBarretenberg();
+
+    // Preload ZK verification keys and CRS cache (uses shared BB instance)
+    const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
+    await warmupCRS();
 
     // Check Noir/bb.js WASM assets presence
     const { logNoirWasmAssetStatus } = await import(

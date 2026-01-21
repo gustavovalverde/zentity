@@ -14,16 +14,14 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-import {
-  BackendType,
-  Barretenberg,
-  UltraHonkBackend,
-  UltraHonkVerifierBackend,
-} from "@aztec/bb.js";
-import { poseidon2HashAsync } from "@zkpassport/poseidon2";
+import { UltraHonkBackend, UltraHonkVerifierBackend } from "@aztec/bb.js";
 
 import { logger } from "@/lib/logging/logger";
 import { recordZkVerifyDuration } from "@/lib/observability/metrics";
+import {
+  getBarretenberg,
+  poseidon2Hash,
+} from "@/lib/privacy/crypto/barretenberg";
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
@@ -101,9 +99,7 @@ try {
   // Best-effort: directory might already exist or be read-only.
 }
 
-// Singleton instances
-let bbApi: Barretenberg | null = null;
-let bbApiPromise: Promise<Barretenberg> | null = null;
+// Singleton instances (Barretenberg is shared from barretenberg.ts)
 let verifierBackend: UltraHonkVerifierBackend | null = null;
 let cachedBbJsVersion: string | null | undefined;
 let prewarmPromise: Promise<void> | null = null;
@@ -186,39 +182,12 @@ function clearCrsCache(reason: string): void {
   logger.warn({ reason, crsPath: CRS_PATH }, "Cleared CRS cache");
 }
 
-function getBarretenbergApi(): Promise<Barretenberg> {
-  if (bbApi) {
-    return Promise.resolve(bbApi);
-  }
-
-  if (!bbApiPromise) {
-    // Force WASM backend - native backend fails in containers without bb binary
-    bbApiPromise = Barretenberg.new({
-      crsPath: CRS_PATH,
-      backend: BackendType.Wasm,
-    }).then((api) => {
-      bbApi = api;
-      return api;
-    });
-
-    bbApiPromise.catch((error) => {
-      logger.error(
-        { error: error instanceof Error ? error.message : String(error) },
-        "Failed to initialize Barretenberg for ZK verification"
-      );
-      bbApiPromise = null;
-    });
-  }
-
-  return bbApiPromise;
-}
-
 async function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
   if (verifierBackend) {
     return verifierBackend;
   }
 
-  const api = await getBarretenbergApi();
+  const api = await getBarretenberg();
   verifierBackend = new UltraHonkVerifierBackend(api);
   return verifierBackend;
 }
@@ -245,7 +214,7 @@ async function getBackend(circuitType: ProofType): Promise<UltraHonkBackend> {
     return cached;
   }
 
-  const api = await getBarretenbergApi();
+  const api = await getBarretenberg();
   const backend = new UltraHonkBackend(bytecode, api);
   backendCache.set(cacheKey, backend);
   return backend;
@@ -328,7 +297,7 @@ export function getCircuitVerificationKey(
     }
 
     const vkHash = sha256Hex(vkBytes);
-    const vkeyPoseidonHash = await poseidon2HashAsync(vkBytesToFields(vkBytes));
+    const vkeyPoseidonHash = await poseidon2Hash(vkBytesToFields(vkBytes));
     const publicInputCount = getPublicInputCountFromVkey(vkBytes);
 
     return {
