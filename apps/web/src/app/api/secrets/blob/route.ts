@@ -12,7 +12,7 @@ import {
 import {
   readSecretBlob,
   writeSecretBlob,
-} from "@/lib/privacy/crypto/secret-blob-store";
+} from "@/lib/privacy/secrets/storage.server";
 
 export const runtime = "nodejs";
 

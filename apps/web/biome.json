@@ -133,6 +133,22 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "src/lib/privacy/credentials/index.ts",
+        "src/lib/privacy/fhe/index.ts",
+        "src/lib/privacy/primitives/index.ts",
+        "src/lib/privacy/secrets/index.ts",
+        "src/lib/privacy/crypto/passkey-vault.ts"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
     }
   ],
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json"

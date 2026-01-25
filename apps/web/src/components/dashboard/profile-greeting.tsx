@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { hasCachedPasskeyUnlock } from "@/lib/privacy/credentials";
 import {
   getProfileSnapshot,
   getServerProfileSnapshot,
   getStoredProfile,
   subscribeToProfileCache,
-} from "@/lib/privacy/crypto/profile-secret";
-import { hasCachedPasskeyUnlock } from "@/lib/privacy/crypto/secret-vault";
+} from "@/lib/privacy/secrets/profile";
 
 /**
  * Displays the user's first name from their passkey-encrypted profile.

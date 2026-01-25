@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { cacheOpaqueExportKey } from "@/lib/privacy/crypto/secret-vault";
+import { cacheOpaqueExportKey } from "@/lib/privacy/credentials";
 import { redirectTo } from "@/lib/utils/navigation";
 
 export function OpaqueSignInForm() {

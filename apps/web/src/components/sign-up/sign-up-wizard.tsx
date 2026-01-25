@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { setFlowId } from "@/lib/observability/flow-client";
-import { prewarmTfheWorker } from "@/lib/privacy/crypto/tfhe-keygen.client";
+import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
 import { trpc } from "@/lib/trpc/client";
 import { useSignUpStore } from "@/store/sign-up";
 

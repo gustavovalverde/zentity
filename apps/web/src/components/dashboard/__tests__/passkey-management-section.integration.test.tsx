@@ -23,12 +23,17 @@ vi.mock("@/lib/auth/passkey", () => ({
   deletePasskey: passkeyMocks.deletePasskey,
 }));
 
-const vaultMocks = vi.hoisted(() => ({
+const secretsMocks = vi.hoisted(() => ({
   addWrapperForSecretType: vi.fn(),
-  cacheOpaqueExportKey: vi.fn(),
 }));
 
-vi.mock("@/lib/privacy/crypto/secret-vault", () => vaultMocks);
+const credentialsMocks = vi.hoisted(() => ({
+  cacheOpaqueExportKey: vi.fn(),
+  generatePrfSalt: vi.fn().mockReturnValue(new Uint8Array(32).fill(7)),
+}));
+
+vi.mock("@/lib/privacy/secrets", () => secretsMocks);
+vi.mock("@/lib/privacy/credentials", () => credentialsMocks);
 
 const authClientMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -41,13 +46,9 @@ vi.mock("@/lib/auth/auth-client", () => ({
   authClient: authClientMocks,
 }));
 
-vi.mock("@/lib/privacy/crypto/key-derivation", () => ({
-  generatePrfSalt: vi.fn().mockReturnValue(new Uint8Array(32).fill(7)),
-}));
-
-vi.mock("@/lib/privacy/crypto/webauthn-prf", async (importOriginal) => {
+vi.mock("@/lib/auth/webauthn-prf", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/privacy/crypto/webauthn-prf")>();
+    await importOriginal<typeof import("@/lib/auth/webauthn-prf")>();
   return {
     ...actual,
     checkPrfSupport: vi.fn().mockResolvedValue({ supported: true }),
@@ -77,7 +78,7 @@ describe("PasskeyManagementSection integration", () => {
       credentialId: "cred-1",
       prfOutput: new Uint8Array(32).fill(1),
     });
-    vaultMocks.addWrapperForSecretType.mockResolvedValue(true);
+    secretsMocks.addWrapperForSecretType.mockResolvedValue(true);
 
     render(<PasskeyManagementSection />);
 
@@ -98,7 +99,7 @@ describe("PasskeyManagementSection integration", () => {
 
     await waitFor(() => {
       expect(passkeyMocks.registerPasskeyWithPrf).toHaveBeenCalled();
-      expect(vaultMocks.addWrapperForSecretType).toHaveBeenCalledTimes(2);
+      expect(secretsMocks.addWrapperForSecretType).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import type { EnrollmentCredential } from "@/lib/privacy/secrets";
+
 import { ChevronDown, KeyRound, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -23,31 +25,28 @@ import {
   registerPasskeyWithPrf,
   signInWithPasskey,
 } from "@/lib/auth/passkey";
+import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { storeBbsCredential } from "@/lib/bbs/client-storage";
 import { deserializeCredential } from "@/lib/bbs/serialization";
-import { fetchMsgpack } from "@/lib/privacy/crypto/binary-transport";
+import {
+  cachePasskeyUnlock,
+  computeWalletCommitment,
+  generatePrfSalt,
+  generateWalletCommitmentSalt,
+  walletCommitmentToHex,
+} from "@/lib/privacy/credentials";
 import {
   generateFheKeyMaterialForStorage,
   prepareFheKeyEnrollment,
   registerFheKeyForEnrollment,
-} from "@/lib/privacy/crypto/crypto-client";
+} from "@/lib/privacy/fhe/client";
 import {
   cacheFheKeys,
   storeFheKeysWithCredential,
   uploadSecretBlobWithToken,
-} from "@/lib/privacy/crypto/fhe-key-store";
-import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
-import {
-  cachePasskeyUnlock,
-  type EnrollmentCredential,
-} from "@/lib/privacy/crypto/secret-vault";
-import {
-  computeWalletCommitment,
-  generateWalletCommitmentSalt,
-  walletCommitmentToHex,
-} from "@/lib/privacy/crypto/wallet-vault";
-import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
+} from "@/lib/privacy/fhe/store";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { fetchMsgpack } from "@/lib/privacy/utils/binary-transport";
 import { trpc } from "@/lib/trpc/client";
 import { useSignUpStore } from "@/store/sign-up";
 

@@ -48,13 +48,16 @@
  * ```
  */
 import type { ethers } from "ethers";
-import type { GenericStringStorage } from "@/lib/privacy/fhe/signature-cache";
-import type { FHEDecryptRequest, FhevmInstance } from "@/lib/privacy/fhe/types";
+import type { GenericStringStorage } from "@/lib/blockchain/fhevm/signature-cache";
+import type {
+  FHEDecryptRequest,
+  FhevmInstance,
+} from "@/lib/blockchain/fhevm/types";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { FhevmDecryptionSignature } from "@/lib/blockchain/fhevm/fhevm-decryption-signature";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
-import { FhevmDecryptionSignature } from "@/lib/privacy/fhe/fhevm-decryption-signature";
 
 interface UseFHEDecryptParams {
   /** FHEVM SDK instance (from useFhevmSdk) */

@@ -6,7 +6,7 @@ import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
 } from "@/lib/db/queries/crypto";
-import { registerFheKey } from "@/lib/privacy/crypto/fhe-client";
+import { registerFheKey } from "@/lib/privacy/fhe/service";
 
 export const runtime = "nodejs";
 

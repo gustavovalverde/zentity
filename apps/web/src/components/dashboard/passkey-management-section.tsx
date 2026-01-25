@@ -60,13 +60,13 @@ import {
   renamePasskey,
   signInWithPasskey,
 } from "@/lib/auth/passkey";
-import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
+import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import {
-  addWrapperForSecretType,
   cacheOpaqueExportKey,
-} from "@/lib/privacy/crypto/secret-vault";
-import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
+  generatePrfSalt,
+} from "@/lib/privacy/credentials";
+import { addWrapperForSecretType } from "@/lib/privacy/secrets";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 
 interface PasskeyCredential {
   id: string;

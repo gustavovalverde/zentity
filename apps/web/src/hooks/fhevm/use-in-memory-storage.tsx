@@ -49,7 +49,7 @@ import { createContext, type ReactNode, useContext, useState } from "react";
 import {
   GenericStringInMemoryStorage,
   type GenericStringStorage,
-} from "@/lib/privacy/fhe/signature-cache";
+} from "@/lib/blockchain/fhevm/signature-cache";
 
 interface UseInMemoryStorageState {
   /** Storage instance implementing GenericStringStorage interface */

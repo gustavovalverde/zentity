@@ -31,11 +31,11 @@ import {
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth/auth-client";
-import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
 import {
   getCachedOpaqueExportKey,
   hasCachedPasskeyUnlock,
-} from "@/lib/privacy/crypto/secret-vault";
+} from "@/lib/privacy/credentials";
+import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import { trpcReact } from "@/lib/trpc/client";
 
 /**

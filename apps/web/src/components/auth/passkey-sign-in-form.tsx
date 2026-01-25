@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { signInWithPasskey } from "@/lib/auth/passkey";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
+import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { redirectTo } from "@/lib/utils/navigation";
 
 type AuthStatus = "idle" | "authenticating";

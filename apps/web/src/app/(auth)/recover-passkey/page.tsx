@@ -26,10 +26,10 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
-import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
-import { addWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
-import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
+import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
+import { generatePrfSalt } from "@/lib/privacy/credentials";
+import { addWrapperForSecretType } from "@/lib/privacy/secrets";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
 

@@ -7,7 +7,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { consumeChallenge } from "@/lib/privacy/crypto/challenge-store";
+import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
   normalizeChallengeNonce,

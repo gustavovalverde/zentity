@@ -21,7 +21,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
-import { getBindingContext } from "@/lib/privacy/crypto/binding-context";
+import { getBindingContext } from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
 

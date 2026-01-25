@@ -1,11 +1,11 @@
 "use client";
 
-import type { BindingSecretResult } from "@/lib/privacy/crypto/binding-secret";
-import type { ProfileSecretPayload } from "@/lib/privacy/crypto/profile-secret";
+import type { ProfileSecretPayload } from "@/lib/privacy/secrets/profile";
+import type { BindingSecretResult } from "@/lib/privacy/zk/binding-secret";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
-import { prepareBindingProofInputs } from "@/lib/privacy/crypto/binding-secret";
+import { prepareBindingProofInputs } from "@/lib/privacy/zk/binding-secret";
 import {
   generateAgeProof,
   generateDocValidityProof,
@@ -15,7 +15,7 @@ import {
   getProofChallenge,
   getSignedClaims,
   storeProof,
-} from "@/lib/privacy/crypto/crypto-client";
+} from "@/lib/privacy/zk/client";
 
 import { parseDateToInt } from "./date-utils";
 

@@ -19,7 +19,7 @@ vi.mock("@/lib/auth/passkey", () => ({
   signInWithPasskey: passkeyMocks.signInWithPasskey,
 }));
 
-vi.mock("@/lib/privacy/crypto/webauthn-prf", () => ({
+vi.mock("@/lib/auth/webauthn-prf", () => ({
   checkPrfSupport: vi.fn().mockResolvedValue({ supported: true }),
 }));
 

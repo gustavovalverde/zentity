@@ -3,7 +3,7 @@ import z from "zod";
 import {
   createChallenge,
   getActiveChallengeCount,
-} from "@/lib/privacy/crypto/challenge-store";
+} from "@/lib/privacy/zk/challenge-store";
 
 import { protectedProcedure } from "../../server";
 

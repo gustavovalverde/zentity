@@ -16,8 +16,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth/auth-client";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
-import { addRecoveryWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
+import { addRecoveryWrapperForSecretType } from "@/lib/privacy/secrets";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 

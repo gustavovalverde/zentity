@@ -3,17 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { authClient } from "@/lib/auth/auth-client";
-import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/crypto/opaque-vault";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import {
   hasCachedPasskeyUnlock,
   isOpaqueCacheFresh,
-} from "@/lib/privacy/crypto/secret-vault";
-import {
   isWalletCacheFresh,
+  OPAQUE_CREDENTIAL_ID,
   parseWalletCredentialId,
   WALLET_CREDENTIAL_PREFIX,
-} from "@/lib/privacy/crypto/wallet-vault";
+} from "@/lib/privacy/credentials";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes } from "@/lib/utils/base64";
 

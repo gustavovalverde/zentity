@@ -29,9 +29,9 @@ import {
   minAgeYearsToDays,
 } from "@/lib/identity/verification/birth-year";
 import { withSpan } from "@/lib/observability/telemetry";
-import { consumeChallenge } from "@/lib/privacy/crypto/challenge-store";
-import { scheduleFheEncryption } from "@/lib/privacy/crypto/fhe-encryption";
-import { verifyAttestationClaim } from "@/lib/privacy/crypto/signed-claims";
+import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
+import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
+import { verifyAttestationClaim } from "@/lib/privacy/zk/claims";
 import { getTodayAsInt } from "@/lib/privacy/zk/noir-prover";
 import {
   getBbJsVersion,

@@ -3,7 +3,7 @@ import { decode, encode } from "@msgpack/msgpack";
 import { requireSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
-import { verifyAgeFromDobFhe } from "@/lib/privacy/crypto/fhe-client";
+import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
 
 export const runtime = "nodejs";
 

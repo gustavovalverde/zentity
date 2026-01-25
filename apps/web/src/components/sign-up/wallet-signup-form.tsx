@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   buildKekSignatureTypedData,
   signatureToBytes,
-} from "@/lib/privacy/crypto/wallet-vault";
+} from "@/lib/privacy/credentials";
 
 const KEK_SIGNATURE_VALIDITY_DAYS = 365;
 

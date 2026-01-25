@@ -19,14 +19,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import {
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
   getProofChallenge,
   getSignedClaims,
-} from "@/lib/privacy/crypto/crypto-client";
-import { getStoredProfile } from "@/lib/privacy/crypto/profile-secret";
+} from "@/lib/privacy/zk/client";
 
 // Types for the demo
 interface ExchangeKeypair {

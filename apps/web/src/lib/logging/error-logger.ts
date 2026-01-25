@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
 
-import { FheServiceError } from "@/lib/privacy/crypto/fhe-client";
+import { FheServiceError } from "@/lib/privacy/fhe/service";
 import { HttpError } from "@/lib/utils/http";
 
 import { type Logger, logger } from "./logger";

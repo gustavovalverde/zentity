@@ -5,7 +5,7 @@ import {
   buildPrfExtension,
   evaluatePrf,
   extractPrfOutputFromClientResults,
-} from "@/lib/privacy/crypto/webauthn-prf";
+} from "@/lib/auth/webauthn-prf";
 
 export type PasskeyErrorLike = { code?: string; message?: string } | null;
 

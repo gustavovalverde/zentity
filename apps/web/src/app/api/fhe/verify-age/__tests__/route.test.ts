@@ -14,7 +14,7 @@ const fheMocks = vi.hoisted(() => ({
   verifyAgeFromDobFhe: vi.fn(),
 }));
 
-vi.mock("@/lib/privacy/crypto/fhe-client", () => fheMocks);
+vi.mock("@/lib/privacy/fhe/service", () => fheMocks);
 
 const dbMocks = vi.hoisted(() => ({
   getLatestEncryptedAttributeByUserAndType: vi.fn(),

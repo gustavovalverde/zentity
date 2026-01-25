@@ -1,5 +1,7 @@
 "use client";
 
+import type { FhevmGoState, FhevmInstance } from "@/lib/blockchain/fhevm/types";
+
 import { useAppKitAccount } from "@reown/appkit/react";
 /**
  * FhevmProvider
@@ -16,10 +18,6 @@ import {
   useState,
 } from "react";
 import { useChainId } from "wagmi";
-
-import "@/lib/privacy/fhe/providers/global";
-
-import type { FhevmGoState, FhevmInstance } from "@/lib/privacy/fhe/types";
 
 import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { useIsMounted } from "@/hooks/use-is-mounted";

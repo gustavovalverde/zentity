@@ -11,7 +11,7 @@ export async function register() {
 
     // Preload shared Barretenberg instance for server-side crypto (ZK verification, hashing)
     const { warmupBarretenberg } = await import(
-      "@/lib/privacy/crypto/barretenberg"
+      "@/lib/privacy/primitives/barretenberg"
     );
     await warmupBarretenberg();
 

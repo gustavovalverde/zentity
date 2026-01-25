@@ -23,17 +23,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuthMaterialStatus } from "@/hooks/verification/use-auth-material-status";
 import { authClient } from "@/lib/auth/auth-client";
+import { evaluatePrf } from "@/lib/auth/webauthn-prf";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
+  buildKekSignatureTypedData,
   cacheOpaqueExportKey,
   cachePasskeyUnlock,
-} from "@/lib/privacy/crypto/secret-vault";
-import {
-  buildKekSignatureTypedData,
   cacheWalletSignature,
   signatureToBytes,
-} from "@/lib/privacy/crypto/wallet-vault";
-import { evaluatePrf } from "@/lib/privacy/crypto/webauthn-prf";
+} from "@/lib/privacy/credentials";
 
 const KEK_SIGNATURE_VALIDITY_DAYS = 365;
 

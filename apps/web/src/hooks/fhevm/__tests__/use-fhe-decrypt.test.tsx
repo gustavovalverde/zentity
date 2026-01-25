@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
-import type { FhevmInstance } from "@/lib/privacy/fhe/types";
+import type { FhevmInstance } from "@/lib/blockchain/fhevm/types";
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { type JsonRpcSigner, Wallet } from "ethers";
 import { describe, expect, it } from "vitest";
 
 import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
-import { GenericStringInMemoryStorage } from "@/lib/privacy/fhe/signature-cache";
+import { GenericStringInMemoryStorage } from "@/lib/blockchain/fhevm/signature-cache";
 
 type HookProps = Parameters<typeof useFHEDecrypt>[0];
 

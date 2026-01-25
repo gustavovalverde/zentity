@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgeProofFull } from "@/lib/privacy/crypto/age-proof-types";
+import type { AgeProofFull } from "@/lib/privacy/zk/age-proof-types";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 import {
@@ -43,7 +43,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { getAllProofs, getUserProof } from "@/lib/privacy/crypto/crypto-client";
+import { getAllProofs, getUserProof } from "@/lib/privacy/zk/client";
 import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
 type ProofData = RouterOutputs["crypto"]["getAllProofs"][number];

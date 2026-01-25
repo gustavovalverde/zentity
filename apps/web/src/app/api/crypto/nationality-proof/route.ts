@@ -19,7 +19,7 @@ import {
   isCountryInGroup,
   listCountryGroups,
 } from "@/lib/privacy/country";
-import { poseidon2Hash } from "@/lib/privacy/crypto/barretenberg";
+import { poseidon2Hash } from "@/lib/privacy/primitives/barretenberg";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 /**

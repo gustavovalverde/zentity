@@ -17,7 +17,7 @@ import {
   upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
-import { secretTypeSchema } from "@/lib/privacy/crypto/secret-types";
+import { secretTypeSchema } from "@/lib/privacy/secrets/types";
 import { base64ToBytes } from "@/lib/utils/base64";
 
 import { protectedProcedure, router } from "../server";

@@ -29,8 +29,8 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
-import { addOpaqueWrapperForSecretType } from "@/lib/privacy/crypto/secret-vault";
+import { addOpaqueWrapperForSecretType } from "@/lib/privacy/secrets";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 
 interface SetPasswordSectionProps {
   onPasswordSet?: () => void;

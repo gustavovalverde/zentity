@@ -43,7 +43,10 @@
  * ```
  */
 import type { ethers } from "ethers";
-import type { EncryptResult, FhevmInstance } from "@/lib/privacy/fhe/types";
+import type {
+  EncryptResult,
+  FhevmInstance,
+} from "@/lib/blockchain/fhevm/types";
 
 import { useCallback, useMemo } from "react";
 

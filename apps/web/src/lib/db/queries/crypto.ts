@@ -1,7 +1,7 @@
 import type {
   AgeProofFull,
   AgeProofSummary,
-} from "../../privacy/crypto/age-proof-types";
+} from "../../privacy/zk/age-proof-types";
 import type {
   EncryptedSecretRecord,
   NewEncryptedAttribute,

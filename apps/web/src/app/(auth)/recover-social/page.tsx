@@ -35,8 +35,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
-import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import { checkPrfSupport } from "@/lib/privacy/crypto/webauthn-prf";
+import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
+import { generatePrfSalt } from "@/lib/privacy/credentials";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 import { bytesToBase64 } from "@/lib/utils/base64";
 

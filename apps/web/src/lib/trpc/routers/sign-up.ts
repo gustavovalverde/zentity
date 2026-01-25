@@ -42,7 +42,7 @@ import {
   updateWizardProgress,
   validateStepAccess,
 } from "@/lib/db/sign-up-session";
-import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { base64ToBytes } from "@/lib/utils/base64";
 
 import { protectedProcedure, publicProcedure, router } from "../server";

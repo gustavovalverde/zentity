@@ -2,7 +2,7 @@ import "server-only";
 
 import { BN254_FR_MODULUS } from "@aztec/bb.js";
 
-import { getBarretenberg } from "@/lib/privacy/crypto/barretenberg";
+import { getBarretenberg } from "@/lib/privacy/primitives/barretenberg";
 
 type Fr = Uint8Array;
 

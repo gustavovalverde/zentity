@@ -22,7 +22,7 @@ import { identityVerificationJobs } from "@/lib/db/schema/identity";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
-import { signAttestationClaim } from "@/lib/privacy/crypto/signed-claims";
+import { signAttestationClaim } from "@/lib/privacy/zk/claims";
 
 import { invalidateVerificationCache } from "./verification-cache";
 

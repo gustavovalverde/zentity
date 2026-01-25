@@ -36,10 +36,11 @@ import {
 } from "@/lib/db/queries/two-factor";
 import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
 import {
+  deriveKekFromOpaqueExport,
+  deriveKekFromPrf,
   OPAQUE_CREDENTIAL_ID,
-  wrapDekWithOpaqueExportServer,
-  wrapDekWithPrfServer,
-} from "@/lib/privacy/crypto/passkey-wrap.server";
+  wrapDek,
+} from "@/lib/privacy/credentials";
 import {
   RECOVERY_GUARDIAN_TYPE_EMAIL,
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
@@ -451,22 +452,28 @@ export const finalizeProcedure = publicProcedure
         let kekSource: "prf" | "opaque" | "recovery";
 
         if (hasValidPrfCredential) {
-          wrappedDek = await wrapDekWithPrfServer({
+          const kek = await deriveKekFromPrf(prfOutput, challenge.userId);
+          wrappedDek = await wrapDek({
             secretId: secret.id,
             credentialId: inputCredentialId,
             userId: challenge.userId,
             dek,
-            prfOutput,
+            kek,
           });
           credentialId = inputCredentialId;
           prfSalt = inputPrfSalt;
           kekSource = "prf";
         } else if (exportKey) {
-          wrappedDek = await wrapDekWithOpaqueExportServer({
+          const kek = await deriveKekFromOpaqueExport(
+            exportKey,
+            challenge.userId
+          );
+          wrappedDek = await wrapDek({
             secretId: secret.id,
+            credentialId: OPAQUE_CREDENTIAL_ID,
             userId: challenge.userId,
             dek,
-            exportKey,
+            kek,
           });
           credentialId = OPAQUE_CREDENTIAL_ID;
           prfSalt = "";
