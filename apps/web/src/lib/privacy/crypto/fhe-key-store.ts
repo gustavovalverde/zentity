@@ -11,7 +11,6 @@ import {
   type EnrollmentCredential,
   loadSecret,
   type PasskeyEnrollmentContext,
-  storeSecret,
   storeSecretWithCredential,
 } from "./secret-vault";
 
@@ -123,10 +122,10 @@ export async function storeFheKeys(params: {
   enrollment: PasskeyEnrollmentContext;
 }): Promise<{ secretId: string }> {
   const secretPayload = serializeKeys(params.keys);
-  const result = await storeSecret({
+  const result = await storeSecretWithCredential({
     secretType: SECRET_TYPE,
     plaintext: secretPayload,
-    enrollment: params.enrollment,
+    credential: { type: "passkey", context: params.enrollment },
     envelopeFormat: FHE_ENVELOPE_FORMAT,
   });
 

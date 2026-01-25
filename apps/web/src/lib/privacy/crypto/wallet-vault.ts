@@ -6,7 +6,7 @@ import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import { encodeAad, WRAP_AAD_CONTEXT } from "./aad";
 import { decryptAesGcm, encryptAesGcm } from "./aes-gcm";
-import { deriveKekFromWalletSignature, KEK_SOURCE } from "./key-derivation";
+import { deriveKekFromWalletSignature } from "./key-derivation";
 import {
   decryptSecretWithDek,
   type EnvelopeFormat,
@@ -316,64 +316,6 @@ export async function unwrapDekWithWalletSignature(params: {
     },
     aad
   );
-}
-
-/**
- * Create a wallet wrapper for an existing secret.
- * Used when a user adds wallet auth to an existing passkey/OPAQUE account.
- *
- * Returns the wrapper data needed for storage in secret_wrappers table.
- *
- * @param signedAt - When the signature was obtained (for cache tracking, NOT part of message)
- * @param expiresAt - When the cached signature expires (for cache tracking, NOT part of message)
- *
- * NOTE: signedAt/expiresAt are stored as metadata for cache management but are NOT
- * included in the EIP-712 message. The message is deterministic to ensure the same
- * wallet+userId+chainId always produces the same KEK.
- */
-export async function createWalletWrapper(params: {
-  secretId: string;
-  userId: string;
-  address: string;
-  chainId: number;
-  dek: Uint8Array;
-  signatureBytes: Uint8Array;
-  signedAt: number;
-  expiresAt: number;
-}): Promise<{
-  wrappedDek: string;
-  credentialId: string;
-  kekSource: typeof KEK_SOURCE.WALLET;
-  metadata: {
-    address: string;
-    chainId: number;
-    signedAt: number;
-    expiresAt: number;
-  };
-}> {
-  const wrappedDek = await wrapDekWithWalletSignature({
-    secretId: params.secretId,
-    userId: params.userId,
-    address: params.address,
-    chainId: params.chainId,
-    dek: params.dek,
-    signatureBytes: params.signatureBytes,
-  });
-
-  return {
-    wrappedDek,
-    credentialId: getWalletCredentialId({
-      address: params.address,
-      chainId: params.chainId,
-    }),
-    kekSource: KEK_SOURCE.WALLET,
-    metadata: {
-      address: params.address,
-      chainId: params.chainId,
-      signedAt: params.signedAt,
-      expiresAt: params.expiresAt,
-    },
-  };
 }
 
 /**
