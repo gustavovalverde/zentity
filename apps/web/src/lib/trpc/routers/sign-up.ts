@@ -43,6 +43,7 @@ import {
   validateStepAccess,
 } from "@/lib/db/sign-up-session";
 import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
+import { base64ToBytes } from "@/lib/utils/base64";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
@@ -270,8 +271,6 @@ export const signUpRouter = router({
         prfSalt: z.string().min(1),
         credentialId: z.string().min(1),
         keyId: z.string().min(1),
-        version: z.string().min(1),
-        kekVersion: z.string().min(1),
         envelopeFormat: z.enum(["json", "msgpack"]),
       })
     )
@@ -280,6 +279,14 @@ export const signUpRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Unsupported FHE envelope format.",
+        });
+      }
+
+      const prfSaltBytes = base64ToBytes(input.prfSalt);
+      if (prfSaltBytes.byteLength !== 32) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid PRF salt length.",
         });
       }
 
@@ -340,7 +347,6 @@ export const signUpRouter = router({
         blobHash: registration.blob.blobHash,
         blobSize: registration.blob.blobSize,
         metadata: { envelopeFormat: input.envelopeFormat },
-        version: input.version,
       });
 
       await upsertSecretWrapper({
@@ -350,7 +356,6 @@ export const signUpRouter = router({
         credentialId: input.credentialId,
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
-        kekVersion: input.kekVersion,
       });
 
       await updateEncryptedSecretMetadata({

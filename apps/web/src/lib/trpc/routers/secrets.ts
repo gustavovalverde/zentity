@@ -18,6 +18,7 @@ import {
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
 import { secretTypeSchema } from "@/lib/privacy/crypto/secret-types";
+import { base64ToBytes } from "@/lib/utils/base64";
 
 import { protectedProcedure, router } from "../server";
 
@@ -57,12 +58,20 @@ export const secretsRouter = router({
         prfSalt: z.string(),
         credentialId: z.string().min(1),
         metadata: metadataSchema,
-        version: z.string().min(1),
-        kekVersion: z.string().min(1),
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.prfSalt) {
+        const prfSaltBytes = base64ToBytes(input.prfSalt);
+        if (prfSaltBytes.byteLength !== 32) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid PRF salt length.",
+          });
+        }
+      }
+
       const existing = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
@@ -81,7 +90,6 @@ export const secretsRouter = router({
         blobHash: input.blobHash,
         blobSize: input.blobSize,
         metadata: input.metadata ?? null,
-        version: input.version,
       });
 
       const wrapper = await upsertSecretWrapper({
@@ -91,7 +99,6 @@ export const secretsRouter = router({
         credentialId: input.credentialId,
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
-        kekVersion: input.kekVersion,
         kekSource: input.kekSource,
       });
 
@@ -106,11 +113,20 @@ export const secretsRouter = router({
         credentialId: z.string().min(1),
         wrappedDek: z.string().min(1),
         prfSalt: z.string().min(1).optional(),
-        kekVersion: z.string().min(1),
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.prfSalt) {
+        const prfSaltBytes = base64ToBytes(input.prfSalt);
+        if (prfSaltBytes.byteLength !== 32) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid PRF salt length.",
+          });
+        }
+      }
+
       const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
@@ -129,7 +145,6 @@ export const secretsRouter = router({
         credentialId: input.credentialId,
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
-        kekVersion: input.kekVersion,
         kekSource: input.kekSource,
       });
 

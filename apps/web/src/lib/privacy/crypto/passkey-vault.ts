@@ -6,33 +6,26 @@ import { decode, encode } from "@msgpack/msgpack";
 
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
+import { encodeAad, SECRET_AAD_CONTEXT, WRAP_AAD_CONTEXT } from "./aad";
 import { decryptAesGcm, encryptAesGcm } from "./aes-gcm";
 import { deriveKekFromPrf } from "./key-derivation";
-
-export const PASSKEY_VAULT_VERSION = "v2";
-export const WRAP_VERSION = "v1";
-const SECRET_AAD_VERSION = "zentity-secret-aad-v1";
-export const WRAP_AAD_VERSION = "zentity-wrap-aad-v1";
 
 export type EnvelopeFormat = "json" | "msgpack";
 const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 
 export interface EncryptedSecretPayload {
-  version: typeof PASSKEY_VAULT_VERSION;
   alg: "AES-GCM";
   iv: Uint8Array;
   ciphertext: Uint8Array;
 }
 
 interface EncryptedSecretPayloadJson {
-  version: typeof PASSKEY_VAULT_VERSION;
   alg: "AES-GCM";
   iv: string;
   ciphertext: string;
 }
 
 export interface WrappedDekPayload {
-  version: typeof WRAP_VERSION;
   alg: "AES-GCM";
   iv: string;
   ciphertext: string;
@@ -47,10 +40,6 @@ export interface SecretEnvelope {
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-function encodeAad(parts: string[]): Uint8Array {
-  return textEncoder.encode(parts.join("|"));
-}
-
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return Uint8Array.from(bytes).buffer;
 }
@@ -59,7 +48,6 @@ function toJsonPayload(
   payload: EncryptedSecretPayload
 ): EncryptedSecretPayloadJson {
   return {
-    version: payload.version,
     alg: payload.alg,
     iv: bytesToBase64(payload.iv),
     ciphertext: bytesToBase64(payload.ciphertext),
@@ -99,11 +87,10 @@ function parseEncryptedPayload(
 ): EncryptedSecretPayload {
   if (format === "msgpack") {
     const parsed = decode(blob) as Partial<EncryptedSecretPayload>;
-    if (parsed?.version !== PASSKEY_VAULT_VERSION) {
-      throw new Error("Unsupported encrypted secret version.");
+    if (!(parsed?.iv && parsed?.ciphertext)) {
+      throw new Error("Invalid encrypted secret payload.");
     }
     return {
-      version: parsed.version,
       alg: parsed.alg ?? "AES-GCM",
       iv: ensureUint8Array(parsed.iv),
       ciphertext: ensureUint8Array(parsed.ciphertext),
@@ -113,11 +100,10 @@ function parseEncryptedPayload(
   const parsed = JSON.parse(
     textDecoder.decode(blob)
   ) as EncryptedSecretPayloadJson;
-  if (parsed?.version !== PASSKEY_VAULT_VERSION) {
-    throw new Error("Unsupported encrypted secret version.");
+  if (!(parsed?.iv && parsed?.ciphertext)) {
+    throw new Error("Invalid encrypted secret payload.");
   }
   return {
-    version: parsed.version,
     alg: parsed.alg,
     iv: base64ToBytes(parsed.iv),
     ciphertext: base64ToBytes(parsed.ciphertext),
@@ -126,8 +112,8 @@ function parseEncryptedPayload(
 
 export function parseWrappedDek(blob: string): WrappedDekPayload {
   const parsed = JSON.parse(blob) as WrappedDekPayload;
-  if (parsed?.version !== WRAP_VERSION) {
-    throw new Error("Unsupported wrapped DEK version.");
+  if (!(parsed?.iv && parsed?.ciphertext)) {
+    throw new Error("Invalid wrapped DEK payload.");
   }
   return parsed;
 }
@@ -144,7 +130,7 @@ export async function encryptSecretWithDek(params: {
   envelopeFormat: EnvelopeFormat;
 }): Promise<SecretEnvelope> {
   const aad = encodeAad([
-    SECRET_AAD_VERSION,
+    SECRET_AAD_CONTEXT,
     params.secretId,
     params.secretType,
   ]);
@@ -159,7 +145,6 @@ export async function encryptSecretWithDek(params: {
   const encrypted = await encryptAesGcm(dekKey, params.plaintext, aad);
 
   const payload: EncryptedSecretPayload = {
-    version: PASSKEY_VAULT_VERSION,
     alg: "AES-GCM",
     iv: encrypted.iv,
     ciphertext: encrypted.ciphertext,
@@ -184,7 +169,7 @@ export async function decryptSecretWithDek(params: {
     params.envelopeFormat
   );
   const aad = encodeAad([
-    SECRET_AAD_VERSION,
+    SECRET_AAD_CONTEXT,
     params.secretId,
     params.secretType,
   ]);
@@ -196,32 +181,26 @@ export async function decryptSecretWithDek(params: {
     ["decrypt"]
   );
 
-  return decryptAesGcm(
-    dekKey,
-    {
-      iv: payload.iv,
-      ciphertext: payload.ciphertext,
-    },
-    aad
-  );
+  return decryptAesGcm(dekKey, payload, aad);
 }
 
 export async function wrapDekWithPrf(params: {
   secretId: string;
   credentialId: string;
+  userId: string;
   dek: Uint8Array;
   prfOutput: Uint8Array;
 }): Promise<string> {
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     params.credentialId,
+    params.userId,
   ]);
-  const kek = await deriveKekFromPrf(params.prfOutput);
+  const kek = await deriveKekFromPrf(params.prfOutput, params.userId);
   const wrapped = await encryptAesGcm(kek, params.dek, aad);
 
   const payload: WrappedDekPayload = {
-    version: WRAP_VERSION,
     alg: "AES-GCM",
     iv: bytesToBase64(wrapped.iv),
     ciphertext: bytesToBase64(wrapped.ciphertext),
@@ -233,16 +212,18 @@ export async function wrapDekWithPrf(params: {
 export async function unwrapDekWithPrf(params: {
   secretId: string;
   credentialId: string;
+  userId: string;
   wrappedDek: string;
   prfOutput: Uint8Array;
 }): Promise<Uint8Array> {
   const payload = parseWrappedDek(params.wrappedDek);
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     params.credentialId,
+    params.userId,
   ]);
-  const kek = await deriveKekFromPrf(params.prfOutput);
+  const kek = await deriveKekFromPrf(params.prfOutput, params.userId);
 
   return decryptAesGcm(
     kek,
@@ -259,6 +240,7 @@ export async function createSecretEnvelope(params: {
   plaintext: Uint8Array;
   prfOutput: Uint8Array;
   credentialId: string;
+  userId: string;
   prfSalt: Uint8Array;
   secretId?: string;
   envelopeFormat?: EnvelopeFormat;
@@ -282,6 +264,7 @@ export async function createSecretEnvelope(params: {
   const wrapper = await wrapDekWithPrf({
     secretId,
     credentialId: params.credentialId,
+    userId: params.userId,
     dek,
     prfOutput: params.prfOutput,
   });
@@ -301,12 +284,14 @@ export async function decryptSecretEnvelope(params: {
   encryptedBlob: Uint8Array;
   wrappedDek: string;
   credentialId: string;
+  userId: string;
   prfOutput: Uint8Array;
   envelopeFormat: EnvelopeFormat;
 }): Promise<Uint8Array> {
   const dek = await unwrapDekWithPrf({
     secretId: params.secretId,
     credentialId: params.credentialId,
+    userId: params.userId,
     wrappedDek: params.wrappedDek,
     prfOutput: params.prfOutput,
   });

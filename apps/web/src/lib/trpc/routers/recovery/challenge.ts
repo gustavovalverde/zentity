@@ -37,7 +37,6 @@ import {
 import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
 import {
   OPAQUE_CREDENTIAL_ID,
-  RECOVERY_WRAP_VERSION,
   wrapDekWithOpaqueExportServer,
   wrapDekWithPrfServer,
 } from "@/lib/privacy/crypto/passkey-wrap.server";
@@ -455,6 +454,7 @@ export const finalizeProcedure = publicProcedure
           wrappedDek = await wrapDekWithPrfServer({
             secretId: secret.id,
             credentialId: inputCredentialId,
+            userId: challenge.userId,
             dek,
             prfOutput,
           });
@@ -482,7 +482,6 @@ export const finalizeProcedure = publicProcedure
           credentialId,
           wrappedDek,
           prfSalt,
-          kekVersion: RECOVERY_WRAP_VERSION,
           kekSource,
         });
 

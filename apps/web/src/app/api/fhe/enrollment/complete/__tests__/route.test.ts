@@ -82,8 +82,6 @@ describe("fhe enrollment completion route", () => {
         prfSalt: "salt",
         credentialId: "cred",
         keyId: "key",
-        version: "v1",
-        kekVersion: "v1",
         envelopeFormat: "msgpack",
       })
     );
@@ -123,8 +121,6 @@ describe("fhe enrollment completion route", () => {
         prfSalt: "salt",
         credentialId: "cred",
         keyId: "key",
-        version: "v1",
-        kekVersion: "v1",
         envelopeFormat: "msgpack",
       })
     );
@@ -165,8 +161,6 @@ describe("fhe enrollment completion route", () => {
         prfSalt: "salt",
         credentialId: "cred",
         keyId: "key",
-        version: "v1",
-        kekVersion: "v1",
         envelopeFormat: "msgpack",
       })
     );
@@ -186,7 +180,6 @@ describe("fhe enrollment completion route", () => {
         blobHash: "blob-hash",
         blobSize: 123,
         metadata: { envelopeFormat: "msgpack" },
-        version: "v1",
       })
     );
 
@@ -197,7 +190,6 @@ describe("fhe enrollment completion route", () => {
         credentialId: "cred",
         wrappedDek: "wrapped",
         prfSalt: "salt",
-        kekVersion: "v1",
       })
     );
 

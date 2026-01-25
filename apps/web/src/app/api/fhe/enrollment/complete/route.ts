@@ -23,8 +23,6 @@ const enrollmentSchema = z.object({
   prfSalt: z.string().min(1),
   credentialId: z.string().min(1),
   keyId: z.string().min(1),
-  version: z.string().min(1),
-  kekVersion: z.string().min(1),
   envelopeFormat: z.enum(["json", "msgpack"]),
 });
 
@@ -112,7 +110,6 @@ export async function POST(request: Request) {
     blobHash: registration.blob.blobHash,
     blobSize: registration.blob.blobSize,
     metadata: { envelopeFormat: enrollment.envelopeFormat },
-    version: enrollment.version,
   });
 
   await upsertSecretWrapper({
@@ -122,7 +119,6 @@ export async function POST(request: Request) {
     credentialId: enrollment.credentialId,
     wrappedDek: enrollment.wrappedDek,
     prfSalt: enrollment.prfSalt,
-    kekVersion: enrollment.kekVersion,
   });
 
   await updateEncryptedSecretMetadata({

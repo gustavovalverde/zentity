@@ -17,9 +17,7 @@ import {
   type EnvelopeFormat,
   encryptSecretWithDek,
   generateDek,
-  PASSKEY_VAULT_VERSION,
   unwrapDekWithPrf,
-  WRAP_VERSION,
   wrapDekWithPrf,
 } from "./passkey-vault";
 import { downloadSecretBlob, uploadSecretBlob } from "./secret-blob-client";
@@ -39,6 +37,7 @@ import { evaluatePrf } from "./webauthn-prf";
 
 export interface PasskeyEnrollmentContext {
   credentialId: string;
+  userId: string;
   prfOutput: Uint8Array;
   prfSalt: Uint8Array;
 }
@@ -353,6 +352,7 @@ export async function storeSecret(params: {
   const wrappedDek = await wrapDekWithPrf({
     secretId,
     credentialId: params.enrollment.credentialId,
+    userId: params.enrollment.userId,
     dek,
     prfOutput: params.enrollment.prfOutput,
   });
@@ -377,8 +377,6 @@ export async function storeSecret(params: {
       envelopeFormat: params.envelopeFormat,
       metadata: params.metadata,
     }),
-    version: PASSKEY_VAULT_VERSION,
-    kekVersion: WRAP_VERSION,
   });
 
   try {
@@ -426,6 +424,7 @@ export async function storeSecretWithCredential(params: {
     wrappedDek = await wrapDekWithPrf({
       secretId,
       credentialId: ctx.credentialId,
+      userId: ctx.userId,
       dek,
       prfOutput: ctx.prfOutput,
     });
@@ -493,8 +492,6 @@ export async function storeSecretWithCredential(params: {
       envelopeFormat: params.envelopeFormat,
       metadata: params.metadata,
     }),
-    version: PASSKEY_VAULT_VERSION,
-    kekVersion: WRAP_VERSION,
   });
 
   try {
@@ -532,12 +529,6 @@ export async function loadSecret(params: {
 
   const label = params.secretLabel ?? "secret";
 
-  if (bundle.secret.version !== PASSKEY_VAULT_VERSION) {
-    throw new Error(
-      `Unsupported ${label} version. Please re-secure your ${label}.`
-    );
-  }
-
   if (!bundle.wrappers?.length) {
     throw new Error(`No passkeys are registered for this ${label}.`);
   }
@@ -566,11 +557,19 @@ export async function loadSecret(params: {
     );
   }
 
+  // Get userId for AAD binding (required for PRF and wallet wrappers)
+  const sessionUserId =
+    params.userId ?? (await authClient.getSession()).data?.user?.id;
+
   // Try PRF-based wrappers first (those with prfSalt)
   const prfWrappers = bundle.wrappers.filter((w) => w.prfSalt);
 
   // If PRF wrappers exist, use passkey flow
   if (prfWrappers.length > 0) {
+    if (!sessionUserId) {
+      throw new Error(`Please sign in to access your ${label}.`);
+    }
+
     const saltByCredential: Record<string, Uint8Array> = {};
     for (const wrapper of prfWrappers) {
       if (!wrapper.prfSalt) {
@@ -590,18 +589,13 @@ export async function loadSecret(params: {
     if (!selectedWrapper) {
       throw new Error("Selected passkey is not registered for this secret.");
     }
-    if (selectedWrapper.kekVersion !== WRAP_VERSION) {
-      throw new Error(
-        "Unsupported key wrapper version. Please re-add your passkey."
-      );
-    }
-
     const plaintext = await decryptSecretEnvelope({
       secretId: bundle.secret.id,
       secretType: params.secretType,
       encryptedBlob,
       wrappedDek: selectedWrapper.wrappedDek,
       credentialId: selectedWrapper.credentialId,
+      userId: sessionUserId,
       prfOutput,
       envelopeFormat,
     });
@@ -722,7 +716,6 @@ export async function addWrapperForSecretType(params: {
   newCredentialId: string;
   newPrfOutput: Uint8Array;
   newPrfSalt: Uint8Array;
-  kekVersion?: string;
   /**
    * Required when the secret is only protected by an OPAQUE wrapper.
    * Used to unwrap the DEK with the current password session key.
@@ -766,6 +759,7 @@ export async function addWrapperForSecretType(params: {
     const wrappedDek = await wrapDekWithPrf({
       secretId: bundle.secret.id,
       credentialId: params.newCredentialId,
+      userId,
       dek,
       prfOutput: params.newPrfOutput,
     });
@@ -776,11 +770,17 @@ export async function addWrapperForSecretType(params: {
       credentialId: params.newCredentialId,
       wrappedDek,
       prfSalt: bytesToBase64(params.newPrfSalt),
-      kekVersion: params.kekVersion ?? WRAP_VERSION,
       kekSource: "prf",
     });
 
     return true;
+  }
+
+  // Get userId for PRF wrapper AAD
+  const prfUserId =
+    params.userId ?? (await authClient.getSession()).data?.user?.id;
+  if (!prfUserId) {
+    throw new Error("Please sign in to add a passkey wrapper.");
   }
 
   const saltByCredential: Record<string, Uint8Array> = {};
@@ -806,6 +806,7 @@ export async function addWrapperForSecretType(params: {
   const dek = await unwrapDekWithPrf({
     secretId: bundle.secret.id,
     credentialId: selectedWrapper.credentialId,
+    userId: prfUserId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput: selectedOutput,
   });
@@ -813,6 +814,7 @@ export async function addWrapperForSecretType(params: {
   const wrappedDek = await wrapDekWithPrf({
     secretId: bundle.secret.id,
     credentialId: params.newCredentialId,
+    userId: prfUserId,
     dek,
     prfOutput: params.newPrfOutput,
   });
@@ -823,7 +825,6 @@ export async function addWrapperForSecretType(params: {
     credentialId: params.newCredentialId,
     wrappedDek,
     prfSalt: bytesToBase64(params.newPrfSalt),
-    kekVersion: params.kekVersion ?? WRAP_VERSION,
     kekSource: "prf",
   });
 
@@ -839,6 +840,12 @@ export async function addRecoveryWrapperForSecretType(params: {
 
   if (!(bundle.secret && bundle.wrappers?.length)) {
     return false;
+  }
+
+  // Get userId for PRF wrapper AAD
+  const userId = (await authClient.getSession()).data?.user?.id;
+  if (!userId) {
+    throw new Error("Please sign in to add a recovery wrapper.");
   }
 
   // Only include PRF-based wrappers (those with prfSalt)
@@ -867,15 +874,10 @@ export async function addRecoveryWrapperForSecretType(params: {
     throw new Error("Selected passkey is not registered for this secret.");
   }
 
-  if (selectedWrapper.kekVersion !== WRAP_VERSION) {
-    throw new Error(
-      "Unsupported key wrapper version. Please re-add your passkey."
-    );
-  }
-
   const dek = await unwrapDekWithPrf({
     secretId: bundle.secret.id,
     credentialId: selectedWrapper.credentialId,
+    userId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput,
   });
@@ -949,6 +951,7 @@ export async function addOpaqueWrapperForSecretType(params: {
   const dek = await unwrapDekWithPrf({
     secretId: bundle.secret.id,
     credentialId: selectedWrapper.credentialId,
+    userId: params.userId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput,
   });
@@ -967,7 +970,6 @@ export async function addOpaqueWrapperForSecretType(params: {
     secretType: params.secretType,
     credentialId: opaqueWrapper.credentialId,
     wrappedDek: opaqueWrapper.wrappedDek,
-    kekVersion: opaqueWrapper.kekVersion,
     kekSource: opaqueWrapper.kekSource,
   });
 
@@ -1001,10 +1003,8 @@ async function _loadSecretWithOpaqueExport(params: {
 
   const label = params.secretLabel ?? "secret";
 
-  if (bundle.secret.version !== PASSKEY_VAULT_VERSION) {
-    throw new Error(
-      `Unsupported ${label} version. Please re-secure your ${label}.`
-    );
+  if (!bundle.secret) {
+    throw new Error(`Missing ${label} data. Please re-secure your ${label}.`);
   }
 
   if (!bundle.wrappers?.length) {
@@ -1119,7 +1119,6 @@ export async function updateOpaqueWrapperForSecretType(params: {
     secretType: params.secretType,
     credentialId: newWrapper.credentialId,
     wrappedDek: newWrapper.wrappedDek,
-    kekVersion: newWrapper.kekVersion,
     kekSource: newWrapper.kekSource,
   });
 
@@ -1131,6 +1130,7 @@ export async function updateOpaqueWrapperForSecretType(params: {
  * Used when a user adds wallet auth to an existing passkey/OPAQUE account.
  * The wallet signature is used to derive the KEK that wraps the DEK.
  */
+// TODO: Expose this function in the public API when wallet auth is officially supported.
 async function _addWalletWrapperForSecretType(params: {
   secretType: SecretType;
   userId: string;
@@ -1188,6 +1188,7 @@ async function _addWalletWrapperForSecretType(params: {
       dek = await unwrapDekWithPrf({
         secretId: bundle.secret.id,
         credentialId: selectedWrapper.credentialId,
+        userId: params.userId,
         wrappedDek: selectedWrapper.wrappedDek,
         prfOutput,
       });
@@ -1265,7 +1266,6 @@ async function _addWalletWrapperForSecretType(params: {
     secretType: params.secretType,
     credentialId: walletWrapper.credentialId,
     wrappedDek: walletWrapper.wrappedDek,
-    kekVersion: walletWrapper.kekVersion,
     kekSource: walletWrapper.kekSource,
   });
 

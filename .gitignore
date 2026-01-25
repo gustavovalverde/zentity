@@ -479,5 +479,11 @@ playwright/.cache/
 # SQLite database files
 *.db
 
+# LaTeX build artifacts
+*.synctex.gz
+
 # Snyk Security Extension - AI Rules (auto-generated)
 .cursor/rules/snyk_rules.mdc
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.github/instructions/snyk_rules.instructions.md

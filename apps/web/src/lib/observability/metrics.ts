@@ -162,6 +162,24 @@ const clientPasskeyDuration = meter.createHistogram(
   }
 );
 
+const clientOpaqueDuration = meter.createHistogram(
+  "zentity.client.opaque.duration",
+  {
+    description: "Client-side OPAQUE authentication duration.",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
+const clientWalletSignDuration = meter.createHistogram(
+  "zentity.client.wallet.sign.duration",
+  {
+    description: "Client-side wallet signature duration.",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
 function recordSafe(
   histogram: { record: (value: number, attributes?: Attributes) => void },
   value: number,
@@ -290,4 +308,18 @@ export function recordClientPasskeyDuration(
   attributes?: Attributes
 ): void {
   recordSafe(clientPasskeyDuration, durationMs, attributes);
+}
+
+export function recordClientOpaqueDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientOpaqueDuration, durationMs, attributes);
+}
+
+export function recordClientWalletSignDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientWalletSignDuration, durationMs, attributes);
 }

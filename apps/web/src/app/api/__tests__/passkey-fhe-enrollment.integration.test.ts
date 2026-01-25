@@ -81,8 +81,6 @@ describe("passkey FHE enrollment integration", () => {
           prfSalt: "prf-salt",
           credentialId: "credential-1",
           keyId: "key-1",
-          version: "v1",
-          kekVersion: "v1",
           envelopeFormat: "msgpack",
         }),
       })

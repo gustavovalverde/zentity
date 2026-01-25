@@ -29,6 +29,7 @@ const makeBytes = (value: number, length: number) =>
 
 const makeEnrollment = () => ({
   credentialId: "cred-123",
+  userId: "test-user-123",
   prfOutput: crypto.getRandomValues(new Uint8Array(32)),
   prfSalt: crypto.getRandomValues(new Uint8Array(32)),
 });

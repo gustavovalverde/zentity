@@ -97,6 +97,7 @@ export async function createFheKeyEnvelope(params: {
     plaintext: secretPayload,
     prfOutput: params.enrollment.prfOutput,
     credentialId: params.enrollment.credentialId,
+    userId: params.enrollment.userId,
     prfSalt: params.enrollment.prfSalt,
     envelopeFormat: FHE_ENVELOPE_FORMAT,
   });

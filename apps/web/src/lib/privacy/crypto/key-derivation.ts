@@ -1,7 +1,7 @@
 const HKDF_INFO = {
-  PASSKEY_KEK: "zentity-passkey-kek-v1",
-  OPAQUE_KEK: "zentity-opaque-kek-v1",
-  WALLET_KEK: "zentity-wallet-kek-v1",
+  PASSKEY_KEK: "zentity:kek:passkey",
+  OPAQUE_KEK: "zentity:kek:opaque",
+  WALLET_KEK: "zentity:kek:wallet",
 } as const;
 
 export const KEK_SOURCE = {
@@ -24,11 +24,16 @@ export function generatePrfSalt(): Uint8Array {
 
 /**
  * Derive a non-extractable AES-256-GCM key from PRF output using HKDF.
+ * The userId is used as HKDF salt to bind the KEK to a specific user.
  */
 export async function deriveKekFromPrf(
   prfOutput: Uint8Array,
+  userId: string,
   info: string = HKDF_INFO.PASSKEY_KEK
 ): Promise<CryptoKey> {
+  if (!userId) {
+    throw new Error("userId is required for KEK derivation.");
+  }
   const masterKey = await crypto.subtle.importKey(
     "raw",
     toArrayBuffer(prfOutput),
@@ -37,10 +42,12 @@ export async function deriveKekFromPrf(
     ["deriveKey"]
   );
 
+  const salt = new TextEncoder().encode(userId);
+
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
-      salt: new Uint8Array(0),
+      salt,
       hash: "SHA-256",
       info: new TextEncoder().encode(info),
     },
@@ -55,11 +62,22 @@ export async function deriveKekFromPrf(
  * Derive a non-extractable AES-256-GCM key from OPAQUE export key using HKDF.
  * The export key is 64 bytes of high-entropy material derived from the
  * OPAQUE protocol, providing equivalent security to passkey PRF output.
+ * The userId is used as HKDF salt to bind the KEK to a specific user.
  */
 export async function deriveKekFromOpaqueExport(
   exportKey: Uint8Array,
+  userId: string,
   info: string = HKDF_INFO.OPAQUE_KEK
 ): Promise<CryptoKey> {
+  if (!userId) {
+    throw new Error("userId is required for KEK derivation.");
+  }
+  if (exportKey.byteLength !== 64) {
+    throw new Error(
+      `OPAQUE export key must be 64 bytes, got ${exportKey.byteLength}`
+    );
+  }
+
   const masterKey = await crypto.subtle.importKey(
     "raw",
     toArrayBuffer(exportKey),
@@ -68,10 +86,12 @@ export async function deriveKekFromOpaqueExport(
     ["deriveKey"]
   );
 
+  const salt = new TextEncoder().encode(userId);
+
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
-      salt: new Uint8Array(0),
+      salt,
       hash: "SHA-256",
       info: new TextEncoder().encode(info),
     },
@@ -92,7 +112,7 @@ export async function deriveKekFromOpaqueExport(
  * Security properties:
  * - Deterministic: Same signature + userId always produces the same KEK
  * - Non-extractable: Key cannot be exported from WebCrypto
- * - Purpose-bound: Uses "zentity-wallet-kek-v1" info to prevent cross-protocol attacks
+ * - Purpose-bound: Uses "zentity:kek:wallet" info to prevent cross-protocol attacks
  * - User-bound: userId in salt prevents cross-user key reuse
  */
 export async function deriveKekFromWalletSignature(
@@ -100,6 +120,12 @@ export async function deriveKekFromWalletSignature(
   userId: string,
   info: string = HKDF_INFO.WALLET_KEK
 ): Promise<CryptoKey> {
+  if (signatureBytes.byteLength !== 65) {
+    throw new Error(
+      `Wallet signature must be 65 bytes, got ${signatureBytes.byteLength}`
+    );
+  }
+
   const masterKey = await crypto.subtle.importKey(
     "raw",
     toArrayBuffer(signatureBytes),

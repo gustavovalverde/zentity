@@ -4,6 +4,7 @@ import "client-only";
 
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
+import { encodeAad, WRAP_AAD_CONTEXT } from "./aad";
 import { decryptAesGcm, encryptAesGcm } from "./aes-gcm";
 import { deriveKekFromOpaqueExport, KEK_SOURCE } from "./key-derivation";
 import {
@@ -11,18 +12,10 @@ import {
   type EnvelopeFormat,
   parseWrappedDek,
   serializeWrappedDek,
-  WRAP_AAD_VERSION,
-  WRAP_VERSION,
   type WrappedDekPayload,
 } from "./passkey-vault";
 
 export const OPAQUE_CREDENTIAL_ID = "opaque";
-
-const textEncoder = new TextEncoder();
-
-function encodeAad(parts: string[]): Uint8Array {
-  return textEncoder.encode(parts.join("|"));
-}
 
 /**
  * Wrap a DEK using OPAQUE export key.
@@ -35,16 +28,15 @@ export async function wrapDekWithOpaqueExport(params: {
   exportKey: Uint8Array;
 }): Promise<string> {
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     OPAQUE_CREDENTIAL_ID,
     params.userId,
   ]);
-  const kek = await deriveKekFromOpaqueExport(params.exportKey);
+  const kek = await deriveKekFromOpaqueExport(params.exportKey, params.userId);
   const wrapped = await encryptAesGcm(kek, params.dek, aad);
 
   const payload: WrappedDekPayload = {
-    version: WRAP_VERSION,
     alg: "AES-GCM",
     iv: bytesToBase64(wrapped.iv),
     ciphertext: bytesToBase64(wrapped.ciphertext),
@@ -64,12 +56,12 @@ export async function unwrapDekWithOpaqueExport(params: {
 }): Promise<Uint8Array> {
   const payload = parseWrappedDek(params.wrappedDek);
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     OPAQUE_CREDENTIAL_ID,
     params.userId,
   ]);
-  const kek = await deriveKekFromOpaqueExport(params.exportKey);
+  const kek = await deriveKekFromOpaqueExport(params.exportKey, params.userId);
 
   return decryptAesGcm(
     kek,
@@ -96,7 +88,6 @@ export async function createOpaqueWrapper(params: {
   wrappedDek: string;
   credentialId: string;
   kekSource: typeof KEK_SOURCE.OPAQUE;
-  kekVersion: string;
 }> {
   const wrappedDek = await wrapDekWithOpaqueExport({
     secretId: params.secretId,
@@ -109,7 +100,6 @@ export async function createOpaqueWrapper(params: {
     wrappedDek,
     credentialId: OPAQUE_CREDENTIAL_ID,
     kekSource: KEK_SOURCE.OPAQUE,
-    kekVersion: "v1",
   };
 }
 

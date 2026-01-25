@@ -37,10 +37,6 @@ import {
   uploadSecretBlobWithToken,
 } from "@/lib/privacy/crypto/fhe-key-store";
 import { generatePrfSalt } from "@/lib/privacy/crypto/key-derivation";
-import {
-  PASSKEY_VAULT_VERSION,
-  WRAP_VERSION,
-} from "@/lib/privacy/crypto/passkey-vault";
 import { SECRET_TYPES } from "@/lib/privacy/crypto/secret-types";
 import {
   cachePasskeyUnlock,
@@ -126,7 +122,8 @@ export function StepAccount() {
     try {
       // Step 1: Ensure we have a session (this creates the anonymous user)
       setStatus("preparing-account");
-      await ensureAuthSession();
+      const session = await ensureAuthSession();
+      const userId = session.user.id;
       const prfSalt = generatePrfSalt();
 
       // Step 2: Create enrollment context via tRPC
@@ -184,7 +181,7 @@ export function StepAccount() {
       cachePasskeyUnlock({ credentialId, prfOutput });
 
       // Step 4: Secure FHE keys locally
-      const enrollment = { credentialId, prfOutput, prfSalt };
+      const enrollment = { credentialId, userId, prfOutput, prfSalt };
       const fheEnrollment = await prepareFheKeyEnrollment({
         enrollment,
         onStage: (stage) => {
@@ -217,8 +214,6 @@ export function StepAccount() {
         prfSalt: fheEnrollment.prfSalt,
         credentialId,
         keyId: fheRegistration.keyId,
-        version: PASSKEY_VAULT_VERSION,
-        kekVersion: WRAP_VERSION,
         envelopeFormat: fheEnrollment.envelopeFormat,
       });
 

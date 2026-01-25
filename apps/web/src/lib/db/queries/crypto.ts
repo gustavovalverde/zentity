@@ -268,7 +268,6 @@ export async function upsertEncryptedSecret(data: {
   blobHash?: string | null;
   blobSize?: number | null;
   metadata: Record<string, unknown> | null;
-  version: string;
 }): Promise<EncryptedSecret> {
   const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
   const encryptedBlob = data.encryptedBlob ?? "";
@@ -284,7 +283,6 @@ export async function upsertEncryptedSecret(data: {
       blobHash: data.blobHash ?? null,
       blobSize: data.blobSize ?? null,
       metadata,
-      version: data.version,
     })
     .onConflictDoUpdate({
       target: [encryptedSecrets.userId, encryptedSecrets.secretType],
@@ -294,7 +292,6 @@ export async function upsertEncryptedSecret(data: {
         blobHash: data.blobHash ?? null,
         blobSize: data.blobSize ?? null,
         metadata,
-        version: data.version,
         updatedAt: sql`datetime('now')`,
       },
     })
@@ -341,7 +338,6 @@ export async function upsertSecretWrapper(data: {
   credentialId: string;
   wrappedDek: string;
   prfSalt?: string | null;
-  kekVersion: string;
   kekSource?: string;
 }): Promise<SecretWrapperRecord> {
   const kekSource = data.kekSource ?? "prf";
@@ -355,7 +351,6 @@ export async function upsertSecretWrapper(data: {
       credentialId: data.credentialId,
       wrappedDek: data.wrappedDek,
       prfSalt: data.prfSalt ?? null,
-      kekVersion: data.kekVersion,
       kekSource,
     })
     .onConflictDoUpdate({
@@ -363,7 +358,6 @@ export async function upsertSecretWrapper(data: {
       set: {
         wrappedDek: data.wrappedDek,
         prfSalt: data.prfSalt ?? null,
-        kekVersion: data.kekVersion,
         kekSource,
         updatedAt: sql`datetime('now')`,
       },

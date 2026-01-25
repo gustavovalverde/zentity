@@ -27,8 +27,8 @@ import { z } from "zod";
 export const SECRET_TYPES = {
   /** FHE (Fully Homomorphic Encryption) key material */
   FHE_KEYS: "fhe_keys",
-  /** User profile data (encrypted PII) - versioned for migration support */
-  PROFILE: "profile_v1",
+  /** User profile data (encrypted PII) */
+  PROFILE: "profile",
 } as const;
 
 /**

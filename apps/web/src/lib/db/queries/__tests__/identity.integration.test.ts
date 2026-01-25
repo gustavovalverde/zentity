@@ -162,7 +162,6 @@ describe("identity queries", () => {
       blobHash: "blob-hash",
       blobSize: 123,
       metadata: { keyId: "key-1" },
-      version: "v1",
     });
 
     await upsertSecretWrapper({
@@ -172,7 +171,6 @@ describe("identity queries", () => {
       credentialId: "cred-1",
       wrappedDek: "wrapped",
       prfSalt: "salt",
-      kekVersion: "v1",
     });
 
     await deleteIdentityData(userId);

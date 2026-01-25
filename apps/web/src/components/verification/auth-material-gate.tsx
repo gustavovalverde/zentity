@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuthMaterialStatus } from "@/hooks/verification/use-auth-material-status";
 import { authClient } from "@/lib/auth/auth-client";
+import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
   cacheOpaqueExportKey,
   cachePasskeyUnlock,
@@ -98,12 +99,26 @@ function WalletAuthSection({
         chainId: walletInfo.chainId,
       });
 
-      const signature = await signTypedData({
-        domain: typedData.domain,
-        types: typedData.types,
-        primaryType: typedData.primaryType,
-        message: typedData.message,
-      });
+      const signStart = performance.now();
+      let signResult: "ok" | "error" = "ok";
+      let signature: string;
+      try {
+        signature = await signTypedData({
+          domain: typedData.domain,
+          types: typedData.types,
+          primaryType: typedData.primaryType,
+          message: typedData.message,
+        });
+      } catch (err) {
+        signResult = "error";
+        throw err;
+      } finally {
+        recordClientMetric({
+          name: "client.wallet.sign.duration",
+          value: performance.now() - signStart,
+          attributes: { result: signResult },
+        });
+      }
 
       const signatureBytes = signatureToBytes(signature);
       const signedAt = Math.floor(Date.now() / 1000);
@@ -287,15 +302,27 @@ export function AuthMaterialGate({
         throw new Error("Unable to determine account identifier");
       }
 
-      const result = await authClient.signIn.opaque({
-        identifier,
-        password: passwordValue,
-      });
+      const opaqueStart = performance.now();
+      let opaqueResult: "ok" | "error" = "ok";
+      let result: Awaited<ReturnType<typeof authClient.signIn.opaque>>;
+      try {
+        result = await authClient.signIn.opaque({
+          identifier,
+          password: passwordValue,
+        });
 
-      if (!result.data || result.error) {
-        throw new Error(
-          result.error?.message || "Password verification failed"
-        );
+        if (!result.data || result.error) {
+          opaqueResult = "error";
+          throw new Error(
+            result.error?.message || "Password verification failed"
+          );
+        }
+      } finally {
+        recordClientMetric({
+          name: "client.opaque.duration",
+          value: performance.now() - opaqueStart,
+          attributes: { result: opaqueResult },
+        });
       }
 
       const exportKey = result.data.exportKey ?? null;
@@ -323,8 +350,8 @@ export function AuthMaterialGate({
   if (authStatus.status === "checking") {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-[200px] w-full" />
-        <Skeleton className="h-[100px] w-full" />
+        <Skeleton className="h-50 w-full" />
+        <Skeleton className="h-25 w-full" />
       </div>
     );
   }

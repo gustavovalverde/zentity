@@ -1,5 +1,6 @@
 import "server-only";
 
+import { encodeAad, WRAP_AAD_CONTEXT } from "@/lib/privacy/crypto/aad";
 import { encryptAesGcm } from "@/lib/privacy/crypto/aes-gcm";
 import {
   deriveKekFromOpaqueExport,
@@ -9,20 +10,10 @@ import { bytesToBase64 } from "@/lib/utils/base64";
 
 export const OPAQUE_CREDENTIAL_ID = "opaque";
 
-const WRAP_VERSION = "v1";
-const WRAP_AAD_VERSION = "zentity-wrap-aad-v1";
-
 interface WrappedDekPayload {
-  version: typeof WRAP_VERSION;
   alg: "AES-GCM";
   iv: string;
   ciphertext: string;
-}
-
-const textEncoder = new TextEncoder();
-
-function encodeAad(parts: string[]): Uint8Array {
-  return textEncoder.encode(parts.join("|"));
 }
 
 function serializeWrappedDek(payload: WrappedDekPayload): string {
@@ -32,19 +23,20 @@ function serializeWrappedDek(payload: WrappedDekPayload): string {
 export async function wrapDekWithPrfServer(params: {
   secretId: string;
   credentialId: string;
+  userId: string;
   dek: Uint8Array;
   prfOutput: Uint8Array;
 }): Promise<string> {
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     params.credentialId,
+    params.userId,
   ]);
-  const kek = await deriveKekFromPrf(params.prfOutput);
+  const kek = await deriveKekFromPrf(params.prfOutput, params.userId);
   const wrapped = await encryptAesGcm(kek, params.dek, aad);
 
   const payload: WrappedDekPayload = {
-    version: WRAP_VERSION,
     alg: "AES-GCM",
     iv: bytesToBase64(wrapped.iv),
     ciphertext: bytesToBase64(wrapped.ciphertext),
@@ -60,16 +52,15 @@ export async function wrapDekWithOpaqueExportServer(params: {
   exportKey: Uint8Array;
 }): Promise<string> {
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     OPAQUE_CREDENTIAL_ID,
     params.userId,
   ]);
-  const kek = await deriveKekFromOpaqueExport(params.exportKey);
+  const kek = await deriveKekFromOpaqueExport(params.exportKey, params.userId);
   const wrapped = await encryptAesGcm(kek, params.dek, aad);
 
   const payload: WrappedDekPayload = {
-    version: WRAP_VERSION,
     alg: "AES-GCM",
     iv: bytesToBase64(wrapped.iv),
     ciphertext: bytesToBase64(wrapped.ciphertext),
@@ -77,5 +68,3 @@ export async function wrapDekWithOpaqueExportServer(params: {
 
   return serializeWrappedDek(payload);
 }
-
-export const RECOVERY_WRAP_VERSION = WRAP_VERSION;

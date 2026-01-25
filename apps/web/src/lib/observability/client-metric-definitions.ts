@@ -45,6 +45,14 @@ export const CLIENT_METRIC_DEFINITIONS = {
       "flow_present",
     ],
   },
+  "client.opaque.duration": {
+    unit: "ms",
+    attributes: ["result", "flow_present"],
+  },
+  "client.wallet.sign.duration": {
+    unit: "ms",
+    attributes: ["result", "flow_present"],
+  },
 } as const;
 
 export type ClientMetricName = keyof typeof CLIENT_METRIC_DEFINITIONS;

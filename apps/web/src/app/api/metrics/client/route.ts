@@ -12,10 +12,12 @@ import {
   recordClientFhevmInitDuration,
   recordClientNoirProofBytes,
   recordClientNoirProofDuration,
+  recordClientOpaqueDuration,
   recordClientPasskeyDuration,
   recordClientTfheKeygenDuration,
   recordClientTfheLoadDuration,
   recordClientTfheLoadRetry,
+  recordClientWalletSignDuration,
 } from "@/lib/observability/metrics";
 
 export const runtime = "nodejs";
@@ -115,6 +117,20 @@ const handlers: Record<
     record: recordClientPasskeyDuration,
     attributes: new Set(
       CLIENT_METRIC_DEFINITIONS["client.passkey.duration"].attributes
+    ),
+  },
+  "client.opaque.duration": {
+    unit: "ms",
+    record: recordClientOpaqueDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.opaque.duration"].attributes
+    ),
+  },
+  "client.wallet.sign.duration": {
+    unit: "ms",
+    record: recordClientWalletSignDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.wallet.sign.duration"].attributes
     ),
   },
 };

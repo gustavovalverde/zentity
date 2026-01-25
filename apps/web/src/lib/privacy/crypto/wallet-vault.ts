@@ -4,6 +4,7 @@ import "client-only";
 
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
+import { encodeAad, WRAP_AAD_CONTEXT } from "./aad";
 import { decryptAesGcm, encryptAesGcm } from "./aes-gcm";
 import { deriveKekFromWalletSignature, KEK_SOURCE } from "./key-derivation";
 import {
@@ -11,8 +12,6 @@ import {
   type EnvelopeFormat,
   parseWrappedDek,
   serializeWrappedDek,
-  WRAP_AAD_VERSION,
-  WRAP_VERSION,
   type WrappedDekPayload,
 } from "./passkey-vault";
 
@@ -25,10 +24,6 @@ const WALLET_COMMITMENT_SALT_LENGTH = 32;
 const ADDRESS_PREFIX_REGEX = /^0x/;
 
 const textEncoder = new TextEncoder();
-
-function encodeAad(parts: string[]): Uint8Array {
-  return textEncoder.encode(parts.join("|"));
-}
 
 /**
  * Normalize a wallet address to lowercase without 0x prefix.
@@ -172,7 +167,6 @@ export function parseWalletCredentialId(
  *
  * The domain includes:
  * - name: Application name
- * - version: Protocol version (for future upgrades)
  * - chainId: Network identifier (prevents cross-chain replay)
  * - verifyingContract: Zero address (no on-chain verification needed)
  *
@@ -183,7 +177,6 @@ export function parseWalletCredentialId(
 export interface WalletKekEIP712TypedData {
   domain: {
     name: string;
-    version: string;
     chainId: number;
     verifyingContract: `0x${string}`;
   };
@@ -215,7 +208,6 @@ export function buildKekSignatureTypedData(params: {
   return {
     domain: {
       name: "Zentity",
-      version: "1",
       chainId: params.chainId,
       verifyingContract: "0x0000000000000000000000000000000000000000",
     },
@@ -250,7 +242,6 @@ export function signatureToBytes(signature: string): Uint8Array {
  * Wrap a DEK using wallet signature-derived KEK.
  *
  * The AAD (Additional Authenticated Data) binds the wrapped DEK to:
- * - Protocol version (prevents version confusion attacks)
  * - Secret ID (prevents key substitution attacks)
  * - Credential ID (identifies which wallet wrapped this)
  * - User ID (prevents cross-user key reuse)
@@ -268,7 +259,7 @@ export async function wrapDekWithWalletSignature(params: {
     chainId: params.chainId,
   });
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     credentialId,
     params.userId,
@@ -280,7 +271,6 @@ export async function wrapDekWithWalletSignature(params: {
   const wrapped = await encryptAesGcm(kek, params.dek, aad);
 
   const payload: WrappedDekPayload = {
-    version: WRAP_VERSION,
     alg: "AES-GCM",
     iv: bytesToBase64(wrapped.iv),
     ciphertext: bytesToBase64(wrapped.ciphertext),
@@ -308,7 +298,7 @@ export async function unwrapDekWithWalletSignature(params: {
   });
   const payload = parseWrappedDek(params.wrappedDek);
   const aad = encodeAad([
-    WRAP_AAD_VERSION,
+    WRAP_AAD_CONTEXT,
     params.secretId,
     credentialId,
     params.userId,
@@ -354,7 +344,6 @@ export async function createWalletWrapper(params: {
   wrappedDek: string;
   credentialId: string;
   kekSource: typeof KEK_SOURCE.WALLET;
-  kekVersion: string;
   metadata: {
     address: string;
     chainId: number;
@@ -378,7 +367,6 @@ export async function createWalletWrapper(params: {
       chainId: params.chainId,
     }),
     kekSource: KEK_SOURCE.WALLET,
-    kekVersion: WRAP_VERSION,
     metadata: {
       address: params.address,
       chainId: params.chainId,
