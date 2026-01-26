@@ -27,7 +27,7 @@ const pillars: Array<{
       'Prove you\'re over 21 without showing your birthday. Prove you\'re an EU citizen without revealing which country. The verifier learns only "yes" or "no."',
     tech: "Noir circuits + UltraHonk",
     example:
-      "Bouncer learns: eligible — not your name, address, or birth date.",
+      "Verifier learns: eligible. Nothing about your name, address, or birth date.",
   },
   {
     icon: IconLock,
@@ -37,7 +37,8 @@ const pillars: Array<{
     description:
       "Compliance checks run on your encrypted data. The server computes age thresholds and nationality rules without ever decrypting your actual values.",
     tech: "TFHE-rs (Rust)",
-    example: "Server checks: age ≥ 21? → true — never sees your birth year.",
+    example:
+      "Server computes without decrypting. Only you see the actual values.",
   },
   {
     icon: IconFingerprint,
@@ -47,17 +48,19 @@ const pillars: Array<{
     description:
       'Your name and document number become irreversible codes. The server can verify "same person" without knowing who that person is.',
     tech: "Salted SHA256",
-    example: '"John Doe" → 8f14e45f… — can\'t be reversed, GDPR-safe.',
+    example:
+      "Your name becomes an irreversible hash. Can't be reversed by anyone.",
   },
   {
     icon: IconKey,
     color: "amber",
-    title: "Passkeys & Key Custody",
-    subtitle: "Authenticate and seal data",
+    title: "Multi-Credential Key Custody",
+    subtitle: "Your keys, your control",
     description:
-      "Your face or fingerprint unlocks your encrypted identity. Even if the server is breached, attackers get encrypted blobs they can't open.",
-    tech: "WebAuthn + PRF",
-    example: "Delete your passkey → your data becomes permanently unreadable.",
+      "Your passkey, password, or wallet derives encryption keys locally. The server stores encrypted blobs it cannot decrypt. Three ways in, same security.",
+    tech: "WebAuthn PRF + OPAQUE + EIP-712",
+    example:
+      "Full database breach? Your data stays locked. Only you hold the keys.",
   },
 ];
 
@@ -74,8 +77,9 @@ export function FourPillars() {
             </span>
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Different privacy techniques for different needs—combined for
-            complete protection. Key custody stays with users via passkeys.
+            Different privacy techniques for different needs, combined for
+            complete protection. Key custody stays with users via passkeys,
+            passwords, or wallets.
           </p>
         </div>
 
@@ -99,7 +103,7 @@ export function FourPillars() {
                   {pillar.subtitle}
                 </p>
 
-                <p className="mt-4 flex-grow text-muted-foreground">
+                <p className="mt-4 grow text-muted-foreground">
                   {pillar.description}
                 </p>
 

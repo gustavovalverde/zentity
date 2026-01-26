@@ -66,8 +66,20 @@ export function CTASection() {
           ))}
         </div>
 
+        {/* Standards Interop */}
+        <div className="mx-auto mt-12 max-w-2xl rounded-xl border border-border bg-muted/30 p-6 text-center">
+          <p className="font-medium text-foreground">
+            This isn't theoretical. It's running code.
+          </p>
+          <p className="mt-3 text-muted-foreground text-sm leading-relaxed">
+            Same passkeys as Apple, Google, and Microsoft. Same passwords as
+            OPAQUE (RFC 9807). Same wallets as Ethereum (EIP-712/SIWE). Same
+            credentials as EUDI (SD-JWT + OIDC4VCI/VP).
+          </p>
+        </div>
+
         {/* CTA Cards */}
-        <div className="mx-auto mt-12 grid max-w-3xl gap-6 sm:grid-cols-3">
+        <div className="mx-auto mt-10 grid max-w-3xl gap-6 sm:grid-cols-3">
           {/* Try Demo */}
           <a
             href="https://app.zentity.xyz/sign-up?fresh=1"

@@ -41,8 +41,8 @@ export function Hero() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-7 sm:text-xl">
-          Privacy-first KYC and onboarding layer that plugs into existing auth.
-          Prove age, nationality, and liveness without storing plaintext PII.
+          Identity verification that stores encrypted proofs, not plaintext PII.
+          Same compliance. No honeypot.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-muted-foreground text-xs">
@@ -130,7 +130,9 @@ export function Hero() {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <ColoredIconBox icon={IconKey} color="amber" size="sm" />
-              <span className="text-muted-foreground">Passkey Vaults</span>
+              <span className="text-muted-foreground">
+                Multi-Credential Vaults
+              </span>
             </div>
           </div>
         </div>

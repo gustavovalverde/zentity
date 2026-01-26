@@ -1,9 +1,48 @@
-import { IconCheck, IconX } from "@tabler/icons-react";
+import {
+  IconAntenna,
+  IconCheck,
+  IconCurrencyBitcoin,
+  IconHeartHandshake,
+  IconX,
+} from "@tabler/icons-react";
+
+import { ColoredIconBox } from "@/components/ui/colored-icon-box";
+import type { SemanticColor } from "@/lib/colors";
+
+const breaches: Array<{
+  icon: typeof IconHeartHandshake;
+  color: SemanticColor;
+  name: string;
+  impact: string;
+  detail: string;
+}> = [
+  {
+    icon: IconHeartHandshake,
+    color: "red",
+    name: "ICRC 2022",
+    impact: "515,000 refugees",
+    detail: "Identities and locations exposed",
+  },
+  {
+    icon: IconCurrencyBitcoin,
+    color: "orange",
+    name: "Coinbase 2025",
+    impact: "69,461 gov IDs",
+    detail: "Stolen via employee bribery",
+  },
+  {
+    icon: IconAntenna,
+    color: "blue",
+    name: "Optus 2022",
+    impact: "10M Australians",
+    detail: "Plain text, unauthenticated API",
+  },
+];
 
 const categories = [
   {
     label: "PII STORAGE",
-    problem: "Stores full names, addresses, birthdays",
+    problem: "Creates targets for attackers",
     solution: "Stores passkey-vault profile + hashed commitments",
   },
   {
@@ -28,57 +67,79 @@ export function ProblemSolution() {
     <section className="px-4 py-24 md:px-6" id="problem">
       <div className="mx-auto max-w-4xl">
         {/* Header */}
-        <div className="mb-16 text-center">
+        <div className="mb-12 text-center">
           <h2 className="font-bold text-3xl sm:text-4xl">
-            Traditional KYC is a privacy disaster
+            The problem is structural
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Every data breach exposes millions of identities. We built something
-            different.
+            Each of these breaches should have changed everything. None of them
+            did.
           </p>
         </div>
 
+        {/* Breach Stats */}
+        <div className="mb-12 grid gap-4 md:grid-cols-3">
+          {breaches.map((breach) => (
+            <div
+              key={breach.name}
+              className="flex flex-col items-center rounded-xl border border-border bg-card/50 p-5 text-center"
+            >
+              <ColoredIconBox
+                icon={breach.icon}
+                color={breach.color}
+                size="lg"
+                className="mb-3"
+              />
+              <div className="font-medium text-muted-foreground text-xs tracking-widest uppercase">
+                {breach.name}
+              </div>
+              <div className="mt-1 font-bold text-foreground text-xl">
+                {breach.impact}
+              </div>
+              <div className="mt-1 text-muted-foreground text-sm">
+                {breach.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* Comparison Cards */}
-        <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
+        <div className="grid gap-6 md:grid-cols-2">
           {/* Traditional - Problems */}
-          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-6 lg:p-8">
-            <div className="mb-8 flex items-center gap-2">
-              <IconX className="size-5 text-destructive" />
-              <h3 className="font-semibold text-destructive text-xl">
+          <div className="rounded-xl border border-border bg-card/50 p-6 lg:p-8">
+            <div className="mb-6 flex items-center gap-3">
+              <ColoredIconBox icon={IconX} color="red" size="md" />
+              <h3 className="font-semibold text-foreground text-lg">
                 Traditional Identity
               </h3>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-5">
               {categories.map((cat) => (
                 <div key={cat.label}>
-                  <div className="mb-1 font-medium text-muted-foreground text-sm tracking-wider">
+                  <div className="mb-0.5 font-medium text-muted-foreground text-xs tracking-widest uppercase">
                     {cat.label}
                   </div>
-                  <div className="font-medium text-foreground">
-                    {cat.problem}
-                  </div>
+                  <div className="text-foreground">{cat.problem}</div>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Zentity - Solutions */}
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 lg:p-8">
-            <div className="mb-8 flex items-center gap-2">
-              <IconCheck className="size-5 text-emerald-400" />
-              <h3 className="font-semibold text-emerald-600 text-xl">
+          <div className="rounded-xl border border-border bg-card/50 p-6 lg:p-8">
+            <div className="mb-6 flex items-center gap-3">
+              <ColoredIconBox icon={IconCheck} color="emerald" size="md" />
+              <h3 className="font-semibold text-foreground text-lg">
                 Zentity Approach
               </h3>
             </div>
-            <div className="space-y-6">
+            <div className="space-y-5">
               {categories.map((cat) => (
                 <div key={cat.label}>
-                  <div className="mb-1 font-medium text-muted-foreground text-sm tracking-wider">
+                  <div className="mb-0.5 font-medium text-muted-foreground text-xs tracking-widest uppercase">
                     {cat.label}
                   </div>
-                  <div className="font-medium text-foreground">
-                    {cat.solution}
-                  </div>
+                  <div className="text-foreground">{cat.solution}</div>
                 </div>
               ))}
             </div>

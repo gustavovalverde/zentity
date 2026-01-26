@@ -2,6 +2,8 @@ import {
   IconBriefcase,
   IconCurrencyBitcoin,
   IconGlass,
+  IconPlugConnected,
+  IconWallet,
   IconWorld,
 } from "@tabler/icons-react";
 
@@ -41,6 +43,20 @@ const useCases: Array<{
     color: "emerald",
     title: "EU Residency",
     description: "Prove EU residency while keeping exact country private.",
+  },
+  {
+    icon: IconPlugConnected,
+    color: "purple",
+    title: "OAuth Provider",
+    description:
+      "Let partner apps request proofs (age, nationality, compliance level) without exposing your documents or biometrics.",
+  },
+  {
+    icon: IconWallet,
+    color: "amber",
+    title: "Credential Portability",
+    description:
+      "Take your verified credentials to any compatible wallet. No re-verification needed across services.",
   },
 ];
 

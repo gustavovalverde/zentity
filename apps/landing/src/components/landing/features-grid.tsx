@@ -1,11 +1,14 @@
 import {
   IconCalendar,
+  IconCertificate,
   IconFileText,
   IconKey,
   IconLock,
+  IconMapPin,
   IconScan,
   IconTrash,
   IconUserCheck,
+  IconUsers,
   IconWorld,
 } from "@tabler/icons-react";
 import { ColoredIconBox } from "@/components/ui/colored-icon-box";
@@ -48,6 +51,13 @@ const categories: Category[] = [
         title: "Liveness Detection",
         description: "Signed liveness scores with encrypted attributes.",
       },
+      {
+        icon: IconMapPin,
+        color: "emerald",
+        title: "Address Jurisdiction",
+        description:
+          "Prove you live in an allowed region without revealing your address.",
+      },
     ],
   },
   {
@@ -57,9 +67,9 @@ const categories: Category[] = [
       {
         icon: IconLock,
         color: "blue",
-        title: "Encrypted Storage",
+        title: "Multi-Credential Vault",
         description:
-          "Your passkey locks your vault. Server stores encrypted blobs it can't read.",
+          "Passkey, password, or wallet locks your vault. Server stores encrypted blobs it can't read.",
       },
       {
         icon: IconUserCheck,
@@ -72,6 +82,13 @@ const categories: Category[] = [
         color: "purple",
         title: "Nationality Proofs",
         description: "Prove EU membership without revealing your country.",
+      },
+      {
+        icon: IconUsers,
+        color: "amber",
+        title: "Guardian Recovery",
+        description:
+          "Trusted contacts help recover your keys via threshold signatures. No single point of failure.",
       },
     ],
   },
@@ -90,6 +107,13 @@ const categories: Category[] = [
         color: "yellow",
         title: "Audit Bundles",
         description: "Audit-ready evidence packs without raw PII.",
+      },
+      {
+        icon: IconCertificate,
+        color: "purple",
+        title: "Verifiable Credentials",
+        description:
+          "Issue and present SD-JWT credentials via OIDC4VCI/VP standards.",
       },
     ],
   },
@@ -136,7 +160,7 @@ export function FeaturesGrid() {
       <div className="mx-auto max-w-4xl">
         <div className="mb-16 text-center">
           <h2 className="font-bold text-3xl sm:text-4xl">
-            8 verification features, zero plaintext PII stored
+            11 privacy features, zero plaintext PII stored
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
             Complete identity verification without the privacy trade-offs.
