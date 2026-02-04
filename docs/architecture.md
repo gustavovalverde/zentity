@@ -188,15 +188,16 @@ OPAQUE sign-up mirrors the passkey flow but uses a password-derived export key:
 - Server stores the OPAQUE **registration record** (no plaintext password).
 - Secret wrappers are stored with `kek_source = "opaque"`.
 
-**Wallet (EIP-712) sign-up**
+**Wallet (EIP-712) sign-up/sign-in**
 
-Wallet sign-up uses an EIP-712 signature to derive the KEK:
+Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
-- User signs a structured EIP-712 message with their connected wallet.
+- User signs a deterministic EIP-712 message on sign-up (wrap new keys) and sign-in (unwrap existing keys).
 - Signature bytes are processed through **HKDF-SHA256** to derive the KEK.
 - The private key never leaves the wallet; the signature stays in the browser.
 - Server stores the wallet address for account association.
 - Secret wrappers are stored with `kek_source = "wallet"`.
+- Sign-in also requires a **SIWE (EIP-191)** signature for session authentication (nonce-based replay protection).
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.
 
 ### Disclosure

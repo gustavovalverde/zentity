@@ -437,7 +437,9 @@ export const auth = betterAuth({
       domain: getAuthDomain(),
       emailDomainName: process.env.SIWE_EMAIL_DOMAIN || "wallet.zentity.app",
       anonymous: true,
-      getNonce: async () => crypto.randomUUID(),
+      // SIWE nonce must be alphanumeric only (EIP-4361 ABNF: 8*( ALPHA / DIGIT ))
+      // Using hex encoding of random bytes to ensure compliance
+      getNonce: async () => crypto.randomUUID().replaceAll("-", ""),
       verifyMessage: async ({
         message,
         signature,

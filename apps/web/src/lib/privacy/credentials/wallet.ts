@@ -125,6 +125,7 @@ export function parseWalletCredentialId(
 export interface WalletKekEIP712TypedData {
   domain: {
     name: string;
+    version: string;
     chainId: number;
     verifyingContract: `0x${string}`;
   };
@@ -156,6 +157,7 @@ export function buildKekSignatureTypedData(params: {
   return {
     domain: {
       name: "Zentity",
+      version: "1",
       chainId: params.chainId,
       verifyingContract: "0x0000000000000000000000000000000000000000",
     },

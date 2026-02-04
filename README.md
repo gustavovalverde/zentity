@@ -92,7 +92,7 @@ PII**.
    - OCR and liveness checks produce verified attributes and scores.
    - Passkey registration creates the account and enables passwordless sign-in.
    - OPAQUE password sign-up is available for users without passkeys.
-   - Wallet sign-up (EIP-712) is available for Web3-native users.
+   - Wallet sign-up and sign-in (SIWE + EIP-712) is available for Web3-native users.
 2. **Encryption and storage**:
    - Sensitive attributes are encrypted before storage.
    - All three auth methods derive KEKs to seal profiles and wrap FHE keys.

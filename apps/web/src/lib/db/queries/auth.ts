@@ -1,4 +1,5 @@
 import { and, eq, isNotNull } from "drizzle-orm";
+import { getAddress } from "viem";
 
 import { db } from "../connection";
 import { accounts, users, walletAddresses } from "../schema/auth";
@@ -103,8 +104,8 @@ export async function linkWalletAddress(params: {
 }): Promise<void> {
   const { userId, address, chainId, isPrimary = true } = params;
 
-  // Normalize address to lowercase for consistent lookups
-  const normalizedAddress = address.toLowerCase();
+  // Use checksum address format to match better-auth SIWE plugin lookups
+  const normalizedAddress = getAddress(address);
 
   await db
     .insert(walletAddresses)

@@ -1,22 +1,32 @@
 "use client";
 
 import { useAppKitAccount } from "@reown/appkit/react";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useChainId, useSignMessage } from "wagmi";
 
 import { authClient } from "@/lib/auth/auth-client";
 import { signInWithSiwe } from "@/lib/auth/siwe";
 
+const AUTH_PAGES_PATTERN =
+  /^\/(sign-in|sign-up|forgot-password|reset-password)/;
+
 export function SiweBridge() {
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { signMessageAsync } = useSignMessage();
+  const { mutateAsync: signMessage } = useSignMessage();
+  const pathname = usePathname();
   const lastAuthRef = useRef<{ address: string; chainId: number } | null>(null);
   const inFlightRef = useRef(false);
 
   useEffect(() => {
     if (!(isConnected && address)) {
       lastAuthRef.current = null;
+      return;
+    }
+
+    // Skip auto-sign-in on auth pages - let explicit forms handle it
+    if (AUTH_PAGES_PATTERN.test(pathname)) {
       return;
     }
 
@@ -45,7 +55,7 @@ export function SiweBridge() {
       await signInWithSiwe({
         address,
         chainId: activeChainId,
-        signMessage: signMessageAsync,
+        signMessage,
       });
       lastAuthRef.current = { address, chainId: activeChainId };
     };
@@ -72,7 +82,7 @@ export function SiweBridge() {
     return () => {
       cancelled = true;
     };
-  }, [address, chainId, isConnected, signMessageAsync]);
+  }, [address, chainId, isConnected, pathname, signMessage]);
 
   return null;
 }

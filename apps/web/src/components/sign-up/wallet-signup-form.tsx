@@ -159,10 +159,6 @@ export function WalletSignUpForm({
             </Button>
           </div>
 
-          <p className="text-center text-muted-foreground text-sm">
-            Sign to create your encryption keys
-          </p>
-
           <Button
             className="w-full"
             disabled={disabled || isSigning}
