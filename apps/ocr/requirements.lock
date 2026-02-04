@@ -14,7 +14,7 @@ anyio==4.12.1
     # via
     #   httpx
     #   starlette
-asgiref==3.11.0
+asgiref==3.11.1
     # via opentelemetry-instrumentation-asgi
 certifi==2026.1.4
     # via
@@ -74,7 +74,7 @@ omegaconf==2.3.0
     # via rapidocr
 onnxruntime==1.23.2
     # via ocr-service (pyproject.toml)
-opencv-python==4.12.0.88
+opencv-python==4.13.0.90
     # via rapidocr
 opencv-python-headless==4.12.0.88
     # via ocr-service (pyproject.toml)
@@ -138,7 +138,7 @@ opentelemetry-util-http==0.60b1
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-requests
-packaging==25.0
+packaging==26.0
     # via
     #   onnxruntime
     #   opentelemetry-instrumentation
@@ -146,7 +146,7 @@ pillow==12.0.0
     # via
     #   ocr-service (pyproject.toml)
     #   rapidocr
-protobuf==6.33.4
+protobuf==6.33.5
     # via
     #   googleapis-common-protos
     #   onnxruntime
@@ -179,7 +179,7 @@ starlette==0.50.0
     # via fastapi
 sympy==1.14.0
     # via onnxruntime
-tqdm==4.67.1
+tqdm==4.67.3
     # via rapidocr
 typing-extensions==4.15.0
     # via
