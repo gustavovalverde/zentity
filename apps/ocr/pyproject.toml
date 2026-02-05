@@ -23,7 +23,7 @@ dependencies = [
     "httpx==0.28.1",
     "pillow==12.0.0",
     "pydantic==2.12.5",
-    "python-stdnum==2.1",
+    "python-stdnum==2.2",
     "rapidocr==3.4.5",
     "uvicorn==0.40.0",
 ]
