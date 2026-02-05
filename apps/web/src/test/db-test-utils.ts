@@ -12,6 +12,7 @@ import {
   users,
   verifications,
 } from "@/lib/db/schema/auth";
+import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import {
   encryptedAttributes,
   encryptedSecrets,
@@ -27,6 +28,13 @@ import {
   identityVerificationJobs,
 } from "@/lib/db/schema/identity";
 import { jwks } from "@/lib/db/schema/jwks";
+import { oauthIdentityData } from "@/lib/db/schema/oauth-identity";
+import {
+  oauthAccessTokens,
+  oauthClients,
+  oauthConsents,
+  oauthRefreshTokens,
+} from "@/lib/db/schema/oauth-provider";
 import { oidc4idaVerifiedClaims } from "@/lib/db/schema/oidc4ida";
 import {
   oidc4vciIssuedCredentials,
@@ -61,6 +69,13 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oidc4vciOffers).run();
     await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
+    // OAuth/compliance tables (delete children before parents)
+    await tx.delete(oauthIdentityData).run();
+    await tx.delete(rpEncryptionKeys).run();
+    await tx.delete(oauthAccessTokens).run();
+    await tx.delete(oauthRefreshTokens).run();
+    await tx.delete(oauthConsents).run();
+    await tx.delete(oauthClients).run();
     await tx.delete(accounts).run();
     await tx.delete(sessions).run();
     await tx.delete(verifications).run();

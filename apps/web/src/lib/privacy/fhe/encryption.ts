@@ -89,16 +89,10 @@ async function runFheEncryption(
           )
         : await getLatestIdentityDraftByUserId(userId);
 
-      // Resolve dobDays: context > draft fallback
-      const dobDays = (() => {
-        if (typeof context?.dobDays === "number") {
-          return context.dobDays;
-        }
-        if (typeof draft?.dobDays === "number") {
-          return draft.dobDays;
-        }
-        return null;
-      })();
+      // dobDays comes from context only (never persisted to DB for privacy)
+      // FHE encryption with dobDays must be scheduled during document processing
+      const dobDays =
+        typeof context?.dobDays === "number" ? context.dobDays : null;
       // Resolve countryCodeNumeric: context > draft.issuerCountry conversion
       const countryCodeNumeric = (() => {
         if (typeof context?.countryCodeNumeric === "number") {

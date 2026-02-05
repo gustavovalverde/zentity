@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
 import { signInWithPasskey } from "@/lib/auth/passkey";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
@@ -53,7 +54,10 @@ export function PasskeySignInForm() {
       }
 
       toast.success("Signed in successfully!");
-      redirectTo("/dashboard");
+
+      // Continue OAuth flow if we're in one, otherwise go to dashboard
+      const redirectUrl = await getPostAuthRedirectUrl("/dashboard");
+      redirectTo(redirectUrl);
     } catch (err) {
       const message =
         err instanceof Error

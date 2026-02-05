@@ -168,8 +168,8 @@ export const identityVerificationDrafts = sqliteTable(
     faceMatchConfidence: real("face_match_confidence"),
     faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
 
-    // Full DOB as days since 1900-01-01 (UTC)
-    dobDays: integer("dob_days"),
+    // DOB commitment (SHA256 hash - never store plaintext DOB)
+    // Raw DOB is only processed transiently during OCR → FHE encryption
     dobCommitment: text("dob_commitment"),
 
     // Address (collected for CIP compliance)

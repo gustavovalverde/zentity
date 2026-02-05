@@ -4,7 +4,7 @@ import type { EnrollmentCredential } from "@/lib/privacy/secrets";
 
 import { ChevronDown, KeyRound, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +59,7 @@ import { PasswordSignUpForm } from "./password-signup-form";
 import { WalletSignUpForm } from "./wallet-signup-form";
 
 export function StepAccount() {
+  const collapsibleId = useId();
   const router = useRouter();
   const signUpStore = useSignUpStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -593,7 +594,7 @@ export function StepAccount() {
 
       {/* Privacy Info - collapsible for reduced cognitive load */}
       {!isSubmitting && status === "idle" ? (
-        <Collapsible>
+        <Collapsible id={collapsibleId}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border p-4 text-left text-sm hover:bg-accent/50">
             <span className="text-muted-foreground">
               Your data is encrypted end-to-end. No plaintext PII is stored.

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { OpaqueSignInForm } from "@/components/auth/opaque-sign-in-form";
 import { PasskeySignInForm } from "@/components/auth/passkey-sign-in-form";
@@ -67,6 +67,7 @@ function getLastUsedLabel(method: string | null): string | null {
 }
 
 export default function SignInPage() {
+  const tabsId = useId();
   const [activeTab, setActiveTab] = useState<SignInTab>("passkey");
   const [lastUsedMethod, setLastUsedMethod] = useState<string | null>(null);
 
@@ -98,6 +99,7 @@ export default function SignInPage() {
         ) : null}
         <Tabs
           className="w-full"
+          id={tabsId}
           onValueChange={(value) => setActiveTab(value as SignInTab)}
           value={activeTab}
         >

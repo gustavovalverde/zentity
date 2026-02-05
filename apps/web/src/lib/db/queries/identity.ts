@@ -373,7 +373,6 @@ export async function upsertIdentityDraft(
       livenessPassed: data.livenessPassed ?? null,
       faceMatchConfidence: data.faceMatchConfidence ?? null,
       faceMatchPassed: data.faceMatchPassed ?? null,
-      dobDays: data.dobDays ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -400,7 +399,6 @@ export async function upsertIdentityDraft(
         livenessPassed: data.livenessPassed ?? null,
         faceMatchConfidence: data.faceMatchConfidence ?? null,
         faceMatchPassed: data.faceMatchPassed ?? null,
-        dobDays: data.dobDays ?? null,
         updatedAt: sql`datetime('now')`,
       },
     })

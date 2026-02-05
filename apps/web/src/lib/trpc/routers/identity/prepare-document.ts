@@ -7,6 +7,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { processDocumentWithOcr } from "@/lib/identity/document/process-document";
 import { logger } from "@/lib/logging/logger";
+import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
 import { protectedProcedure } from "../../server";
 
@@ -52,6 +53,8 @@ export const prepareDocumentProcedure = protectedProcedure
     ctx.span?.setAttribute("dashboard.issues_count", result.issues.length);
 
     // Persist draft with user reference
+    // Note: dobDays is NOT persisted - it's only processed transiently.
+    // Client receives DOB in extractedData for ZK proof generation.
     await upsertIdentityDraft({
       id: result.draftId,
       userId,
@@ -69,8 +72,20 @@ export const prepareDocumentProcedure = protectedProcedure
       nationalityClaimHash: result.claimHashes.nationalityClaimHash,
       confidenceScore: result.ocrResult?.confidence ?? null,
       ocrIssues: result.issues.length ? JSON.stringify(result.issues) : null,
-      dobDays: result.parsedDates.dobDays,
     });
+
+    // Schedule FHE encryption with transient dobDays (never persisted to DB)
+    // This must happen during document processing while dobDays is in memory
+    if (result.parsedDates.dobDays !== null) {
+      scheduleFheEncryption({
+        userId,
+        requestId: ctx.requestId,
+        flowId: ctx.flowId ?? undefined,
+        reason: "document_processed",
+        dobDays: result.parsedDates.dobDays,
+        countryCodeNumeric: result.parsedDates.nationalityCodeNumeric,
+      });
+    }
 
     // Create identity_documents record with "pending" status for navigation
     // This allows the user to proceed to liveness verification

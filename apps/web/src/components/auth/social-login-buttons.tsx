@@ -12,6 +12,9 @@ export function SocialLoginButtons() {
   const handleSocialLogin = async (provider: "google" | "github") => {
     setLoadingProvider(provider);
     try {
+      // callbackURL is the fallback destination after social auth.
+      // The oauthProviderClient plugin automatically includes oauth_query from the URL,
+      // so if we're in an OAuth flow, better-auth redirects to consent page instead.
       await authClient.signIn.social({
         provider,
         callbackURL: "/dashboard",

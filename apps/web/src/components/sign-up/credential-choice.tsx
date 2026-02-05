@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, Fingerprint, Info, KeyRound, Wallet } from "lucide-react";
+import { useId } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,6 +36,8 @@ export function CredentialChoice({
   prfSupported,
   disabled = false,
 }: Readonly<CredentialChoiceProps>) {
+  const collapsibleId = useId();
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -187,7 +190,7 @@ export function CredentialChoice({
       </div>
 
       {/* Security Explainer */}
-      <Collapsible>
+      <Collapsible id={collapsibleId}>
         <CollapsibleTrigger className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-muted-foreground text-sm hover:text-foreground">
           <span>How your data stays private</span>
           <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>&]:rotate-180" />

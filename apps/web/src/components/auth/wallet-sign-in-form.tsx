@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
+import { continueOAuthFlow, hasOAuthParams } from "@/lib/auth/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { signInWithSiwe } from "@/lib/auth/siwe";
 import {
@@ -80,6 +81,16 @@ export function WalletSignInForm() {
         chainId,
         signMessage: ({ message }) => signMessage({ message }),
       });
+
+      // Check if we're in an OAuth flow - if so, skip KEK and go to consent
+      if (hasOAuthParams()) {
+        const oauthRedirect = await continueOAuthFlow();
+        if (oauthRedirect) {
+          toast.success("Signed in successfully!");
+          redirectTo(oauthRedirect);
+          return;
+        }
+      }
 
       // Step 2: Get userId from session
       const session = await authClient.getSession();

@@ -21,11 +21,18 @@ import {
 import { SiweMessage } from "siwe";
 
 import { getFheEnrollmentContext } from "@/lib/auth/fhe-enrollment-tokens";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
+  buildIdentityClaims,
   buildOidcVerifiedClaims,
   buildVcClaims,
   VC_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
+import {
+  extractIdentityScopes,
+  filterIdentityByScopes,
+  IDENTITY_SCOPE_CLAIMS,
+} from "@/lib/auth/oidc/identity-scopes";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
 import {
@@ -184,36 +191,27 @@ const resolveOpaqueUserByIdentifier = async (
 
 const getAuthDomain = (): string => new URL(getAppOrigin()).host;
 
-const TRAILING_SLASHES_REGEX = /\/+$/;
-const LEADING_SLASHES_REGEX = /^\/+/;
-
-const getAuthIssuer = (): string => {
-  const base =
-    process.env.BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
-  try {
-    const url = new URL(base);
-    if (!url.pathname || url.pathname === "/") {
-      url.pathname = "/api/auth";
-    }
-    url.pathname = url.pathname.replace(TRAILING_SLASHES_REGEX, "");
-    return url.toString();
-  } catch {
-    return "http://localhost:3000/api/auth";
-  }
-};
-
-const joinAuthIssuerPath = (issuer: string, path: string): string => {
-  const normalized = issuer.endsWith("/") ? issuer : `${issuer}/`;
-  return new URL(
-    path.replace(LEADING_SLASHES_REGEX, ""),
-    normalized
-  ).toString();
-};
-
 const authIssuer = getAuthIssuer();
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
+const rpApiAudience = `${authIssuer}/resource/rp-api`;
+const identityClaimKeys = Array.from(
+  new Set(Object.values(IDENTITY_SCOPE_CLAIMS).flat())
+);
+const oidcStandardClaims = [
+  "sub",
+  "name",
+  "given_name",
+  "family_name",
+  "birthdate",
+  "address",
+  "email",
+  "email_verified",
+  "picture",
+  "updated_at",
+];
+const advertisedClaims = Array.from(
+  new Set([...oidcStandardClaims, ...VC_DISCLOSURE_KEYS, ...identityClaimKeys])
+);
 const isOidcE2e = process.env.E2E_OIDC_ONLY === "true";
 const oidc4vciCredentialConfigurations = [
   {
@@ -472,14 +470,33 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
-      scopes: ["openid", "profile", "email", "offline_access", "vc:identity"],
+      scopes: [
+        // Standard OIDC scopes
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        // Verifiable credential scope
+        "vc:identity",
+        // RP compliance key management (client_credentials)
+        "compliance:key:read",
+        "compliance:key:write",
+        // Identity data scopes (RFC-0025)
+        // These allow RPs to receive actual identity data via userinfo
+        "identity", // Verification status flags (no PII)
+        "identity.name", // given_name, family_name, name
+        "identity.dob", // birthdate
+        "identity.address", // address (OIDC standard format)
+        "identity.document", // document_number, document_type, issuing_country
+        "identity.nationality", // nationality, nationalities
+      ],
       grantTypes: [
         "authorization_code",
         "client_credentials",
         "refresh_token",
         "urn:ietf:params:oauth:grant-type:pre-authorized_code",
       ],
-      validAudiences: [authIssuer, oidc4vciCredentialAudience],
+      validAudiences: [authIssuer, oidc4vciCredentialAudience, rpApiAudience],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,
@@ -487,6 +504,36 @@ export const auth = betterAuth({
       allowUnauthenticatedClientRegistration: true,
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
+      advertisedMetadata: {
+        claims_supported: advertisedClaims,
+      },
+      customUserInfoClaims: async ({ user, scopes, jwt }) => {
+        let scopeList: string[] = [];
+        if (Array.isArray(scopes)) {
+          scopeList = scopes;
+        }
+        const claims: Record<string, unknown> = {};
+
+        const wantsVerification =
+          scopeList.includes("vc:identity") || scopeList.includes("identity");
+        if (wantsVerification) {
+          Object.assign(claims, await buildVcClaims(user.id));
+        }
+
+        const requestedIdentityScopes = extractIdentityScopes(scopeList);
+        const clientId =
+          (jwt?.azp as string | undefined) ??
+          (jwt?.client_id as string | undefined);
+        if (clientId && requestedIdentityScopes.length > 0) {
+          const identityClaims = await buildIdentityClaims(user.id, clientId);
+          if (identityClaims) {
+            const filtered = filterIdentityByScopes(identityClaims, scopeList);
+            Object.assign(claims, filtered);
+          }
+        }
+
+        return claims;
+      },
     }),
     oidc4ida({
       getVerifiedClaims: async ({ user }: { user: { id: string } }) =>

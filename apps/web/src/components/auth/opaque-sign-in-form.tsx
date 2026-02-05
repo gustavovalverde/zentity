@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
+import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { cacheOpaqueExportKey } from "@/lib/privacy/credentials";
 import { redirectTo } from "@/lib/utils/navigation";
@@ -52,16 +53,22 @@ export function OpaqueSignInForm() {
         }
 
         // Cache the OPAQUE export key for secret retrieval
-        // This enables password-only users to access their encrypted secrets
-        if (result.data.exportKey && result.data.user?.id) {
+        const responseData = result.data as unknown as {
+          exportKey?: Uint8Array;
+          user?: { id: string };
+        };
+        if (responseData.exportKey && responseData.user?.id) {
           cacheOpaqueExportKey({
-            userId: result.data.user.id,
-            exportKey: result.data.exportKey,
+            userId: responseData.user.id,
+            exportKey: responseData.exportKey,
           });
         }
 
         toast.success("Signed in successfully!");
-        redirectTo("/dashboard");
+
+        // Continue OAuth flow if we're in one, otherwise go to dashboard
+        const redirectUrl = await getPostAuthRedirectUrl("/dashboard");
+        redirectTo(redirectUrl);
       } catch (err) {
         const message =
           err instanceof Error

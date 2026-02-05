@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Database, Eye, EyeOff, Lock, Shield } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ export function TransparencySection({
   encryptedAttributes = [],
   signedClaimTypes = [],
 }: Readonly<TransparencySectionProps>) {
+  const collapsibleId = useId();
   const [isOpen, setIsOpen] = useState(false);
 
   const truncateHash = (hash: string) => {
@@ -59,7 +60,7 @@ export function TransparencySection({
 
   return (
     <Card>
-      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
+      <Collapsible id={collapsibleId} onOpenChange={setIsOpen} open={isOpen}>
         <CardHeader className="pb-3">
           <CollapsibleTrigger asChild>
             <Button

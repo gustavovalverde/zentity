@@ -63,11 +63,12 @@ async function verifySiweMessage(params: {
     }),
   });
 
+  const payload = (await response.json().catch(() => null)) as {
+    error?: string;
+    message?: string;
+  } | null;
+
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-      message?: string;
-    } | null;
     throw new Error(payload?.error || payload?.message || "SIWE failed.");
   }
 }
