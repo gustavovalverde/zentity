@@ -106,35 +106,35 @@ export async function POST(request: Request) {
     await deleteEncryptedSecretByUserAndType(sessionUserId, secretType);
   }
 
-  await upsertEncryptedSecret({
-    id: registration.blob.secretId,
-    userId: sessionUserId,
-    secretType,
-    encryptedBlob: "",
-    blobRef: registration.blob.blobRef,
-    blobHash: registration.blob.blobHash,
-    blobSize: registration.blob.blobSize,
-    metadata: { envelopeFormat: enrollment.envelopeFormat },
-  });
-
-  await upsertSecretWrapper({
-    id: crypto.randomUUID(),
-    secretId: registration.blob.secretId,
-    userId: sessionUserId,
-    credentialId: enrollment.credentialId,
-    wrappedDek: enrollment.wrappedDek,
-    prfSalt: enrollment.prfSalt,
-    kekSource: "prf",
-  });
-
-  await updateEncryptedSecretMetadata({
-    userId: sessionUserId,
-    secretType,
-    metadata: {
-      envelopeFormat: enrollment.envelopeFormat,
-      keyId: enrollment.keyId,
-    },
-  });
+  await Promise.all([
+    upsertEncryptedSecret({
+      id: registration.blob.secretId,
+      userId: sessionUserId,
+      secretType,
+      encryptedBlob: "",
+      blobRef: registration.blob.blobRef,
+      blobHash: registration.blob.blobHash,
+      blobSize: registration.blob.blobSize,
+      metadata: { envelopeFormat: enrollment.envelopeFormat },
+    }),
+    upsertSecretWrapper({
+      id: crypto.randomUUID(),
+      secretId: registration.blob.secretId,
+      userId: sessionUserId,
+      credentialId: enrollment.credentialId,
+      wrappedDek: enrollment.wrappedDek,
+      prfSalt: enrollment.prfSalt,
+      kekSource: "prf",
+    }),
+    updateEncryptedSecretMetadata({
+      userId: sessionUserId,
+      secretType,
+      metadata: {
+        envelopeFormat: enrollment.envelopeFormat,
+        keyId: enrollment.keyId,
+      },
+    }),
+  ]);
 
   // Persist enrollment status server-side to avoid client-side races where other
   // flows (document OCR / background jobs) run before the identity bundle is updated.

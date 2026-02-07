@@ -44,17 +44,12 @@ export const accountRouter = router({
   getData: protectedProcedure.query(async ({ ctx }) => {
     const { userId, session } = ctx;
 
-    // Get verification status
-    const verification = await getVerificationStatus(userId);
-
-    // Get latest verified document details
-    const document = await getSelectedIdentityDocumentByUserId(userId);
-
-    // Get user creation date from better-auth user table
-    const createdAt = await getUserCreatedAt(userId);
-
-    // Check if user has a password set (for Change vs Set password UI)
-    const hasPassword = await userHasPassword(userId);
+    const [verification, document, createdAt, hasPassword] = await Promise.all([
+      getVerificationStatus(userId),
+      getSelectedIdentityDocumentByUserId(userId),
+      getUserCreatedAt(userId),
+      userHasPassword(userId),
+    ]);
 
     return {
       email: session.user.email,

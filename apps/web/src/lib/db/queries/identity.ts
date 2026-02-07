@@ -177,23 +177,25 @@ export const hasCompletedSignUp = cache(async function hasCompletedSignUp(
   return bundle !== null;
 });
 
-export async function getLatestIdentityDocumentByUserId(
-  userId: string
-): Promise<IdentityDocument | null> {
-  const row = await db
-    .select()
-    .from(identityDocuments)
-    .where(eq(identityDocuments.userId, userId))
-    .orderBy(
-      sql`CASE WHEN ${identityDocuments.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
-      desc(identityDocuments.verifiedAt),
-      desc(identityDocuments.createdAt)
-    )
-    .limit(1)
-    .get();
+export const getLatestIdentityDocumentByUserId = cache(
+  async function getLatestIdentityDocumentByUserId(
+    userId: string
+  ): Promise<IdentityDocument | null> {
+    const row = await db
+      .select()
+      .from(identityDocuments)
+      .where(eq(identityDocuments.userId, userId))
+      .orderBy(
+        sql`CASE WHEN ${identityDocuments.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
+        desc(identityDocuments.verifiedAt),
+        desc(identityDocuments.createdAt)
+      )
+      .limit(1)
+      .get();
 
-  return row ?? null;
-}
+    return row ?? null;
+  }
+);
 
 export async function getIdentityDocumentsByUserId(
   userId: string

@@ -1,12 +1,6 @@
 "use client";
 
 import { createAppKit } from "@reown/appkit/react";
-import {
-  ApiController,
-  ChainController,
-  ConnectorController,
-  OptionsController,
-} from "@reown/appkit-controllers";
 /**
  * Web3 Provider with Reown AppKit
  *
@@ -168,26 +162,32 @@ export function Web3Provider({
           process.env.NODE_ENV === "development") &&
         globalThis.window !== undefined
       ) {
-        (
-          globalThis as typeof globalThis & {
-            __appkit?: unknown;
-            __appkitControllers?: unknown;
-          }
-        ).__appkit = appkit;
-        (
-          globalThis as typeof globalThis & {
-            __appkit?: unknown;
-            __appkitControllers?: unknown;
-          }
-        ).__appkitControllers = {
-          ApiController,
-          ChainController,
-          ConnectorController,
-          OptionsController,
-        };
-        ApiController.fetchWallets({ page: 1, entries: 50 }).catch(() => {
-          // Wallet list is optional; provider continues without
-        });
+        import("@reown/appkit-controllers")
+          .then((controllers) => {
+            if (isCancelled) {
+              return;
+            }
+            const g = globalThis as typeof globalThis & {
+              __appkit?: unknown;
+              __appkitControllers?: unknown;
+            };
+            g.__appkit = appkit;
+            g.__appkitControllers = {
+              ApiController: controllers.ApiController,
+              ChainController: controllers.ChainController,
+              ConnectorController: controllers.ConnectorController,
+              OptionsController: controllers.OptionsController,
+            };
+            controllers.ApiController.fetchWallets({
+              page: 1,
+              entries: 50,
+            }).catch(() => {
+              // Wallet list is optional; provider continues without
+            });
+          })
+          .catch(() => {
+            // Dev-only controllers failed to load; non-critical
+          });
       }
     })().catch(() => {
       // Provider initialization handled by wagmi

@@ -2,6 +2,8 @@ import "server-only";
 
 import crypto from "node:crypto";
 
+import { after } from "next/server";
+
 import { isFheComplete } from "@/lib/assurance/compute";
 import {
   getEncryptedAttributeTypesByUserId,
@@ -312,31 +314,23 @@ export function scheduleFheEncryption(args: FheEncryptionSchedule): void {
     return;
   }
   activeFheJobs.add(args.userId);
-  setTimeout(() => {
-    (async () => {
+  after(async () => {
+    try {
       while (pendingContexts.has(args.userId)) {
         const context = pendingContexts.get(args.userId);
         pendingContexts.delete(args.userId);
         await runFheEncryption(args.userId, context);
       }
-    })()
-      .catch((error) => {
-        logger.warn(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            userId: hashIdentifier(args.userId),
-          },
-          "FHE encryption scheduler failed"
-        );
-      })
-      .finally(() => {
-        activeFheJobs.delete(args.userId);
-        if (pendingContexts.has(args.userId)) {
-          const context = pendingContexts.get(args.userId);
-          if (context) {
-            scheduleFheEncryption({ userId: args.userId, ...context });
-          }
-        }
-      });
-  }, 0);
+    } catch (error) {
+      logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          userId: hashIdentifier(args.userId),
+        },
+        "FHE encryption scheduler failed"
+      );
+    } finally {
+      activeFheJobs.delete(args.userId);
+    }
+  });
 }

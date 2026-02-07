@@ -1,12 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { Web3Provider } from "@/components/providers/web3-provider";
 import { Button } from "@/components/ui/button";
 
-import { FheEnrollmentDialog } from "./fhe-enrollment-dialog";
+const FheEnrollmentDialog = dynamic(
+  () => import("./fhe-enrollment-dialog").then((m) => m.FheEnrollmentDialog),
+  { ssr: false }
+);
 
 interface VerifyCtaProps {
   nextStepHref: string;
@@ -24,6 +28,8 @@ interface VerifyCtaProps {
  * If enrolled, links directly to the next step.
  * If not enrolled, opens the FHE enrollment dialog.
  */
+const preloadDialog = () => import("./fhe-enrollment-dialog");
+
 export function VerifyCta({
   nextStepHref,
   nextStepTitle,
@@ -36,6 +42,8 @@ export function VerifyCta({
 }: Readonly<VerifyCtaProps>) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  const handleOpen = useCallback(() => setDialogOpen(true), []);
+
   if (hasEnrollment) {
     return (
       <Button asChild className="w-full">
@@ -44,7 +52,7 @@ export function VerifyCta({
     );
   }
 
-  const dialog = (
+  const dialog = dialogOpen ? (
     <FheEnrollmentDialog
       hasPasskeys={hasPasskeys}
       hasPassword={hasPassword}
@@ -52,10 +60,15 @@ export function VerifyCta({
       open={dialogOpen}
       wallet={wallet}
     />
-  );
+  ) : null;
 
   const button = (
-    <Button className="w-full" onClick={() => setDialogOpen(true)}>
+    <Button
+      className="w-full"
+      onClick={handleOpen}
+      onFocus={preloadDialog}
+      onMouseEnter={preloadDialog}
+    >
       Get Started
     </Button>
   );

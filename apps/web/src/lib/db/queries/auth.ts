@@ -1,4 +1,5 @@
 import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { cache } from "react";
 import { getAddress } from "viem";
 
 import { db } from "../connection";
@@ -52,7 +53,9 @@ export async function clearAnonymousFlag(userId: string): Promise<void> {
     .run();
 }
 
-export async function getUserCreatedAt(userId: string): Promise<string | null> {
+export const getUserCreatedAt = cache(async function getUserCreatedAt(
+  userId: string
+): Promise<string | null> {
   const row = await db
     .select({ createdAt: users.createdAt })
     .from(users)
@@ -60,13 +63,15 @@ export async function getUserCreatedAt(userId: string): Promise<string | null> {
     .get();
 
   return row?.createdAt ?? null;
-}
+});
 
 /**
  * Check if a user has a credential account with a password set.
  * Users who signed up with passkey-only or OAuth won't have a password.
  */
-export async function userHasPassword(userId: string): Promise<boolean> {
+export const userHasPassword = cache(async function userHasPassword(
+  userId: string
+): Promise<boolean> {
   const row = await db
     .select({ registrationRecord: accounts.registrationRecord })
     .from(accounts)
@@ -80,7 +85,7 @@ export async function userHasPassword(userId: string): Promise<boolean> {
     .get();
 
   return !!row?.registrationRecord && row.registrationRecord.length > 0;
-}
+});
 
 /**
  * Delete an incomplete signup (anonymous, unverified user) and all related records.

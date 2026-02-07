@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, eq, sql } from "drizzle-orm";
+import { after } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 
 import {
@@ -79,15 +80,13 @@ export function scheduleIdentityJob(jobId: string): void {
     return;
   }
   activeIdentityJobs.add(jobId);
-  setTimeout(() => {
-    processIdentityVerificationJob(jobId)
-      .finally(() => {
-        activeIdentityJobs.delete(jobId);
-      })
-      .catch(() => {
-        // Error logged above; prevents unhandled rejection
-      });
-  }, 0);
+  after(async () => {
+    try {
+      await processIdentityVerificationJob(jobId);
+    } finally {
+      activeIdentityJobs.delete(jobId);
+    }
+  });
 }
 
 function processIdentityVerificationJob(jobId: string): Promise<void> {
