@@ -30,8 +30,10 @@ export default async function LivenessVerifyPage() {
     getIdentityBundleByUserId(userId),
   ]);
 
-  // FHE keys required for verification finalization
-  if (!bundle?.fheKeyId) {
+  const hasEnrollment = Boolean(bundle?.fheKeyId);
+
+  // FHE enrollment required before verification
+  if (!hasEnrollment) {
     redirect("/dashboard/verify");
   }
 
@@ -41,13 +43,17 @@ export default async function LivenessVerifyPage() {
   }
 
   // Already completed liveness and face match - redirect to verify hub
-  // Exception: users with incomplete proofs need to re-verify
+  // Exceptions:
+  // - Users with incomplete proofs need to re-verify
+  // - Users with a pending document are actively re-verifying
   const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
+  const hasActiveVerification = latestDocument?.status === "pending";
 
   if (
     assuranceState.details.livenessVerified &&
     assuranceState.details.faceMatchVerified &&
-    !needsProofRegeneration
+    !needsProofRegeneration &&
+    !hasActiveVerification
   ) {
     redirect("/dashboard/verify");
   }

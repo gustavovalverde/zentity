@@ -7,10 +7,14 @@
  * Profile data is PII that requires credential unlock.
  */
 
-import { type EnvelopeFormat, SECRET_TYPES } from "./types";
+import type { EnrollmentCredential, EnvelopeFormat } from "./types";
+
+import { SECRET_TYPES } from "./types";
 
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 const CACHE_TTL_MS = 15 * 60 * 1000;
+const GREETING_NAME_KEY = "zentity:greeting";
+const WHITESPACE_RE = /\s+/;
 
 export interface ProfileSecretPayload {
   fullName?: string | null;
@@ -97,7 +101,32 @@ function getCachedProfile(): ProfileSecretPayload | null {
 
 function cacheProfile(profile: ProfileSecretPayload) {
   cached = { profile, secretId: "cached", cachedAt: Date.now() };
+  persistGreetingName(profile.firstName);
   notifyListeners();
+}
+
+function persistGreetingName(firstName: string | null | undefined) {
+  try {
+    // Store only the first word — minimize PII in unencrypted storage
+    const short = firstName?.split(WHITESPACE_RE)[0];
+    if (short) {
+      sessionStorage.setItem(GREETING_NAME_KEY, short);
+    }
+  } catch {
+    // sessionStorage unavailable (SSR, private browsing quota)
+  }
+}
+
+/**
+ * Read the cached greeting name from sessionStorage.
+ * Survives page refreshes without requiring credential unlock.
+ */
+export function getCachedGreetingName(): string | null {
+  try {
+    return sessionStorage.getItem(GREETING_NAME_KEY);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -145,11 +174,41 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
   return pendingGetStoredProfile;
 }
 
+const textEncoder = new TextEncoder();
+
+/**
+ * Store profile data as a credential-encrypted secret.
+ * Updates the in-memory cache immediately so dashboard can display the name
+ * without requiring a separate unlock.
+ */
+export async function storeProfileSecret(params: {
+  payload: ProfileSecretPayload;
+  credential: EnrollmentCredential;
+}): Promise<{ secretId: string }> {
+  const { storeSecretWithCredential } = await import("./index");
+
+  const plaintext = textEncoder.encode(JSON.stringify(params.payload));
+  const result = await storeSecretWithCredential({
+    secretType: SECRET_TYPES.PROFILE,
+    plaintext,
+    credential: params.credential,
+    envelopeFormat: PROFILE_ENVELOPE_FORMAT,
+  });
+
+  cacheProfile(params.payload);
+  return { secretId: result.secretId };
+}
+
 /**
  * Clear the profile secret cache.
  */
 export function resetProfileSecretCache(): void {
   cached = undefined;
   pendingGetStoredProfile = null;
+  try {
+    sessionStorage.removeItem(GREETING_NAME_KEY);
+  } catch {
+    // sessionStorage unavailable
+  }
   notifyListeners();
 }

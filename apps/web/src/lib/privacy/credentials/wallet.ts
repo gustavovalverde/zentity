@@ -14,72 +14,11 @@ import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
 
 import { decryptWithDek } from "@/lib/privacy/secrets/envelope";
 
+import { registerWalletCacheCheck } from "./cache";
 import { deriveKekFromWalletSignature } from "./derivation";
 import { unwrapDek, wrapDek } from "./wrap";
 
 export const WALLET_CREDENTIAL_PREFIX = "wallet";
-
-/** Salt length for wallet address commitments (32 bytes = 256 bits) */
-const WALLET_COMMITMENT_SALT_LENGTH = 32;
-
-/** Regex to strip 0x prefix from addresses */
-const ADDRESS_PREFIX_REGEX = /^0x/;
-
-const textEncoder = new TextEncoder();
-
-/**
- * Normalize a wallet address to lowercase without 0x prefix.
- * Ensures consistent hashing regardless of input format.
- */
-function normalizeAddress(address: string): string {
-  return address.toLowerCase().replace(ADDRESS_PREFIX_REGEX, "");
-}
-
-/**
- * Generate a random salt for wallet address commitment.
- * Each commitment should use a unique salt to prevent correlation.
- */
-export function generateWalletCommitmentSalt(): Uint8Array {
-  return crypto.getRandomValues(new Uint8Array(WALLET_COMMITMENT_SALT_LENGTH));
-}
-
-/**
- * Compute a privacy-preserving commitment to a wallet address.
- *
- * The commitment is SHA-256(address || salt) which:
- * - Hides the wallet address (can't be reversed)
- * - Is unlinkable across different salts (same address, different commitments)
- * - Can be verified if you know address + salt
- *
- * Used in BBS+ credentials to prove wallet ownership without revealing address.
- *
- * @param address - Ethereum wallet address (with or without 0x prefix)
- * @param salt - Random salt (should be unique per credential)
- * @returns SHA-256 hash as Uint8Array (32 bytes)
- */
-export async function computeWalletCommitment(
-  address: string,
-  salt: Uint8Array
-): Promise<Uint8Array> {
-  const normalizedAddress = normalizeAddress(address);
-  const addressBytes = textEncoder.encode(normalizedAddress);
-
-  const combined = new Uint8Array(addressBytes.length + salt.length);
-  combined.set(addressBytes);
-  combined.set(salt, addressBytes.length);
-
-  const hashBuffer = await crypto.subtle.digest("SHA-256", combined);
-  return new Uint8Array(hashBuffer);
-}
-
-/**
- * Convert wallet commitment to hex string for storage/transmission.
- */
-export function walletCommitmentToHex(commitment: Uint8Array): string {
-  return Array.from(commitment)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 /**
  * Generate a deterministic credential ID from wallet address and chain ID.
@@ -299,6 +238,9 @@ interface CachedWalletSignature {
 const WALLET_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 let cachedWalletSignature: CachedWalletSignature | null = null;
 
+// Register wallet cache check with the aggregate credential check (avoids circular import)
+registerWalletCacheCheck(() => cachedWalletSignature !== null);
+
 /**
  * Cache a wallet signature for session-based reuse.
  */
@@ -365,6 +307,32 @@ export function isWalletCacheFresh(
   chainId: number
 ): boolean {
   return getCachedWalletSignature(userId, address, chainId) !== null;
+}
+
+/**
+ * Get the raw cached wallet signature if fresh, without requiring userId/address/chainId.
+ * Used by resolveEnrollmentCredential to check if any wallet credential is cached.
+ */
+export function getCachedWalletContext(): {
+  userId: string;
+  address: string;
+  chainId: number;
+  signatureBytes: Uint8Array;
+  signedAt: number;
+  expiresAt: number;
+} | null {
+  if (!cachedWalletSignature) {
+    return null;
+  }
+  const now = Date.now();
+  if (
+    now - cachedWalletSignature.cachedAt > WALLET_CACHE_TTL_MS ||
+    now >= cachedWalletSignature.expiresAt * 1000
+  ) {
+    cachedWalletSignature = null;
+    return null;
+  }
+  return cachedWalletSignature;
 }
 
 /**

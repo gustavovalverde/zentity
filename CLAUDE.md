@@ -234,10 +234,12 @@ The system has two distinct flows: **sign-up** (account creation) and **verifica
 
 **Sign-Up Flow** (`/sign-up` → `/dashboard`):
 
-1. **Email step** (optional) → User provides email or continues without
-2. **Account step** → Create passkey/OPAQUE/wallet credentials, generate FHE keys
-3. **FHE enrollment** → Encrypt and store credential-wrapped FHE key bundle
-4. User reaches **Tier 1** (account + keys secured) and lands on dashboard
+1. **Credential choice** → User picks passkey, password (OPAQUE), or wallet (inline cards)
+2. **Session creation** → Passkey/password paths call `ensureAuthSession()` on demand to create an anonymous user; wallet (SIWE) creates its own user directly
+3. **Account completion** → `trpc.signUp.completeAccountCreation` links email/wallet, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data
+4. User lands on dashboard with **Tier 1** (account created, no FHE keys yet)
+
+FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [Verification Preflight](docs/verification-preflight-option-a.md).
 
 **Verification Flow** (from `/dashboard/verify/*`):
 
@@ -276,7 +278,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `crypto` | FHE encryption, ZK proof verification, challenge nonces |
 | `identity` | Identity verification (document OCR, liveness, face match, proofs) |
 | `liveness` | Multi-gesture liveness detection sessions |
-| `signUp` | Progressive account creation wizard (email → account → keys secured) |
+| `signUp` | Account creation completion (email linking, wallet association, identity bundle creation) |
 | `assurance` | Tier profile, AAL computation, and feature gating |
 | `attestation` | On-chain identity attestation (submit, refresh, networks) |
 | `account` | User account management |
@@ -302,8 +304,9 @@ const result = await trpc.liveness.verify.mutate({ sessionId, ... });
 
 Zentity acts as an OAuth 2.1 / OpenID Connect authorization server via better-auth's `oauthProvider` plugin. Endpoints are under `/api/auth/oauth2/*` with discovery at `/.well-known/*`.
 
-- [OAuth Provider Flow](docs/rp-redirect-flow.md) — Authorization flow, endpoints, consent
-- [OAuth Integrations](docs/oauth-integrations.md) — Client setup, Generic OAuth, OIDC4VCI/VP
+OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`) with organization-based ownership (via `referenceId` on the client table). REST endpoints at `/api/rp-admin/clients/*` handle CRUD. DCR-registered clients can be adopted by organizations.
+
+- [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP
 
 ## ZK Circuit Development
 

@@ -7,7 +7,7 @@
 Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE + Wallet)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These cryptographic pillars are used together throughout the system.
 
 - **ZK proofs**: age (day-precise), document validity, nationality membership, address jurisdiction, face match threshold, identity binding (replay protection).
-- **FHE encryption**: full DOB (days since 1900-01-01), country code, address country, compliance level, liveness score, risk score.
+- **FHE encryption**: DOB days (days since 1900-01-01) for server-side age threshold computation, liveness score for server-side threshold checks.
 - **Commitments + hashes**: document hash, name commitment, DOB commitment, address commitment, proof hashes.
 - **Screening attestations**: PEP/sanctions screening results stored as signed claims (boolean + provider + timestamp).
 - **Passkeys + OPAQUE + Wallet (auth + key custody)**: passkeys for passwordless auth and PRF‑derived KEKs; OPAQUE for password auth with client‑derived export keys; wallet signatures (EIP-712) for Web3‑native auth with HKDF‑derived KEKs. All three methods wrap secrets client‑side.
@@ -35,6 +35,7 @@ This architecture supports:
 - **Passkeys + OPAQUE + Wallet are the auth + key custody anchors** (WebAuthn signatures prove user presence; PRF outputs, OPAQUE export keys, and wallet signatures derive KEKs locally and never leave the client).
 - **Server is trusted for integrity** (verification, signing, policy enforcement).
 - **Server is not trusted for plaintext access** (only commitments + ciphertext).
+- **Client storage (sessionStorage/localStorage) is not used for PII**. Verification data exists only in memory during the active flow. If the user refreshes, the state is lost and they restart verification. Long-term PII is stored only as credential-encrypted secrets (profile vault).
 
 ### Encryption boundaries
 
@@ -93,7 +94,7 @@ This architecture supports:
 
 | Data | ZK | FHE | Commit | Vault | Notes |
 |---|---|---|---|---|---|
-| Country code (numeric) | ◐ | ✅ | — | — | Enables encrypted allowlist checks. |
+| Nationality | ✅ | — | — | ✅ | Proven once via ZK (nationality membership proof). Stored in profile vault for OAuth disclosure. |
 | Address country code | ◐ | ✅ | — | — | **NEW**: Country code from residential address. |
 | Address commitment | — | — | ✅ | — | **NEW**: SHA256(address + salt) for audit. |
 
@@ -111,10 +112,16 @@ This architecture supports:
 | Data | ZK | FHE | Commit | Vault | Notes |
 |---|---|---|---|---|---|
 | Name (full name) | — | — | ✅ | ✅ | Commitment for audit; plaintext only in vault. |
-| Profile PII (DOB, document #, nationality) | — | — | — | ✅ | Stored only in vault. |
+| Profile PII (DOB, document #, nationality, document type, issuing country) | — | — | — | ✅ | Stored only in vault. Created after document OCR with cached credential material. |
 | Address (full plaintext) | — | — | — | ✅ | **NEW**: Plaintext only in vault. |
 | User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
 | FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
+
+**Document metadata** (`documentType`, `issuerCountry`) is **not stored** in the permanent `identity_documents` table. It exists in:
+
+- **Profile vault** — credential-encrypted, for OAuth identity claims (`identity.document` scope)
+- **Signed OCR claims** — integrity-protected attestation (`ocr_result` signed claim)
+- **Transient drafts** — used during verification finalization, then discarded on re-verification
 
 ### Auth & System
 
@@ -145,7 +152,7 @@ This system intentionally splits data across **server storage** and **client‑o
 
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
-| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), document metadata (type, issuer), status fields | Server readable | Required for basic UX, auth, and workflow state |
+| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), status fields | Server readable | Required for basic UX, auth, and workflow state |
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑, OPAQUE‑, or wallet‑derived keys) | User‑controlled privacy + encrypted computation |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
@@ -179,102 +186,133 @@ The vault is **not** a separate storage system. It is a **server‑stored encryp
 erDiagram
   direction LR
 
-  USERS ||--|| IDENTITY_BUNDLES : owns
-  USERS ||--o{ IDENTITY_DOCUMENTS : submits
-  USERS ||--o{ ENCRYPTED_ATTRIBUTES : stores
-  USERS ||--o{ ENCRYPTED_SECRETS : owns
+  %% ── Auth & credentials ──
   USERS ||--o{ PASSKEY : registers
   USERS ||--o{ WALLET_ADDRESS : links
-  USERS ||--o{ OAUTH_CLIENT : owns
-  USERS ||--o{ OAUTH_ACCESS_TOKEN : authorizes
-  USERS ||--o{ OAUTH_REFRESH_TOKEN : authorizes
-  USERS ||--o{ OAUTH_CONSENT : grants
-  USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : submits
-  USERS ||--o{ OIDC4VCI_OFFERS : receives
-  USERS ||--o{ OIDC4VCI_ISSUED_CREDENTIALS : holds
+  USERS ||--o{ MEMBERS : joins
 
-  OAUTH_CLIENT ||--o{ OAUTH_ACCESS_TOKEN : issues
-  OAUTH_CLIENT ||--o{ OAUTH_REFRESH_TOKEN : issues
-  OAUTH_CLIENT ||--o{ OAUTH_CONSENT : requests
-
-  IDENTITY_DOCUMENTS ||--o{ ZK_PROOFS : proves
-  IDENTITY_DOCUMENTS ||--o{ SIGNED_CLAIMS : claims
-  IDENTITY_DOCUMENTS ||--o{ ATTESTATION_EVIDENCE : evidences
-  IDENTITY_DOCUMENTS ||--o{ IDENTITY_VERIFICATION_DRAFTS : drafts
-
-  USERS ||--o{ IDENTITY_VERIFICATION_DRAFTS : owns
-  IDENTITY_VERIFICATION_DRAFTS ||--o{ IDENTITY_VERIFICATION_JOBS : spawns
-
+  %% ── Key custody ──
+  USERS ||--o{ ENCRYPTED_SECRETS : owns
   ENCRYPTED_SECRETS ||--o{ SECRET_WRAPPERS : wrapped_by
   PASSKEY ||--o{ SECRET_WRAPPERS : unlocks
 
+  %% ── Identity verification ──
+  USERS ||--|| IDENTITY_BUNDLES : owns
+  USERS ||--o{ IDENTITY_DOCUMENTS : submits
+  USERS ||--o{ ENCRYPTED_ATTRIBUTES : stores
+  IDENTITY_DOCUMENTS ||--o{ ZK_PROOFS : proves
+  IDENTITY_DOCUMENTS ||--o{ SIGNED_CLAIMS : attests
+  IDENTITY_DOCUMENTS ||--o{ ATTESTATION_EVIDENCE : evidences
+  IDENTITY_DOCUMENTS ||--o{ IDENTITY_VERIFICATION_DRAFTS : drafts
+  USERS ||--o{ IDENTITY_VERIFICATION_DRAFTS : owns
+  IDENTITY_VERIFICATION_DRAFTS ||--o{ IDENTITY_VERIFICATION_JOBS : spawns
+
+  %% ── Organizations & RP admin ──
+  ORGANIZATIONS ||--o{ MEMBERS : has_members
+  ORGANIZATIONS ||--o{ INVITATIONS : sends
+  ORGANIZATIONS ||--o{ OAUTH_CLIENT : owns_via_ref
+
+  %% ── OAuth provider ──
+  OAUTH_CLIENT ||--o{ OAUTH_ACCESS_TOKEN : issues
+  OAUTH_CLIENT ||--o{ OAUTH_REFRESH_TOKEN : issues
+  OAUTH_CLIENT ||--o{ OAUTH_CONSENT : requests
+  OAUTH_CLIENT ||--o{ OAUTH_IDENTITY_DATA : receives_pii
+  OAUTH_CLIENT ||--o{ RP_ENCRYPTION_KEYS : registers
+  USERS ||--o{ OAUTH_ACCESS_TOKEN : authorizes
+  USERS ||--o{ OAUTH_REFRESH_TOKEN : authorizes
+  USERS ||--o{ OAUTH_CONSENT : grants
+  USERS ||--o{ OAUTH_IDENTITY_DATA : consents_to
+
+  %% ── Web3 & credentials ──
+  USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : attests
+  USERS ||--o{ OIDC4VCI_OFFERS : receives
+  USERS ||--o{ OIDC4VCI_ISSUED_CREDENTIALS : holds
+
+  %% ── Entity definitions ──
+
   USERS {
-    text id PK
-    text email
+    text id PK "Account ID"
+    text email "Optional"
   }
+
+  PASSKEY {
+    text id PK
+    text userId FK
+    text credentialID "WebAuthn credential"
+  }
+  WALLET_ADDRESS {
+    text user_id FK
+    text address "Ethereum address"
+  }
+
+  ORGANIZATIONS {
+    text id PK
+    text name
+    text slug UK "URL-safe identifier"
+  }
+  MEMBERS {
+    text id PK
+    text organizationId FK
+    text userId FK
+    text role "owner | admin | member"
+  }
+  INVITATIONS {
+    text id PK
+    text organizationId FK
+    text email
+    text status "pending | accepted | rejected"
+  }
+
   IDENTITY_BUNDLES {
-    text user_id PK
-    text status
+    text user_id PK "One per user"
+    text status "pending | verified"
+    text fheKeyId "FHE service key reference"
   }
   IDENTITY_DOCUMENTS {
     text id PK
     text user_id FK
-    text document_hash
+    text document_hash "SHA-256 of document"
   }
   IDENTITY_VERIFICATION_DRAFTS {
     text id PK
-    text document_id
+    text document_id FK
   }
   IDENTITY_VERIFICATION_JOBS {
     text id PK
-    text draft_id
+    text draft_id FK
   }
-  SIGN_UP_SESSIONS {
-    text id PK
-    integer step
-    integer keys_secured
-  }
+
   ZK_PROOFS {
     text id PK
-    text document_id
+    text document_id FK "age, doc_validity, etc."
   }
   SIGNED_CLAIMS {
     text id PK
-    text document_id
+    text document_id FK "liveness, face_match, ocr"
   }
   ATTESTATION_EVIDENCE {
     text id PK
-    text document_id
+    text document_id FK "policy_hash + proof_set_hash"
   }
+
   ENCRYPTED_ATTRIBUTES {
     text id PK
-    text attribute_type
+    text attribute_type "dob_days, liveness_score, etc."
   }
   ENCRYPTED_SECRETS {
     text id PK
-    text secret_type
+    text secret_type "fhe_keys, profile_v1"
   }
   SECRET_WRAPPERS {
     text id PK
     text secret_id FK
-    text credential_id
+    text credential_id "Which passkey/wallet/opaque wraps this"
   }
-  PASSKEY {
-    text id PK
-    text userId FK
-    text credentialID
-  }
-  WALLET_ADDRESS {
-    text user_id FK
-    text address
-  }
-  BLOCKCHAIN_ATTESTATIONS {
-    text id PK
-    text network_id
-  }
+
   OAUTH_CLIENT {
     text client_id PK
-    text user_id FK
+    text user_id FK "Legacy individual ownership"
+    text referenceId "Organization ownership"
   }
   OAUTH_ACCESS_TOKEN {
     text id PK
@@ -291,6 +329,24 @@ erDiagram
     text client_id FK
     text user_id FK
   }
+  OAUTH_IDENTITY_DATA {
+    text id PK
+    text userId FK "Unique per (user, client)"
+    text clientId FK
+    blob encryptedBlob "AES-256-GCM, HKDF-bound"
+    text consentedScopes "JSON array"
+  }
+  RP_ENCRYPTION_KEYS {
+    text id PK
+    text clientId FK
+    text algorithm "x25519 | x25519-ml-kem"
+    text status "active | rotated | revoked"
+  }
+
+  BLOCKCHAIN_ATTESTATIONS {
+    text id PK
+    text network_id "Chain ID"
+  }
   OIDC4VCI_OFFERS {
     text id PK
     text user_id FK
@@ -301,7 +357,7 @@ erDiagram
     text id PK
     text user_id FK
     text credential_type
-    text status
+    text status "active | revoked"
   }
   JWKS {
     text id PK
@@ -351,7 +407,7 @@ This supports upgrades and re-verification without overwriting previous evidence
 
 ## Web3 Attestation Schema
 
-Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **date of birth (dobDays)**, **country code**, **compliance level**, and optional flags.
+Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **date of birth (dobDays)**, **compliance level**, and optional flags.
 Public metadata includes **proofSetHash**, **policyHash**, **issuerId**, and timestamps for auditability.
 
 The encrypted attributes allow compliance checks **under encryption**. The public metadata enables audits without revealing PII. See [Web3 Architecture](web3-architecture.md) for the implementation details.

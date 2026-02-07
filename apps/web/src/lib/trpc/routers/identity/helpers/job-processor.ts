@@ -11,6 +11,7 @@ import { ISSUER_ID, POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
+  getIdentityBundleByUserId,
   getIdentityDraftById,
   getIdentityVerificationJobById,
   updateIdentityDraft,
@@ -337,8 +338,10 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         const countryCodeEncrypted = false;
         const livenessScoreEncrypted = false;
-        const fheStatus: FheStatus = job.fheKeyId ? "pending" : "error";
-        if (!job.fheKeyId) {
+        const existingBundle = await getIdentityBundleByUserId(job.userId);
+        const effectiveFheKeyId = job.fheKeyId ?? existingBundle?.fheKeyId;
+        const fheStatus: FheStatus = "pending";
+        if (!effectiveFheKeyId) {
           issues.push("fhe_key_missing");
         }
 
@@ -364,10 +367,10 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           issuerId: ISSUER_ID,
           policyVersion: POLICY_VERSION,
           fheStatus,
-          fheError: fheStatus === "error" ? "fhe_key_missing" : null,
+          fheError: null,
         };
-        if (job.fheKeyId) {
-          bundleUpdate.fheKeyId = job.fheKeyId;
+        if (effectiveFheKeyId) {
+          bundleUpdate.fheKeyId = effectiveFheKeyId;
         }
 
         await upsertIdentityBundle(bundleUpdate);
@@ -379,8 +382,6 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             await upsertIdentityDocument({
               id: draft.documentId,
               userId: job.userId,
-              documentType: draft.documentType ?? null,
-              issuerCountry: draft.issuerCountry ?? null,
               documentHash: isDuplicateDocument
                 ? null
                 : (draft.documentHash ?? null),

@@ -26,9 +26,9 @@ import * as oidc4idaSchema from "./schema/oidc4ida";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as oidc4vciSchema from "./schema/oidc4vci";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as recoverySchema from "./schema/recovery";
+import * as organizationSchema from "./schema/organization";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as signUpSchema from "./schema/sign-up";
+import * as recoverySchema from "./schema/recovery";
 
 const schema = {
   ...attestationSchema,
@@ -41,8 +41,8 @@ const schema = {
   ...oauthProviderSchema,
   ...oidc4idaSchema,
   ...oidc4vciSchema,
+  ...organizationSchema,
   ...recoverySchema,
-  ...signUpSchema,
 };
 
 function isBuildTime() {

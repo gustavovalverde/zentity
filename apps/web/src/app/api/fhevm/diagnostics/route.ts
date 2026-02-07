@@ -188,8 +188,13 @@ export async function GET() {
       Number.isFinite(chainId) && chainId > 0 ? chainId : 11_155_111;
     const baseConfig = effectiveChainId === 1 ? MainnetConfig : SepoliaConfig;
 
+    if (!rpcUrl) {
+      throw new Error("FHEVM_RPC_URL is required for relayer SDK diagnostics");
+    }
+
     const instance = await createInstance({
       ...baseConfig,
+      network: rpcUrl,
       chainId: effectiveChainId,
       ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
         ? { gatewayChainId }
@@ -204,7 +209,6 @@ export async function GET() {
         ? { verifyingContractAddressInputVerification }
         : {}),
       ...(relayerUrl ? { relayerUrl } : {}),
-      ...(rpcUrl ? { network: rpcUrl } : {}),
     });
 
     const publicKey = instance.getPublicKey?.();

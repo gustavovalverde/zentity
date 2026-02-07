@@ -22,14 +22,15 @@ const assets = [
   },
   {
     id: "bb-single",
-    from: path.join(
-      root,
-      "node_modules/@aztec/bb.js/dest/node/barretenberg_wasm/barretenberg-threads.wasm.gz"
-    ),
-    // bb.js drops the "-threads" suffix when threads=1, so serve a copy
-    // under the non-threaded filename for environments without COI/SAB.
+    // Non-threaded WASM is embedded as a base64 data URL in bb.js's browser build.
+    // Extracted at setup time so bb.js can fetch it from our local path.
+    from: "__extract_from_data_url__",
     to: path.join(root, "public/bb/barretenberg.wasm.gz"),
     required: true,
+    extractDataUrl: path.join(
+      root,
+      "node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/fetch_code/browser/barretenberg.js"
+    ),
   },
   // =========================================================================
   // Noir.js runtime (ACVM + ABI) WASM assets
@@ -124,6 +125,32 @@ const assets = [
 ];
 
 for (const asset of assets) {
+  const extractSource = (asset as { extractDataUrl?: string }).extractDataUrl;
+
+  if (extractSource) {
+    // Extract gzipped WASM from base64 data URL embedded in JS module
+    if (!fs.existsSync(extractSource)) {
+      if (asset.required) {
+        throw new Error(
+          `Missing required data URL source (${asset.id}): ${extractSource}`
+        );
+      }
+      continue;
+    }
+    const jsContent = fs.readFileSync(extractSource, "utf-8");
+    const match = jsContent.match(
+      /data:application\/gzip;base64,([A-Za-z0-9+/=]+)/
+    );
+    if (!match) {
+      throw new Error(
+        `Could not extract base64 data URL from ${extractSource}`
+      );
+    }
+    fs.mkdirSync(path.dirname(asset.to), { recursive: true });
+    fs.writeFileSync(asset.to, Buffer.from(match[1], "base64"));
+    continue;
+  }
+
   if (!fs.existsSync(asset.from)) {
     if (asset.required) {
       throw new Error(

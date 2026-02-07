@@ -45,12 +45,11 @@ export const IDENTITY_SCOPE_CLAIMS: Record<
  * Human-readable descriptions for consent UI.
  */
 export const IDENTITY_SCOPE_DESCRIPTIONS: Record<IdentityScope, string> = {
-  "identity.name": "Your full name (given name and family name)",
-  "identity.dob": "Your date of birth",
-  "identity.address": "Your residential address",
-  "identity.document":
-    "Your identity document details (document number, type, issuing country)",
-  "identity.nationality": "Your nationality/nationalities",
+  "identity.name": "Full legal name",
+  "identity.dob": "Date of birth",
+  "identity.address": "Residential address",
+  "identity.document": "Document details (number, type, country)",
+  "identity.nationality": "Nationality",
 };
 
 /**

@@ -8,8 +8,6 @@ import {
   Calendar,
   CheckCircle,
   CheckCircle2,
-  FileCheck,
-  Globe,
   Shield,
 } from "lucide-react";
 import Link from "next/link";
@@ -37,7 +35,6 @@ import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
 } from "@/lib/db/queries/identity";
-import { getCountryDisplayName } from "@/lib/identity/labels";
 
 interface IdentityCardProps {
   userId: string | undefined;
@@ -245,7 +242,7 @@ function IdentitySummary({
   isVerified: boolean;
   hasAgeProof: boolean;
 }) {
-  if (!(latestDocument?.documentType || latestDocument?.issuerCountry)) {
+  if (!latestDocument) {
     return null;
   }
 
@@ -256,32 +253,6 @@ function IdentitySummary({
         {isVerified && <Badge variant="success">Verified</Badge>}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {latestDocument?.documentType && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
-              <FileCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Document Type</p>
-              <p className="font-medium">{latestDocument.documentType}</p>
-            </div>
-          </div>
-        )}
-
-        {latestDocument?.issuerCountry && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
-              <Globe className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Country</p>
-              <p className="font-medium">
-                {getCountryDisplayName(latestDocument.issuerCountry)}
-              </p>
-            </div>
-          </div>
-        )}
-
         {hasAgeProof && (
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">

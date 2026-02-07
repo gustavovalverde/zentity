@@ -177,12 +177,14 @@ export function areSignedClaimsComplete(claimTypes: string[]): boolean {
 /**
  * Check if FHE is complete based on attribute types
  *
- * FHE is complete if we have at least birth_year_offset or dob_days
- * (they're different formats for the same data)
+ * FHE is complete when required encrypted attributes are present:
+ * - DOB (birth_year_offset or dob_days)
+ * - liveness_score
  */
 export function isFheComplete(attributeTypes: string[]): boolean {
-  return (
+  const hasDob =
     attributeTypes.includes("birth_year_offset") ||
-    attributeTypes.includes("dob_days")
-  );
+    attributeTypes.includes("dob_days");
+  const hasLiveness = attributeTypes.includes("liveness_score");
+  return hasDob && hasLiveness;
 }

@@ -14,17 +14,19 @@ import { join } from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
-const authFile = join(__dirname, "e2e", ".auth", "user.json");
+const authFile = join(import.meta.dirname, "e2e", ".auth", "user.json");
 const isOidcOnly = process.env.E2E_OIDC_ONLY === "true";
 const useExternalServer = process.env.E2E_EXTERNAL_WEB_SERVER === "true";
 const useWebServer = !useExternalServer && process.env.E2E_SEPOLIA !== "true";
 
 // When using an external web server, use the dev server's database (defaults to .data/dev.db)
 // When starting our own server, use the isolated E2E database (e2e/.data/e2e.db)
-const devDbPath = join(__dirname, ".data", "dev.db");
+const devDbPath = join(import.meta.dirname, ".data", "dev.db");
 const e2eDbPath =
   process.env.E2E_DATABASE_PATH ??
-  (useExternalServer ? devDbPath : join(__dirname, "e2e", ".data", "e2e.db"));
+  (useExternalServer
+    ? devDbPath
+    : join(import.meta.dirname, "e2e", ".data", "e2e.db"));
 const e2eDbUrl =
   process.env.E2E_TURSO_DATABASE_URL ??
   (e2eDbPath.startsWith("file:") ? e2eDbPath : `file:${e2eDbPath}`);

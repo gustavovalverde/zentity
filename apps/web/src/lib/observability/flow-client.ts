@@ -4,7 +4,7 @@ const FLOW_STORAGE_KEY = "zentity.flow";
 
 let cachedFlowId: string | null = null;
 
-export function setFlowId(flowId: string | null): void {
+function setFlowId(flowId: string | null): void {
   cachedFlowId = flowId;
   if (globalThis.window === undefined) {
     return;

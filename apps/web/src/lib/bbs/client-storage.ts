@@ -16,10 +16,7 @@ import "client-only";
 
 import type { BbsCredential } from "./types";
 
-import { bytesToBase64 } from "@/lib/utils/base64";
-
 import {
-  serializeCredential as baseSerializeCredential,
   deserializeCredential,
   type SerializedBbsCredential,
 } from "./serialization";
@@ -108,70 +105,6 @@ function getDatabase(): Promise<IDBDatabase> {
   });
 
   return cachedDbPromise;
-}
-
-/**
- * Generate a deterministic credential ID from credential content.
- * Format: `bbs:${network}:${walletCommitment}:${verifiedAt}`
- */
-function generateCredentialId(credential: BbsCredential): string {
-  const { network, walletCommitment, verifiedAt } = credential.subject;
-  return `bbs:${network}:${walletCommitment.slice(0, 16)}:${verifiedAt}`;
-}
-
-/**
- * Serialize a BBS+ credential for storage.
- * Adds credential ID for IndexedDB storage.
- */
-function serializeCredential(
-  credential: BbsCredential
-): SerializedBbsCredential {
-  return baseSerializeCredential(credential, {
-    includeId: true,
-    generateId: () => generateCredentialId(credential),
-  });
-}
-
-/**
- * Store a BBS+ credential for a user.
- *
- * @param userId - Owner's user ID
- * @param credential - Credential to store
- * @param options - Optional storage options
- * @param options.commitmentSalt - Salt used for wallet commitment (for verification)
- */
-export async function storeBbsCredential(
-  userId: string,
-  credential: BbsCredential,
-  options?: { commitmentSalt?: Uint8Array }
-): Promise<void> {
-  const db = await getDatabase();
-  const credentialId = generateCredentialId(credential);
-  const serialized = serializeCredential(credential);
-  const key = `${userId}:${credentialId}`;
-
-  const record: StoredCredentialRecord = {
-    key,
-    userId,
-    credentialId,
-    credential: serialized,
-    storedAt: Date.now(),
-    commitmentSalt: options?.commitmentSalt
-      ? bytesToBase64(options.commitmentSalt)
-      : undefined,
-  };
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const request = store.put(record);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () =>
-      reject(
-        new Error(`Failed to store credential: ${request.error?.message}`)
-      );
-  });
 }
 
 /**

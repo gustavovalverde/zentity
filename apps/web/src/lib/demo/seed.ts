@@ -62,8 +62,6 @@ export async function seedDemoIdentity(userId: string): Promise<SeedResult> {
       .values({
         id: documentId,
         userId,
-        documentType: "passport",
-        issuerCountry: "USA",
         documentHash: docHash,
         nameCommitment,
         verifiedAt: createdAt,

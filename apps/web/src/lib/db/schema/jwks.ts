@@ -9,10 +9,10 @@ export const jwks = sqliteTable("jwks", {
   privateKey: text("private_key").notNull(),
   alg: text("alg"),
   crv: text("crv"),
-  createdAt: integer("created_at", { mode: "timestamp" })
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
-    .default(sql`(unixepoch())`),
-  expiresAt: text("expires_at"),
+    .default(sql`(unixepoch() * 1000)`),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
 });
 
 export type Jwk = typeof jwks.$inferSelect;

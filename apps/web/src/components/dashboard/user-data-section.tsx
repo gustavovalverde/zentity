@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  Calendar,
-  CheckCircle2,
-  FileText,
-  Globe,
-  Mail,
-  User,
-  XCircle,
-} from "lucide-react";
+import { Calendar, CheckCircle2, Mail, User, XCircle } from "lucide-react";
 import { memo, useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -105,18 +97,6 @@ function formatDate(dateString: string | null): string {
   } catch {
     return "Unknown";
   }
-}
-
-function formatDocumentType(type: string | null): string {
-  if (!type) {
-    return "Unknown";
-  }
-  const types: Record<string, string> = {
-    cedula: "National ID (Cedula)",
-    passport: "Passport",
-    drivers_license: "Driver's License",
-  };
-  return types[type] ?? type;
 }
 
 export function UserDataSection() {
@@ -277,38 +257,6 @@ export function UserDataSection() {
               <ItemTitle>{formatDate(data.createdAt)}</ItemTitle>
             </ItemContent>
           </Item>
-
-          {/* Document Type (if verified) */}
-          {data.documentType ? (
-            <>
-              <ItemSeparator />
-              <Item>
-                <ItemMedia variant="icon">
-                  <FileText className="h-5 w-5" />
-                </ItemMedia>
-                <ItemContent>
-                  <ItemDescription>Document Type</ItemDescription>
-                  <ItemTitle>{formatDocumentType(data.documentType)}</ItemTitle>
-                </ItemContent>
-              </Item>
-            </>
-          ) : null}
-
-          {/* Country (if verified) */}
-          {data.countryVerified ? (
-            <>
-              <ItemSeparator />
-              <Item>
-                <ItemMedia variant="icon">
-                  <Globe className="h-5 w-5" />
-                </ItemMedia>
-                <ItemContent>
-                  <ItemDescription>Country Verified</ItemDescription>
-                  <ItemTitle>{data.countryVerified}</ItemTitle>
-                </ItemContent>
-              </Item>
-            </>
-          ) : null}
         </ItemGroup>
 
         {/* Verification Status */}

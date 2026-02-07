@@ -14,6 +14,11 @@ import {
   upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
+import {
+  getIdentityBundleByUserId,
+  updateIdentityBundleFheStatus,
+  upsertIdentityBundle,
+} from "@/lib/db/queries/identity";
 
 export const runtime = "nodejs";
 
@@ -119,6 +124,7 @@ export async function POST(request: Request) {
     credentialId: enrollment.credentialId,
     wrappedDek: enrollment.wrappedDek,
     prfSalt: enrollment.prfSalt,
+    kekSource: "prf",
   });
 
   await updateEncryptedSecretMetadata({
@@ -129,6 +135,26 @@ export async function POST(request: Request) {
       keyId: enrollment.keyId,
     },
   });
+
+  // Persist enrollment status server-side to avoid client-side races where other
+  // flows (document OCR / background jobs) run before the identity bundle is updated.
+  const existingBundle = await getIdentityBundleByUserId(sessionUserId);
+  if (existingBundle) {
+    await updateIdentityBundleFheStatus({
+      userId: sessionUserId,
+      fheKeyId: enrollment.keyId,
+      fheStatus: "complete",
+      fheError: null,
+    });
+  } else {
+    await upsertIdentityBundle({
+      userId: sessionUserId,
+      status: "pending",
+      fheKeyId: enrollment.keyId,
+      fheStatus: "complete",
+      fheError: null,
+    });
+  }
 
   await consumeFheEnrollmentContext(registration.contextToken);
 

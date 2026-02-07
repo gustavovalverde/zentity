@@ -506,6 +506,90 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
         },
         opaque: {
           setPassword,
+          verifyPassword: async (params: {
+            password: string;
+          }): Promise<
+            Result<{
+              success: boolean;
+              exportKey: Uint8Array;
+            }>
+          > => {
+            try {
+              await ready;
+              const { clientLoginState, startLoginRequest } = client.startLogin(
+                {
+                  password: params.password,
+                }
+              );
+
+              const verifyChallenge = await $fetch<{
+                challenge: string;
+                state: string;
+              }>("/password/opaque/verify/challenge", {
+                method: "POST",
+                body: { loginRequest: startLoginRequest },
+              });
+
+              if (verifyChallenge.error || !verifyChallenge.data) {
+                const serverMessage = extractErrorMessage(
+                  verifyChallenge.error,
+                  "Password verification failed. Please try again."
+                );
+                return wrapError(new Error(serverMessage));
+              }
+
+              let verifyResult: ReturnType<typeof client.finishLogin>;
+              try {
+                verifyResult = client.finishLogin({
+                  clientLoginState,
+                  loginResponse: verifyChallenge.data.challenge,
+                  password: params.password,
+                });
+              } catch (opaqueError) {
+                const message =
+                  opaqueError instanceof Error
+                    ? opaqueError.message
+                    : String(opaqueError);
+                if (
+                  message.includes("invalid type") ||
+                  message.includes("unit value")
+                ) {
+                  return wrapError(new Error("Invalid password"));
+                }
+                return wrapError(opaqueError);
+              }
+
+              if (!verifyResult) {
+                return wrapError(new Error("Invalid password"));
+              }
+
+              const verifyComplete = await $fetch<{ success: boolean }>(
+                "/password/opaque/verify/complete",
+                {
+                  method: "POST",
+                  body: {
+                    loginResult: verifyResult.finishLoginRequest,
+                    encryptedServerState: verifyChallenge.data.state,
+                  },
+                }
+              );
+
+              if (verifyComplete.error || !verifyComplete.data) {
+                const serverMessage = extractErrorMessage(
+                  verifyComplete.error,
+                  "Password verification failed. Please try again."
+                );
+                return wrapError(new Error(serverMessage));
+              }
+
+              return wrapResult({
+                success: true,
+                exportKey: decodeExportKey(verifyResult.exportKey),
+              });
+            } catch (error) {
+              return wrapError(error);
+            }
+          },
           changePassword: async (params: {
             currentPassword: string;
             newPassword: string;

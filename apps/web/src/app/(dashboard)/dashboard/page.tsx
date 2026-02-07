@@ -39,7 +39,8 @@ export default async function DashboardPage() {
       {/* Header */}
       <div>
         <h1 className="font-bold text-2xl">
-          Welcome back, <ProfileGreetingName />
+          Welcome back,{" "}
+          <ProfileGreetingName fallback={session?.user?.name || "User"} />
         </h1>
         <p className="text-muted-foreground text-sm">
           Your privacy-preserving identity dashboard

@@ -20,7 +20,7 @@ export default function Home() {
             <Link href="/sign-in">
               <Button variant="ghost">Sign In</Button>
             </Link>
-            <Link href="/sign-up?fresh=1">
+            <Link href="/sign-up">
               <Button>Get Started</Button>
             </Link>
             <ModeToggle />
@@ -55,7 +55,7 @@ export default function Home() {
           </Alert>
 
           <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link href="/sign-up?fresh=1">
+            <Link href="/sign-up">
               <Button className="w-full sm:w-auto" size="lg">
                 Start Verification
               </Button>

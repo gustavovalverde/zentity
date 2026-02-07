@@ -231,7 +231,8 @@ describe("attestation router", () => {
       },
     });
     mockGetSelectedIdentityDocumentByUserId.mockReturnValue({
-      issuerCountry: "USA",
+      id: "doc-1",
+      status: "verified",
     });
     mockGetNetworkById.mockReturnValue({
       id: "fhevm_sepolia",

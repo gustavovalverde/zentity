@@ -18,9 +18,10 @@ import {
   siwe,
   twoFactor,
 } from "better-auth/plugins";
+import { organization } from "better-auth/plugins/organization";
+import { eq } from "drizzle-orm";
 import { SiweMessage } from "siwe";
 
-import { getFheEnrollmentContext } from "@/lib/auth/fhe-enrollment-tokens";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
   buildIdentityClaims,
@@ -32,9 +33,20 @@ import {
   extractIdentityScopes,
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
+  IDENTITY_SCOPES,
 } from "@/lib/auth/oidc/identity-scopes";
+import {
+  extractVcScopes,
+  filterVcClaimsByScopes,
+  VC_SCOPES,
+} from "@/lib/auth/oidc/vc-scopes";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
+import {
+  deleteOAuthIdentityData,
+  getOAuthIdentityData,
+  upsertOAuthIdentityData,
+} from "@/lib/db/queries/oauth-identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -62,6 +74,15 @@ import {
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
 } from "@/lib/db/schema/oidc4vci";
+import {
+  invitations,
+  members,
+  organizations,
+} from "@/lib/db/schema/organization";
+import {
+  decryptIdentityFromServer,
+  encryptIdentityForServer,
+} from "@/lib/privacy/server-encryption/identity";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { getBetterAuthSecret, getOpaqueServerSetup } from "@/lib/utils/env";
 
@@ -77,6 +98,9 @@ const betterAuthSchema = {
   oauthRefreshToken: oauthRefreshTokens,
   oauthAccessToken: oauthAccessTokens,
   oauthConsent: oauthConsents,
+  organization: organizations,
+  member: members,
+  invitation: invitations,
   jwks,
   oidc4idaVerifiedClaim: oidc4idaVerifiedClaims,
   oidc4vciOffer: oidc4vciOffers,
@@ -197,6 +221,14 @@ const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const identityClaimKeys = Array.from(
   new Set(Object.values(IDENTITY_SCOPE_CLAIMS).flat())
 );
+const publicClientScopes = [
+  "openid",
+  "profile",
+  "email",
+  "vc:identity",
+  ...VC_SCOPES,
+  ...IDENTITY_SCOPES,
+];
 const oidcStandardClaims = [
   "sub",
   "name",
@@ -364,24 +396,129 @@ export const auth = betterAuth({
     },
   },
   hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (
+        ctx.path !== "/oauth2/delete-consent" &&
+        ctx.path !== "/oauth2/update-consent"
+      ) {
+        return;
+      }
+
+      const consentId =
+        typeof ctx.body?.id === "string" && ctx.body.id.trim().length > 0
+          ? ctx.body.id.trim()
+          : null;
+      if (!consentId) {
+        return;
+      }
+
+      const consent = await db
+        .select({
+          id: oauthConsents.id,
+          userId: oauthConsents.userId,
+          clientId: oauthConsents.clientId,
+        })
+        .from(oauthConsents)
+        .where(eq(oauthConsents.id, consentId))
+        .limit(1)
+        .get();
+
+      if (!(consent?.userId && consent?.clientId)) {
+        return;
+      }
+
+      return {
+        context: {
+          zentityConsentCleanup: {
+            userId: consent.userId,
+            clientId: consent.clientId,
+          },
+        },
+      };
+    }),
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path !== "/two-factor/disable") {
+        // fallthrough: other after-hooks below
+      } else {
+        const userId = ctx.context.session?.user?.id;
+        if (!userId) {
+          return;
+        }
+        const config = await getRecoveryConfigByUserId(userId);
+        if (!config) {
+          return;
+        }
+        const guardian = await getRecoveryGuardianByType({
+          recoveryConfigId: config.id,
+          guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+        });
+        if (guardian) {
+          await deleteRecoveryGuardian(guardian.id);
+        }
         return;
       }
-      const userId = ctx.context.session?.user?.id;
-      if (!userId) {
+
+      // Consent revocation hygiene for identity.* data (RFC-0025).
+      // When consents are deleted or reduced, remove or re-filter stored identity blob.
+      if (
+        ctx.path !== "/oauth2/delete-consent" &&
+        ctx.path !== "/oauth2/update-consent"
+      ) {
         return;
       }
-      const config = await getRecoveryConfigByUserId(userId);
-      if (!config) {
+
+      const cleanup = (
+        ctx.context as unknown as {
+          zentityConsentCleanup?: { userId: string; clientId: string };
+        }
+      ).zentityConsentCleanup;
+      if (!cleanup) {
         return;
       }
-      const guardian = await getRecoveryGuardianByType({
-        recoveryConfigId: config.id,
-        guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
-      });
-      if (guardian) {
-        await deleteRecoveryGuardian(guardian.id);
+
+      if (ctx.path === "/oauth2/delete-consent") {
+        await deleteOAuthIdentityData(cleanup.userId, cleanup.clientId);
+        return;
+      }
+
+      if (ctx.path === "/oauth2/update-consent") {
+        const returned = ctx.context.returned as
+          | { scopes?: unknown; userId?: unknown; clientId?: unknown }
+          | undefined;
+        const nextScopes = Array.isArray(returned?.scopes)
+          ? (returned?.scopes as string[]).filter((s) => typeof s === "string")
+          : [];
+
+        const identityScopes = extractIdentityScopes(nextScopes);
+        if (identityScopes.length === 0) {
+          await deleteOAuthIdentityData(cleanup.userId, cleanup.clientId);
+          return;
+        }
+
+        const existing = await getOAuthIdentityData(
+          cleanup.userId,
+          cleanup.clientId
+        );
+        if (!existing) {
+          return;
+        }
+
+        const decrypted = await decryptIdentityFromServer(
+          existing.encryptedBlob,
+          cleanup
+        );
+        const filtered = filterIdentityByScopes(decrypted, nextScopes);
+        const reEncrypted = await encryptIdentityForServer(filtered, cleanup);
+
+        await upsertOAuthIdentityData({
+          id: existing.id,
+          userId: cleanup.userId,
+          clientId: cleanup.clientId,
+          encryptedBlob: reEncrypted,
+          consentedScopes: nextScopes,
+          capturedAt: existing.capturedAt ?? new Date().toISOString(),
+          expiresAt: existing.expiresAt ?? null,
+        });
       }
       return;
     }),
@@ -409,27 +546,12 @@ export const auth = betterAuth({
     }),
     passkey({
       origin: getTrustedOrigins(),
-      // Disable fresh session requirement for passkey registration.
-      // During sign-up, users have anonymous sessions that may not be "fresh"
-      // by the time they reach passkey creation. Instead, we validate the
-      // short-lived FHE enrollment context token created for that session.
       registration: {
         requireSession: false,
-        resolveUser: async ({ context }) => {
-          if (!context || typeof context !== "string") {
-            throw new Error("Missing FHE enrollment context");
-          }
-          const enrollmentCtx = await getFheEnrollmentContext(context);
-          if (!enrollmentCtx) {
-            throw new Error("Invalid or expired FHE enrollment context");
-          }
-          return {
-            id: enrollmentCtx.userId,
-            name: enrollmentCtx.email || enrollmentCtx.userId,
-            displayName: enrollmentCtx.email || enrollmentCtx.userId,
-          };
-        },
       },
+    }),
+    organization({
+      creatorRole: "owner",
     }),
     siwe({
       domain: getAuthDomain(),
@@ -476,14 +598,13 @@ export const auth = betterAuth({
         "profile",
         "email",
         "offline_access",
-        // Verifiable credential scope
-        "vc:identity",
+        // VC verification status scopes (no PII — derived booleans only)
+        "vc:identity", // Umbrella: all verification claims
+        ...VC_SCOPES, // Granular: vc:verification, vc:age, vc:document, etc.
         // RP compliance key management (client_credentials)
         "compliance:key:read",
         "compliance:key:write",
-        // Identity data scopes (RFC-0025)
-        // These allow RPs to receive actual identity data via userinfo
-        "identity", // Verification status flags (no PII)
+        // Identity data scopes — actual PII (RFC-0025)
         "identity.name", // given_name, family_name, name
         "identity.dob", // birthdate
         "identity.address", // address (OIDC standard format)
@@ -502,24 +623,31 @@ export const auth = betterAuth({
       allowDynamicClientRegistration: true,
       // Allow public clients (no client_secret) - required for mobile/browser wallets
       allowUnauthenticatedClientRegistration: true,
+      clientRegistrationDefaultScopes: publicClientScopes,
+      clientRegistrationAllowedScopes: publicClientScopes,
+      clientReference: ({ session }) =>
+        typeof session?.activeOrganizationId === "string"
+          ? session.activeOrganizationId
+          : undefined,
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
       customUserInfoClaims: async ({ user, scopes, jwt }) => {
-        let scopeList: string[] = [];
-        if (Array.isArray(scopes)) {
-          scopeList = scopes;
-        }
+        const scopeList: string[] = Array.isArray(scopes) ? scopes : [];
         const claims: Record<string, unknown> = {};
 
-        const wantsVerification =
-          scopeList.includes("vc:identity") || scopeList.includes("identity");
-        if (wantsVerification) {
-          Object.assign(claims, await buildVcClaims(user.id));
+        // VC verification claims — filtered by granular vc:* sub-scopes
+        const hasVcScopes =
+          scopeList.includes("vc:identity") ||
+          extractVcScopes(scopeList).length > 0;
+        if (hasVcScopes) {
+          const allVcClaims = await buildVcClaims(user.id);
+          Object.assign(claims, filterVcClaimsByScopes(allVcClaims, scopeList));
         }
 
+        // Identity PII claims — filtered by identity.* sub-scopes
         const requestedIdentityScopes = extractIdentityScopes(scopeList);
         const clientId =
           (jwt?.azp as string | undefined) ??
@@ -527,8 +655,10 @@ export const auth = betterAuth({
         if (clientId && requestedIdentityScopes.length > 0) {
           const identityClaims = await buildIdentityClaims(user.id, clientId);
           if (identityClaims) {
-            const filtered = filterIdentityByScopes(identityClaims, scopeList);
-            Object.assign(claims, filtered);
+            Object.assign(
+              claims,
+              filterIdentityByScopes(identityClaims, scopeList)
+            );
           }
         }
 
@@ -554,6 +684,7 @@ export const auth = betterAuth({
         : {}),
     }),
     oidc4vp({
+      expectedAudience: authIssuer,
       allowedIssuers: [authIssuer],
       resolveIssuerJwks: async (issuer: string) => {
         const jwksUrl =

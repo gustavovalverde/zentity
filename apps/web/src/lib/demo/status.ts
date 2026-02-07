@@ -29,8 +29,6 @@ export async function getDemoIdentityStatus(userId: string) {
           id: document.id,
           verifiedAt: document.verifiedAt ?? null,
           status: document.status,
-          issuerCountry: document.issuerCountry ?? null,
-          documentType: document.documentType ?? null,
         }
       : null,
   };

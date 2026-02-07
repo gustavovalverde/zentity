@@ -15,11 +15,13 @@ export const oidc4vciOffers = sqliteTable(
     credentialConfigurationId: text("credential_configuration_id").notNull(),
     preAuthorizedCodeEncrypted: text("pre_authorized_code_encrypted").notNull(),
     txCodeHash: text("tx_code_hash"),
+    txCodeInputMode: text("tx_code_input_mode"),
+    txCodeLength: integer("tx_code_length"),
     issuerState: text("issuer_state"),
-    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" })
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
-      .default(sql`(unixepoch())`),
+      .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
     index("oidc4vci_offer_user_id_idx").on(table.userId),
@@ -39,11 +41,11 @@ export const oidc4vciIssuedCredentials = sqliteTable(
     statusListId: text("status_list_id").notNull(),
     statusListIndex: integer("status_list_index").notNull(),
     status: integer("status").notNull().default(0),
-    revokedAt: integer("revoked_at", { mode: "timestamp" }),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
     credential: text("credential").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" })
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
-      .default(sql`(unixepoch())`),
+      .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
     index("oidc4vci_issued_credential_user_id_idx").on(table.userId),

@@ -501,7 +501,11 @@ async function tryLoadWithWallet(
 
 /**
  * Load a secret by type, automatically selecting the appropriate credential.
- * Tries credential types in priority order: PRF (passkey) > OPAQUE (password) > Wallet.
+ * Preference order:
+ * 1) Any cached credential material (passkey, wallet, opaque)
+ * 2) Passkey PRF prompt
+ * 3) Wallet signature prompt
+ * 4) OPAQUE re-login
  */
 export async function loadSecret(params: {
   secretType: SecretType;
@@ -556,27 +560,98 @@ export async function loadSecret(params: {
     label,
   };
 
-  const prfResult = await tryLoadWithPrf(ctx, bundle.wrappers, params.userId);
-  if (prfResult) {
-    return prfResult;
+  const prfWrappers = bundle.wrappers.filter((w) => w.prfSalt);
+  const opaqueWrapper = bundle.wrappers.find(
+    (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
+  );
+  const walletWrapper = bundle.wrappers.find((w) =>
+    w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
+  );
+
+  const passkeyCredentialIds = prfWrappers.map(
+    (wrapper) => wrapper.credentialId
+  );
+  const hasCachedPasskey =
+    passkeyCredentialIds.length > 0 &&
+    Boolean(getCachedPasskeyUnlock(passkeyCredentialIds));
+
+  let hasCachedWallet = false;
+  let hasCachedOpaque = false;
+  let cachedUserId: string | null = null;
+
+  if (walletWrapper || opaqueWrapper) {
+    cachedUserId = await resolveUserId(params.userId, ctx.label);
   }
 
-  const opaqueResult = await tryLoadWithOpaque(
-    ctx,
-    bundle.wrappers,
-    params.userId
-  );
-  if (opaqueResult) {
-    return opaqueResult;
+  if (walletWrapper && cachedUserId) {
+    const parsed = parseWalletCredentialId(walletWrapper.credentialId);
+    if (parsed) {
+      hasCachedWallet = Boolean(
+        getCachedWalletSignature(cachedUserId, parsed.address, parsed.chainId)
+      );
+    }
   }
 
-  const walletResult = await tryLoadWithWallet(
-    ctx,
-    bundle.wrappers,
-    params.userId
-  );
-  if (walletResult) {
-    return walletResult;
+  if (opaqueWrapper && cachedUserId) {
+    hasCachedOpaque = Boolean(getOpaqueKey(cachedUserId));
+  }
+
+  if (hasCachedPasskey) {
+    const prfResult = await tryLoadWithPrf(ctx, bundle.wrappers, params.userId);
+    if (prfResult) {
+      return prfResult;
+    }
+  }
+
+  if (hasCachedWallet) {
+    const walletResult = await tryLoadWithWallet(
+      ctx,
+      bundle.wrappers,
+      params.userId
+    );
+    if (walletResult) {
+      return walletResult;
+    }
+  }
+
+  if (hasCachedOpaque) {
+    const opaqueResult = await tryLoadWithOpaque(
+      ctx,
+      bundle.wrappers,
+      params.userId
+    );
+    if (opaqueResult) {
+      return opaqueResult;
+    }
+  }
+
+  if (prfWrappers.length > 0) {
+    const prfResult = await tryLoadWithPrf(ctx, bundle.wrappers, params.userId);
+    if (prfResult) {
+      return prfResult;
+    }
+  }
+
+  if (walletWrapper) {
+    const walletResult = await tryLoadWithWallet(
+      ctx,
+      bundle.wrappers,
+      params.userId
+    );
+    if (walletResult) {
+      return walletResult;
+    }
+  }
+
+  if (opaqueWrapper) {
+    const opaqueResult = await tryLoadWithOpaque(
+      ctx,
+      bundle.wrappers,
+      params.userId
+    );
+    if (opaqueResult) {
+      return opaqueResult;
+    }
   }
 
   throw new Error(`No credentials are registered for this ${label}.`);

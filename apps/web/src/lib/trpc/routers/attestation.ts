@@ -40,6 +40,7 @@ import {
   updateBlockchainAttestationWallet,
 } from "@/lib/db/queries/attestation";
 import {
+  getLatestIdentityDraftByUserAndDocument,
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
@@ -219,6 +220,12 @@ export const attestationRouter = router({
         });
       }
 
+      // Get draft for metadata (issuerCountry stored in transient draft, not permanent document)
+      const draft = await getLatestIdentityDraftByUserAndDocument(
+        ctx.userId,
+        identityDocument.id
+      );
+
       // Check network availability
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
@@ -333,9 +340,7 @@ export const attestationRouter = router({
           message: "Invalid birth year offset in identity proof",
         });
       }
-      const countryCode = countryCodeToNumeric(
-        identityDocument.issuerCountry || ""
-      );
+      const countryCode = countryCodeToNumeric(draft?.issuerCountry || "");
       const complianceLevel = getComplianceLevel(verificationStatus);
 
       // Submit attestation via provider

@@ -1,5 +1,7 @@
 "use client";
 
+import type { ProfileSecretPayload } from "@/lib/privacy/secrets/profile";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -7,6 +9,7 @@ import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
 } from "@/lib/identity/document/document-ocr";
+import { resolveEnrollmentCredential } from "@/lib/privacy/credentials/resolve";
 import { trpc } from "@/lib/trpc/client";
 import { resizeImageFile } from "@/lib/utils/image";
 import { useVerificationStore } from "@/store/verification";
@@ -82,36 +85,36 @@ export function useDocumentProcessing(
     }
   }, [resetOnMount, storeReset]);
 
-  // Initialize state from store on mount
-  // This effect syncs local state with Zustand store on initial render
+  // Initialize local state from store on mount (runs once)
   const hasInitializedRef = useRef(false);
   useEffect(() => {
-    // Only run once on mount (after potential reset)
     if (hasInitializedRef.current) {
       return;
     }
     if (resetOnMount && !hasResetRef.current) {
-      // Wait for reset to complete first
       return;
     }
 
     hasInitializedRef.current = true;
 
-    // If we have an idDocument but no documentResult, clear the stale file.
-    // This happens when navigating away mid-flow - File object stays in memory
-    // but documentResult (not persisted) is lost.
-    if (idDocument && !documentResult) {
+    // Read current store state — not stale closures from a previous render.
+    // When resetOnMount is true, the reset effect above has already called
+    // storeReset() (Zustand set is synchronous), so getState() sees clean state.
+    const { idDocument: currentDoc, documentResult: currentResult } =
+      useVerificationStore.getState();
+
+    if (currentDoc && !currentResult) {
       storeSet({ idDocument: null, idDocumentBase64: null });
       return;
     }
 
-    if (idDocument?.name) {
-      setFileName(idDocument.name);
+    if (currentDoc?.name) {
+      setFileName(currentDoc.name);
     }
-    if (documentResult) {
+    if (currentResult) {
       setProcessingState("verified");
     }
-  }, [idDocument, documentResult, storeSet, resetOnMount]);
+  }, [storeSet, resetOnMount]);
 
   // Generate preview URL when file is selected
   useEffect(() => {
@@ -151,6 +154,8 @@ export function useDocumentProcessing(
     storeSet({
       userSalt: null,
       extractedName: null,
+      extractedFirstName: null,
+      extractedLastName: null,
       extractedDOB: null,
       extractedDocNumber: null,
       extractedNationality: null,
@@ -243,6 +248,8 @@ export function useDocumentProcessing(
           if (result.extractedData) {
             storeSet({
               extractedName: result.extractedData.fullName || null,
+              extractedFirstName: result.extractedData.firstName || null,
+              extractedLastName: result.extractedData.lastName || null,
               extractedDOB: result.extractedData.dateOfBirth || null,
               extractedDocNumber: result.extractedData.documentNumber || null,
               extractedNationality: result.extractedData.nationality || null,
@@ -252,6 +259,33 @@ export function useDocumentProcessing(
                 result.extractedData.expirationDate || null,
               userSalt: response.userSalt ?? null,
             });
+
+            // Store profile secret (fire-and-forget)
+            // Credential material was cached during FHE enrollment
+            const credential = await resolveEnrollmentCredential();
+            if (credential) {
+              const payload: ProfileSecretPayload = {
+                fullName: result.extractedData.fullName ?? null,
+                firstName: result.extractedData.firstName ?? null,
+                lastName: result.extractedData.lastName ?? null,
+                dateOfBirth: result.extractedData.dateOfBirth ?? null,
+                documentNumber: result.extractedData.documentNumber ?? null,
+                documentType: result.documentType ?? null,
+                documentOrigin: result.documentOrigin ?? null,
+                nationality: result.extractedData.nationality ?? null,
+                nationalityCode: result.extractedData.nationalityCode ?? null,
+                userSalt: response.userSalt ?? null,
+                updatedAt: new Date().toISOString(),
+              };
+              import("@/lib/privacy/secrets/profile")
+                .then(({ storeProfileSecret }) =>
+                  storeProfileSecret({ payload, credential })
+                )
+                .catch(() => {
+                  // Non-blocking: profile secret storage failure
+                  // doesn't break the verification flow
+                });
+            }
           }
         } else {
           setProcessingState("rejected");
@@ -284,6 +318,8 @@ export function useDocumentProcessing(
       idDocumentBase64: null,
       documentResult: null,
       extractedName: null,
+      extractedFirstName: null,
+      extractedLastName: null,
       extractedDOB: null,
       extractedDocNumber: null,
       extractedNationality: null,

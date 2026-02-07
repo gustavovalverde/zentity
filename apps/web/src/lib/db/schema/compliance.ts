@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { oauthClients } from "./oauth-provider";
 import { defaultId } from "./utils";
@@ -52,6 +52,9 @@ export const rpEncryptionKeys = sqliteTable(
       table.clientId,
       table.keyAlgorithm
     ),
+    uniqueIndex("rp_encryption_key_client_algorithm_active_unique")
+      .on(table.clientId, table.keyAlgorithm)
+      .where(sql`status = 'active'`),
     index("idx_rp_encryption_keys_status").on(table.status),
   ]
 );

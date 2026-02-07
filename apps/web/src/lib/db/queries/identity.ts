@@ -168,7 +168,7 @@ export const getIdentityBundleByUserId = cache(
 
 /**
  * Check if user has completed sign-up by verifying identity bundle exists.
- * The identity bundle is created only when FHE enrollment completes (passkey or password flow).
+ * The identity bundle is created during account creation (before FHE enrollment).
  */
 export const hasCompletedSignUp = cache(async function hasCompletedSignUp(
   userId: string
@@ -510,32 +510,55 @@ export async function upsertIdentityBundle(data: {
   fheStatus?: FheStatus | null;
   fheError?: string | null;
 }): Promise<void> {
+  const insertValues: typeof identityBundles.$inferInsert = {
+    userId: data.userId,
+    walletAddress: data.walletAddress ?? null,
+    status: data.status ?? "pending",
+    policyVersion: data.policyVersion ?? null,
+    issuerId: data.issuerId ?? null,
+    attestationExpiresAt: data.attestationExpiresAt ?? null,
+    fheKeyId: data.fheKeyId ?? null,
+    fheStatus: data.fheStatus ?? null,
+    fheError: data.fheError ?? null,
+  };
+
+  // Treat this function as a partial upsert: undefined means "leave unchanged"
+  // on update, while null means "explicitly clear".
+  const updateSet: Record<string, unknown> = {
+    updatedAt: sql`datetime('now')`,
+  };
+
+  if (data.walletAddress !== undefined) {
+    updateSet.walletAddress = data.walletAddress;
+  }
+  if (data.status !== undefined) {
+    updateSet.status = data.status;
+  }
+  if (data.policyVersion !== undefined) {
+    updateSet.policyVersion = data.policyVersion;
+  }
+  if (data.issuerId !== undefined) {
+    updateSet.issuerId = data.issuerId;
+  }
+  if (data.attestationExpiresAt !== undefined) {
+    updateSet.attestationExpiresAt = data.attestationExpiresAt;
+  }
+  if (data.fheKeyId !== undefined) {
+    updateSet.fheKeyId = data.fheKeyId;
+  }
+  if (data.fheStatus !== undefined) {
+    updateSet.fheStatus = data.fheStatus;
+  }
+  if (data.fheError !== undefined) {
+    updateSet.fheError = data.fheError;
+  }
+
   await db
     .insert(identityBundles)
-    .values({
-      userId: data.userId,
-      walletAddress: data.walletAddress ?? null,
-      status: data.status ?? "pending",
-      policyVersion: data.policyVersion ?? null,
-      issuerId: data.issuerId ?? null,
-      attestationExpiresAt: data.attestationExpiresAt ?? null,
-      fheKeyId: data.fheKeyId ?? null,
-      fheStatus: data.fheStatus ?? null,
-      fheError: data.fheError ?? null,
-    })
+    .values(insertValues)
     .onConflictDoUpdate({
       target: identityBundles.userId,
-      set: {
-        walletAddress: data.walletAddress ?? null,
-        status: data.status ?? "pending",
-        policyVersion: data.policyVersion ?? null,
-        issuerId: data.issuerId ?? null,
-        attestationExpiresAt: data.attestationExpiresAt ?? null,
-        fheKeyId: data.fheKeyId ?? null,
-        fheStatus: data.fheStatus ?? null,
-        fheError: data.fheError ?? null,
-        updatedAt: sql`datetime('now')`,
-      },
+      set: updateSet,
     })
     .run();
 }
@@ -618,8 +641,6 @@ export async function upsertIdentityDocument(
       target: identityDocuments.id,
       set: {
         userId: data.userId,
-        documentType: data.documentType,
-        issuerCountry: data.issuerCountry,
         documentHash: data.documentHash,
         nameCommitment: data.nameCommitment,
         verifiedAt: data.verifiedAt,

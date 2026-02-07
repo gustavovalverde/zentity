@@ -28,16 +28,10 @@ import { getAssuranceState, getUnauthenticatedAssuranceState } from "../data";
 /**
  * Helper to create a verified identity document with all required fields
  */
-async function createVerifiedDocument(
-  docId: string,
-  userId: string,
-  options?: { documentType?: string; issuerCountry?: string }
-) {
+async function createVerifiedDocument(docId: string, userId: string) {
   await createIdentityDocument({
     id: docId,
     userId,
-    documentType: options?.documentType ?? "passport",
-    issuerCountry: options?.issuerCountry ?? "US",
     documentHash: crypto.randomBytes(32).toString("hex"),
     nameCommitment: crypto.randomBytes(32).toString("hex"),
     status: "verified",
@@ -217,6 +211,13 @@ describe("assurance data layer", () => {
         attributeType: "birth_year_offset",
         ciphertext: crypto.randomBytes(256),
       });
+      await insertEncryptedAttribute({
+        id: crypto.randomUUID(),
+        userId,
+        source: "fhe-service",
+        attributeType: "liveness_score",
+        ciphertext: crypto.randomBytes(256),
+      });
 
       const state = await getAssuranceState(userId, mockSession);
 
@@ -334,6 +335,13 @@ describe("assurance data layer", () => {
         userId,
         source: "fhe-service",
         attributeType: "birth_year_offset",
+        ciphertext: crypto.randomBytes(256),
+      });
+      await insertEncryptedAttribute({
+        id: crypto.randomUUID(),
+        userId,
+        source: "fhe-service",
+        attributeType: "liveness_score",
         ciphertext: crypto.randomBytes(256),
       });
 

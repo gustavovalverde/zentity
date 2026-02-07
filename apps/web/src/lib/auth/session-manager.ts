@@ -12,16 +12,13 @@ import { resetFheKeyStoreCache } from "@/lib/privacy/fhe/store";
 import { resetProfileSecretCache } from "@/lib/privacy/secrets/profile";
 import { redirectTo as navigateTo } from "@/lib/utils/navigation";
 
-const SIGN_UP_STORAGE_KEY = "zentity-sign-up";
-
 /**
  * Cookie names to clear during session transitions.
- * These are set by Better Auth and sign-up flows.
+ * These are set by Better Auth.
  */
 const SESSION_COOKIES = [
   "better-auth.session_token",
   "better-auth.session_data",
-  "zentity-wizard",
 ] as const;
 
 /**
@@ -35,15 +32,6 @@ function clearClientCaches(): void {
   resetProfileSecretCache();
   clearAllCredentialCaches();
   resetWalletSignatureCache();
-
-  // Clear sign-up wizard storage (sessionStorage only)
-  if (globalThis.window !== undefined) {
-    try {
-      globalThis.window.sessionStorage.removeItem(SIGN_UP_STORAGE_KEY);
-    } catch {
-      // Ignore storage failures
-    }
-  }
 
   // Clear sessionStorage (flow ID)
   resetFlowId();
@@ -122,6 +110,28 @@ export async function completeSignOut(
 
   // 6. Redirect
   navigateTo(redirectToPath);
+}
+
+/**
+ * Invalidate only the session data cache cookie.
+ * Preserves the session_token (user stays authenticated) but forces
+ * the next server-side getSession() to re-read from the database.
+ *
+ * Call after updating user data (email, name, isAnonymous) via Drizzle
+ * to ensure the dashboard renders fresh data instead of stale cache.
+ */
+export function invalidateSessionDataCache(): void {
+  if (globalThis.document === undefined) {
+    return;
+  }
+
+  const secureFlag =
+    globalThis.window.location.protocol === "https:" ? "; Secure" : "";
+
+  // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie cache invalidation
+  document.cookie = `better-auth.session_data=; Max-Age=0; Path=/${secureFlag}`;
+  // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie cache invalidation
+  document.cookie = `better-auth.session_data=; Max-Age=0; Path=/; SameSite=Lax${secureFlag}`;
 }
 
 /**

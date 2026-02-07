@@ -75,12 +75,6 @@ const nextConfig: NextConfig = {
   ],
 
   headers() {
-    // Security headers applied to all routes.
-    // COEP/COOP are set server-side for proper SharedArrayBuffer support in nested workers.
-    // Service worker approach (coi-serviceworker) cannot intercept nested worker requests.
-    // See: https://github.com/w3c/ServiceWorker/issues/1529
-
-    // Base security headers (shared across all routes)
     const securityHeaders: { key: string; value: string }[] = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "DENY" },
@@ -89,8 +83,6 @@ const nextConfig: NextConfig = {
         key: "Permissions-Policy",
         value: "camera=(self), microphone=(), geolocation=()",
       },
-      // "credentialless" is more lenient than "require-corp" - allows cross-origin resources
-      // without explicit CORP headers while still enabling crossOriginIsolated
       { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
     ];
 
@@ -108,22 +100,15 @@ const nextConfig: NextConfig = {
       });
     }
 
-    // Cross-origin isolated headers for routes needing SharedArrayBuffer (WASM multi-threading)
-    // Used by: TFHE keygen (sign-up), Barretenberg ZK proving (verification)
+    // COOP: same-origin enables crossOriginIsolated → SharedArrayBuffer → multi-threaded WASM.
+    // Only verification routes need it (Barretenberg ZK proofs, TFHE encryption).
+    // Other routes must NOT set COOP: same-origin — it blocks popup-based wallets (Base SDK).
     const isolatedHeaders = [
       ...securityHeaders,
       { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
     ];
 
-    // Wallet-friendly headers for routes with Web3 popup flows (no WASM needed)
-    // "same-origin-allow-popups" allows wallet SDKs (e.g., Coinbase Smart Wallet) to
-    // communicate via popups while maintaining COOP security for same-origin windows
-    const walletHeaders = [
-      ...securityHeaders,
-      { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
-    ];
-
-    const wasmHeaders = [
+    return [
       {
         source: "/:path*.wasm",
         headers: [{ key: "Content-Type", value: "application/wasm" }],
@@ -135,18 +120,13 @@ const nextConfig: NextConfig = {
           { key: "Content-Encoding", value: "gzip" },
         ],
       },
-    ];
-
-    return [
-      ...wasmHeaders,
-      // Wallet routes: allow popups for Web3 SDK flows
-      // Note: Coinbase Smart Wallet is disabled globally (enableCoinbase: false in
-      // web3-provider.tsx) because its popup flow conflicts with COOP: same-origin
-      // required for SharedArrayBuffer/WASM on FHE routes like /sign-up.
-      { source: "/dashboard/attestation/:path*", headers: walletHeaders },
-      { source: "/dashboard/defi-demo/:path*", headers: walletHeaders },
-      // All other routes: cross-origin isolated for SharedArrayBuffer (WASM multi-threading)
-      { source: "/(.*)", headers: isolatedHeaders },
+      // Verification routes: cross-origin isolated for multi-threaded WASM
+      {
+        source: "/dashboard/verify/:path*",
+        headers: isolatedHeaders,
+      },
+      // All other routes: standard security headers (no COOP restriction)
+      { source: "/(.*)", headers: securityHeaders },
     ];
   },
 };

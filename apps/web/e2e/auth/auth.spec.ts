@@ -53,9 +53,6 @@ test.describe("Authentication Flow", () => {
   test("should show validation error for invalid email", async ({ page }) => {
     await page.goto("/sign-in");
 
-    // Sign-in is passkey-first, click "More options" to reveal email/password form
-    await page.getByRole("tab", { name: "More options" }).click();
-
     // The field accepts "Email or Recovery ID" - fill with invalid format
     const emailField = page.getByPlaceholder(EMAIL_PLACEHOLDER_PATTERN);
     await emailField.waitFor({ timeout: 10_000 });

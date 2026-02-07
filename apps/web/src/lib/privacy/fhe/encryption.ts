@@ -2,7 +2,9 @@ import "server-only";
 
 import crypto from "node:crypto";
 
+import { isFheComplete } from "@/lib/assurance/compute";
 import {
+  getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   insertEncryptedAttribute,
 } from "@/lib/db/queries/crypto";
@@ -14,10 +16,7 @@ import {
   getVerificationStatus,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
-import {
-  countryCodeToNumeric,
-  getComplianceLevel,
-} from "@/lib/identity/verification/compliance";
+import { getComplianceLevel } from "@/lib/identity/verification/compliance";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
@@ -30,7 +29,6 @@ export interface FheEncryptionSchedule {
   reason?: string;
   /** Full DOB as days since 1900-01-01 (UTC) */
   dobDays?: number | null;
-  countryCodeNumeric?: number | null;
 }
 
 const activeFheJobs = new Set<string>();
@@ -38,6 +36,16 @@ const pendingContexts = new Map<
   string,
   Omit<FheEncryptionSchedule, "userId">
 >();
+
+/**
+ * Transient DOB cache — survives across FHE encryption attempts.
+ *
+ * dobDays is the only FHE attribute never persisted to the DB (privacy).
+ * If encryption fails on the first attempt, dobDays would be lost because
+ * pendingContexts is consumed before runFheEncryption executes.
+ * This cache preserves dobDays until encryption succeeds.
+ */
+const transientDobDays = new Map<string, number>();
 
 function shouldEncryptWithKey(
   existing: { keyId: string | null } | null,
@@ -69,10 +77,14 @@ async function runFheEncryption(
       const bundle = await getIdentityBundleByUserId(userId);
       const keyId = bundle?.fheKeyId ?? null;
       if (!keyId) {
+        // Missing keyId is not a terminal error. It can happen if an encryption
+        // job is scheduled before enrollment status is persisted (or stale jobs
+        // run after sign-out). Mark as pending and let the preflight gate drive
+        // enrollment; do not bounce users back with an "error" state.
         await updateIdentityBundleFheStatus({
           userId,
-          fheStatus: "error",
-          fheError: "fhe_key_missing",
+          fheStatus: "pending",
+          fheError: null,
         });
         span.setAttribute("fhe.key_missing", true);
         return;
@@ -89,20 +101,12 @@ async function runFheEncryption(
           )
         : await getLatestIdentityDraftByUserId(userId);
 
-      // dobDays comes from context only (never persisted to DB for privacy)
-      // FHE encryption with dobDays must be scheduled during document processing
+      // dobDays is never persisted to DB (privacy). Resolve from context first,
+      // then fall back to transient cache (survives across FHE retry attempts).
       const dobDays =
-        typeof context?.dobDays === "number" ? context.dobDays : null;
-      // Resolve countryCodeNumeric: context > draft.issuerCountry conversion
-      const countryCodeNumeric = (() => {
-        if (typeof context?.countryCodeNumeric === "number") {
-          return context.countryCodeNumeric;
-        }
-        if (draft?.issuerCountry) {
-          return countryCodeToNumeric(draft.issuerCountry);
-        }
-        return null;
-      })();
+        typeof context?.dobDays === "number"
+          ? context.dobDays
+          : (transientDobDays.get(userId) ?? null);
       const livenessScore = draft?.antispoofScore;
 
       const verificationStatus = await getVerificationStatus(userId);
@@ -111,17 +115,12 @@ async function runFheEncryption(
         : null;
 
       // Parallelize independent attribute lookups
-      const [
-        existingDobDays,
-        existingCountryCode,
-        existingLivenessScore,
-        existingCompliance,
-      ] = await Promise.all([
-        getLatestEncryptedAttributeByUserAndType(userId, "dob_days"),
-        getLatestEncryptedAttributeByUserAndType(userId, "country_code"),
-        getLatestEncryptedAttributeByUserAndType(userId, "liveness_score"),
-        getLatestEncryptedAttributeByUserAndType(userId, "compliance_level"),
-      ]);
+      const [existingDobDays, existingLivenessScore, existingCompliance] =
+        await Promise.all([
+          getLatestEncryptedAttributeByUserAndType(userId, "dob_days"),
+          getLatestEncryptedAttributeByUserAndType(userId, "liveness_score"),
+          getLatestEncryptedAttributeByUserAndType(userId, "compliance_level"),
+        ]);
 
       // DOB days: bounded integer (base 1900-01-01).
       const hasDobDaysValue =
@@ -129,15 +128,9 @@ async function runFheEncryption(
         Number.isInteger(dobDays) &&
         dobDays >= 0 &&
         dobDays <= 150_000;
-      const hasCountryCodeValue =
-        typeof countryCodeNumeric === "number" &&
-        Number.isInteger(countryCodeNumeric) &&
-        countryCodeNumeric > 0;
 
       const shouldEncryptDobDays =
         hasDobDaysValue && shouldEncryptWithKey(existingDobDays, keyId);
-      const shouldEncryptCountryCode =
-        hasCountryCodeValue && shouldEncryptWithKey(existingCountryCode, keyId);
       const shouldEncryptLivenessScore =
         typeof livenessScore === "number" &&
         Number.isFinite(livenessScore) &&
@@ -147,7 +140,6 @@ async function runFheEncryption(
         shouldEncryptWithKey(existingCompliance, keyId);
 
       span.setAttribute("fhe.request_dob_days", shouldEncryptDobDays);
-      span.setAttribute("fhe.request_country_code", shouldEncryptCountryCode);
       span.setAttribute(
         "fhe.request_liveness_score",
         shouldEncryptLivenessScore
@@ -159,16 +151,11 @@ async function runFheEncryption(
 
       const needsEncryption =
         shouldEncryptDobDays ||
-        shouldEncryptCountryCode ||
         shouldEncryptLivenessScore ||
         shouldEncryptCompliance;
 
       if (!needsEncryption) {
-        const missingDobDays = !(hasDobDaysValue || existingDobDays);
-        const missingCountryCode = !(
-          hasCountryCodeValue || existingCountryCode
-        );
-        const missingInputs = missingDobDays || missingCountryCode;
+        const missingInputs = !(hasDobDaysValue || existingDobDays);
         await updateIdentityBundleFheStatus({
           userId,
           fheStatus:
@@ -195,9 +182,6 @@ async function runFheEncryption(
         const result = await encryptBatchFhe({
           keyId,
           dobDays: shouldEncryptDobDays ? (dobDays ?? undefined) : undefined,
-          countryCode: shouldEncryptCountryCode
-            ? countryCodeNumeric
-            : undefined,
           livenessScore: shouldEncryptLivenessScore ? livenessScore : undefined,
           complianceLevel: shouldEncryptCompliance
             ? complianceLevel
@@ -220,24 +204,9 @@ async function runFheEncryption(
               keyId,
               encryptionTimeMs: durationMs,
             });
+            transientDobDays.delete(userId);
           } else {
             missingCiphertexts.push("dob_days");
-          }
-        }
-
-        if (shouldEncryptCountryCode) {
-          if (result.countryCodeCiphertext) {
-            await insertEncryptedAttribute({
-              id: crypto.randomUUID(),
-              userId,
-              source: "web2_tfhe",
-              attributeType: "country_code",
-              ciphertext: Buffer.from(result.countryCodeCiphertext),
-              keyId,
-              encryptionTimeMs: durationMs,
-            });
-          } else {
-            missingCiphertexts.push("country_code");
           }
         }
 
@@ -284,9 +253,17 @@ async function runFheEncryption(
           return;
         }
 
+        // Re-check actual encrypted attributes to determine true completion
+        const finalAttributeTypes =
+          await getEncryptedAttributeTypesByUserId(userId);
+        const fheActuallyComplete = isFheComplete(finalAttributeTypes);
+
         await updateIdentityBundleFheStatus({
           userId,
-          fheStatus: verificationStatus.verified ? "complete" : "pending",
+          fheStatus:
+            verificationStatus.verified && fheActuallyComplete
+              ? "complete"
+              : "pending",
           fheError: null,
           fheKeyId: keyId,
         });
@@ -321,12 +298,15 @@ async function runFheEncryption(
 }
 
 export function scheduleFheEncryption(args: FheEncryptionSchedule): void {
+  if (typeof args.dobDays === "number") {
+    transientDobDays.set(args.userId, args.dobDays);
+  }
+  const existing = pendingContexts.get(args.userId);
   pendingContexts.set(args.userId, {
-    requestId: args.requestId,
-    flowId: args.flowId,
-    reason: args.reason,
-    dobDays: args.dobDays ?? undefined,
-    countryCodeNumeric: args.countryCodeNumeric ?? undefined,
+    requestId: args.requestId ?? existing?.requestId,
+    flowId: args.flowId ?? existing?.flowId,
+    reason: args.reason ?? existing?.reason,
+    dobDays: args.dobDays ?? existing?.dobDays,
   });
   if (activeFheJobs.has(args.userId)) {
     return;

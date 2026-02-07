@@ -35,14 +35,18 @@ import {
 } from "@/lib/identity/document/document-ocr";
 import { cn } from "@/lib/utils/classname";
 
+const REDACTED = "●●●●●●●●";
+
 const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
   documentResult,
   previewUrl,
   onRemove,
+  demoMode,
 }: Readonly<{
   documentResult: DocumentResult;
   previewUrl: string | null;
   onRemove: (e: React.MouseEvent) => void;
+  demoMode: boolean;
 }>) {
   return (
     <div className="space-y-4">
@@ -69,7 +73,10 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
         <div className="rounded-lg border bg-muted/30 p-4">
           <Image
             alt="ID preview"
-            className="mx-auto max-h-48 rounded-lg object-contain"
+            className={cn(
+              "mx-auto max-h-48 rounded-lg object-contain",
+              demoMode && "blur-lg"
+            )}
             height={192}
             src={previewUrl}
             unoptimized
@@ -89,7 +96,7 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
               <>
                 <dt className="text-muted-foreground">Full Name</dt>
                 <dd className="font-medium">
-                  {documentResult.extractedData.fullName}
+                  {demoMode ? REDACTED : documentResult.extractedData.fullName}
                 </dd>
               </>
             ) : null}
@@ -97,7 +104,9 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
               <>
                 <dt className="text-muted-foreground">Document Number</dt>
                 <dd className="font-medium">
-                  {documentResult.extractedData.documentNumber}
+                  {demoMode
+                    ? REDACTED
+                    : documentResult.extractedData.documentNumber}
                 </dd>
               </>
             ) : null}
@@ -105,7 +114,9 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
               <>
                 <dt className="text-muted-foreground">Date of Birth</dt>
                 <dd className="font-medium">
-                  {documentResult.extractedData.dateOfBirth}
+                  {demoMode
+                    ? REDACTED
+                    : documentResult.extractedData.dateOfBirth}
                 </dd>
               </>
             ) : null}
@@ -113,7 +124,9 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
               <>
                 <dt className="text-muted-foreground">Expiration Date</dt>
                 <dd className="font-medium">
-                  {documentResult.extractedData.expirationDate}
+                  {demoMode
+                    ? REDACTED
+                    : documentResult.extractedData.expirationDate}
                 </dd>
               </>
             ) : null}
@@ -121,7 +134,9 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
               <>
                 <dt className="text-muted-foreground">Nationality</dt>
                 <dd className="font-medium">
-                  {documentResult.extractedData.nationality}
+                  {demoMode
+                    ? REDACTED
+                    : documentResult.extractedData.nationality}
                 </dd>
               </>
             ) : null}
@@ -179,10 +194,12 @@ const RejectedDocumentCard = memo(function RejectedDocumentCard({
   documentResult,
   previewUrl,
   onRemove,
+  demoMode,
 }: Readonly<{
   documentResult: DocumentResult;
   previewUrl: string | null;
   onRemove: (e: React.MouseEvent) => void;
+  demoMode: boolean;
 }>) {
   return (
     <div className="space-y-4">
@@ -211,7 +228,10 @@ const RejectedDocumentCard = memo(function RejectedDocumentCard({
         <div className="rounded-lg border bg-muted/30 p-4">
           <Image
             alt="ID preview"
-            className="mx-auto max-h-32 rounded-lg object-contain opacity-50"
+            className={cn(
+              "mx-auto max-h-32 rounded-lg object-contain opacity-50",
+              demoMode && "blur-lg"
+            )}
             height={128}
             src={previewUrl}
             unoptimized
@@ -228,10 +248,12 @@ const RejectedDocumentCard = memo(function RejectedDocumentCard({
 });
 
 interface DocumentUploadClientProps {
+  demoMode?: boolean;
   resetOnMount?: boolean;
 }
 
 export function DocumentUploadClient({
+  demoMode = false,
   resetOnMount = false,
 }: DocumentUploadClientProps) {
   const router = useRouter();
@@ -311,6 +333,7 @@ export function DocumentUploadClient({
 
         {processingState === "verified" && documentResult ? (
           <VerifiedDocumentCard
+            demoMode={demoMode}
             documentResult={documentResult}
             onRemove={onRemove}
             previewUrl={previewUrl}
@@ -319,6 +342,7 @@ export function DocumentUploadClient({
 
         {processingState === "rejected" && documentResult ? (
           <RejectedDocumentCard
+            demoMode={demoMode}
             documentResult={documentResult}
             onRemove={onRemove}
             previewUrl={previewUrl}

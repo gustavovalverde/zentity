@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import { ensureAuthSession } from "@/lib/auth/anonymous-session";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   getPasswordLengthError,
@@ -23,8 +24,6 @@ import {
 
 interface PasswordSignUpFormProps {
   email: string;
-  userId?: string;
-  isAnonymous?: boolean;
   onSuccess: (result: {
     userId: string;
     email: string;
@@ -34,17 +33,8 @@ interface PasswordSignUpFormProps {
   disabled?: boolean;
 }
 
-/**
- * Password sign-up form for sign-up.
- * Uses OPAQUE protocol to register a new user with email and password.
- * For anonymous users, adds password to existing account via setPassword.
- * For new users, creates account via signUp.opaque.
- * Returns the export key for FHE key wrapping.
- */
 export function PasswordSignUpForm({
   email,
-  userId,
-  isAnonymous = false,
   onSuccess,
   onBack,
   disabled = false,
@@ -73,46 +63,25 @@ export function PasswordSignUpForm({
       setError(null);
 
       try {
-        if (isAnonymous && userId) {
-          // Anonymous user: add password to existing account
-          const result = await authClient.opaque.setPassword({
-            password: value.password,
-          });
+        const session = await ensureAuthSession();
 
-          if (!result.data || result.error) {
-            const message =
-              result.error?.message ||
-              "Failed to set password. Please try again.";
-            setError(message);
-            return;
-          }
+        const result = await authClient.opaque.setPassword({
+          password: value.password,
+        });
 
-          onSuccess({
-            userId,
-            email,
-            exportKey: result.data.exportKey,
-          });
-        } else {
-          // New user: create account with email and password
-          const result = await authClient.signUp.opaque({
-            email,
-            password: value.password,
-          });
-
-          if (!result.data || result.error) {
-            const message =
-              result.error?.message ||
-              "Failed to create account. Please try again.";
-            setError(message);
-            return;
-          }
-
-          onSuccess({
-            userId: result.data.user.id,
-            email: result.data.user.email,
-            exportKey: result.data.exportKey,
-          });
+        if (!result.data || result.error) {
+          const message =
+            result.error?.message ||
+            "Failed to set password. Please try again.";
+          setError(message);
+          return;
         }
+
+        onSuccess({
+          userId: session.user.id,
+          email,
+          exportKey: result.data.exportKey,
+        });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "An unexpected error occurred";
@@ -173,13 +142,6 @@ export function PasswordSignUpForm({
 
   return (
     <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="font-semibold text-lg">Create Your Password</h2>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Choose a secure password for your account
-        </p>
-      </div>
-
       <form className="space-y-4" onSubmit={handleSubmit}>
         {/* Hidden username for password managers */}
         <input

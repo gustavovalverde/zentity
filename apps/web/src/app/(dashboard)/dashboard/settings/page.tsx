@@ -1,7 +1,9 @@
+import { eq } from "drizzle-orm";
 import { KeyRound, LifeBuoy, Settings, User } from "lucide-react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { ConnectedAppsCard } from "@/components/dashboard/connected-apps-card";
 import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
 import { PasskeyManagementSection } from "@/components/dashboard/passkey-management-section";
 import { PasswordSection } from "@/components/dashboard/password-section";
@@ -15,7 +17,9 @@ import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { WalletBindingSection } from "@/components/dashboard/wallet-binding-section";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCachedSession } from "@/lib/auth/cached-session";
+import { db } from "@/lib/db/connection";
 import { userHasPassword } from "@/lib/db/queries/auth";
+import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
 
 export default async function SettingsPage() {
   const session = await getCachedSession(await headers());
@@ -24,7 +28,26 @@ export default async function SettingsPage() {
     redirect("/sign-in");
   }
 
-  const hasPassword = await userHasPassword(session.user.id);
+  const [hasPassword, consents] = await Promise.all([
+    userHasPassword(session.user.id),
+    db
+      .select({
+        consentId: oauthConsents.id,
+        clientId: oauthConsents.clientId,
+        scopes: oauthConsents.scopes,
+        createdAt: oauthConsents.createdAt,
+        updatedAt: oauthConsents.updatedAt,
+        clientName: oauthClients.name,
+        clientIcon: oauthClients.icon,
+        clientUri: oauthClients.uri,
+      })
+      .from(oauthConsents)
+      .innerJoin(
+        oauthClients,
+        eq(oauthConsents.clientId, oauthClients.clientId)
+      )
+      .where(eq(oauthConsents.userId, session.user.id)),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -92,6 +115,7 @@ export default async function SettingsPage() {
             title="Sessions & Connections"
           />
           <SessionsCard />
+          <ConnectedAppsCard consents={consents} />
           <ConnectedAccountsCard />
 
           <div className="pt-6">

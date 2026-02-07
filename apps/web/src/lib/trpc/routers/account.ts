@@ -64,8 +64,7 @@ export const accountRouter = router({
         level: verification.level,
         checks: verification.checks,
       },
-      documentType: document?.documentType ?? null,
-      countryVerified: document?.issuerCountry ?? null,
+      documentVerified: document?.status === "verified",
     };
   }),
 

@@ -25,30 +25,6 @@ const ENCRYPTED_ATTRIBUTE_LABELS: Record<string, string> = {
   liveness_score: "Liveness Score",
 };
 
-/** Fallback country names when backend doesn't provide display name */
-const COUNTRY_NAMES: Record<string, string> = {
-  DOM: "Dominican Republic",
-  USA: "United States",
-  ESP: "Spain",
-  MEX: "Mexico",
-  FRA: "France",
-  DEU: "Germany",
-  GBR: "United Kingdom",
-  CAN: "Canada",
-  BRA: "Brazil",
-  ARG: "Argentina",
-  COL: "Colombia",
-  PER: "Peru",
-  CHL: "Chile",
-  ITA: "Italy",
-  PRT: "Portugal",
-};
-
-/** Get display name for a country code, with fallback */
-export function getCountryDisplayName(code: string, name?: string): string {
-  return name ?? COUNTRY_NAMES[code] ?? code;
-}
-
 /** Get label for a proof type, with fallback to raw type */
 export function getProofTypeLabel(type: string): string {
   return PROOF_TYPE_LABELS[type] ?? type;

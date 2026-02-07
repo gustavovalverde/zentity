@@ -1,21 +1,50 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { getAddress } from "viem";
 
 import { db } from "../connection";
 import { accounts, users, walletAddresses } from "../schema/auth";
 
 /**
- * Updates a user's email and clears the anonymous flag.
- * Called when completing sign-up to persist the email from sign-up wizard state.
+ * Updates a user's email, derives a display name from the local part,
+ * and clears the anonymous flag.
+ *
+ * Uses raw Drizzle instead of better-auth's API because:
+ * - `auth.api.updateUser()` explicitly blocks email changes
+ * - `auth.api.changeEmail()` requires an email verification flow
+ * - `setSessionCookie()` (which refreshes the cookie cache) is only
+ *   available inside better-auth endpoint contexts, not tRPC mutations
+ *
+ * Callers must invalidate the session_data cookie cache after calling this
+ * so the dashboard reads fresh data (see `invalidateSessionDataCache()`).
  */
 export async function updateUserEmail(
   userId: string,
   email: string
 ): Promise<void> {
+  const localPart = email.split("@")[0];
+  const name = localPart.replaceAll(/[._+-]+/g, " ").trim() || localPart;
+
   await db
     .update(users)
     .set({
       email,
+      name,
+      isAnonymous: false,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(users.id, userId))
+    .run();
+}
+
+/**
+ * Clears the anonymous flag without changing email/name.
+ * Used when a user completes sign-up without providing an email.
+ * Same raw-Drizzle constraint as `updateUserEmail` — see its JSDoc.
+ */
+export async function clearAnonymousFlag(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({
       isAnonymous: false,
       updatedAt: new Date().toISOString(),
     })
@@ -117,4 +146,28 @@ export async function linkWalletAddress(params: {
     })
     .onConflictDoNothing()
     .run();
+}
+
+export async function getPrimaryWalletAddress(userId: string): Promise<{
+  address: string;
+  chainId: number;
+} | null> {
+  const row = await db
+    .select({
+      address: walletAddresses.address,
+      chainId: walletAddresses.chainId,
+      isPrimary: walletAddresses.isPrimary,
+      createdAt: walletAddresses.createdAt,
+    })
+    .from(walletAddresses)
+    .where(eq(walletAddresses.userId, userId))
+    .orderBy(desc(walletAddresses.isPrimary), desc(walletAddresses.createdAt))
+    .limit(1)
+    .get();
+
+  if (!row) {
+    return null;
+  }
+
+  return { address: row.address, chainId: row.chainId };
 }

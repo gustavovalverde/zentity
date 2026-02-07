@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
-import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
+import {
+  getIdentityBundleByUserId,
+  getLatestIdentityDocumentByUserId,
+} from "@/lib/db/queries/identity";
 
 import { DocumentUploadClient } from "./_components/document-upload-client";
 
@@ -21,26 +24,33 @@ export default async function DocumentVerifyPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, bundle] = await Promise.all([
+  const [assuranceState, bundle, latestDocument] = await Promise.all([
     getAssuranceState(userId, session),
     getIdentityBundleByUserId(userId),
+    getLatestIdentityDocumentByUserId(userId),
   ]);
 
-  // FHE keys required for verification finalization
-  if (!bundle?.fheKeyId) {
+  const hasEnrollment = Boolean(bundle?.fheKeyId);
+
+  // FHE enrollment required before verification
+  if (!hasEnrollment) {
     redirect("/dashboard/verify");
   }
 
   // Already verified document - skip to liveness
-  // Exceptions: users with incomplete proofs or missing claim hashes need to re-verify
+  // Exceptions:
+  // - Users with incomplete proofs or missing claim hashes need to re-verify
+  // - Users with a pending document are actively re-verifying
   const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
   const needsDocumentReprocessing =
     assuranceState.details.needsDocumentReprocessing;
+  const hasActiveVerification = latestDocument?.status === "pending";
 
   if (
     assuranceState.details.documentVerified &&
     !needsProofRegeneration &&
-    !needsDocumentReprocessing
+    !needsDocumentReprocessing &&
+    !hasActiveVerification
   ) {
     redirect("/dashboard/verify/liveness");
   }
@@ -55,6 +65,7 @@ export default async function DocumentVerifyPage() {
       </div>
 
       <DocumentUploadClient
+        demoMode={process.env.DEMO_MODE === "true"}
         resetOnMount={needsProofRegeneration || needsDocumentReprocessing}
       />
     </div>

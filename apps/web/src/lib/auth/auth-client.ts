@@ -10,6 +10,7 @@ import {
   genericOAuthClient,
   lastLoginMethodClient,
   magicLinkClient,
+  organizationClient,
   siweClient,
   twoFactorClient,
 } from "better-auth/client/plugins";
@@ -42,6 +43,7 @@ export const authClient = createAuthClient({
     genericOAuthClient(),
     lastLoginMethodClient(),
     oauthProviderClient(),
+    organizationClient(),
     twoFactorClient({
       // Redirect to 2FA verification page when TOTP is required
       onTwoFactorRedirect: () => {

@@ -24,7 +24,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/dashboard/defi-demo": "DeFi Demo",
   "/dashboard/settings": "Settings",
   "/dashboard/dev": "Debug Tools",
-  "/dashboard/dev/exchange": "Exchange Demo",
+  "/dashboard/developer/applications": "Applications",
   "/dashboard/verify": "Verify Identity",
   "/dashboard/verify/document": "Document Upload",
   "/dashboard/verify/liveness": "Liveness Check",
@@ -36,7 +36,7 @@ const ROUTE_LABELS: Record<string, string> = {
  * Parent route mappings for building breadcrumb hierarchy.
  */
 const PARENT_ROUTES: Record<string, string> = {
-  "/dashboard/dev/exchange": "/dashboard/dev",
+  "/dashboard/developer/applications": "/dashboard/developer",
   "/dashboard/verify/document": "/dashboard/verify",
   "/dashboard/verify/liveness": "/dashboard/verify",
   "/dashboard/verify/face": "/dashboard/verify",

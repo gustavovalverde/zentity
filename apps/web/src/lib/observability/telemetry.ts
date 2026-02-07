@@ -229,22 +229,6 @@ export function currentSpan(): Span | undefined {
   return trace.getSpan(context.active()) ?? undefined;
 }
 
-export function addSpanEvent(name: string, attributes?: Attributes): void {
-  const span = currentSpan();
-  if (!span) {
-    return;
-  }
-  if (!attributes) {
-    span.addEvent(name);
-    return;
-  }
-
-  const filtered = Object.fromEntries(
-    Object.entries(attributes).filter(([, value]) => value !== undefined)
-  ) as Attributes;
-  span.addEvent(name, filtered);
-}
-
 export function injectTraceHeaders(
   headers: Record<string, string>
 ): Record<string, string> {

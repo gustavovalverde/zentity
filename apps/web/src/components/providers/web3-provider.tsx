@@ -49,6 +49,67 @@ interface Web3ProviderProps {
   walletScopeId: string | null;
 }
 
+const analyticsEnabled = process.env.NEXT_PUBLIC_APPKIT_ANALYTICS !== "false";
+
+const defaultNetwork = networks[0] ?? fhevmSepolia;
+
+function createAppKitInstance(
+  wagmiAdapter: ReturnType<typeof createWagmiAdapter>
+) {
+  return createAppKit({
+    adapters: [wagmiAdapter],
+    projectId: projectId ?? "",
+    networks,
+    defaultNetwork,
+    metadata,
+    enableInjected: process.env.NEXT_PUBLIC_APPKIT_ENABLE_INJECTED !== "false",
+    enableWalletConnect:
+      process.env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT !== "false",
+    enableEIP6963: process.env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963 !== "false",
+    enableCoinbase: process.env.NEXT_PUBLIC_APPKIT_ENABLE_COINBASE !== "false",
+    includeWalletIds: process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS
+      ? process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS.split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : undefined,
+    features: {
+      analytics: analyticsEnabled,
+      email: false,
+      socials: false,
+    },
+    themeMode: "light",
+  });
+}
+
+function ensureAppKitInitialized(
+  wagmiAdapter: ReturnType<typeof createWagmiAdapter>,
+  storageKey: string
+) {
+  if (globalThis.window === undefined || !projectId) {
+    return;
+  }
+
+  if (
+    appkitStorageKey &&
+    appkitStorageKey !== storageKey &&
+    globalThis.document
+  ) {
+    // biome-ignore lint/suspicious/noDocumentCookie: clearing stale appkit storage key requires cookie deletion
+    document.cookie = `${appkitStorageKey}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;
+  }
+
+  if (!appkitInstance || appkitStorageKey !== storageKey) {
+    appkitInstance = createAppKitInstance(wagmiAdapter);
+    appkitStorageKey = storageKey;
+  }
+}
+
+if (globalThis.window !== undefined && projectId && !appkitInstance) {
+  const bootstrapAdapter = createWagmiAdapter(null);
+  const bootstrapStorageKey = getWagmiStorageKey(null);
+  ensureAppKitInitialized(bootstrapAdapter, bootstrapStorageKey);
+}
+
 export function Web3Provider({
   children,
   cookies,
@@ -62,54 +123,14 @@ export function Web3Provider({
     () => getWagmiStorageKey(walletScopeId),
     [walletScopeId]
   );
+  ensureAppKitInitialized(wagmiAdapter, storageKey);
 
   useEffect(() => {
     if (!projectId) {
       return;
     }
     let isCancelled = false;
-    const defaultNetwork = networks[0] ?? fhevmSepolia;
     const activeStorageKey = storageKey;
-    // Disable AppKit analytics under cross-origin isolation (COEP) since
-    // third-party analytics scripts may fail with restricted fetch policies.
-    // Can be explicitly enabled via NEXT_PUBLIC_APPKIT_ANALYTICS=true.
-    const analyticsEnabled =
-      process.env.NEXT_PUBLIC_APPKIT_ANALYTICS === "true" ||
-      (process.env.NEXT_PUBLIC_APPKIT_ANALYTICS !== "false" &&
-        globalThis.window !== undefined &&
-        !globalThis.crossOriginIsolated);
-
-    const initializeAppKit = () =>
-      createAppKit({
-        adapters: [wagmiAdapter],
-        projectId,
-        networks,
-        defaultNetwork,
-        metadata,
-        enableInjected:
-          process.env.NEXT_PUBLIC_APPKIT_ENABLE_INJECTED !== "false",
-        enableWalletConnect:
-          process.env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT !== "false",
-        enableEIP6963:
-          process.env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963 !== "false",
-        // Coinbase Smart Wallet requires popups which conflict with cross-origin
-        // isolation (COOP: same-origin) needed for SharedArrayBuffer/WASM.
-        // Disabled by default; enable with NEXT_PUBLIC_APPKIT_ENABLE_COINBASE=true
-        enableCoinbase:
-          process.env.NEXT_PUBLIC_APPKIT_ENABLE_COINBASE === "true",
-        includeWalletIds: process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS
-          ? process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS.split(",")
-              .map((value) => value.trim())
-              .filter(Boolean)
-          : undefined,
-        features: {
-          analytics: analyticsEnabled,
-          email: false,
-          socials: false,
-        },
-        themeMode: "light",
-      });
-
     const waitForInjectedProvider = async () => {
       if (globalThis.window === undefined) {
         return;
@@ -135,23 +156,12 @@ export function Web3Provider({
       if (isCancelled) {
         return;
       }
-      if (
-        globalThis.window !== undefined &&
-        appkitStorageKey &&
-        appkitStorageKey !== activeStorageKey
-      ) {
-        // biome-ignore lint/suspicious/noDocumentCookie: clearing stale appkit storage key requires cookie deletion
-        document.cookie = `${appkitStorageKey}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;
-        globalThis.location.reload();
-        return;
-      }
-
-      if (!appkitInstance) {
-        appkitInstance = initializeAppKit();
-        appkitStorageKey = activeStorageKey;
-      }
+      ensureAppKitInitialized(wagmiAdapter, activeStorageKey);
 
       const appkit = appkitInstance;
+      if (!appkit) {
+        return;
+      }
 
       if (
         (process.env.NEXT_PUBLIC_APPKIT_DEBUG === "true" ||

@@ -2,6 +2,7 @@ import z from "zod";
 
 import {
   createIdentityDocument,
+  getLatestIdentityDocumentByUserId,
   getLatestIdentityDraftByUserId,
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
@@ -32,13 +33,21 @@ export const prepareDocumentProcedure = protectedProcedure
     // Look up existing draft for this user
     const existingDraft = await getLatestIdentityDraftByUserId(userId);
 
+    // When re-verifying (user already has a verified document), create fresh
+    // draft + document IDs. Reusing old IDs causes the INSERT to fail silently
+    // (document already exists) leaving stale claims/proofs attached to it.
+    const existingDoc = await getLatestIdentityDocumentByUserId(userId);
+    const isReverification = existingDoc?.status === "verified";
+
     // Process document using shared logic
     const result = await processDocumentWithOcr({
       image: input.image,
       requestId: ctx.requestId,
       flowId: ctx.flowId ?? undefined,
-      existingDraftId: existingDraft?.id,
-      existingDocumentId: existingDraft?.documentId,
+      existingDraftId: isReverification ? undefined : existingDraft?.id,
+      existingDocumentId: isReverification
+        ? undefined
+        : existingDraft?.documentId,
     });
 
     ctx.span?.setAttribute(
@@ -83,7 +92,6 @@ export const prepareDocumentProcedure = protectedProcedure
         flowId: ctx.flowId ?? undefined,
         reason: "document_processed",
         dobDays: result.parsedDates.dobDays,
-        countryCodeNumeric: result.parsedDates.nationalityCodeNumeric,
       });
     }
 
@@ -94,8 +102,6 @@ export const prepareDocumentProcedure = protectedProcedure
         await createIdentityDocument({
           id: result.documentId,
           userId,
-          documentType: result.ocrResult.documentType ?? null,
-          issuerCountry: result.issuerCountry,
           documentHash: result.ocrResult.commitments.documentHash ?? null,
           nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
           verifiedAt: null,

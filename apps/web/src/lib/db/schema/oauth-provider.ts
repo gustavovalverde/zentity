@@ -23,10 +23,10 @@ export const oauthClients = sqliteTable(
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    createdAt: integer("created_at", { mode: "timestamp" })
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at", { mode: "timestamp" }),
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
     name: text("name"),
     uri: text("uri"),
     icon: text("icon"),
@@ -65,9 +65,11 @@ export const oauthRefreshTokens = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
-    expiresAt: text("expires_at").notNull(),
-    createdAt: text("created_at").default(sql`(datetime('now'))`),
-    revoked: text("revoked"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
+      sql`(unixepoch() * 1000)`
+    ),
+    revoked: integer("revoked", { mode: "timestamp_ms" }),
     scopes: text("scopes", { mode: "json" }).notNull(),
   },
   (table) => [
@@ -93,8 +95,10 @@ export const oauthAccessTokens = sqliteTable(
     refreshId: text("refresh_id").references(() => oauthRefreshTokens.id, {
       onDelete: "set null",
     }),
-    expiresAt: text("expires_at").notNull(),
-    createdAt: text("created_at").default(sql`(datetime('now'))`),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
+      sql`(unixepoch() * 1000)`
+    ),
     scopes: text("scopes", { mode: "json" }).notNull(),
   },
   (table) => [
@@ -114,8 +118,10 @@ export const oauthConsents = sqliteTable(
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     scopes: text("scopes", { mode: "json" }).notNull(),
-    createdAt: text("created_at").default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
+      sql`(unixepoch() * 1000)`
+    ),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("oauth_consent_client_id_idx").on(table.clientId),

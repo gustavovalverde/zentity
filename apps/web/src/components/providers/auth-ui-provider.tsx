@@ -23,8 +23,8 @@ interface BetterAuthUIProviderProps {
  * Wrapper around Better Auth UI's AuthUIProvider configured for Zentity.
  *
  * Note: Passkey support is disabled here because Zentity uses a custom PRF-based
- * passkey flow for FHE key derivation. The custom PasskeySignInForm and
- * PasskeyManagementSection components handle passkey operations with PRF extension.
+ * passkey flow for FHE key derivation. The sign-in page and
+ * PasskeyManagementSection handle passkey operations with PRF extension.
  */
 export function BetterAuthUIProvider({
   children,

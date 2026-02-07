@@ -38,6 +38,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=1000]
+        exclude: ^apps/.*/vendor/
       - id: check-case-conflict
       - id: detect-private-key
       - id: no-commit-to-branch

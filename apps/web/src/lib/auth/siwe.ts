@@ -50,6 +50,7 @@ async function verifySiweMessage(params: {
   signature: string;
   address: string;
   chainId: number;
+  email?: string;
 }): Promise<void> {
   const response = await fetch(`${SIWE_BASE_PATH}/verify`, {
     method: "POST",
@@ -60,6 +61,7 @@ async function verifySiweMessage(params: {
       signature: params.signature,
       walletAddress: params.address,
       chainId: params.chainId,
+      ...(params.email ? { email: params.email } : {}),
     }),
   });
 
@@ -78,9 +80,11 @@ export async function signInWithSiwe(params: {
   chainId: number;
   signMessage: SignMessageFn;
   statement?: string;
+  email?: string;
+  force?: boolean;
 }): Promise<void> {
   const existingSession = await authClient.getSession();
-  if (existingSession.data?.user?.id) {
+  if (!params.force && existingSession.data?.user?.id) {
     return;
   }
 
@@ -108,6 +112,7 @@ export async function signInWithSiwe(params: {
     signature,
     address: params.address,
     chainId: params.chainId,
+    email: params.email,
   });
 
   authClient.$store.notify("$sessionSignal");

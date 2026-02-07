@@ -1,7 +1,6 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -183,20 +182,25 @@ export function OpaqueSignInForm() {
         </form.Field>
       </FieldGroup>
 
-      <div className="flex justify-end">
-        <Link
-          className="font-medium text-primary text-xs hover:underline"
-          href="/forgot-password"
+      <div className="space-y-2">
+        <Button
+          className="w-full"
+          disabled={isLoading}
+          type="submit"
+          variant="outline"
         >
-          Forgot password?
-        </Link>
+          {isLoading ? <Spinner aria-hidden="true" className="mr-2" /> : null}
+          Sign In
+        </Button>
+        <div className="flex justify-end">
+          <Link
+            className="text-muted-foreground text-xs hover:text-primary hover:underline"
+            href="/forgot-password"
+          >
+            Forgot password?
+          </Link>
+        </div>
       </div>
-
-      <Button className="w-full" disabled={isLoading} type="submit">
-        {isLoading ? <Spinner aria-hidden="true" className="mr-2" /> : null}
-        <KeyRound className="mr-2 h-4 w-4" />
-        Sign in with Password
-      </Button>
     </form>
   );
 }

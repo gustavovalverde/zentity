@@ -343,7 +343,14 @@ export function LivenessProvider({
 
       speak(speechKey);
     }
-  }, [liveness.challenge, speak, liveness.signalChallengeReady, debug]);
+  }, [
+    liveness.challenge,
+    speak,
+    liveness.signalChallengeReady,
+    debug, // Signal to server FIRST so evaluation starts immediately
+    // Speech plays in parallel - no need to wait for it
+    liveness,
+  ]);
 
   // Local countdown timer - runs when server enters "countdown" phase
   useEffect(() => {
@@ -382,7 +389,13 @@ export function LivenessProvider({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [liveness.phase, liveness.signalCountdownDone, cancelSpeech, feedback]);
+  }, [
+    liveness.phase,
+    liveness.signalCountdownDone,
+    cancelSpeech,
+    feedback, // Signal server that countdown is done
+    liveness,
+  ]);
 
   // ============================================================================
   // Actions
@@ -391,16 +404,19 @@ export function LivenessProvider({
   const start = useCallback(() => {
     initAudio(); // Initialize audio on user interaction
     liveness.beginCamera();
-  }, [liveness.beginCamera, initAudio]);
+  }, [liveness.beginCamera, initAudio, liveness]);
 
   const cancel = useCallback(() => {
     // Clean stop from ANY state - resets phase back to idle
     liveness.cancelSession();
-  }, [liveness.cancelSession]);
+  }, [
+    liveness.cancelSession, // Clean stop from ANY state - resets phase back to idle
+    liveness,
+  ]);
 
   const retry = useCallback(() => {
     liveness.retryChallenge();
-  }, [liveness.retryChallenge]);
+  }, [liveness.retryChallenge, liveness]);
 
   const toggleAudio = useCallback(() => {
     const newState = !(audioEnabled || speechEnabled);

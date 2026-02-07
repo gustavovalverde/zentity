@@ -52,8 +52,6 @@ describe("Database Module", () => {
       await createIdentityDocument({
         id: crypto.randomUUID(),
         userId,
-        documentType: "passport",
-        issuerCountry: "USA",
         documentHash: "existing-hash",
         nameCommitment: "name-commit",
         verifiedAt: "2025-01-01T00:00:00Z",
@@ -129,8 +127,6 @@ describe("Document selection", () => {
     await createIdentityDocument({
       id: docFull,
       userId,
-      documentType: "passport",
-      issuerCountry: "USA",
       documentHash: "hash-full",
       nameCommitment: "name-full",
       verifiedAt: "2024-01-01T00:00:00Z",
@@ -141,8 +137,6 @@ describe("Document selection", () => {
     await createIdentityDocument({
       id: docIncomplete,
       userId,
-      documentType: "passport",
-      issuerCountry: "USA",
       documentHash: "hash-incomplete",
       nameCommitment: "name-incomplete",
       verifiedAt: "2025-01-01T00:00:00Z",

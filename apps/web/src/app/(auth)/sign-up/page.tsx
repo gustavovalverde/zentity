@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { SignUpWizard } from "@/components/sign-up/sign-up-wizard";
+import { SignUpForm } from "@/components/sign-up/sign-up-form";
 import {
   Card,
   CardContent,
@@ -11,33 +11,14 @@ import {
 } from "@/components/ui/card";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { hasCompletedSignUp } from "@/lib/db/queries/identity";
-import { loadWizardState } from "@/lib/db/sign-up-session";
 
-interface SignUpPageProps {
-  searchParams: Promise<{ fresh?: string }>;
-}
+export default async function SignUpPage() {
+  const headersObj = await headers();
+  const session = await getCachedSession(headersObj);
 
-export default async function SignUpPage({
-  searchParams,
-}: Readonly<SignUpPageProps>) {
-  const { fresh } = await searchParams;
-
-  // fresh=1 bypasses all checks - allows starting a new sign-up flow
-  if (fresh !== "1") {
-    // Primary check: identity bundle (authoritative source)
-    const headersObj = await headers();
-    const session = await getCachedSession(headersObj);
-
-    if (session?.user?.id) {
-      const completed = await hasCompletedSignUp(session.user.id);
-      if (completed) {
-        redirect("/dashboard");
-      }
-    }
-
-    // Secondary check: wizard state cookie (backwards compatibility)
-    const { state } = await loadWizardState();
-    if (state?.keysSecured) {
+  if (session?.user?.id) {
+    const completed = await hasCompletedSignUp(session.user.id);
+    if (completed) {
       redirect("/dashboard");
     }
   }
@@ -51,7 +32,7 @@ export default async function SignUpPage({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <SignUpWizard forceReset={fresh === "1"} />
+        <SignUpForm />
       </CardContent>
     </Card>
   );

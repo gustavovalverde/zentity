@@ -23,6 +23,7 @@ export {
   getCachedPasskeyUnlock,
   getCachedRecoveryKey,
   getPendingUnlock,
+  hasAnyCachedCredential,
   hasAnyCachedOpaqueExport,
   hasCachedPasskeyUnlock,
   isOpaqueCacheFresh,
@@ -56,9 +57,7 @@ export {
 export {
   buildKekSignatureTypedData,
   cacheWalletSignature,
-  computeWalletCommitment,
   decryptSecretWithWalletSignature,
-  generateWalletCommitmentSalt,
   getCachedWalletSignature,
   getWalletCredentialId,
   isWalletCacheFresh,
@@ -67,7 +66,6 @@ export {
   signatureToBytes,
   unwrapDekWithWalletSignature,
   WALLET_CREDENTIAL_PREFIX,
-  walletCommitmentToHex,
   wrapDekWithWalletSignature,
 } from "./wallet";
 // --- DEK Wrapping ---

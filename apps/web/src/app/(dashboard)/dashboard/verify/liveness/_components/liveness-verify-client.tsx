@@ -18,6 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { AuthMaterialGate } from "@/components/verification/auth-material-gate";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
@@ -93,11 +94,12 @@ export function LivenessVerifyClient() {
       storeState.set({ selfieImage, bestSelfieFrame });
       setLivenessCompleted(true);
 
-      // Automatically start face matching
+      // Redirect if document image is missing (page refresh clears in-memory state)
       if (!storeState.idDocumentBase64) {
-        toast.error("Missing document image", {
-          description: "Please go back and upload your document again.",
+        toast.error("Verification session expired", {
+          description: "Please upload your document again to continue.",
         });
+        router.replace("/dashboard/verify/document");
         return;
       }
 
@@ -141,7 +143,7 @@ export function LivenessVerifyClient() {
         });
       }
     },
-    [draftId]
+    [draftId, router]
   );
 
   // Handle reset (user retrying) - increments retryCount to force remount
@@ -321,59 +323,64 @@ export function LivenessVerifyClient() {
     (faceMatchStatus === "matched" || faceMatchStatus === "no_match");
 
   return (
-    <div className="space-y-6">
-      <LivenessProvider
-        draftId={draftId ?? undefined}
-        key={livenessKey}
-        onReset={handleReset}
-        onSessionError={handleSessionError}
-        onVerified={handleVerified}
-        userId={userId}
-      >
-        <LivenessFlow />
-      </LivenessProvider>
+    <AuthMaterialGate>
+      <div className="space-y-6">
+        <LivenessProvider
+          draftId={draftId ?? undefined}
+          key={livenessKey}
+          onReset={handleReset}
+          onSessionError={handleSessionError}
+          onVerified={handleVerified}
+          userId={userId}
+        >
+          <LivenessFlow />
+        </LivenessProvider>
 
-      {/* Face Match Result */}
-      {livenessCompleted && faceMatchStatus !== "idle" && (
-        <FaceVerificationCard
-          result={faceMatchResult}
-          selfieImage={store.bestSelfieFrame || store.selfieImage}
-          status={faceMatchStatus}
-        />
-      )}
+        {/* Face Match Result */}
+        {livenessCompleted && faceMatchStatus !== "idle" && (
+          <FaceVerificationCard
+            result={faceMatchResult}
+            selfieImage={store.bestSelfieFrame || store.selfieImage}
+            status={faceMatchStatus}
+          />
+        )}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Privacy Notice</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CardDescription>
-            Your selfie is captured for face matching with your ID, then deleted
-            after verification. Randomized gestures confirm you're a real
-            person.
-          </CardDescription>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Privacy Notice</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription>
+              Your selfie is captured for face matching with your ID, then
+              deleted after verification. Randomized gestures confirm you're a
+              real person.
+            </CardDescription>
+          </CardContent>
+        </Card>
 
-      {/* Retry Button */}
-      {livenessCompleted && (
-        <Alert>
-          <AlertDescription className="flex items-center justify-between">
-            <span>Want to try again with a better selfie?</span>
-            <Button onClick={handleReset} size="sm" variant="outline">
-              Retry Liveness
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+        {/* Retry Button */}
+        {livenessCompleted && (
+          <Alert>
+            <AlertDescription className="flex items-center justify-between">
+              <span>Want to try again with a better selfie?</span>
+              <Button onClick={handleReset} size="sm" variant="outline">
+                Retry Liveness
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
-      {/* Navigation */}
-      <div className="flex justify-end gap-3">
-        <Button disabled={!isVerified || isSubmitting} onClick={handleContinue}>
-          {isSubmitting ? <Spinner className="mr-2 size-4" /> : null}
-          Complete Verification
-        </Button>
+        {/* Navigation */}
+        <div className="flex justify-end gap-3">
+          <Button
+            disabled={!isVerified || isSubmitting}
+            onClick={handleContinue}
+          >
+            {isSubmitting ? <Spinner className="mr-2 size-4" /> : null}
+            Complete Verification
+          </Button>
+        </div>
       </div>
-    </div>
+    </AuthMaterialGate>
   );
 }

@@ -162,6 +162,33 @@ function clearCachedRecoveryKey(): void {
   cachedRecoveryKey = null;
 }
 
+// --- Aggregate Check ---
+
+// Wallet cache lives in wallet.ts to avoid circular deps (wallet → derivation).
+// wallet.ts registers its check here on module load.
+let walletCacheCheck: (() => boolean) | null = null;
+
+export function registerWalletCacheCheck(fn: () => boolean): void {
+  walletCacheCheck = fn;
+}
+
+/**
+ * Check if ANY credential material is cached (passkey, OPAQUE, or wallet).
+ * Used to gate auto-unlock of profile vault without prompting the user.
+ */
+export function hasAnyCachedCredential(): boolean {
+  if (passkeyCache.has()) {
+    return true;
+  }
+  if (opaqueCache.getRaw() !== null) {
+    return true;
+  }
+  if (walletCacheCheck?.()) {
+    return true;
+  }
+  return false;
+}
+
 // --- Clear All Caches ---
 
 /**

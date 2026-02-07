@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { hasCachedPasskeyUnlock } from "@/lib/privacy/credentials";
+import { hasAnyCachedCredential } from "@/lib/privacy/credentials";
 import {
+  getCachedGreetingName,
   getProfileSnapshot,
   getServerProfileSnapshot,
   getStoredProfile,
   subscribeToProfileCache,
 } from "@/lib/privacy/secrets/profile";
+
+const WHITESPACE_RE = /\s+/;
 
 /**
  * Displays the user's first name from their passkey-encrypted profile.
@@ -39,9 +42,9 @@ export function ProfileGreetingName({
   // Trigger a fetch on mount if no profile is cached
   useEffect(() => {
     if (!profile) {
-      // Only auto-unlock when it can succeed without prompting the user.
-      // (Prevents unexpected WebAuthn prompts when entering the dashboard.)
-      if (!hasCachedPasskeyUnlock()) {
+      // Only auto-unlock when cached credentials exist (passkey PRF or OPAQUE export key).
+      // Prevents unexpected WebAuthn prompts — only proceeds if sign-in already cached material.
+      if (!hasAnyCachedCredential()) {
         setIsInitialLoad(false);
         return;
       }
@@ -73,5 +76,9 @@ export function ProfileGreetingName({
     return <Skeleton className="inline-block h-6 w-24 align-baseline" />;
   }
 
-  return <span>{profile?.firstName || fallback}</span>;
+  // Extract just the first word of the given name for a casual greeting.
+  const firstName = profile?.firstName ?? getCachedGreetingName();
+  const givenName = firstName?.split(WHITESPACE_RE)[0] || fallback;
+
+  return <span>{givenName}</span>;
 }

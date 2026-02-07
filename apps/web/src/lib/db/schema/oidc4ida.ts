@@ -13,12 +13,12 @@ export const oidc4idaVerifiedClaims = sqliteTable(
       .unique()
       .references(() => users.id, { onDelete: "cascade" }),
     verifiedClaims: text("verified_claims").notNull(),
-    createdAt: integer("created_at", { mode: "timestamp" })
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .notNull()
-      .default(sql`(unixepoch())`),
+      .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [index("oidc4ida_verified_claim_user_id_idx").on(table.userId)]
 );

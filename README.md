@@ -137,7 +137,7 @@ PII**.
 - [docs/zk-nationality-proofs.md](docs/zk-nationality-proofs.md) - Merkle membership proofs
 - [docs/web3-architecture.md](docs/web3-architecture.md) - Web2-to-Web3 transition and on-chain flow
 - [docs/blockchain-setup.md](docs/blockchain-setup.md) - fhEVM envs and deployment
-- [docs/rp-redirect-flow.md](docs/rp-redirect-flow.md) - RP integration flow
+- [docs/oauth-integrations.md](docs/oauth-integrations.md) - OAuth provider, client management, scopes, OIDC4VCI/VP
 - [docs/password-security.md](docs/password-security.md) - OPAQUE password model and breach checks
 - [docs/verification.md](docs/verification.md) - deployment verification
 - [docs/adr/README.md](docs/adr/README.md) - decision records

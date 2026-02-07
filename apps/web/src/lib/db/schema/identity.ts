@@ -113,8 +113,6 @@ export const identityDocuments = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentType: text("document_type"),
-    issuerCountry: text("issuer_country"),
     documentHash: text("document_hash").unique(),
     nameCommitment: text("name_commitment"),
     verifiedAt: text("verified_at"),

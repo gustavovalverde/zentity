@@ -72,8 +72,6 @@ describe("identity queries", () => {
     await createIdentityDocument({
       id: olderDoc,
       userId,
-      documentType: "passport",
-      issuerCountry: "USA",
       documentHash: "hash-old",
       nameCommitment: "commit-old",
       verifiedAt: "2024-01-01T00:00:00Z",
@@ -84,8 +82,6 @@ describe("identity queries", () => {
     await createIdentityDocument({
       id: newerDoc,
       userId,
-      documentType: "passport",
-      issuerCountry: "USA",
       documentHash: "hash-new",
       nameCommitment: "commit-new",
       verifiedAt: "2025-01-01T00:00:00Z",
@@ -107,8 +103,6 @@ describe("identity queries", () => {
     await createIdentityDocument({
       id: documentId,
       userId,
-      documentType: "passport",
-      issuerCountry: "USA",
       documentHash: "hash-delete",
       nameCommitment: "commit-delete",
       verifiedAt: "2025-01-01T00:00:00Z",

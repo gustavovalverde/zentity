@@ -5,10 +5,10 @@ import {
   Code,
   Coins,
   FileCheck2,
+  Key,
   LogOut,
   Settings,
   Shield,
-  TestTube,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -42,6 +42,7 @@ interface NavItem {
 
 interface AppSidebarProps {
   user: {
+    name?: string | null;
     email?: string | null;
   };
 }
@@ -77,11 +78,11 @@ const blockchainNavItems: NavItem[] = [
   },
 ];
 
-const developmentNavItems: NavItem[] = [
+const developerNavItems: NavItem[] = [
   {
-    title: "Exchange Demo",
-    url: "/dashboard/dev/exchange",
-    icon: TestTube,
+    title: "Applications",
+    url: "/dashboard/developer/applications",
+    icon: Key,
   },
   {
     title: "Debug Tools",
@@ -193,12 +194,12 @@ export function AppSidebar({ user }: Readonly<AppSidebarProps>) {
           </SidebarGroup>
         ) : null}
 
-        {/* Development Section */}
+        {/* Developer Section */}
         <SidebarGroup>
-          <SidebarGroupLabel>Development</SidebarGroupLabel>
+          <SidebarGroupLabel>Developer</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {developmentNavItems.map((item) => (
+              {developerNavItems.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton
                     asChild
@@ -234,7 +235,7 @@ export function AppSidebar({ user }: Readonly<AppSidebarProps>) {
                 </div>
                 <div className="flex flex-col truncate">
                   <span className="truncate font-medium text-sm">
-                    <ProfileGreetingName fallback="User" />
+                    <ProfileGreetingName fallback={user.name || "User"} />
                   </span>
                   <span className="truncate text-muted-foreground text-xs">
                     {user.email}

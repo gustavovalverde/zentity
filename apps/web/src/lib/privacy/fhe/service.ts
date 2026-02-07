@@ -38,7 +38,6 @@ export type FheOperation =
   | "register_key"
   | "encrypt_batch"
   | "encrypt_dob_days"
-  | "encrypt_country_code"
   | "encrypt_compliance_level"
   | "verify_age_from_dob";
 
@@ -223,7 +222,6 @@ async function withFheError<T>(
 interface FheBatchEncryptResponse {
   /** Encrypted DOB days (days since 1900-01-01, UTC) */
   dobDaysCiphertext?: Uint8Array | null;
-  countryCodeCiphertext?: Uint8Array | null;
   complianceLevelCiphertext?: Uint8Array | null;
   livenessScoreCiphertext?: Uint8Array | null;
 }
@@ -252,7 +250,6 @@ export function encryptBatchFhe(args: {
   keyId: string;
   /** Full DOB as days since 1900-01-01 (UTC) */
   dobDays?: number;
-  countryCode?: number;
   complianceLevel?: number;
   livenessScore?: number;
   requestId?: string;
@@ -262,7 +259,6 @@ export function encryptBatchFhe(args: {
   const payload = {
     keyId: args.keyId,
     dobDays: args.dobDays,
-    countryCode: args.countryCode,
     complianceLevel: args.complianceLevel,
     livenessScore: args.livenessScore,
   };

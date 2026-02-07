@@ -68,7 +68,6 @@ export function useAuthMaterialStatus(): UseAuthMaterialStatusResult {
         return;
       }
 
-      // Priority: passkey > OPAQUE > wallet (matches loadSecret order)
       const passkeyCreds = bundle.wrappers.flatMap((w) =>
         w.prfSalt
           ? [
@@ -80,37 +79,19 @@ export function useAuthMaterialStatus(): UseAuthMaterialStatusResult {
           : []
       );
 
-      if (passkeyCreds.length > 0) {
-        const isFresh = hasCachedPasskeyUnlock();
-        if (isFresh) {
-          setAuthStatus({ status: "fresh", authMode: "passkey" });
-        } else {
-          setAuthStatus({
-            status: "expired",
-            authMode: "passkey",
-            passkeyCreds,
-          });
-        }
-        return;
-      }
-
       const opaqueWrapper = bundle.wrappers.find(
         (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
       );
 
-      if (opaqueWrapper) {
-        const isFresh = isOpaqueCacheFresh(currentUserId);
-        if (isFresh) {
-          setAuthStatus({ status: "fresh", authMode: "opaque" });
-        } else {
-          setAuthStatus({ status: "expired", authMode: "opaque" });
-        }
-        return;
-      }
-
       const walletWrapper = bundle.wrappers.find((w) =>
         w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
       );
+
+      // Prefer cached credential material first (no prompt).
+      if (passkeyCreds.length > 0 && hasCachedPasskeyUnlock()) {
+        setAuthStatus({ status: "fresh", authMode: "passkey" });
+        return;
+      }
 
       if (walletWrapper) {
         const parsed = parseWalletCredentialId(walletWrapper.credentialId);
@@ -122,15 +103,41 @@ export function useAuthMaterialStatus(): UseAuthMaterialStatusResult {
           );
           if (isFresh) {
             setAuthStatus({ status: "fresh", authMode: "wallet" });
-          } else {
-            setAuthStatus({
-              status: "expired",
-              authMode: "wallet",
-              walletInfo: { address: parsed.address, chainId: parsed.chainId },
-            });
+            return;
           }
+        }
+      }
+
+      if (opaqueWrapper && isOpaqueCacheFresh(currentUserId)) {
+        setAuthStatus({ status: "fresh", authMode: "opaque" });
+        return;
+      }
+
+      // No cached material: prefer passkey prompt, then wallet, then opaque.
+      if (passkeyCreds.length > 0) {
+        setAuthStatus({
+          status: "expired",
+          authMode: "passkey",
+          passkeyCreds,
+        });
+        return;
+      }
+
+      if (walletWrapper) {
+        const parsed = parseWalletCredentialId(walletWrapper.credentialId);
+        if (parsed) {
+          setAuthStatus({
+            status: "expired",
+            authMode: "wallet",
+            walletInfo: { address: parsed.address, chainId: parsed.chainId },
+          });
           return;
         }
+      }
+
+      if (opaqueWrapper) {
+        setAuthStatus({ status: "expired", authMode: "opaque" });
+        return;
       }
 
       setAuthStatus({ status: "no_wrappers" });

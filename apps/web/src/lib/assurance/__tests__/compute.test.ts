@@ -251,15 +251,25 @@ describe("isFheComplete", () => {
     expect(isFheComplete([])).toBe(false);
   });
 
-  it("returns true with birth_year_offset", () => {
-    expect(isFheComplete(["birth_year_offset"])).toBe(true);
+  it("returns false with birth_year_offset only", () => {
+    expect(isFheComplete(["birth_year_offset"])).toBe(false);
   });
 
-  it("returns true with dob_days", () => {
-    expect(isFheComplete(["dob_days"])).toBe(true);
+  it("returns false with dob_days only", () => {
+    expect(isFheComplete(["dob_days"])).toBe(false);
   });
 
-  it("returns true with both formats", () => {
-    expect(isFheComplete(["birth_year_offset", "dob_days"])).toBe(true);
+  it("returns true with dob_days and liveness_score", () => {
+    expect(isFheComplete(["dob_days", "liveness_score"])).toBe(true);
+  });
+
+  it("returns true with birth_year_offset and liveness_score", () => {
+    expect(isFheComplete(["birth_year_offset", "liveness_score"])).toBe(true);
+  });
+
+  it("returns true with both dob formats and liveness_score", () => {
+    expect(
+      isFheComplete(["birth_year_offset", "dob_days", "liveness_score"])
+    ).toBe(true);
   });
 });

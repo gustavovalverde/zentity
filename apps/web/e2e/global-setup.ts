@@ -8,8 +8,8 @@ import { createClient } from "@libsql/client";
 import { type APIResponse, type FullConfig, request } from "@playwright/test";
 
 const currentDir =
-  typeof __dirname === "string"
-    ? __dirname
+  typeof import.meta.dirname === "string"
+    ? import.meta.dirname
     : dirname(fileURLToPath(import.meta.url));
 const AUTH_STATE_PATH = join(currentDir, ".auth", "user.json");
 const AUTH_SEED_PATH = join(currentDir, ".auth", "seed.json");

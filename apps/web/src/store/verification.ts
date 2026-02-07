@@ -1,24 +1,24 @@
 import type { DocumentResult } from "@/lib/identity/document/document-ocr";
 
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 
 /**
  * Verification Store
  *
- * Manages form data for the dashboard identity verification flow.
- * Contains transient data needed during document upload, liveness, and face match.
+ * In-memory state for the identity verification flow.
+ * NO persistence — verification is atomic. If the user refreshes,
+ * all state is lost and they restart from the document step.
  *
- * Important: Verification status (documentProcessed, livenessPassed, faceMatchPassed)
- * is NOT stored here - these are server-authoritative via getTierProfile().
- * This store only holds client-side transient data for the verification UI.
+ * This is intentional: PII (DOB, document images, nationality) must never
+ * be written to sessionStorage, localStorage, or URL params.
+ * Client-side navigation preserves this state between verification steps.
  */
 interface VerificationStore {
   // Draft and document references (from server)
   draftId: string | null;
   documentId: string | null;
 
-  // Transient document data (for processing, not persisted to server)
+  // Transient document data (for processing)
   idDocument: File | null;
   idDocumentBase64: string | null;
   documentResult: DocumentResult | null;
@@ -27,8 +27,10 @@ interface VerificationStore {
   selfieImage: string | null;
   bestSelfieFrame: string | null;
 
-  // Extracted data for display (from server OCR response)
+  // Extracted data from server OCR response
   extractedName: string | null;
+  extractedFirstName: string | null;
+  extractedLastName: string | null;
   extractedDOB: string | null;
   extractedDocNumber: string | null;
   extractedNationality: string | null;
@@ -50,6 +52,8 @@ const initialState: Omit<VerificationStore, "set" | "reset"> = {
   selfieImage: null,
   bestSelfieFrame: null,
   extractedName: null,
+  extractedFirstName: null,
+  extractedLastName: null,
   extractedDOB: null,
   extractedDocNumber: null,
   extractedNationality: null,
@@ -58,27 +62,8 @@ const initialState: Omit<VerificationStore, "set" | "reset"> = {
   userSalt: null,
 };
 
-export const useVerificationStore = create<VerificationStore>()(
-  persist(
-    (set) => ({
-      ...initialState,
-      set: (data) => set(data),
-      reset: () => set(initialState),
-    }),
-    {
-      name: "zentity-verification",
-      partialize: (state) => ({
-        // Persist data needed to resume verification flow across page navigations
-        draftId: state.draftId,
-        documentId: state.documentId,
-        idDocumentBase64: state.idDocumentBase64,
-        // Extracted data needed for ZK proof generation after liveness
-        extractedDOB: state.extractedDOB,
-        extractedNationalityCode: state.extractedNationalityCode,
-        extractedExpirationDate: state.extractedExpirationDate,
-        userSalt: state.userSalt,
-      }),
-      storage: createJSONStorage(() => sessionStorage),
-    }
-  )
-);
+export const useVerificationStore = create<VerificationStore>()((set) => ({
+  ...initialState,
+  set: (data) => set(data),
+  reset: () => set(initialState),
+}));

@@ -11,7 +11,6 @@ import {
   type PasskeyEnrollmentContext,
   storeSecretWithCredential,
 } from "@/lib/privacy/secrets";
-import { uploadSecretBlob } from "@/lib/privacy/secrets/storage";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { trpc } from "@/lib/trpc/client";
 
@@ -34,20 +33,6 @@ let cached:
       cachedAt: number;
     }
   | undefined;
-
-export function uploadSecretBlobWithToken(params: {
-  secretId: string;
-  secretType: string;
-  payload: Uint8Array;
-  registrationToken: string;
-}): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
-  return uploadSecretBlob({
-    secretId: params.secretId,
-    secretType: params.secretType,
-    payload: params.payload,
-    registrationToken: params.registrationToken,
-  });
-}
 
 function serializeKeys(keys: StoredFheKeys): Uint8Array {
   return encode({
@@ -101,10 +86,6 @@ export async function createFheKeyEnvelope(params: {
     prfSalt: params.enrollment.prfSalt,
     envelopeFormat: FHE_ENVELOPE_FORMAT,
   });
-}
-
-export function cacheFheKeys(secretId: string, keys: StoredFheKeys) {
-  cacheKeys(secretId, keys);
 }
 
 function getCachedKeys(): StoredFheKeys | null {

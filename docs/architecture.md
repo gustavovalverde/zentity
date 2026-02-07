@@ -35,42 +35,40 @@ Non-goals:
 
 ```mermaid
 flowchart LR
-  subgraph B["User Browser"]
-    UI["Web UI"]
-    W["Web Worker\nZK Prover"]
+  subgraph Browser["User Browser"]
+    UI["Web UI\nReact 19 + Next.js"]
+    W["Web Worker\nZK Prover (Noir/BB)"]
     UI <--> W
   end
 
-  subgraph WEB["Next.js Server :3000"]
-    API[/"API Routes"/]
+  subgraph Server["Next.js Server :3000"]
+    API[/"tRPC + Auth API"/]
     BB["ZK Verifier\n(bb-worker)"]
-    DB[("SQLite")]
+    DB[("SQLite / Turso")]
     API <--> BB
+    API <--> DB
   end
 
-  OCR["OCR Service :5004"]
-  FHE["FHE Service :5001"]
-  SIGNER["Signer Coordinator :5002"]
-  SIGNERS["Signer Services :5101+"]
+  subgraph Services["Backend Services"]
+    OCR["OCR :5004\nRapidOCR"]
+    FHE["FHE :5001\nTFHE-rs"]
+    SIGNER["FROST Coordinator :5002"]
+    SIGNERS["Signer Nodes :5101+"]
+    SIGNER --> SIGNERS
+  end
 
   UI -->|"doc + selfie"| API
   API -->|"image"| OCR
   OCR -->|"extracted fields"| API
-  API -->|"results"| UI
 
-  UI -->|"request nonce"| API
-  API -->|"persist nonce"| DB
   UI -->|"private inputs"| W
   W -->|"proof"| UI
   UI -->|"submit proof"| API
   API -->|"verify"| BB
-  BB -->|"result"| API
-  API -->|"consume nonce"| DB
 
   API -->|"encrypt"| FHE
   FHE -->|"ciphertext"| API
   API -->|"recovery signing"| SIGNER
-  SIGNER --> SIGNERS
 ```
 
 ---
@@ -139,37 +137,41 @@ Zentity supports two usage modes that share the same core cryptography but diffe
 ```mermaid
 sequenceDiagram
   autonumber
-  participant U as User (Browser)
+  actor User
   participant UI as Web UI
-  participant AUTH as Better Auth (/api/auth)
-  participant API as Web API
+  participant AUTH as Auth API
+  participant API as tRPC API
   participant DB as SQLite
   participant FHE as FHE Service
   participant OCR as OCR Service
 
-  Note over UI,AUTH: Phase 1 - Sign-up (account + key custody)
-  UI->>AUTH: signIn.anonymous (if needed)
-  UI->>API: POST /api/fhe-enrollment/context
-  API->>DB: Store enrollment context + registration tokens
-  API-->>UI: contextToken + registrationToken
+  Note over User,AUTH: Phase 1 — Sign-up (account creation)
+  User->>UI: Choose credential (passkey / password / wallet)
+  alt Passkey or Password
+    UI->>AUTH: ensureAuthSession() (lazy)
+    AUTH-->>UI: Anonymous session
+    UI->>AUTH: Create credential on anonymous user
+  else Wallet (SIWE)
+    UI->>AUTH: signInWithSiwe() (creates user directly)
+  end
+  AUTH-->>UI: Session with credential
+  UI->>API: completeAccountCreation
+  API->>DB: Link email/wallet, clear isAnonymous, create identity bundle stub
+  UI->>UI: Invalidate session cookie cache
+  UI-->>UI: Redirect → /dashboard
 
-  UI->>AUTH: GET /api/auth/passkey/generate-register-options?context=...
-  UI->>UI: Create passkey + PRF output
-  UI->>AUTH: POST /api/auth/passkey/verify-registration
-  AUTH-->>UI: Session cookie set
+  Note over User,FHE: Phase 1.5 — FHE Enrollment Preflight
+  User->>UI: Click "Start verification"
+  UI->>UI: Confirm credential (PRF / wallet sig / password)
+  UI->>UI: Generate FHE keys (TFHE WASM)
+  UI->>API: Store encrypted secret + wrapper
+  API->>FHE: Register public + server keys
+  FHE-->>API: keyId
+  API->>DB: Update identity bundle with fheKeyId
+  API-->>UI: Enrollment complete
 
-  UI->>UI: Generate FHE keys + encrypt bundle
-  UI->>API: POST /api/secrets/blob (Bearer registrationToken)
-  API->>DB: Store encrypted blob metadata
-
-  UI->>API: POST /api/fhe/enrollment/complete
-  API->>FHE: Register keys
-  FHE-->>API: key_id
-  API->>DB: Attach encrypted secret + wrapper
-  API-->>UI: Enrollment complete → redirect /dashboard
-
-  Note over U,OCR: Phase 2 - Dashboard verification (OCR + liveness + proofs)
-  U->>UI: Upload ID + selfie
+  Note over User,OCR: Phase 2 — Identity verification
+  User->>UI: Upload ID + selfie
   UI->>API: Submit document + liveness
   API->>OCR: OCR + parse (transient)
   OCR-->>API: Extracted fields
@@ -202,21 +204,29 @@ Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
 ### Disclosure
 
+Disclosure uses a two-tier scope system: **VC scopes** (`vc:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII that is server-encrypted per RP. Both support user-controlled selective disclosure at consent time.
+
 ```mermaid
 sequenceDiagram
   autonumber
-  participant UI as User (Browser)
+  actor User
+  participant UI as Consent UI
   participant API as Zentity API
   participant DB as SQLite
   participant RP as Relying Party
 
-  UI->>UI: Decrypt passkey-sealed profile
-  UI->>UI: Re-encrypt to RP
-  UI->>API: Request disclosure bundle
-  API->>DB: Read commitments / proofs / evidence
-  API-->>UI: Disclosure bundle
-  UI-->>RP: Send bundle
-  RP->>RP: Verify proofs
+  Note over RP,UI: OAuth authorize + consent
+  RP->>UI: Redirect (scope: openid vc:identity identity.name)
+  User->>UI: Approve selected scopes
+  UI->>UI: Decrypt profile vault (passkey / password / wallet)
+  UI->>API: Capture PII → per-RP encrypted
+  API->>DB: Store encrypted blob (oauth_identity_data)
+  API-->>RP: Auth code → tokens
+
+  Note over RP,API: Token exchange + userinfo
+  RP->>API: GET /oauth2/userinfo
+  API->>DB: Read VC claims + decrypt per-RP blob
+  API-->>RP: Scope-filtered claims (VC flags + PII)
 ```
 
 ---
@@ -266,7 +276,11 @@ See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Iden
 
 ## State Durability & Shared Devices
 
-Sign-up uses **encrypted cookies + session storage** for short-lived wizard progress. Enrollment context and registration tokens are stored in the Better Auth verification table with a short TTL to support the passkey-first flow. Dashboard verification progress is stored in first-party tables keyed by user ID (drafts, claims, proofs). If local state is cleared (shared devices, private windows), the user may need to restart sign-up or re-run verification. The only durable, user-controlled source of profile data is the **passkey-sealed profile**.
+- **Sign-up state** is local React state only (no DB, no cookies). Refreshing the page restarts the sign-up form. An anonymous session is created on load for the credential flow.
+- **FHE enrollment state** is tracked server-side via `identity_bundles.fheKeyId`. Enrollment is resumable — if partial, the preflight re-checks completion criteria.
+- **Verification progress** is stored in first-party DB tables keyed by user ID (drafts, signed claims, ZK proofs).
+- **Profile data** lives in a credential-encrypted vault (`encrypted_secrets` + `secret_wrappers`), only decryptable client-side after a credential unlock.
+- **Per-RP identity data** is stored server-encrypted in `oauth_identity_data`, created at consent time when the user approves `identity.*` scopes.
 
 ---
 

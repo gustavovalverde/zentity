@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -10,7 +11,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { TierBadge } from "@/components/assurance/tier-badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,10 +23,18 @@ import { Progress } from "@/components/ui/progress";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getTierProgress } from "@/lib/assurance/features";
 import { getCachedSession } from "@/lib/auth/cached-session";
+import { db } from "@/lib/db/connection";
+import {
+  getPrimaryWalletAddress,
+  userHasPassword,
+} from "@/lib/db/queries/auth";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
+import { passkeys } from "@/lib/db/schema/auth";
 import { cn } from "@/lib/utils/classname";
 
+import { FheErrorBanner } from "./_components/fhe-error-banner";
 import { FheStatusPoller } from "./_components/fhe-status-poller";
+import { VerifyCta } from "./_components/verify-cta";
 
 /**
  * Dashboard Verification Page
@@ -40,40 +48,52 @@ import { FheStatusPoller } from "./_components/fhe-status-poller";
  * 3. ZK proof generation (automatic)
  */
 export default async function VerifyPage() {
-  const session = await getCachedSession(await headers());
+  const headersObj = await headers();
+  const session = await getCachedSession(headersObj);
   const userId = session?.user?.id;
 
   if (!userId) {
     redirect("/sign-in");
   }
+  const cookies = headersObj.get("cookie");
 
-  const [assuranceState, bundle] = await Promise.all([
-    getAssuranceState(userId, session),
-    getIdentityBundleByUserId(userId),
-  ]);
+  const [assuranceState, bundle, hasPassword, passkeyRow, wallet] =
+    await Promise.all([
+      getAssuranceState(userId, session),
+      getIdentityBundleByUserId(userId),
+      userHasPassword(userId),
+      db
+        .select({ id: passkeys.id })
+        .from(passkeys)
+        .where(eq(passkeys.userId, userId))
+        .limit(1)
+        .get(),
+      getPrimaryWalletAddress(userId),
+    ]);
 
   // Already at max tier (Tier 2 = Verified)
   if (assuranceState.tier >= 2) {
     redirect("/dashboard");
   }
 
-  const hasFheKeys = !!bundle?.fheKeyId;
+  const hasEnrollment = Boolean(bundle?.fheKeyId);
+  const hasFheError = bundle?.fheStatus === "error";
   const progress = getTierProgress(assuranceState);
   const { details } = assuranceState;
 
   const steps = [
     {
       id: "document",
-      title: "Verify Document",
-      description: "Upload and verify your identity document",
+      title: "Scan ID",
+      description: "Upload a government-issued ID document",
       icon: FileText,
       completed: details.documentVerified,
       href: "/dashboard/verify/document",
     },
     {
       id: "liveness",
-      title: "Liveness Check",
-      description: "Complete a liveness verification",
+      title: "Take Selfie",
+      description: "Quick liveness check to confirm you're a real person",
       icon: Scan,
       completed: details.livenessVerified,
       href: "/dashboard/verify/liveness",
@@ -81,7 +101,7 @@ export default async function VerifyPage() {
     {
       id: "face-match",
       title: "Face Match",
-      description: "Match your face to your document photo",
+      description: "Match your selfie to your document photo",
       icon: User,
       completed: details.faceMatchVerified,
       href: "/dashboard/verify/liveness",
@@ -108,22 +128,8 @@ export default async function VerifyPage() {
         <TierBadge size="md" tier={assuranceState.tier} />
       </div>
 
-      {/* FHE Keys Warning */}
-      {!hasFheKeys && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Account Setup Required</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              You need to complete account setup before verifying your identity.
-              This includes securing your encryption keys which are required for
-              privacy-preserving verification.
-            </p>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/sign-up">Complete Account Setup</Link>
-            </Button>
-          </AlertDescription>
-        </Alert>
+      {hasFheError && bundle?.fheKeyId && (
+        <FheErrorBanner fheKeyId={bundle.fheKeyId} />
       )}
 
       {/* Progress Card */}
@@ -201,7 +207,7 @@ export default async function VerifyPage() {
                     </p>
                   </div>
 
-                  {isNext && hasFheKeys && (
+                  {isNext && hasEnrollment && (
                     <Button asChild size="sm">
                       <Link href={step.href}>Start</Link>
                     </Button>
@@ -212,10 +218,17 @@ export default async function VerifyPage() {
           </ul>
 
           {/* CTA */}
-          {nextStep && hasFheKeys && (
-            <Button asChild className="w-full">
-              <Link href={nextStep.href}>Continue with {nextStep.title}</Link>
-            </Button>
+          {nextStep && (
+            <VerifyCta
+              cookies={cookies}
+              hasEnrollment={hasEnrollment}
+              hasPasskeys={Boolean(passkeyRow)}
+              hasPassword={hasPassword}
+              nextStepHref={nextStep.href}
+              nextStepTitle={nextStep.title}
+              wallet={wallet}
+              walletScopeId={userId}
+            />
           )}
 
           {/* Identity complete but proofs pending - show FHE status */}

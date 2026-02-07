@@ -2,39 +2,32 @@
 
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { Wallet } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { useChainId, useSignTypedData } from "wagmi";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useChainId, useSignMessage } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  buildKekSignatureTypedData,
-  signatureToBytes,
-} from "@/lib/privacy/credentials";
-
-const KEK_SIGNATURE_VALIDITY_DAYS = 365;
+import { authClient } from "@/lib/auth/auth-client";
+import { signInWithSiwe } from "@/lib/auth/siwe";
 
 interface WalletSignUpFormProps {
-  userId: string;
+  email?: string;
   onSuccess: (result: {
     userId: string;
     address: string;
     chainId: number;
-    signatureBytes: Uint8Array;
-    signedAt: number;
-    expiresAt: number;
   }) => void;
-  onBack: () => void;
+  onBack?: () => void;
   disabled?: boolean;
 }
 
 /**
  * Wallet sign-up form component.
- * Connects wallet and collects EIP-712 signature for FHE key wrapping.
+ * Auto-connects on mount, then shows sign UI once connected.
  */
 export function WalletSignUpForm({
-  userId,
+  email,
   onSuccess,
   onBack,
   disabled = false,
@@ -42,7 +35,7 @@ export function WalletSignUpForm({
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { mutateAsync: signTypedData } = useSignTypedData();
+  const { mutateAsync: signMessage } = useSignMessage();
 
   const [error, setError] = useState<string | null>(null);
   const [isSigning, setIsSigning] = useState(false);
@@ -57,6 +50,16 @@ export function WalletSignUpForm({
     });
   }, [open]);
 
+  // Auto-connect on mount (skip if already connected)
+  const autoConnectAttempted = useRef(false);
+  useEffect(() => {
+    if (autoConnectAttempted.current || isConnected) {
+      return;
+    }
+    autoConnectAttempted.current = true;
+    handleConnect();
+  }, [handleConnect, isConnected]);
+
   const handleSign = useCallback(async () => {
     if (!(isConnected && address)) {
       setError("Please connect your wallet first.");
@@ -67,32 +70,26 @@ export function WalletSignUpForm({
     setError(null);
 
     try {
-      // Build deterministic typed data (no timestamp to ensure reproducibility)
-      const typedData = buildKekSignatureTypedData({
-        userId,
+      await signInWithSiwe({
+        address,
         chainId,
+        email,
+        force: true,
+        signMessage: ({ message }) => signMessage({ message }),
       });
 
-      const signature = await signTypedData({
-        domain: typedData.domain,
-        types: typedData.types,
-        primaryType: typedData.primaryType,
-        message: typedData.message,
-      });
-
-      const signatureBytes = signatureToBytes(signature);
-
-      // Track when signature was obtained for cache management (not part of message)
-      const signedAt = Math.floor(Date.now() / 1000);
-      const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
+      const session = await authClient.getSession();
+      const userId = session.data?.user?.id;
+      if (!userId) {
+        throw new Error(
+          "Failed to retrieve user session after wallet sign-in."
+        );
+      }
 
       onSuccess({
         userId,
         address,
         chainId,
-        signatureBytes,
-        signedAt,
-        expiresAt,
       });
     } catch (err) {
       const message =
@@ -109,7 +106,7 @@ export function WalletSignUpForm({
     } finally {
       setIsSigning(false);
     }
-  }, [address, chainId, isConnected, onSuccess, signTypedData, userId]);
+  }, [address, chainId, email, isConnected, onSuccess, signMessage]);
 
   useEffect(() => {
     if (isConnected && address && hasInitiatedConnect) {
@@ -120,19 +117,7 @@ export function WalletSignUpForm({
   const isReady = isConnected && address;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-3 rounded-lg border p-4">
-        <div className="flex items-center gap-2">
-          <Wallet className="h-5 w-5 text-muted-foreground" />
-          <span className="font-medium">Web3 Wallet Sign-up</span>
-        </div>
-        <p className="text-muted-foreground text-sm">
-          Connect your Ethereum wallet and sign a message to derive your
-          encryption keys. This signature never leaves your browser and is only
-          used locally to protect your data.
-        </p>
-      </div>
-
+    <div className="space-y-4">
       {!!error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
@@ -176,23 +161,18 @@ export function WalletSignUpForm({
           </Button>
         </div>
       ) : (
-        <div className="space-y-4">
-          <p className="text-center text-muted-foreground text-sm">
-            Step 1: Connect your wallet
-          </p>
-          <Button
-            className="w-full"
-            disabled={disabled}
-            onClick={handleConnect}
-            type="button"
-          >
-            <Wallet className="mr-2 h-4 w-4" />
-            Connect Wallet
-          </Button>
-        </div>
+        <Button
+          className="w-full"
+          disabled={disabled}
+          onClick={handleConnect}
+          type="button"
+        >
+          <Wallet className="mr-2 h-4 w-4" />
+          Connect Wallet
+        </Button>
       )}
 
-      <div className="flex gap-3">
+      {onBack ? (
         <Button
           disabled={disabled || isSigning}
           onClick={onBack}
@@ -201,7 +181,7 @@ export function WalletSignUpForm({
         >
           Back
         </Button>
-      </div>
+      ) : null}
     </div>
   );
 }

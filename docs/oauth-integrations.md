@@ -1,22 +1,105 @@
-# OAuth Integrations (Provider + Generic OAuth)
+# OAuth Integrations
 
-This doc summarizes the two OAuth directions in Zentity:
+This doc covers all OAuth/OIDC directions in Zentity:
 
-1) **OAuth Provider** — Zentity acts as an authorization server for partners.
-2) **Generic OAuth** — Zentity signs in with external OAuth/OIDC providers.
+1. [**OAuth Provider**](#oauth-provider-zentity-as-authorization-server) — Zentity acts as an authorization server for partners
+2. [**Generic OAuth**](#generic-oauth-zentity-as-oauth-client) — Zentity signs in with external OAuth/OIDC providers
+3. [**OIDC4VCI**](#oidc4vci-credential-issuance) — Verifiable credential issuance to wallets
+4. [**OIDC4VP**](#oidc4vp-credential-presentation) — Credential presentation from wallets
+
+---
 
 ## OAuth Provider (Zentity as authorization server)
 
-The OAuth Provider plugin is enabled in `apps/web/src/lib/auth/auth.ts` and exposes endpoints under `/api/auth/oauth2/*`.
+The OAuth Provider plugin (`@better-auth/oauth-provider`) is enabled in `apps/web/src/lib/auth/auth.ts` and exposes endpoints under `/api/auth/oauth2/*` plus discovery at `/api/auth/.well-known/*`.
 
-### Minimal client setup
+Zentity acts as a standards-based OAuth 2.1 / OIDC-compatible authorization server for partners who need **verified claims** (not raw PII). This avoids custom redirect handling, allows partners to integrate with existing OAuth libraries, and keeps verification results minimal.
 
-OAuth clients are stored in the `oauth_client` table (`apps/web/src/lib/db/schema/oauth-provider.ts`). The minimal required fields are:
+### Authorization flow
 
-- `client_id`
-- `redirect_uris` (JSON array)
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant RP as Relying Party
+  participant Auth as Zentity Auth
+  participant Consent as Consent Page
+  participant API as Token + Userinfo
 
-Example (SQLite):
+  Note over RP,Auth: Authorization request
+  RP->>Auth: GET /oauth2/authorize?client_id=...&scope=...&state=...
+  Auth->>User: Redirect → /sign-in (if not authenticated)
+  User->>Auth: Authenticate (passkey / password / wallet)
+  Auth->>Consent: Redirect → /oauth/consent
+
+  Note over User,Consent: User consent
+  Consent->>User: Show requested scopes (vc:*, identity.*)
+  User->>Consent: Approve selected scopes
+  Consent->>Auth: POST /oauth2/consent (accept: true)
+  Auth->>RP: Redirect with code + state
+
+  Note over RP,API: Token exchange
+  RP->>API: POST /oauth2/token (code)
+  API-->>RP: access_token + id_token
+  RP->>API: GET /oauth2/userinfo
+  API-->>RP: Scope-filtered claims
+```
+
+**Step by step:**
+
+1. **Partner redirects the user to Zentity** — `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20profile%20email&state=...`
+2. **User authenticates** (if not already signed in) — Redirects to `/sign-in`
+3. **User consents** — Redirects to `/oauth/consent`, consent page calls `POST /api/auth/oauth2/consent` with `accept: true`
+4. **Authorization code is returned** — Redirects back to partner with `code` + `state`
+5. **Partner exchanges code for tokens** — `POST /api/auth/oauth2/token`
+6. **Partner retrieves verified claims** — `GET /api/auth/oauth2/userinfo` (requires `openid`)
+
+### Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/auth/.well-known/oauth-authorization-server` | Server metadata |
+| `GET /api/auth/.well-known/openid-configuration` | OIDC discovery |
+| `GET /api/auth/oauth2/authorize` | Authorization request |
+| `POST /api/auth/oauth2/consent` | Consent submission |
+| `POST /api/auth/oauth2/continue` | Continue after custom auth |
+| `POST /api/auth/oauth2/token` | Token exchange |
+| `POST /api/auth/oauth2/introspect` | Token introspection |
+| `POST /api/auth/oauth2/revoke` | Token revocation |
+| `GET /api/auth/oauth2/userinfo` | User claims |
+| `GET /api/auth/oauth2/end-session` | Session logout |
+| `GET /api/auth/oauth2/get-consents` | List all consents for current user |
+| `GET /api/auth/oauth2/get-consent?id=...` | Get a specific consent |
+| `POST /api/auth/oauth2/delete-consent` | Revoke consent (`{ id }`) |
+| `POST /api/auth/oauth2/update-consent` | Update consented scopes (`{ id, update: { scopes } }`) |
+
+### Client management
+
+All OAuth clients register via **RFC 7591 Dynamic Client Registration** at `/api/auth/oauth2/register`. The user controls data access at consent time — organization assignment is for operational management (see [ADR-0003](adr/platform/0003-dcr-open-registration-user-gated-consent.md)).
+
+**Applications UI** — `/dashboard/developer/applications` provides a dashboard for viewing and managing organization-assigned OAuth clients.
+
+**REST API endpoints:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/rp-admin/clients/approve` | POST | Assign a DCR-registered client to an org |
+| `/api/rp-admin/clients/unowned` | GET | List clients not assigned to any org |
+| `/api/rp-admin/clients/owned` | GET | List clients assigned to the active org |
+
+All RP admin endpoints require an authenticated session with an active organization where the user has `owner` or `admin` role. See `apps/web/src/lib/auth/rp-admin.ts`.
+
+**Organization ownership** — Clients are optionally assigned to organizations via the `referenceId` column on `oauth_client`. This enables team-based management and operational visibility. Unassigned clients function normally — organization ownership is not a security boundary.
+
+**DCR + assignment** — Clients registered via DCR start without an owner. An org admin can later assign these clients via the approve endpoint, linking them to an organization.
+
+**Client metadata** — Clients support an optional `metadata` JSON field. For scopes that should be selectable but not required, set `optionalScopes`:
+
+```json
+{ "optionalScopes": ["identity.dob", "identity.address"] }
+```
+
+**Direct SQL setup** — OAuth clients are stored in the `oauth_client` table (`apps/web/src/lib/db/schema/oauth-provider.ts`):
 
 ```sql
 INSERT INTO oauth_client (client_id, redirect_uris, scopes, created_at)
@@ -28,37 +111,141 @@ VALUES (
 );
 ```
 
-### Minimal authorization flow
+### Configuration
 
-1) Redirect user to authorize:
-   - `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20profile%20email&state=...`
-2) Exchange code for tokens:
-   - `POST /api/auth/oauth2/token`
-3) Fetch verified claims (OIDC4IDA):
-   - `GET /api/auth/oauth2/userinfo` (requires `openid`)
+- Redirect URIs are **defined per client**, not via env allowlists.
+- Login page: `/sign-in`
+- Consent page: `/oauth/consent`
 
-### Userinfo response (verified claims)
+### Scope architecture and selective disclosure
 
-When identity assurance data is available, `/oauth2/userinfo` includes a `verified_claims` object (OIDC4IDA):
+Zentity uses two scope families to control what data RPs receive via userinfo. Both support user-controlled selective disclosure at consent time.
+
+**VC verification scopes** — derived boolean status flags (no PII):
+
+| Scope | Claims returned |
+|-------|----------------|
+| `vc:identity` | All verification claims (umbrella) |
+| `vc:verification` | `verification_level`, `verified` |
+| `vc:age` | `age_proof_verified` |
+| `vc:document` | `document_verified`, `doc_validity_proof_verified` |
+| `vc:liveness` | `liveness_verified`, `face_match_verified` |
+| `vc:nationality` | `nationality_proof_verified` |
+| `vc:compliance` | `policy_version`, `issuer_id`, `verification_time`, `attestation_expires_at` |
+| `compliance:key:read` | Read RP encryption keys for compliance data |
+| `compliance:key:write` | Register/rotate RP encryption keys |
+
+**Identity PII scopes** — actual personal data (server-encrypted per RP):
+
+| Scope | Claims returned |
+|-------|----------------|
+| `identity.name` | `given_name`, `family_name`, `name` |
+| `identity.dob` | `birthdate` |
+| `identity.address` | `address` |
+| `identity.document` | `document_number`, `document_type`, `issuing_country` |
+| `identity.nationality` | `nationality`, `nationalities` |
+
+**Standard OIDC scopes** (`openid`, `profile`, `email`, `offline_access`) are auto-approved.
+
+#### Identity PII data flow
+
+Identity PII (`identity.*` scopes) flows through a three-stage pipeline:
+
+1. **Profile secret creation** — After document OCR during verification, extracted PII (name, DOB, document number, nationality, document type, issuing country) is stored as a credential-encrypted secret (`profile_v1`). The credential material (passkey PRF / OPAQUE export key / wallet signature) is cached from the FHE enrollment step that precedes verification.
+
+2. **Consent-time capture** — When the user approves `identity.*` scopes, the consent UI decrypts the profile secret (may trigger a passkey/password prompt if the credential cache expired), maps fields to OIDC claims, and sends them to `/api/oauth2/identity/capture`. The capture endpoint merges client-provided PII with server-side signed OCR claims, then encrypts per-RP using AES-256-GCM with an HKDF key bound to `(userId, clientId)`.
+
+3. **Userinfo response** — When the RP calls `/oauth2/userinfo`, the `customUserInfoClaims` hook decrypts the per-RP blob and filters claims by the consented scopes.
+
+The server never stores plaintext PII — it only handles encrypted blobs. The profile secret is the authoritative PII source and is only decryptable by the user.
+
+If the profile vault can't be unlocked at consent time (credential cache expired, user cancels prompt), the Allow button is disabled until the vault is successfully unlocked. This prevents granting consent for scopes the server can't fulfill — otherwise better-auth would record consent as granted and auto-skip the consent page on future requests, permanently delivering empty tokens to the RP.
+
+#### Selective disclosure at consent
+
+When an RP requests `vc:identity`, the consent page expands it into individual `vc:*` sub-scope checkboxes. All start **unchecked** — the user actively opts in to each claim they want to share. The same applies to `identity.*` scopes.
+
+Example: a wine shop requests `openid email vc:identity`. The user checks only "Verification status" and "Age proof". The access token carries `openid email vc:verification vc:age`, and userinfo returns only those claims.
+
+```text
+Consent page:
+  [auto] Basic authentication (openid)
+  [auto] Email address (email)
+
+  Verification Claims:
+  [ ] Whether your identity is verified (vc:verification)
+  [ ] Whether your age has been proven (vc:age)
+  [ ] Whether your document has been verified (vc:document)
+  [ ] Whether liveness and face match were verified (vc:liveness)
+  [ ] Whether your nationality has been proven (vc:nationality)
+  [ ] Compliance metadata (vc:compliance)
+```
+
+This uses standard OAuth scope mechanics — custom scopes (RFC 6749) with scope narrowing at consent (RFC 6749 Section 3.3).
+
+#### Dynamic Client Registration (DCR)
+
+DCR-registered clients (RFC 7591) can request: `openid`, `profile`, `email`, `vc:identity`. The `vc:identity` umbrella is expanded at consent time, so the user still controls what gets shared.
+
+Admin-registered clients can additionally request `identity.*` scopes and `compliance:*` scopes.
+
+#### Userinfo response
+
+When verification data is available and `vc:*` scopes are approved, `/oauth2/userinfo` includes scope-filtered verification claims:
 
 ```json
 {
   "sub": "user-id",
-  "verified_claims": {
-    "verification": {
-      "trust_framework": "zentity",
-      "assurance_level": "full",
-      "time": "2026-01-02T00:00:00.000Z"
-    },
-    "claims": {
-      "verification_level": "full",
-      "verified": true
-    }
-  }
+  "verified": true,
+  "verification_level": "full",
+  "age_proof_verified": true
 }
 ```
 
-Full provider flow is documented in `docs/rp-redirect-flow.md`.
+VC claims come from the identity bundle (server-side, always available for verified users). Identity PII claims come from the per-RP encrypted blob created at consent time.
+
+#### Disclosure paths
+
+| Path | Standard | Mechanism |
+|------|----------|-----------|
+| Userinfo + `vc:*`/`identity.*` scopes | OAuth 2.0 custom scopes | Scope-to-claim filtering, opt-in consent |
+| OIDC4IDA `verified_claims` | OpenID for Identity Assurance | `claims` parameter in authorize request |
+| OIDC4VCI SD-JWT VC | W3C SD-JWT VC | Holder-controlled selective disclosure at presentation |
+
+#### OIDC4IDA (Identity Assurance)
+
+The `@better-auth/oidc4ida` plugin is active and returns `verified_claims` in id_token and userinfo when an RP includes the `claims` parameter in the authorize request (per OIDC4IDA Section 7). If the `claims` parameter is absent, the plugin returns early — it does not inject `verified_claims` into every response.
+
+The `verified_claims` structure includes:
+
+- **`verification`** — `trust_framework: "zentity"`, `assurance_level`, `evidence` (document verification metadata, timestamps)
+- **`claims`** — the attested claims: `verified`, `verification_level`, proof statuses, policy metadata
+
+This is a separate path from `vc:*` scopes. The scope-based path uses custom OAuth scopes with opt-in consent (see [ADR-0011](adr/privacy/0011-selective-disclosure-scope-architecture.md) for why scopes are the primary mechanism). OIDC4IDA is available for RPs that specifically implement the `claims` parameter per the spec.
+
+**Implementation:**
+
+- Plugin config: `oidc4ida({ getVerifiedClaims })` in `apps/web/src/lib/auth/auth.ts`
+- Claims builder: `buildOidcVerifiedClaims()` in `apps/web/src/lib/auth/oidc/claims.ts`
+- Schema: `apps/web/src/lib/db/schema/oidc4ida.ts`
+
+#### Consent auto-skip and management
+
+Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth_consent` with the consented scopes. On subsequent authorize requests, if the row exists and covers all requested scopes, the consent page is skipped. If the RP requests new scopes not in the original grant, the consent page shows again.
+
+**Forcing re-consent**: RPs can add `prompt=consent` to the authorize URL to force the consent page regardless of prior grants.
+
+When consent is deleted or scopes are reduced, Zentity's auth hooks automatically clean up the per-RP encrypted identity blob (see `auth.ts` consent cleanup middleware).
+
+#### Implementation
+
+- Scope definitions: `apps/web/src/lib/auth/oidc/vc-scopes.ts`, `apps/web/src/lib/auth/oidc/identity-scopes.ts`
+- Claim filtering: `filterVcClaimsByScopes()`, `filterIdentityByScopes()`
+- Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
+- Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
+- Consent cleanup hooks: `apps/web/src/lib/auth/auth.ts` (before/after hooks for `/oauth2/delete-consent` and `/oauth2/update-consent`)
+
+---
 
 ## Generic OAuth (Zentity as OAuth client)
 
@@ -95,6 +282,8 @@ GENERIC_OAUTH_PROVIDERS='[{"providerId":"partner-oidc","discoveryUrl":"https://p
 
 If the user is already signed in, Better Auth can link the provider account via `authClient.oauth2.link` (optional).
 
+---
+
 ## OIDC4VCI (Credential Issuance)
 
 Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specification.
@@ -130,6 +319,8 @@ Credentials contain only derived claims (no raw PII):
 - `age_proof_verified`, `doc_validity_proof_verified`, `nationality_proof_verified`
 - `policy_version`, `issuer_id`, `verification_time`
 
+---
+
 ## OIDC4VP (Credential Presentation)
 
 Zentity can act as a verifier requesting presentations from wallets.
@@ -153,7 +344,8 @@ Presentations include a proof JWT demonstrating possession of the holder's priva
 
 See [SSI Architecture](ssi-architecture.md) for the complete model.
 
+---
+
 ## Notes
 
 - Wallet auth (SIWE) is separate and documented in `docs/web3-architecture.md`.
-- For OAuth provider metadata endpoints, see `/api/auth/.well-known/*`.
