@@ -136,7 +136,7 @@ export function SignUpForm() {
         );
       }
 
-      cachePasskeyUnlock({ credentialId, prfOutput });
+      cachePasskeyUnlock({ credentialId, prfOutput, prfSalt });
 
       await completeAccountCreation();
       finalizeSignUp();

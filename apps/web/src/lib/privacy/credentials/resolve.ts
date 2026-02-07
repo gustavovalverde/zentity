@@ -17,7 +17,6 @@ import {
   getCachedPasskeyUnlock,
   hasAnyCachedOpaqueExport,
 } from "./cache";
-import { generatePrfSalt } from "./derivation";
 import { getCachedWalletContext } from "./wallet";
 
 export async function resolveEnrollmentCredential(): Promise<EnrollmentCredential | null> {
@@ -66,7 +65,7 @@ export async function resolveEnrollmentCredential(): Promise<EnrollmentCredentia
           credentialId: cached.credentialId,
           userId,
           prfOutput: cached.prfOutput,
-          prfSalt: generatePrfSalt(),
+          prfSalt: cached.prfSalt,
         },
       };
     }

@@ -21,6 +21,7 @@ const OPAQUE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 interface CachedPasskeyUnlock {
   credentialId: string;
   prfOutput: Uint8Array;
+  prfSalt: Uint8Array;
 }
 
 const passkeyCache = createTtlCache<CachedPasskeyUnlock>(PASSKEY_CACHE_TTL_MS);
@@ -46,10 +47,12 @@ export function getCachedPasskeyUnlock(
 export function cachePasskeyUnlock(params: {
   credentialId: string;
   prfOutput: Uint8Array;
+  prfSalt: Uint8Array;
 }): void {
   passkeyCache.set({
     credentialId: params.credentialId,
     prfOutput: params.prfOutput,
+    prfSalt: params.prfSalt,
   });
 }
 

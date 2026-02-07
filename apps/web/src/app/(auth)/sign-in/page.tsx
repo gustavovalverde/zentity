@@ -1,17 +1,20 @@
 "use client";
 
 import { KeyRound, TriangleAlert } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { OpaqueSignInForm } from "@/components/auth/opaque-sign-in-form";
 import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 
-const LazyWalletSignInButton = lazy(() =>
-  import("@/components/auth/wallet-sign-in-form").then((m) => ({
-    default: m.WalletSignInButton,
-  }))
+const LazyWalletSignInButton = dynamic(
+  () =>
+    import("@/components/auth/wallet-sign-in-form").then((m) => ({
+      default: m.WalletSignInButton,
+    })),
+  { ssr: false }
 );
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -191,9 +194,7 @@ export default function SignInPage() {
             <span>Or continue with</span>
             <Separator className="flex-1" />
           </div>
-          <Suspense>
-            <LazyWalletSignInButton />
-          </Suspense>
+          <LazyWalletSignInButton />
           <SocialLoginButtons />
         </div>
 

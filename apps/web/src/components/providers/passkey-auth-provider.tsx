@@ -43,7 +43,11 @@ interface PasskeyAuthContextValue extends PasskeyAuthState {
   /** Check PRF support without triggering unlock */
   checkSupport: () => Promise<PrfSupportStatus>;
   /** Store PRF output after successful unlock (called by unlock hooks) */
-  setPrfOutput: (output: Uint8Array, credentialId: string) => void;
+  setPrfOutput: (
+    output: Uint8Array,
+    credentialId: string,
+    prfSalt: Uint8Array
+  ) => void;
   /** Set unlocking state */
   setIsUnlocking: (value: boolean) => void;
   /** Set error state */
@@ -97,8 +101,8 @@ export function PasskeyAuthProvider({
   }, [state.prfSupport]);
 
   const setPrfOutput = useCallback(
-    (output: Uint8Array, credentialId: string) => {
-      cachePasskeyUnlock({ credentialId, prfOutput: output });
+    (output: Uint8Array, credentialId: string, prfSalt: Uint8Array) => {
+      cachePasskeyUnlock({ credentialId, prfOutput: output, prfSalt });
       setState((prev) => ({
         ...prev,
         prfOutput: output,

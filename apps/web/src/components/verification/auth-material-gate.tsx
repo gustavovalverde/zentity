@@ -263,6 +263,7 @@ export function AuthMaterialGate({
       cachePasskeyUnlock({
         credentialId: selectedCredentialId,
         prfOutput,
+        prfSalt: saltByCredential[selectedCredentialId],
       });
 
       await recheckStatus();

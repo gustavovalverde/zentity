@@ -303,6 +303,7 @@ export function FheEnrollmentDialog({
       cachePasskeyUnlock({
         credentialId: signInResult.credentialId,
         prfOutput: signInResult.prfOutput,
+        prfSalt,
       });
 
       setStage("generating");

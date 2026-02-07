@@ -102,14 +102,17 @@ async function resolvePasskeyUnlock(params: {
       throw new Error("PRF output missing for selected passkey.");
     }
 
+    const resolvedSalt = params.credentialIdToSalt[resolvedCredentialId];
     cachePasskey({
       credentialId: resolvedCredentialId,
       prfOutput,
+      prfSalt: resolvedSalt,
     });
 
     return {
       credentialId: resolvedCredentialId,
       prfOutput,
+      prfSalt: resolvedSalt,
       cachedAt: Date.now(),
     };
   })();
@@ -346,7 +349,9 @@ async function tryLoadWithPrf(
   }
 
   const { credentialId: unlockedCredentialId, prfOutput } =
-    await resolvePasskeyUnlock({ credentialIdToSalt: saltByCredential });
+    await resolvePasskeyUnlock({
+      credentialIdToSalt: saltByCredential,
+    });
 
   const selectedWrapper = prfWrappers.find(
     (w) => w.credentialId === unlockedCredentialId
