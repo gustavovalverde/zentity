@@ -24,6 +24,7 @@ import {
   setPendingUnlock,
   unwrapDekWithOpaqueExport,
   unwrapDekWithPrf,
+  unwrapDekWithWalletSignature,
   WALLET_CREDENTIAL_PREFIX,
   wrapDekWithOpaqueExport,
   wrapDekWithPrf,
@@ -437,6 +438,119 @@ export async function loadSecret(params: {
   }
 
   throw new Error(`No credentials are registered for this ${label}.`);
+}
+
+/**
+ * Load a secret using explicitly provided credential material.
+ * Unlike `loadSecret` (which auto-prompts for passkey or throws for wallet/OPAQUE),
+ * this accepts credential material directly — enabling wallet and OPAQUE unlock flows.
+ */
+export async function loadSecretWithCredential(params: {
+  secretType: SecretType;
+  expectedEnvelopeFormat?: EnvelopeFormat;
+  secretLabel?: string;
+  userId?: string;
+  credential:
+    | { type: "opaque"; exportKey: Uint8Array }
+    | {
+        type: "wallet";
+        address: string;
+        chainId: number;
+        signatureBytes: Uint8Array;
+      };
+}): Promise<SecretLoadResult | null> {
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: params.secretType,
+  });
+
+  if (!bundle?.secret) {
+    return null;
+  }
+
+  const label = params.secretLabel ?? "secret";
+
+  if (!bundle.wrappers?.length) {
+    throw new Error(`No credentials are registered for this ${label}.`);
+  }
+
+  if (!bundle.secret.blobRef) {
+    throw new Error(`Encrypted ${label} blob is missing.`);
+  }
+
+  const storedFormat = readEnvelopeFormat(bundle.secret.metadata);
+  if (
+    storedFormat &&
+    params.expectedEnvelopeFormat &&
+    storedFormat !== params.expectedEnvelopeFormat
+  ) {
+    throw new Error(
+      `Secret envelope format mismatch. Please re-secure your ${label}.`
+    );
+  }
+
+  const envelopeFormat = storedFormat ?? params.expectedEnvelopeFormat;
+  if (!envelopeFormat) {
+    throw new Error(
+      `Missing envelope format metadata. Please re-secure your ${label}.`
+    );
+  }
+
+  const encryptedBlob = await downloadSecretBlob(bundle.secret.id, {
+    expectedHash: bundle.secret.blobHash,
+  });
+
+  const userId = await resolveUserId(params.userId, label);
+
+  let dek: Uint8Array;
+
+  if (params.credential.type === "opaque") {
+    const opaqueWrapper = bundle.wrappers.find(
+      (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
+    );
+    if (!opaqueWrapper) {
+      throw new Error(`No OPAQUE credential registered for this ${label}.`);
+    }
+    dek = await unwrapDekWithOpaqueExport({
+      secretId: bundle.secret.id,
+      userId,
+      wrappedDek: opaqueWrapper.wrappedDek,
+      exportKey: params.credential.exportKey,
+    });
+  } else {
+    const walletCredId = getWalletCredentialId({
+      address: params.credential.address,
+      chainId: params.credential.chainId,
+    });
+    const walletWrapper = bundle.wrappers.find(
+      (w) => w.credentialId === walletCredId
+    );
+    if (!walletWrapper) {
+      throw new Error(`No wallet credential registered for this ${label}.`);
+    }
+    dek = await unwrapDekWithWalletSignature({
+      secretId: bundle.secret.id,
+      userId,
+      address: params.credential.address,
+      chainId: params.credential.chainId,
+      wrappedDek: walletWrapper.wrappedDek,
+      signatureBytes: params.credential.signatureBytes,
+    });
+  }
+
+  const plaintext = await decryptWithDek({
+    secretId: bundle.secret.id,
+    secretType: params.secretType,
+    encryptedBlob,
+    dek,
+    envelopeFormat,
+  });
+
+  return {
+    secretId: bundle.secret.id,
+    plaintext,
+    metadata: bundle.secret.metadata,
+    envelopeFormat,
+  };
 }
 
 /**

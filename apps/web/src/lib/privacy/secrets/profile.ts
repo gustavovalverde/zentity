@@ -7,7 +7,7 @@
  * Profile data is PII that requires credential unlock.
  */
 
-import type { EnvelopeFormat } from "./types";
+import type { EnrollmentCredential, EnvelopeFormat } from "./types";
 
 import { SECRET_TYPES } from "./types";
 
@@ -172,6 +172,110 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
   });
 
   return pendingGetStoredProfile;
+}
+
+/**
+ * Store profile secret encrypted with the user's credential.
+ * Skips if a profile secret already exists (idempotent).
+ */
+export async function storeProfileSecret(params: {
+  extractedData: {
+    extractedFullName?: string | null;
+    extractedFirstName?: string | null;
+    extractedLastName?: string | null;
+    extractedDOB?: string | null;
+    extractedBirthYear?: number | null;
+    extractedAddress?: string | null;
+    extractedAddressCountryCode?: string | null;
+    extractedExpirationDate?: number | null;
+    extractedDocumentNumber?: string | null;
+    extractedDocumentType?: string | null;
+    extractedDocumentOrigin?: string | null;
+    extractedNationality?: string | null;
+    extractedNationalityCode?: string | null;
+    documentHash?: string | null;
+    userSalt?: string | null;
+  };
+  credential: EnrollmentCredential;
+}): Promise<void> {
+  const { storeSecretWithCredential } = await import("./index");
+
+  // Check if profile secret already exists
+  const { trpc } = await import("@/lib/trpc/client");
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: SECRET_TYPES.PROFILE,
+  });
+  if (bundle?.secret && bundle.wrappers?.length) {
+    return;
+  }
+
+  const profile: ProfileSecretPayload = {
+    fullName: params.extractedData.extractedFullName ?? null,
+    firstName: params.extractedData.extractedFirstName ?? null,
+    lastName: params.extractedData.extractedLastName ?? null,
+    dateOfBirth: params.extractedData.extractedDOB ?? null,
+    birthYear: params.extractedData.extractedBirthYear ?? null,
+    residentialAddress: params.extractedData.extractedAddress ?? null,
+    addressCountryCode:
+      params.extractedData.extractedAddressCountryCode ?? null,
+    expiryDateInt: params.extractedData.extractedExpirationDate ?? null,
+    documentNumber: params.extractedData.extractedDocumentNumber ?? null,
+    documentType: params.extractedData.extractedDocumentType ?? null,
+    documentOrigin: params.extractedData.extractedDocumentOrigin ?? null,
+    nationality: params.extractedData.extractedNationality ?? null,
+    nationalityCode: params.extractedData.extractedNationalityCode ?? null,
+    documentHash: params.extractedData.documentHash ?? null,
+    userSalt: params.extractedData.userSalt ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const plaintext = new TextEncoder().encode(JSON.stringify(profile));
+
+  await storeSecretWithCredential({
+    secretType: SECRET_TYPES.PROFILE,
+    plaintext,
+    credential: params.credential,
+    envelopeFormat: PROFILE_ENVELOPE_FORMAT,
+  });
+
+  cacheProfile(profile);
+}
+
+/**
+ * Get stored profile using explicit credential material (wallet or OPAQUE).
+ * Unlike `getStoredProfile` which auto-prompts passkey or throws,
+ * this accepts credential material directly.
+ */
+export async function getStoredProfileWithCredential(
+  credential:
+    | { type: "opaque"; exportKey: Uint8Array }
+    | {
+        type: "wallet";
+        address: string;
+        chainId: number;
+        signatureBytes: Uint8Array;
+      }
+): Promise<ProfileSecretPayload | null> {
+  const cachedProfile = getCachedProfile();
+  if (cachedProfile) {
+    return cachedProfile;
+  }
+
+  const { loadSecretWithCredential } = await import("./index");
+  const result = await loadSecretWithCredential({
+    secretType: SECRET_TYPES.PROFILE,
+    expectedEnvelopeFormat: PROFILE_ENVELOPE_FORMAT,
+    secretLabel: "profile data",
+    credential,
+  });
+
+  if (!result) {
+    return null;
+  }
+
+  const profile = deserializeProfile(result.plaintext);
+  cacheProfile(profile);
+  return profile;
 }
 
 /**

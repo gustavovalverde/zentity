@@ -2,6 +2,8 @@
 
 import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
 import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
+import type { CachedBindingMaterial } from "@/lib/privacy/credentials/cache";
+import type { EnrollmentCredential } from "@/lib/privacy/secrets/types";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useId, useRef, useState } from "react";
@@ -22,6 +24,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
+import { getCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { getBindingContext } from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
@@ -29,6 +32,44 @@ import { useVerificationStore } from "@/store/verification";
 import { BindingAuthDialog } from "./binding-auth-dialog";
 
 const getStoreState = () => useVerificationStore.getState();
+
+function buildEnrollmentCredential(
+  cached: CachedBindingMaterial,
+  userId: string,
+  wallet: { address: string; chainId: number } | null
+): EnrollmentCredential | null {
+  if (cached.mode === "passkey") {
+    return {
+      type: "passkey",
+      context: {
+        credentialId: cached.credentialId,
+        userId,
+        prfOutput: cached.prfOutput,
+        prfSalt: cached.prfSalt,
+      },
+    };
+  }
+  if (cached.mode === "opaque") {
+    return {
+      type: "opaque",
+      context: { userId, exportKey: cached.exportKey },
+    };
+  }
+  if (cached.mode === "wallet" && wallet) {
+    return {
+      type: "wallet",
+      context: {
+        userId,
+        address: wallet.address,
+        chainId: wallet.chainId,
+        signatureBytes: cached.signatureBytes,
+        signedAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
+      },
+    };
+  }
+  return null;
+}
 
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
@@ -85,6 +126,44 @@ export function LivenessVerifyClient({
    */
   const runProofGeneration = useCallback(
     async (documentId: string, bindingContext: BindingContext) => {
+      // Store profile secret before generating proofs (fire-and-forget)
+      const cached = getCachedBindingMaterial();
+      if (cached && userId) {
+        const credential = buildEnrollmentCredential(cached, userId, wallet);
+        if (credential) {
+          const storeSnapshot = getStoreState();
+          import("@/lib/privacy/secrets/profile")
+            .then(({ storeProfileSecret }) =>
+              storeProfileSecret({
+                extractedData: {
+                  extractedFullName: storeSnapshot.extractedName,
+                  extractedFirstName: storeSnapshot.extractedFirstName,
+                  extractedLastName: storeSnapshot.extractedLastName,
+                  extractedDOB: storeSnapshot.extractedDOB,
+                  extractedDocumentNumber: storeSnapshot.extractedDocNumber,
+                  extractedNationality: storeSnapshot.extractedNationality,
+                  extractedNationalityCode:
+                    storeSnapshot.extractedNationalityCode,
+                  extractedExpirationDate: storeSnapshot.extractedExpirationDate
+                    ? Number.parseInt(
+                        storeSnapshot.extractedExpirationDate,
+                        10
+                      ) || null
+                    : null,
+                  userSalt: storeSnapshot.userSalt,
+                },
+                credential,
+              })
+            )
+            .catch((err) => {
+              console.error(
+                "[verification] Profile secret storage failed:",
+                err
+              );
+            });
+        }
+      }
+
       toast.info("Generating privacy proofs...", {
         description: "This may take a moment. Please don't close this page.",
       });
@@ -106,7 +185,7 @@ export function LivenessVerifyClient({
       router.push("/dashboard/verify");
       router.refresh();
     },
-    [router]
+    [router, userId, wallet]
   );
 
   /**

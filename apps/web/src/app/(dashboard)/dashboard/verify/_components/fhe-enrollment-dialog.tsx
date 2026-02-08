@@ -301,6 +301,8 @@ export function FheEnrollmentDialog({
       setCachedBindingMaterial({
         mode: "passkey",
         prfOutput: signInResult.prfOutput,
+        credentialId: signInResult.credentialId,
+        prfSalt,
       });
 
       setStage("generating");

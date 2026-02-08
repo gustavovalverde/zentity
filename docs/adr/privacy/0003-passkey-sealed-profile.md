@@ -6,7 +6,7 @@ category: "business"
 domains: [privacy]
 ---
 
-# Passkey-sealed profile for PII (zero server decryption)
+# Credential-sealed profile for PII (zero server decryption)
 
 ## Context and Problem Statement
 
@@ -17,19 +17,19 @@ We need a single, privacy-preserving way to store user PII without allowing the 
 * No server-decryptable PII at rest
 * Single, consistent encryption mechanism for profile data
 * Keep email available for auth and recovery when provided; Recovery ID is the fallback for email-less accounts
-* Support multi-device access via passkeys
+* Support all credential types: passkey (PRF), password (OPAQUE), and wallet (EIP-712)
 
 ## Decision Outcome
 
-Chosen option: move all profile PII into a passkey-sealed secret (`profile_v1`) stored in `encrypted_secrets` with per-passkey wrappers.
+Chosen option: move all profile PII into a credential-sealed secret (`PROFILE`) stored in `encrypted_secrets` with per-credential wrappers.
 
-The server stores only encrypted blobs and metadata; plaintext profile values are decrypted only in the browser after explicit user action.
+The server stores only encrypted blobs and metadata; plaintext profile values are decrypted only in the browser after explicit user action. The user's credential type (passkey, password, or wallet) determines the key derivation method, but the envelope format and storage model are identical across all three.
 
 ### Expected Consequences
 
 * Strong privacy boundary: server cannot recover plaintext profile data.
 * Unified secret storage and simpler data governance.
-* Requires passkey unlock to show profile data in the UI.
+* Requires credential unlock (passkey prompt, password entry, or wallet signature) to access profile data.
 
 ## Alternatives Considered
 

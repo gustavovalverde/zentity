@@ -81,7 +81,12 @@ function clearCachedRecoveryKey(): void {
 const BINDING_MATERIAL_TTL_MS = 15 * 60 * 1000;
 
 export type CachedBindingMaterial =
-  | { mode: "passkey"; prfOutput: Uint8Array }
+  | {
+      mode: "passkey";
+      prfOutput: Uint8Array;
+      credentialId: string;
+      prfSalt: Uint8Array;
+    }
   | { mode: "opaque"; exportKey: Uint8Array }
   | { mode: "wallet"; signatureBytes: Uint8Array };
 

@@ -151,15 +151,20 @@ Zentity uses two scope families to control what data RPs receive via userinfo. B
 
 Identity PII (`identity.*` scopes) flows through a three-stage pipeline:
 
-1. **Profile secret creation** — After document OCR during verification, extracted PII (name, DOB, document number, nationality, document type, issuing country) is stored as a credential-encrypted secret (`profile_v1`). The credential material (passkey PRF / OPAQUE export key / wallet signature) is cached from the FHE enrollment step that precedes verification.
+1. **Profile secret creation** — During identity verification (after liveness and face match, before ZK proof generation), extracted PII (name, DOB, document number, nationality, document type, issuing country) is encrypted with the user's credential and stored as a `PROFILE` secret. The credential material (passkey PRF / OPAQUE export key / wallet signature) is cached from the FHE enrollment step that precedes verification. The server stores only opaque encrypted blobs it cannot decrypt.
 
-2. **Consent-time capture** — When the user approves `identity.*` scopes, the consent UI decrypts the profile secret (may trigger a passkey/password prompt if the credential cache expired), maps fields to OIDC claims, and sends them to `/api/oauth2/identity/capture`. The capture endpoint merges client-provided PII with server-side signed OCR claims, then encrypts per-RP using AES-256-GCM with an HKDF key bound to `(userId, clientId)`.
+2. **Consent-time vault unlock** — When the user approves `identity.*` scopes, the consent page must unlock the profile secret. The unlock method depends on the user's credential type, detected server-side from their secret wrappers:
+   - **Passkey** — WebAuthn prompt (automatic browser dialog)
+   - **Password (OPAQUE)** — Inline password field where the user re-enters their password
+   - **Wallet (EIP-712)** — "Sign with Wallet" button requiring a deterministic EIP-712 signature (signed twice and compared, same as FHE enrollment)
 
-3. **Userinfo response** — When the RP calls `/oauth2/userinfo`, the `customUserInfoClaims` hook decrypts the per-RP blob and filters claims by the consented scopes.
+   Once unlocked, the consent UI maps profile fields to OIDC claims and sends them to `/api/oauth2/identity/capture`. The capture endpoint re-encrypts PII per-RP using AES-256-GCM with an HKDF key bound to `(userId, clientId)`.
+
+3. **Userinfo response** — When the RP calls `/oauth2/userinfo`, the userinfo hook decrypts the per-RP blob and filters claims by the consented scopes.
 
 The server never stores plaintext PII — it only handles encrypted blobs. The profile secret is the authoritative PII source and is only decryptable by the user.
 
-If the profile vault can't be unlocked at consent time (credential cache expired, user cancels prompt), the Allow button is disabled until the vault is successfully unlocked. This prevents granting consent for scopes the server can't fulfill — otherwise better-auth would record consent as granted and auto-skip the consent page on future requests, permanently delivering empty tokens to the RP.
+If the profile vault can't be unlocked at consent time (credential cache expired, user cancels prompt, wallet not connected), the Allow button is disabled until the vault is successfully unlocked. This prevents granting consent for scopes the server can't fulfill — otherwise better-auth would record consent as granted and auto-skip the consent page on future requests, permanently delivering empty tokens to the RP.
 
 #### Selective disclosure at consent
 

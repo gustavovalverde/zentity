@@ -1,7 +1,16 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Lock } from "lucide-react";
+import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
+import {
+  AlertTriangle,
+  ExternalLink,
+  KeyRound,
+  Lock,
+  Wallet,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useChainId, useSignTypedData } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
@@ -25,8 +35,13 @@ import {
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/scope-display";
 import {
+  buildKekSignatureTypedData,
+  signatureToBytes,
+} from "@/lib/privacy/credentials";
+import {
   getProfileSnapshot,
   getStoredProfile,
+  getStoredProfileWithCredential,
   type ProfileSecretPayload,
 } from "@/lib/privacy/secrets/profile";
 
@@ -219,16 +234,229 @@ function VaultErrorAlert({
   );
 }
 
+// --- Wallet vault unlock button ---
+
+function WalletVaultUnlockButton({
+  wallet,
+  onSuccess,
+  onError,
+  disabled,
+}: Readonly<{
+  wallet: { address: string; chainId: number };
+  onSuccess: (profile: ProfileSecretPayload) => void;
+  onError: (error: unknown) => void;
+  disabled: boolean;
+}>) {
+  const { open: openWalletModal } = useAppKit();
+  const { address, isConnected } = useAppKitAccount();
+  const chainId = useChainId();
+  const { mutateAsync: signTypedData } = useSignTypedData();
+  const [signing, setSigning] = useState(false);
+
+  const handleClick = useCallback(async () => {
+    if (signing || disabled) {
+      return;
+    }
+
+    if (!(isConnected && address)) {
+      openWalletModal().catch(() => undefined);
+      return;
+    }
+
+    if (address.toLowerCase() !== wallet.address.toLowerCase()) {
+      toast.error(
+        `Connect wallet ${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+      );
+      openWalletModal().catch(() => undefined);
+      return;
+    }
+
+    if (chainId && chainId !== wallet.chainId) {
+      toast.error("Switch to the linked wallet network");
+      return;
+    }
+
+    setSigning(true);
+    try {
+      const session = await authClient.getSession();
+      const userId = session.data?.user?.id;
+      if (!userId) {
+        throw new Error("Session expired. Please sign in again.");
+      }
+
+      const typedData = buildKekSignatureTypedData({
+        userId,
+        chainId: wallet.chainId,
+      });
+
+      const signArgs = {
+        domain: typedData.domain as Record<string, unknown>,
+        types: typedData.types as Record<
+          string,
+          Array<{ name: string; type: string }>
+        >,
+        primaryType: typedData.primaryType,
+        message: typedData.message as Record<string, unknown>,
+      };
+
+      const signature1 = await signTypedData(signArgs);
+      const signature2 = await signTypedData(signArgs);
+
+      if (signature1 !== signature2) {
+        throw new Error(
+          "Wallet does not produce deterministic signatures. " +
+            "Encryption requires a wallet that implements RFC 6979."
+        );
+      }
+
+      const signatureBytes = signatureToBytes(signature1);
+
+      const profile = await getStoredProfileWithCredential({
+        type: "wallet",
+        address: wallet.address,
+        chainId: wallet.chainId,
+        signatureBytes,
+      });
+
+      if (!profile) {
+        throw new Error(
+          "No profile data found. Complete identity verification first."
+        );
+      }
+
+      onSuccess(profile);
+    } catch (error) {
+      onError(error);
+    } finally {
+      setSigning(false);
+    }
+  }, [
+    signing,
+    disabled,
+    isConnected,
+    address,
+    wallet,
+    chainId,
+    signTypedData,
+    openWalletModal,
+    onSuccess,
+    onError,
+  ]);
+
+  return (
+    <Button
+      disabled={signing || disabled}
+      onClick={handleClick}
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      {signing ? (
+        <Spinner aria-hidden="true" className="mr-2" size="sm" />
+      ) : (
+        <Wallet className="mr-2 size-3" />
+      )}
+      {signing ? "Signing..." : "Sign with Wallet"}
+    </Button>
+  );
+}
+
+// --- OPAQUE vault unlock form ---
+
+function OpaqueVaultUnlockForm({
+  onSuccess,
+  onError,
+  disabled,
+}: Readonly<{
+  onSuccess: (profile: ProfileSecretPayload) => void;
+  onError: (error: unknown) => void;
+  disabled: boolean;
+}>) {
+  const [password, setPassword] = useState("");
+  const [verifying, setVerifying] = useState(false);
+
+  const handleSubmit = useCallback(async () => {
+    if (!password.trim() || verifying || disabled) {
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const result = await authClient.opaque.verifyPassword({ password });
+      if (!result.data || result.error) {
+        throw new Error(
+          result.error?.message || "Password verification failed."
+        );
+      }
+
+      const profile = await getStoredProfileWithCredential({
+        type: "opaque",
+        exportKey: result.data.exportKey,
+      });
+
+      if (!profile) {
+        throw new Error(
+          "No profile data found. Complete identity verification first."
+        );
+      }
+
+      onSuccess(profile);
+    } catch (error) {
+      onError(error);
+    } finally {
+      setVerifying(false);
+    }
+  }, [password, verifying, disabled, onSuccess, onError]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        className="h-8 text-sm"
+        disabled={verifying || disabled}
+        onChange={(e) => setPassword(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            handleSubmit();
+          }
+        }}
+        placeholder="Enter your password"
+        type="password"
+        value={password}
+      />
+      <Button
+        disabled={verifying || disabled || !password.trim()}
+        onClick={handleSubmit}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {verifying ? (
+          <Spinner aria-hidden="true" className="mr-2" size="sm" />
+        ) : (
+          <KeyRound className="mr-2 size-3" />
+        )}
+        {verifying ? "Verifying..." : "Unlock"}
+      </Button>
+    </div>
+  );
+}
+
+// --- Main consent component ---
+
 export function OAuthConsentClient({
   clientId,
   clientMeta,
   optionalScopes,
   scopeParam,
+  authMode,
+  wallet,
 }: Readonly<{
   clientId: string | null;
   clientMeta: ClientMeta | null;
   optionalScopes: string[];
   scopeParam: string;
+  authMode: "passkey" | "opaque" | "wallet" | null;
+  wallet: { address: string; chainId: number } | null;
 }>) {
   const rawClientName = clientMeta?.name ?? clientId ?? "Unknown app";
   const clientName =
@@ -295,13 +523,30 @@ export function OAuthConsentClient({
     [approvedScopes]
   );
 
-  const loadProfile = useCallback(async () => {
+  const handleProfileLoaded = useCallback((profile: ProfileSecretPayload) => {
+    profileRef.current = profile;
+    setVaultState({ status: "loaded" });
+  }, []);
+
+  const handleVaultError = useCallback((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    let name: string = typeof err;
+    if (err instanceof DOMException) {
+      name = `DOMException.${err.name}`;
+    } else if (err instanceof Error) {
+      name = err.constructor.name;
+    }
+    console.error(`[consent] Vault unlock failed (${name}): ${msg}`);
+    profileRef.current = null;
+    setVaultState({ status: "error", error: classifyVaultError(err) });
+  }, []);
+
+  const loadProfilePasskey = useCallback(async () => {
     setVaultState({ status: "loading" });
     try {
       const profile = await getStoredProfile();
       if (profile) {
-        profileRef.current = profile;
-        setVaultState({ status: "loaded" });
+        handleProfileLoaded(profile);
       } else {
         profileRef.current = null;
         const { title, remedy } = VAULT_ERRORS.not_enrolled;
@@ -311,20 +556,11 @@ export function OAuthConsentClient({
         });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      let name: string = typeof err;
-      if (err instanceof DOMException) {
-        name = `DOMException.${err.name}`;
-      } else if (err instanceof Error) {
-        name = err.constructor.name;
-      }
-      console.error(`[consent] Vault unlock failed (${name}): ${msg}`);
-      profileRef.current = null;
-      setVaultState({ status: "error", error: classifyVaultError(err) });
+      handleVaultError(err);
     }
-  }, []);
+  }, [handleProfileLoaded, handleVaultError]);
 
-  // Check synchronous cache on mount — avoids WebAuthn prompt without user gesture
+  // Check synchronous cache on mount — avoids credential prompt without user gesture
   const cacheChecked = useRef(false);
   useEffect(() => {
     if (!hasApprovedIdentityScopes || cacheChecked.current) {
@@ -421,6 +657,100 @@ export function OAuthConsentClient({
 
   const hasOptional = optional.length > 0;
 
+  // --- Vault unlock UI based on auth mode ---
+  const renderVaultUnlock = () => {
+    if (!hasApprovedIdentityScopes) {
+      return null;
+    }
+
+    if (vaultState.status === "loading") {
+      return (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Spinner aria-hidden="true" size="sm" />
+          Unlocking your identity vault…
+        </div>
+      );
+    }
+
+    if (vaultState.status === "loaded") {
+      return null;
+    }
+
+    if (vaultState.status === "not_enrolled" || vaultState.status === "error") {
+      return (
+        <VaultErrorAlert
+          error={vaultState.error}
+          onRetry={
+            authMode === "passkey" || !authMode
+              ? loadProfilePasskey
+              : () => setVaultState({ status: "gesture_required" })
+          }
+        />
+      );
+    }
+
+    if (vaultState.status !== "gesture_required") {
+      return null;
+    }
+
+    // Passkey: single button that triggers WebAuthn
+    if (authMode === "passkey" || !authMode) {
+      return (
+        <Alert>
+          <Lock className="size-4" />
+          <AlertDescription className="space-y-2">
+            <p>Unlock your identity vault to share personal information.</p>
+            <Button
+              onClick={loadProfilePasskey}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Unlock vault
+            </Button>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    // OPAQUE: password field + unlock button
+    if (authMode === "opaque") {
+      return (
+        <Alert>
+          <Lock className="size-4" />
+          <AlertDescription className="space-y-2">
+            <p>Enter your password to unlock your identity vault.</p>
+            <OpaqueVaultUnlockForm
+              disabled={isSubmitting}
+              onError={handleVaultError}
+              onSuccess={handleProfileLoaded}
+            />
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    // Wallet: sign button
+    if (authMode === "wallet" && wallet) {
+      return (
+        <Alert>
+          <Lock className="size-4" />
+          <AlertDescription className="space-y-2">
+            <p>Sign with your wallet to unlock your identity vault.</p>
+            <WalletVaultUnlockButton
+              disabled={isSubmitting}
+              onError={handleVaultError}
+              onSuccess={handleProfileLoaded}
+              wallet={wallet}
+            />
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div
       className={`mx-auto flex w-full flex-col gap-4 ${isPopup ? "max-w-sm" : "max-w-md"}`}
@@ -514,38 +844,7 @@ export function OAuthConsentClient({
             </>
           )}
 
-          {hasApprovedIdentityScopes && vaultState.status === "loading" && (
-            <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Spinner aria-hidden="true" size="sm" />
-              Unlocking your identity vault…
-            </div>
-          )}
-
-          {hasApprovedIdentityScopes &&
-            vaultState.status === "gesture_required" && (
-              <Alert>
-                <Lock className="size-4" />
-                <AlertDescription className="space-y-2">
-                  <p>
-                    Unlock your identity vault to share personal information.
-                  </p>
-                  <Button
-                    onClick={loadProfile}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Unlock vault
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-
-          {hasApprovedIdentityScopes &&
-            (vaultState.status === "not_enrolled" ||
-              vaultState.status === "error") && (
-              <VaultErrorAlert error={vaultState.error} onRetry={loadProfile} />
-            )}
+          {renderVaultUnlock()}
 
           {error ? (
             <Alert variant="destructive">
