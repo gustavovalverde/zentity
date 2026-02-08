@@ -29,9 +29,6 @@ import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import {
   buildKekSignatureTypedData,
-  cacheOpaqueExportKey,
-  cachePasskeyUnlock,
-  cacheWalletSignature,
   generatePrfSalt,
   signatureToBytes,
 } from "@/lib/privacy/credentials";
@@ -300,12 +297,6 @@ export function FheEnrollmentDialog({
         throw new Error("Missing passkey credential ID.");
       }
 
-      cachePasskeyUnlock({
-        credentialId: signInResult.credentialId,
-        prfOutput: signInResult.prfOutput,
-        prfSalt,
-      });
-
       setStage("generating");
       const enrollment = await prepareFheKeyEnrollment({
         enrollment: {
@@ -388,8 +379,6 @@ export function FheEnrollmentDialog({
         );
       }
 
-      cacheOpaqueExportKey({ userId, exportKey: result.data.exportKey });
-
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
@@ -429,8 +418,6 @@ export function FheEnrollmentDialog({
       if (!result.data || result.error) {
         throw new Error(result.error?.message || "Password creation failed.");
       }
-
-      cacheOpaqueExportKey({ userId, exportKey: result.data.exportKey });
 
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
@@ -472,7 +459,7 @@ export function FheEnrollmentDialog({
         chainId: walletCtx.chainId,
       });
 
-      const signature = await walletCtx.signTypedData({
+      const signArgs = {
         domain: typedData.domain as Record<string, unknown>,
         types: typedData.types as Record<
           string,
@@ -480,20 +467,21 @@ export function FheEnrollmentDialog({
         >,
         primaryType: typedData.primaryType,
         message: typedData.message as Record<string, unknown>,
-      });
+      };
 
-      const signatureBytes = signatureToBytes(signature);
+      const signature1 = await walletCtx.signTypedData(signArgs);
+      const signature2 = await walletCtx.signTypedData(signArgs);
+
+      if (signature1 !== signature2) {
+        throw new Error(
+          "Wallet does not produce deterministic signatures. " +
+            "Encryption key wrapping requires a wallet that implements RFC 6979."
+        );
+      }
+
+      const signatureBytes = signatureToBytes(signature1);
       const signedAt = Math.floor(Date.now() / 1000);
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
-
-      cacheWalletSignature({
-        userId,
-        address: walletCtx.address,
-        chainId: walletCtx.chainId,
-        signatureBytes,
-        signedAt,
-        expiresAt,
-      });
 
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();

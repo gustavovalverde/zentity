@@ -11,6 +11,17 @@ import { fetchBinary } from "@/lib/privacy/utils/binary-transport";
 
 const textEncoder = new TextEncoder();
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return bytesToHex(new Uint8Array(digest));
+}
+
 /**
  * Upload an encrypted secret blob.
  *
@@ -45,7 +56,10 @@ export async function uploadSecretBlob(params: {
   });
 
   if (!response.ok) {
-    throw new Error("Failed to upload encrypted secret blob.");
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to upload encrypted secret blob: ${response.status} ${errorBody}`
+    );
   }
 
   const result = (await response.json()) as {
@@ -67,7 +81,8 @@ export async function uploadSecretBlob(params: {
  * @returns The raw encrypted blob bytes
  */
 export async function downloadSecretBlob(
-  secretId: string
+  secretId: string,
+  options?: { expectedHash?: string | null }
 ): Promise<Uint8Array> {
   const response = await fetchBinary(`/api/secrets/blob?secretId=${secretId}`, {
     method: "GET",
@@ -84,5 +99,22 @@ export async function downloadSecretBlob(
     throw new Error("Failed to download encrypted secret blob.");
   }
 
-  return new Uint8Array(await response.arrayBuffer());
+  const bytes = new Uint8Array(await response.arrayBuffer());
+
+  const headerHash = response.headers.get("X-Blob-Hash")?.trim() || null;
+  const expectedHash =
+    options?.expectedHash?.trim().toLowerCase() ||
+    headerHash?.toLowerCase() ||
+    null;
+
+  if (expectedHash) {
+    const actualHash = await sha256Hex(bytes);
+    if (actualHash !== expectedHash) {
+      throw new Error(
+        "Encrypted secret blob integrity check failed. Please re-secure your encryption keys."
+      );
+    }
+  }
+
+  return bytes;
 }

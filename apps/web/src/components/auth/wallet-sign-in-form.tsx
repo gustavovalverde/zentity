@@ -14,16 +14,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { continueOAuthFlow, hasOAuthParams } from "@/lib/auth/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import {
-  buildKekSignatureTypedData,
-  cacheWalletSignature,
-  signatureToBytes,
-} from "@/lib/privacy/credentials";
 import { redirectTo } from "@/lib/utils/navigation";
 
-const KEK_SIGNATURE_VALIDITY_DAYS = 365;
-
-type SignInStatus = "idle" | "connecting" | "ready" | "signing" | "signing_kek";
+type SignInStatus = "idle" | "connecting" | "ready" | "signing";
 
 export function WalletSignInButton() {
   const { open } = useAppKit();
@@ -64,7 +57,7 @@ export function WalletSignInButton() {
 
     try {
       // Step 1: EIP-712 authentication
-      const result = await authClient.signIn.eip712({
+      const _result = await authClient.signIn.eip712({
         address,
         chainId,
         signTypedData: async (typedData: Eip712TypedData) =>
@@ -78,36 +71,6 @@ export function WalletSignInButton() {
             message: typedData.message,
           }),
       });
-
-      // Step 2: KEK derivation signature — caches credential for vault unlock
-      setStatus("signing_kek");
-      try {
-        const userId = result.user.id;
-        const kekTypedData = buildKekSignatureTypedData({ userId, chainId });
-        const kekSignature = await signTypedData({
-          domain: kekTypedData.domain as Record<string, unknown>,
-          types: kekTypedData.types as Record<
-            string,
-            Array<{ name: string; type: string }>
-          >,
-          primaryType: kekTypedData.primaryType,
-          message: kekTypedData.message as Record<string, unknown>,
-        });
-
-        const signedAt = Math.floor(Date.now() / 1000);
-        const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
-
-        cacheWalletSignature({
-          userId,
-          address,
-          chainId,
-          signatureBytes: signatureToBytes(kekSignature),
-          signedAt,
-          expiresAt,
-        });
-      } catch {
-        // Non-blocking: vault unlock will prompt when needed
-      }
 
       if (hasOAuthParams()) {
         const oauthRedirect = await continueOAuthFlow();
@@ -139,7 +102,7 @@ export function WalletSignInButton() {
     }
   }, [address, chainId, isConnected, signTypedData]);
 
-  const isLoading = status === "signing" || status === "signing_kek";
+  const isLoading = status === "signing";
   const isReady = isConnected && address;
 
   return (
@@ -163,9 +126,7 @@ export function WalletSignInButton() {
             ) : (
               <Wallet className="mr-2 h-4 w-4" />
             )}
-            {status === "signing_kek"
-              ? "Unlocking vault..."
-              : `Sign in as ${address.slice(0, 6)}...${address.slice(-4)}`}
+            Sign in as {address.slice(0, 6)}...{address.slice(-4)}
           </Button>
           <button
             className="w-full text-center text-muted-foreground text-xs hover:underline"

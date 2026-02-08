@@ -11,24 +11,12 @@
  * that KEK to wrap/unwrap Data Encryption Keys (DEKs).
  */
 
-// --- Credential Caches ---
+// --- Pending unlock deduplication & recovery key cache ---
 export {
-  cacheOpaqueExportKey,
-  cachePasskeyUnlock,
   clearAllCredentialCaches,
   clearPendingUnlock,
-  getCachedOpaqueExportKey,
-  getCachedOpaqueUserId,
-  getCachedPasskeyPrfOutput,
-  getCachedPasskeyUnlock,
   getCachedRecoveryKey,
   getPendingUnlock,
-  hasAnyCachedCredential,
-  hasAnyCachedOpaqueExport,
-  hasCachedPasskeyUnlock,
-  isOpaqueCacheFresh,
-  resetOpaqueExportCache,
-  resetPasskeyUnlockCache,
   setCachedRecoveryKey,
   setPendingUnlock,
 } from "./cache";
@@ -56,17 +44,10 @@ export {
 // --- Wallet ---
 export {
   buildKekSignatureTypedData,
-  cacheWalletSignature,
   decryptSecretWithWalletSignature,
-  getCachedWalletSignature,
   getWalletCredentialId,
-  isWalletCacheFresh,
-  parseWalletCredentialId,
-  resetWalletSignatureCache,
   signatureToBytes,
   unwrapDekWithWalletSignature,
   WALLET_CREDENTIAL_PREFIX,
   wrapDekWithWalletSignature,
 } from "./wallet";
-// --- DEK Wrapping ---
-export { wrapDek } from "./wrap";

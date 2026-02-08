@@ -77,8 +77,12 @@ describe("passkey FHE enrollment integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           registrationToken,
-          wrappedDek: "wrapped-dek",
-          prfSalt: "prf-salt",
+          wrappedDek: JSON.stringify({
+            alg: "AES-GCM",
+            iv: "AA==",
+            ciphertext: "AA==",
+          }),
+          prfSalt: Buffer.alloc(32).toString("base64"),
           credentialId: "credential-1",
           keyId: "key-1",
           envelopeFormat: "msgpack",

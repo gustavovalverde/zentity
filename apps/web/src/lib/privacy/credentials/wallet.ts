@@ -14,7 +14,6 @@ import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
 
 import { decryptWithDek } from "@/lib/privacy/secrets/envelope";
 
-import { registerWalletCacheCheck } from "./cache";
 import { deriveKekFromWalletSignature } from "./derivation";
 import { unwrapDek, wrapDek } from "./wrap";
 
@@ -32,27 +31,6 @@ export function getWalletCredentialId(params: {
   chainId: number;
 }): string {
   return `${WALLET_CREDENTIAL_PREFIX}:${params.chainId}:${params.address}`;
-}
-
-/**
- * Parse a wallet credential ID back to its components.
- * Returns null if the format is invalid.
- */
-export function parseWalletCredentialId(
-  credentialId: string
-): { address: string; chainId: number } | null {
-  if (!credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)) {
-    return null;
-  }
-  const parts = credentialId.split(":");
-  if (parts.length !== 3) {
-    return null;
-  }
-  const chainId = Number.parseInt(parts[1], 10);
-  if (Number.isNaN(chainId)) {
-    return null;
-  }
-  return { chainId, address: parts[2] };
 }
 
 /**
@@ -221,123 +199,4 @@ export async function decryptSecretWithWalletSignature(params: {
     dek,
     envelopeFormat: params.envelopeFormat,
   });
-}
-
-// --- Session Cache for Wallet Signatures ---
-
-interface CachedWalletSignature {
-  userId: string;
-  address: string;
-  chainId: number;
-  signatureBytes: Uint8Array;
-  signedAt: number;
-  expiresAt: number;
-  cachedAt: number;
-}
-
-const WALLET_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-let cachedWalletSignature: CachedWalletSignature | null = null;
-
-// Register wallet cache check with the aggregate credential check (avoids circular import)
-registerWalletCacheCheck(() => cachedWalletSignature !== null);
-
-/**
- * Cache a wallet signature for session-based reuse.
- */
-export function cacheWalletSignature(params: {
-  userId: string;
-  address: string;
-  chainId: number;
-  signatureBytes: Uint8Array;
-  signedAt: number;
-  expiresAt: number;
-}): void {
-  cachedWalletSignature = {
-    ...params,
-    cachedAt: Date.now(),
-  };
-}
-
-/**
- * Retrieve a cached wallet signature if valid.
- *
- * Returns null if:
- * - No cached signature exists
- * - Cache has expired (TTL or signature expiry)
- * - User/address/chain doesn't match
- */
-export function getCachedWalletSignature(
-  userId: string,
-  address: string,
-  chainId: number
-): Uint8Array | null {
-  if (!cachedWalletSignature) {
-    return null;
-  }
-
-  const now = Date.now();
-
-  if (now - cachedWalletSignature.cachedAt > WALLET_CACHE_TTL_MS) {
-    cachedWalletSignature = null;
-    return null;
-  }
-
-  if (now >= cachedWalletSignature.expiresAt * 1000) {
-    cachedWalletSignature = null;
-    return null;
-  }
-
-  if (
-    cachedWalletSignature.userId !== userId ||
-    cachedWalletSignature.address.toLowerCase() !== address.toLowerCase() ||
-    cachedWalletSignature.chainId !== chainId
-  ) {
-    return null;
-  }
-
-  return cachedWalletSignature.signatureBytes;
-}
-
-/**
- * Check if wallet signature cache is fresh without retrieving the signature.
- */
-export function isWalletCacheFresh(
-  userId: string,
-  address: string,
-  chainId: number
-): boolean {
-  return getCachedWalletSignature(userId, address, chainId) !== null;
-}
-
-/**
- * Get the raw cached wallet signature if fresh, without requiring userId/address/chainId.
- * Used by resolveEnrollmentCredential to check if any wallet credential is cached.
- */
-export function getCachedWalletContext(): {
-  userId: string;
-  address: string;
-  chainId: number;
-  signatureBytes: Uint8Array;
-  signedAt: number;
-  expiresAt: number;
-} | null {
-  if (!cachedWalletSignature) {
-    return null;
-  }
-  const now = Date.now();
-  if (
-    now - cachedWalletSignature.cachedAt > WALLET_CACHE_TTL_MS ||
-    now >= cachedWalletSignature.expiresAt * 1000
-  ) {
-    cachedWalletSignature = null;
-    return null;
-  }
-  return cachedWalletSignature;
-}
-
-/**
- * Clear the cached wallet signature.
- */
-export function resetWalletSignatureCache(): void {
-  cachedWalletSignature = null;
 }

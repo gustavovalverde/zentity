@@ -19,7 +19,6 @@ vi.mock("@/lib/auth/fhe-enrollment-tokens", () => enrollmentMocks);
 const cryptoMocks = vi.hoisted(() => ({
   deleteEncryptedSecretByUserAndType: vi.fn(),
   getEncryptedSecretByUserAndType: vi.fn(),
-  updateEncryptedSecretMetadata: vi.fn(),
   upsertEncryptedSecret: vi.fn(),
   upsertSecretWrapper: vi.fn(),
 }));
@@ -34,7 +33,23 @@ const identityMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/queries/identity", () => identityMocks);
 
+vi.mock("@/lib/utils/base64", () => ({
+  base64ToBytes: (val: string) => Buffer.from(val, "base64"),
+  bytesToBase64: (bytes: Uint8Array) => Buffer.from(bytes).toString("base64"),
+}));
+
 import { POST } from "../route";
+
+// Valid 32-byte salt as base64
+const VALID_PRF_SALT = Buffer.from(new Uint8Array(32).fill(0xab)).toString(
+  "base64"
+);
+// Valid wrappedDek JSON structure
+const VALID_WRAPPED_DEK = JSON.stringify({
+  alg: "A256GCM",
+  iv: "dGVzdGl2MTIzNDU2",
+  ciphertext: "ZW5jcnlwdGVk",
+});
 
 const makeRequest = (payload: unknown) =>
   new Request("http://localhost/api/fhe/enrollment/complete", {
@@ -86,8 +101,8 @@ describe("fhe enrollment completion route", () => {
     const response = await POST(
       makeRequest({
         registrationToken: "bad-token",
-        wrappedDek: "wrapped",
-        prfSalt: "salt",
+        wrappedDek: VALID_WRAPPED_DEK,
+        prfSalt: VALID_PRF_SALT,
         credentialId: "cred",
         keyId: "key",
         envelopeFormat: "msgpack",
@@ -125,8 +140,8 @@ describe("fhe enrollment completion route", () => {
     const response = await POST(
       makeRequest({
         registrationToken: "reg-token",
-        wrappedDek: "wrapped",
-        prfSalt: "salt",
+        wrappedDek: VALID_WRAPPED_DEK,
+        prfSalt: VALID_PRF_SALT,
         credentialId: "cred",
         keyId: "key",
         envelopeFormat: "msgpack",
@@ -171,8 +186,8 @@ describe("fhe enrollment completion route", () => {
     const response = await POST(
       makeRequest({
         registrationToken: "reg-token",
-        wrappedDek: "wrapped",
-        prfSalt: "salt",
+        wrappedDek: VALID_WRAPPED_DEK,
+        prfSalt: VALID_PRF_SALT,
         credentialId: "cred",
         keyId: "key",
         envelopeFormat: "msgpack",
@@ -193,7 +208,7 @@ describe("fhe enrollment completion route", () => {
         blobRef: "blob-ref",
         blobHash: "blob-hash",
         blobSize: 123,
-        metadata: { envelopeFormat: "msgpack" },
+        metadata: { envelopeFormat: "msgpack", keyId: "key" },
       })
     );
 
@@ -202,16 +217,11 @@ describe("fhe enrollment completion route", () => {
         secretId: "secret-1",
         userId: "user-1",
         credentialId: "cred",
-        wrappedDek: "wrapped",
-        prfSalt: "salt",
+        wrappedDek: VALID_WRAPPED_DEK,
+        prfSalt: VALID_PRF_SALT,
       })
     );
 
-    expect(cryptoMocks.updateEncryptedSecretMetadata).toHaveBeenCalledWith({
-      userId: "user-1",
-      secretType: "fhe_keys",
-      metadata: { envelopeFormat: "msgpack", keyId: "key" },
-    });
     expect(identityMocks.updateIdentityBundleFheStatus).toHaveBeenCalledWith({
       userId: "user-1",
       fheKeyId: "key",

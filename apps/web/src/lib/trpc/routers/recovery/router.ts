@@ -4,6 +4,7 @@ import { router } from "../../server";
 import {
   approveGuardianProcedure,
   finalizeProcedure,
+  recoverDekProcedure,
   startProcedure,
   statusProcedure,
 } from "./challenge";
@@ -36,5 +37,6 @@ export const recoveryRouter = router({
   start: startProcedure,
   status: statusProcedure,
   approveGuardian: approveGuardianProcedure,
+  recoverDek: recoverDekProcedure,
   finalize: finalizeProcedure,
 });

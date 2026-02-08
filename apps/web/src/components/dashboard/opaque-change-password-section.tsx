@@ -29,7 +29,6 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password-policy";
-import { cacheOpaqueExportKey } from "@/lib/privacy/credentials";
 import { updateOpaqueWrapperForSecretType } from "@/lib/privacy/secrets";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 
@@ -81,7 +80,7 @@ export function OpaqueChangePasswordSection({
           return;
         }
 
-        // Re-wrap secrets with new export key and update cache
+        // Re-wrap secrets with new export key
         const userId = sessionData?.user?.id;
         if (userId && result.data.oldExportKey && result.data.exportKey) {
           try {
@@ -99,17 +98,7 @@ export function OpaqueChangePasswordSection({
                 newExportKey: result.data.exportKey,
               }),
             ]);
-            // Update the cached export key for secret retrieval
-            cacheOpaqueExportKey({
-              userId,
-              exportKey: result.data.exportKey,
-            });
           } catch {
-            // Keep the cached key aligned with existing wrappers on failure.
-            cacheOpaqueExportKey({
-              userId,
-              exportKey: result.data.oldExportKey,
-            });
             toast.message(
               "Password changed, but some encrypted data may need re-setup",
               {

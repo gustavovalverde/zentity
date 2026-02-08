@@ -20,10 +20,6 @@ import {
   prepareForNewSession,
 } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import {
-  cacheOpaqueExportKey,
-  cachePasskeyUnlock,
-} from "@/lib/privacy/credentials";
 import { trpc } from "@/lib/trpc/client";
 
 import { CredentialChoice, type CredentialType } from "./credential-choice";
@@ -136,8 +132,6 @@ export function SignUpForm() {
         );
       }
 
-      cachePasskeyUnlock({ credentialId, prfOutput, prfSalt });
-
       await completeAccountCreation();
       finalizeSignUp();
     } catch (err) {
@@ -152,7 +146,7 @@ export function SignUpForm() {
     }
   };
 
-  const handlePasswordSignUp = async (result: {
+  const handlePasswordSignUp = async (_result: {
     userId: string;
     email: string;
     exportKey: Uint8Array;
@@ -161,11 +155,6 @@ export function SignUpForm() {
     setError(null);
 
     try {
-      cacheOpaqueExportKey({
-        userId: result.userId,
-        exportKey: result.exportKey,
-      });
-
       await completeAccountCreation();
       finalizeSignUp();
     } catch (err) {

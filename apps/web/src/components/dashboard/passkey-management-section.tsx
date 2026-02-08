@@ -61,10 +61,7 @@ import {
   signInWithPasskey,
 } from "@/lib/auth/passkey";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import {
-  cacheOpaqueExportKey,
-  generatePrfSalt,
-} from "@/lib/privacy/credentials";
+import { generatePrfSalt } from "@/lib/privacy/credentials";
 import { addWrapperForSecretType } from "@/lib/privacy/secrets";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 
@@ -290,8 +287,6 @@ export function PasskeyManagementSection() {
           "Password verification succeeded but export key was missing."
         );
       }
-
-      cacheOpaqueExportKey({ userId, exportKey });
 
       await addPasskeyAndWrapSecrets({ userId, exportKey });
 

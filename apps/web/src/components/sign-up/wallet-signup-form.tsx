@@ -12,13 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ensureAuthSession } from "@/lib/auth/anonymous-session";
 import { authClient } from "@/lib/auth/auth-client";
-import {
-  buildKekSignatureTypedData,
-  cacheWalletSignature,
-  signatureToBytes,
-} from "@/lib/privacy/credentials";
-
-const KEK_SIGNATURE_VALIDITY_DAYS = 365;
+import { buildKekSignatureTypedData } from "@/lib/privacy/credentials";
 
 interface WalletSignUpFormProps {
   email?: string;
@@ -97,10 +91,10 @@ export function WalletSignUpForm({
 
       const userId = result.user.id;
 
-      // Step 3: KEK derivation signature (popup 2)
+      // Step 3: KEK derivation signature with determinism check (popup 2 + 3)
       try {
         const kekTypedData = buildKekSignatureTypedData({ userId, chainId });
-        const kekSignature = await signTypedData({
+        const signArgs = {
           domain: kekTypedData.domain as Record<string, unknown>,
           types: kekTypedData.types as Record<
             string,
@@ -108,21 +102,19 @@ export function WalletSignUpForm({
           >,
           primaryType: kekTypedData.primaryType,
           message: kekTypedData.message as Record<string, unknown>,
-        });
+        };
 
-        const signedAt = Math.floor(Date.now() / 1000);
-        const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
+        const sig1 = await signTypedData(signArgs);
+        const sig2 = await signTypedData(signArgs);
 
-        cacheWalletSignature({
-          userId,
-          address,
-          chainId,
-          signatureBytes: signatureToBytes(kekSignature),
-          signedAt,
-          expiresAt,
-        });
+        if (sig1 !== sig2) {
+          throw new Error(
+            "Wallet does not produce deterministic signatures. " +
+              "Encryption key wrapping requires a wallet that implements RFC 6979."
+          );
+        }
       } catch {
-        // KEK failure is non-blocking; vault will prompt later
+        // Non-blocking: determinism check failure doesn't break signup
       }
 
       onSuccess({ userId, address, chainId });

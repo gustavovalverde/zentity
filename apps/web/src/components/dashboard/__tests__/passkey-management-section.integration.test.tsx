@@ -28,7 +28,6 @@ const secretsMocks = vi.hoisted(() => ({
 }));
 
 const credentialsMocks = vi.hoisted(() => ({
-  cacheOpaqueExportKey: vi.fn(),
   generatePrfSalt: vi.fn().mockReturnValue(new Uint8Array(32).fill(7)),
 }));
 

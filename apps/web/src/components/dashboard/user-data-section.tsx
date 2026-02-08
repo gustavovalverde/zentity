@@ -1,7 +1,7 @@
 "use client";
 
 import { Calendar, CheckCircle2, Mail, User, XCircle } from "lucide-react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,6 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
-import { useSession } from "@/lib/auth/auth-client";
-import {
-  getCachedOpaqueExportKey,
-  hasCachedPasskeyUnlock,
-} from "@/lib/privacy/credentials";
 import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import { trpcReact } from "@/lib/trpc/client";
 
@@ -108,9 +103,6 @@ export function UserDataSection() {
   } = trpcReact.account.getData.useQuery();
   const error = queryError?.message ?? null;
 
-  const { data: session } = useSession();
-  const userId = session?.user?.id ?? null;
-
   const [profileName, setProfileName] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -130,24 +122,6 @@ export function UserDataSection() {
       setProfileLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (!data) {
-      return;
-    }
-    if (profileName) {
-      return;
-    }
-    const hasOpaqueUnlock = userId
-      ? Boolean(getCachedOpaqueExportKey(userId))
-      : false;
-    if (!(hasCachedPasskeyUnlock() || hasOpaqueUnlock)) {
-      return;
-    }
-    loadProfile().catch(() => {
-      // Ignore auto-unlock errors; user can retry manually.
-    });
-  }, [data, profileName, loadProfile, userId]);
 
   if (loading) {
     return (

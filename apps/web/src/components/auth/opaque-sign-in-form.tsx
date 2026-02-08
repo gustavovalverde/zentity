@@ -18,7 +18,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { cacheOpaqueExportKey } from "@/lib/privacy/credentials";
 import { redirectTo } from "@/lib/utils/navigation";
 
 export function OpaqueSignInForm() {
@@ -49,18 +48,6 @@ export function OpaqueSignInForm() {
           setError(message);
           toast.error("Sign in failed", { description: message });
           return;
-        }
-
-        // Cache the OPAQUE export key for secret retrieval
-        const responseData = result.data as unknown as {
-          exportKey?: Uint8Array;
-          user?: { id: string };
-        };
-        if (responseData.exportKey && responseData.user?.id) {
-          cacheOpaqueExportKey({
-            userId: responseData.user.id,
-            exportKey: responseData.exportKey,
-          });
         }
 
         toast.success("Signed in successfully!");

@@ -36,18 +36,12 @@ import {
 } from "@/lib/db/queries/two-factor";
 import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
 import {
-  deriveKekFromOpaqueExport,
-  deriveKekFromPrf,
-  OPAQUE_CREDENTIAL_ID,
-  wrapDek,
-} from "@/lib/privacy/credentials";
-import {
   RECOVERY_GUARDIAN_TYPE_EMAIL,
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
 } from "@/lib/recovery/constants";
 import { signRecoveryChallenge } from "@/lib/recovery/frost-service";
 import { decryptRecoveryWrappedDek } from "@/lib/recovery/recovery-keys";
-import { base64ToBytes } from "@/lib/utils/base64";
+import { bytesToBase64 } from "@/lib/utils/base64";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
 import { publicProcedure } from "../../server";
@@ -357,30 +351,17 @@ export const approveGuardianProcedure = publicProcedure
     };
   });
 
-export const finalizeProcedure = publicProcedure
+/**
+ * Step 1: Server releases plaintext DEKs for recovery.
+ * Authorized by FROST signature (challenge.status === "completed").
+ * DEK is returned to client over TLS for client-side re-wrapping.
+ */
+export const recoverDekProcedure = publicProcedure
   .input(
-    z
-      .object({
-        challengeId: z.string().min(1),
-        contextToken: z.string().min(1),
-        credentialType: z.enum(["passkey", "opaque"]),
-        credentialId: z.string().min(1).optional(),
-        prfSalt: z.string().min(1).optional(),
-        prfOutput: z.string().min(1).optional(),
-        exportKey: z.string().min(1).optional(),
-      })
-      .refine(
-        (data) => {
-          if (data.credentialType === "passkey") {
-            return data.credentialId && data.prfSalt && data.prfOutput;
-          }
-          return data.exportKey;
-        },
-        {
-          message:
-            "Passkey requires credentialId, prfSalt, and prfOutput. OPAQUE requires exportKey.",
-        }
-      )
+    z.object({
+      challengeId: z.string().min(1),
+      contextToken: z.string().min(1),
+    })
   )
   .mutation(async ({ input }) => {
     const challenge = await getRecoveryChallengeById(input.challengeId);
@@ -415,30 +396,13 @@ export const finalizeProcedure = publicProcedure
 
     const secrets = await listEncryptedSecretsByUserId(challenge.userId);
 
-    const isPasskey = input.credentialType === "passkey";
-    const prfOutput = isPasskey ? base64ToBytes(input.prfOutput ?? "") : null;
-    const exportKey = isPasskey ? null : base64ToBytes(input.exportKey ?? "");
-
-    const inputCredentialId = input.credentialId;
-    const inputPrfSalt = input.prfSalt;
-    const hasValidPrfCredential =
-      isPasskey && prfOutput && inputCredentialId && inputPrfSalt;
-    const hasValidOpaqueCredential = !isPasskey && exportKey;
-
-    if (!(hasValidPrfCredential || hasValidOpaqueCredential)) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Invalid credential data for re-wrapping.",
-      });
-    }
-
-    const rewrapResults = await Promise.all(
+    const recoveredDeks = await Promise.all(
       secrets.map(async (secret) => {
         const recoveryWrapper = await getRecoverySecretWrapperBySecretId(
           secret.id
         );
         if (!recoveryWrapper) {
-          return false;
+          return null;
         }
 
         const dek = decryptRecoveryWrappedDek({
@@ -446,60 +410,101 @@ export const finalizeProcedure = publicProcedure
           keyId: recoveryWrapper.keyId,
         });
 
-        let wrappedDek: string;
-        let credentialId: string;
-        let prfSalt: string;
-        let kekSource: "prf" | "opaque" | "recovery";
-
-        if (hasValidPrfCredential) {
-          const kek = await deriveKekFromPrf(prfOutput, challenge.userId);
-          wrappedDek = await wrapDek({
-            secretId: secret.id,
-            credentialId: inputCredentialId,
-            userId: challenge.userId,
-            dek,
-            kek,
-          });
-          credentialId = inputCredentialId;
-          prfSalt = inputPrfSalt;
-          kekSource = "prf";
-        } else if (exportKey) {
-          const kek = await deriveKekFromOpaqueExport(
-            exportKey,
-            challenge.userId
-          );
-          wrappedDek = await wrapDek({
-            secretId: secret.id,
-            credentialId: OPAQUE_CREDENTIAL_ID,
-            userId: challenge.userId,
-            dek,
-            kek,
-          });
-          credentialId = OPAQUE_CREDENTIAL_ID;
-          prfSalt = "";
-          kekSource = "opaque";
-        } else {
-          return false;
-        }
-
-        await upsertSecretWrapper({
-          id: crypto.randomUUID(),
+        return {
           secretId: secret.id,
-          userId: challenge.userId,
-          credentialId,
-          wrappedDek,
-          prfSalt,
-          kekSource,
-        });
-
-        return true;
+          dekBase64: bytesToBase64(dek),
+        };
       })
     );
 
-    const rewrappedCount = rewrapResults.filter(Boolean).length;
+    return {
+      userId: challenge.userId,
+      deks: recoveredDeks.filter(
+        (d): d is { secretId: string; dekBase64: string } => d !== null
+      ),
+    };
+  });
+
+const wrappedDekSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (val) => {
+      try {
+        const parsed = JSON.parse(val);
+        return parsed.alg && parsed.iv && parsed.ciphertext;
+      } catch {
+        return false;
+      }
+    },
+    { message: "wrappedDek must be a JSON object with {alg, iv, ciphertext}" }
+  );
+
+/**
+ * Step 2: Client stores pre-wrapped DEKs after client-side re-wrapping.
+ * Credential material (PRF output, export key) never touches the server.
+ */
+export const finalizeProcedure = publicProcedure
+  .input(
+    z.object({
+      challengeId: z.string().min(1),
+      contextToken: z.string().min(1),
+      wrappers: z.array(
+        z.object({
+          secretId: z.string().min(1),
+          credentialId: z.string().min(1),
+          wrappedDek: wrappedDekSchema,
+          prfSalt: z.string().optional(),
+          kekSource: z.enum(["prf", "opaque", "wallet"]),
+        })
+      ),
+    })
+  )
+  .mutation(async ({ input }) => {
+    const challenge = await getRecoveryChallengeById(input.challengeId);
+    if (!challenge) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Recovery challenge not found.",
+      });
+    }
+
+    if (challenge.status !== "completed") {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Recovery challenge is not approved.",
+      });
+    }
+
+    if (isExpired(challenge.expiresAt)) {
+      throw new TRPCError({
+        code: "TIMEOUT",
+        message: "Recovery challenge has expired.",
+      });
+    }
+
+    const context = await getFheEnrollmentContext(input.contextToken);
+    if (!context || context.userId !== challenge.userId) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Recovery context is invalid.",
+      });
+    }
+
+    for (const wrapper of input.wrappers) {
+      await upsertSecretWrapper({
+        id: crypto.randomUUID(),
+        secretId: wrapper.secretId,
+        userId: challenge.userId,
+        credentialId: wrapper.credentialId,
+        wrappedDek: wrapper.wrappedDek,
+        prfSalt: wrapper.prfSalt ?? "",
+        kekSource: wrapper.kekSource,
+      });
+    }
 
     await markRecoveryChallengeApplied({ id: challenge.id });
     await consumeFheEnrollmentContext(input.contextToken);
 
-    return { rewrappedCount };
+    return { rewrappedCount: input.wrappers.length };
   });

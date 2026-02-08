@@ -17,12 +17,47 @@ import {
   upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
+import {
+  computeSecretBlobRef,
+  getSecretBlobMaxBytes,
+  isValidSecretBlobRef,
+} from "@/lib/privacy/secrets/storage.server";
 import { secretTypeSchema } from "@/lib/privacy/secrets/types";
 import { base64ToBytes } from "@/lib/utils/base64";
 
 import { protectedProcedure, router } from "../server";
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
+const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
+
+const wrappedDekSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (val) => {
+      try {
+        const parsed = JSON.parse(val);
+        return parsed.alg && parsed.iv && parsed.ciphertext;
+      } catch {
+        return false;
+      }
+    },
+    { message: "wrappedDek must be a JSON object with {alg, iv, ciphertext}" }
+  );
+
+const prfSaltSchema = z.string().refine(
+  (val) => {
+    if (!val) {
+      return true;
+    }
+    try {
+      return base64ToBytes(val).byteLength === 32;
+    } catch {
+      return false;
+    }
+  },
+  { message: "prfSalt must be base64-encoded 32 bytes" }
+);
 
 export const secretsRouter = router({
   getPasskeyUser: protectedProcedure.query(({ ctx }) => ({
@@ -52,24 +87,34 @@ export const secretsRouter = router({
         secretId: z.string().min(1),
         secretType: secretTypeSchema,
         blobRef: z.string().min(1),
-        blobHash: z.string().min(1),
+        blobHash: sha256HexSchema,
         blobSize: z.number().int().nonnegative(),
-        wrappedDek: z.string().min(1),
-        prfSalt: z.string(),
+        wrappedDek: wrappedDekSchema,
+        prfSalt: prfSaltSchema,
         credentialId: z.string().min(1),
         metadata: metadataSchema,
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (input.prfSalt) {
-        const prfSaltBytes = base64ToBytes(input.prfSalt);
-        if (prfSaltBytes.byteLength !== 32) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Invalid PRF salt length.",
-          });
-        }
+      const expectedBlobRef = computeSecretBlobRef(input.secretId);
+      const normalizedBlobRef = input.blobRef.trim().toLowerCase();
+      if (
+        !isValidSecretBlobRef(normalizedBlobRef) ||
+        normalizedBlobRef !== expectedBlobRef
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid blob reference.",
+        });
+      }
+
+      const maxBytes = getSecretBlobMaxBytes();
+      if (input.blobSize > maxBytes) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Secret blob too large.",
+        });
       }
 
       const existing = await getEncryptedSecretByUserAndType(
@@ -86,8 +131,8 @@ export const secretsRouter = router({
         userId: ctx.userId,
         secretType: input.secretType,
         encryptedBlob: "",
-        blobRef: input.blobRef,
-        blobHash: input.blobHash,
+        blobRef: expectedBlobRef,
+        blobHash: input.blobHash.toLowerCase(),
         blobSize: input.blobSize,
         metadata: input.metadata ?? null,
       });
@@ -111,22 +156,12 @@ export const secretsRouter = router({
         secretId: z.string().min(1),
         secretType: secretTypeSchema,
         credentialId: z.string().min(1),
-        wrappedDek: z.string().min(1),
-        prfSalt: z.string().min(1).optional(),
+        wrappedDek: wrappedDekSchema,
+        prfSalt: prfSaltSchema.optional(),
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (input.prfSalt) {
-        const prfSaltBytes = base64ToBytes(input.prfSalt);
-        if (prfSaltBytes.byteLength !== 32) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Invalid PRF salt length.",
-          });
-        }
-      }
-
       const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType

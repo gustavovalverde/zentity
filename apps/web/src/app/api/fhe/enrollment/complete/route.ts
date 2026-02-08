@@ -10,7 +10,6 @@ import {
 import {
   deleteEncryptedSecretByUserAndType,
   getEncryptedSecretByUserAndType,
-  updateEncryptedSecretMetadata,
   upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
@@ -19,13 +18,40 @@ import {
   updateIdentityBundleFheStatus,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
+import { base64ToBytes } from "@/lib/utils/base64";
 
 export const runtime = "nodejs";
 
+const wrappedDekSchema = z.string().refine(
+  (val) => {
+    try {
+      const parsed = JSON.parse(val);
+      return parsed.alg && parsed.iv && parsed.ciphertext;
+    } catch {
+      return false;
+    }
+  },
+  { message: "wrappedDek must be a JSON object with {alg, iv, ciphertext}" }
+);
+
+const prfSaltSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (val) => {
+      try {
+        return base64ToBytes(val).byteLength === 32;
+      } catch {
+        return false;
+      }
+    },
+    { message: "prfSalt must be base64-encoded 32 bytes" }
+  );
+
 const enrollmentSchema = z.object({
   registrationToken: z.string().min(1),
-  wrappedDek: z.string().min(1),
-  prfSalt: z.string().min(1),
+  wrappedDek: wrappedDekSchema,
+  prfSalt: prfSaltSchema,
   credentialId: z.string().min(1),
   keyId: z.string().min(1),
   envelopeFormat: z.enum(["json", "msgpack"]),
@@ -106,35 +132,29 @@ export async function POST(request: Request) {
     await deleteEncryptedSecretByUserAndType(sessionUserId, secretType);
   }
 
-  await Promise.all([
-    upsertEncryptedSecret({
-      id: registration.blob.secretId,
-      userId: sessionUserId,
-      secretType,
-      encryptedBlob: "",
-      blobRef: registration.blob.blobRef,
-      blobHash: registration.blob.blobHash,
-      blobSize: registration.blob.blobSize,
-      metadata: { envelopeFormat: enrollment.envelopeFormat },
-    }),
-    upsertSecretWrapper({
-      id: crypto.randomUUID(),
-      secretId: registration.blob.secretId,
-      userId: sessionUserId,
-      credentialId: enrollment.credentialId,
-      wrappedDek: enrollment.wrappedDek,
-      prfSalt: enrollment.prfSalt,
-      kekSource: "prf",
-    }),
-    updateEncryptedSecretMetadata({
-      userId: sessionUserId,
-      secretType,
-      metadata: {
-        envelopeFormat: enrollment.envelopeFormat,
-        keyId: enrollment.keyId,
-      },
-    }),
-  ]);
+  await upsertEncryptedSecret({
+    id: registration.blob.secretId,
+    userId: sessionUserId,
+    secretType,
+    encryptedBlob: "",
+    blobRef: registration.blob.blobRef,
+    blobHash: registration.blob.blobHash,
+    blobSize: registration.blob.blobSize,
+    metadata: {
+      envelopeFormat: enrollment.envelopeFormat,
+      keyId: enrollment.keyId,
+    },
+  });
+
+  await upsertSecretWrapper({
+    id: crypto.randomUUID(),
+    secretId: registration.blob.secretId,
+    userId: sessionUserId,
+    credentialId: enrollment.credentialId,
+    wrappedDek: enrollment.wrappedDek,
+    prfSalt: enrollment.prfSalt,
+    kekSource: "prf",
+  });
 
   // Persist enrollment status server-side to avoid client-side races where other
   // flows (document OCR / background jobs) run before the identity bundle is updated.

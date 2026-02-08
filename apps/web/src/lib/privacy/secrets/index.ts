@@ -5,6 +5,8 @@
  *
  * Main API for storing and loading credential-encrypted secrets.
  * Supports passkey (PRF), OPAQUE (password), and wallet (EIP-712) credentials.
+ *
+ * Credential material is NEVER cached — each operation prompts for fresh material.
  */
 
 import type { EnrollmentCredential, EnvelopeFormat, SecretType } from "./types";
@@ -12,26 +14,16 @@ import type { EnrollmentCredential, EnvelopeFormat, SecretType } from "./types";
 import { authClient } from "@/lib/auth/auth-client";
 import { evaluatePrf } from "@/lib/auth/webauthn-prf";
 import {
-  cachePasskeyUnlock as cachePasskey,
-  cacheWalletSignature as cacheWalletSig,
   clearPendingUnlock,
   createOpaqueWrapper,
-  getCachedOpaqueUserId,
-  getCachedPasskeyUnlock,
   getCachedRecoveryKey,
-  getCachedWalletSignature,
-  getCachedOpaqueExportKey as getOpaqueKey,
   getPendingUnlock,
   getWalletCredentialId,
-  hasAnyCachedOpaqueExport,
   OPAQUE_CREDENTIAL_ID,
-  parseWalletCredentialId,
-  resetOpaqueExportCache,
   setCachedRecoveryKey,
   setPendingUnlock,
   unwrapDekWithOpaqueExport,
   unwrapDekWithPrf,
-  unwrapDekWithWalletSignature,
   WALLET_CREDENTIAL_PREFIX,
   wrapDekWithOpaqueExport,
   wrapDekWithPrf,
@@ -43,14 +35,8 @@ import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 import { decryptWithDek, encryptWithDek, generateDek } from "./envelope";
 import { downloadSecretBlob, uploadSecretBlob } from "./storage";
 
-// Re-export types and utilities
+// Re-export types
 export type { EnrollmentCredential, PasskeyEnrollmentContext } from "./types";
-
-// Re-export credential cache functions for external use
-export {
-  getCachedOpaqueExportKey,
-  getCachedPasskeyPrfOutput,
-} from "@/lib/privacy/credentials";
 
 const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
 
@@ -68,16 +54,12 @@ async function resolvePasskeyUnlock(params: {
     throw new Error("No passkeys are registered for this secret.");
   }
 
-  const cached = getCachedPasskeyUnlock(credentialIds);
-  if (cached) {
-    return cached;
-  }
-
+  // Deduplicate concurrent WebAuthn prompts (not a time-based cache)
   const pendingKey = [...credentialIds]
     .sort((a, b) => a.localeCompare(b))
     .join("|");
   const pending = getPendingUnlock();
-  if (pending && pending.key === pendingKey) {
+  if (pending?.key === pendingKey) {
     return pending.promise;
   }
 
@@ -102,18 +84,9 @@ async function resolvePasskeyUnlock(params: {
       throw new Error("PRF output missing for selected passkey.");
     }
 
-    const resolvedSalt = params.credentialIdToSalt[resolvedCredentialId];
-    cachePasskey({
-      credentialId: resolvedCredentialId,
-      prfOutput,
-      prfSalt: resolvedSalt,
-    });
-
     return {
       credentialId: resolvedCredentialId,
       prfOutput,
-      prfSalt: resolvedSalt,
-      cachedAt: Date.now(),
     };
   })();
 
@@ -248,15 +221,6 @@ export async function storeSecretWithCredential(params: {
     });
     prfSalt = "";
     kekSource = "wallet";
-
-    cacheWalletSig({
-      userId: ctx.userId,
-      address: ctx.address,
-      chainId: ctx.chainId,
-      signatureBytes: ctx.signatureBytes,
-      signedAt: ctx.signedAt,
-      expiresAt: ctx.expiresAt,
-    });
   }
 
   const blobMetadata = await uploadSecretBlob({
@@ -384,133 +348,10 @@ async function tryLoadWithPrf(
   };
 }
 
-async function tryLoadWithOpaque(
-  ctx: SecretLoadContext,
-  wrappers: SecretWrapper[],
-  providedUserId: string | undefined
-): Promise<SecretLoadResult | null> {
-  const opaqueWrapper = wrappers.find(
-    (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
-  );
-  if (!opaqueWrapper) {
-    return null;
-  }
-
-  if (!hasAnyCachedOpaqueExport()) {
-    throw new Error(
-      `Please sign in again to access your ${ctx.label}. Your session key has expired.`
-    );
-  }
-
-  const userId =
-    providedUserId ?? (await authClient.getSession()).data?.user?.id;
-  if (!userId) {
-    throw new Error(
-      `Please sign in again to access your ${ctx.label}. Your session key has expired.`
-    );
-  }
-
-  if (getCachedOpaqueUserId() !== userId) {
-    resetOpaqueExportCache();
-    throw new Error(
-      `Please sign in again to access your ${ctx.label}. Your session key has expired.`
-    );
-  }
-
-  const exportKey = getOpaqueKey(userId);
-  if (!exportKey) {
-    throw new Error(
-      `Please sign in again to access your ${ctx.label}. Your session key has expired.`
-    );
-  }
-
-  const dek = await unwrapDekWithOpaqueExport({
-    secretId: ctx.secretId,
-    userId,
-    wrappedDek: opaqueWrapper.wrappedDek,
-    exportKey,
-  });
-
-  const plaintext = await decryptWithDek({
-    secretId: ctx.secretId,
-    secretType: ctx.secretType,
-    encryptedBlob: ctx.encryptedBlob,
-    dek,
-    envelopeFormat: ctx.envelopeFormat,
-  });
-
-  return {
-    secretId: ctx.secretId,
-    plaintext,
-    metadata: ctx.metadata,
-    envelopeFormat: ctx.envelopeFormat,
-  };
-}
-
-async function tryLoadWithWallet(
-  ctx: SecretLoadContext,
-  wrappers: SecretWrapper[],
-  providedUserId: string | undefined
-): Promise<SecretLoadResult | null> {
-  const walletWrapper = wrappers.find((w) =>
-    w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
-  );
-  if (!walletWrapper) {
-    return null;
-  }
-
-  const parsed = parseWalletCredentialId(walletWrapper.credentialId);
-  if (!parsed) {
-    throw new Error(
-      `Invalid wallet credential format. Please re-secure your ${ctx.label}.`
-    );
-  }
-
-  const userId = await resolveUserId(providedUserId, ctx.label);
-  const signatureBytes = getCachedWalletSignature(
-    userId,
-    parsed.address,
-    parsed.chainId
-  );
-
-  if (!signatureBytes) {
-    throw new Error(
-      `Please sign the key access request with your wallet to access your ${ctx.label}.`
-    );
-  }
-
-  const dek = await unwrapDekWithWalletSignature({
-    secretId: ctx.secretId,
-    userId,
-    address: parsed.address,
-    chainId: parsed.chainId,
-    wrappedDek: walletWrapper.wrappedDek,
-    signatureBytes,
-  });
-
-  const plaintext = await decryptWithDek({
-    secretId: ctx.secretId,
-    secretType: ctx.secretType,
-    encryptedBlob: ctx.encryptedBlob,
-    dek,
-    envelopeFormat: ctx.envelopeFormat,
-  });
-
-  return {
-    secretId: ctx.secretId,
-    plaintext,
-    metadata: ctx.metadata,
-    envelopeFormat: ctx.envelopeFormat,
-  };
-}
-
 /**
  * Load a secret by type, automatically selecting the appropriate credential.
- * Preference order:
- * 1) Any cached credential material (passkey, wallet, opaque)
- * 2) Passkey PRF prompt
- * 3) Wallet signature prompt
- * 4) OPAQUE re-login
+ * Passkey wrappers trigger a WebAuthn prompt. OPAQUE/wallet wrappers throw
+ * requesting the caller to re-authenticate (credential material is never cached).
  */
 export async function loadSecret(params: {
   secretType: SecretType;
@@ -554,7 +395,9 @@ export async function loadSecret(params: {
     );
   }
 
-  const encryptedBlob = await downloadSecretBlob(bundle.secret.id);
+  const encryptedBlob = await downloadSecretBlob(bundle.secret.id, {
+    expectedHash: bundle.secret.blobHash,
+  });
 
   const ctx: SecretLoadContext = {
     secretId: bundle.secret.id,
@@ -565,71 +408,8 @@ export async function loadSecret(params: {
     label,
   };
 
+  // Passkey wrappers: prompt via WebAuthn
   const prfWrappers = bundle.wrappers.filter((w) => w.prfSalt);
-  const opaqueWrapper = bundle.wrappers.find(
-    (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
-  );
-  const walletWrapper = bundle.wrappers.find((w) =>
-    w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
-  );
-
-  const passkeyCredentialIds = prfWrappers.map(
-    (wrapper) => wrapper.credentialId
-  );
-  const hasCachedPasskey =
-    passkeyCredentialIds.length > 0 &&
-    Boolean(getCachedPasskeyUnlock(passkeyCredentialIds));
-
-  let hasCachedWallet = false;
-  let hasCachedOpaque = false;
-  let cachedUserId: string | null = null;
-
-  if (walletWrapper || opaqueWrapper) {
-    cachedUserId = await resolveUserId(params.userId, ctx.label);
-  }
-
-  if (walletWrapper && cachedUserId) {
-    const parsed = parseWalletCredentialId(walletWrapper.credentialId);
-    if (parsed) {
-      hasCachedWallet = Boolean(
-        getCachedWalletSignature(cachedUserId, parsed.address, parsed.chainId)
-      );
-    }
-  }
-
-  if (opaqueWrapper && cachedUserId) {
-    hasCachedOpaque = Boolean(getOpaqueKey(cachedUserId));
-  }
-
-  if (hasCachedPasskey) {
-    const prfResult = await tryLoadWithPrf(ctx, bundle.wrappers, params.userId);
-    if (prfResult) {
-      return prfResult;
-    }
-  }
-
-  if (hasCachedWallet) {
-    const walletResult = await tryLoadWithWallet(
-      ctx,
-      bundle.wrappers,
-      params.userId
-    );
-    if (walletResult) {
-      return walletResult;
-    }
-  }
-
-  if (hasCachedOpaque) {
-    const opaqueResult = await tryLoadWithOpaque(
-      ctx,
-      bundle.wrappers,
-      params.userId
-    );
-    if (opaqueResult) {
-      return opaqueResult;
-    }
-  }
-
   if (prfWrappers.length > 0) {
     const prfResult = await tryLoadWithPrf(ctx, bundle.wrappers, params.userId);
     if (prfResult) {
@@ -637,26 +417,23 @@ export async function loadSecret(params: {
     }
   }
 
+  // OPAQUE/wallet: credential material is never cached, throw requesting re-auth
+  const walletWrapper = bundle.wrappers.find((w) =>
+    w.credentialId.startsWith(WALLET_CREDENTIAL_PREFIX)
+  );
   if (walletWrapper) {
-    const walletResult = await tryLoadWithWallet(
-      ctx,
-      bundle.wrappers,
-      params.userId
+    throw new Error(
+      `Please sign the key access request with your wallet to access your ${label}.`
     );
-    if (walletResult) {
-      return walletResult;
-    }
   }
 
+  const opaqueWrapper = bundle.wrappers.find(
+    (w) => w.credentialId === OPAQUE_CREDENTIAL_ID
+  );
   if (opaqueWrapper) {
-    const opaqueResult = await tryLoadWithOpaque(
-      ctx,
-      bundle.wrappers,
-      params.userId
+    throw new Error(
+      `Please sign in again to access your ${label}. Your session key has expired.`
     );
-    if (opaqueResult) {
-      return opaqueResult;
-    }
   }
 
   throw new Error(`No credentials are registered for this ${label}.`);

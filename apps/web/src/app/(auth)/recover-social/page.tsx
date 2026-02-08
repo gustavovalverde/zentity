@@ -36,9 +36,9 @@ import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import { generatePrfSalt } from "@/lib/privacy/credentials";
+import { generatePrfSalt, wrapDekWithPrf } from "@/lib/privacy/credentials";
 import { trpc, trpcReact } from "@/lib/trpc/client";
-import { bytesToBase64 } from "@/lib/utils/base64";
+import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 type RecoveryPhase =
   | "email"
@@ -440,13 +440,37 @@ export default function RecoverSocialPage() {
         throw new Error("Missing recovery challenge.");
       }
 
+      // Step 1: Server releases plaintext DEKs (authorized by FROST)
+      const { userId, deks } = await trpc.recovery.recoverDek.mutate({
+        challengeId,
+        contextToken,
+      });
+
+      // Step 2: Client wraps each DEK under the new passkey's PRF
+      const wrappers = await Promise.all(
+        deks.map(async (dek) => {
+          const wrappedDek = await wrapDekWithPrf({
+            secretId: dek.secretId,
+            credentialId,
+            userId,
+            dek: base64ToBytes(dek.dekBase64),
+            prfOutput,
+          });
+          return {
+            secretId: dek.secretId,
+            credentialId,
+            wrappedDek,
+            prfSalt: bytesToBase64(prfSalt),
+            kekSource: "prf" as const,
+          };
+        })
+      );
+
+      // Step 3: Server stores pre-wrapped DEKs
       await trpc.recovery.finalize.mutate({
         challengeId,
         contextToken,
-        credentialType: "passkey",
-        credentialId,
-        prfSalt: bytesToBase64(prfSalt),
-        prfOutput: bytesToBase64(prfOutput),
+        wrappers,
       });
 
       setPhase("complete");

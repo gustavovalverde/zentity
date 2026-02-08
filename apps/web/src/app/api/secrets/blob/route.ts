@@ -10,7 +10,10 @@ import {
   getEncryptedSecretByUserAndType,
 } from "@/lib/db/queries/crypto";
 import {
+  computeSecretBlobRef,
+  getSecretBlobMaxBytes,
   readSecretBlob,
+  SecretBlobTooLargeError,
   writeSecretBlob,
 } from "@/lib/privacy/secrets/storage.server";
 
@@ -69,6 +72,18 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "Missing body" }, { status: 400 });
     }
 
+    const maxBytes = getSecretBlobMaxBytes();
+    const contentLength = request.headers.get("content-length");
+    if (contentLength) {
+      const parsed = Number.parseInt(contentLength, 10);
+      if (Number.isFinite(parsed) && parsed > maxBytes) {
+        return NextResponse.json(
+          { error: "Secret blob too large." },
+          { status: 413 }
+        );
+      }
+    }
+
     const blobMeta = await writeSecretBlob({
       secretId,
       body: request.body,
@@ -84,6 +99,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json(blobMeta, { status: 201 });
   } catch (error) {
+    if (error instanceof SecretBlobTooLargeError) {
+      return NextResponse.json({ error: error.message }, { status: 413 });
+    }
     console.error("[secrets/blob] POST error:", error);
     return NextResponse.json(
       {
@@ -118,7 +136,16 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Secret not found" }, { status: 404 });
   }
 
-  const stream = await readSecretBlob({ blobRef: secret.blobRef });
+  const expectedBlobRef = computeSecretBlobRef(secret.id);
+  if (secret.blobRef !== expectedBlobRef) {
+    console.warn(
+      "[secrets/blob] blobRef mismatch for secret",
+      secret.id,
+      secret.blobRef
+    );
+  }
+
+  const stream = await readSecretBlob({ blobRef: expectedBlobRef });
   if (!stream) {
     return NextResponse.json(
       { error: "Secret blob not found" },

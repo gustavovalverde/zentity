@@ -1,7 +1,5 @@
 "use client";
 
-import type { ProfileSecretPayload } from "@/lib/privacy/secrets/profile";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -9,7 +7,6 @@ import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
 } from "@/lib/identity/document/document-ocr";
-import { resolveEnrollmentCredential } from "@/lib/privacy/credentials/resolve";
 import { trpc } from "@/lib/trpc/client";
 import { resizeImageFile } from "@/lib/utils/image";
 import { useVerificationStore } from "@/store/verification";
@@ -259,33 +256,6 @@ export function useDocumentProcessing(
                 result.extractedData.expirationDate || null,
               userSalt: response.userSalt ?? null,
             });
-
-            // Store profile secret (fire-and-forget)
-            // Credential material was cached during FHE enrollment
-            const credential = await resolveEnrollmentCredential();
-            if (credential) {
-              const payload: ProfileSecretPayload = {
-                fullName: result.extractedData.fullName ?? null,
-                firstName: result.extractedData.firstName ?? null,
-                lastName: result.extractedData.lastName ?? null,
-                dateOfBirth: result.extractedData.dateOfBirth ?? null,
-                documentNumber: result.extractedData.documentNumber ?? null,
-                documentType: result.documentType ?? null,
-                documentOrigin: result.documentOrigin ?? null,
-                nationality: result.extractedData.nationality ?? null,
-                nationalityCode: result.extractedData.nationalityCode ?? null,
-                userSalt: response.userSalt ?? null,
-                updatedAt: new Date().toISOString(),
-              };
-              import("@/lib/privacy/secrets/profile")
-                .then(({ storeProfileSecret }) =>
-                  storeProfileSecret({ payload, credential })
-                )
-                .catch(() => {
-                  // Non-blocking: profile secret storage failure
-                  // doesn't break the verification flow
-                });
-            }
           }
         } else {
           setProcessingState("rejected");

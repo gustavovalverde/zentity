@@ -1,0 +1,31 @@
+diff --git a/dist/client.mjs b/dist/client.mjs
+index 55aef00..e37b9b3 100644
+--- a/dist/client.mjs
++++ b/dist/client.mjs
+@@ -23,8 +23,10 @@ const getPasskeyActions = ($fetch, { $listPasskeys, $store }) => {
+ 				},
+ 				useBrowserAutofill: opts?.autoFill
+ 			});
++			const sanitizedRes = { ...res };
++			delete sanitizedRes.clientExtensionResults;
+ 			const verified = await $fetch("/passkey/verify-authentication", {
+-				body: { response: res },
++				body: { response: sanitizedRes },
+ 				...opts?.fetchOptions,
+ 				...options,
+ 				method: "POST",
+@@ -76,11 +78,13 @@ const getPasskeyActions = ($fetch, { $listPasskeys, $store }) => {
+ 				},
+ 				useAutoRegister: opts?.useAutoRegister
+ 			});
++			const sanitizedRes = { ...res };
++			delete sanitizedRes.clientExtensionResults;
+ 			const verified = await $fetch("/passkey/verify-registration", {
+ 				...opts?.fetchOptions,
+ 				...fetchOpts,
+ 				body: {
+-					response: res,
++					response: sanitizedRes,
+ 					name: opts?.name
+ 				},
+ 				method: "POST",

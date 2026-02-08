@@ -7,7 +7,7 @@
  * Profile data is PII that requires credential unlock.
  */
 
-import type { EnrollmentCredential, EnvelopeFormat } from "./types";
+import type { EnvelopeFormat } from "./types";
 
 import { SECRET_TYPES } from "./types";
 
@@ -172,31 +172,6 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
   });
 
   return pendingGetStoredProfile;
-}
-
-const textEncoder = new TextEncoder();
-
-/**
- * Store profile data as a credential-encrypted secret.
- * Updates the in-memory cache immediately so dashboard can display the name
- * without requiring a separate unlock.
- */
-export async function storeProfileSecret(params: {
-  payload: ProfileSecretPayload;
-  credential: EnrollmentCredential;
-}): Promise<{ secretId: string }> {
-  const { storeSecretWithCredential } = await import("./index");
-
-  const plaintext = textEncoder.encode(JSON.stringify(params.payload));
-  const result = await storeSecretWithCredential({
-    secretType: SECRET_TYPES.PROFILE,
-    plaintext,
-    credential: params.credential,
-    envelopeFormat: PROFILE_ENVELOPE_FORMAT,
-  });
-
-  cacheProfile(params.payload);
-  return { secretId: result.secretId };
 }
 
 /**

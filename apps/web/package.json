@@ -173,6 +173,7 @@
   },
   "pnpm": {
     "patchedDependencies": {
+      "@better-auth/passkey": "vendor/@better-auth__passkey.patch",
       "@daveyplate/better-auth-ui": "vendor/@daveyplate__better-auth-ui.patch"
     },
     "overrides": {
