@@ -2,7 +2,6 @@
 
 import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,13 +20,13 @@ import {
 } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
+import { redirectTo } from "@/lib/utils/navigation";
 
 import { CredentialChoice, type CredentialType } from "./credential-choice";
 import { PasswordSignUpForm } from "./password-signup-form";
 import { WalletSignUpForm } from "./wallet-signup-form";
 
 export function SignUpForm() {
-  const router = useRouter();
   const emailId = useId();
 
   const [email, setEmail] = useState("");
@@ -64,8 +63,7 @@ export function SignUpForm() {
 
   const finalizeSignUp = () => {
     setIsRedirecting(true);
-    router.push("/dashboard");
-    router.refresh();
+    redirectTo("/dashboard");
   };
 
   const completeAccountCreation = async (params?: {

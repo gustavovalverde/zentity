@@ -2,7 +2,6 @@
 
 import { Check, KeyRound, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,6 +29,7 @@ import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials";
 import { addWrapperForSecretType } from "@/lib/privacy/secrets";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { redirectTo } from "@/lib/utils/navigation";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
 
@@ -49,7 +49,6 @@ function getPhaseDescription(phase: RecoveryPhase): string {
 }
 
 export default function RecoverPasskeyPage() {
-  const router = useRouter();
   const { data: session, isPending: sessionLoading } = useSession();
 
   const [phase, setPhase] = useState<RecoveryPhase>("email");
@@ -353,10 +352,7 @@ export default function RecoverPasskeyPage() {
                 in to your account.
               </p>
             </div>
-            <Button
-              className="w-full"
-              onClick={() => router.push("/dashboard")}
-            >
+            <Button className="w-full" onClick={() => redirectTo("/dashboard")}>
               Go to Dashboard
             </Button>
           </div>

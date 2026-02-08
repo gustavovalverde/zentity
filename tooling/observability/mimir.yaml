@@ -5,9 +5,9 @@ target: all
 # Allow samples with timestamps up to 30 minutes in the future
 # to handle clock skew between Docker containers
 limits:
-  creation_grace_period: 30m
+  creation_grace_period: 2h
   # Also increase the out-of-order time window for late-arriving samples
-  out_of_order_time_window: 30m
+  out_of_order_time_window: 2h
 
 blocks_storage:
   backend: filesystem

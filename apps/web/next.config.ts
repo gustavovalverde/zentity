@@ -101,8 +101,9 @@ const nextConfig: NextConfig = {
     }
 
     // COOP: same-origin enables crossOriginIsolated → SharedArrayBuffer → multi-threaded WASM.
-    // Only verification routes need it (Barretenberg ZK proofs, TFHE encryption).
-    // Other routes must NOT set COOP: same-origin — it blocks popup-based wallets (Base SDK).
+    // All dashboard routes need it because SPA navigation preserves the initial document's
+    // isolation state — users reach /verify via client-side nav from other dashboard pages.
+    // Auth routes (/sign-up, /sign-in, /oauth/*) remain outside /dashboard/* and unaffected.
     const isolatedHeaders = [
       ...securityHeaders,
       { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
@@ -120,9 +121,9 @@ const nextConfig: NextConfig = {
           { key: "Content-Encoding", value: "gzip" },
         ],
       },
-      // Verification routes: cross-origin isolated for multi-threaded WASM
+      // Dashboard routes: cross-origin isolated for multi-threaded WASM
       {
-        source: "/dashboard/verify/:path*",
+        source: "/dashboard/:path*",
         headers: isolatedHeaders,
       },
       // All other routes: standard security headers (no COOP restriction)
