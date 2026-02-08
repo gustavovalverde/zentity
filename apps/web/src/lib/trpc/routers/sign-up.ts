@@ -6,6 +6,7 @@ import {
   clearAnonymousFlag,
   linkWalletAddress,
   updateUserEmail,
+  updateUserWalletIdentity,
 } from "@/lib/db/queries/auth";
 import { upsertIdentityBundle } from "@/lib/db/queries/identity";
 
@@ -33,10 +34,17 @@ export const signUpRouter = router({
       const email = input?.email?.trim() || null;
       const wallet = input?.wallet;
 
+      let identityUpdate: Promise<void>;
+      if (email) {
+        identityUpdate = updateUserEmail(ctx.userId, email);
+      } else if (wallet) {
+        identityUpdate = updateUserWalletIdentity(ctx.userId, wallet.address);
+      } else {
+        identityUpdate = clearAnonymousFlag(ctx.userId);
+      }
+
       await Promise.all([
-        email
-          ? updateUserEmail(ctx.userId, email)
-          : clearAnonymousFlag(ctx.userId),
+        identityUpdate,
         wallet
           ? linkWalletAddress({
               userId: ctx.userId,

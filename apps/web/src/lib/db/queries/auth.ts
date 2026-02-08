@@ -38,8 +38,33 @@ export async function updateUserEmail(
 }
 
 /**
+ * Updates a wallet user's identity: sets a wallet-derived email and
+ * abbreviated address as display name, and clears the anonymous flag.
+ * Same raw-Drizzle constraint as `updateUserEmail` — see its JSDoc.
+ */
+export async function updateUserWalletIdentity(
+  userId: string,
+  walletAddress: string
+): Promise<void> {
+  const checksummed = getAddress(walletAddress);
+  const abbrev = `${checksummed.slice(0, 6)}...${checksummed.slice(-4)}`;
+  const walletEmail = `${checksummed.toLowerCase().slice(2, 10)}@wallet.zentity.app`;
+
+  await db
+    .update(users)
+    .set({
+      email: walletEmail,
+      name: abbrev,
+      isAnonymous: false,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(users.id, userId))
+    .run();
+}
+
+/**
  * Clears the anonymous flag without changing email/name.
- * Used when a user completes sign-up without providing an email.
+ * Used when a user completes sign-up without providing an email (passkey path).
  * Same raw-Drizzle constraint as `updateUserEmail` — see its JSDoc.
  */
 export async function clearAnonymousFlag(userId: string): Promise<void> {
@@ -118,7 +143,7 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
  * Links a wallet address to a user account.
  *
  * Called during wallet-based sign-up to store the wallet address in the
- * wallet_address table. This is critical for SIWE sign-in: without this link,
+ * wallet_address table. This is critical for EIP-712 sign-in: without this link,
  * the user would get a new account on their next login attempt, making their
  * FHE keys inaccessible.
  *
@@ -138,7 +163,7 @@ export async function linkWalletAddress(params: {
 }): Promise<void> {
   const { userId, address, chainId, isPrimary = true } = params;
 
-  // Use checksum address format to match better-auth SIWE plugin lookups
+  // Use checksum address format to match EIP-712 plugin lookups
   const normalizedAddress = getAddress(address);
 
   await db

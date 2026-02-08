@@ -132,6 +132,9 @@ export const passkeys = sqliteTable(
 export const walletAddresses = sqliteTable(
   "wallet_address",
   {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

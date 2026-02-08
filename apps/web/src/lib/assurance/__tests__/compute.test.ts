@@ -25,7 +25,7 @@ describe("deriveAuthStrength", () => {
   it("returns 'basic' for other authenticated methods", () => {
     expect(deriveAuthStrength("opaque")).toBe("basic");
     expect(deriveAuthStrength("magic-link")).toBe("basic");
-    expect(deriveAuthStrength("siwe")).toBe("basic");
+    expect(deriveAuthStrength("eip712")).toBe("basic");
     expect(deriveAuthStrength(null)).toBe("basic");
     expect(deriveAuthStrength(undefined)).toBe("basic");
   });

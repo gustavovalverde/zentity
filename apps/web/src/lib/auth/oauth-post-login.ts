@@ -2,7 +2,7 @@
  * OAuth Post-Login Flow
  *
  * Handles the continuation of OAuth authorization flows after custom authentication
- * (passkey, OPAQUE, SIWE). These auth methods don't natively integrate with the
+ * (passkey, OPAQUE, EIP-712 wallet). These auth methods don't natively integrate with the
  * oauth-provider plugin, so after session creation, we must explicitly call the
  * continue endpoint to get the redirect URL to the consent page.
  *
@@ -48,7 +48,7 @@ export function getSignedOAuthQuery(): string | null {
 
 /**
  * Continue the OAuth flow after custom authentication.
- * Call this after successful passkey/OPAQUE/SIWE auth when hasOAuthParams() is true.
+ * Call this after successful passkey/OPAQUE/EIP-712 auth when hasOAuthParams() is true.
  *
  * @returns The redirect URL to the consent page, or null if not in an OAuth flow
  */

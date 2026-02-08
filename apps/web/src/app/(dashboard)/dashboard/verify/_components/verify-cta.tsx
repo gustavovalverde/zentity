@@ -20,7 +20,6 @@ interface VerifyCtaProps {
   hasPassword: boolean;
   wallet: { address: string; chainId: number } | null;
   cookies: string | null;
-  walletScopeId: string | null;
 }
 
 /**
@@ -38,7 +37,6 @@ export function VerifyCta({
   hasPassword,
   wallet,
   cookies,
-  walletScopeId,
 }: Readonly<VerifyCtaProps>) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -75,7 +73,7 @@ export function VerifyCta({
 
   if (wallet) {
     return (
-      <Web3Provider cookies={cookies} walletScopeId={walletScopeId}>
+      <Web3Provider cookies={cookies}>
         {button}
         {dialog}
       </Web3Provider>

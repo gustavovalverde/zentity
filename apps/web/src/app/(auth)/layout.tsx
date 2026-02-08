@@ -19,8 +19,6 @@ export default async function AuthLayout({
   const headersObj = await headers();
   const session = await getCachedSession(headersObj);
   const cookies = headersObj.get("cookie");
-  const walletScopeId = session?.user?.id ?? null;
-
   // Redirect users who completed sign-up to dashboard
   if (session?.user?.id) {
     const completed = await hasCompletedSignUp(session.user.id);
@@ -44,7 +42,7 @@ export default async function AuthLayout({
         id="main-content"
       >
         <TrpcProvider>
-          <Web3Provider cookies={cookies} walletScopeId={walletScopeId}>
+          <Web3Provider cookies={cookies}>
             <PasskeyAuthProvider>
               <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
             </PasskeyAuthProvider>

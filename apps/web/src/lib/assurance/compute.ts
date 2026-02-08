@@ -45,7 +45,7 @@ const VALID_LOGIN_METHODS = new Set<LoginMethod>([
   "passkey",
   "opaque",
   "magic-link",
-  "siwe",
+  "eip712",
   "anonymous",
   "credential",
 ]);

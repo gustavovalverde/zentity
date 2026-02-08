@@ -7,7 +7,7 @@
  * - Tier 2: Verified (identity proven + ZK proofs + FHE complete)
  *
  * Two auth strength levels:
- * - basic: OPAQUE, magic link, SIWE
+ * - basic: OPAQUE, magic link, EIP-712 wallet
  * - strong: Passkey (WebAuthn) - required for on-chain operations
  */
 
@@ -35,7 +35,7 @@ export type TierName = (typeof TIER_NAMES)[AccountTier];
  *
  * | Level  | Methods                    | Enables                         |
  * |--------|----------------------------|---------------------------------|
- * | basic  | OPAQUE, magic link, SIWE   | All features except on-chain    |
+ * | basic  | OPAQUE, magic link, EIP-712| All features except on-chain    |
  * | strong | Passkey (WebAuthn)         | On-chain attestation, minting   |
  */
 export type AuthStrength = "basic" | "strong";
@@ -47,7 +47,7 @@ export type LoginMethod =
   | "passkey"
   | "opaque" // OPAQUE password-authenticated key exchange
   | "magic-link"
-  | "siwe" // Sign-In With Ethereum
+  | "eip712" // EIP-712 wallet authentication
   | "anonymous"
   | "credential"; // Legacy password (disabled in prod)
 

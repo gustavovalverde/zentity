@@ -7,18 +7,13 @@ import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
 import { PasskeyAuthProvider } from "@/components/providers/passkey-auth-provider";
 import { TrpcProvider } from "@/components/providers/trpc-provider";
 import { Web3Provider } from "@/components/providers/web3-provider";
-import { getCachedSession } from "@/lib/auth/cached-session";
 
 export default async function TwoFactorLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const headersObj = await headers();
-  const session = await getCachedSession(headersObj);
-  const cookies = headersObj.get("cookie");
-  const walletScopeId = session?.user?.id ?? null;
-
+  const cookies = (await headers()).get("cookie");
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-border border-b">
@@ -34,7 +29,7 @@ export default async function TwoFactorLayout({
         id="main-content"
       >
         <TrpcProvider>
-          <Web3Provider cookies={cookies} walletScopeId={walletScopeId}>
+          <Web3Provider cookies={cookies}>
             <PasskeyAuthProvider>
               <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
             </PasskeyAuthProvider>

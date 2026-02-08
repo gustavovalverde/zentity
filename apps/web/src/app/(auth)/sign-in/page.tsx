@@ -42,7 +42,7 @@ function getLastUsedLabel(method: string | null): string | null {
   if (method === "passkey") {
     return "Passkey";
   }
-  if (method === "wallet" || method === "siwe") {
+  if (method === "wallet" || method === "eip712") {
     return "Wallet";
   }
   if (method === "opaque") {

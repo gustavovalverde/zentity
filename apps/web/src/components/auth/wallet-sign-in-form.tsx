@@ -1,10 +1,12 @@
 "use client";
 
+import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useChainId, useSignMessage, useSignTypedData } from "wagmi";
+import { useChainId, useSignTypedData } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -12,7 +14,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { continueOAuthFlow, hasOAuthParams } from "@/lib/auth/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { signInWithSiwe } from "@/lib/auth/siwe";
 import {
   buildKekSignatureTypedData,
   cacheWalletSignature,
@@ -22,18 +23,12 @@ import { redirectTo } from "@/lib/utils/navigation";
 
 const KEK_SIGNATURE_VALIDITY_DAYS = 365;
 
-type SignInStatus =
-  | "idle"
-  | "connecting"
-  | "ready"
-  | "signing_siwe"
-  | "signing_kek";
+type SignInStatus = "idle" | "connecting" | "ready" | "signing" | "signing_kek";
 
 export function WalletSignInButton() {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { mutateAsync: signMessage } = useSignMessage();
   const { mutateAsync: signTypedData } = useSignTypedData();
 
   const [error, setError] = useState<string | null>(null);
@@ -64,52 +59,54 @@ export function WalletSignInButton() {
     }
 
     prepareForNewSession();
-    setStatus("signing_siwe");
+    setStatus("signing");
     setError(null);
 
     try {
-      // Step 1: SIWE authentication (EIP-191)
-      await signInWithSiwe({
+      // Step 1: EIP-712 authentication
+      const result = await authClient.signIn.eip712({
         address,
         chainId,
-        signMessage: ({ message }) => signMessage({ message }),
-      });
-
-      // Step 2: KEK derivation signature (EIP-712) — caches credential for vault unlock
-      setStatus("signing_kek");
-      try {
-        const session = await authClient.getSession();
-        const userId = session.data?.user?.id;
-        if (userId) {
-          const typedData = buildKekSignatureTypedData({ userId, chainId });
-          const signature = await signTypedData({
+        signTypedData: async (typedData: Eip712TypedData) =>
+          signTypedData({
             domain: typedData.domain as Record<string, unknown>,
             types: typedData.types as Record<
               string,
               Array<{ name: string; type: string }>
             >,
             primaryType: typedData.primaryType,
-            message: typedData.message as Record<string, unknown>,
-          });
+            message: typedData.message,
+          }),
+      });
 
-          const signatureBytes = signatureToBytes(signature);
-          const signedAt = Math.floor(Date.now() / 1000);
-          const expiresAt =
-            signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
+      // Step 2: KEK derivation signature — caches credential for vault unlock
+      setStatus("signing_kek");
+      try {
+        const userId = result.user.id;
+        const kekTypedData = buildKekSignatureTypedData({ userId, chainId });
+        const kekSignature = await signTypedData({
+          domain: kekTypedData.domain as Record<string, unknown>,
+          types: kekTypedData.types as Record<
+            string,
+            Array<{ name: string; type: string }>
+          >,
+          primaryType: kekTypedData.primaryType,
+          message: kekTypedData.message as Record<string, unknown>,
+        });
 
-          cacheWalletSignature({
-            userId,
-            address,
-            chainId,
-            signatureBytes,
-            signedAt,
-            expiresAt,
-          });
-        }
+        const signedAt = Math.floor(Date.now() / 1000);
+        const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
+
+        cacheWalletSignature({
+          userId,
+          address,
+          chainId,
+          signatureBytes: signatureToBytes(kekSignature),
+          signedAt,
+          expiresAt,
+        });
       } catch {
-        // Non-blocking: KEK signature failure doesn't break sign-in.
-        // The user can still access the dashboard; vault unlock will
-        // prompt for the signature when needed.
+        // Non-blocking: vault unlock will prompt when needed
       }
 
       if (hasOAuthParams()) {
@@ -140,9 +137,9 @@ export function WalletSignInButton() {
 
       setStatus(isConnected && address ? "ready" : "idle");
     }
-  }, [address, chainId, isConnected, signMessage, signTypedData]);
+  }, [address, chainId, isConnected, signTypedData]);
 
-  const isLoading = status === "signing_siwe" || status === "signing_kek";
+  const isLoading = status === "signing" || status === "signing_kek";
   const isReady = isConnected && address;
 
   return (

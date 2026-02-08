@@ -227,7 +227,6 @@ export default async function VerifyPage() {
               nextStepHref={nextStep.href}
               nextStepTitle={nextStep.title}
               wallet={wallet}
-              walletScopeId={userId}
             />
           )}
 

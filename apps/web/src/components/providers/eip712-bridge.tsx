@@ -1,20 +1,21 @@
 "use client";
 
+import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+
 import { useAppKitAccount } from "@reown/appkit/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { useChainId, useSignMessage } from "wagmi";
+import { useChainId, useSignTypedData } from "wagmi";
 
 import { authClient } from "@/lib/auth/auth-client";
-import { signInWithSiwe } from "@/lib/auth/siwe";
 
 const AUTH_PAGES_PATTERN =
   /^\/(sign-in|sign-up|forgot-password|reset-password)/;
 
-export function SiweBridge() {
+export function Eip712Bridge() {
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { mutateAsync: signMessage } = useSignMessage();
+  const { mutateAsync: signTypedData } = useSignTypedData();
   const pathname = usePathname();
   const lastAuthRef = useRef<{ address: string; chainId: number } | null>(null);
   const inFlightRef = useRef(false);
@@ -25,7 +26,6 @@ export function SiweBridge() {
       return;
     }
 
-    // Skip auto-sign-in on auth pages - let explicit forms handle it
     if (AUTH_PAGES_PATTERN.test(pathname)) {
       return;
     }
@@ -52,10 +52,19 @@ export function SiweBridge() {
         return;
       }
 
-      await signInWithSiwe({
+      await authClient.signIn.eip712({
         address,
         chainId: activeChainId,
-        signMessage,
+        signTypedData: async (typedData: Eip712TypedData) =>
+          signTypedData({
+            domain: typedData.domain as Record<string, unknown>,
+            types: typedData.types as Record<
+              string,
+              Array<{ name: string; type: string }>
+            >,
+            primaryType: typedData.primaryType,
+            message: typedData.message,
+          }),
       });
       lastAuthRef.current = { address, chainId: activeChainId };
     };
@@ -66,7 +75,7 @@ export function SiweBridge() {
           return;
         }
         const message =
-          error instanceof Error ? error.message : "SIWE sign-in failed.";
+          error instanceof Error ? error.message : "Wallet sign-in failed.";
         if (
           message.toLowerCase().includes("user rejected") ||
           message.toLowerCase().includes("denied") ||
@@ -82,7 +91,7 @@ export function SiweBridge() {
     return () => {
       cancelled = true;
     };
-  }, [address, chainId, isConnected, pathname, signMessage]);
+  }, [address, chainId, isConnected, pathname, signTypedData]);
 
   return null;
 }

@@ -109,26 +109,15 @@ function getEnabledNetworks(): [AppKitNetwork, ...AppKitNetwork[]] {
 export const networks = getEnabledNetworks();
 
 /**
- * Wagmi Adapter for Reown AppKit.
- * Uses cookie storage for SSR compatibility.
+ * Single wagmi adapter shared by AppKit and WagmiProvider.
+ * Wallet connections are browser-level — no per-user scoping needed.
  */
-export function getWagmiStorageKey(scope?: string | null) {
-  const safeScope = scope?.trim() ? scope : "anon";
-  return `wagmi.${safeScope}`;
-}
-
-export function createWagmiAdapter(storageScope?: string | null) {
-  const injectedConnector =
-    globalThis.window === undefined ? null : injected({ shimDisconnect: true });
-
-  return new WagmiAdapter({
-    storage: createStorage({
-      storage: cookieStorage,
-      key: getWagmiStorageKey(storageScope),
-    }),
-    ssr: true,
-    projectId,
-    networks,
-    connectors: injectedConnector ? [injectedConnector] : undefined,
-  });
-}
+export const wagmiAdapter = new WagmiAdapter({
+  storage: createStorage({
+    storage: cookieStorage,
+  }),
+  ssr: true,
+  projectId,
+  networks,
+  connectors: [injected({ shimDisconnect: true })],
+});

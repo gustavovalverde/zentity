@@ -1,15 +1,24 @@
 "use client";
 
+import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useChainId, useSignMessage } from "wagmi";
+import { useChainId, useSignTypedData } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { ensureAuthSession } from "@/lib/auth/anonymous-session";
 import { authClient } from "@/lib/auth/auth-client";
-import { signInWithSiwe } from "@/lib/auth/siwe";
+import {
+  buildKekSignatureTypedData,
+  cacheWalletSignature,
+  signatureToBytes,
+} from "@/lib/privacy/credentials";
+
+const KEK_SIGNATURE_VALIDITY_DAYS = 365;
 
 interface WalletSignUpFormProps {
   email?: string;
@@ -22,10 +31,6 @@ interface WalletSignUpFormProps {
   disabled?: boolean;
 }
 
-/**
- * Wallet sign-up form component.
- * Auto-connects on mount, then shows sign UI once connected.
- */
 export function WalletSignUpForm({
   email,
   onSuccess,
@@ -35,7 +40,7 @@ export function WalletSignUpForm({
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const chainId = useChainId();
-  const { mutateAsync: signMessage } = useSignMessage();
+  const { mutateAsync: signTypedData } = useSignTypedData();
 
   const [error, setError] = useState<string | null>(null);
   const [isSigning, setIsSigning] = useState(false);
@@ -70,27 +75,57 @@ export function WalletSignUpForm({
     setError(null);
 
     try {
-      await signInWithSiwe({
+      // Step 1: Ensure anonymous session (unified sign-up path)
+      await ensureAuthSession();
+
+      // Step 2: EIP-712 auth signature (popup 1)
+      const result = await authClient.signUp.eip712({
         address,
         chainId,
         email,
-        force: true,
-        signMessage: ({ message }) => signMessage({ message }),
+        signTypedData: async (typedData: Eip712TypedData) =>
+          signTypedData({
+            domain: typedData.domain as Record<string, unknown>,
+            types: typedData.types as Record<
+              string,
+              Array<{ name: string; type: string }>
+            >,
+            primaryType: typedData.primaryType,
+            message: typedData.message,
+          }),
       });
 
-      const session = await authClient.getSession();
-      const userId = session.data?.user?.id;
-      if (!userId) {
-        throw new Error(
-          "Failed to retrieve user session after wallet sign-in."
-        );
+      const userId = result.user.id;
+
+      // Step 3: KEK derivation signature (popup 2)
+      try {
+        const kekTypedData = buildKekSignatureTypedData({ userId, chainId });
+        const kekSignature = await signTypedData({
+          domain: kekTypedData.domain as Record<string, unknown>,
+          types: kekTypedData.types as Record<
+            string,
+            Array<{ name: string; type: string }>
+          >,
+          primaryType: kekTypedData.primaryType,
+          message: kekTypedData.message as Record<string, unknown>,
+        });
+
+        const signedAt = Math.floor(Date.now() / 1000);
+        const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
+
+        cacheWalletSignature({
+          userId,
+          address,
+          chainId,
+          signatureBytes: signatureToBytes(kekSignature),
+          signedAt,
+          expiresAt,
+        });
+      } catch {
+        // KEK failure is non-blocking; vault will prompt later
       }
 
-      onSuccess({
-        userId,
-        address,
-        chainId,
-      });
+      onSuccess({ userId, address, chainId });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to sign message.";
@@ -106,7 +141,7 @@ export function WalletSignUpForm({
     } finally {
       setIsSigning(false);
     }
-  }, [address, chainId, email, isConnected, onSuccess, signMessage]);
+  }, [address, chainId, email, isConnected, onSuccess, signTypedData]);
 
   useEffect(() => {
     if (isConnected && address && hasInitiatedConnect) {

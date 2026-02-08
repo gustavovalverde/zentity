@@ -9,6 +9,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useSignTypedData } from "wagmi";
 
+import { Web3Provider } from "@/components/providers/web3-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -469,14 +470,16 @@ export function AuthMaterialGate({
             ) : null}
 
             {authMode === "wallet" && userId ? (
-              <WalletAuthSection
-                authStatus={authStatus}
-                isAuthenticating={isAuthenticating}
-                onSuccess={recheckStatus}
-                setError={setError}
-                setIsAuthenticating={setIsAuthenticating}
-                userId={userId}
-              />
+              <Web3Provider cookies={null}>
+                <WalletAuthSection
+                  authStatus={authStatus}
+                  isAuthenticating={isAuthenticating}
+                  onSuccess={recheckStatus}
+                  setError={setError}
+                  setIsAuthenticating={setIsAuthenticating}
+                  userId={userId}
+                />
+              </Web3Provider>
             ) : null}
           </div>
         </DialogContent>

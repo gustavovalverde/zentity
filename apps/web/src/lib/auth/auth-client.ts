@@ -11,11 +11,11 @@ import {
   lastLoginMethodClient,
   magicLinkClient,
   organizationClient,
-  siweClient,
   twoFactorClient,
 } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
+import { eip712AuthClient } from "@/lib/auth/plugins/eip712/client";
 import { opaqueClient } from "@/lib/auth/plugins/opaque/client";
 import { getSafeRedirectPath } from "@/lib/utils/navigation";
 
@@ -39,7 +39,7 @@ export const authClient = createAuthClient({
     passkeyClient(),
     opaqueClient(),
     anonymousClient(),
-    siweClient(),
+    eip712AuthClient(),
     genericOAuthClient(),
     lastLoginMethodClient(),
     oauthProviderClient(),

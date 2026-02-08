@@ -15,12 +15,10 @@ import {
   jwt,
   lastLoginMethod,
   magicLink,
-  siwe,
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { eq } from "drizzle-orm";
-import { SiweMessage } from "siwe";
 
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
@@ -40,6 +38,7 @@ import {
   filterVcClaimsByScopes,
   VC_SCOPES,
 } from "@/lib/auth/oidc/vc-scopes";
+import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
 import {
@@ -181,6 +180,9 @@ const resolveLastLoginMethod = (ctx: { path?: string }): string | null => {
   if (path.startsWith("/sign-in/opaque/complete")) {
     return "opaque";
   }
+  if (path.includes("/eip712/")) {
+    return "eip712";
+  }
   return null;
 };
 
@@ -212,8 +214,6 @@ const resolveOpaqueUserByIdentifier = async (
   const accounts = await ctx.context.internalAdapter.findAccounts(user.id);
   return { user, accounts };
 };
-
-const getAuthDomain = (): string => new URL(getAppOrigin()).host;
 
 const authIssuer = getAuthIssuer();
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
@@ -343,6 +343,18 @@ export const auth = betterAuth({
           "/password-reset/opaque/complete": {
             window: 60, // 1 minute
             max: 5, // 5 password reset completions per minute
+          },
+          "/eip712/nonce": {
+            window: 60,
+            max: 10,
+          },
+          "/sign-up/eip712/register": {
+            window: 60,
+            max: 5,
+          },
+          "/sign-in/eip712/verify": {
+            window: 60,
+            max: 10,
           },
         },
       },
@@ -553,32 +565,9 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
     }),
-    siwe({
-      domain: getAuthDomain(),
-      emailDomainName: process.env.SIWE_EMAIL_DOMAIN || "wallet.zentity.app",
-      anonymous: true,
-      // SIWE nonce must be alphanumeric only (EIP-4361 ABNF: 8*( ALPHA / DIGIT ))
-      // Using hex encoding of random bytes to ensure compliance
-      getNonce: async () => crypto.randomUUID().replaceAll("-", ""),
-      verifyMessage: async ({
-        message,
-        signature,
-        address,
-        chainId,
-        cacao,
-      }) => {
-        const siweMessage = new SiweMessage(message);
-        const result = await siweMessage.verify({
-          signature,
-          domain: cacao?.p?.domain || getAuthDomain(),
-          nonce: cacao?.p?.nonce || siweMessage.nonce,
-        });
-        return (
-          result.success &&
-          siweMessage.address?.toLowerCase() === address.toLowerCase() &&
-          (siweMessage.chainId ? siweMessage.chainId === chainId : true)
-        );
-      },
+    eip712Auth({
+      appName: "Zentity",
+      emailDomainName: process.env.EIP712_EMAIL_DOMAIN || "wallet.zentity.app",
     }),
     genericOAuth({
       config: parseGenericOAuthConfig(),
