@@ -5,6 +5,7 @@ import type { BindingSecretResult } from "@/lib/privacy/zk/binding-secret";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import { clearCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { prepareBindingProofInputs } from "@/lib/privacy/zk/binding-secret";
 import {
   generateAgeProof,
@@ -32,10 +33,10 @@ export interface BindingContext {
 
 /**
  * Generate all ZK proofs for identity verification.
- * Generates age, document validity, nationality, face match, and optionally identity binding proofs.
+ * Generates age, document validity, nationality, face match, and identity binding proofs.
  *
- * Exported for use in dashboard verification flow where finalization
- * and proof generation happen in separate steps.
+ * Identity binding is mandatory — it cryptographically ties proofs to the user's
+ * authentication credential, preventing replay attacks.
  */
 export async function generateAllProofs(params: {
   documentId: string;
@@ -43,14 +44,8 @@ export async function generateAllProofs(params: {
   extractedDOB: string | null;
   extractedExpirationDate: string | null;
   extractedNationalityCode: string | null;
-  /** Called when transitioning to storing phase */
   onBeforeStore?: () => void;
-  /**
-   * Optional binding context for identity binding proof.
-   * If provided, generates an identity binding proof to prevent replay attacks.
-   * Required for on-chain attestation.
-   */
-  bindingContext?: BindingContext;
+  bindingContext: BindingContext;
 }): Promise<void> {
   const {
     documentId,
@@ -163,18 +158,20 @@ export async function generateAllProofs(params: {
   const faceDocumentHashField =
     faceClaim.documentHashField || documentHashField;
 
-  // Fetch all proof challenges in parallel (async-parallel optimization)
-  const challengePromises = [
+  // Fetch all proof challenges in parallel
+  const [
+    ageChallenge,
+    docChallenge,
+    nationalityChallenge,
+    faceChallenge,
+    bindingChallenge,
+  ] = await Promise.all([
     getProofChallenge("age_verification"),
     getProofChallenge("doc_validity"),
     getProofChallenge("nationality_membership"),
     getProofChallenge("face_match"),
-    ...(bindingContext ? [getProofChallenge("identity_binding")] : []),
-  ] as const;
-  const challenges = await Promise.all(challengePromises);
-  const [ageChallenge, docChallenge, nationalityChallenge, faceChallenge] =
-    challenges;
-  const bindingChallenge = bindingContext ? challenges[4] : null;
+    getProofChallenge("identity_binding"),
+  ]);
 
   // Generate proofs sequentially (CPU-bound WASM work)
   const ageProof = await generateAgeProof(dateOfBirth, 18, {
@@ -220,32 +217,32 @@ export async function generateAllProofs(params: {
   );
   enqueueStore({ circuitType: "face_match", ...faceProof });
 
-  // Generate identity binding proof if context provided
-  if (bindingContext && bindingChallenge) {
-    const bindingInputs = prepareBindingProofInputs(
-      bindingContext.bindingResult
-    );
-    const bindingProof = await generateIdentityBindingProof(
-      bindingInputs.bindingSecretField,
-      bindingInputs.userIdHashField,
-      bindingInputs.documentHashField,
-      { nonce: bindingChallenge.nonce }
-    );
-    enqueueStore({ circuitType: "identity_binding", ...bindingProof });
-  }
+  // Generate identity binding proof (mandatory — ties proofs to user's credential)
+  const bindingInputs = prepareBindingProofInputs(bindingContext.bindingResult);
+  const bindingProof = await generateIdentityBindingProof(
+    bindingInputs.bindingSecretField,
+    bindingInputs.userIdHashField,
+    bindingInputs.documentHashField,
+    { nonce: bindingChallenge.nonce }
+  );
+  enqueueStore({ circuitType: "identity_binding", ...bindingProof });
 
   // Notify caller before storing (so UI can show "storing" status)
   onBeforeStore?.();
 
   // Store proofs sequentially to avoid SQLITE_BUSY (SQLite single-writer lock)
   // Each storeProof call does 4-6 DB operations; running them in parallel causes lock contention
-  for (const proof of proofsToStore) {
-    await storeProof({
-      circuitType: proof.circuitType,
-      proof: proof.proof,
-      publicSignals: proof.publicSignals,
-      generationTimeMs: proof.generationTimeMs,
-      documentId,
-    });
+  try {
+    for (const proof of proofsToStore) {
+      await storeProof({
+        circuitType: proof.circuitType,
+        proof: proof.proof,
+        publicSignals: proof.publicSignals,
+        generationTimeMs: proof.generationTimeMs,
+        documentId,
+      });
+    }
+  } finally {
+    clearCachedBindingMaterial();
   }
 }

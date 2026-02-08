@@ -196,7 +196,7 @@ UltraHonk relies on a universal structured reference string (SRS/CRS). The Barre
 
 Every circuit accepts a public nonce that is issued by the server and consumed on submission.
 
-**Identity binding** provides an additional layer of replay protection by cryptographically linking proofs to a specific user identity. The `identity_binding` circuit computes a Poseidon2 commitment over auth-mode-specific secrets (passkey PRF, OPAQUE export key, or wallet signature), hashed user ID, and document hash. This ensures proofs cannot be replayed across users or documents, regardless of which authentication method was used.
+**Identity binding** is mandatory for all proof sets. The `identity_binding` circuit computes a Poseidon2 commitment over auth-mode-specific secrets (passkey PRF, OPAQUE export key, or wallet signature), hashed user ID, and document hash. This ensures proofs cannot be replayed across users or documents, regardless of which authentication method was used. If the user's credential material cache has expired, a re-authentication dialog blocks proof generation until material is re-obtained. See [ZK Architecture — Identity Binding](zk-architecture.md#identity-binding-circuit) for details.
 
 **Field constraints**: All circuit inputs must fit within the BN254 scalar field (~254 bits). Cryptographic outputs (PRF, OPAQUE export keys, SHA-256 hashes) are 256 bits and must be reduced modulo `BN254_FR_MODULUS` before use. See [ZK Architecture § BN254 Field Constraints](zk-architecture.md#bn254-field-constraints).
 

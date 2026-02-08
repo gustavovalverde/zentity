@@ -186,13 +186,19 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           // Check for existing anonymous session to link to
           let userId: string;
           const session = await getSessionFromCtx(ctx);
-          const existingUser = session
+          const sessionUser = session
             ? (session.user as typeof session.user & { isAnonymous?: boolean })
             : null;
 
-          if (existingUser?.isAnonymous) {
-            userId = existingUser.id;
-            // Update email if provided
+          // Verify user still exists in DB (session cookie may outlive user row after DB reset)
+          const validAnonymousUser =
+            sessionUser?.isAnonymous &&
+            (await ctx.context.internalAdapter.findUserById(sessionUser.id))
+              ? sessionUser
+              : null;
+
+          if (validAnonymousUser) {
+            userId = validAnonymousUser.id;
             if (email) {
               await ctx.context.internalAdapter.updateUser(userId, {
                 email,

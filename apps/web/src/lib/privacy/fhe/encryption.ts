@@ -48,6 +48,8 @@ const pendingContexts = new Map<
  * This cache preserves dobDays until encryption succeeds.
  */
 const transientDobDays = new Map<string, number>();
+const transientDobDaysTtl = new Map<string, ReturnType<typeof setTimeout>>();
+const TRANSIENT_DOB_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function shouldEncryptWithKey(
   existing: { keyId: string | null } | null,
@@ -207,6 +209,8 @@ async function runFheEncryption(
               encryptionTimeMs: durationMs,
             });
             transientDobDays.delete(userId);
+            clearTimeout(transientDobDaysTtl.get(userId));
+            transientDobDaysTtl.delete(userId);
           } else {
             missingCiphertexts.push("dob_days");
           }
@@ -302,6 +306,14 @@ async function runFheEncryption(
 export function scheduleFheEncryption(args: FheEncryptionSchedule): void {
   if (typeof args.dobDays === "number") {
     transientDobDays.set(args.userId, args.dobDays);
+    clearTimeout(transientDobDaysTtl.get(args.userId));
+    transientDobDaysTtl.set(
+      args.userId,
+      setTimeout(() => {
+        transientDobDays.delete(args.userId);
+        transientDobDaysTtl.delete(args.userId);
+      }, TRANSIENT_DOB_TTL_MS)
+    );
   }
   const existing = pendingContexts.get(args.userId);
   pendingContexts.set(args.userId, {

@@ -5,7 +5,7 @@ import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
@@ -284,6 +284,95 @@ const oidc4vciDeferredIssuance = isOidcE2e
     }
   : undefined;
 
+const DCR_CLIENT_NAME_MAX = 100;
+const HTML_TAG_RE = /<[^>]+>/;
+const isDev =
+  process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+
+function isValidHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (isDev && url.hostname === "localhost") {
+      return true;
+    }
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validateDcrRegistration(
+  body: Record<string, unknown> | undefined
+): void {
+  if (!body) {
+    return;
+  }
+
+  const clientName =
+    typeof body.client_name === "string" ? body.client_name : undefined;
+  if (clientName) {
+    if (clientName.length > DCR_CLIENT_NAME_MAX) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: `client_name exceeds ${DCR_CLIENT_NAME_MAX} characters`,
+      });
+    }
+    if (HTML_TAG_RE.test(clientName)) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: "client_name must not contain HTML",
+      });
+    }
+  }
+
+  const logoUri =
+    typeof body.logo_uri === "string" ? body.logo_uri.trim() : undefined;
+  if (logoUri && !isValidHttpsUrl(logoUri)) {
+    throw new APIError("BAD_REQUEST", {
+      error_description: "logo_uri must be an HTTPS URL",
+    });
+  }
+
+  const clientUri =
+    typeof body.client_uri === "string" ? body.client_uri.trim() : undefined;
+  if (clientUri && !isValidHttpsUrl(clientUri)) {
+    throw new APIError("BAD_REQUEST", {
+      error_description: "client_uri must be an HTTPS URL",
+    });
+  }
+
+  const redirectUris = Array.isArray(body.redirect_uris)
+    ? body.redirect_uris
+    : undefined;
+  if (redirectUris) {
+    for (const uri of redirectUris) {
+      if (typeof uri !== "string") {
+        continue;
+      }
+      try {
+        const parsed = new URL(uri);
+        const isLocalhost = parsed.hostname === "localhost";
+        if (!isDev && isLocalhost) {
+          throw new APIError("BAD_REQUEST", {
+            error_description:
+              "redirect_uris must use HTTPS in production (localhost not allowed)",
+          });
+        }
+        if (!isLocalhost && parsed.protocol !== "https:") {
+          throw new APIError("BAD_REQUEST", {
+            error_description: `redirect_uri must use HTTPS: ${uri}`,
+          });
+        }
+      } catch (e) {
+        if (e instanceof APIError) {
+          throw e;
+        }
+        throw new APIError("BAD_REQUEST", {
+          error_description: `Invalid redirect_uri: ${uri}`,
+        });
+      }
+    }
+  }
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -409,6 +498,12 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // --- DCR metadata validation ---
+      if (ctx.path === "/oauth2/register") {
+        return validateDcrRegistration(ctx.body);
+      }
+
+      // --- Consent cleanup context ---
       if (
         ctx.path !== "/oauth2/delete-consent" &&
         ctx.path !== "/oauth2/update-consent"

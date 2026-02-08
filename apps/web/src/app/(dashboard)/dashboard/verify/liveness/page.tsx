@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
+import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
 import {
   getIdentityBundleByUserId,
   getLatestIdentityDocumentByUserId,
@@ -24,10 +25,11 @@ export default async function LivenessVerifyPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, latestDocument, bundle] = await Promise.all([
+  const [assuranceState, latestDocument, bundle, wallet] = await Promise.all([
     getAssuranceState(userId, session),
     getLatestIdentityDocumentByUserId(userId),
     getIdentityBundleByUserId(userId),
+    getPrimaryWalletAddress(userId),
   ]);
 
   const hasEnrollment = Boolean(bundle?.fheKeyId);
@@ -67,7 +69,7 @@ export default async function LivenessVerifyPage() {
         </p>
       </div>
 
-      <LivenessVerifyClient />
+      <LivenessVerifyClient wallet={wallet} />
     </div>
   );
 }

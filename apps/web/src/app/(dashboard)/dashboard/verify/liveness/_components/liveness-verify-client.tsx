@@ -1,9 +1,10 @@
 "use client";
 
 import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
+import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { LivenessFlow } from "@/components/liveness/liveness-flow";
@@ -25,44 +26,36 @@ import { getBindingContext } from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
 
-// Direct store access for effects (avoids dependency array issues)
+import { BindingAuthDialog } from "./binding-auth-dialog";
+
 const getStoreState = () => useVerificationStore.getState();
 
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
 /**
- * Dashboard Liveness Verification Client
- *
- * Wraps the LivenessProvider and LivenessFlow components.
- * After successful liveness, performs face matching and saves results.
- *
- * Security: draftId and userId are passed to socket and faceMatch to enable
- * server-side result persistence. The server writes results directly to the
- * database - clients cannot forge liveness or face match results.
- */
-/**
  * Wait for liveness results to be written to the draft with retry logic.
- * Handles race conditions where socket writes complete after client checks status.
  */
 async function waitForLivenessWrite(
   draftId: string,
   maxAttempts = 5
 ): Promise<{ success: boolean; issues: string[] }> {
   for (let i = 0; i < maxAttempts; i++) {
-    const status = await trpc.identity.livenessStatus.mutate({
-      draftId,
-    });
+    const status = await trpc.identity.livenessStatus.mutate({ draftId });
     if (status.success) {
       return status;
     }
-    // Exponential backoff: 200ms, 400ms, 600ms, 800ms, 1000ms
     await new Promise((resolve) => setTimeout(resolve, 200 * (i + 1)));
   }
-  // Return last attempt's result
   return trpc.identity.livenessStatus.mutate({ draftId });
 }
 
-export function LivenessVerifyClient() {
+interface LivenessVerifyClientProps {
+  wallet: { address: string; chainId: number } | null;
+}
+
+export function LivenessVerifyClient({
+  wallet,
+}: Readonly<LivenessVerifyClientProps>) {
   const router = useRouter();
   const store = useVerificationStore();
   const { data: session } = useSession();
@@ -72,15 +65,111 @@ export function LivenessVerifyClient() {
   const [faceMatchResult, setFaceMatchResult] =
     useState<FaceMatchResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Key to force LivenessProvider remount on retry
   const baseId = useId();
   const [retryCount, setRetryCount] = useState(0);
   const livenessKey = `${baseId}-${retryCount}`;
 
+  // Binding auth dialog state
+  const [bindingAuthOpen, setBindingAuthOpen] = useState(false);
+  const [bindingAuthMode, setBindingAuthMode] = useState<"opaque" | "wallet">(
+    "opaque"
+  );
+  // Ref to hold the documentId while dialog is open (avoids stale closure)
+  const pendingDocumentIdRef = useRef<string | null>(null);
+
   const userId = session?.user?.id;
   const draftId = store.draftId;
 
-  // Handle successful liveness verification
+  /**
+   * Execute proof generation with a resolved binding context.
+   */
+  const runProofGeneration = useCallback(
+    async (documentId: string, bindingContext: BindingContext) => {
+      toast.info("Generating privacy proofs...", {
+        description: "This may take a moment. Please don't close this page.",
+      });
+
+      const storeState = getStoreState();
+      await generateAllProofs({
+        documentId,
+        profilePayload: null,
+        extractedDOB: storeState.extractedDOB,
+        extractedExpirationDate: storeState.extractedExpirationDate,
+        extractedNationalityCode: storeState.extractedNationalityCode,
+        bindingContext,
+      });
+
+      toast.success("Verification complete!", {
+        description: "Privacy proofs generated successfully.",
+      });
+
+      router.push("/dashboard/verify");
+      router.refresh();
+    },
+    [router]
+  );
+
+  /**
+   * Retrieve binding context, then generate and store all ZK proofs.
+   * Called directly from handleContinue or resumed after re-auth dialog.
+   */
+  const generateProofsWithBinding = useCallback(
+    async (documentId: string) => {
+      if (!userId) {
+        throw new Error("Session expired. Please sign in again.");
+      }
+
+      const bindingResult = await getBindingContext(userId, documentId);
+
+      if (!bindingResult.success) {
+        if (
+          bindingResult.reason === "cache_expired" &&
+          bindingResult.authMode &&
+          bindingResult.authMode !== "passkey"
+        ) {
+          // Pause: show re-auth dialog, resume on success
+          pendingDocumentIdRef.current = documentId;
+          setBindingAuthMode(bindingResult.authMode);
+          setBindingAuthOpen(true);
+          return;
+        }
+        // Unrecoverable — no wrappers, passkey cancelled, or error
+        throw new Error(bindingResult.message);
+      }
+
+      await runProofGeneration(documentId, bindingResult.context);
+    },
+    [userId, runProofGeneration]
+  );
+
+  /**
+   * Called when BindingAuthDialog succeeds — cache is now populated.
+   * Retries getBindingContext (which will find the fresh cache) and generates proofs.
+   */
+  const handleBindingAuthSuccess = useCallback(async () => {
+    setBindingAuthOpen(false);
+    const documentId = pendingDocumentIdRef.current;
+    if (!(documentId && userId)) {
+      return;
+    }
+
+    try {
+      const bindingResult = await getBindingContext(userId, documentId);
+      if (!bindingResult.success) {
+        throw new Error(bindingResult.message);
+      }
+      await runProofGeneration(documentId, bindingResult.context);
+    } catch (error) {
+      toast.error("Proof generation failed", {
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      pendingDocumentIdRef.current = null;
+      setIsSubmitting(false);
+    }
+  }, [userId, runProofGeneration]);
+
   const handleVerified = useCallback(
     async ({
       selfieImage,
@@ -93,7 +182,6 @@ export function LivenessVerifyClient() {
       storeState.set({ selfieImage, bestSelfieFrame });
       setLivenessCompleted(true);
 
-      // Redirect if document image is missing (page refresh clears in-memory state)
       if (!storeState.idDocumentBase64) {
         toast.error("Verification session expired", {
           description: "Please upload your document again to continue.",
@@ -104,7 +192,6 @@ export function LivenessVerifyClient() {
 
       setFaceMatchStatus("matching");
       try {
-        // Pass draftId so server writes results directly to database
         const result = await trpc.liveness.faceMatch.mutate({
           idImage: storeState.idDocumentBase64,
           selfieImage: bestSelfieFrame || selfieImage,
@@ -145,7 +232,6 @@ export function LivenessVerifyClient() {
     [draftId, router]
   );
 
-  // Handle reset (user retrying) - increments retryCount to force remount
   const handleReset = useCallback(() => {
     getStoreState().set({
       selfieImage: null,
@@ -154,12 +240,9 @@ export function LivenessVerifyClient() {
     setLivenessCompleted(false);
     setFaceMatchStatus("idle");
     setFaceMatchResult(null);
-    // Increment retry count to change key and remount LivenessProvider
-    // This forces a fresh socket connection and camera restart
     setRetryCount((c) => c + 1);
   }, []);
 
-  // Handle session error
   const handleSessionError = useCallback(() => {
     toast.error("Session expired", {
       description: "Please start the verification process again.",
@@ -167,7 +250,6 @@ export function LivenessVerifyClient() {
     router.push("/dashboard/verify");
   }, [router]);
 
-  // Submit verification and proceed
   const handleContinue = useCallback(async () => {
     if (!livenessCompleted) {
       toast.error("Please complete liveness verification first");
@@ -183,10 +265,8 @@ export function LivenessVerifyClient() {
 
     setIsSubmitting(true);
     try {
-      // Step 1: Check that liveness results were persisted by socket/faceMatch
-      // Uses retry logic to handle race conditions with socket write
+      // Step 1: Verify liveness results persisted
       const status = await waitForLivenessWrite(draftId);
-
       if (!status.success) {
         const issueMessages: Record<string, string> = {
           liveness_not_completed: "Liveness verification not recorded",
@@ -198,16 +278,12 @@ export function LivenessVerifyClient() {
         throw new Error(message);
       }
 
-      // Step 2: Trigger finalization to create signed claims
-      const { jobId } = await trpc.identity.finalize.mutate({
-        draftId,
-      });
+      // Step 2: Trigger finalization
+      const { jobId } = await trpc.identity.finalize.mutate({ draftId });
 
-      // Step 3: Poll for job completion (with timeout)
-      const maxAttempts = 30;
-      let attempts = 0;
+      // Step 3: Poll for job completion
       let documentId: string | null = null;
-      while (attempts < maxAttempts) {
+      for (let attempts = 0; attempts < 30; attempts++) {
         const jobStatus = await trpc.identity.finalizeStatus.query({ jobId });
         if (jobStatus.status === "complete") {
           documentId = jobStatus.result?.documentId ?? null;
@@ -217,105 +293,32 @@ export function LivenessVerifyClient() {
           throw new Error(jobStatus.error ?? "Finalization failed");
         }
         await new Promise((resolve) => setTimeout(resolve, 500));
-        attempts++;
       }
 
-      // Step 4: Generate ZK proofs (client-side)
-      if (documentId) {
-        const storeState = getStoreState();
-        storeState.set({ documentId });
-        toast.info("Generating privacy proofs...", {
-          description: "This may take a moment. Please don't close this page.",
-        });
-
-        try {
-          // Attempt to get binding context for identity binding proof
-          // This proves the proofs are bound to this user's authentication
-          console.log(
-            "[liveness] Preparing binding context - userId:",
-            userId,
-            "documentId:",
-            documentId
-          );
-
-          if (!userId) {
-            console.warn(
-              "[liveness] userId is null/undefined, skipping binding context"
-            );
-          }
-
-          const bindingResult = userId
-            ? await getBindingContext(userId, documentId)
-            : null;
-
-          console.log(
-            "[liveness] Binding result:",
-            bindingResult?.success
-              ? "SUCCESS"
-              : bindingResult?.reason || "skipped (no userId)"
-          );
-
-          if (bindingResult && !bindingResult.success) {
-            // Log binding context failure but continue with other proofs
-            console.warn(
-              "[liveness] Binding context unavailable:",
-              bindingResult.reason,
-              "-",
-              bindingResult.message
-            );
-            if (bindingResult.reason === "cache_expired") {
-              toast.info("Authentication session expired", {
-                description:
-                  "Identity binding proof skipped. Sign in again to complete all proofs.",
-              });
-            } else if (bindingResult.reason === "no_wrappers") {
-              toast.info("FHE keys not yet enrolled", {
-                description:
-                  "Identity binding proof skipped. Complete account setup first.",
-              });
-            } else {
-              toast.info("Identity binding proof skipped", {
-                description: bindingResult.message,
-              });
-            }
-          }
-
-          await generateAllProofs({
-            documentId,
-            profilePayload: null,
-            extractedDOB: storeState.extractedDOB,
-            extractedExpirationDate: storeState.extractedExpirationDate,
-            extractedNationalityCode: storeState.extractedNationalityCode,
-            bindingContext: bindingResult?.success
-              ? bindingResult.context
-              : undefined,
-          });
-          toast.success("Verification complete!", {
-            description: "Privacy proofs generated successfully.",
-          });
-        } catch (proofError) {
-          // Log but don't block - user can retry proof generation later
-          console.error("Proof generation failed:", proofError);
-          toast.warning("Verification saved", {
-            description:
-              "Identity verified but privacy proofs need to be regenerated.",
-          });
-        }
-      } else {
-        toast.success("Verification complete!");
+      if (!documentId) {
+        throw new Error("Finalization timed out");
       }
 
-      router.push("/dashboard/verify");
-      router.refresh();
+      getStoreState().set({ documentId });
+
+      // Step 4: Get binding context and generate proofs
+      // If cache is expired, this opens the re-auth dialog and returns early.
+      // The dialog's onSuccess callback resumes proof generation.
+      await generateProofsWithBinding(documentId);
+
+      // If we reach here without the dialog opening, proofs are done
+      if (!pendingDocumentIdRef.current) {
+        setIsSubmitting(false);
+      }
+      // Otherwise isSubmitting stays true until dialog flow completes
     } catch (error) {
       toast.error("Failed to save verification", {
         description:
           error instanceof Error ? error.message : "Please try again.",
       });
-    } finally {
       setIsSubmitting(false);
     }
-  }, [livenessCompleted, draftId, router, userId]);
+  }, [livenessCompleted, draftId, generateProofsWithBinding]);
 
   const isVerified =
     livenessCompleted &&
@@ -334,7 +337,6 @@ export function LivenessVerifyClient() {
         <LivenessFlow />
       </LivenessProvider>
 
-      {/* Face Match Result */}
       {livenessCompleted && faceMatchStatus !== "idle" && (
         <FaceVerificationCard
           result={faceMatchResult}
@@ -356,7 +358,6 @@ export function LivenessVerifyClient() {
         </CardContent>
       </Card>
 
-      {/* Retry Button */}
       {livenessCompleted && (
         <Alert>
           <AlertDescription className="flex items-center justify-between">
@@ -368,13 +369,23 @@ export function LivenessVerifyClient() {
         </Alert>
       )}
 
-      {/* Navigation */}
       <div className="flex justify-end gap-3">
         <Button disabled={!isVerified || isSubmitting} onClick={handleContinue}>
           {isSubmitting ? <Spinner className="mr-2 size-4" /> : null}
           Complete Verification
         </Button>
       </div>
+
+      {userId && (
+        <BindingAuthDialog
+          authMode={bindingAuthMode}
+          onOpenChange={setBindingAuthOpen}
+          onSuccess={handleBindingAuthSuccess}
+          open={bindingAuthOpen}
+          userId={userId}
+          wallet={wallet}
+        />
+      )}
     </div>
   );
 }

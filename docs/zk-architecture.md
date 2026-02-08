@@ -65,6 +65,32 @@ This ensures that:
 - Different auth modes produce different commitments (domain separation)
 - Proofs cannot be replayed across users or documents
 
+### Mandatory Enforcement
+
+Identity binding is **mandatory** — `generateAllProofs` requires a `BindingContext` and will not generate any proofs without it. This applies to both on-chain attestation and off-chain verification:
+
+- **On-chain**: Prevents proof replay across wallets. Without binding, a malicious relayer could submit someone else's valid proofs under a different address.
+- **Off-chain**: Provides tamper-evidence. The cryptographic user↔proof link means shuffled DB records would fail verification.
+
+### Credential Material Lifecycle During Verification
+
+Binding requires the user's raw credential material (PRF output, OPAQUE export key, or wallet signature). This material follows a specific lifecycle:
+
+1. **Cached at FHE enrollment** — When the user enrolls FHE keys (verification preflight), the credential material is stored in an in-memory cache.
+2. **Consumed at proof generation** — The binding context resolver reads the cache to derive the binding secret via HKDF.
+3. **Cleared after proof storage** — The cache is cleared after all proofs are stored, regardless of success or failure.
+4. **TTL safety net** — If cleanup doesn't run (e.g., tab crash), the cache auto-expires.
+
+If the cache is expired when proofs are generated (user was idle, page refreshed, TTL fired), the behavior depends on auth mode:
+
+| Auth Mode | Recovery | UX |
+|-----------|----------|-----|
+| **Passkey** | Automatic — WebAuthn PRF is re-prompted directly | User taps/scans biometric |
+| **OPAQUE** | Re-auth dialog — user enters password to re-derive export key | Modal with password input |
+| **Wallet** | Re-auth dialog — user signs EIP-712 typed data | Modal with "Sign with Wallet" button |
+
+The re-auth dialog blocks proof generation until credential material is available. There is no fallback path that skips binding.
+
 ## Proof Binding & Integrity
 
 - **Nonces** (server‑issued) prevent replay.

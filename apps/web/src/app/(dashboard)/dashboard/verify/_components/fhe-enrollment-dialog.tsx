@@ -32,6 +32,7 @@ import {
   generatePrfSalt,
   signatureToBytes,
 } from "@/lib/privacy/credentials";
+import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import {
   generateFheKeyMaterialForStorage,
   prepareFheKeyEnrollment,
@@ -297,6 +298,11 @@ export function FheEnrollmentDialog({
         throw new Error("Missing passkey credential ID.");
       }
 
+      setCachedBindingMaterial({
+        mode: "passkey",
+        prfOutput: signInResult.prfOutput,
+      });
+
       setStage("generating");
       const enrollment = await prepareFheKeyEnrollment({
         enrollment: {
@@ -379,6 +385,11 @@ export function FheEnrollmentDialog({
         );
       }
 
+      setCachedBindingMaterial({
+        mode: "opaque",
+        exportKey: result.data.exportKey,
+      });
+
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
@@ -418,6 +429,11 @@ export function FheEnrollmentDialog({
       if (!result.data || result.error) {
         throw new Error(result.error?.message || "Password creation failed.");
       }
+
+      setCachedBindingMaterial({
+        mode: "opaque",
+        exportKey: result.data.exportKey,
+      });
 
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
@@ -480,6 +496,9 @@ export function FheEnrollmentDialog({
       }
 
       const signatureBytes = signatureToBytes(signature1);
+
+      setCachedBindingMaterial({ mode: "wallet", signatureBytes });
+
       const signedAt = Math.floor(Date.now() / 1000);
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
 

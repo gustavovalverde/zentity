@@ -65,15 +65,25 @@ function buildIdentityPayload(profile: ProfileSecretPayload) {
   };
 }
 
+function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function ClientAvatar({ meta }: { meta: ClientMeta | null }) {
-  if (meta?.icon) {
+  const safeIcon = meta?.icon && isHttpsUrl(meta.icon) ? meta.icon : null;
+
+  if (safeIcon && meta) {
     return (
       // biome-ignore lint/performance/noImgElement: external client icon URL, not a static asset
       // biome-ignore lint/correctness/useImageSize: dimensions set via CSS size-12
       <img
         alt={meta.name}
         className="size-12 rounded-full border border-border object-cover"
-        src={meta.icon}
+        src={safeIcon}
       />
     );
   }
@@ -220,7 +230,11 @@ export function OAuthConsentClient({
   optionalScopes: string[];
   scopeParam: string;
 }>) {
-  const clientName = clientMeta?.name ?? clientId ?? "Unknown app";
+  const rawClientName = clientMeta?.name ?? clientId ?? "Unknown app";
+  const clientName =
+    rawClientName.length > 100
+      ? `${rawClientName.slice(0, 97)}...`
+      : rawClientName;
   const [isPopup, setIsPopup] = useState(false);
 
   useEffect(() => {

@@ -19,6 +19,7 @@ import {
   OPAQUE_CREDENTIAL_ID,
   WALLET_CREDENTIAL_PREFIX,
 } from "@/lib/privacy/credentials";
+import { getCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes } from "@/lib/utils/base64";
@@ -42,6 +43,7 @@ export type BindingContextResult =
   | {
       success: false;
       reason: "no_wrappers" | "cache_expired" | "error";
+      authMode?: "passkey" | "opaque" | "wallet";
       message: string;
     };
 
@@ -141,32 +143,57 @@ export async function getBindingContext(
       };
     }
 
+    const cached = getCachedBindingMaterial();
+
     if (authModeInfo.mode === "opaque") {
-      return {
-        success: false,
-        reason: "cache_expired",
-        message: "Session expired. Please sign in again with your password",
-      };
+      if (cached?.mode !== "opaque") {
+        return {
+          success: false,
+          reason: "cache_expired",
+          authMode: "opaque",
+          message: "Session expired. Please sign in again with your password",
+        };
+      }
+      const bindingResult = await deriveBindingSecret({
+        authMode: AuthMode.OPAQUE,
+        exportKey: cached.exportKey,
+        userId,
+        documentHash,
+      });
+      return { success: true, context: { bindingResult, userId } };
     }
 
     if (authModeInfo.mode === "wallet") {
-      return {
-        success: false,
-        reason: "cache_expired",
-        message: "Please sign the key access request with your wallet",
-      };
+      if (cached?.mode !== "wallet") {
+        return {
+          success: false,
+          reason: "cache_expired",
+          authMode: "wallet",
+          message: "Please sign the key access request with your wallet",
+        };
+      }
+      const bindingResult = await deriveBindingSecret({
+        authMode: AuthMode.WALLET,
+        signatureBytes: cached.signatureBytes,
+        userId,
+        documentHash,
+      });
+      return { success: true, context: { bindingResult, userId } };
     }
 
-    // Passkey mode: prompt for PRF
-    const prfOutput =
-      authModeInfo.passkeyCreds && promptPasskey
-        ? await getPasskeyPrfOutput(authModeInfo.passkeyCreds)
-        : null;
+    // Passkey mode: use cached PRF output if available, otherwise prompt
+    let prfOutput: Uint8Array | null =
+      cached?.mode === "passkey" ? cached.prfOutput : null;
+
+    if (!prfOutput && authModeInfo.passkeyCreds && promptPasskey) {
+      prfOutput = await getPasskeyPrfOutput(authModeInfo.passkeyCreds);
+    }
 
     if (!prfOutput) {
       return {
         success: false,
         reason: "cache_expired",
+        authMode: "passkey",
         message: "Please authenticate with your passkey to continue",
       };
     }

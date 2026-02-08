@@ -11,7 +11,6 @@ export const runtime = "nodejs";
 const ApproveSchema = z.object({
   clientId: z.string().min(1),
   scopes: z.array(z.string()).min(1).optional(),
-  skipConsent: z.boolean().optional(),
   force: z.boolean().optional(),
 });
 
@@ -59,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { clientId, scopes, skipConsent, force } = parsed.data;
+  const { clientId, scopes, force } = parsed.data;
 
   const existing = await db
     .select()
@@ -97,7 +96,6 @@ export async function POST(request: Request): Promise<Response> {
       userId: null,
       updatedAt: new Date(),
       ...(scopes ? { scopes } : {}),
-      ...(skipConsent !== undefined ? { skipConsent } : {}),
     })
     .where(eq(oauthClients.clientId, clientId))
     .run();

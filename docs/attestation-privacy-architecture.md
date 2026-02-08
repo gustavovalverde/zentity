@@ -59,7 +59,7 @@ This architecture supports:
 - Proofs are **verified server-side**; on-chain InputVerifier validates FHE input proofs.
 - High-risk measurements (OCR results, liveness, face match) are **server-signed claims**.
 - Proofs are **bound to a claim hash** to prevent client tampering.
-- **Identity binding proofs** cryptographically link proofs to a specific user via Poseidon2 commitment, preventing proof replay across users or documents. Works with all three auth modes (passkey PRF, OPAQUE export key, wallet signature).
+- **Identity binding proofs** cryptographically link proofs to a specific user via Poseidon2 commitment, preventing proof replay across users or documents. No proofs can be generated without binding. Works with all three auth modes (passkey PRF, OPAQUE export key, wallet signature).
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
 - OPAQUE authentication keeps raw passwords off the server; clients verify the server's static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.

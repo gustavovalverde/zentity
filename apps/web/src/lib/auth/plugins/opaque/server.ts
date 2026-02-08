@@ -451,7 +451,9 @@ export const opaque = (options: OpaquePluginOptions) => {
           const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
           if (!resolved) {
-            // Generate dummy verification to match timing of real path
+            // Generate dummy verification to match timing of real path.
+            // The dummy entry expires naturally via expiresAt — no immediate
+            // delete, so both paths perform identical operations (create + send).
             const dummyToken = randomBytes(24).toString("base64url");
             const dummyExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
@@ -460,10 +462,6 @@ export const opaque = (options: OpaquePluginOptions) => {
               identifier: `${RESET_TOKEN_PREFIX}:${dummyToken}`,
               expiresAt: dummyExpiresAt,
             });
-            // Immediately clean up the dummy entry
-            await ctx.context.internalAdapter.deleteVerificationValue(
-              `${RESET_TOKEN_PREFIX}:${dummyToken}`
-            );
 
             // Always perform the same operations regardless of account existence
             const dummyUrl = buildResetUrl({

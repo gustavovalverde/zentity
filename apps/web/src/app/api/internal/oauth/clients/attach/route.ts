@@ -12,7 +12,6 @@ const AttachSchema = z.object({
   clientId: z.string().min(1),
   organizationId: z.string().min(1),
   scopes: z.array(z.string()).optional(),
-  skipConsent: z.boolean().optional(),
   allowMetadataUpdates: z.boolean().optional(),
   force: z.boolean().optional(),
 });
@@ -51,14 +50,8 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const {
-    clientId,
-    organizationId,
-    scopes,
-    skipConsent,
-    allowMetadataUpdates,
-    force,
-  } = parsed.data;
+  const { clientId, organizationId, scopes, allowMetadataUpdates, force } =
+    parsed.data;
 
   const [client, organization] = await Promise.all([
     db
@@ -111,9 +104,6 @@ export async function POST(request: Request): Promise<Response> {
 
   if (scopes) {
     updates.scopes = scopes;
-  }
-  if (skipConsent !== undefined) {
-    updates.skipConsent = skipConsent;
   }
   if (allowMetadataUpdates !== undefined) {
     updates.metadata = nextMetadata;
