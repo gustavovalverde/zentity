@@ -147,7 +147,15 @@ function setFetchOrigin(origin: string | null) {
   fetchOrigin = origin;
 
   const originalFetchBound = originalFetch.bind(globalThis);
+  const CRS_CDN = "https://crs.aztec.network/";
   const wrappedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    // Serve CRS from pre-warmed local files instead of CDN
+    if (typeof input === "string" && input.startsWith(CRS_CDN)) {
+      return originalFetchBound(
+        `${origin}/api/bb-crs/${input.slice(CRS_CDN.length)}`,
+        init
+      );
+    }
     // Fix absolute paths for blob: URL workers
     if (typeof input === "string" && input.startsWith("/")) {
       return originalFetchBound(`${origin}${input}`, init);
