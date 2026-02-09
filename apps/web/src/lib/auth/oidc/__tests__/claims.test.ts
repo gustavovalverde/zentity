@@ -25,11 +25,11 @@ vi.mock("@/lib/db/queries/identity", () => ({
   }),
 }));
 
-import { buildOidcVerifiedClaims, buildVcClaims } from "../claims";
+import { buildOidcVerifiedClaims, buildProofClaims } from "../claims";
 
 describe("oidc claim mapping", () => {
-  it("builds derived VC claims from verification data", async () => {
-    const claims = await buildVcClaims("user-1");
+  it("builds derived proof claims from verification data", async () => {
+    const claims = await buildProofClaims("user-1");
 
     expect(claims).toMatchObject({
       verification_level: "full",

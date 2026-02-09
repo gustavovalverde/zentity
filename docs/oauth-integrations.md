@@ -33,7 +33,7 @@ sequenceDiagram
   Auth->>Consent: Redirect → /oauth/consent
 
   Note over User,Consent: User consent
-  Consent->>User: Show requested scopes (vc:*, identity.*)
+  Consent->>User: Show requested scopes (proof:*, identity.*)
   User->>Consent: Approve selected scopes
   Consent->>Auth: POST /oauth2/consent (accept: true)
   Auth->>RP: Redirect with code + state
@@ -106,7 +106,7 @@ INSERT INTO oauth_client (client_id, redirect_uris, scopes, created_at)
 VALUES (
   'partner-client-id',
   '["https://partner.example.com/callback"]',
-  '["openid","profile","email","vc:identity"]',
+  '["openid","profile","email","proof:identity"]',
   datetime('now')
 );
 ```
@@ -121,21 +121,21 @@ VALUES (
 
 Zentity uses two scope families to control what data RPs receive via userinfo. Both support user-controlled selective disclosure at consent time.
 
-**VC verification scopes** — derived boolean status flags (no PII):
+**Proof scopes** (`proof:*`) — non-PII boolean verification flags, delivered via **userinfo**:
 
 | Scope | Claims returned |
 |-------|----------------|
-| `vc:identity` | All verification claims (umbrella) |
-| `vc:verification` | `verification_level`, `verified` |
-| `vc:age` | `age_proof_verified` |
-| `vc:document` | `document_verified`, `doc_validity_proof_verified` |
-| `vc:liveness` | `liveness_verified`, `face_match_verified` |
-| `vc:nationality` | `nationality_proof_verified` |
-| `vc:compliance` | `policy_version`, `issuer_id`, `verification_time`, `attestation_expires_at` |
+| `proof:identity` | All verification claims (umbrella) |
+| `proof:verification` | `verification_level`, `verified` |
+| `proof:age` | `age_proof_verified` |
+| `proof:document` | `document_verified`, `doc_validity_proof_verified` |
+| `proof:liveness` | `liveness_verified`, `face_match_verified` |
+| `proof:nationality` | `nationality_proof_verified` |
+| `proof:compliance` | `policy_version`, `issuer_id`, `verification_time`, `attestation_expires_at` |
 | `compliance:key:read` | Read RP encryption keys for compliance data |
 | `compliance:key:write` | Register/rotate RP encryption keys |
 
-**Identity PII scopes** — actual personal data (server-encrypted per RP):
+**Identity scopes** (`identity.*`) — actual PII, delivered via **id_token only** (the server has no persistent PII). Full scopes are persisted so the authorization code carries them, then identity scopes are stripped from the consent record so vault unlock is required each time:
 
 | Scope | Claims returned |
 |-------|----------------|
@@ -158,19 +158,19 @@ Identity PII (`identity.*` scopes) flows through a three-stage pipeline:
    - **Password (OPAQUE)** — Inline password field where the user re-enters their password
    - **Wallet (EIP-712)** — "Sign with Wallet" button requiring a deterministic EIP-712 signature (signed twice and compared, same as FHE enrollment)
 
-   Once unlocked, the consent UI maps profile fields to OIDC claims and sends them to `/api/oauth2/identity/capture`. The capture endpoint re-encrypts PII per-RP using AES-256-GCM with an HKDF key bound to `(userId, clientId)`.
+   Once unlocked, the consent UI maps profile fields to OIDC claims and sends them to `/api/oauth2/identity/stage`. The stage endpoint holds the claims ephemerally in memory (5min TTL, consumed on read).
 
-3. **Userinfo response** — When the RP calls `/oauth2/userinfo`, the userinfo hook decrypts the per-RP blob and filters claims by the consented scopes.
+3. **id_token delivery** — When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims and includes only those matching the requested `identity.*` scopes. The claims are never written to persistent storage.
 
-The server never stores plaintext PII — it only handles encrypted blobs. The profile secret is the authoritative PII source and is only decryptable by the user.
+The server never stores plaintext PII. The profile secret is the authoritative PII source and is only decryptable by the user. Identity scopes are stripped from the persisted consent record after the code is issued, so the consent page always reappears when identity scopes are requested.
 
 If the profile vault can't be unlocked at consent time (credential cache expired, user cancels prompt, wallet not connected), the Allow button is disabled until the vault is successfully unlocked. This prevents granting consent for scopes the server can't fulfill — otherwise better-auth would record consent as granted and auto-skip the consent page on future requests, permanently delivering empty tokens to the RP.
 
 #### Selective disclosure at consent
 
-When an RP requests `vc:identity`, the consent page expands it into individual `vc:*` sub-scope checkboxes. All start **unchecked** — the user actively opts in to each claim they want to share. The same applies to `identity.*` scopes.
+When an RP requests `proof:identity`, the consent page expands it into individual `proof:*` sub-scope checkboxes. All start **unchecked** — the user actively opts in to each claim they want to share. The same applies to `identity.*` scopes.
 
-Example: a wine shop requests `openid email vc:identity`. The user checks only "Verification status" and "Age proof". The access token carries `openid email vc:verification vc:age`, and userinfo returns only those claims.
+Example: a wine shop requests `openid email proof:identity`. The user checks only "Verification status" and "Age proof". The access token carries `openid email proof:verification proof:age`, and userinfo returns only those claims.
 
 ```text
 Consent page:
@@ -178,25 +178,23 @@ Consent page:
   [auto] Email address (email)
 
   Verification Claims:
-  [ ] Whether your identity is verified (vc:verification)
-  [ ] Whether your age has been proven (vc:age)
-  [ ] Whether your document has been verified (vc:document)
-  [ ] Whether liveness and face match were verified (vc:liveness)
-  [ ] Whether your nationality has been proven (vc:nationality)
-  [ ] Compliance metadata (vc:compliance)
+  [ ] Whether your identity is verified (proof:verification)
+  [ ] Whether your age has been proven (proof:age)
+  [ ] Whether your document has been verified (proof:document)
+  [ ] Whether liveness and face match were verified (proof:liveness)
+  [ ] Whether your nationality has been proven (proof:nationality)
+  [ ] Compliance metadata (proof:compliance)
 ```
 
 This uses standard OAuth scope mechanics — custom scopes (RFC 6749) with scope narrowing at consent (RFC 6749 Section 3.3).
 
 #### Dynamic Client Registration (DCR)
 
-DCR-registered clients (RFC 7591) can request: `openid`, `profile`, `email`, `vc:identity`. The `vc:identity` umbrella is expanded at consent time, so the user still controls what gets shared.
-
-Admin-registered clients can additionally request `identity.*` scopes and `compliance:*` scopes.
+All OAuth clients register via DCR (RFC 7591) and can request any scope in `publicClientScopes`: `openid`, `profile`, `email`, `proof:*`, `identity.*`. The `proof:identity` umbrella is expanded at consent time, so the user still controls what gets shared. See [ADR-0003](adr/platform/0003-dcr-open-registration-user-gated-consent.md) for the three-layer access control model.
 
 #### Userinfo response
 
-When verification data is available and `vc:*` scopes are approved, `/oauth2/userinfo` includes scope-filtered verification claims:
+When verification data is available and `proof:*` scopes are approved, `/oauth2/userinfo` includes scope-filtered verification claims:
 
 ```json
 {
@@ -207,13 +205,13 @@ When verification data is available and `vc:*` scopes are approved, `/oauth2/use
 }
 ```
 
-VC claims come from the identity bundle (server-side, always available for verified users). Identity PII claims come from the per-RP encrypted blob created at consent time.
+Proof claims come from the identity bundle (server-side, always available for verified users). Identity PII claims come from the ephemeral store populated at consent time and delivered via id_token.
 
 #### Disclosure paths
 
 | Path | Standard | Mechanism |
 |------|----------|-----------|
-| Userinfo + `vc:*`/`identity.*` scopes | OAuth 2.0 custom scopes | Scope-to-claim filtering, opt-in consent |
+| Userinfo + `proof:*`/`identity.*` scopes | OAuth 2.0 custom scopes | Scope-to-claim filtering, opt-in consent |
 | OIDC4IDA `verified_claims` | OpenID for Identity Assurance | `claims` parameter in authorize request |
 | OIDC4VCI SD-JWT VC | W3C SD-JWT VC | Holder-controlled selective disclosure at presentation |
 
@@ -226,7 +224,7 @@ The `verified_claims` structure includes:
 - **`verification`** — `trust_framework: "zentity"`, `assurance_level`, `evidence` (document verification metadata, timestamps)
 - **`claims`** — the attested claims: `verified`, `verification_level`, proof statuses, policy metadata
 
-This is a separate path from `vc:*` scopes. The scope-based path uses custom OAuth scopes with opt-in consent (see [ADR-0011](adr/privacy/0011-selective-disclosure-scope-architecture.md) for why scopes are the primary mechanism). OIDC4IDA is available for RPs that specifically implement the `claims` parameter per the spec.
+This is a separate path from `proof:*` scopes. The scope-based path uses custom OAuth scopes with opt-in consent (see [ADR-0011](adr/privacy/0011-selective-disclosure-scope-architecture.md) for why scopes are the primary mechanism). OIDC4IDA is available for RPs that specifically implement the `claims` parameter per the spec.
 
 **Implementation:**
 
@@ -238,17 +236,18 @@ This is a separate path from `vc:*` scopes. The scope-based path uses custom OAu
 
 Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth_consent` with the consented scopes. On subsequent authorize requests, if the row exists and covers all requested scopes, the consent page is skipped. If the RP requests new scopes not in the original grant, the consent page shows again.
 
-**Forcing re-consent**: RPs can add `prompt=consent` to the authorize URL to force the consent page regardless of prior grants.
+**Identity scope stripping**: After consent is recorded, `identity.*` scopes are immediately stripped from the consent record. This means the consent page always reappears when identity scopes are requested — the vault unlock is per-session. Only `proof:*` and standard OIDC scopes persist in the consent record for auto-skip.
 
-When consent is deleted or scopes are reduced, Zentity's auth hooks automatically clean up the per-RP encrypted identity blob (see `auth.ts` consent cleanup middleware).
+**Forcing re-consent**: RPs can add `prompt=consent` to the authorize URL to force the consent page regardless of prior grants.
 
 #### Implementation
 
-- Scope definitions: `apps/web/src/lib/auth/oidc/vc-scopes.ts`, `apps/web/src/lib/auth/oidc/identity-scopes.ts`
-- Claim filtering: `filterVcClaimsByScopes()`, `filterIdentityByScopes()`
+- Scope definitions: `apps/web/src/lib/auth/oidc/proof-scopes.ts`, `apps/web/src/lib/auth/oidc/identity-scopes.ts`
+- Claim filtering: `filterProofClaimsByScopes()`, `filterIdentityByScopes()`
+- Ephemeral identity staging: `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts`
 - Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
+- id_token hook: `customIdTokenClaims` in `apps/web/src/lib/auth/auth.ts`
 - Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
-- Consent cleanup hooks: `apps/web/src/lib/auth/auth.ts` (before/after hooks for `/oauth2/delete-consent` and `/oauth2/update-consent`)
 
 ---
 

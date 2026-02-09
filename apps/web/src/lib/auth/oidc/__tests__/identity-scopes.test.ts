@@ -1,4 +1,4 @@
-import type { IdentityFields } from "@/lib/privacy/server-encryption/identity";
+import type { IdentityFields } from "@/lib/auth/oidc/identity-scopes";
 
 import { describe, expect, it } from "vitest";
 
@@ -28,7 +28,7 @@ describe("identity scopes", () => {
       expect(isIdentityScope("openid")).toBe(false);
       expect(isIdentityScope("profile")).toBe(false);
       expect(isIdentityScope("email")).toBe(false);
-      expect(isIdentityScope("vc:identity")).toBe(false);
+      expect(isIdentityScope("proof:identity")).toBe(false);
       expect(isIdentityScope("invalid")).toBe(false);
     });
   });

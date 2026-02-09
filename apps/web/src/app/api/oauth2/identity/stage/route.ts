@@ -1,14 +1,13 @@
-import type { IdentityFields } from "@/lib/privacy/server-encryption/identity";
-
 import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth";
-import { captureIdentityWithClientData } from "@/lib/auth/oidc/identity-capture";
+import { storeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
   extractIdentityScopes,
   filterIdentityByScopes,
+  type IdentityFields,
 } from "@/lib/auth/oidc/identity-scopes";
 import { getBetterAuthSecret } from "@/lib/utils/env";
 
@@ -38,7 +37,7 @@ const IdentityFieldsSchema = z
   })
   .strict();
 
-const CaptureSchema = z.object({
+const StageSchema = z.object({
   oauth_query: z.string().min(1),
   scopes: z.array(z.string()).min(1),
   identity: IdentityFieldsSchema.optional(),
@@ -134,7 +133,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = CaptureSchema.safeParse(body);
+  const parsed = StageSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request", details: parsed.error.flatten() },
@@ -173,7 +172,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const identityScopes = extractIdentityScopes(scopes);
   if (identityScopes.length === 0) {
-    return NextResponse.json({ stored: false, fieldsCount: 0 });
+    return NextResponse.json({ staged: false });
   }
 
   const normalizedIdentity = normalizeIdentityFields(identity ?? {});
@@ -182,15 +181,11 @@ export async function POST(request: Request): Promise<Response> {
     identityScopes
   );
 
-  const result = await captureIdentityWithClientData(
-    session.user.id,
-    clientId,
-    scopes,
-    filteredIdentity
-  );
+  if (Object.keys(filteredIdentity).length === 0) {
+    return NextResponse.json({ staged: false });
+  }
 
-  return NextResponse.json({
-    stored: result.captured,
-    fieldsCount: result.fieldsCount,
-  });
+  storeEphemeralClaims(session.user.id, filteredIdentity, scopes);
+
+  return NextResponse.json({ staged: true });
 }

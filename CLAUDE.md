@@ -245,9 +245,10 @@ FHE key enrollment is **not** part of sign-up — it happens as a verification p
 
 1. **Document OCR** → `trpc.identity.prepareDocument` extracts data, generates commitments
 2. **Liveness + Face Match** → `trpc.liveness.*` runs multi-gesture challenges, server verifies
-3. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
-4. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
-5. User reaches **Tier 2/3** depending on proof completeness
+3. **Profile Secret** → Extracted PII is encrypted with the user's credential (passkey/password/wallet) and stored as a `PROFILE` secret. This is the only persistent copy of the user's PII and is only decryptable by the user.
+4. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
+5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
+6. User reaches **Tier 2/3** depending on proof completeness
 
 **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
 

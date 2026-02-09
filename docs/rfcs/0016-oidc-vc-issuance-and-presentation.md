@@ -92,7 +92,7 @@ the plugin is marked as deprecating in favor of OAuth.
 
 - `openid` (OIDC identity baseline)
 - `profile`, `email`, `offline_access` (standard scopes)
-- `vc:identity` (credential issuance scope)
+- `proof:identity` (credential issuance scope)
 
 ### 2) OIDC4VCI Issuer API (new routes)
 

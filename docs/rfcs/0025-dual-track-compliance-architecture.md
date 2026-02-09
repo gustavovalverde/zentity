@@ -277,7 +277,7 @@ For 5-year document retention, use hybrid encryption:
 | **Encryption** | None (no PII to encrypt) | X25519 → AES-256-GCM to RP key |
 | **Decryption** | N/A | Only RP can decrypt |
 | **Retention** | Until user deletes account | 5 years from relationship end |
-| **OIDC scopes** | `openid vc:identity` | `openid vc:identity compliance:documents` |
+| **OIDC scopes** | `openid proof:identity` | `openid proof:identity compliance:documents` |
 
 ### 4.3 Encryption Flow
 
@@ -440,8 +440,8 @@ The ZK API Gateway is **specifically designed** to address SOF verification:
 The current OIDC4VCI implementation (RFC-0016) issues **derived claims only**:
 
 ```typescript
-// Current VC disclosure keys (apps/web/src/lib/auth/oidc/claims.ts)
-export const VC_DISCLOSURE_KEYS = [
+// Current proof disclosure keys (apps/web/src/lib/auth/oidc/claims.ts)
+export const PROOF_DISCLOSURE_KEYS = [
   "verification_level",    // "none" | "basic" | "full"
   "verified",              // boolean
   "document_verified",     // boolean
@@ -478,7 +478,7 @@ Add new OAuth scopes for compliance data access:
 | Scope | Description | Data Provided |
 |-------|-------------|---------------|
 | `openid` | Standard OIDC identity | Subject identifier |
-| `vc:identity` | Identity credential issuance | SD-JWT VC with derived claims |
+| `proof:identity` | Identity credential issuance | SD-JWT VC with derived claims |
 | `compliance:documents` | Document copies | RP-encrypted document images |
 | `compliance:identity` | Identity fields | RP-encrypted name, DOB, address |
 | `compliance:screening` | AML screening results | PEP/sanctions check records |
@@ -571,7 +571,7 @@ CONSENT FLOW FOR COMPLIANCE DATA
 
    GET /api/auth/oauth2/authorize?
      client_id=regulated-bank
-     &scope=openid vc:identity compliance:documents compliance:identity
+     &scope=openid proof:identity compliance:documents compliance:identity
      &redirect_uri=...
 
 2. Consent screen shows:
@@ -2424,7 +2424,7 @@ User → Document → OCR → Extract fields → Store commitments
 |-------|-------------|------------|-----------|
 | `openid` | Subject identifier | None | Session |
 | `profile` | Display name, avatar | None | User-controlled |
-| `vc:identity` | SD-JWT VC (derived claims only) | Holder-controlled | User-controlled |
+| `proof:identity` | SD-JWT VC (derived claims only) | Holder-controlled | User-controlled |
 
 ### B.2 Compliance Scopes (Regulated RPs Only)
 

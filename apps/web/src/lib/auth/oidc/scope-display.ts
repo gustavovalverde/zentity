@@ -6,12 +6,15 @@ import {
   IDENTITY_SCOPE_DESCRIPTIONS,
   isIdentityScope,
 } from "@/lib/auth/oidc/identity-scopes";
-import { isVcScope, VC_SCOPE_DESCRIPTIONS } from "@/lib/auth/oidc/vc-scopes";
+import {
+  isProofScope,
+  PROOF_SCOPE_DESCRIPTIONS,
+} from "@/lib/auth/oidc/proof-scopes";
 
 export const SCOPE_DESCRIPTIONS: Record<string, string> = {
   email: "Email address",
   offline_access: "Access when you're not using the app",
-  ...VC_SCOPE_DESCRIPTIONS,
+  ...PROOF_SCOPE_DESCRIPTIONS,
   ...IDENTITY_SCOPE_DESCRIPTIONS,
 };
 
@@ -29,7 +32,7 @@ export function groupScopes(scopes: string[]): ScopeGroup[] {
   const identity: string[] = [];
 
   for (const scope of scopes) {
-    if (isVcScope(scope)) {
+    if (isProofScope(scope)) {
       vc.push(scope);
     } else if (isIdentityScope(scope)) {
       identity.push(scope);

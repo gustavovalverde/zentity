@@ -10,7 +10,10 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { buildVcClaims, VC_DISCLOSURE_KEYS } from "@/lib/auth/oidc/claims";
+import {
+  buildProofClaims,
+  PROOF_DISCLOSURE_KEYS,
+} from "@/lib/auth/oidc/claims";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 
 import { protectedProcedure, router } from "../server";
@@ -41,11 +44,11 @@ export const credentialsRouter = router({
   status: protectedProcedure.query(async ({ ctx }) => {
     const [status, claims] = await Promise.all([
       getVerificationStatus(ctx.userId),
-      buildVcClaims(ctx.userId),
+      buildProofClaims(ctx.userId),
     ]);
 
     // Extract which claims are verified (true values)
-    const verifiedClaims = VC_DISCLOSURE_KEYS.filter((key) => {
+    const verifiedClaims = PROOF_DISCLOSURE_KEYS.filter((key) => {
       const value = claims[key];
       return value === true || (typeof value === "string" && value.length > 0);
     });

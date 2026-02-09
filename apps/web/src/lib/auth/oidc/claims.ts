@@ -1,16 +1,10 @@
-import type { IdentityFields } from "@/lib/privacy/server-encryption/identity";
-
 import {
   getIdentityBundleByUserId,
   getLatestIdentityDocumentByUserId,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
-import { getOAuthIdentityData } from "@/lib/db/queries/oauth-identity";
-import { decryptIdentityFromServer } from "@/lib/privacy/server-encryption/identity";
 
-import { filterIdentityByScopes } from "./identity-scopes";
-
-export const VC_DISCLOSURE_KEYS = [
+export const PROOF_DISCLOSURE_KEYS = [
   "verification_level",
   "verified",
   "document_verified",
@@ -55,7 +49,7 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
   };
 }
 
-export async function buildVcClaims(
+export async function buildProofClaims(
   userId: string
 ): Promise<Record<string, unknown>> {
   const [status, bundle, document] = await Promise.all([
@@ -118,43 +112,4 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
     verification,
     claims: mapVerificationClaims(status),
   };
-}
-
-/**
- * Build identity claims for OAuth userinfo responses.
- *
- * Identity data is stored server-encrypted per RP relationship.
- * This function decrypts and filters based on consented scopes.
- *
- * @param userId - The user's ID
- * @param clientId - The OAuth client (RP) ID
- * @returns Identity claims filtered by consented scopes, or null if no data
- */
-export async function buildIdentityClaims(
-  userId: string,
-  clientId: string
-): Promise<Partial<IdentityFields> | null> {
-  const identityData = await getOAuthIdentityData(userId, clientId);
-  if (!identityData) {
-    return null;
-  }
-
-  // Decrypt the stored identity blob
-  const identity = await decryptIdentityFromServer(identityData.encryptedBlob, {
-    userId,
-    clientId,
-  });
-
-  // Filter to only include fields allowed by consented scopes
-  const filteredIdentity = filterIdentityByScopes(
-    identity,
-    identityData.consentedScopes
-  );
-
-  // Return null if no fields remain after filtering
-  if (Object.keys(filteredIdentity).length === 0) {
-    return null;
-  }
-
-  return filteredIdentity;
 }

@@ -5,7 +5,29 @@
  * These identity.* scopes are explicit PII disclosures (no implicit expansion).
  */
 
-import type { IdentityFields } from "@/lib/privacy/server-encryption/identity";
+/**
+ * Identity fields that can be shared via OAuth.
+ * Matches OIDC standard claims + Zentity-specific fields.
+ */
+export interface IdentityFields {
+  given_name?: string;
+  family_name?: string;
+  name?: string;
+  birthdate?: string;
+  address?: {
+    formatted?: string;
+    street_address?: string;
+    locality?: string;
+    region?: string;
+    postal_code?: string;
+    country?: string;
+  };
+  document_number?: string;
+  document_type?: string;
+  issuing_country?: string;
+  nationality?: string;
+  nationalities?: string[];
+}
 
 /**
  * All identity-related scopes.

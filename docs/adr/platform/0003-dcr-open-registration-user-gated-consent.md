@@ -40,13 +40,13 @@ Removing admin scope-gating does not mean "anything goes." Data access is enforc
 `publicClientScopes` in auth.ts defines the full set of scopes any DCR client can request:
 
 ```text
-openid, profile, email, vc:identity, vc:verification, vc:age,
-vc:document, vc:liveness, vc:nationality, vc:compliance,
+openid, profile, email, proof:identity, proof:verification, proof:age,
+proof:document, proof:liveness, proof:nationality, proof:compliance,
 identity.name, identity.dob, identity.address, identity.document,
 identity.nationality
 ```
 
-The RP includes only the scopes it needs in the authorization request. A wine shop requests `vc:verification vc:age`; a bank requests `vc:verification identity.name identity.address`. The RP's request determines the ceiling — scopes not requested are never shown to the user.
+The RP includes only the scopes it needs in the authorization request. A wine shop requests `proof:verification proof:age`; a bank requests `proof:verification identity.name identity.address`. The RP's request determines the ceiling — scopes not requested are never shown to the user.
 
 #### Layer 2: User consent (what the user approves)
 
@@ -59,18 +59,18 @@ The consent page splits requested scopes into two categories based on the client
 
 Scopes NOT listed in `metadata.optionalScopes` are treated as required. For DCR clients without this metadata, all visible scopes default to required — the user gets an all-or-nothing choice. This is the correct default for most RPs: a bank requesting `identity.name` needs it to function, so presenting it as optional would be misleading.
 
-The `vc:identity` umbrella scope is expanded at the claim-resolution level — `customUserInfoClaims` maps it to all VC claim keys. On the consent page, individual `vc:*` scopes are shown if the RP requested them directly.
+The `proof:identity` umbrella scope is expanded at the claim-resolution level — `customUserInfoClaims` maps it to all proof claim keys. On the consent page, individual `proof:*` scopes are shown if the RP requested them directly.
 
 Hidden scopes (`openid`, `profile`) are always included silently — they don't appear in the consent UI.
 
-#### Layer 3: Vault unlock and identity capture (PII protection)
+#### Layer 3: Vault unlock and ephemeral identity delivery (PII protection)
 
-This is the layer the old ADR missed entirely. Two scope families exist with fundamentally different security properties:
+Two scope families exist with fundamentally different security properties:
 
-| Scope family | Data type | Security | Source |
-|-------------|-----------|----------|--------|
-| `vc:*` | Derived booleans (non-PII) | No vault unlock needed | Server-side attestation data |
-| `identity.*` | Actual PII | **Vault unlock required** | User's credential-encrypted vault + server OCR claims |
+| Scope family | Data type | Security | Delivery |
+|-------------|-----------|----------|----------|
+| `proof:*` | Derived booleans (non-PII) | No vault unlock needed | Userinfo endpoint |
+| `identity.*` | Actual PII | **Vault unlock required** | id_token only (ephemeral) |
 
 When the user approves any `identity.*` scope, the consent page requires a **vault unlock** before the "Allow" button is enabled. The vault unlock uses the user's authentication credential:
 
@@ -80,28 +80,31 @@ When the user approves any `identity.*` scope, the consent page requires a **vau
 
 Until the vault is unlocked, the "Allow" button remains disabled. This prevents accidental PII disclosure — the user must actively authenticate to share personal data, even after clicking through the consent UI.
 
-**Identity capture flow:** After vault unlock, the consent client:
+**Ephemeral identity flow:** After vault unlock, the consent client:
 
 1. Decrypts the user's profile from their credential-wrapped secret
-2. Calls `/api/oauth2/identity/capture` with the decrypted PII and approved scopes
-3. Server merges client-provided PII with server-side signed claims (OCR data)
-4. Server encrypts per-RP relationship (`userId` + `clientId` binding) using server-side encryption
-5. Stores encrypted blob in `oauth_identity_data` table
+2. Calls `/api/oauth2/identity/stage` with the decrypted PII and approved scopes
+3. Server validates, normalizes, and scope-filters the claims
+4. Stores the filtered claims in an in-memory ephemeral store (5min TTL, consumed on read)
+
+When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims and includes only those matching the approved `identity.*` scopes. The claims are then gone — no persistent PII exists on the server.
 
 This means identity PII is:
 
-* Stored **once per RP relationship**, not shared globally
-* Encrypted at rest with a per-relationship key
-* Only decryptable by the server when the RP requests userinfo with a valid access token
-* Filtered by consented scopes at response time via `filterIdentityByScopes`
+* **Never written to the database** — only held in memory for the duration of the token exchange
+* Consumed once — the ephemeral entry is deleted after the id_token is issued
+* Only accessible during the brief window between consent and token exchange (~seconds)
+* Delivered via id_token, not userinfo — the RP receives PII in the token response, not via a separate API call
+
+**Consent persist-then-strip:** Full scopes (including `identity.*`) are persisted in the consent record so better-auth includes them in the authorization code. Immediately after, `identity.*` scopes are stripped from the consent record. This ensures the consent page reappears whenever identity scopes are requested — vault unlock is per-session, not persistable.
 
 ### Scope filtering at token and userinfo time
 
 Even after consent, claims are filtered again when the RP calls userinfo or receives tokens:
 
-* `customUserInfoClaims` checks the access token's scopes and returns only matching claims
-* `vc:*` claims: built from server-side attestation data, filtered by `filterVcClaimsByScopes`
-* `identity.*` claims: loaded from `oauth_identity_data`, filtered by `filterIdentityByScopes`
+* `customUserInfoClaims` checks the access token's scopes and returns only matching `proof:*` claims
+* `proof:*` claims: built from server-side attestation data, filtered by `filterProofClaimsByScopes`
+* `identity.*` claims: consumed from the ephemeral store by `customIdTokenClaims`, filtered by `filterIdentityByScopes`
 
 A scope that was consented but has no backing data (e.g., `identity.dob` when the user hasn't completed DOB verification) returns nothing — the filtering is additive, not permissive.
 
@@ -151,9 +154,9 @@ Unowned DCR clients appear in the admin dashboard for optional organizational as
 ## More Information
 
 * Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
-* Identity capture: `apps/web/src/lib/auth/oidc/identity-capture.ts`
+* Ephemeral identity staging: `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts`
 * Scope display / grouping: `apps/web/src/lib/auth/oidc/scope-display.ts`
-* VC scope definitions: `apps/web/src/lib/auth/oidc/vc-scopes.ts`
+* Proof scope definitions: `apps/web/src/lib/auth/oidc/proof-scopes.ts`
 * Identity scope definitions: `apps/web/src/lib/auth/oidc/identity-scopes.ts`
 * Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 * Selective disclosure ADR: [ADR 0011](../privacy/0011-selective-disclosure-scope-architecture.md)

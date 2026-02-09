@@ -204,7 +204,7 @@ Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
 ### Disclosure
 
-Disclosure uses a two-tier scope system: **VC scopes** (`vc:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII that is server-encrypted per RP. Both support user-controlled selective disclosure at consent time.
+Disclosure uses a two-tier scope system: **Proof scopes** (`proof:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII via id_token only (ephemeral, never persisted). Both support user-controlled selective disclosure at consent time.
 
 ```mermaid
 sequenceDiagram
@@ -216,17 +216,18 @@ sequenceDiagram
   participant RP as Relying Party
 
   Note over RP,UI: OAuth authorize + consent
-  RP->>UI: Redirect (scope: openid vc:identity identity.name)
+  RP->>UI: Redirect (scope: openid proof:identity identity.name)
   User->>UI: Approve selected scopes
   UI->>UI: Decrypt profile vault (passkey / password / wallet)
-  UI->>API: Capture PII → per-RP encrypted
-  API->>DB: Store encrypted blob (oauth_identity_data)
+  UI->>API: Stage PII → ephemeral in-memory (5min TTL)
   API-->>RP: Auth code → tokens
 
-  Note over RP,API: Token exchange + userinfo
+  Note over RP,API: Token exchange
+  RP->>API: POST /oauth2/token
+  API->>API: Consume ephemeral claims → embed in id_token
+  API-->>RP: id_token (identity PII) + access_token
   RP->>API: GET /oauth2/userinfo
-  API->>DB: Read VC claims + decrypt per-RP blob
-  API-->>RP: Scope-filtered claims (VC flags + PII)
+  API-->>RP: Scope-filtered proof claims (non-PII flags)
 ```
 
 ---
@@ -280,7 +281,7 @@ See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Iden
 - **FHE enrollment state** is tracked server-side via `identity_bundles.fheKeyId`. Enrollment is resumable — if partial, the preflight re-checks completion criteria.
 - **Verification progress** is stored in first-party DB tables keyed by user ID (drafts, signed claims, ZK proofs).
 - **Profile data** lives in a credential-encrypted vault (`encrypted_secrets` + `secret_wrappers`), only decryptable client-side after a credential unlock.
-- **Per-RP identity data** is stored server-encrypted in `oauth_identity_data`, created at consent time when the user approves `identity.*` scopes.
+- **Identity PII** is never stored server-side. At consent time, PII is staged ephemerally in memory (5min TTL) and consumed once when the id_token is issued. The user's profile vault is the only persistent PII source.
 
 ---
 

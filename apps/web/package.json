@@ -50,12 +50,12 @@
   },
   "dependencies": {
     "@aztec/bb.js": "3.0.2",
-    "@better-auth/core": "file:vendor/better-auth-core-1.5.0-beta.11.tgz",
-    "@better-auth/oauth-provider": "file:vendor/better-auth-oauth-provider-1.5.0-beta.11.tgz",
+    "@better-auth/core": "file:vendor/better-auth-core-1.5.0-beta.13.tgz",
+    "@better-auth/oauth-provider": "file:vendor/better-auth-oauth-provider-1.5.0-beta.13.tgz",
     "@better-auth/oidc4ida": "file:vendor/better-auth-oidc4ida-0.0.0.tgz",
     "@better-auth/oidc4vci": "file:vendor/better-auth-oidc4vci-0.0.0.tgz",
     "@better-auth/oidc4vp": "file:vendor/better-auth-oidc4vp-0.0.0.tgz",
-    "@better-auth/passkey": "file:vendor/better-auth-passkey-1.5.0-beta.11.tgz",
+    "@better-auth/passkey": "file:vendor/better-auth-passkey-1.5.0-beta.13.tgz",
     "@better-auth/utils": "^0.3.1",
     "@daveyplate/better-auth-ui": "3.3.15",
     "@fhevm/mock-utils": "0.3.0-4",
@@ -100,7 +100,7 @@
     "@zama-fhe/relayer-sdk": "0.4.0",
     "@zentity/fhevm-contracts": "0.2.1",
     "@zkpassport/utils": "^0.32.1",
-    "better-auth": "file:vendor/better-auth-1.5.0-beta.11.tgz",
+    "better-auth": "file:vendor/better-auth-1.5.0-beta.13.tgz",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",
@@ -181,25 +181,25 @@
       "esbuild": ">=0.25.0",
       "axios": ">=1.12.0",
       "glob": ">=10.5.0",
-      "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.11.tgz",
-      "@better-auth/telemetry": "file:./vendor/better-auth-telemetry-1.5.0-beta.11.tgz",
+      "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.13.tgz",
+      "@better-auth/telemetry": "file:./vendor/better-auth-telemetry-1.5.0-beta.13.tgz",
       "h3": ">=1.15.5",
       "tar": ">=7.5.3"
     },
     "packageExtensions": {
       "@better-auth/oidc4ida": {
         "dependencies": {
-          "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.11.tgz"
+          "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.13.tgz"
         }
       },
       "@better-auth/oidc4vci": {
         "dependencies": {
-          "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.11.tgz"
+          "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.13.tgz"
         }
       },
       "@better-auth/oidc4vp": {
         "dependencies": {
-          "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.11.tgz"
+          "@better-auth/core": "file:./vendor/better-auth-core-1.5.0-beta.13.tgz"
         }
       }
     },

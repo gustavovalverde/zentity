@@ -600,7 +600,7 @@ export function OAuthConsentClient({
 
     const identityPayload = buildIdentityPayload(profile);
 
-    const response = await fetch("/api/oauth2/identity/capture", {
+    const response = await fetch("/api/oauth2/identity/stage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -611,8 +611,26 @@ export function OAuthConsentClient({
     });
 
     if (!response.ok) {
-      // Identity capture failed — proceed without identity claims
       return;
+    }
+  };
+
+  const stripIdentityScopesFromConsent = async () => {
+    const consents = await authClient.oauth2.getConsents();
+    if (!consents.data) {
+      return;
+    }
+    for (const consent of consents.data as {
+      id: string;
+      scopes: string[];
+    }[]) {
+      const cleaned = consent.scopes.filter((s) => !isIdentityScope(s));
+      if (cleaned.length < consent.scopes.length) {
+        await authClient.oauth2.updateConsent({
+          id: consent.id,
+          update: { scopes: cleaned },
+        });
+      }
     }
   };
 
@@ -621,10 +639,6 @@ export function OAuthConsentClient({
     setError(null);
 
     try {
-      if (accept) {
-        await captureIdentityIfNeeded();
-      }
-
       const response = await authClient.oauth2.consent({
         accept,
         ...(accept ? { scope: approvedScopes.join(" ") } : {}),
@@ -642,6 +656,18 @@ export function OAuthConsentClient({
 
       if (!redirectUri) {
         throw new Error("Missing redirect URL from consent response.");
+      }
+
+      if (accept) {
+        await captureIdentityIfNeeded();
+
+        // We persist full scopes above so the authorization code carries
+        // identity.* (better-auth derives code scopes from the consent record).
+        // Then strip them here so the consent page reappears next time —
+        // vault unlock is required per-session, not persistable.
+        if (hasApprovedIdentityScopes) {
+          stripIdentityScopesFromConsent().catch(() => undefined);
+        }
       }
 
       globalThis.window.location.assign(redirectUri);

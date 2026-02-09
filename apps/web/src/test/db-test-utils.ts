@@ -28,7 +28,6 @@ import {
   identityVerificationJobs,
 } from "@/lib/db/schema/identity";
 import { jwks } from "@/lib/db/schema/jwks";
-import { oauthIdentityData } from "@/lib/db/schema/oauth-identity";
 import {
   oauthAccessTokens,
   oauthClients,
@@ -69,7 +68,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
     // OAuth/compliance tables (delete children before parents)
-    await tx.delete(oauthIdentityData).run();
     await tx.delete(rpEncryptionKeys).run();
     await tx.delete(oauthAccessTokens).run();
     await tx.delete(oauthRefreshTokens).run();

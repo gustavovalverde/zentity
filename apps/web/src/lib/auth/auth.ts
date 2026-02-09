@@ -18,15 +18,14 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { eq } from "drizzle-orm";
 
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
-  buildIdentityClaims,
   buildOidcVerifiedClaims,
-  buildVcClaims,
-  VC_DISCLOSURE_KEYS,
+  buildProofClaims,
+  PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
+import { consumeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
   extractIdentityScopes,
   filterIdentityByScopes,
@@ -34,18 +33,13 @@ import {
   IDENTITY_SCOPES,
 } from "@/lib/auth/oidc/identity-scopes";
 import {
-  extractVcScopes,
-  filterVcClaimsByScopes,
-  VC_SCOPES,
-} from "@/lib/auth/oidc/vc-scopes";
+  extractProofScopes,
+  filterProofClaimsByScopes,
+  PROOF_SCOPES,
+} from "@/lib/auth/oidc/proof-scopes";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
-import {
-  deleteOAuthIdentityData,
-  getOAuthIdentityData,
-  upsertOAuthIdentityData,
-} from "@/lib/db/queries/oauth-identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -78,10 +72,6 @@ import {
   members,
   organizations,
 } from "@/lib/db/schema/organization";
-import {
-  decryptIdentityFromServer,
-  encryptIdentityForServer,
-} from "@/lib/privacy/server-encryption/identity";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { getBetterAuthSecret, getOpaqueServerSetup } from "@/lib/utils/env";
 
@@ -225,8 +215,8 @@ const publicClientScopes = [
   "openid",
   "profile",
   "email",
-  "vc:identity",
-  ...VC_SCOPES,
+  "proof:identity",
+  ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
 const oidcStandardClaims = [
@@ -242,7 +232,11 @@ const oidcStandardClaims = [
   "updated_at",
 ];
 const advertisedClaims = Array.from(
-  new Set([...oidcStandardClaims, ...VC_DISCLOSURE_KEYS, ...identityClaimKeys])
+  new Set([
+    ...oidcStandardClaims,
+    ...PROOF_DISCLOSURE_KEYS,
+    ...identityClaimKeys,
+  ])
 );
 const isOidcE2e = process.env.E2E_OIDC_ONLY === "true";
 const oidc4vciCredentialConfigurations = [
@@ -253,7 +247,7 @@ const oidc4vciCredentialConfigurations = [
     vct: `${authIssuer}/vct/zentity_identity`,
     format: "dc+sd-jwt" as const,
     sdJwt: {
-      disclosures: [...VC_DISCLOSURE_KEYS],
+      disclosures: [...PROOF_DISCLOSURE_KEYS],
       decoyCount: 0,
     },
   },
@@ -264,7 +258,7 @@ const oidc4vciCredentialConfigurations = [
           vct: `${authIssuer}/vct/zentity_identity:deferred`,
           format: "dc+sd-jwt" as const,
           sdJwt: {
-            disclosures: [...VC_DISCLOSURE_KEYS],
+            disclosures: [...PROOF_DISCLOSURE_KEYS],
             decoyCount: 0,
           },
         },
@@ -497,137 +491,31 @@ export const auth = betterAuth({
     },
   },
   hooks: {
+    // biome-ignore lint/suspicious/useAwait: createAuthMiddleware requires async signature
     before: createAuthMiddleware(async (ctx) => {
-      // --- DCR metadata validation ---
       if (ctx.path === "/oauth2/register") {
         return validateDcrRegistration(ctx.body);
       }
-
-      // --- Consent cleanup context ---
-      if (
-        ctx.path !== "/oauth2/delete-consent" &&
-        ctx.path !== "/oauth2/update-consent"
-      ) {
-        return;
-      }
-
-      const consentId =
-        typeof ctx.body?.id === "string" && ctx.body.id.trim().length > 0
-          ? ctx.body.id.trim()
-          : null;
-      if (!consentId) {
-        return;
-      }
-
-      const consent = await db
-        .select({
-          id: oauthConsents.id,
-          userId: oauthConsents.userId,
-          clientId: oauthConsents.clientId,
-        })
-        .from(oauthConsents)
-        .where(eq(oauthConsents.id, consentId))
-        .limit(1)
-        .get();
-
-      if (!(consent?.userId && consent?.clientId)) {
-        return;
-      }
-
-      return {
-        context: {
-          zentityConsentCleanup: {
-            userId: consent.userId,
-            clientId: consent.clientId,
-          },
-        },
-      };
     }),
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path !== "/two-factor/disable") {
-        // fallthrough: other after-hooks below
-      } else {
-        const userId = ctx.context.session?.user?.id;
-        if (!userId) {
-          return;
-        }
-        const config = await getRecoveryConfigByUserId(userId);
-        if (!config) {
-          return;
-        }
-        const guardian = await getRecoveryGuardianByType({
-          recoveryConfigId: config.id,
-          guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
-        });
-        if (guardian) {
-          await deleteRecoveryGuardian(guardian.id);
-        }
         return;
       }
-
-      // Consent revocation hygiene for identity.* data (RFC-0025).
-      // When consents are deleted or reduced, remove or re-filter stored identity blob.
-      if (
-        ctx.path !== "/oauth2/delete-consent" &&
-        ctx.path !== "/oauth2/update-consent"
-      ) {
+      const userId = ctx.context.session?.user?.id;
+      if (!userId) {
         return;
       }
-
-      const cleanup = (
-        ctx.context as unknown as {
-          zentityConsentCleanup?: { userId: string; clientId: string };
-        }
-      ).zentityConsentCleanup;
-      if (!cleanup) {
+      const config = await getRecoveryConfigByUserId(userId);
+      if (!config) {
         return;
       }
-
-      if (ctx.path === "/oauth2/delete-consent") {
-        await deleteOAuthIdentityData(cleanup.userId, cleanup.clientId);
-        return;
+      const guardian = await getRecoveryGuardianByType({
+        recoveryConfigId: config.id,
+        guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+      });
+      if (guardian) {
+        await deleteRecoveryGuardian(guardian.id);
       }
-
-      if (ctx.path === "/oauth2/update-consent") {
-        const returned = ctx.context.returned as
-          | { scopes?: unknown; userId?: unknown; clientId?: unknown }
-          | undefined;
-        const nextScopes = Array.isArray(returned?.scopes)
-          ? (returned?.scopes as string[]).filter((s) => typeof s === "string")
-          : [];
-
-        const identityScopes = extractIdentityScopes(nextScopes);
-        if (identityScopes.length === 0) {
-          await deleteOAuthIdentityData(cleanup.userId, cleanup.clientId);
-          return;
-        }
-
-        const existing = await getOAuthIdentityData(
-          cleanup.userId,
-          cleanup.clientId
-        );
-        if (!existing) {
-          return;
-        }
-
-        const decrypted = await decryptIdentityFromServer(
-          existing.encryptedBlob,
-          cleanup
-        );
-        const filtered = filterIdentityByScopes(decrypted, nextScopes);
-        const reEncrypted = await encryptIdentityForServer(filtered, cleanup);
-
-        await upsertOAuthIdentityData({
-          id: existing.id,
-          userId: cleanup.userId,
-          clientId: cleanup.clientId,
-          encryptedBlob: reEncrypted,
-          consentedScopes: nextScopes,
-          capturedAt: existing.capturedAt ?? new Date().toISOString(),
-          expiresAt: existing.expiresAt ?? null,
-        });
-      }
-      return;
     }),
   },
   plugins: [
@@ -682,9 +570,9 @@ export const auth = betterAuth({
         "profile",
         "email",
         "offline_access",
-        // VC verification status scopes (no PII — derived booleans only)
-        "vc:identity", // Umbrella: all verification claims
-        ...VC_SCOPES, // Granular: vc:verification, vc:age, vc:document, etc.
+        // Proof scopes — verification status flags (no PII, derived booleans only)
+        "proof:identity", // Umbrella: all verification claims
+        ...PROOF_SCOPES, // Granular: proof:verification, proof:age, proof:document, etc.
         // RP compliance key management (client_credentials)
         "compliance:key:read",
         "compliance:key:write",
@@ -718,35 +606,32 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customUserInfoClaims: async ({ user, scopes, jwt }) => {
+      customIdTokenClaims: ({ user, scopes }) => {
         const scopeList: string[] = Array.isArray(scopes) ? scopes : [];
-        const claims: Record<string, unknown> = {};
-
-        // VC verification claims — filtered by granular vc:* sub-scopes
-        const hasVcScopes =
-          scopeList.includes("vc:identity") ||
-          extractVcScopes(scopeList).length > 0;
-        if (hasVcScopes) {
-          const allVcClaims = await buildVcClaims(user.id);
-          Object.assign(claims, filterVcClaimsByScopes(allVcClaims, scopeList));
+        if (extractIdentityScopes(scopeList).length === 0) {
+          return {};
         }
 
-        // Identity PII claims — filtered by identity.* sub-scopes
-        const requestedIdentityScopes = extractIdentityScopes(scopeList);
-        const clientId =
-          (jwt?.azp as string | undefined) ??
-          (jwt?.client_id as string | undefined);
-        if (clientId && requestedIdentityScopes.length > 0) {
-          const identityClaims = await buildIdentityClaims(user.id, clientId);
-          if (identityClaims) {
-            Object.assign(
-              claims,
-              filterIdentityByScopes(identityClaims, scopeList)
-            );
-          }
+        const ephemeral = consumeEphemeralClaims(user.id);
+        if (!ephemeral) {
+          return {};
         }
 
-        return claims;
+        return filterIdentityByScopes(ephemeral.claims, scopeList);
+      },
+      customUserInfoClaims: async ({ user, scopes }) => {
+        const scopeList: string[] = Array.isArray(scopes) ? scopes : [];
+
+        // Proof verification claims — filtered by granular proof:* sub-scopes
+        const hasProofScopes =
+          scopeList.includes("proof:identity") ||
+          extractProofScopes(scopeList).length > 0;
+        if (!hasProofScopes) {
+          return {};
+        }
+
+        const allProofClaims = await buildProofClaims(user.id);
+        return filterProofClaimsByScopes(allProofClaims, scopeList);
       },
     }),
     oidc4ida({
@@ -762,7 +647,7 @@ export const auth = betterAuth({
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
       resolveClaims: async ({ user }: { user: { id: string } }) =>
-        buildVcClaims(user.id),
+        buildProofClaims(user.id),
       ...(oidc4vciDeferredIssuance
         ? { deferredIssuance: oidc4vciDeferredIssuance }
         : {}),
