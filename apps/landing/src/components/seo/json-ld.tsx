@@ -7,10 +7,7 @@ export function OrganizationSchema() {
     logo: "https://zentity.xyz/favicon.svg",
     description:
       "Privacy-preserving KYC layer using zero-knowledge proofs, fully homomorphic encryption (FHE), cryptographic commitments, and passkey authentication with vaults.",
-    sameAs: [
-      "https://github.com/gustavovalverde/zentity",
-      "https://x.com/gustavovalverde",
-    ],
+    sameAs: ["https://x.com/gustavovalverde"],
   };
 
   return (
@@ -41,7 +38,7 @@ export function SoftwareApplicationSchema() {
       "Liveness detection with multi-gesture challenges",
       "Face matching without biometric storage",
       "Nationality proofs with Merkle trees",
-      "Passkey vault encryption with PRF-derived keys",
+      "Multi-credential encrypted vault",
       "GDPR-compliant data erasure",
     ],
     license: "https://osaasy.dev/",
@@ -73,9 +70,9 @@ export function FAQSchema() {
         "Documents are processed transiently and immediately discarded. Only cryptographic commitments (one-way hashes) are stored, which cannot be reversed to reveal your original data.",
     },
     {
-      question: "Is Zentity open source?",
+      question: "Can I self-host Zentity?",
       answer:
-        "Yes, Zentity is 100% open source under the O'Saasy license. You can audit every cryptographic operation, self-host on your own infrastructure, or fork and customize for your needs.",
+        "Yes, Zentity can be self-hosted on your own infrastructure with Docker Compose. You maintain full control over your deployment and data.",
     },
     {
       question: "How does GDPR compliance work?",

@@ -1,6 +1,4 @@
 import {
-  IconBrandGithub,
-  IconExternalLink,
   IconFileCheck,
   IconKey,
   IconLock,
@@ -31,7 +29,7 @@ export function Hero() {
             />
             <span className="sr-only">Status: Active</span>
           </span>
-          Open Source Alpha
+          Alpha
         </Badge>
 
         <h1 className="mb-6 bg-gradient-to-b from-foreground to-foreground/60 bg-clip-text font-extrabold text-5xl text-transparent tracking-tight md:text-7xl">
@@ -56,7 +54,7 @@ export function Hero() {
           </span>
           <span>
             <span className="font-medium text-foreground">Engineering</span> —
-            open source stack
+            privacy-first stack
           </span>
         </div>
 
@@ -75,35 +73,6 @@ export function Hero() {
             }
           >
             Try Live Demo
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full px-8 text-base sm:w-auto"
-            render={
-              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-              <a
-                href="https://github.com/gustavovalverde/zentity"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="View on GitHub"
-              />
-            }
-          >
-            <IconBrandGithub className="mr-2 size-5" />
-            View on GitHub
-          </Button>
-          <Button
-            variant="ghost"
-            size="lg"
-            className="w-full text-base sm:w-auto"
-            render={
-              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-              <a href="/docs" aria-label="Read documentation" />
-            }
-          >
-            Read Docs
-            <IconExternalLink className="ml-2 size-4" />
           </Button>
         </div>
 

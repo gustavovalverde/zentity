@@ -1,5 +1,4 @@
 import {
-  IconBrandGithub,
   IconDeviceDesktop,
   IconMenu2,
   IconMoon,
@@ -31,7 +30,6 @@ const navLinks = [
   { href: "#how-it-works", label: "How It Works" },
   { href: "#features", label: "Features" },
   { href: "#use-cases", label: "Use Cases" },
-  { href: "/docs", label: "Docs" },
 ];
 
 function ThemeToggle() {
@@ -129,22 +127,6 @@ export function Nav() {
         <div className="hidden items-center gap-3 md:flex">
           <ThemeToggle />
           <Button
-            variant="outline"
-            size="sm"
-            render={
-              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-              <a
-                href="https://github.com/gustavovalverde/zentity"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="GitHub"
-              />
-            }
-          >
-            <IconBrandGithub className="mr-2 size-4" />
-            GitHub
-          </Button>
-          <Button
             size="sm"
             render={
               /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
@@ -199,22 +181,6 @@ export function Nav() {
                 )}
               </nav>
               <div className="mt-6 flex flex-col gap-2 border-border border-t pt-4">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  render={
-                    /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-                    <a
-                      href="https://github.com/gustavovalverde/zentity"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="View on GitHub"
-                    />
-                  }
-                >
-                  <IconBrandGithub className="mr-2 size-4" />
-                  View on GitHub
-                </Button>
                 <Button
                   className="w-full"
                   render={

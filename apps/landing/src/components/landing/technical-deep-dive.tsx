@@ -10,7 +10,6 @@ import {
   IconLock,
   IconServer,
   IconShieldCheck,
-  IconX,
 } from "@tabler/icons-react";
 
 import { ColoredIconBox } from "@/components/ui/colored-icon-box";
@@ -123,10 +122,9 @@ export function TechnicalDeepDive() {
                               Web Client (Next.js)
                             </h4>
                             <p className="mt-1 text-muted-foreground text-sm">
-                              Handles UI, multi-credential authentication
-                              (passkey/OPAQUE/wallet), vault unlock with
-                              credential-derived keys, and ZK proof generation
-                              (Noir/WASM) tied to verified docs.
+                              Handles UI, multi-credential authentication,
+                              encrypted vault management, and client-side ZK
+                              proof generation tied to verified documents.
                             </p>
                           </div>
                         </div>
@@ -188,7 +186,7 @@ export function TechnicalDeepDive() {
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
-                          Passkey/OPAQUE/Wallet → KEK
+                          Authenticates and unlocks vault
                         </div>
                       </div>
 
@@ -340,9 +338,9 @@ export function TechnicalDeepDive() {
                             Proof Generation
                           </h4>
                           <p className="mb-2 text-muted-foreground text-sm">
-                            Client unlocks profile with credential-derived keys
-                            (passkey, password, or wallet), then proves
-                            eligibility with ZK.
+                            Client unlocks encrypted profile with your
+                            credential, then proves eligibility with
+                            zero-knowledge proofs.
                           </p>
                           <div className="rounded border border-border bg-muted px-3 py-2 font-mono text-foreground text-xs">
                             Generate(private inputs, nonce) → Proof_0x8f2…
@@ -405,12 +403,13 @@ export function TechnicalDeepDive() {
                               )}
                             />
                             <h4 className="font-semibold text-foreground">
-                              Passkey (WebAuthn PRF)
+                              Passkey
                             </h4>
                           </div>
                           <p className="text-muted-foreground text-sm">
-                            Face ID, Touch ID, or Windows Hello. PRF output →
-                            HKDF → KEK. No passwords to remember.
+                            Face ID, Touch ID, or Windows Hello. No passwords to
+                            remember—your biometric unlocks your encrypted
+                            vault.
                           </p>
                         </div>
 
@@ -423,12 +422,13 @@ export function TechnicalDeepDive() {
                               )}
                             />
                             <h4 className="font-semibold text-foreground">
-                              Password (OPAQUE RFC 9807)
+                              Password
                             </h4>
                           </div>
                           <p className="text-muted-foreground text-sm">
-                            Server-augmented PAKE. Export key → HKDF → KEK.
-                            Server never learns the password.
+                            Strong password authentication where the server
+                            never learns your password—only you can unlock your
+                            data.
                           </p>
                         </div>
 
@@ -441,12 +441,12 @@ export function TechnicalDeepDive() {
                               )}
                             />
                             <h4 className="font-semibold text-foreground">
-                              Wallet (EIP-712/SIWE)
+                              Crypto Wallet
                             </h4>
                           </div>
                           <p className="text-muted-foreground text-sm">
-                            Sign structured message → HKDF → KEK. Same Ethereum
-                            wallet you already use.
+                            Use the Ethereum wallet you already have. One
+                            signature unlocks your encrypted identity vault.
                           </p>
                         </div>
 
@@ -463,9 +463,9 @@ export function TechnicalDeepDive() {
                             </h4>
                           </div>
                           <p className="text-muted-foreground text-sm">
-                            All three derive the same KEK. Your FHE keys and
-                            profile are wrapped—only your credential unwraps
-                            them locally.
+                            All three credentials provide the same level of
+                            protection. Your data is encrypted locally—the
+                            server stores only opaque blobs it cannot read.
                           </p>
                         </div>
                       </div>
@@ -498,7 +498,7 @@ export function TechnicalDeepDive() {
                               )}
                             />
                             <span className="text-[10px] text-muted-foreground">
-                              OPAQUE
+                              Password
                             </span>
                           </div>
                           <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/50 p-2">
@@ -520,11 +520,11 @@ export function TechnicalDeepDive() {
                         <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
                       </div>
 
-                      {/* HKDF Box */}
+                      {/* Encryption Box */}
                       <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
                         <div className="flex items-center justify-between">
                           <div className="font-mono font-semibold text-foreground text-sm">
-                            HKDF → KEK
+                            Client-Side Encryption
                           </div>
                           <IconKey
                             className={cn(
@@ -534,7 +534,7 @@ export function TechnicalDeepDive() {
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
-                          Same key encryption key, any credential
+                          Your credential encrypts your data locally
                         </div>
                       </div>
 
@@ -552,7 +552,7 @@ export function TechnicalDeepDive() {
                           <IconServer className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
-                          Stores encrypted blobs only
+                          Stores encrypted data only
                         </div>
                         <div
                           className={cn(
@@ -770,7 +770,7 @@ export function TechnicalDeepDive() {
 
                       <div className="space-y-4">
                         <h4 className="font-semibold text-foreground text-sm">
-                          What Gets Encrypted
+                          How It Works
                         </h4>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="rounded-lg border border-border bg-card/50 p-3">
@@ -782,11 +782,11 @@ export function TechnicalDeepDive() {
                                 )}
                               />
                               <span className="font-medium text-foreground text-sm">
-                                Birth Year Offset
+                                Age Checks
                               </span>
                             </div>
                             <div className="mt-1 text-muted-foreground text-xs">
-                              For age threshold checks
+                              Verify age thresholds on encrypted data
                             </div>
                           </div>
                           <div className="rounded-lg border border-border bg-card/50 p-3">
@@ -798,11 +798,11 @@ export function TechnicalDeepDive() {
                                 )}
                               />
                               <span className="font-medium text-foreground text-sm">
-                                Country Code
+                                Nationality Rules
                               </span>
                             </div>
                             <div className="mt-1 text-muted-foreground text-xs">
-                              For nationality allowlists
+                              Evaluate allowlists without decrypting
                             </div>
                           </div>
                           <div className="rounded-lg border border-border bg-card/50 p-3">
@@ -814,11 +814,11 @@ export function TechnicalDeepDive() {
                                 )}
                               />
                               <span className="font-medium text-foreground text-sm">
-                                Compliance Level
+                                Compliance Gating
                               </span>
                             </div>
                             <div className="mt-1 text-muted-foreground text-xs">
-                              For policy gating
+                              Policy decisions on encrypted inputs
                             </div>
                           </div>
                           <div className="rounded-lg border border-border bg-card/50 p-3">
@@ -830,11 +830,11 @@ export function TechnicalDeepDive() {
                                 )}
                               />
                               <span className="font-medium text-foreground text-sm">
-                                Liveness Score
+                                Anti-Spoofing
                               </span>
                             </div>
                             <div className="mt-1 text-muted-foreground text-xs">
-                              For anti-spoofing
+                              Liveness verification stays encrypted
                             </div>
                           </div>
                         </div>
@@ -919,136 +919,160 @@ export function TechnicalDeepDive() {
                 {/* ZK Circuits Tab */}
                 <TabsContent value="circuits" className="mt-0">
                   <div className="grid items-center gap-12 md:grid-cols-2">
-                    <div>
-                      <h3 className="mb-6 font-bold text-2xl">Noir Circuits</h3>
-                      <ul className="grid grid-cols-2 gap-3">
-                        <li className="rounded-xl border border-border bg-card/50 p-3">
-                          <div className="mb-1 flex items-center gap-2">
-                            <IconFileCode
+                    <div className="space-y-6">
+                      <div>
+                        <h3 className="mb-2 font-bold text-2xl">
+                          Zero-Knowledge Circuits
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Client-side proofs that verify eligibility without
+                          revealing private data.
+                        </p>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconShieldCheck
                               className={cn(
-                                "h-4 w-4",
+                                "h-5 w-5",
                                 colorStyles.purple.iconText,
                               )}
                             />
-                            <h4 className="font-semibold text-foreground text-sm">
-                              age_verification.nr
+                            <h4 className="font-semibold text-foreground">
+                              Age Verification
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-xs">
-                            Prove age ≥ threshold without DOB.
+                          <p className="text-muted-foreground text-sm">
+                            Prove you meet an age threshold without revealing
+                            your date of birth.
                           </p>
-                        </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-3">
-                          <div className="mb-1 flex items-center gap-2">
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
                             <IconFileCode
                               className={cn(
-                                "h-4 w-4",
-                                colorStyles.purple.iconText,
-                              )}
-                            />
-                            <h4 className="font-semibold text-foreground text-sm">
-                              doc_validity.nr
-                            </h4>
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            Prove document not expired.
-                          </p>
-                        </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-3">
-                          <div className="mb-1 flex items-center gap-2">
-                            <IconFileCode
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.purple.iconText,
-                              )}
-                            />
-                            <h4 className="font-semibold text-foreground text-sm">
-                              face_match.nr
-                            </h4>
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            Prove face similarity ≥ threshold.
-                          </p>
-                        </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-3">
-                          <div className="mb-1 flex items-center gap-2">
-                            <IconFileCode
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.purple.iconText,
-                              )}
-                            />
-                            <h4 className="font-semibold text-foreground text-sm">
-                              nationality_membership.nr
-                            </h4>
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            Prove nationality in group (EU, SCHENGEN).
-                          </p>
-                        </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-3">
-                          <div className="mb-1 flex items-center gap-2">
-                            <IconFileCode
-                              className={cn(
-                                "h-4 w-4",
+                                "h-5 w-5",
                                 colorStyles.blue.iconText,
                               )}
                             />
-                            <h4 className="font-semibold text-foreground text-sm">
-                              address_jurisdiction.nr
+                            <h4 className="font-semibold text-foreground">
+                              Document Validity
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-xs">
-                            Prove address in jurisdiction via Merkle.
+                          <p className="text-muted-foreground text-sm">
+                            Prove your document is not expired without exposing
+                            the expiry date.
                           </p>
-                        </li>
-                        <li className="rounded-xl border border-border bg-card/50 p-3">
-                          <div className="mb-1 flex items-center gap-2">
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
                             <IconFileCode
                               className={cn(
-                                "h-4 w-4",
+                                "h-5 w-5",
                                 colorStyles.emerald.iconText,
                               )}
                             />
-                            <h4 className="font-semibold text-foreground text-sm">
-                              identity_binding.nr
+                            <h4 className="font-semibold text-foreground">
+                              Nationality & Residency
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-xs">
-                            Auth-agnostic replay prevention.
+                          <p className="text-muted-foreground text-sm">
+                            Prove membership in a country group (EU, Schengen)
+                            without revealing which country.
                           </p>
-                        </li>
-                      </ul>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconFileCode
+                              className={cn(
+                                "h-5 w-5",
+                                colorStyles.amber.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Liveness & Face Match
+                            </h4>
+                          </div>
+                          <p className="text-muted-foreground text-sm">
+                            Prove face similarity exceeds a threshold without
+                            storing biometric templates.
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Code Preview */}
-                    <div className="group relative">
-                      <div className="absolute inset-0 rounded-xl bg-gradient-to-tr from-purple-500/20 to-blue-500/20 opacity-50 blur-lg transition-opacity group-hover:opacity-100" />
-                      <div className="relative min-h-[300px] overflow-hidden rounded-xl border border-border/50 bg-[#0d1117] p-4 font-mono text-gray-300 text-sm shadow-xl">
-                        <div className="mb-4 flex items-center justify-between border-gray-800 border-b pb-2 text-gray-500 text-xs">
-                          <span>age_verification/src/main.nr</span>
-                          <span>Noir</span>
+                    {/* ZK Visual */}
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                      {/* Private Inputs */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Private Inputs (Browser)
+                          </div>
+                          <IconLock
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.purple.iconText,
+                            )}
+                          />
                         </div>
-                        <pre className="overflow-x-auto text-xs">
-                          {`use noir_poseidon2::poseidon2;
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Your data never leaves your device
+                        </div>
+                      </div>
 
-fn main(
-  dob_days: Field,          // Days since epoch
-  document_hash: Field,     // Server-signed hash
-  current_days: pub Field,  // Public reference date
-  min_age_days: pub Field,  // Age threshold in days
-  nonce: pub Field,         // Replay prevention
-  claim_hash: pub Field     // Binding commitment
-) -> pub bool {
-  // Verify claim binding
-  let computed = poseidon2([dob_days, document_hash]);
-  assert(computed == claim_hash);
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
 
-  // Age check without revealing DOB
-  let age_days = current_days - dob_days;
-  age_days >= min_age_days
-}`}
-                        </pre>
+                      {/* Proof Generation */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            ZK Proof Generation
+                          </div>
+                          <IconShieldCheck
+                            className={cn("h-4 w-4", colorStyles.blue.iconText)}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Generates cryptographic proof client-side
+                        </div>
+                      </div>
+
+                      <div className="flex justify-center">
+                        <div className="h-3 w-px border-muted-foreground/40 border-l border-dashed" />
+                      </div>
+
+                      {/* Verification */}
+                      <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Server Verification
+                          </div>
+                          <IconCircleCheck
+                            className={cn(
+                              "h-4 w-4",
+                              colorStyles.emerald.iconText,
+                            )}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          Verifies proof without seeing private data
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-2 flex items-center gap-2 text-xs",
+                            colorStyles.emerald.text,
+                          )}
+                        >
+                          <IconCircleCheck className="h-3 w-3" />
+                          Result: eligible / not eligible
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1059,7 +1083,7 @@ fn main(
                   <div className="space-y-8">
                     <div>
                       <h3 className="mb-2 font-bold text-2xl">
-                        The Interlock: Why Each Piece is Necessary
+                        Why This Architecture Works
                       </h3>
                       <p className="text-muted-foreground">
                         Privacy emerges from how components depend on each
@@ -1086,21 +1110,14 @@ fn main(
                             />
                           </div>
                           <h4 className="font-semibold text-foreground">
-                            Credential-Derived Keys
+                            User-Held Keys
                           </h4>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <IconX
-                            className={cn(
-                              "mt-0.5 h-4 w-4 shrink-0",
-                              colorStyles.red.iconText,
-                            )}
-                          />
-                          <p className="text-muted-foreground text-sm">
-                            Without passkey/password-derived keys, the server
-                            holds decryption capability—making it a honeypot.
-                          </p>
-                        </div>
+                        <p className="text-muted-foreground text-sm">
+                          Encryption keys never leave your device. A database
+                          breach exposes only opaque blobs that cannot be
+                          decrypted.
+                        </p>
                       </div>
 
                       <div className="rounded-xl border border-border bg-card/50 p-5">
@@ -1121,21 +1138,14 @@ fn main(
                             />
                           </div>
                           <h4 className="font-semibold text-foreground">
-                            Server-Signed Measurements
+                            Server Integrity
                           </h4>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <IconX
-                            className={cn(
-                              "mt-0.5 h-4 w-4 shrink-0",
-                              colorStyles.red.iconText,
-                            )}
-                          />
-                          <p className="text-muted-foreground text-sm">
-                            Without server attestations on OCR/liveness, clients
-                            could forge their own measurements.
-                          </p>
-                        </div>
+                        <p className="text-muted-foreground text-sm">
+                          The server attests to document and liveness
+                          measurements, ensuring clients cannot forge
+                          verification results.
+                        </p>
                       </div>
 
                       <div className="rounded-xl border border-border bg-card/50 p-5">
@@ -1159,18 +1169,10 @@ fn main(
                             Zero-Knowledge Proofs
                           </h4>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <IconX
-                            className={cn(
-                              "mt-0.5 h-4 w-4 shrink-0",
-                              colorStyles.red.iconText,
-                            )}
-                          />
-                          <p className="text-muted-foreground text-sm">
-                            Without ZK proofs, proving eligibility requires
-                            revealing actual attributes—birth date, nationality.
-                          </p>
-                        </div>
+                        <p className="text-muted-foreground text-sm">
+                          Prove eligibility without revealing underlying
+                          attributes. The verifier learns only yes or no.
+                        </p>
                       </div>
 
                       <div className="rounded-xl border border-border bg-card/50 p-5">
@@ -1191,56 +1193,14 @@ fn main(
                             />
                           </div>
                           <h4 className="font-semibold text-foreground">
-                            Proof-Based Credentials
+                            Derived Claims Only
                           </h4>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <IconX
-                            className={cn(
-                              "mt-0.5 h-4 w-4 shrink-0",
-                              colorStyles.red.iconText,
-                            )}
-                          />
-                          <p className="text-muted-foreground text-sm">
-                            Without derived claims, credentials embed raw
-                            PII—selective disclosure still leaks data.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
-                        <div className="mb-3 flex items-center gap-3">
-                          <div
-                            className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-lg",
-                              colorStyles.blue.bg,
-                              colorStyles.blue.border,
-                              "border",
-                            )}
-                          >
-                            <IconLink
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.blue.iconText,
-                              )}
-                            />
-                          </div>
-                          <h4 className="font-semibold text-foreground">
-                            Identity Binding
-                          </h4>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <IconX
-                            className={cn(
-                              "mt-0.5 h-4 w-4 shrink-0",
-                              colorStyles.red.iconText,
-                            )}
-                          />
-                          <p className="text-muted-foreground text-sm">
-                            Without identity binding, proofs could be replayed
-                            across users—any credential type, same protection.
-                          </p>
-                        </div>
+                        <p className="text-muted-foreground text-sm">
+                          Credentials contain verification results—never raw
+                          PII. Even with selective disclosure, nothing sensitive
+                          leaks.
+                        </p>
                       </div>
                     </div>
 
@@ -1253,13 +1213,13 @@ fn main(
                           )}
                         />
                         <p className="font-medium text-foreground">
-                          The chain is complete: Math, not walls.
+                          Math, not walls.
                         </p>
                       </div>
                       <p className="mt-2 text-muted-foreground text-sm">
-                        Remove any component and the guarantees collapse. The
-                        server doesn't have the keys—not because of policy, but
-                        because of cryptography.
+                        The server can't read your data—not because of policy,
+                        but because of cryptography. Every privacy guarantee is
+                        mathematically enforced.
                       </p>
                     </div>
                   </div>

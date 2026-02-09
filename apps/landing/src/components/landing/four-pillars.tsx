@@ -57,8 +57,8 @@ const pillars: Array<{
     title: "Multi-Credential Key Custody",
     subtitle: "Your keys, your control",
     description:
-      "Your passkey, password, or wallet derives encryption keys locally. The server stores encrypted blobs it cannot decrypt. Three ways in, same security.",
-    tech: "WebAuthn PRF + OPAQUE + EIP-712",
+      "Your passkey, password, or wallet unlocks your encrypted vault locally. The server stores only data it cannot decrypt. Three ways in, same security.",
+    tech: "Passkeys + Passwords + Wallets",
     example:
       "Full database breach? Your data stays locked. Only you hold the keys.",
   },

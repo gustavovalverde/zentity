@@ -1,6 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
-import { DocsLayout } from "@/components/docs/docs-layout";
 import {
   CTASection,
   FeaturesGrid,
@@ -20,7 +19,6 @@ import {
   SoftwareApplicationSchema,
 } from "@/components/seo/json-ld";
 import { ThemeProvider } from "@/lib/theme";
-import { DocsPage } from "@/pages/docs-page";
 
 function LandingPage() {
   return (
@@ -54,18 +52,6 @@ export function App() {
     <ThemeProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route
-          path="/docs"
-          element={<Navigate to="/docs/architecture" replace />}
-        />
-        <Route
-          path="/docs/:slug"
-          element={
-            <DocsLayout>
-              <DocsPage />
-            </DocsLayout>
-          }
-        />
       </Routes>
     </ThemeProvider>
   );

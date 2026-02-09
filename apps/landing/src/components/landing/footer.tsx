@@ -1,4 +1,4 @@
-import { IconBrandGithub, IconBrandX } from "@tabler/icons-react";
+import { IconBrandX } from "@tabler/icons-react";
 
 const footerLinks = {
   product: [
@@ -8,17 +8,8 @@ const footerLinks = {
   ],
   developers: [
     {
-      label: "Documentation",
-      href: "/docs",
-    },
-    {
-      label: "GitHub",
-      href: "https://github.com/gustavovalverde/zentity",
-      external: true,
-    },
-    {
-      label: "Architecture",
-      href: "/docs/architecture",
+      label: "Contact",
+      href: "mailto:hello@zentity.xyz",
     },
   ],
   legal: [
@@ -40,15 +31,6 @@ export function Footer() {
               cryptography.
             </p>
             <div className="mt-4 flex gap-2">
-              <a
-                href="https://github.com/gustavovalverde/zentity"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="GitHub"
-              >
-                <IconBrandGithub className="size-5" />
-              </a>
               <a
                 href="https://x.com/gustavovalverde"
                 target="_blank"
@@ -87,10 +69,6 @@ export function Footer() {
                   <a
                     href={link.href}
                     className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    {...(link.external && {
-                      target: "_blank",
-                      rel: "noopener noreferrer",
-                    })}
                   >
                     {link.label}
                   </a>
@@ -119,7 +97,7 @@ export function Footer() {
 
         <div className="mt-12 border-border border-t pt-8">
           <p className="text-center text-muted-foreground text-sm">
-            &copy; {new Date().getFullYear()} Zentity. Open source under{" "}
+            &copy; {new Date().getFullYear()} Zentity. Licensed under{" "}
             <a
               href="https://osaasy.dev/"
               target="_blank"

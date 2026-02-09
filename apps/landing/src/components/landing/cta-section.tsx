@@ -1,5 +1,4 @@
 import {
-  IconBrandGithub,
   IconCheck,
   IconExternalLink,
   IconPlayerPlay,
@@ -12,8 +11,9 @@ import { cn } from "@/lib/utils";
 
 const trustPoints = [
   {
-    title: "Verify our claims",
-    description: "Don't trust us—read the code. Every operation is auditable.",
+    title: "Auditable by design",
+    description:
+      "Every cryptographic operation is verifiable. Privacy you can prove.",
   },
   {
     title: "No vendor lock-in",
@@ -21,8 +21,9 @@ const trustPoints = [
       "Self-host with Docker Compose. Your infrastructure, your control.",
   },
   {
-    title: "Community-driven",
-    description: "Report issues, suggest features, build privacy together.",
+    title: "Standards-based",
+    description:
+      "Built on open standards: OAuth 2.1, OIDC, SD-JWT, OIDC4VCI/VP.",
   },
 ];
 
@@ -33,16 +34,16 @@ export function CTASection() {
         {/* Open Source Badge + Headline */}
         <div className="text-center">
           <Badge variant="outline" className="mb-4">
-            O'Saasy License
+            Privacy First
           </Badge>
           <h2 className="font-bold text-3xl sm:text-4xl">
-            100% open source.
+            Cryptographic privacy.
             <br />
             <span className="text-muted-foreground">Zero lock-in.</span>
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Every line of code is public. Audit every cryptographic operation.
-            Self-host on your own infrastructure.
+            Every privacy guarantee is mathematically enforced. Audit the
+            cryptography. Self-host on your own infrastructure.
           </p>
         </div>
 
@@ -72,9 +73,9 @@ export function CTASection() {
             This isn't theoretical. It's running code.
           </p>
           <p className="mt-3 text-muted-foreground text-sm leading-relaxed">
-            Same passkeys as Apple, Google, and Microsoft. Same passwords as
-            OPAQUE (RFC 9807). Same wallets as Ethereum (EIP-712/SIWE). Same
-            credentials as EUDI (SD-JWT + OIDC4VCI/VP).
+            Same passkeys as Apple, Google, and Microsoft. Same wallets as
+            Ethereum. Same credential standards as EUDI. Built on OAuth 2.1,
+            OpenID Connect, and open specifications.
           </p>
         </div>
 
@@ -105,34 +106,32 @@ export function CTASection() {
             </span>
           </a>
 
-          {/* Star on GitHub */}
+          {/* Contact */}
           <a
-            href="https://github.com/gustavovalverde/zentity"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="mailto:hello@zentity.xyz"
             className={cn(
               "group block rounded-xl border border-border bg-card p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               "hover:border-blue-500/50",
             )}
           >
             <ColoredIconBox
-              icon={IconBrandGithub}
+              icon={IconExternalLink}
               color="blue"
               size="lg"
               className="mb-4 h-12 w-12 group-hover:bg-blue-500/20"
             />
-            <h3 className="mb-2 font-semibold">View Source</h3>
+            <h3 className="mb-2 font-semibold">Get in Touch</h3>
             <p className="grow text-muted-foreground text-sm">
-              Star the repo, fork it, or deploy your own.
+              Enterprise integrations, partnerships, or questions.
             </p>
             <span className="mt-4 inline-flex w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 font-medium text-sm hover:bg-accent hover:text-accent-foreground">
-              GitHub
+              Contact Us
             </span>
           </a>
 
-          {/* Read the Docs */}
+          {/* Learn More */}
           <a
-            href="/docs"
+            href="#architecture"
             className={cn(
               "group block rounded-xl border border-border bg-card p-6 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               "hover:border-emerald-500/50",
@@ -144,12 +143,12 @@ export function CTASection() {
               size="lg"
               className="mb-4 h-12 w-12 group-hover:bg-emerald-500/20"
             />
-            <h3 className="mb-2 font-semibold">Read the Docs</h3>
+            <h3 className="mb-2 font-semibold">See How It Works</h3>
             <p className="grow text-muted-foreground text-sm">
-              Understand the architecture in depth.
+              Explore the privacy architecture.
             </p>
             <span className="mt-4 inline-flex w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 font-medium text-sm hover:bg-accent hover:text-accent-foreground">
-              Documentation
+              Technical Deep-Dive
             </span>
           </a>
         </div>
