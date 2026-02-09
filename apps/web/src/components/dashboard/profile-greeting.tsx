@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   getCachedGreetingName,
   getProfileSnapshot,
@@ -16,14 +15,14 @@ const WHITESPACE_RE = /\s+/;
  * Displays the user's first name from their passkey-encrypted profile.
  * Uses useSyncExternalStore to subscribe to the module-level cache,
  * ensuring all instances update when the profile is fetched.
- * Shows a skeleton during initial load to prevent "User" → actual name flash.
+ * Defers sessionStorage read to after hydration to avoid mismatch.
  */
 export function ProfileGreetingName({
   fallback = "User",
 }: Readonly<{
   fallback?: string;
 }>) {
-  const [isInitialLoad, _setIsInitialLoad] = useState(false);
+  const [greetingName, setGreetingName] = useState<string | null>(null);
 
   const profile = useSyncExternalStore(
     subscribeToProfileCache,
@@ -31,12 +30,13 @@ export function ProfileGreetingName({
     getServerProfileSnapshot
   );
 
-  if (isInitialLoad && !profile) {
-    return <Skeleton className="inline-block h-6 w-24 align-baseline" />;
-  }
+  useEffect(() => {
+    if (!profile?.firstName) {
+      setGreetingName(getCachedGreetingName());
+    }
+  }, [profile?.firstName]);
 
-  // Extract just the first word of the given name for a casual greeting.
-  const firstName = profile?.firstName ?? getCachedGreetingName();
+  const firstName = profile?.firstName ?? greetingName;
   const givenName = firstName?.split(WHITESPACE_RE)[0] || fallback;
 
   return <span>{givenName}</span>;
