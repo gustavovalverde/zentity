@@ -158,9 +158,9 @@ Identity PII (`identity.*` scopes) flows through a three-stage pipeline:
    - **Password (OPAQUE)** — Inline password field where the user re-enters their password
    - **Wallet (EIP-712)** — "Sign with Wallet" button requiring a deterministic EIP-712 signature (signed twice and compared, same as FHE enrollment)
 
-   Once unlocked, the consent UI obtains an **identity intent token** from `/api/oauth2/identity/intent` (120s TTL, binds user + client + scope hash with JTI replay prevention). Then it maps profile fields to OIDC claims and sends them along with the intent token to `/api/oauth2/identity/stage`. The stage endpoint validates the intent token (signature, expiry, scope hash match) and holds the claims ephemerally in memory (5min TTL, consumed on read).
+   Once unlocked, the consent UI obtains an **identity intent token** from `/api/oauth2/identity/intent` (120s TTL, binds user + client + scope hash with database-backed JTI replay prevention). Then it maps profile fields to OIDC claims and sends them along with the intent token to `/api/oauth2/identity/stage`. The stage endpoint validates the intent token (signature, expiry, scope hash match) and holds the claims ephemerally in memory (5min TTL, consumed on read).
 
-3. **Never-persist consent** — The consent UI filters out all `identity.*` scopes before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted in the consent record. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
+3. **Never-persist consent** — Identity scopes are excluded from consent records through two complementary mechanisms: the server-side `before` hook in `auth.ts` strips any `identity.*` scopes from the consent request body, and the consent UI also filters them out before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted in the consent record. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
 
 4. **id_token delivery** — When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims (keyed by userId, independent of auth code scopes) and includes the claims matching the scopes recorded in the ephemeral store. The claims are then deleted — no persistent PII exists on the server.
 
@@ -238,7 +238,7 @@ This is a separate path from `proof:*` scopes. The scope-based path uses custom 
 
 Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth_consent` with the consented scopes. On subsequent authorize requests, if the row exists and covers all requested scopes, the consent page is skipped. If the RP requests new scopes not in the original grant, the consent page shows again.
 
-**Identity scope exclusion**: Identity scopes (`identity.*`) are never passed to the consent API. The consent UI filters them out before calling `consent()`, so only `proof:*` and standard OIDC scopes are persisted in the consent record. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
+**Identity scope exclusion**: Identity scopes (`identity.*`) are excluded from consent records via two layers: the server-side `before` hook strips them from the consent request body (defense-in-depth), and the consent UI also filters them before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
 
 **Forcing re-consent**: RPs can add `prompt=consent` to the authorize URL to force the consent page regardless of prior grants.
 
@@ -253,6 +253,7 @@ Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth
 - Stage endpoint: `apps/web/src/app/api/oauth2/identity/stage/route.ts`
 - Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 - id_token hook: `customIdTokenClaims` in `apps/web/src/lib/auth/auth.ts`
+- Server-side consent scope filtering: `before` hook in `apps/web/src/lib/auth/auth.ts` (strips `identity.*` from `/oauth2/consent` body)
 - Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
 
 ---

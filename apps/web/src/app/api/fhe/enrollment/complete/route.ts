@@ -22,16 +22,24 @@ import { base64ToBytes } from "@/lib/utils/base64";
 
 export const runtime = "nodejs";
 
+const wrappedDekJsonSchema = z.object({
+  alg: z.string().min(1),
+  iv: z.string().min(1),
+  ciphertext: z.string().min(1),
+});
+
 const wrappedDekSchema = z.string().refine(
   (val) => {
     try {
-      const parsed = JSON.parse(val);
-      return parsed.alg && parsed.iv && parsed.ciphertext;
+      return wrappedDekJsonSchema.safeParse(JSON.parse(val)).success;
     } catch {
       return false;
     }
   },
-  { message: "wrappedDek must be a JSON object with {alg, iv, ciphertext}" }
+  {
+    message:
+      "wrappedDek must be a JSON object with {alg, iv, ciphertext} as non-empty strings",
+  }
 );
 
 const prfSaltSchema = z

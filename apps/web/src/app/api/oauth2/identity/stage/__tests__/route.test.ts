@@ -8,6 +8,31 @@ const authMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
 }));
 
+vi.mock("@/lib/db/connection", () => ({
+  db: {
+    delete: () => ({
+      where: () => ({ run: vi.fn() }),
+      run: vi.fn(),
+    }),
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => ({ get: vi.fn().mockResolvedValue(undefined) }),
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: () => ({
+        onConflictDoNothing: () => ({ run: vi.fn() }),
+      }),
+    }),
+  },
+}));
+
+vi.mock("@/lib/db/schema/crypto", () => ({
+  usedIntentJtis: { jti: "jti", expiresAt: "expiresAt" },
+}));
+
 vi.mock("@/lib/auth/auth", () => ({
   auth: { api: { getSession: authMocks.getSession } },
 }));
@@ -34,11 +59,11 @@ function makeRequest(body: unknown) {
 }
 
 describe("oauth2 identity stage route", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     process.env.BETTER_AUTH_SECRET = "test-secret-at-least-32-characters-long";
     authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
-    resetEphemeralIdentityClaimsStore();
+    await resetEphemeralIdentityClaimsStore();
   });
 
   it("requires intent_token when identity scopes are requested", async () => {

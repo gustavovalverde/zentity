@@ -95,6 +95,16 @@ export const zkChallenges = sqliteTable(
   (table) => [index("idx_zk_challenges_expires_at").on(table.expiresAt)]
 );
 
+export const usedIntentJtis = sqliteTable(
+  "used_intent_jtis",
+  {
+    jti: text("jti").primaryKey(),
+    userId: text("user_id").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [index("idx_used_intent_jtis_expires_at").on(table.expiresAt)]
+);
+
 export const encryptedSecrets = sqliteTable(
   "encrypted_secrets",
   {

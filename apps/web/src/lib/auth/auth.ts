@@ -30,6 +30,7 @@ import {
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPES,
+  isIdentityScope,
 } from "@/lib/auth/oidc/identity-scopes";
 import {
   extractProofScopes,
@@ -494,6 +495,19 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/register") {
         return validateDcrRegistration(ctx.body);
+      }
+
+      // Server-side enforcement: strip identity.* scopes from consent to
+      // ensure they are never persisted, regardless of client behavior.
+      if (
+        ctx.path === "/oauth2/consent" &&
+        typeof ctx.body?.scope === "string"
+      ) {
+        const filtered = ctx.body.scope
+          .split(" ")
+          .filter((s: string) => !isIdentityScope(s))
+          .join(" ");
+        ctx.body.scope = filtered;
       }
     }),
     after: createAuthMiddleware(async (ctx) => {

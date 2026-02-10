@@ -1,10 +1,11 @@
 import "server-only";
 
-// TODO: For multi-instance deploys, back this with a short-lived DB record
-// (verification table, 5min TTL, consumed on read). The in-memory Map only
-// works for single-instance deployments.
-
 import type { IdentityFields } from "./identity-scopes";
+
+import { eq, lt } from "drizzle-orm";
+
+import { db } from "@/lib/db/connection";
+import { usedIntentJtis } from "@/lib/db/schema/crypto";
 
 export interface EphemeralClaimsMeta {
   clientId: string;
@@ -22,7 +23,6 @@ interface EphemeralEntry {
 const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const STORE_KEY = Symbol.for("zentity.ephemeral-identity-claims");
-const USED_INTENTS_KEY = Symbol.for("zentity.ephemeral-identity-intents");
 
 function getStore(): Map<string, EphemeralEntry> {
   const g = globalThis as Record<symbol, Map<string, EphemeralEntry>>;
@@ -32,15 +32,7 @@ function getStore(): Map<string, EphemeralEntry> {
   return g[STORE_KEY];
 }
 
-function getUsedIntentStore(): Map<string, number> {
-  const g = globalThis as Record<symbol, Map<string, number>>;
-  if (!g[USED_INTENTS_KEY]) {
-    g[USED_INTENTS_KEY] = new Map();
-  }
-  return g[USED_INTENTS_KEY];
-}
-
-function evictExpired(): void {
+function evictExpiredClaims(): void {
   const now = Date.now();
   const s = getStore();
   for (const [key, entry] of s) {
@@ -48,25 +40,53 @@ function evictExpired(): void {
       s.delete(key);
     }
   }
+}
 
-  const usedIntents = getUsedIntentStore();
-  for (const [intentJti, expiresAt] of usedIntents) {
-    if (expiresAt <= now) {
-      usedIntents.delete(intentJti);
-    }
+async function cleanupExpiredJtis(): Promise<void> {
+  try {
+    await db
+      .delete(usedIntentJtis)
+      .where(lt(usedIntentJtis.expiresAt, Date.now()))
+      .run();
+  } catch {
+    // Non-critical — stale rows are harmless
   }
 }
 
-export function storeEphemeralClaims(
+async function isJtiUsed(jti: string): Promise<boolean> {
+  const row = await db
+    .select({ jti: usedIntentJtis.jti })
+    .from(usedIntentJtis)
+    .where(eq(usedIntentJtis.jti, jti))
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
+async function markJtiUsed(
+  jti: string,
+  userId: string,
+  expiresAt: number
+): Promise<void> {
+  await db
+    .insert(usedIntentJtis)
+    .values({ jti, userId, expiresAt })
+    .onConflictDoNothing()
+    .run();
+}
+
+export async function storeEphemeralClaims(
   userId: string,
   claims: Partial<IdentityFields>,
   scopes: string[],
   meta: EphemeralClaimsMeta
-): { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" } {
-  evictExpired();
+): Promise<
+  { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" }
+> {
+  evictExpiredClaims();
+  await cleanupExpiredJtis();
 
-  const usedIntents = getUsedIntentStore();
-  if (usedIntents.has(meta.intentJti)) {
+  if (await isJtiUsed(meta.intentJti)) {
     return { ok: false, reason: "intent_reused" };
   }
 
@@ -83,7 +103,7 @@ export function storeEphemeralClaims(
     expiresAt,
     meta,
   });
-  usedIntents.set(meta.intentJti, expiresAt);
+  await markJtiUsed(meta.intentJti, userId, expiresAt);
   return { ok: true };
 }
 
@@ -92,7 +112,7 @@ export function consumeEphemeralClaims(userId: string): {
   scopes: string[];
   meta: EphemeralClaimsMeta;
 } | null {
-  evictExpired();
+  evictExpiredClaims();
   const s = getStore();
   const entry = s.get(userId);
   if (!entry) {
@@ -103,7 +123,7 @@ export function consumeEphemeralClaims(userId: string): {
   return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
 }
 
-export function resetEphemeralIdentityClaimsStore(): void {
+export async function resetEphemeralIdentityClaimsStore(): Promise<void> {
   getStore().clear();
-  getUsedIntentStore().clear();
+  await db.delete(usedIntentJtis).run();
 }

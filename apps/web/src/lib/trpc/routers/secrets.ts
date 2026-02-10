@@ -6,17 +6,18 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { db } from "@/lib/db/connection";
 import {
-  deleteEncryptedSecretByUserAndType,
   deleteSecretWrapper,
   getEncryptedSecretByUserAndType,
   getSecretWrappersBySecretId,
   updateEncryptedSecretMetadata,
-  upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
+import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/crypto";
 import {
   computeSecretBlobRef,
   getSecretBlobMaxBytes,
@@ -30,19 +31,27 @@ import { protectedProcedure, router } from "../server";
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
 
+const wrappedDekJsonSchema = z.object({
+  alg: z.string().min(1),
+  iv: z.string().min(1),
+  ciphertext: z.string().min(1),
+});
+
 const wrappedDekSchema = z
   .string()
   .min(1)
   .refine(
     (val) => {
       try {
-        const parsed = JSON.parse(val);
-        return parsed.alg && parsed.iv && parsed.ciphertext;
+        return wrappedDekJsonSchema.safeParse(JSON.parse(val)).success;
       } catch {
         return false;
       }
     },
-    { message: "wrappedDek must be a JSON object with {alg, iv, ciphertext}" }
+    {
+      message:
+        "wrappedDek must be a JSON object with {alg, iv, ciphertext} as non-empty strings",
+    }
   );
 
 const prfSaltSchema = z.string().refine(
@@ -117,35 +126,113 @@ export const secretsRouter = router({
         });
       }
 
-      const existing = await getEncryptedSecretByUserAndType(
+      const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+
+      const result = await db.transaction(async (tx) => {
+        // Delete any existing secret with a different id for this user+type
+        const existing = await tx
+          .select()
+          .from(encryptedSecrets)
+          .where(
+            and(
+              eq(encryptedSecrets.userId, ctx.userId),
+              eq(encryptedSecrets.secretType, input.secretType)
+            )
+          )
+          .limit(1)
+          .get();
+
+        if (existing && existing.id !== input.secretId) {
+          await tx
+            .delete(encryptedSecrets)
+            .where(
+              and(
+                eq(encryptedSecrets.userId, ctx.userId),
+                eq(encryptedSecrets.secretType, input.secretType)
+              )
+            )
+            .run();
+        }
+
+        // Upsert the secret
+        await tx
+          .insert(encryptedSecrets)
+          .values({
+            id: input.secretId,
+            userId: ctx.userId,
+            secretType: input.secretType,
+            encryptedBlob: "",
+            blobRef: expectedBlobRef,
+            blobHash: input.blobHash.toLowerCase(),
+            blobSize: input.blobSize,
+            metadata,
+          })
+          .onConflictDoUpdate({
+            target: [encryptedSecrets.userId, encryptedSecrets.secretType],
+            set: {
+              encryptedBlob: "",
+              blobRef: expectedBlobRef,
+              blobHash: input.blobHash.toLowerCase(),
+              blobSize: input.blobSize,
+              metadata,
+              updatedAt: sql`datetime('now')`,
+            },
+          })
+          .run();
+
+        // Upsert the wrapper
+        const kekSource = input.kekSource ?? "prf";
+        await tx
+          .insert(secretWrappers)
+          .values({
+            id: crypto.randomUUID(),
+            secretId: input.secretId,
+            userId: ctx.userId,
+            credentialId: input.credentialId,
+            wrappedDek: input.wrappedDek,
+            prfSalt: input.prfSalt ?? null,
+            kekSource,
+          })
+          .onConflictDoUpdate({
+            target: [secretWrappers.secretId, secretWrappers.credentialId],
+            set: {
+              wrappedDek: input.wrappedDek,
+              prfSalt: input.prfSalt ?? null,
+              kekSource,
+              updatedAt: sql`datetime('now')`,
+            },
+          })
+          .run();
+
+        return true;
+      });
+
+      if (!result) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to store secret.",
+        });
+      }
+
+      // Read back outside transaction using existing query functions
+      // (which parse metadata from JSON string to object)
+      const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
       );
+      const wrappers = secret
+        ? await getSecretWrappersBySecretId(secret.id)
+        : [];
+      const wrapper = wrappers.find(
+        (w) => w.credentialId === input.credentialId
+      );
 
-      if (existing && existing.id !== input.secretId) {
-        await deleteEncryptedSecretByUserAndType(ctx.userId, input.secretType);
+      if (!(secret && wrapper)) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to store secret.",
+        });
       }
-
-      const secret = await upsertEncryptedSecret({
-        id: input.secretId,
-        userId: ctx.userId,
-        secretType: input.secretType,
-        encryptedBlob: "",
-        blobRef: expectedBlobRef,
-        blobHash: input.blobHash.toLowerCase(),
-        blobSize: input.blobSize,
-        metadata: input.metadata ?? null,
-      });
-
-      const wrapper = await upsertSecretWrapper({
-        id: crypto.randomUUID(),
-        secretId: secret.id,
-        userId: ctx.userId,
-        credentialId: input.credentialId,
-        wrappedDek: input.wrappedDek,
-        prfSalt: input.prfSalt,
-        kekSource: input.kekSource,
-      });
 
       return { secret, wrapper };
     }),

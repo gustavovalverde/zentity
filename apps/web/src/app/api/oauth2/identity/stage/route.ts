@@ -202,7 +202,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ staged: false });
   }
 
-  const stored = storeEphemeralClaims(
+  const stored = await storeEphemeralClaims(
     session.user.id,
     filteredIdentity,
     scopes,
