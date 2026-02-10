@@ -75,6 +75,10 @@ async function markJtiUsed(
     .run();
 }
 
+function storeKey(userId: string, clientId: string): string {
+  return `${userId}:${clientId}`;
+}
+
 export async function storeEphemeralClaims(
   userId: string,
   claims: Partial<IdentityFields>,
@@ -91,13 +95,14 @@ export async function storeEphemeralClaims(
   }
 
   const s = getStore();
-  const existing = s.get(userId);
+  const key = storeKey(userId, meta.clientId);
+  const existing = s.get(key);
   if (existing) {
     return { ok: false, reason: "concurrent_stage" };
   }
 
   const expiresAt = Date.now() + EPHEMERAL_TTL_MS;
-  s.set(userId, {
+  s.set(key, {
     claims,
     scopes,
     expiresAt,
@@ -107,20 +112,70 @@ export async function storeEphemeralClaims(
   return { ok: true };
 }
 
-export function consumeEphemeralClaims(userId: string): {
+export function consumeEphemeralClaims(
+  userId: string,
+  clientId: string
+): {
   claims: Partial<IdentityFields>;
   scopes: string[];
   meta: EphemeralClaimsMeta;
 } | null {
   evictExpiredClaims();
   const s = getStore();
-  const entry = s.get(userId);
+  const key = storeKey(userId, clientId);
+  const entry = s.get(key);
   if (!entry) {
     return null;
   }
 
-  s.delete(userId);
+  s.delete(key);
   return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
+}
+
+/**
+ * Consume ephemeral claims for a user when clientId is not directly available
+ * (e.g. in customIdTokenClaims hook where only user/scopes/metadata are passed).
+ * Scans entries with the userId prefix. If exactly one entry exists, consumes it.
+ * If multiple exist (rare: concurrent flows for different clients), returns null
+ * to avoid cross-client leakage.
+ */
+export function consumeEphemeralClaimsByUser(userId: string): {
+  claims: Partial<IdentityFields>;
+  scopes: string[];
+  meta: EphemeralClaimsMeta;
+} | null {
+  evictExpiredClaims();
+  const s = getStore();
+  const prefix = `${userId}:`;
+  let matchKey: string | null = null;
+  let matchCount = 0;
+  for (const key of s.keys()) {
+    if (key.startsWith(prefix)) {
+      matchKey = key;
+      matchCount++;
+      if (matchCount > 1) {
+        return null;
+      }
+    }
+  }
+  if (!matchKey) {
+    return null;
+  }
+  const entry = s.get(matchKey);
+  if (!entry) {
+    return null;
+  }
+  s.delete(matchKey);
+  return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
+}
+
+export function clearEphemeralClaims(
+  userId: string,
+  clientId: string
+): boolean {
+  const s = getStore();
+  const key = storeKey(userId, clientId);
+  return s.delete(key);
 }
 
 export async function resetEphemeralIdentityClaimsStore(): Promise<void> {

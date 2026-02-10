@@ -58,7 +58,9 @@ vi.mock("../ephemeral-identity-claims", async (importOriginal) => {
 });
 
 import {
+  clearEphemeralClaims,
   consumeEphemeralClaims,
+  consumeEphemeralClaimsByUser,
   resetEphemeralIdentityClaimsStore,
   storeEphemeralClaims,
 } from "../ephemeral-identity-claims";
@@ -79,7 +81,7 @@ describe("ephemeral identity claims store", () => {
     await resetEphemeralIdentityClaimsStore();
   });
 
-  it("stores and consumes claims once", async () => {
+  it("stores and consumes claims by userId:clientId", async () => {
     const scopes = ["openid", "identity.name"];
 
     const storeResult = await storeEphemeralClaims(
@@ -91,16 +93,76 @@ describe("ephemeral identity claims store", () => {
 
     expect(storeResult).toEqual({ ok: true });
 
-    const consumed = consumeEphemeralClaims("user-1");
+    const consumed = consumeEphemeralClaims("user-1", "client-1");
     expect(consumed?.claims).toEqual({
       given_name: "Ada",
       family_name: "Lovelace",
     });
     expect(consumed?.meta.intentJti).toBe("intent-1");
-    expect(consumeEphemeralClaims("user-1")).toBeNull();
+    expect(consumeEphemeralClaims("user-1", "client-1")).toBeNull();
   });
 
-  it("rejects concurrent stage attempts for the same user", async () => {
+  it("isolates claims by clientId — different clients don't cross-consume", async () => {
+    const scopes = ["openid", "identity.name"];
+
+    expect(
+      await storeEphemeralClaims("user-1", { given_name: "Ada" }, scopes, {
+        clientId: "client-A",
+        scopeHash: createScopeHash(scopes),
+        intentJti: "intent-a",
+      })
+    ).toEqual({ ok: true });
+
+    expect(
+      await storeEphemeralClaims("user-1", { given_name: "Grace" }, scopes, {
+        clientId: "client-B",
+        scopeHash: createScopeHash(scopes),
+        intentJti: "intent-b",
+      })
+    ).toEqual({ ok: true });
+
+    // Client A gets Ada, Client B gets Grace
+    const a = consumeEphemeralClaims("user-1", "client-A");
+    expect(a?.claims.given_name).toBe("Ada");
+
+    const b = consumeEphemeralClaims("user-1", "client-B");
+    expect(b?.claims.given_name).toBe("Grace");
+  });
+
+  it("consumeByUser returns null when multiple clients have staged entries", async () => {
+    const scopes = ["openid", "identity.name"];
+
+    await storeEphemeralClaims("user-1", { given_name: "Ada" }, scopes, {
+      clientId: "client-A",
+      scopeHash: createScopeHash(scopes),
+      intentJti: "intent-x",
+    });
+    await storeEphemeralClaims("user-1", { given_name: "Grace" }, scopes, {
+      clientId: "client-B",
+      scopeHash: createScopeHash(scopes),
+      intentJti: "intent-y",
+    });
+
+    // Ambiguous — returns null to prevent cross-client leakage
+    expect(consumeEphemeralClaimsByUser("user-1")).toBeNull();
+  });
+
+  it("consumeByUser returns entry when only one client has staged", async () => {
+    const scopes = ["openid", "identity.name"];
+
+    await storeEphemeralClaims(
+      "user-1",
+      { given_name: "Ada" },
+      scopes,
+      makeMeta("intent-single", scopes)
+    );
+
+    const result = consumeEphemeralClaimsByUser("user-1");
+    expect(result?.claims.given_name).toBe("Ada");
+    expect(consumeEphemeralClaimsByUser("user-1")).toBeNull();
+  });
+
+  it("rejects concurrent stage attempts for the same user+client", async () => {
     const scopes = ["openid", "identity.name"];
 
     expect(
@@ -122,6 +184,21 @@ describe("ephemeral identity claims store", () => {
     ).toEqual({ ok: false, reason: "concurrent_stage" });
   });
 
+  it("clearEphemeralClaims removes a staged entry", async () => {
+    const scopes = ["openid", "identity.name"];
+
+    await storeEphemeralClaims(
+      "user-1",
+      { given_name: "Ada" },
+      scopes,
+      makeMeta("intent-clear", scopes)
+    );
+
+    expect(clearEphemeralClaims("user-1", "client-1")).toBe(true);
+    expect(consumeEphemeralClaims("user-1", "client-1")).toBeNull();
+    expect(clearEphemeralClaims("user-1", "client-1")).toBe(false);
+  });
+
   it("evicts expired entries and allows fresh stage flow", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
@@ -138,7 +215,7 @@ describe("ephemeral identity claims store", () => {
 
     vi.advanceTimersByTime(5 * 60 * 1000 + 1);
 
-    expect(consumeEphemeralClaims("user-1")).toBeNull();
+    expect(consumeEphemeralClaims("user-1", "client-1")).toBeNull();
 
     expect(
       await storeEphemeralClaims(

@@ -8,22 +8,57 @@ const authMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
 }));
 
+const insertedJtis = new Set<string>();
+
+// Capture the JTI value being queried via eq() so the mock can check membership.
+// The real code calls eq(usedIntentJtis.jti, jtiValue) — our schema mock sets
+// usedIntentJtis.jti = "jti", so we match on that column name.
+let lastQueriedJti: string | undefined;
+
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const original = await importOriginal<typeof import("drizzle-orm")>();
+  return {
+    ...original,
+    eq: (...args: unknown[]) => {
+      if (args[0] === "jti" && typeof args[1] === "string") {
+        lastQueriedJti = args[1];
+      }
+      return original.eq(...(args as Parameters<typeof original.eq>));
+    },
+  };
+});
+
 vi.mock("@/lib/db/connection", () => ({
   db: {
     delete: () => ({
       where: () => ({ run: vi.fn() }),
-      run: vi.fn(),
+      run: vi.fn().mockImplementation(() => {
+        insertedJtis.clear();
+      }),
     }),
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: () => ({ get: vi.fn().mockResolvedValue(undefined) }),
+          limit: () => ({
+            get: vi.fn().mockImplementation(() => {
+              if (lastQueriedJti && insertedJtis.has(lastQueriedJti)) {
+                return { jti: lastQueriedJti };
+              }
+              return undefined;
+            }),
+          }),
         }),
       }),
     }),
     insert: () => ({
-      values: () => ({
-        onConflictDoNothing: () => ({ run: vi.fn() }),
+      values: (row: { jti?: string }) => ({
+        onConflictDoNothing: () => ({
+          run: vi.fn().mockImplementation(() => {
+            if (row?.jti) {
+              insertedJtis.add(row.jti);
+            }
+          }),
+        }),
       }),
     }),
   },
@@ -61,6 +96,8 @@ function makeRequest(body: unknown) {
 describe("oauth2 identity stage route", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    insertedJtis.clear();
+    lastQueriedJti = undefined;
     process.env.BETTER_AUTH_SECRET = "test-secret-at-least-32-characters-long";
     authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
     await resetEphemeralIdentityClaimsStore();

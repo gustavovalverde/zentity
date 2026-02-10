@@ -25,7 +25,7 @@ import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
-import { consumeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
@@ -620,7 +620,7 @@ export const auth = betterAuth({
         claims_supported: advertisedClaims,
       },
       customIdTokenClaims: ({ user }) => {
-        const ephemeral = consumeEphemeralClaims(user.id);
+        const ephemeral = consumeEphemeralClaimsByUser(user.id);
         if (!ephemeral) {
           return {};
         }

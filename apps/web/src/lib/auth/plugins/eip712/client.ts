@@ -72,7 +72,7 @@ export const eip712AuthClient = () => ({
             );
           }
 
-          // Step 3: Register with server
+          // Step 3: Register with both signatures for server-side determinism check
           const registerRes = await $fetch<{
             token: string;
             user: { id: string };
@@ -80,6 +80,7 @@ export const eip712AuthClient = () => ({
             method: "POST",
             body: {
               signature: signature1,
+              signature2,
               address: params.address,
               chainId: params.chainId,
               nonce: nonceRes.data.nonce,

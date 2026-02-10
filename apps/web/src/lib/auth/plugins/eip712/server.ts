@@ -150,6 +150,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           method: "POST",
           body: z.object({
             signature: z.string().min(1),
+            signature2: z.string().min(1),
             address: z.string().min(1),
             chainId: z.number().int().positive(),
             nonce: z.string().min(1),
@@ -158,7 +159,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
         },
         async (ctx) => {
           const address = getAddress(ctx.body.address);
-          const { chainId, nonce, signature, email } = ctx.body;
+          const { chainId, nonce, signature, signature2, email } = ctx.body;
 
           // Consume and validate nonce
           await consumeNonce(
@@ -168,9 +169,19 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
             nonce
           );
 
-          // Reconstruct typed data and verify signature
+          // Reconstruct typed data and verify both signatures
           const typedData = buildTypedData({ address, chainId, nonce });
           await verifySignature(signature, typedData, address);
+          await verifySignature(signature2, typedData, address);
+
+          // Enforce deterministic signatures server-side
+          if (signature !== signature2) {
+            throw new APIError("BAD_REQUEST", {
+              message:
+                "Wallet does not produce deterministic signatures. " +
+                "Sign up with a wallet that supports RFC 6979.",
+            });
+          }
 
           // Check wallet not already registered
           const existingWallets = await ctx.context.adapter.findMany({

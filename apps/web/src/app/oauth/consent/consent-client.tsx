@@ -758,6 +758,7 @@ export function OAuthConsentClient({
     setIsSubmitting(true);
     setError(null);
 
+    let didStage = false;
     try {
       if (accept && hasApprovedIdentityScopes) {
         if (vaultState.status !== "loaded") {
@@ -774,6 +775,7 @@ export function OAuthConsentClient({
         // them during token exchange. Identity scopes are never persisted in
         // the consent DB — the ephemeral store is the sole authority.
         await captureIdentityIfNeeded();
+        didStage = true;
       }
 
       // Only persist non-identity scopes in the consent record.
@@ -806,6 +808,19 @@ export function OAuthConsentClient({
 
       globalThis.window.location.assign(redirectUri);
     } catch (err) {
+      // If staging succeeded but consent failed, clear the stale ephemeral
+      // entry so the user can retry without hitting "concurrent_stage".
+      if (didStage) {
+        const oauthQuery = getSignedOAuthQuery();
+        if (oauthQuery) {
+          fetch("/api/oauth2/identity/unstage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ oauth_query: oauthQuery }),
+          }).catch(() => undefined);
+        }
+      }
+
       setError(
         err instanceof Error
           ? err.message
