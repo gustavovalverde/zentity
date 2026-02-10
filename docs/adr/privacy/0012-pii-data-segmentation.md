@@ -49,12 +49,9 @@ FHE is reserved for attributes that require **server-side threshold computation 
 
 ### 4. Consent-time profile unlock
 
-When an RP requests `identity.*` scopes, the consent UI eagerly attempts to decrypt the profile vault. If the vault can't be unlocked:
+When an RP requests `identity.*` scopes, the consent UI requires an explicit "Unlock vault" gesture from the user. The Allow button remains disabled until the vault is successfully unlocked and an identity intent token is obtained.
 
-- **Required identity scopes** → consent is blocked; user must unlock
-- **Optional identity scopes** → consent is allowed with a warning; PII won't be shared
-
-This prevents silent failures where an RP receives an access token with `identity.name` scope but userinfo returns empty claims.
+This prevents silent failures where an RP receives an access token with `identity.name` scope but the id_token contains no PII claims. The vault unlock also ensures the user actively authenticates before any PII disclosure — not just a checkbox click.
 
 ### 5. Verification data is in-memory only
 
@@ -65,7 +62,7 @@ This is intentional: verification is an atomic, single-session process. The flow
 ## Consequences
 
 - **Dashboard name display** works via the profile vault cache (populated after OCR); a short greeting name is cached in `sessionStorage` for post-verification refreshes
-- **OAuth identity claims** flow: profile vault → consent UI decryption → per-RP server encryption → userinfo response
+- **OAuth identity claims** flow: profile vault → consent UI decryption → intent token → ephemeral staging → id_token delivery
 - **No plaintext PII at rest** — not in permanent identity tables, not in `sessionStorage`, not in `localStorage`
 - **FHE encryption is simpler** — only two core attributes (`dob_days`, `liveness_score`)
 - **Schema migration** — `identity_documents` loses two columns; existing data in drafts/signed claims is unaffected

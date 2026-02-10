@@ -135,7 +135,7 @@ Zentity uses two scope families to control what data RPs receive via userinfo. B
 | `compliance:key:read` | Read RP encryption keys for compliance data |
 | `compliance:key:write` | Register/rotate RP encryption keys |
 
-**Identity scopes** (`identity.*`) — actual PII, delivered via **id_token only** (the server has no persistent PII). Full scopes are persisted so the authorization code carries them, then identity scopes are stripped from the consent record so vault unlock is required each time:
+**Identity scopes** (`identity.*`) — actual PII, delivered via **id_token only** (the server has no persistent PII). Identity scopes are never persisted in the consent record — they are filtered out before the consent API call, so vault unlock is required each session:
 
 | Scope | Claims returned |
 |-------|----------------|
@@ -153,16 +153,18 @@ Identity PII (`identity.*` scopes) flows through a three-stage pipeline:
 
 1. **Profile secret creation** — During identity verification (after liveness and face match, before ZK proof generation), extracted PII (name, DOB, document number, nationality, document type, issuing country) is encrypted with the user's credential and stored as a `PROFILE` secret. The credential material (passkey PRF / OPAQUE export key / wallet signature) is cached from the FHE enrollment step that precedes verification. The server stores only opaque encrypted blobs it cannot decrypt.
 
-2. **Consent-time vault unlock** — When the user approves `identity.*` scopes, the consent page must unlock the profile secret. The unlock method depends on the user's credential type, detected server-side from their secret wrappers:
+2. **Consent-time vault unlock** — When the user approves `identity.*` scopes, the consent page requires an explicit vault unlock gesture. The "Unlock vault" button triggers authentication based on the user's credential type, detected server-side from their secret wrappers:
    - **Passkey** — WebAuthn prompt (automatic browser dialog)
    - **Password (OPAQUE)** — Inline password field where the user re-enters their password
    - **Wallet (EIP-712)** — "Sign with Wallet" button requiring a deterministic EIP-712 signature (signed twice and compared, same as FHE enrollment)
 
-   Once unlocked, the consent UI maps profile fields to OIDC claims and sends them to `/api/oauth2/identity/stage`. The stage endpoint holds the claims ephemerally in memory (5min TTL, consumed on read).
+   Once unlocked, the consent UI obtains an **identity intent token** from `/api/oauth2/identity/intent` (120s TTL, binds user + client + scope hash with JTI replay prevention). Then it maps profile fields to OIDC claims and sends them along with the intent token to `/api/oauth2/identity/stage`. The stage endpoint validates the intent token (signature, expiry, scope hash match) and holds the claims ephemerally in memory (5min TTL, consumed on read).
 
-3. **id_token delivery** — When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims and includes only those matching the requested `identity.*` scopes. The claims are never written to persistent storage.
+3. **Never-persist consent** — The consent UI filters out all `identity.*` scopes before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted in the consent record. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
 
-The server never stores plaintext PII. The profile secret is the authoritative PII source and is only decryptable by the user. Identity scopes are stripped from the persisted consent record after the code is issued, so the consent page always reappears when identity scopes are requested.
+4. **id_token delivery** — When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims (keyed by userId, independent of auth code scopes) and includes the claims matching the scopes recorded in the ephemeral store. The claims are then deleted — no persistent PII exists on the server.
+
+The server never stores plaintext PII. The profile secret is the authoritative PII source and is only decryptable by the user.
 
 If the profile vault can't be unlocked at consent time (credential cache expired, user cancels prompt, wallet not connected), the Allow button is disabled until the vault is successfully unlocked. This prevents granting consent for scopes the server can't fulfill — otherwise better-auth would record consent as granted and auto-skip the consent page on future requests, permanently delivering empty tokens to the RP.
 
@@ -236,7 +238,7 @@ This is a separate path from `proof:*` scopes. The scope-based path uses custom 
 
 Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth_consent` with the consented scopes. On subsequent authorize requests, if the row exists and covers all requested scopes, the consent page is skipped. If the RP requests new scopes not in the original grant, the consent page shows again.
 
-**Identity scope stripping**: After consent is recorded, `identity.*` scopes are immediately stripped from the consent record. This means the consent page always reappears when identity scopes are requested — the vault unlock is per-session. Only `proof:*` and standard OIDC scopes persist in the consent record for auto-skip.
+**Identity scope exclusion**: Identity scopes (`identity.*`) are never passed to the consent API. The consent UI filters them out before calling `consent()`, so only `proof:*` and standard OIDC scopes are persisted in the consent record. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
 
 **Forcing re-consent**: RPs can add `prompt=consent` to the authorize URL to force the consent page regardless of prior grants.
 
@@ -244,7 +246,11 @@ Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth
 
 - Scope definitions: `apps/web/src/lib/auth/oidc/proof-scopes.ts`, `apps/web/src/lib/auth/oidc/identity-scopes.ts`
 - Claim filtering: `filterProofClaimsByScopes()`, `filterIdentityByScopes()`
+- Identity intent tokens: `apps/web/src/lib/auth/oidc/identity-intent.ts`
+- OAuth query verification: `apps/web/src/lib/auth/oidc/oauth-query.ts`
 - Ephemeral identity staging: `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts`
+- Intent endpoint: `apps/web/src/app/api/oauth2/identity/intent/route.ts`
+- Stage endpoint: `apps/web/src/app/api/oauth2/identity/stage/route.ts`
 - Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 - id_token hook: `customIdTokenClaims` in `apps/web/src/lib/auth/auth.ts`
 - Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`

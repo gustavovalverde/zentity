@@ -83,11 +83,12 @@ Until the vault is unlocked, the "Allow" button remains disabled. This prevents 
 **Ephemeral identity flow:** After vault unlock, the consent client:
 
 1. Decrypts the user's profile from their credential-wrapped secret
-2. Calls `/api/oauth2/identity/stage` with the decrypted PII and approved scopes
-3. Server validates, normalizes, and scope-filters the claims
-4. Stores the filtered claims in an in-memory ephemeral store (5min TTL, consumed on read)
+2. Obtains an **identity intent token** from `/api/oauth2/identity/intent` (120s TTL, binds user + client + scope hash, JTI replay prevention)
+3. Calls `/api/oauth2/identity/stage` with the decrypted PII, approved scopes, and intent token
+4. Server validates the intent token (signature, expiry, scope hash match) and stores the filtered claims in an in-memory ephemeral store (5min TTL, consumed on read)
+5. Consent UI filters out `identity.*` scopes and calls `consent()` with only `proof:*` and standard OIDC scopes
 
-When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims and includes only those matching the approved `identity.*` scopes. The claims are then gone — no persistent PII exists on the server.
+When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims (keyed by userId, independent of auth code scopes) and includes the claims matching the scopes recorded in the ephemeral store. The claims are then gone — no persistent PII exists on the server.
 
 This means identity PII is:
 
@@ -96,7 +97,7 @@ This means identity PII is:
 * Only accessible during the brief window between consent and token exchange (~seconds)
 * Delivered via id_token, not userinfo — the RP receives PII in the token response, not via a separate API call
 
-**Consent persist-then-strip:** Full scopes (including `identity.*`) are persisted in the consent record so better-auth includes them in the authorization code. Immediately after, `identity.*` scopes are stripped from the consent record. This ensures the consent page reappears whenever identity scopes are requested — vault unlock is per-session, not persistable.
+**Never-persist consent:** Identity scopes are filtered out before the `consent()` API call. Only `proof:*` and standard OIDC scopes are persisted in the consent record. This ensures the consent page reappears whenever identity scopes are requested — vault unlock is per-session.
 
 ### Scope filtering at token and userinfo time
 
@@ -154,7 +155,11 @@ Unowned DCR clients appear in the admin dashboard for optional organizational as
 ## More Information
 
 * Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
+* Identity intent tokens: `apps/web/src/lib/auth/oidc/identity-intent.ts`
+* OAuth query verification: `apps/web/src/lib/auth/oidc/oauth-query.ts`
 * Ephemeral identity staging: `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts`
+* Intent endpoint: `apps/web/src/app/api/oauth2/identity/intent/route.ts`
+* Stage endpoint: `apps/web/src/app/api/oauth2/identity/stage/route.ts`
 * Scope display / grouping: `apps/web/src/lib/auth/oidc/scope-display.ts`
 * Proof scope definitions: `apps/web/src/lib/auth/oidc/proof-scopes.ts`
 * Identity scope definitions: `apps/web/src/lib/auth/oidc/identity-scopes.ts`
