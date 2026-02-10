@@ -17,7 +17,6 @@ services:
         - NEXT_PUBLIC_FHEVM_NETWORK_NAME=${NEXT_PUBLIC_FHEVM_NETWORK_NAME:-fhEVM (Sepolia)}
         - NEXT_PUBLIC_FHEVM_EXPLORER_URL=${NEXT_PUBLIC_FHEVM_EXPLORER_URL:-https://sepolia.etherscan.io}
         - NEXT_PUBLIC_FHEVM_PROVIDER_ID=${NEXT_PUBLIC_FHEVM_PROVIDER_ID:-zama}
-        - NEXT_PUBLIC_ATTESTATION_DEMO=${NEXT_PUBLIC_ATTESTATION_DEMO:-true}
         # Debug flags (baked at build time)
         - NEXT_PUBLIC_APP_ENV=${NEXT_PUBLIC_APP_ENV:-local}
         - NEXT_PUBLIC_NOIR_DEBUG=${NEXT_PUBLIC_NOIR_DEBUG:-true}
@@ -46,7 +45,7 @@ services:
       # BBS+ Credentials (Privacy-Preserving Selective Disclosure)
       - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-}
       - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000,http://localhost:3101,http://localhost:3100
+      - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}
       - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}

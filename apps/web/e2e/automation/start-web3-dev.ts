@@ -120,7 +120,6 @@ function startDevServer(contracts: ContractsEnv) {
     ...(dbPath ? { E2E_DATABASE_PATH: dbPath } : {}),
     NEXT_PUBLIC_ENABLE_HARDHAT: "true",
     NEXT_PUBLIC_ENABLE_FHEVM: "false",
-    NEXT_PUBLIC_ATTESTATION_DEMO: "false",
     NEXT_PUBLIC_COOP: "same-origin-allow-popups",
     LOCAL_RPC_URL: hardhatUrl,
     LOCAL_IDENTITY_REGISTRY: contracts.identityRegistry || "",

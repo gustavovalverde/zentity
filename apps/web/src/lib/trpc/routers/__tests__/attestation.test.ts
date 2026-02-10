@@ -1,21 +1,12 @@
 /**
- * Integration tests for attestation router (demo + error flows).
+ * Integration tests for attestation router.
  */
 
 import type { AssuranceState } from "@/lib/assurance/types";
 import type { Session } from "@/lib/auth/auth";
 
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockIsDemoMode = vi.fn();
 const mockGetEnabledNetworks = vi.fn();
 const mockGetNetworkById = vi.fn();
 const mockCanCreateProvider = vi.fn();
@@ -35,7 +26,6 @@ const mockGetAssuranceState = vi.fn();
 
 // All mocks must be hoisted before any imports
 vi.mock("@/lib/blockchain/networks", () => ({
-  isDemoMode: () => mockIsDemoMode(),
   getEnabledNetworks: (...args: unknown[]) => mockGetEnabledNetworks(...args),
   getNetworkById: (...args: unknown[]) => mockGetNetworkById(...args),
   getExplorerTxUrl: (...args: unknown[]) => mockGetExplorerTxUrl(...args),
@@ -156,54 +146,29 @@ describe("attestation router", () => {
     mockGetAssuranceState.mockResolvedValue(createTier2State());
   });
 
-  afterEach(() => {
-    mockIsDemoMode.mockReset();
-  });
-
-  it("returns demo networks when demo mode is enabled", async () => {
-    mockIsDemoMode.mockReturnValue(true);
+  it("returns networks with attestation status", async () => {
     mockGetEnabledNetworks.mockReturnValue([
       {
-        id: "demo_fhevm",
-        name: "fhEVM Demo",
+        id: "fhevm_sepolia",
+        name: "fhEVM (Sepolia)",
         chainId: 11_155_111,
         type: "fhevm",
         features: ["encrypted"],
         explorer: "https://sepolia.etherscan.io",
-        contracts: { identityRegistry: "0xDemo" },
+        contracts: { identityRegistry: "0xABC" },
         enabled: true,
       },
     ]);
+    mockGetBlockchainAttestationsByUserId.mockResolvedValue([]);
 
     const caller = await createCaller(authedSession);
     const result = await caller.networks();
 
-    expect(result.demo).toBe(true);
     expect(result.networks).toHaveLength(1);
-    expect(result.networks[0]?.id).toBe("demo_fhevm");
-  });
-
-  it("returns demo submission when demo mode is enabled", async () => {
-    mockIsDemoMode.mockReturnValue(true);
-    const caller = await createCaller(authedSession);
-
-    vi.useFakeTimers();
-    const promise = caller.submit({
-      networkId: "demo_fhevm",
-      walletAddress: "0x0000000000000000000000000000000000000001",
-      birthYearOffset: 90,
-    });
-    await vi.runAllTimersAsync();
-    const result = await promise;
-    vi.useRealTimers();
-
-    expect(result.demo).toBe(true);
-    expect(result.status).toBe("confirmed");
-    expect(result.txHash?.startsWith("0xdemo")).toBe(true);
+    expect(result.networks[0]?.id).toBe("fhevm_sepolia");
   });
 
   it("rejects submission when user lacks required tier", async () => {
-    // User at Tier 1 trying to access attestation (requires Tier 2 + strong auth)
     mockGetAssuranceState.mockResolvedValue(createTier1State());
 
     const caller = await createCaller(authedSession);
@@ -217,7 +182,6 @@ describe("attestation router", () => {
   });
 
   it("rejects submission when network is unavailable", async () => {
-    mockIsDemoMode.mockReturnValue(false);
     mockGetVerificationStatus.mockReturnValue({
       verified: true,
       level: "full",

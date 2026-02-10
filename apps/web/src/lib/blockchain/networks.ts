@@ -9,10 +9,6 @@
  * 2. Set type to "fhevm" (encrypted)
  * 3. Configure contracts addresses via env vars
  * 4. Enable via NEXT_PUBLIC_ENABLE_{NETWORK}=true
- *
- * Demo Mode:
- * Set NEXT_PUBLIC_ATTESTATION_DEMO=true to enable demo networks
- * without requiring deployed contracts. Useful for UI development.
  */
 import "server-only";
 
@@ -193,43 +189,9 @@ const NETWORKS: Record<string, NetworkConfig> = {
 };
 
 /**
- * Demo networks for UI development without deployed contracts.
- * These are only shown when NEXT_PUBLIC_ATTESTATION_DEMO=true.
- */
-const DEMO_NETWORKS: NetworkConfig[] = [
-  {
-    id: "demo_fhevm",
-    name: "fhEVM Demo",
-    chainId: FHEVM_CHAIN_ID,
-    rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
-    type: "fhevm",
-    providerId: FHEVM_PROVIDER_ID,
-    features: ["encrypted"],
-    contracts: {
-      identityRegistry: "0xDEMO000000000000000000000000000000000001",
-    },
-    explorer: "https://sepolia.etherscan.io",
-    enabled: true,
-  },
-];
-
-/**
- * Check if demo mode is enabled.
- * Demo mode shows mock networks for UI development.
- */
-export function isDemoMode(): boolean {
-  return process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true";
-}
-
-/**
  * Get all networks that are enabled and have contracts configured.
- * In demo mode, returns demo networks instead.
  */
 export function getEnabledNetworks(): NetworkConfig[] {
-  if (isDemoMode()) {
-    return DEMO_NETWORKS;
-  }
-
   return Object.values(NETWORKS).filter(
     (network) => network.enabled && network.contracts.identityRegistry
   );

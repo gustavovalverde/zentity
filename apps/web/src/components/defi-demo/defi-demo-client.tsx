@@ -53,9 +53,6 @@ export function DefiDemoClient({
     });
   }, []);
 
-  // In demo mode (Hardhat), skip wallet mismatch check for easier testing
-  const isDemoMode = process.env.NEXT_PUBLIC_ATTESTATION_DEMO === "true";
-
   // Fetch available networks with CompliantERC20
   const { data: networks, isLoading: networksLoading } =
     trpcReact.token.networks.useQuery();
@@ -72,12 +69,10 @@ export function DefiDemoClient({
   const activeNetworkId = selectedNetworkData?.id;
   const resolvedNetworkId = activeNetworkId ?? "";
 
-  const requiresAccessGrant =
-    !isDemoMode &&
-    Boolean(
-      selectedNetworkData?.complianceRules &&
-        selectedNetworkData?.identityRegistry
-    );
+  const requiresAccessGrant = Boolean(
+    selectedNetworkData?.complianceRules &&
+      selectedNetworkData?.identityRegistry
+  );
 
   // Check on-chain attestation status (validates DB record against actual contract)
   const { data: attestationStatus, isLoading: attestationLoading } =
@@ -87,17 +82,14 @@ export function DefiDemoClient({
         address: address ?? "",
       },
       {
-        enabled: Boolean(activeNetworkId && address && !isDemoMode),
+        enabled: Boolean(activeNetworkId && address),
         staleTime: 30_000,
       }
     );
 
   // If DB says attested but on-chain says not, user needs to re-attest
   const needsReAttestation =
-    !isDemoMode &&
-    attestedNetworkId &&
-    attestationStatus &&
-    !attestationStatus.isAttested;
+    attestedNetworkId && attestationStatus && !attestationStatus.isAttested;
 
   const { data: complianceAccess } = trpcReact.token.complianceAccess.useQuery(
     {
@@ -106,24 +98,18 @@ export function DefiDemoClient({
     },
     {
       enabled: Boolean(
-        requiresAccessGrant &&
-          activeNetworkId &&
-          address &&
-          !isDemoMode &&
-          !needsReAttestation
+        requiresAccessGrant && activeNetworkId && address && !needsReAttestation
       ),
     }
   );
 
-  const hasComplianceAccess = isDemoMode
-    ? true
-    : Boolean(complianceAccess?.granted);
-  const complianceTxHash =
-    isDemoMode || !complianceAccess?.granted ? null : complianceAccess?.txHash;
-  const complianceExplorerUrl =
-    isDemoMode || !complianceAccess?.granted
-      ? null
-      : complianceAccess?.explorerUrl;
+  const hasComplianceAccess = Boolean(complianceAccess?.granted);
+  const complianceTxHash = complianceAccess?.granted
+    ? complianceAccess?.txHash
+    : null;
+  const complianceExplorerUrl = complianceAccess?.granted
+    ? complianceAccess?.explorerUrl
+    : null;
 
   const handleAccessGranted = () => {
     if (activeNetworkId && address) {
@@ -134,7 +120,6 @@ export function DefiDemoClient({
         },
         {
           granted: true,
-          demo: false,
           txHash: null,
           blockNumber: null,
           explorerUrl: null,
@@ -149,9 +134,7 @@ export function DefiDemoClient({
 
   const accessReady = !requiresAccessGrant || hasComplianceAccess;
 
-  // Check if wallet matches attested wallet (skip in demo mode for easier testing)
   const walletMismatch =
-    !isDemoMode &&
     attestedWallet &&
     address &&
     attestedWallet.toLowerCase() !== address.toLowerCase();
@@ -252,7 +235,7 @@ export function DefiDemoClient({
   }
 
   // Loading attestation status
-  if (attestationLoading && !isDemoMode) {
+  if (attestationLoading) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center gap-3 py-8">

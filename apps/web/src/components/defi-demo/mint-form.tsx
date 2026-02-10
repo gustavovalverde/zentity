@@ -163,7 +163,7 @@ export function MintForm({
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
               <p className="font-medium">Tokens minted successfully!</p>
-              {mintMutation.data.txHash && !mintMutation.data.demo ? (
+              {mintMutation.data.txHash ? (
                 <a
                   className="mt-1 flex items-center gap-1 text-xs hover:underline"
                   href={`https://sepolia.etherscan.io/tx/${mintMutation.data.txHash}`}

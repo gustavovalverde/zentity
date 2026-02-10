@@ -60,7 +60,6 @@ function startDevServer() {
     ...process.env,
     NEXT_PUBLIC_ENABLE_HARDHAT: "false",
     NEXT_PUBLIC_ENABLE_FHEVM: "false",
-    NEXT_PUBLIC_ATTESTATION_DEMO: "false",
     NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT: "false",
     NEXT_PUBLIC_APPKIT_ENABLE_INJECTED: "false",
     NEXT_PUBLIC_APPKIT_ENABLE_EIP6963: "false",

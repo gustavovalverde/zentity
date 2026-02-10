@@ -101,9 +101,7 @@ export function OnChainAttestation({
     enabled: isVerified,
   });
 
-  // Extract networks array and demo flag from response
   const networks = networksData?.networks;
-  const isDemo = networksData?.demo ?? false;
 
   // Submit attestation mutation
   const submitMutation = trpcReact.attestation.submit.useMutation({
@@ -178,7 +176,7 @@ export function OnChainAttestation({
       },
       {
         enabled: Boolean(
-          showComplianceAccess && selectedNetworkData?.id && address && !isDemo
+          showComplianceAccess && selectedNetworkData?.id && address
         ),
         staleTime: 30_000,
       }
@@ -186,12 +184,8 @@ export function OnChainAttestation({
 
   // If DB says attested but on-chain says not, user needs to re-attest
   const needsReAttestation = useMemo(
-    () =>
-      !isDemo &&
-      showComplianceAccess &&
-      onChainStatus &&
-      !onChainStatus.isAttested,
-    [isDemo, showComplianceAccess, onChainStatus]
+    () => showComplianceAccess && onChainStatus && !onChainStatus.isAttested,
+    [showComplianceAccess, onChainStatus]
   );
 
   // Only show compliance card if actually attested on-chain (or still loading)
@@ -207,16 +201,18 @@ export function OnChainAttestation({
     },
     {
       enabled: Boolean(
-        showComplianceCard && selectedNetworkData?.id && address && !isDemo
+        showComplianceCard && selectedNetworkData?.id && address
       ),
     }
   );
 
-  const complianceGranted = isDemo ? true : Boolean(complianceAccess?.granted);
-  const complianceTxHash =
-    isDemo || !complianceAccess?.granted ? null : complianceAccess?.txHash;
-  const complianceExplorerUrl =
-    isDemo || !complianceAccess?.granted ? null : complianceAccess?.explorerUrl;
+  const complianceGranted = Boolean(complianceAccess?.granted);
+  const complianceTxHash = complianceAccess?.granted
+    ? complianceAccess?.txHash
+    : null;
+  const complianceExplorerUrl = complianceAccess?.granted
+    ? complianceAccess?.explorerUrl
+    : null;
 
   // Auto-select first network if none selected
   useEffect(() => {
@@ -305,11 +301,6 @@ export function OnChainAttestation({
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">On-Chain Attestation</CardTitle>
-              {isDemo ? (
-                <Badge className="ml-2" variant="warning">
-                  DEMO
-                </Badge>
-              ) : null}
               {confirmedCount > 0 && (
                 <Badge className="ml-2" variant="secondary">
                   {confirmedCount} network{confirmedCount !== 1 ? "s" : ""}
@@ -356,7 +347,6 @@ export function OnChainAttestation({
               }}
               isCheckingOnChain={isCheckingOnChain}
               isConnected={isConnected}
-              isDemo={isDemo}
               isRefreshing={refreshMutation.isPending}
               isSubmitting={submitMutation.isPending}
               needsReAttestation={needsReAttestation ?? false}
@@ -416,7 +406,6 @@ interface AttestationContentBodyProps {
   isConnected: boolean;
   networksLoading: boolean;
   networks: ApiNetworkStatus[] | undefined;
-  isDemo: boolean;
   walletChanged: boolean;
   address: string | undefined;
   selectedNetwork: string | null;
@@ -445,7 +434,6 @@ const AttestationContentBody = memo(function AttestationContentBody({
   isConnected,
   networksLoading,
   networks,
-  isDemo,
   walletChanged,
   address,
   selectedNetwork,
@@ -508,16 +496,6 @@ const AttestationContentBody = memo(function AttestationContentBody({
   // Main content: Networks loaded and available
   return (
     <>
-      {isDemo ? (
-        <Alert variant="warning">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Demo Mode</strong> - No real blockchain transactions.
-            Configure contract addresses for production use.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
       {walletChanged ? (
         <Alert variant="warning">
           <AlertTriangle className="h-4 w-4" />

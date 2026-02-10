@@ -39,12 +39,6 @@ function getAllowedOrigins(): string[] {
     origins.add("http://localhost:3000");
     origins.add("http://127.0.0.1:3000");
     origins.add("http://[::1]:3000");
-    origins.add("http://localhost:3100");
-    origins.add("http://127.0.0.1:3100");
-    origins.add("http://[::1]:3100");
-    origins.add("http://localhost:3101");
-    origins.add("http://127.0.0.1:3101");
-    origins.add("http://[::1]:3101");
   }
   return Array.from(origins);
 }

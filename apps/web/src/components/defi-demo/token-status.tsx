@@ -7,7 +7,6 @@
  */
 import { CheckCircle, Coins } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -54,7 +53,6 @@ export function TokenStatus({
             <Coins className="h-5 w-5 text-primary" />
             <CardTitle className="text-lg">Token Info</CardTitle>
           </div>
-          {tokenInfo?.demo ? <Badge variant="warning">DEMO</Badge> : null}
         </div>
         <CardDescription>CompliantERC20 contract details</CardDescription>
       </CardHeader>

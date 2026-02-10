@@ -22,7 +22,6 @@ import {
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
-  isDemoMode,
 } from "@/lib/blockchain/networks";
 import {
   canCreateProvider,
@@ -83,20 +82,6 @@ export const tokenRouter = router({
   info: protectedProcedure
     .input(z.object({ networkId: z.string() }))
     .query(async ({ input }) => {
-      // Demo mode: return mock data
-      if (isDemoMode()) {
-        return {
-          name: "Zentity Token",
-          symbol: "ZTY",
-          decimals: 18,
-          totalSupply: "100000000000000000000000", // 100,000 tokens
-          remainingSupply: "18446744073709551615", // Unlimited in demo
-          remainingTokens: 18.4,
-          contractAddress: "0xDEMO000000000000000000000000000000000003",
-          demo: true,
-        };
-      }
-
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
         throw new TRPCError({
@@ -162,7 +147,6 @@ export const tokenRouter = router({
           remainingSupply: remaining.toString(),
           remainingTokens,
           contractAddress,
-          demo: false,
         };
       } catch (error) {
         throw new TRPCError({
@@ -186,20 +170,6 @@ export const tokenRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Demo mode: simulate minting
-      if (isDemoMode()) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, 1000 + Math.random() * 1000)
-        );
-        const mockTxHash =
-          `0xdemo${Date.now().toString(16)}${"0".repeat(40)}`.slice(0, 66);
-        return {
-          success: true,
-          txHash: mockTxHash,
-          demo: true,
-        };
-      }
-
       // Tier guard ensures user is verified (Tier 3 + AAL2)
 
       // Check attestation on this network
@@ -327,7 +297,6 @@ export const tokenRouter = router({
         return {
           success: true,
           txHash,
-          demo: false,
         };
       } catch (error) {
         throw new TRPCError({
@@ -349,21 +318,16 @@ export const tokenRouter = router({
       })
     )
     .query(async ({ input }) => {
-      // Demo mode
-      if (isDemoMode()) {
-        return { isAttested: true, demo: true };
-      }
-
       if (!canCreateProvider(input.networkId)) {
-        return { isAttested: false, demo: false };
+        return { isAttested: false };
       }
 
       try {
         const provider = createProvider(input.networkId);
         const status = await provider.getAttestationStatus(input.address);
-        return { isAttested: status.isAttested, demo: false };
+        return { isAttested: status.isAttested };
       } catch {
-        return { isAttested: false, demo: false };
+        return { isAttested: false };
       }
     }),
 
@@ -380,22 +344,6 @@ export const tokenRouter = router({
       })
     )
     .query(async ({ input }) => {
-      // Demo mode
-      if (isDemoMode()) {
-        return {
-          transfers: [
-            {
-              txHash: "0xdemo1...",
-              from: "0x0000...0000",
-              to: input.walletAddress,
-              blockNumber: 12_345,
-              type: "mint" as const,
-            },
-          ],
-          demo: true,
-        };
-      }
-
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
         throw new TRPCError({
@@ -406,7 +354,7 @@ export const tokenRouter = router({
 
       const contractAddress = network.contracts.compliantERC20;
       if (!contractAddress) {
-        return { transfers: [], demo: false };
+        return { transfers: [] };
       }
 
       const chain = VIEM_CHAINS[network.chainId as keyof typeof VIEM_CHAINS];
@@ -497,7 +445,7 @@ export const tokenRouter = router({
           .toSorted((a, b) => b.blockNumber - a.blockNumber)
           .slice(0, input.limit);
 
-        return { transfers: sorted, demo: false };
+        return { transfers: sorted };
       } catch (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -518,17 +466,6 @@ export const tokenRouter = router({
       })
     )
     .query(async ({ input }) => {
-      // Demo mode
-      if (isDemoMode()) {
-        return {
-          granted: true,
-          demo: true,
-          txHash: null,
-          blockNumber: null,
-          explorerUrl: null,
-        };
-      }
-
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
         throw new TRPCError({
@@ -542,7 +479,6 @@ export const tokenRouter = router({
       if (!(identityRegistry && complianceRules)) {
         return {
           granted: false,
-          demo: false,
           txHash: null,
           blockNumber: null,
           explorerUrl: null,
@@ -605,7 +541,6 @@ export const tokenRouter = router({
 
         return {
           granted: logs.length > 0,
-          demo: false,
           txHash,
           blockNumber,
           explorerUrl: txHash

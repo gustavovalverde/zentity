@@ -38,7 +38,7 @@ Monorepo with services communicating via REST APIs:
 Additional apps (not core services):
 
 - `apps/landing` — Marketing landing page (deploys to Vercel)
-- `apps/demo-hub` / `apps/demo-wallet` — Demo applications for integration testing
+- `apps/demo-rp` — Demo relying party for OAuth integration testing
 
 The frontend handles:
 

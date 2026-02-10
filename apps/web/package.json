@@ -11,7 +11,6 @@
     "preinstall": "mkdir -p dist/plugins/two-factor && chmod -R 755 dist 2>/dev/null || true",
     "setup:coep-assets": "pnpm exec tsx scripts/setup-coep-assets.ts",
     "dev": "pnpm run setup:coep-assets && node --max-old-space-size=8192 --import tsx server.mjs",
-    "dev:demo": "BETTER_AUTH_URL=http://host.docker.internal:3000 pnpm run dev",
     "build": "pnpm run setup:coep-assets && next build",
     "start": "node --import tsx server.mjs",
     "clean": "rm -rf .next test-results playwright-report coverage",

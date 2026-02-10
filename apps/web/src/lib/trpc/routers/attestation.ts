@@ -23,7 +23,6 @@ import {
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
-  isDemoMode,
 } from "@/lib/blockchain/networks";
 import {
   canCreateProvider,
@@ -85,55 +84,44 @@ function checkRateLimit(userId: string, networkId: string): boolean {
 export const attestationRouter = router({
   /**
    * List all enabled networks with user's attestation status on each.
-   * Used to show network selector UI.
-   * Returns demo flag to indicate if running in demo mode.
    */
   networks: protectedProcedure.query(async ({ ctx }) => {
     const networks = getEnabledNetworks();
-    const isDemo = isDemoMode();
+    const attestations =
+      (await getBlockchainAttestationsByUserId(ctx.userId)) ?? [];
 
-    // In demo mode, skip DB lookup (no real attestations)
-    const attestations = isDemo
-      ? []
-      : ((await getBlockchainAttestationsByUserId(ctx.userId)) ?? []);
-
-    // Map attestations by network ID for quick lookup
     const attestationMap = new Map(attestations.map((a) => [a.networkId, a]));
 
-    const mappedNetworks = networks.map((network) => {
-      const attestation = attestationMap.get(network.id);
-      const explorerUrl = attestation?.txHash
-        ? getExplorerTxUrl(network.id, attestation.txHash)
-        : undefined;
-
-      return {
-        id: network.id,
-        name: network.name,
-        chainId: network.chainId,
-        type: network.type,
-        features: network.features,
-        explorer: network.explorer,
-        // Contract address for client-side reads (public info)
-        identityRegistry: network.contracts.identityRegistry || null,
-        complianceRules: network.contracts.complianceRules || null,
-        attestation: attestation
-          ? {
-              id: attestation.id,
-              status: attestation.status,
-              txHash: attestation.txHash,
-              blockNumber: attestation.blockNumber,
-              confirmedAt: attestation.confirmedAt,
-              errorMessage: attestation.errorMessage,
-              explorerUrl,
-              walletAddress: attestation.walletAddress,
-            }
-          : null,
-      };
-    });
-
     return {
-      networks: mappedNetworks,
-      demo: isDemo,
+      networks: networks.map((network) => {
+        const attestation = attestationMap.get(network.id);
+        const explorerUrl = attestation?.txHash
+          ? getExplorerTxUrl(network.id, attestation.txHash)
+          : undefined;
+
+        return {
+          id: network.id,
+          name: network.name,
+          chainId: network.chainId,
+          type: network.type,
+          features: network.features,
+          explorer: network.explorer,
+          identityRegistry: network.contracts.identityRegistry || null,
+          complianceRules: network.contracts.complianceRules || null,
+          attestation: attestation
+            ? {
+                id: attestation.id,
+                status: attestation.status,
+                txHash: attestation.txHash,
+                blockNumber: attestation.blockNumber,
+                confirmedAt: attestation.confirmedAt,
+                errorMessage: attestation.errorMessage,
+                explorerUrl,
+                walletAddress: attestation.walletAddress,
+              }
+            : null,
+        };
+      }),
     };
   }),
 
@@ -174,7 +162,6 @@ export const attestationRouter = router({
    * - No existing confirmed attestation on this network
    * - Rate limit not exceeded
    *
-   * In demo mode, simulates a successful submission.
    */
   submit: protectedProcedure
     .use(requireFeature("attestation"))
@@ -186,26 +173,6 @@ export const attestationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Demo mode: simulate successful attestation
-      if (isDemoMode()) {
-        // Simulate network delay (1-2 seconds)
-        await new Promise((resolve) =>
-          setTimeout(resolve, 1000 + Math.random() * 1000)
-        );
-
-        // Generate mock transaction hash
-        const mockTxHash =
-          `0xdemo${Date.now().toString(16)}${"0".repeat(40)}`.slice(0, 66);
-
-        return {
-          success: true,
-          status: "confirmed" as const,
-          txHash: mockTxHash,
-          explorerUrl: `https://sepolia.etherscan.io/tx/${mockTxHash}`,
-          demo: true,
-        };
-      }
-
       // Tier guard ensures user is verified (Tier 3 + AAL2)
       // Get identity document and verification status for attestation data
       const [verificationStatus, identityDocument] = await Promise.all([
