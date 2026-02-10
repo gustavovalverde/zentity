@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useChainId, useSignTypedData } from "wagmi";
 
+import { Web3Provider } from "@/components/providers/web3-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -245,13 +246,15 @@ export function BindingAuthDialog({
           )}
 
           {authMode === "wallet" && wallet && (
-            <WalletSignButton
-              onStageChange={setStage}
-              onSuccess={onSuccess}
-              stage={stage}
-              userId={userId}
-              wallet={wallet}
-            />
+            <Web3Provider cookies={null}>
+              <WalletSignButton
+                onStageChange={setStage}
+                onSuccess={onSuccess}
+                stage={stage}
+                userId={userId}
+                wallet={wallet}
+              />
+            </Web3Provider>
           )}
 
           {authMode === "wallet" && !wallet && (

@@ -27,7 +27,6 @@ import {
 } from "@/lib/auth/oidc/claims";
 import { consumeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
-  extractIdentityScopes,
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPES,
@@ -606,18 +605,13 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customIdTokenClaims: ({ user, scopes }) => {
-        const scopeList: string[] = Array.isArray(scopes) ? scopes : [];
-        if (extractIdentityScopes(scopeList).length === 0) {
-          return {};
-        }
-
+      customIdTokenClaims: ({ user }) => {
         const ephemeral = consumeEphemeralClaims(user.id);
         if (!ephemeral) {
           return {};
         }
 
-        return filterIdentityByScopes(ephemeral.claims, scopeList);
+        return filterIdentityByScopes(ephemeral.claims, ephemeral.scopes);
       },
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList: string[] = Array.isArray(scopes) ? scopes : [];

@@ -57,8 +57,20 @@ export const eip712AuthClient = () => ({
             );
           }
 
-          // Step 2: Sign typed data with wallet
-          const signature = await params.signTypedData(nonceRes.data.typedData);
+          // Step 2: Enforce deterministic wallet signatures before registration.
+          // This blocks wallet onboarding for non-deterministic signers.
+          const signature1 = await params.signTypedData(
+            nonceRes.data.typedData
+          );
+          const signature2 = await params.signTypedData(
+            nonceRes.data.typedData
+          );
+          if (signature1 !== signature2) {
+            throw new Error(
+              "wallet_nondeterministic: Wallet does not produce deterministic signatures. " +
+                "Sign up with a wallet that supports RFC 6979."
+            );
+          }
 
           // Step 3: Register with server
           const registerRes = await $fetch<{
@@ -67,7 +79,7 @@ export const eip712AuthClient = () => ({
           }>("/sign-up/eip712/register", {
             method: "POST",
             body: {
-              signature,
+              signature: signature1,
               address: params.address,
               chainId: params.chainId,
               nonce: nonceRes.data.nonce,

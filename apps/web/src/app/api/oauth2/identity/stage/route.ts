@@ -1,15 +1,21 @@
-import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth";
 import { storeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
+  createScopeHash,
+  verifyIdentityIntentToken,
+} from "@/lib/auth/oidc/identity-intent";
+import {
   extractIdentityScopes,
   filterIdentityByScopes,
   type IdentityFields,
 } from "@/lib/auth/oidc/identity-scopes";
-import { getBetterAuthSecret } from "@/lib/utils/env";
+import {
+  parseRequestedScopes,
+  verifySignedOAuthQuery,
+} from "@/lib/auth/oidc/oauth-query";
 
 const IdentityAddressSchema = z
   .object({
@@ -41,6 +47,7 @@ const StageSchema = z.object({
   oauth_query: z.string().min(1),
   scopes: z.array(z.string()).min(1),
   identity: IdentityFieldsSchema.optional(),
+  intent_token: z.string().min(1).optional(),
 });
 
 function normalizeIdentityFields(
@@ -95,28 +102,6 @@ function normalizeIdentityFields(
   return normalized;
 }
 
-async function verifySignedOAuthQuery(query: string): Promise<URLSearchParams> {
-  const params = new URLSearchParams(query);
-  const sig = params.get("sig");
-  const exp = Number(params.get("exp"));
-  params.delete("sig");
-
-  const verifySig = await makeSignature(
-    params.toString(),
-    getBetterAuthSecret()
-  );
-  if (
-    !(sig && constantTimeEqual(sig, verifySig)) ||
-    Number.isNaN(exp) ||
-    new Date(exp * 1000) < new Date()
-  ) {
-    throw new Error("invalid_signature");
-  }
-
-  params.delete("exp");
-  return params;
-}
-
 export async function POST(request: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) {
@@ -141,7 +126,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { oauth_query, scopes, identity } = parsed.data;
+  const { oauth_query, scopes, identity, intent_token } = parsed.data;
 
   let queryParams: URLSearchParams;
   try {
@@ -155,10 +140,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Missing client_id" }, { status: 400 });
   }
 
-  const requestedScopes = (queryParams.get("scope") ?? "")
-    .split(" ")
-    .map((scope) => scope.trim())
-    .filter(Boolean);
+  const requestedScopes = parseRequestedScopes(queryParams);
   const requestedScopeSet = new Set(requestedScopes);
 
   for (const scope of scopes) {
@@ -175,6 +157,41 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ staged: false });
   }
 
+  if (!intent_token) {
+    return NextResponse.json(
+      { error: "Missing intent_token for identity scopes" },
+      { status: 400 }
+    );
+  }
+
+  let intentPayload: Awaited<ReturnType<typeof verifyIdentityIntentToken>>;
+  try {
+    intentPayload = await verifyIdentityIntentToken(intent_token);
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid or expired intent token" },
+      { status: 400 }
+    );
+  }
+
+  if (intentPayload.userId !== session.user.id) {
+    return NextResponse.json(
+      { error: "Intent token does not match current user" },
+      { status: 403 }
+    );
+  }
+
+  const scopeHash = createScopeHash(scopes);
+  if (
+    intentPayload.clientId !== clientId ||
+    intentPayload.scopeHash !== scopeHash
+  ) {
+    return NextResponse.json(
+      { error: "Intent token does not match request context" },
+      { status: 400 }
+    );
+  }
+
   const normalizedIdentity = normalizeIdentityFields(identity ?? {});
   const filteredIdentity = filterIdentityByScopes(
     normalizedIdentity,
@@ -185,7 +202,28 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ staged: false });
   }
 
-  storeEphemeralClaims(session.user.id, filteredIdentity, scopes);
+  const stored = storeEphemeralClaims(
+    session.user.id,
+    filteredIdentity,
+    scopes,
+    {
+      clientId,
+      scopeHash,
+      intentJti: intentPayload.jti,
+    }
+  );
+  if (!stored.ok) {
+    if (stored.reason === "intent_reused") {
+      return NextResponse.json(
+        { error: "Identity intent token has already been used" },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      { error: "An active identity stage already exists for this user" },
+      { status: 409 }
+    );
+  }
 
   return NextResponse.json({ staged: true });
 }

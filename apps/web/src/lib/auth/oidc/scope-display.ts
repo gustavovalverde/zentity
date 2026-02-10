@@ -28,12 +28,12 @@ export interface ScopeGroup {
 
 export function groupScopes(scopes: string[]): ScopeGroup[] {
   const account: string[] = [];
-  const vc: string[] = [];
+  const proofs: string[] = [];
   const identity: string[] = [];
 
   for (const scope of scopes) {
     if (isProofScope(scope)) {
-      vc.push(scope);
+      proofs.push(scope);
     } else if (isIdentityScope(scope)) {
       identity.push(scope);
     } else {
@@ -45,11 +45,11 @@ export function groupScopes(scopes: string[]): ScopeGroup[] {
   if (account.length > 0) {
     groups.push({ label: "Account", icon: KeyRound, scopes: account });
   }
-  if (vc.length > 0) {
+  if (proofs.length > 0) {
     groups.push({
       label: "Verification proofs",
       icon: BadgeCheck,
-      scopes: vc,
+      scopes: proofs,
     });
   }
   if (identity.length > 0) {

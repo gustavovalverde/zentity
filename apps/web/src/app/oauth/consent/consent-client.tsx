@@ -39,10 +39,10 @@ import {
   signatureToBytes,
 } from "@/lib/privacy/credentials";
 import {
-  getProfileSnapshot,
   getStoredProfile,
   getStoredProfileWithCredential,
   type ProfileSecretPayload,
+  resetProfileSecretCache,
 } from "@/lib/privacy/secrets/profile";
 
 interface ClientMeta {
@@ -50,6 +50,14 @@ interface ClientMeta {
   icon: string | null;
   uri: string | null;
 }
+
+interface IdentityIntentState {
+  token: string;
+  expiresAt: number;
+  scopeKey: string;
+}
+
+const INTENT_EXPIRY_GRACE_MS = 2000;
 
 function buildIdentityPayload(profile: ProfileSecretPayload) {
   const fullName =
@@ -88,6 +96,12 @@ function isHttpsUrl(url: string): boolean {
   }
 }
 
+function buildScopeKey(scopes: string[]): string {
+  return [...new Set(scopes.map((scope) => scope.trim()).filter(Boolean))]
+    .sort()
+    .join(" ");
+}
+
 function ClientAvatar({ meta }: { meta: ClientMeta | null }) {
   const safeIcon = meta?.icon && isHttpsUrl(meta.icon) ? meta.icon : null;
 
@@ -117,6 +131,7 @@ type VaultErrorCategory =
   | "cancelled"
   | "session_expired"
   | "wallet_needed"
+  | "wallet_nondeterministic"
   | "unknown";
 
 interface VaultError {
@@ -157,6 +172,11 @@ const VAULT_ERRORS: Record<
     title: "Wallet signature needed to unlock your vault.",
     remedy: "Connect your wallet and approve the access request.",
   },
+  wallet_nondeterministic: {
+    title: "This wallet does not produce deterministic signatures.",
+    remedy:
+      "Use a passkey/password unlock method, or switch to a wallet that supports RFC 6979.",
+  },
   unknown: {
     title: "Unable to unlock your identity vault.",
     remedy: "",
@@ -188,6 +208,12 @@ function classifyVaultError(error: unknown): VaultError {
     msg.includes("sign in again")
   ) {
     category = "session_expired";
+  } else if (
+    msg.includes("wallet_nondeterministic") ||
+    msg.includes("deterministic signatures") ||
+    msg.includes("RFC 6979")
+  ) {
+    category = "wallet_nondeterministic";
   } else if (msg.includes("sign the key access request with your wallet")) {
     category = "wallet_needed";
   }
@@ -304,7 +330,7 @@ function WalletVaultUnlockButton({
 
       if (signature1 !== signature2) {
         throw new Error(
-          "Wallet does not produce deterministic signatures. " +
+          "wallet_nondeterministic: Wallet does not produce deterministic signatures. " +
             "Encryption requires a wallet that implements RFC 6979."
         );
       }
@@ -517,14 +543,35 @@ export function OAuthConsentClient({
   // --- Profile unlock for identity scopes ---
   const [vaultState, setVaultState] = useState<VaultState>({ status: "idle" });
   const profileRef = useRef<ProfileSecretPayload | null>(null);
+  const [identityIntent, setIdentityIntent] =
+    useState<IdentityIntentState | null>(null);
+  const [intentLoading, setIntentLoading] = useState(false);
+  const [intentError, setIntentError] = useState<string | null>(null);
 
   const hasApprovedIdentityScopes = useMemo(
     () => approvedScopes.some(isIdentityScope),
     [approvedScopes]
   );
+  const approvedScopeKey = useMemo(
+    () => buildScopeKey(approvedScopes),
+    [approvedScopes]
+  );
+  const hasValidIdentityIntent = useMemo(() => {
+    if (!identityIntent) {
+      return false;
+    }
+    if (identityIntent.scopeKey !== approvedScopeKey) {
+      return false;
+    }
+    return (
+      identityIntent.expiresAt * 1000 > Date.now() + INTENT_EXPIRY_GRACE_MS
+    );
+  }, [identityIntent, approvedScopeKey]);
 
   const handleProfileLoaded = useCallback((profile: ProfileSecretPayload) => {
     profileRef.current = profile;
+    setIntentError(null);
+    setIdentityIntent(null);
     setVaultState({ status: "loaded" });
   }, []);
 
@@ -538,6 +585,8 @@ export function OAuthConsentClient({
     }
     console.error(`[consent] Vault unlock failed (${name}): ${msg}`);
     profileRef.current = null;
+    setIdentityIntent(null);
+    setIntentError(null);
     setVaultState({ status: "error", error: classifyVaultError(err) });
   }, []);
 
@@ -560,22 +609,93 @@ export function OAuthConsentClient({
     }
   }, [handleProfileLoaded, handleVaultError]);
 
-  // Check synchronous cache on mount — avoids credential prompt without user gesture
-  const cacheChecked = useRef(false);
+  const fetchIdentityIntent = useCallback(async () => {
+    const oauthQuery = getSignedOAuthQuery();
+    if (!oauthQuery) {
+      throw new Error("Missing OAuth context for identity consent.");
+    }
+
+    setIntentLoading(true);
+    setIntentError(null);
+    try {
+      const response = await fetch("/api/oauth2/identity/intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oauth_query: oauthQuery,
+          scopes: approvedScopes,
+        }),
+      });
+
+      const body = (await response.json().catch(() => null)) as {
+        intent_token?: string;
+        expires_at?: number;
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Unable to prepare identity consent.");
+      }
+
+      if (
+        !body ||
+        typeof body.intent_token !== "string" ||
+        typeof body.expires_at !== "number"
+      ) {
+        throw new Error("Identity consent token response was invalid.");
+      }
+
+      setIdentityIntent({
+        token: body.intent_token,
+        expiresAt: body.expires_at,
+        scopeKey: approvedScopeKey,
+      });
+    } catch (err) {
+      setIdentityIntent(null);
+      setIntentError(
+        err instanceof Error
+          ? err.message
+          : "Unable to prepare identity consent."
+      );
+    } finally {
+      setIntentLoading(false);
+    }
+  }, [approvedScopeKey, approvedScopes]);
+
   useEffect(() => {
-    if (!hasApprovedIdentityScopes || cacheChecked.current) {
+    if (!hasApprovedIdentityScopes) {
+      profileRef.current = null;
+      setIdentityIntent(null);
+      setIntentError(null);
+      setIntentLoading(false);
+      setVaultState({ status: "idle" });
       return;
     }
-    cacheChecked.current = true;
 
-    const cached = getProfileSnapshot();
-    if (cached) {
-      profileRef.current = cached;
-      setVaultState({ status: "loaded" });
-    } else {
-      setVaultState({ status: "gesture_required" });
-    }
+    // Always require a fresh user gesture for identity-scope consent.
+    resetProfileSecretCache();
+    profileRef.current = null;
+    setIdentityIntent(null);
+    setIntentError(null);
+    setIntentLoading(false);
+    setVaultState({ status: "gesture_required" });
   }, [hasApprovedIdentityScopes]);
+
+  useEffect(() => {
+    if (!hasApprovedIdentityScopes || vaultState.status !== "loaded") {
+      return;
+    }
+    if (hasValidIdentityIntent || intentLoading) {
+      return;
+    }
+    fetchIdentityIntent().catch(() => undefined);
+  }, [
+    fetchIdentityIntent,
+    hasApprovedIdentityScopes,
+    hasValidIdentityIntent,
+    intentLoading,
+    vaultState.status,
+  ]);
 
   const toggleOptional = (scope: string) => {
     setSelectedOptional((prev) =>
@@ -590,12 +710,18 @@ export function OAuthConsentClient({
 
     const oauthQuery = getSignedOAuthQuery();
     if (!oauthQuery) {
-      return;
+      throw new Error("Missing OAuth context for identity sharing.");
     }
 
     const profile = profileRef.current;
     if (!profile) {
-      return;
+      throw new Error("Unlock your identity vault before allowing access.");
+    }
+
+    if (!(identityIntent && hasValidIdentityIntent)) {
+      throw new Error(
+        "Secure identity consent expired. Unlock your vault and try again."
+      );
     }
 
     const identityPayload = buildIdentityPayload(profile);
@@ -607,31 +733,25 @@ export function OAuthConsentClient({
         oauth_query: oauthQuery,
         scopes: approvedScopes,
         identity: identityPayload,
+        intent_token: identityIntent.token,
       }),
     });
 
-    if (!response.ok) {
-      return;
-    }
-  };
+    const body = (await response.json().catch(() => null)) as {
+      staged?: boolean;
+      error?: string;
+    } | null;
 
-  const stripIdentityScopesFromConsent = async () => {
-    const consents = await authClient.oauth2.getConsents();
-    if (!consents.data) {
-      return;
+    if (!response.ok) {
+      setIdentityIntent(null);
+      throw new Error(body?.error || "Unable to stage identity claims.");
     }
-    for (const consent of consents.data as {
-      id: string;
-      scopes: string[];
-    }[]) {
-      const cleaned = consent.scopes.filter((s) => !isIdentityScope(s));
-      if (cleaned.length < consent.scopes.length) {
-        await authClient.oauth2.updateConsent({
-          id: consent.id,
-          update: { scopes: cleaned },
-        });
-      }
+    if (!body?.staged) {
+      setIdentityIntent(null);
+      throw new Error("Identity claims were not staged.");
     }
+
+    setIdentityIntent(null);
   };
 
   const handleConsent = async (accept: boolean) => {
@@ -639,9 +759,35 @@ export function OAuthConsentClient({
     setError(null);
 
     try {
+      if (accept && hasApprovedIdentityScopes) {
+        if (vaultState.status !== "loaded") {
+          throw new Error("Unlock your identity vault before allowing access.");
+        }
+        if (!hasValidIdentityIntent) {
+          throw new Error(
+            "Secure identity consent expired. Unlock your vault and try again."
+          );
+        }
+
+        // Stage identity claims in the ephemeral store BEFORE creating the
+        // consent record. The server's customIdTokenClaims hook will consume
+        // them during token exchange. Identity scopes are never persisted in
+        // the consent DB — the ephemeral store is the sole authority.
+        await captureIdentityIfNeeded();
+      }
+
+      // Only persist non-identity scopes in the consent record.
+      // Identity claims are delivered via the ephemeral store, so they
+      // don't need to be in the auth code's scope set.
+      const consentScopes = accept
+        ? approvedScopes.filter((s) => !isIdentityScope(s))
+        : [];
+
+      const oauthQuery = getSignedOAuthQuery();
       const response = await authClient.oauth2.consent({
         accept,
-        ...(accept ? { scope: approvedScopes.join(" ") } : {}),
+        ...(accept ? { scope: consentScopes.join(" ") } : {}),
+        ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
       });
 
       if (response.error || !response.data) {
@@ -656,18 +802,6 @@ export function OAuthConsentClient({
 
       if (!redirectUri) {
         throw new Error("Missing redirect URL from consent response.");
-      }
-
-      if (accept) {
-        await captureIdentityIfNeeded();
-
-        // We persist full scopes above so the authorization code carries
-        // identity.* (better-auth derives code scopes from the consent record).
-        // Then strip them here so the consent page reappears next time —
-        // vault unlock is required per-session, not persistable.
-        if (hasApprovedIdentityScopes) {
-          stripIdentityScopesFromConsent().catch(() => undefined);
-        }
       }
 
       globalThis.window.location.assign(redirectUri);
@@ -699,6 +833,34 @@ export function OAuthConsentClient({
     }
 
     if (vaultState.status === "loaded") {
+      if (intentError) {
+        return (
+          <Alert variant="destructive">
+            <AlertDescription className="space-y-2">
+              <p>{intentError}</p>
+              <Button
+                disabled={isSubmitting || intentLoading}
+                onClick={() => fetchIdentityIntent().catch(() => undefined)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry secure consent
+              </Button>
+            </AlertDescription>
+          </Alert>
+        );
+      }
+
+      if (intentLoading || !hasValidIdentityIntent) {
+        return (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <Spinner aria-hidden="true" size="sm" />
+            Preparing secure consent…
+          </div>
+        );
+      }
+
       return null;
     }
 
@@ -883,7 +1045,10 @@ export function OAuthConsentClient({
               disabled={
                 isSubmitting ||
                 visible.length === 0 ||
-                (hasApprovedIdentityScopes && vaultState.status !== "loaded")
+                (hasApprovedIdentityScopes &&
+                  (vaultState.status !== "loaded" ||
+                    !hasValidIdentityIntent ||
+                    intentLoading))
               }
               onClick={() => handleConsent(true)}
               type="button"

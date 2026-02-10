@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ensureAuthSession } from "@/lib/auth/anonymous-session";
 import { authClient } from "@/lib/auth/auth-client";
-import { buildKekSignatureTypedData } from "@/lib/privacy/credentials";
 
 interface WalletSignUpFormProps {
   email?: string;
@@ -72,7 +71,7 @@ export function WalletSignUpForm({
       // Step 1: Ensure anonymous session (unified sign-up path)
       await ensureAuthSession();
 
-      // Step 2: EIP-712 auth signature (popup 1)
+      // Step 2: EIP-712 auth with deterministic-signature precheck.
       const result = await authClient.signUp.eip712({
         address,
         chainId,
@@ -90,32 +89,6 @@ export function WalletSignUpForm({
       });
 
       const userId = result.user.id;
-
-      // Step 3: KEK derivation signature with determinism check (popup 2 + 3)
-      try {
-        const kekTypedData = buildKekSignatureTypedData({ userId, chainId });
-        const signArgs = {
-          domain: kekTypedData.domain as Record<string, unknown>,
-          types: kekTypedData.types as Record<
-            string,
-            Array<{ name: string; type: string }>
-          >,
-          primaryType: kekTypedData.primaryType,
-          message: kekTypedData.message as Record<string, unknown>,
-        };
-
-        const sig1 = await signTypedData(signArgs);
-        const sig2 = await signTypedData(signArgs);
-
-        if (sig1 !== sig2) {
-          throw new Error(
-            "Wallet does not produce deterministic signatures. " +
-              "Encryption key wrapping requires a wallet that implements RFC 6979."
-          );
-        }
-      } catch {
-        // Non-blocking: determinism check failure doesn't break signup
-      }
 
       onSuccess({ userId, address, chainId });
     } catch (err) {
