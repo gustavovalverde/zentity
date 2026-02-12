@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "cd apps/landing && pnpm run build",
-  "installCommand": "cd apps/landing && pnpm install",
+  "installCommand": "cd apps/landing && npm install",
   "outputDirectory": "apps/landing/dist",
   "rewrites": [
     {
