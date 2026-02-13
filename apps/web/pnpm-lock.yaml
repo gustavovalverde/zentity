@@ -36,25 +36,25 @@ importers:
         version: file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/oauth-provider':
         specifier: file:vendor/better-auth-oauth-provider-1.5.0-beta.13.tgz
-        version: file:vendor/better-auth-oauth-provider-1.5.0-beta.13.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))
+        version: file:vendor/better-auth-oauth-provider-1.5.0-beta.13.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))
       '@better-auth/oidc4ida':
         specifier: file:vendor/better-auth-oidc4ida-0.0.0.tgz
-        version: file:vendor/better-auth-oidc4ida-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))
+        version: file:vendor/better-auth-oidc4ida-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))
       '@better-auth/oidc4vci':
         specifier: file:vendor/better-auth-oidc4vci-0.0.0.tgz
-        version: file:vendor/better-auth-oidc4vci-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))
+        version: file:vendor/better-auth-oidc4vci-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))
       '@better-auth/oidc4vp':
         specifier: file:vendor/better-auth-oidc4vp-0.0.0.tgz
-        version: file:vendor/better-auth-oidc4vp-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))
+        version: file:vendor/better-auth-oidc4vp-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))
       '@better-auth/passkey':
         specifier: file:vendor/better-auth-passkey-1.5.0-beta.13.tgz
-        version: file:vendor/better-auth-passkey-1.5.0-beta.13.tgz(patch_hash=af07a3de0020e4594481bd8e9d36c3a393d3a0107b93343bbcc4a89e6072c6f3)(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))(nanostores@1.1.0)
+        version: file:vendor/better-auth-passkey-1.5.0-beta.13.tgz(patch_hash=af07a3de0020e4594481bd8e9d36c3a393d3a0107b93343bbcc4a89e6072c6f3)(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))(nanostores@1.1.0)
       '@better-auth/utils':
         specifier: ^0.3.1
         version: 0.3.1
       '@daveyplate/better-auth-ui':
         specifier: 3.3.15
-        version: 3.3.15(patch_hash=00ddf4641526f1c9986b25aede4be3f06ae306b633fb40ebec4af24e005f11e9)(91ff17ea6ae23b0e419d1b1d249c533b)
+        version: 3.3.15(patch_hash=00ddf4641526f1c9986b25aede4be3f06ae306b633fb40ebec4af24e005f11e9)(cc9cc8b477c9a3d9ddc58a17355575fd)
       '@fhevm/mock-utils':
         specifier: 0.3.0-4
         version: 0.3.0-4(@zama-fhe/relayer-sdk@0.4.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(typescript@5.9.3)
@@ -183,7 +183,7 @@ importers:
         version: 0.32.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
       better-auth:
         specifier: file:vendor/better-auth-1.5.0-beta.13.tgz
-        version: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+        version: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -219,7 +219,7 @@ importers:
         version: 5.1.6
       next:
         specifier: 16.1.6
-        version: 16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       next-themes:
         specifier: 0.4.6
         version: 0.4.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -282,14 +282,14 @@ importers:
         specifier: 16.1.6
         version: 16.1.6(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@playwright/test':
-        specifier: 1.58.1
-        version: 1.58.1
+        specifier: 1.58.2
+        version: 1.58.2
       '@synthetixio/synpress':
         specifier: 4.1.2
-        version: 4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.1)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
+        version: 4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
       '@synthetixio/synpress-cache':
         specifier: 0.0.14
-        version: 0.0.14(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)
+        version: 0.0.14(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)
       '@tailwindcss/postcss':
         specifier: 4.1.18
         version: 4.1.18
@@ -330,8 +330,8 @@ importers:
         specifier: 28.0.0
         version: 28.0.0(@noble/hashes@2.0.1)
       knip:
-        specifier: 5.83.0
-        version: 5.83.0(@types/node@25.2.1)(typescript@5.9.3)
+        specifier: 5.83.1
+        version: 5.83.1(@types/node@25.2.1)(typescript@5.9.3)
       lint-staged:
         specifier: 16.2.7
         version: 16.2.7
@@ -555,28 +555,24 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@biomejs/cli-linux-arm64@2.3.14':
     resolution: {integrity: sha512-KT67FKfzIw6DNnUNdYlBg+eU24Go3n75GWK6NwU4+yJmDYFe9i/MjiI+U/iEzKvo0g7G7MZqoyrhIYuND2w8QQ==}
     engines: {node: '>=14.21.3'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@biomejs/cli-linux-x64-musl@2.3.14':
     resolution: {integrity: sha512-KQU7EkbBBuHPW3/rAcoiVmhlPtDSGOGRPv9js7qJVpYTzjQmVR+C9Rfcz+ti8YCH+zT1J52tuBybtP4IodjxZQ==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@biomejs/cli-linux-x64@2.3.14':
     resolution: {integrity: sha512-ZsZzQsl9U+wxFrGGS4f6UxREUlgHwmEfu1IrXlgNFrNnd5Th6lIJr8KmSzu/+meSa9f4rzFrbEW9LBBA6ScoMA==}
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@biomejs/cli-win32-arm64@2.3.14':
     resolution: {integrity: sha512-+IKYkj/pUBbnRf1G1+RlyA3LWiDgra1xpS7H2g4BuOzzRbRB+hmlw0yFsLprHhbbt7jUzbzAbAjK/Pn0FDnh1A==}
@@ -1154,105 +1150,89 @@ packages:
     resolution: {integrity: sha512-excjX8DfsIcJ10x1Kzr4RcWe1edC9PquDRRPx3YVCvQv+U5p7Yin2s32ftzikXojb1PIFc/9Mt28/y+iRklkrw==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-arm@1.2.4':
     resolution: {integrity: sha512-bFI7xcKFELdiNCVov8e44Ia4u2byA+l3XtsAj+Q8tfCwO6BQ8iDojYdvoPMqsKDkuoOo+X6HZA0s0q11ANMQ8A==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-ppc64@1.2.4':
     resolution: {integrity: sha512-FMuvGijLDYG6lW+b/UvyilUWu5Ayu+3r2d1S8notiGCIyYU/76eig1UfMmkZ7vwgOrzKzlQbFSuQfgm7GYUPpA==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-riscv64@1.2.4':
     resolution: {integrity: sha512-oVDbcR4zUC0ce82teubSm+x6ETixtKZBh/qbREIOcI3cULzDyb18Sr/Wcyx7NRQeQzOiHTNbZFF1UwPS2scyGA==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-s390x@1.2.4':
     resolution: {integrity: sha512-qmp9VrzgPgMoGZyPvrQHqk02uyjA0/QrTO26Tqk6l4ZV0MPWIW6LTkqOIov+J1yEu7MbFQaDpwdwJKhbJvuRxQ==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linux-x64@1.2.4':
     resolution: {integrity: sha512-tJxiiLsmHc9Ax1bz3oaOYBURTXGIRDODBqhveVHonrHJ9/+k89qbLl0bcJns+e4t4rvaNBxaEZsFtSfAdquPrw==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-libvips-linuxmusl-arm64@1.2.4':
     resolution: {integrity: sha512-FVQHuwx1IIuNow9QAbYUzJ+En8KcVm9Lk5+uGUQJHaZmMECZmOlix9HnH7n1TRkXMS0pGxIJokIVB9SuqZGGXw==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-libvips-linuxmusl-x64@1.2.4':
     resolution: {integrity: sha512-+LpyBk7L44ZIXwz/VYfglaX/okxezESc6UxDSoyo2Ks6Jxc4Y7sGjpgU9s4PMgqgjj1gZCylTieNamqA1MF7Dg==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linux-arm64@0.34.5':
     resolution: {integrity: sha512-bKQzaJRY/bkPOXyKx5EVup7qkaojECG6NLYswgktOZjaXecSAeCWiZwwiFf3/Y+O1HrauiE3FVsGxFg8c24rZg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-arm@0.34.5':
     resolution: {integrity: sha512-9dLqsvwtg1uuXBGZKsxem9595+ujv0sJ6Vi8wcTANSFpwV/GONat5eCkzQo/1O6zRIkh0m/8+5BjrRr7jDUSZw==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-ppc64@0.34.5':
     resolution: {integrity: sha512-7zznwNaqW6YtsfrGGDA6BRkISKAAE1Jo0QdpNYXNMHu2+0dTrPflTLNkpc8l7MUP5M16ZJcUvysVWWrMefZquA==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-riscv64@0.34.5':
     resolution: {integrity: sha512-51gJuLPTKa7piYPaVs8GmByo7/U7/7TZOq+cnXJIHZKavIRHAP77e3N2HEl3dgiqdD/w0yUfiJnII77PuDDFdw==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-s390x@0.34.5':
     resolution: {integrity: sha512-nQtCk0PdKfho3eC5MrbQoigJ2gd1CgddUMkabUj+rBevs8tZ2cULOx46E7oyX+04WGfABgIwmMC0VqieTiR4jg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linux-x64@0.34.5':
     resolution: {integrity: sha512-MEzd8HPKxVxVenwAa+JRPwEC7QFjoPWuS5NZnBt6B3pu7EG2Ge0id1oLHZpPJdn3OQK+BQDiw9zStiHBTJQQQQ==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@img/sharp-linuxmusl-arm64@0.34.5':
     resolution: {integrity: sha512-fprJR6GtRsMt6Kyfq44IsChVZeGN97gTD331weR1ex1c1rypDEABN6Tm2xa1wE6lYb5DdEnk03NZPqA7Id21yg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linuxmusl-x64@0.34.5':
     resolution: {integrity: sha512-Jg8wNT1MUzIvhBFxViqrEhWDGzqymo3sV7z7ZsaWbZNDLXRJZoRGrjulp60YYtV4wfY8VIKcWidjojlLcWrd8Q==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-wasm32@0.34.5':
     resolution: {integrity: sha512-OdWTEiVkY2PHwqkbBI8frFxQQFekHaSSkUIJkwzclWZe64O1X4UlUjqqqLaPbUpMOQk6FBu/HtlGXNblIs0huw==}
@@ -1414,8 +1394,8 @@ packages:
     resolution: {integrity: sha512-lZPq0vIx7ea15yYrWdpFQYvrAJnkheleyjnpnH61JTnZaxTDiQQIxQcsHGNr1FblPM+4CYUkJ/8+4Ge5Rw09hQ==}
     engines: {node: '>=8.0.0'}
 
-  '@mongodb-js/saslprep@1.4.5':
-    resolution: {integrity: sha512-k64Lbyb7ycCSXHSLzxVdb2xsKGPMvYZfCICXvDsI8Z65CeWQzTEKS4YmGbnqw+U9RBvLPTsB6UCmwkgsDTGWIw==}
+  '@mongodb-js/saslprep@1.4.6':
+    resolution: {integrity: sha512-y+x3H1xBZd38n10NZF/rEBlvDOOMQ6LKUTHqr8R9VkJ+mmQOYtJFxIlkkK8fZrtOiL6VixbOBWMbZGBdal3Z1g==}
 
   '@mrleebo/prisma-ast@0.13.1':
     resolution: {integrity: sha512-XyroGQXcHrZdvmrGJvsA9KNeOOgGMg1Vg9OlheUsBOSKznLMDl+YChxbkboRHvtFYJEMRYmlV3uoo/njCw05iw==}
@@ -1488,28 +1468,24 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@next/swc-linux-arm64-musl@16.1.6':
     resolution: {integrity: sha512-S4J2v+8tT3NIO9u2q+S0G5KdvNDjXfAv06OhfOzNDaBn5rw84DGXWndOEB7d5/x852A20sW1M56vhC/tRVbccQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@next/swc-linux-x64-gnu@16.1.6':
     resolution: {integrity: sha512-2eEBDkFlMMNQnkTyPBhQOAyn2qMxyG2eE7GPH2WIDGEpEILcBPI/jdSv4t6xupSP+ot/jkfrCShLAa7+ZUPcJQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@next/swc-linux-x64-musl@16.1.6':
     resolution: {integrity: sha512-oicJwRlyOoZXVlxmIMaTq7f8pN9QNbdes0q2FXfRsPhfCi8n8JmOZJm5oo1pwDaFbnnD421rVU409M3evFbIqg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@next/swc-win32-arm64-msvc@16.1.6':
     resolution: {integrity: sha512-gQmm8izDTPgs+DCWH22kcDmuUp7NyiJgEl18bcr8irXA5N2m2O+JQIr6f3ct42GOs9c0h8QF3L5SzIxcYAAXXw==}
@@ -2081,111 +2057,103 @@ packages:
   '@openzeppelin/contracts@5.4.0':
     resolution: {integrity: sha512-eCYgWnLg6WO+X52I16TZt8uEjbtdkgLC0SUX/xnAksjjrQI4Xfn4iBRoI5j55dmlOhDv1Y7BoR3cU7e3WWhC6A==}
 
-  '@oxc-resolver/binding-android-arm-eabi@11.17.0':
-    resolution: {integrity: sha512-kVnY21v0GyZ/+LG6EIO48wK3mE79BUuakHUYLIqobO/Qqq4mJsjuYXMSn3JtLcKZpN1HDVit4UHpGJHef1lrlw==}
+  '@oxc-resolver/binding-android-arm-eabi@11.17.1':
+    resolution: {integrity: sha512-+VuZyMYYaap5uDAU1xDU3Kul0FekLqpBS8kI5JozlWfYQKnc/HsZg2gHPkQrj0SC9lt74WMNCfOzZZJlYXSdEQ==}
     cpu: [arm]
     os: [android]
 
-  '@oxc-resolver/binding-android-arm64@11.17.0':
-    resolution: {integrity: sha512-Pf8e3XcsK9a8RHInoAtEcrwf2vp7V9bSturyUUYxw9syW6E7cGi7z9+6ADXxm+8KAevVfLA7pfBg8NXTvz/HOw==}
+  '@oxc-resolver/binding-android-arm64@11.17.1':
+    resolution: {integrity: sha512-YlDDTjvOEKhom/cRSVsXsMVeXVIAM9PJ/x2mfe08rfuS0iIEfJd8PngKbEIhG72WPxleUa+vkEZj9ncmC14z3Q==}
     cpu: [arm64]
     os: [android]
 
-  '@oxc-resolver/binding-darwin-arm64@11.17.0':
-    resolution: {integrity: sha512-lVSgKt3biecofXVr8e1hnfX0IYMd4A6VCxmvOmHsFt5Zbmt0lkO4S2ap2bvQwYDYh5ghUNamC7M2L8K6vishhQ==}
+  '@oxc-resolver/binding-darwin-arm64@11.17.1':
+    resolution: {integrity: sha512-HOYYLSY4JDk14YkXaz/ApgJYhgDP4KsG8EZpgpOxdszGW9HmIMMY/vXqVKYW74dSH+GQkIXYxBrEh3nv+XODVg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@oxc-resolver/binding-darwin-x64@11.17.0':
-    resolution: {integrity: sha512-+/raxVJE1bo7R4fA9Yp0wm3slaCOofTEeUzM01YqEGcRDLHB92WRGjRhagMG2wGlvqFuSiTp81DwSbBVo/g6AQ==}
+  '@oxc-resolver/binding-darwin-x64@11.17.1':
+    resolution: {integrity: sha512-JHPJbsa5HvPq2/RIdtGlqfaG9zV2WmgvHrKTYmlW0L5esqtKCBuetFudXTBzkNcyD69kSZLzH92AzTr6vFHMFg==}
     cpu: [x64]
     os: [darwin]
 
-  '@oxc-resolver/binding-freebsd-x64@11.17.0':
-    resolution: {integrity: sha512-x9Ks56n+n8h0TLhzA6sJXa2tGh3uvMGpBppg6PWf8oF0s5S/3p/J6k1vJJ9lIUtTmenfCQEGKnFokpRP4fLTLg==}
+  '@oxc-resolver/binding-freebsd-x64@11.17.1':
+    resolution: {integrity: sha512-UD1FRC8j8xZstFXYsXwQkNmmg7vUbee006IqxokwDUUA+xEgKZDpLhBEiVKM08Urb+bn7Q0gn6M1pyNR0ng5mg==}
     cpu: [x64]
     os: [freebsd]
 
-  '@oxc-resolver/binding-linux-arm-gnueabihf@11.17.0':
-    resolution: {integrity: sha512-Wf3w07Ow9kXVJrS0zmsaFHKOGhXKXE8j1tNyy+qIYDsQWQ4UQZVx5SjlDTcqBnFerlp3Z3Is0RjmVzgoLG3qkA==}
+  '@oxc-resolver/binding-linux-arm-gnueabihf@11.17.1':
+    resolution: {integrity: sha512-wFWC1wyf2ROFWTxK5x0Enm++DSof3EBQ/ypyAesMDLiYxOOASDoMOZG1ylWUnlKaCt5W7eNOWOzABpdfFf/ssA==}
     cpu: [arm]
     os: [linux]
 
-  '@oxc-resolver/binding-linux-arm-musleabihf@11.17.0':
-    resolution: {integrity: sha512-N0OKA1al1gQ5Gm7Fui1RWlXaHRNZlwMoBLn3TVtSXX+WbnlZoVyDqqOqFL8+pVEHhhxEA2LR8kmM0JO6FAk6dg==}
+  '@oxc-resolver/binding-linux-arm-musleabihf@11.17.1':
+    resolution: {integrity: sha512-k/hUif0GEBk/csSqCfTPXb8AAVs1NNWCa/skBghvNbTtORcWfOVqJ3mM+2pE189+enRm4UnryLREu5ysI0kXEQ==}
     cpu: [arm]
     os: [linux]
 
-  '@oxc-resolver/binding-linux-arm64-gnu@11.17.0':
-    resolution: {integrity: sha512-wdcQ7Niad9JpjZIGEeqKJnTvczVunqlZ/C06QzR5zOQNeLVRScQ9S5IesKWUAPsJQDizV+teQX53nTK+Z5Iy+g==}
+  '@oxc-resolver/binding-linux-arm64-gnu@11.17.1':
+    resolution: {integrity: sha512-Cwm6A071ww60QouJ9LoHAwBgEoZzHQ0Qaqk2E7WLfBdiQN9mLXIDhnrpn04hlRElRPhLiu/dtg+o5PPLvaINXQ==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
-  '@oxc-resolver/binding-linux-arm64-musl@11.17.0':
-    resolution: {integrity: sha512-65B2/t39HQN5AEhkLsC+9yBD1iRUkKOIhfmJEJ7g6wQ9kylra7JRmNmALFjbsj0VJsoSQkpM8K07kUZuNJ9Kxw==}
+  '@oxc-resolver/binding-linux-arm64-musl@11.17.1':
+    resolution: {integrity: sha512-+hwlE2v3m0r3sk93SchJL1uyaKcPjf+NGO/TD2DZUDo+chXx7FfaEj0nUMewigSt7oZ2sQN9Z4NJOtUa75HE5Q==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
-  '@oxc-resolver/binding-linux-ppc64-gnu@11.17.0':
-    resolution: {integrity: sha512-kExgm3TLK21dNMmcH+xiYGbc6BUWvT03PUZ2aYn8mUzGPeeORklBhg3iYcaBI3ZQHB25412X1Z6LLYNjt4aIaA==}
+  '@oxc-resolver/binding-linux-ppc64-gnu@11.17.1':
+    resolution: {integrity: sha512-bO+rsaE5Ox8cFyeL5Ct5tzot1TnQpFa/Wmu5k+hqBYSH2dNVDGoi0NizBN5QV8kOIC6O5MZr81UG4yW/2FyDTA==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
-  '@oxc-resolver/binding-linux-riscv64-gnu@11.17.0':
-    resolution: {integrity: sha512-1utUJC714/ydykZQE8c7QhpEyM4SaslMfRXxN9G61KYazr6ndt85LaubK3EZCSD50vVEfF4PVwFysCSO7LN9uA==}
+  '@oxc-resolver/binding-linux-riscv64-gnu@11.17.1':
+    resolution: {integrity: sha512-B/P+hxKQ1oX4YstI9Lyh4PGzqB87Ddqj/A4iyRBbPdXTcxa+WW3oRLx1CsJKLmHPdDk461Hmbghq1Bm3pl+8Aw==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
-  '@oxc-resolver/binding-linux-riscv64-musl@11.17.0':
-    resolution: {integrity: sha512-mayiYOl3LMmtO2CLn4I5lhanfxEo0LAqlT/EQyFbu1ZN3RS+Xa7Q3JEM0wBpVIyfO/pqFrjvC5LXw/mHNDEL7A==}
+  '@oxc-resolver/binding-linux-riscv64-musl@11.17.1':
+    resolution: {integrity: sha512-ulp2H3bFXzd/th2maH+QNKj5qgOhJ3v9Yspdf1svTw3CDOuuTl6sRKsWQ7MUw0vnkSNvQndtflBwVXgzZvURsQ==}
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
-  '@oxc-resolver/binding-linux-s390x-gnu@11.17.0':
-    resolution: {integrity: sha512-Ow/yI+CrUHxIIhn/Y1sP/xoRKbCC3x9O1giKr3G/pjMe+TCJ5ZmfqVWU61JWwh1naC8X5Xa7uyLnbzyYqPsHfg==}
+  '@oxc-resolver/binding-linux-s390x-gnu@11.17.1':
+    resolution: {integrity: sha512-LAXYVe3rKk09Zo9YKF2ZLBcH8sz8Oj+JIyiUxiHtq0hiYLMsN6dOpCf2hzQEjPAmsSEA/hdC1PVKeXo+oma8mQ==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
-  '@oxc-resolver/binding-linux-x64-gnu@11.17.0':
-    resolution: {integrity: sha512-Z4J7XlPMQOLPANyu6y3B3V417Md4LKH5bV6bhqgaG99qLHmU5LV2k9ErV14fSqoRc/GU/qOpqMdotxiJqN/YWg==}
+  '@oxc-resolver/binding-linux-x64-gnu@11.17.1':
+    resolution: {integrity: sha512-3RAhxipMKE8RCSPn7O//sj440i+cYTgYbapLeOoDvQEt6R1QcJjTsFgI4iz99FhVj3YbPxlZmcLB5VW+ipyRTA==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
-  '@oxc-resolver/binding-linux-x64-musl@11.17.0':
-    resolution: {integrity: sha512-0effK+8lhzXsgsh0Ny2ngdnTPF30v6QQzVFApJ1Ctk315YgpGkghkelvrLYYgtgeFJFrzwmOJ2nDvCrUFKsS2Q==}
+  '@oxc-resolver/binding-linux-x64-musl@11.17.1':
+    resolution: {integrity: sha512-wpjMEubGU8r9VjZTLdZR3aPHaBqTl8Jl8F4DBbgNoZ+yhkhQD1/MGvY70v2TLnAI6kAHSvcqgfvaqKDa2iWsPQ==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
-  '@oxc-resolver/binding-openharmony-arm64@11.17.0':
-    resolution: {integrity: sha512-kFB48dRUW6RovAICZaxHKdtZe+e94fSTNA2OedXokzMctoU54NPZcv0vUX5PMqyikLIKJBIlW7laQidnAzNrDA==}
+  '@oxc-resolver/binding-openharmony-arm64@11.17.1':
+    resolution: {integrity: sha512-XIE4w17RYAVIgx+9Gs3deTREq5tsmalbatYOOBGNdH7n0DfTE600c7wYXsp7ANc3BPDXsInnOzXDEPCvO1F6cg==}
     cpu: [arm64]
     os: [openharmony]
 
-  '@oxc-resolver/binding-wasm32-wasi@11.17.0':
-    resolution: {integrity: sha512-a3elKSBLPT0OoRPxTkCIIc+4xnOELolEBkPyvdj01a6PSdSmyJ1NExWjWLaXnT6wBMblvKde5RmSwEi3j+jZpg==}
+  '@oxc-resolver/binding-wasm32-wasi@11.17.1':
+    resolution: {integrity: sha512-Lqi5BlHX3zS4bpSOkIbOKVf7DIk6Gvmdifr2OuOI58eUUyP944M8/OyaB09cNpPy9Vukj7nmmhOzj8pwLgAkIg==}
     engines: {node: '>=14.0.0'}
     cpu: [wasm32]
 
-  '@oxc-resolver/binding-win32-arm64-msvc@11.17.0':
-    resolution: {integrity: sha512-4eszUsSDb9YVx0RtYkPWkxxtSZIOgfeiX//nG5cwRRArg178w4RCqEF1kbKPud9HPrp1rXh7gE4x911OhvTnPg==}
+  '@oxc-resolver/binding-win32-arm64-msvc@11.17.1':
+    resolution: {integrity: sha512-l6lTcLBQVj1HNquFpXSsrkCIM8X5Hlng5YNQJrg00z/KyovvDV5l3OFhoRyZ+aLBQ74zUnMRaJZC7xcBnHyeNg==}
     cpu: [arm64]
     os: [win32]
 
-  '@oxc-resolver/binding-win32-ia32-msvc@11.17.0':
-    resolution: {integrity: sha512-t946xTXMmR7yGH0KAe9rB055/X4EPIu93JUvjchl2cizR5QbuwkUV7vLS2BS6x6sfvDoQb6rWYnV1HCci6tBSg==}
+  '@oxc-resolver/binding-win32-ia32-msvc@11.17.1':
+    resolution: {integrity: sha512-VTzVtfnCCsU/6GgvursWoyZrhe3Gj/RyXzDWmh4/U1Y3IW0u1FZbp+hCIlBL16pRPbDc5YvXVtCOnA41QOrOoQ==}
     cpu: [ia32]
     os: [win32]
 
-  '@oxc-resolver/binding-win32-x64-msvc@11.17.0':
-    resolution: {integrity: sha512-pX6s2kMXLQg+hlqKk5UqOW09iLLxnTkvn8ohpYp2Mhsm2yzDPCx9dyOHiB/CQixLzTkLQgWWJykN4Z3UfRKW4Q==}
+  '@oxc-resolver/binding-win32-x64-msvc@11.17.1':
+    resolution: {integrity: sha512-jRPVU+6/12baj87q2+UGRh30FBVBzqKdJ7rP/mSqiL1kpNQB9yZ1j0+m3sru1m+C8hiFK7lBFwjUtYUBI7+UpQ==}
     cpu: [x64]
     os: [win32]
 
@@ -2203,25 +2171,21 @@ packages:
     resolution: {integrity: sha512-qocBkvS2V6rH0t9AT3DfQunMnj3xkM7srs5/Ycj2j5ZqMoaWd/FxHNVJDFP++35roKSvsRJoS0mtA8/77jqm6Q==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@oxlint/linux-arm64-musl@1.39.0':
     resolution: {integrity: sha512-arZzAc1PPcz9epvGBBCMHICeyQloKtHX3eoOe62B3Dskn7gf6Q14wnDHr1r9Vp4vtcBATNq6HlKV14smdlC/qA==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@oxlint/linux-x64-gnu@1.39.0':
     resolution: {integrity: sha512-ZVt5qsECpuNprdWxAPpDBwoixr1VTcZ4qAEQA2l/wmFyVPDYFD3oBY/SWACNnWBddMrswjTg9O8ALxYWoEpmXw==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@oxlint/linux-x64-musl@1.39.0':
     resolution: {integrity: sha512-pB0hlGyKPbxr9NMIV783lD6cWL3MpaqnZRM9MWni4yBdHPTKyFNYdg5hGD0Bwg+UP4S2rOevq/+OO9x9Bi7E6g==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@oxlint/win32-arm64@1.39.0':
     resolution: {integrity: sha512-Gg2SFaJohI9+tIQVKXlPw3FsPQFi/eCSWiCgwPtPn5uzQxHRTeQEZKuluz1fuzR5U70TXubb2liZi4Dgl8LJQA==}
@@ -2276,8 +2240,8 @@ packages:
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
 
-  '@playwright/test@1.58.1':
-    resolution: {integrity: sha512-6LdVIUERWxQMmUSSQi0I53GgCBYgM2RpGngCPY7hSeju+VrKjq3lvs7HpJoPbDiY5QM5EYRtRX5fvrinnMAz3w==}
+  '@playwright/test@1.58.2':
+    resolution: {integrity: sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -3069,79 +3033,66 @@ packages:
     resolution: {integrity: sha512-F8sWbhZ7tyuEfsmOxwc2giKDQzN3+kuBLPwwZGyVkLlKGdV1nvnNwYD0fKQ8+XS6hp9nY7B+ZeK01EBUE7aHaw==}
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.57.1':
     resolution: {integrity: sha512-rGfNUfn0GIeXtBP1wL5MnzSj98+PZe/AXaGBCRmT0ts80lU5CATYGxXukeTX39XBKsxzFpEeK+Mrp9faXOlmrw==}
     cpu: [arm]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.57.1':
     resolution: {integrity: sha512-MMtej3YHWeg/0klK2Qodf3yrNzz6CGjo2UntLvk2RSPlhzgLvYEB3frRvbEF2wRKh1Z2fDIg9KRPe1fawv7C+g==}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.57.1':
     resolution: {integrity: sha512-1a/qhaaOXhqXGpMFMET9VqwZakkljWHLmZOX48R0I/YLbhdxr1m4gtG1Hq7++VhVUmf+L3sTAf9op4JlhQ5u1Q==}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.57.1':
     resolution: {integrity: sha512-QWO6RQTZ/cqYtJMtxhkRkidoNGXc7ERPbZN7dVW5SdURuLeVU7lwKMpo18XdcmpWYd0qsP1bwKPf7DNSUinhvA==}
     cpu: [loong64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.57.1':
     resolution: {integrity: sha512-xpObYIf+8gprgWaPP32xiN5RVTi/s5FCR+XMXSKmhfoJjrpRAjCuuqQXyxUa/eJTdAE6eJ+KDKaoEqjZQxh3Gw==}
     cpu: [loong64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.57.1':
     resolution: {integrity: sha512-4BrCgrpZo4hvzMDKRqEaW1zeecScDCR+2nZ86ATLhAoJ5FQ+lbHVD3ttKe74/c7tNT9c6F2viwB3ufwp01Oh2w==}
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.57.1':
     resolution: {integrity: sha512-NOlUuzesGauESAyEYFSe3QTUguL+lvrN1HtwEEsU2rOwdUDeTMJdO5dUYl/2hKf9jWydJrO9OL/XSSf65R5+Xw==}
     cpu: [ppc64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.57.1':
     resolution: {integrity: sha512-ptA88htVp0AwUUqhVghwDIKlvJMD/fmL/wrQj99PRHFRAG6Z5nbWoWG4o81Nt9FT+IuqUQi+L31ZKAFeJ5Is+A==}
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.57.1':
     resolution: {integrity: sha512-S51t7aMMTNdmAMPpBg7OOsTdn4tySRQvklmL3RpDRyknk87+Sp3xaumlatU+ppQ+5raY7sSTcC2beGgvhENfuw==}
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.57.1':
     resolution: {integrity: sha512-Bl00OFnVFkL82FHbEqy3k5CUCKH6OEJL54KCyx2oqsmZnFTR8IoNqBF+mjQVcRCT5sB6yOvK8A37LNm/kPJiZg==}
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.57.1':
     resolution: {integrity: sha512-ABca4ceT4N+Tv/GtotnWAeXZUZuM/9AQyCyKYyKnpk4yoA7QIAuBt6Hkgpw8kActYlew2mvckXkvx0FfoInnLg==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.57.1':
     resolution: {integrity: sha512-HFps0JeGtuOR2convgRRkHCekD7j+gdAuXM+/i6kGzQtFhlCtQkpwtNzkNj6QhCDp7DRJ7+qC/1Vg2jt5iSOFw==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.57.1':
     resolution: {integrity: sha512-H+hXEv9gdVQuDTgnqD+SQffoWoc0Of59AStSzTEj/feWTBAnSfSD3+Dql1ZruJQxmykT/JVY0dE8Ka7z0DH1hw==}
@@ -3725,28 +3676,24 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@tailwindcss/oxide-linux-arm64-musl@4.1.18':
     resolution: {integrity: sha512-1px92582HkPQlaaCkdRcio71p8bc8i/ap5807tPRDK/uw953cauQBT8c5tVGkOwrHMfc2Yh6UuxaH4vtTjGvHg==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@tailwindcss/oxide-linux-x64-gnu@4.1.18':
     resolution: {integrity: sha512-v3gyT0ivkfBLoZGF9LyHmts0Isc8jHZyVcbzio6Wpzifg/+5ZJpDiRiUhDLkcr7f/r38SWNe7ucxmGW3j3Kb/g==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@tailwindcss/oxide-linux-x64-musl@4.1.18':
     resolution: {integrity: sha512-bhJ2y2OQNlcRwwgOAGMY0xTFStt4/wyU6pvI6LSuZpRgKQwxTec0/3Scu91O8ir7qCR3AuepQKLU/kX99FouqQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@tailwindcss/oxide-wasm32-wasi@4.1.18':
     resolution: {integrity: sha512-LffYTvPjODiP6PT16oNeUQJzNVyJl1cjIebq/rWWBF+3eDst5JGEFSc5cWxyRCJ0Mxl+KyIkqRxk1XPEs9x8TA==}
@@ -4860,8 +4807,8 @@ packages:
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
-  confbox@0.2.3:
-    resolution: {integrity: sha512-GnuRBl/Zn8Xb0+0oYmEd0N1roYIjiQfOm2ao0P22fklcuSzaKqDBE8vC4yRYpU4krZHtloveFsi/S3agpmZxpA==}
+  confbox@0.2.4:
+    resolution: {integrity: sha512-ysOGlgTFbN2/Y6Cg3Iye8YKulHw+R2fNXHrgSmXISQdMnomY6eNDprVdW9R5xBguEqI954+S6709UyiO7B+6OQ==}
 
   confusing-browser-globals@1.0.11:
     resolution: {integrity: sha512-JsPKdmh8ZkmnHxDk55FZ1TqVLvEQTvoByJZRN9jzI0UjxK/QgAmsphz7PGtqgPieQZ/CQcHWXCR7ATDNhGe+YA==}
@@ -5886,6 +5833,10 @@ packages:
     resolution: {integrity: sha512-cf6L2Ds3h57VVmkZe+Pn+5APsT7FpqJtEhhieDCvrE2MK5Qk9MyffgQyuxQTm6BChfeZNtcOLHp9IcWRVcIcBQ==}
     engines: {node: '>=0.10.0'}
 
+  iconv-lite@0.7.2:
+    resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
+    engines: {node: '>=0.10.0'}
+
   idb-keyval@6.2.1:
     resolution: {integrity: sha512-8Sb3veuYCyrZL+VBt9LJfZjLUPWVvqn8tG28VqYNFCo43KHcKuq+b4EiXGeuaLAQWL2YmyDgMp2aSpH9JHsEQg==}
 
@@ -6226,8 +6177,8 @@ packages:
   keyvaluestorage-interface@1.0.0:
     resolution: {integrity: sha512-8t6Q3TclQ4uZynJY9IGr2+SsIGwK9JHcO6ootkHCGA0CrQCRy+VkouYNO2xicET6b9al7QKzpebNow+gkpCL8g==}
 
-  knip@5.83.0:
-    resolution: {integrity: sha512-FfmaHMntpZB13B1oJQMSs1hTOZxd0TOn+FYB3oWEI02XlxTW3RH4H7d8z5Us3g0ziHCYyl7z0B1xi8ENP3QEKA==}
+  knip@5.83.1:
+    resolution: {integrity: sha512-av3ZG/Nui6S/BNL8Tmj12yGxYfTnwWnslouW97m40him7o8MwiMjZBY9TPvlEWUci45aVId0/HbgTwSKIDGpMw==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -6297,28 +6248,24 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.30.2:
     resolution: {integrity: sha512-5Vh9dGeblpTxWHpOx8iauV02popZDsCYMPIgiuw97OJ5uaDsL86cnqSFs5LZkG3ghHoX5isLgWzMs+eD1YzrnA==}
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.30.2:
     resolution: {integrity: sha512-Cfd46gdmj1vQ+lR6VRTTadNHu6ALuw2pKR9lYq4FnhvgBc4zWY1EtZcAc6EffShbb1MFrIPfLDXD6Xprbnni4w==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.30.2:
     resolution: {integrity: sha512-XJaLUUFXb6/QG2lGIW6aIk6jKdtjtcffUT0NKvIqhSBY3hh9Ch+1LCeH80dR9q9LBjG3ewbDjnumefsLsP6aiA==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.30.2:
     resolution: {integrity: sha512-FZn+vaj7zLv//D/192WFFVA0RgHawIcHqLX9xuWiQt7P0PtdFEVaxgF9rjM/IRYHQXNnk61/H/gb2Ei+kUQ4xQ==}
@@ -6933,8 +6880,8 @@ packages:
       typescript:
         optional: true
 
-  oxc-resolver@11.17.0:
-    resolution: {integrity: sha512-R5P2Tw6th+nQJdNcZGfuppBS/sM0x1EukqYffmlfX2xXLgLGCCPwu4ruEr9Sx29mrpkHgITc130Qps2JR90NdQ==}
+  oxc-resolver@11.17.1:
+    resolution: {integrity: sha512-pyRXK9kH81zKlirHufkFhOFBZRks8iAMLwPH8gU7lvKFiuzUH9L8MxDEllazwOb8fjXMcWjY1PMDfMJ2/yh5cw==}
 
   oxlint@1.39.0:
     resolution: {integrity: sha512-wSiLr0wjG+KTU6c1LpVoQk7JZ7l8HCKlAkVDVTJKWmCGazsNxexxnOXl7dsar92mQcRnzko5g077ggP3RINSjA==}
@@ -7072,13 +7019,13 @@ packages:
   pkg-types@2.3.0:
     resolution: {integrity: sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig==}
 
-  playwright-core@1.58.1:
-    resolution: {integrity: sha512-bcWzOaTxcW+VOOGBCQgnaKToLJ65d6AqfLVKEWvexyS3AS6rbXl+xdpYRMGSRBClPvyj44njOWoxjNdL/H9UNg==}
+  playwright-core@1.58.2:
+    resolution: {integrity: sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==}
     engines: {node: '>=18'}
     hasBin: true
 
-  playwright@1.58.1:
-    resolution: {integrity: sha512-+2uTZHxSCcxjvGc5C891LrS1/NlxglGxzrC4seZiVjcYVQfUa87wBL6rTDqzGjuoWNjnBzRqKmF6zRYGMvQUaQ==}
+  playwright@1.58.2:
+    resolution: {integrity: sha512-vA30H8Nvkq/cPBnNw4Q8TWz1EJyqgpuinBcHET0YVJVFldr8JDNiU9LaWAE1KqSkRYazuaBhTpB5ZzShOezQ6A==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -7627,7 +7574,6 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   sonic-boom@4.2.0:
     resolution: {integrity: sha512-INb7TM37/mAcsGmc9hyyI6+QR3rR1zVRu36B0NeGXKnOOLiZOfER5SA+N7X7k3yUYRzLWafduTDvJAfDswwEww==}
@@ -8682,26 +8628,26 @@ snapshots:
       '@better-auth/utils': 0.3.1
       mongodb: 7.1.0
 
-  '@better-auth/oauth-provider@file:vendor/better-auth-oauth-provider-1.5.0-beta.13.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))':
+  '@better-auth/oauth-provider@file:vendor/better-auth-oauth-provider-1.5.0-beta.13.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))':
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.1
       '@better-fetch/fetch': 1.1.21
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       better-call: 1.2.1(zod@4.3.6)
       jose: 6.1.3
       zod: 4.3.6
 
-  '@better-auth/oidc4ida@file:vendor/better-auth-oidc4ida-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))':
+  '@better-auth/oidc4ida@file:vendor/better-auth-oidc4ida-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))':
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.1
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       better-call: 1.2.1(zod@4.3.6)
       jose: 6.1.3
       zod: 4.3.6
 
-  '@better-auth/oidc4vci@file:vendor/better-auth-oidc4vci-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))':
+  '@better-auth/oidc4vci@file:vendor/better-auth-oidc4vci-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))':
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.1
@@ -8709,30 +8655,30 @@ snapshots:
       '@openid4vc/openid4vci': 0.4.5
       '@sd-jwt/jwt-status-list': 0.19.0
       '@sd-jwt/sd-jwt-vc': 0.19.0
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       better-call: 1.2.1(zod@4.3.6)
       jose: 6.1.3
       zod: 4.3.6
 
-  '@better-auth/oidc4vp@file:vendor/better-auth-oidc4vp-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))':
+  '@better-auth/oidc4vp@file:vendor/better-auth-oidc4vp-0.0.0.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))':
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.1
       '@openid4vc/openid4vp': 0.4.5
       '@sd-jwt/sd-jwt-vc': 0.19.0
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       better-call: 1.2.1(zod@4.3.6)
       jose: 6.1.3
       zod: 4.3.6
 
-  '@better-auth/passkey@file:vendor/better-auth-passkey-1.5.0-beta.13.tgz(patch_hash=af07a3de0020e4594481bd8e9d36c3a393d3a0107b93343bbcc4a89e6072c6f3)(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))(nanostores@1.1.0)':
+  '@better-auth/passkey@file:vendor/better-auth-passkey-1.5.0-beta.13.tgz(patch_hash=af07a3de0020e4594481bd8e9d36c3a393d3a0107b93343bbcc4a89e6072c6f3)(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))(nanostores@1.1.0)':
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.1
       '@better-fetch/fetch': 1.1.21
       '@simplewebauthn/browser': 13.2.2
       '@simplewebauthn/server': 13.2.2
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       better-call: 1.2.1(zod@4.3.6)
       nanostores: 1.1.0
       zod: 4.3.6
@@ -8868,20 +8814,20 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
-  '@daveyplate/better-auth-tanstack@1.3.6(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.2.4))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@daveyplate/better-auth-tanstack@1.3.6(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.2.4))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@tanstack/query-core': 5.90.20
       '@tanstack/react-query': 5.90.20(react@19.2.4)
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
 
-  '@daveyplate/better-auth-ui@3.3.15(patch_hash=00ddf4641526f1c9986b25aede4be3f06ae306b633fb40ebec4af24e005f11e9)(91ff17ea6ae23b0e419d1b1d249c533b)':
+  '@daveyplate/better-auth-ui@3.3.15(patch_hash=00ddf4641526f1c9986b25aede4be3f06ae306b633fb40ebec4af24e005f11e9)(cc9cc8b477c9a3d9ddc58a17355575fd)':
     dependencies:
-      '@better-auth/passkey': file:vendor/better-auth-passkey-1.5.0-beta.13.tgz(patch_hash=af07a3de0020e4594481bd8e9d36c3a393d3a0107b93343bbcc4a89e6072c6f3)(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(better-call@1.2.1(zod@4.3.6))(nanostores@1.1.0)
+      '@better-auth/passkey': file:vendor/better-auth-passkey-1.5.0-beta.13.tgz(patch_hash=af07a3de0020e4594481bd8e9d36c3a393d3a0107b93343bbcc4a89e6072c6f3)(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(better-call@1.2.1(zod@4.3.6))(nanostores@1.1.0)
       '@better-fetch/fetch': 1.1.21
       '@captchafox/react': 1.10.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@daveyplate/better-auth-tanstack': 1.3.6(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.2.4))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@daveyplate/better-auth-tanstack': 1.3.6(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.2.4))(better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@hcaptcha/react-hcaptcha': 1.17.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@hookform/resolvers': 5.2.2(react-hook-form@7.71.1(react@19.2.4))
       '@instantdb/react': 0.22.102(react@19.2.4)
@@ -8906,7 +8852,7 @@ snapshots:
       '@triplit/client': 1.0.50(typescript@5.9.3)
       '@triplit/react': 1.0.51(react@19.2.4)(typescript@5.9.3)
       '@wojtekmaj/react-recaptcha-v3': 0.1.4(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8)
+      better-auth: file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       input-otp: 1.4.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -9712,7 +9658,7 @@ snapshots:
 
   '@mattrglobal/pairing-crypto@0.4.2': {}
 
-  '@mongodb-js/saslprep@1.4.5':
+  '@mongodb-js/saslprep@1.4.6':
     dependencies:
       sparse-bitfield: 3.0.3
 
@@ -10564,66 +10510,66 @@ snapshots:
 
   '@openzeppelin/contracts@5.4.0': {}
 
-  '@oxc-resolver/binding-android-arm-eabi@11.17.0':
+  '@oxc-resolver/binding-android-arm-eabi@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-android-arm64@11.17.0':
+  '@oxc-resolver/binding-android-arm64@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-darwin-arm64@11.17.0':
+  '@oxc-resolver/binding-darwin-arm64@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-darwin-x64@11.17.0':
+  '@oxc-resolver/binding-darwin-x64@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-freebsd-x64@11.17.0':
+  '@oxc-resolver/binding-freebsd-x64@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-arm-gnueabihf@11.17.0':
+  '@oxc-resolver/binding-linux-arm-gnueabihf@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-arm-musleabihf@11.17.0':
+  '@oxc-resolver/binding-linux-arm-musleabihf@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-arm64-gnu@11.17.0':
+  '@oxc-resolver/binding-linux-arm64-gnu@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-arm64-musl@11.17.0':
+  '@oxc-resolver/binding-linux-arm64-musl@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-ppc64-gnu@11.17.0':
+  '@oxc-resolver/binding-linux-ppc64-gnu@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-riscv64-gnu@11.17.0':
+  '@oxc-resolver/binding-linux-riscv64-gnu@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-riscv64-musl@11.17.0':
+  '@oxc-resolver/binding-linux-riscv64-musl@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-s390x-gnu@11.17.0':
+  '@oxc-resolver/binding-linux-s390x-gnu@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-x64-gnu@11.17.0':
+  '@oxc-resolver/binding-linux-x64-gnu@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-linux-x64-musl@11.17.0':
+  '@oxc-resolver/binding-linux-x64-musl@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-openharmony-arm64@11.17.0':
+  '@oxc-resolver/binding-openharmony-arm64@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-wasm32-wasi@11.17.0':
+  '@oxc-resolver/binding-wasm32-wasi@11.17.1':
     dependencies:
       '@napi-rs/wasm-runtime': 1.1.1
     optional: true
 
-  '@oxc-resolver/binding-win32-arm64-msvc@11.17.0':
+  '@oxc-resolver/binding-win32-arm64-msvc@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-win32-ia32-msvc@11.17.0':
+  '@oxc-resolver/binding-win32-ia32-msvc@11.17.1':
     optional: true
 
-  '@oxc-resolver/binding-win32-x64-msvc@11.17.0':
+  '@oxc-resolver/binding-win32-x64-msvc@11.17.1':
     optional: true
 
   '@oxlint/darwin-arm64@1.39.0':
@@ -10752,9 +10698,9 @@ snapshots:
 
   '@pinojs/redact@0.4.0': {}
 
-  '@playwright/test@1.58.1':
+  '@playwright/test@1.58.2':
     dependencies:
-      playwright: 1.58.1
+      playwright: 1.58.2
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -12507,13 +12453,13 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@synthetixio/ethereum-wallet-mock@0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.1)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
+  '@synthetixio/ethereum-wallet-mock@0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
     dependencies:
       '@depay/web3-client': 10.18.6(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@depay/web3-mock': 14.19.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       '@depay/web3-mock-evm': 14.19.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
-      '@playwright/test': 1.58.1
-      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.1)
+      '@playwright/test': 1.58.2
+      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
       viem: 2.9.9(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
     transitivePeerDependencies:
       - '@depay/solana-web3.js'
@@ -12524,7 +12470,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@synthetixio/synpress-cache@0.0.14(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)':
+  '@synthetixio/synpress-cache@0.0.14(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)':
     dependencies:
       axios: 1.13.4
       chalk: 5.3.0
@@ -12533,7 +12479,7 @@ snapshots:
       fs-extra: 11.2.0
       glob: 13.0.1
       gradient-string: 2.0.2
-      playwright-core: 1.58.1
+      playwright-core: 1.58.2
       progress: 2.0.3
       tsup: 8.0.2(postcss@8.5.6)(typescript@5.9.3)
       unzip-crx-3: 0.2.0
@@ -12548,15 +12494,15 @@ snapshots:
       - ts-node
       - typescript
 
-  '@synthetixio/synpress-core@0.0.14(@playwright/test@1.58.1)':
+  '@synthetixio/synpress-core@0.0.14(@playwright/test@1.58.2)':
     dependencies:
-      '@playwright/test': 1.58.1
+      '@playwright/test': 1.58.2
 
-  '@synthetixio/synpress-metamask@0.0.14(@playwright/test@1.58.1)(bufferutil@4.1.0)(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)':
+  '@synthetixio/synpress-metamask@0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)':
     dependencies:
-      '@playwright/test': 1.58.1
-      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)
-      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.1)
+      '@playwright/test': 1.58.2
+      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)
+      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
       '@viem/anvil': 0.0.7(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       fs-extra: 11.2.0
       zod: 3.22.4
@@ -12572,11 +12518,11 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@synthetixio/synpress-phantom@0.0.14(@playwright/test@1.58.1)(bufferutil@4.1.0)(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)':
+  '@synthetixio/synpress-phantom@0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)':
     dependencies:
-      '@playwright/test': 1.58.1
-      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)
-      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.1)
+      '@playwright/test': 1.58.2
+      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)
+      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
       '@viem/anvil': 0.0.7(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       fs-extra: 11.2.0
       zod: 3.22.4
@@ -12592,14 +12538,14 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@synthetixio/synpress@4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.1)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
+  '@synthetixio/synpress@4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)':
     dependencies:
-      '@playwright/test': 1.58.1
-      '@synthetixio/ethereum-wallet-mock': 0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.1)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
-      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)
-      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.1)
-      '@synthetixio/synpress-metamask': 0.0.14(@playwright/test@1.58.1)(bufferutil@4.1.0)(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)
-      '@synthetixio/synpress-phantom': 0.0.14(@playwright/test@1.58.1)(bufferutil@4.1.0)(playwright-core@1.58.1)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)
+      '@playwright/test': 1.58.2
+      '@synthetixio/ethereum-wallet-mock': 0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
+      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)
+      '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
+      '@synthetixio/synpress-metamask': 0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)
+      '@synthetixio/synpress-phantom': 0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.6)(typescript@5.9.3)(utf-8-validate@5.0.10)
     transitivePeerDependencies:
       - '@depay/solana-web3.js'
       - '@depay/web3-blockchains'
@@ -13766,7 +13712,7 @@ snapshots:
 
   bech32@1.1.4: {}
 
-  better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(cba9dadc13490345bf4b0508a56b22d8):
+  better-auth@file:vendor/better-auth-1.5.0-beta.13.tgz(0e56db9826d21ec2ec92189306ca09c6):
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/drizzle-adapter': 1.5.0-beta.13(@better-auth/core@file:vendor/better-auth-core-1.5.0-beta.13.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.2.1(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(@opentelemetry/api@1.9.0)(@prisma/client@7.3.0(prisma@7.3.0(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/pg@8.15.6)(kysely@0.28.11)(mysql2@3.15.3)(postgres@3.4.7)(prisma@7.3.0(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))
@@ -13791,7 +13737,7 @@ snapshots:
       drizzle-orm: 0.45.1(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))(@opentelemetry/api@1.9.0)(@prisma/client@7.3.0(prisma@7.3.0(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/pg@8.15.6)(kysely@0.28.11)(mysql2@3.15.3)(postgres@3.4.7)(prisma@7.3.0(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))
       mongodb: 7.1.0
       mysql2: 3.15.3
-      next: 16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      next: 16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       prisma: 7.3.0(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
@@ -13890,7 +13836,7 @@ snapshots:
   c12@3.1.0:
     dependencies:
       chokidar: 4.0.3
-      confbox: 0.2.3
+      confbox: 0.2.4
       defu: 6.1.4
       dotenv: 16.6.1
       exsolve: 1.0.8
@@ -14069,7 +14015,7 @@ snapshots:
 
   concat-map@0.0.1: {}
 
-  confbox@0.2.3: {}
+  confbox@0.2.4: {}
 
   confusing-browser-globals@1.0.11: {}
 
@@ -15270,6 +15216,10 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
+  iconv-lite@0.7.2:
+    dependencies:
+      safer-buffer: 2.1.2
+
   idb-keyval@6.2.1:
     optional: true
 
@@ -15621,7 +15571,7 @@ snapshots:
 
   keyvaluestorage-interface@1.0.0: {}
 
-  knip@5.83.0(@types/node@25.2.1)(typescript@5.9.3):
+  knip@5.83.1(@types/node@25.2.1)(typescript@5.9.3):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 25.2.1
@@ -15630,7 +15580,7 @@ snapshots:
       jiti: 2.6.1
       js-yaml: 4.1.1
       minimist: 1.2.8
-      oxc-resolver: 11.17.0
+      oxc-resolver: 11.17.1
       picocolors: 1.1.1
       picomatch: 4.0.3
       smol-toml: 1.6.0
@@ -16143,7 +16093,7 @@ snapshots:
 
   mongodb@7.1.0:
     dependencies:
-      '@mongodb-js/saslprep': 1.4.5
+      '@mongodb-js/saslprep': 1.4.6
       bson: 7.2.0
       mongodb-connection-string-url: 7.0.1
 
@@ -16176,7 +16126,7 @@ snapshots:
       aws-ssl-profiles: 1.1.2
       denque: 2.1.0
       generate-function: 2.3.1
-      iconv-lite: 0.7.0
+      iconv-lite: 0.7.2
       long: 5.3.2
       lru.min: 1.1.4
       named-placeholders: 1.1.6
@@ -16210,7 +16160,7 @@ snapshots:
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
 
-  next@16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  next@16.1.6(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       '@next/env': 16.1.6
       '@swc/helpers': 0.5.15
@@ -16230,7 +16180,7 @@ snapshots:
       '@next/swc-win32-arm64-msvc': 16.1.6
       '@next/swc-win32-x64-msvc': 16.1.6
       '@opentelemetry/api': 1.9.0
-      '@playwright/test': 1.58.1
+      '@playwright/test': 1.58.2
       sharp: 0.34.5
     transitivePeerDependencies:
       - '@babel/core'
@@ -16465,28 +16415,28 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  oxc-resolver@11.17.0:
+  oxc-resolver@11.17.1:
     optionalDependencies:
-      '@oxc-resolver/binding-android-arm-eabi': 11.17.0
-      '@oxc-resolver/binding-android-arm64': 11.17.0
-      '@oxc-resolver/binding-darwin-arm64': 11.17.0
-      '@oxc-resolver/binding-darwin-x64': 11.17.0
-      '@oxc-resolver/binding-freebsd-x64': 11.17.0
-      '@oxc-resolver/binding-linux-arm-gnueabihf': 11.17.0
-      '@oxc-resolver/binding-linux-arm-musleabihf': 11.17.0
-      '@oxc-resolver/binding-linux-arm64-gnu': 11.17.0
-      '@oxc-resolver/binding-linux-arm64-musl': 11.17.0
-      '@oxc-resolver/binding-linux-ppc64-gnu': 11.17.0
-      '@oxc-resolver/binding-linux-riscv64-gnu': 11.17.0
-      '@oxc-resolver/binding-linux-riscv64-musl': 11.17.0
-      '@oxc-resolver/binding-linux-s390x-gnu': 11.17.0
-      '@oxc-resolver/binding-linux-x64-gnu': 11.17.0
-      '@oxc-resolver/binding-linux-x64-musl': 11.17.0
-      '@oxc-resolver/binding-openharmony-arm64': 11.17.0
-      '@oxc-resolver/binding-wasm32-wasi': 11.17.0
-      '@oxc-resolver/binding-win32-arm64-msvc': 11.17.0
-      '@oxc-resolver/binding-win32-ia32-msvc': 11.17.0
-      '@oxc-resolver/binding-win32-x64-msvc': 11.17.0
+      '@oxc-resolver/binding-android-arm-eabi': 11.17.1
+      '@oxc-resolver/binding-android-arm64': 11.17.1
+      '@oxc-resolver/binding-darwin-arm64': 11.17.1
+      '@oxc-resolver/binding-darwin-x64': 11.17.1
+      '@oxc-resolver/binding-freebsd-x64': 11.17.1
+      '@oxc-resolver/binding-linux-arm-gnueabihf': 11.17.1
+      '@oxc-resolver/binding-linux-arm-musleabihf': 11.17.1
+      '@oxc-resolver/binding-linux-arm64-gnu': 11.17.1
+      '@oxc-resolver/binding-linux-arm64-musl': 11.17.1
+      '@oxc-resolver/binding-linux-ppc64-gnu': 11.17.1
+      '@oxc-resolver/binding-linux-riscv64-gnu': 11.17.1
+      '@oxc-resolver/binding-linux-riscv64-musl': 11.17.1
+      '@oxc-resolver/binding-linux-s390x-gnu': 11.17.1
+      '@oxc-resolver/binding-linux-x64-gnu': 11.17.1
+      '@oxc-resolver/binding-linux-x64-musl': 11.17.1
+      '@oxc-resolver/binding-openharmony-arm64': 11.17.1
+      '@oxc-resolver/binding-wasm32-wasi': 11.17.1
+      '@oxc-resolver/binding-win32-arm64-msvc': 11.17.1
+      '@oxc-resolver/binding-win32-ia32-msvc': 11.17.1
+      '@oxc-resolver/binding-win32-x64-msvc': 11.17.1
 
   oxlint@1.39.0:
     optionalDependencies:
@@ -16644,15 +16594,15 @@ snapshots:
 
   pkg-types@2.3.0:
     dependencies:
-      confbox: 0.2.3
+      confbox: 0.2.4
       exsolve: 1.0.8
       pathe: 2.0.3
 
-  playwright-core@1.58.1: {}
+  playwright-core@1.58.2: {}
 
-  playwright@1.58.1:
+  playwright@1.58.2:
     dependencies:
-      playwright-core: 1.58.1
+      playwright-core: 1.58.2
     optionalDependencies:
       fsevents: 2.3.2
 
