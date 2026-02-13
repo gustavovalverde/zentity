@@ -258,6 +258,16 @@ export function LivenessProvider({
     onSessionError,
   });
 
+  // Destructure stable callbacks to avoid depending on the full liveness object
+  // (which changes identity on every render due to face detection state)
+  const {
+    signalChallengeReady,
+    signalCountdownDone,
+    beginCamera,
+    cancelSession,
+    retryChallenge,
+  } = liveness;
+
   // ============================================================================
   // Feedback effects - trigger on phase transitions
   // ============================================================================
@@ -333,7 +343,7 @@ export function LivenessProvider({
 
       // Signal to server FIRST so evaluation starts immediately
       // Speech plays in parallel - no need to wait for it
-      liveness.signalChallengeReady();
+      signalChallengeReady();
 
       const speechKey = {
         smile: "smile",
@@ -343,59 +353,50 @@ export function LivenessProvider({
 
       speak(speechKey);
     }
-  }, [
-    liveness.challenge,
-    speak,
-    liveness.signalChallengeReady,
-    debug, // Signal to server FIRST so evaluation starts immediately
-    // Speech plays in parallel - no need to wait for it
-    liveness,
-  ]);
+  }, [liveness.challenge, speak, signalChallengeReady, debug]);
 
   // Local countdown timer - runs when server enters "countdown" phase
+  // Side effects (signalCountdownDone, feedback) are kept outside the state
+  // updater to avoid double-firing in React StrictMode.
+  const countdownDoneRef = useRef(false);
+
   useEffect(() => {
-    // Only run when phase is countdown
     if (liveness.phase !== "countdown") {
       setLocalCountdown(null);
+      countdownDoneRef.current = false;
       return;
     }
 
-    // Cancel any ongoing speech (e.g., "hold still") before countdown starts
     cancelSpeech();
-
-    // Start countdown at 3 and play initial beep
     setLocalCountdown(3);
     feedback("countdown3");
 
-    // Tick down every second
     const interval = setInterval(() => {
       setLocalCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
-          // Signal server that countdown is done
-          liveness.signalCountdownDone();
-          return null;
+          return 0;
         }
-        const next = prev - 1;
-        // Play earcon for each tick
-        if (next === 2) {
-          feedback("countdown2");
-        }
-        if (next === 1) {
-          feedback("countdown1");
-        }
-        return next;
+        return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [
-    liveness.phase,
-    liveness.signalCountdownDone,
-    cancelSpeech,
-    feedback, // Signal server that countdown is done
-    liveness,
-  ]);
+  }, [liveness.phase, cancelSpeech, feedback]);
+
+  // Separate effect for countdown side effects (earcons + done signal)
+  useEffect(() => {
+    if (localCountdown === 2) {
+      feedback("countdown2");
+    }
+    if (localCountdown === 1) {
+      feedback("countdown1");
+    }
+    if (localCountdown === 0 && !countdownDoneRef.current) {
+      countdownDoneRef.current = true;
+      signalCountdownDone();
+    }
+  }, [localCountdown, feedback, signalCountdownDone]);
 
   // ============================================================================
   // Actions
@@ -403,20 +404,16 @@ export function LivenessProvider({
 
   const start = useCallback(() => {
     initAudio(); // Initialize audio on user interaction
-    liveness.beginCamera();
-  }, [liveness.beginCamera, initAudio, liveness]);
+    beginCamera();
+  }, [beginCamera, initAudio]);
 
   const cancel = useCallback(() => {
-    // Clean stop from ANY state - resets phase back to idle
-    liveness.cancelSession();
-  }, [
-    liveness.cancelSession, // Clean stop from ANY state - resets phase back to idle
-    liveness,
-  ]);
+    cancelSession();
+  }, [cancelSession]);
 
   const retry = useCallback(() => {
-    liveness.retryChallenge();
-  }, [liveness.retryChallenge, liveness]);
+    retryChallenge();
+  }, [retryChallenge]);
 
   const toggleAudio = useCallback(() => {
     const newState = !(audioEnabled || speechEnabled);

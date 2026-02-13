@@ -314,8 +314,16 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       }
     });
 
-    // Handle completion (with acknowledgment)
+    // Handle completion (with acknowledgment) — guard against duplicate events
+    let completedHandled = false;
     socket.on("completed", (result: CompletedResult, ack?: () => void) => {
+      ack?.();
+
+      if (completedHandled) {
+        return;
+      }
+      completedHandled = true;
+
       if (debugEnabled) {
         console.log("[liveness] Completed:", result);
       }
@@ -338,9 +346,6 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       toast.success("Liveness verified!", {
         description: "All challenges completed successfully.",
       });
-
-      // Acknowledge receipt to server
-      ack?.();
     });
 
     // Handle failure with soft retry logic

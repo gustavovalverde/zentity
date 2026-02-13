@@ -217,8 +217,8 @@ export function handleLivenessConnection(socket: Socket): void {
       session.lastFrameDataUrl = dataUrl;
       session.lastHappyScore = face ? getHappyScore(face) : null;
 
-      // Process based on current phase
-      processPhase(socket, session, result, face, dataUrl, log);
+      // Process based on current phase (await to hold isProcessing lock)
+      await processPhase(socket, session, result, face, dataUrl, log);
 
       // Reset error counter on success
       consecutiveErrors = 0;
@@ -657,6 +657,16 @@ async function handleVerifyingPhase(
   const livenessPassed = liveScore >= ANTISPOOF_LIVE_THRESHOLD;
 
   if (!(antispoofPassed && livenessPassed)) {
+    log.warn(
+      {
+        sessionId: session.id,
+        realScore,
+        liveScore,
+        antispoofPassed,
+        livenessPassed,
+      },
+      "Anti-spoof check failed"
+    );
     session.phase = "failed";
     socket.emit("failed", {
       code: antispoofPassed
@@ -667,6 +677,10 @@ async function handleVerifyingPhase(
     });
     return;
   }
+
+  // Transition to completed BEFORE async work to prevent duplicate processing
+  // (multiple frames can enter this handler concurrently via processPhase)
+  session.phase = "completed";
 
   // Write liveness results directly to database if draft is linked
   // This is the secure path - server writes results, not client
@@ -696,9 +710,6 @@ async function handleVerifyingPhase(
       );
     }
   }
-
-  // Success! Send with acknowledgment to ensure client receives it.
-  session.phase = "completed";
   const completionData = {
     verified: true,
     sessionId: session.id,
