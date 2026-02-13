@@ -1,0 +1,28 @@
+Patent Notice for Zentity
+
+The Software is distributed by Gustavo Valverde (the "Licensor") under the
+terms of the LICENSE file, which governs copyright permissions only.
+
+NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+THE LICENSE, BY THIS NOTICE, OR BY DISTRIBUTION OF THE SOFTWARE.
+
+The Licensor has filed patent applications covering methods and processes
+embodied in the Software, including but not limited to techniques relating to
+privacy-preserving identity verification, cryptographic key custody, fully
+homomorphic encryption applied to compliance data, zero-knowledge proof
+generation and verification for identity attributes, and credential-wrapped
+encryption key management.
+
+Nothing in the LICENSE or in the making available of the Software shall be
+construed as a grant, waiver, or other limitation on any patent rights of
+the Licensor, whether by implication, estoppel, or otherwise. The copyright
+license granted in the LICENSE file permits use, modification, and
+distribution of the Software's source code and object code only under
+copyright law. Any use, manufacture, sale, offer for sale, or importation of
+methods or processes covered by the Licensor's patent claims requires a
+separate written patent license from the Licensor, regardless of whether such
+methods are practiced using this Software, a modified version of this
+Software, or an independent implementation.
+
+This notice shall be included in all copies or substantial portions of the
+Software.
