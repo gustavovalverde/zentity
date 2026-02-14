@@ -24,6 +24,49 @@ import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
 import { encryptBatchFhe, FheServiceError } from "./service";
 
+/**
+ * Maximum expected ciphertext size (bytes). TFHE ciphertexts for scalar
+ * types (FheUint8/16/32) are bounded. Ciphertexts exceeding this limit
+ * may indicate corruption or a malleability attack.
+ */
+const MAX_CIPHERTEXT_BYTES = 512 * 1024; // 512 KiB
+
+/**
+ * Minimum expected ciphertext size (bytes). A valid TFHE ciphertext
+ * always has some overhead. Suspiciously small payloads are rejected.
+ */
+const MIN_CIPHERTEXT_BYTES = 32;
+
+/**
+ * Compute SHA-256 hash of a ciphertext for integrity verification.
+ * This hash can be used to detect tampering between encryption and
+ * homomorphic computation (IND-CPA → integrity gap).
+ */
+function ciphertextHash(ciphertext: Uint8Array): string {
+  return crypto.createHash("sha256").update(ciphertext).digest("hex");
+}
+
+/**
+ * Validate a ciphertext meets expected size bounds.
+ * Rejects ciphertexts that are too small (corrupted) or too large
+ * (potential resource exhaustion or malleability attack payload).
+ */
+function validateCiphertextSize(
+  ciphertext: Uint8Array,
+  attributeType: string
+): void {
+  if (ciphertext.byteLength < MIN_CIPHERTEXT_BYTES) {
+    throw new Error(
+      `${attributeType} ciphertext too small: ${ciphertext.byteLength} bytes (minimum ${MIN_CIPHERTEXT_BYTES})`
+    );
+  }
+  if (ciphertext.byteLength > MAX_CIPHERTEXT_BYTES) {
+    throw new Error(
+      `${attributeType} ciphertext too large: ${ciphertext.byteLength} bytes (maximum ${MAX_CIPHERTEXT_BYTES})`
+    );
+  }
+}
+
 export interface FheEncryptionSchedule {
   userId: string;
   requestId?: string;
@@ -199,15 +242,20 @@ async function runFheEncryption(
 
         if (shouldEncryptDobDays) {
           if (result.dobDaysCiphertext) {
+            const ct = Buffer.from(result.dobDaysCiphertext);
+            validateCiphertextSize(ct, "dob_days");
+            const ctHash = ciphertextHash(ct);
             await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
               attributeType: "dob_days",
-              ciphertext: Buffer.from(result.dobDaysCiphertext),
+              ciphertext: ct,
               keyId,
               encryptionTimeMs: durationMs,
             });
+            span.setAttribute("fhe.dob_days.ciphertext_hash", ctHash);
+            span.setAttribute("fhe.dob_days.ciphertext_bytes", ct.byteLength);
             transientDobDays.delete(userId);
             clearTimeout(transientDobDaysTtl.get(userId));
             transientDobDaysTtl.delete(userId);
@@ -218,15 +266,23 @@ async function runFheEncryption(
 
         if (shouldEncryptLivenessScore) {
           if (result.livenessScoreCiphertext) {
+            const ct = Buffer.from(result.livenessScoreCiphertext);
+            validateCiphertextSize(ct, "liveness_score");
+            const ctHash = ciphertextHash(ct);
             await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
               attributeType: "liveness_score",
-              ciphertext: Buffer.from(result.livenessScoreCiphertext),
+              ciphertext: ct,
               keyId,
               encryptionTimeMs: durationMs,
             });
+            span.setAttribute("fhe.liveness_score.ciphertext_hash", ctHash);
+            span.setAttribute(
+              "fhe.liveness_score.ciphertext_bytes",
+              ct.byteLength
+            );
           } else {
             missingCiphertexts.push("liveness_score");
           }
@@ -234,15 +290,23 @@ async function runFheEncryption(
 
         if (shouldEncryptCompliance) {
           if (result.complianceLevelCiphertext) {
+            const ct = Buffer.from(result.complianceLevelCiphertext);
+            validateCiphertextSize(ct, "compliance_level");
+            const ctHash = ciphertextHash(ct);
             await insertEncryptedAttribute({
               id: crypto.randomUUID(),
               userId,
               source: "web2_tfhe",
               attributeType: "compliance_level",
-              ciphertext: Buffer.from(result.complianceLevelCiphertext),
+              ciphertext: ct,
               keyId,
               encryptionTimeMs: durationMs,
             });
+            span.setAttribute("fhe.compliance_level.ciphertext_hash", ctHash);
+            span.setAttribute(
+              "fhe.compliance_level.ciphertext_bytes",
+              ct.byteLength
+            );
           } else {
             missingCiphertexts.push("compliance_level");
           }

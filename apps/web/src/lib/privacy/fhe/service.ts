@@ -321,6 +321,18 @@ export function registerFheKey(args: {
 }
 
 /**
+ * Maximum ciphertext size accepted for homomorphic operations (bytes).
+ * Prevents sending oversized or corrupted payloads to the FHE service.
+ */
+const MAX_FHE_CIPHERTEXT_BYTES = 512 * 1024; // 512 KiB
+
+/**
+ * Minimum ciphertext size for valid TFHE ciphertexts (bytes).
+ * A valid ciphertext always has TFHE encoding overhead.
+ */
+const MIN_FHE_CIPHERTEXT_BYTES = 32;
+
+/**
  * Verify age using DOB days format.
  */
 export function verifyAgeFromDobFhe(args: {
@@ -331,6 +343,23 @@ export function verifyAgeFromDobFhe(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<FheVerifyAgeResult> {
+  // Validate ciphertext at the service boundary before sending for
+  // homomorphic computation. Detects corruption or malleability.
+  if (args.ciphertext.byteLength < MIN_FHE_CIPHERTEXT_BYTES) {
+    throw new FheServiceError({
+      operation: "verify_age_from_dob",
+      message: `Ciphertext too small: ${args.ciphertext.byteLength} bytes (minimum ${MIN_FHE_CIPHERTEXT_BYTES})`,
+      kind: "http",
+    });
+  }
+  if (args.ciphertext.byteLength > MAX_FHE_CIPHERTEXT_BYTES) {
+    throw new FheServiceError({
+      operation: "verify_age_from_dob",
+      message: `Ciphertext too large: ${args.ciphertext.byteLength} bytes (maximum ${MAX_FHE_CIPHERTEXT_BYTES})`,
+      kind: "http",
+    });
+  }
+
   const url = `${getFheServiceUrl()}/verify-age-from-dob`;
   const payload = {
     ciphertext: args.ciphertext,

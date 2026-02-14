@@ -25,6 +25,67 @@ fn validate_ciphersuite(
     Ok(())
 }
 
+/// Minimum message length for signing (reject trivially short payloads).
+const MIN_MESSAGE_LENGTH: usize = 16;
+/// Maximum message length for signing (prevent abuse with oversized payloads).
+const MAX_MESSAGE_LENGTH: usize = 4096;
+
+/// Validate message payload before signing to prevent blind signing attacks.
+///
+/// A compromised coordinator could send arbitrary transaction payloads for the
+/// signer to blindly sign. This validation layer ensures messages meet basic
+/// structural requirements, reducing the risk of signing malicious payloads.
+fn validate_message_payload(message: &[u8]) -> Result<(), HttpResponse> {
+    if message.is_empty() {
+        return Err(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Message payload is empty",
+            "code": "EMPTY_MESSAGE"
+        })));
+    }
+
+    if message.len() < MIN_MESSAGE_LENGTH {
+        return Err(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": format!(
+                "Message too short: {} bytes (minimum {} bytes)",
+                message.len(),
+                MIN_MESSAGE_LENGTH
+            ),
+            "code": "MESSAGE_TOO_SHORT"
+        })));
+    }
+
+    if message.len() > MAX_MESSAGE_LENGTH {
+        return Err(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": format!(
+                "Message too large: {} bytes (maximum {} bytes)",
+                message.len(),
+                MAX_MESSAGE_LENGTH
+            ),
+            "code": "MESSAGE_TOO_LARGE"
+        })));
+    }
+
+    // Reject all-zero messages (likely uninitialized or malicious)
+    if message.iter().all(|&b| b == 0) {
+        return Err(HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Message payload is all zeros",
+            "code": "ZERO_MESSAGE"
+        })));
+    }
+
+    tracing::debug!(
+        message_len = message.len(),
+        message_sha256 = %{
+            use sha2::{Digest, Sha256};
+            let hash = Sha256::digest(message);
+            hex::encode(&hash[..8])
+        },
+        "Message payload validated for signing"
+    );
+
+    Ok(())
+}
+
 /// POST /signer/dkg/round1
 ///
 /// Generate DKG round 1 package.
@@ -178,6 +239,13 @@ pub async fn sign_partial(
             }));
         }
     };
+
+    // Validate message payload before signing (prevent blind signing attacks).
+    // A compromised coordinator could feed arbitrary payloads; the signer must
+    // reject messages that are obviously malformed or suspiciously large.
+    if let Err(response) = validate_message_payload(&message) {
+        return response;
+    }
 
     if let Err(response) = validate_ciphersuite(request.ciphersuite, &signer) {
         return response;

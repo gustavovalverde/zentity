@@ -65,6 +65,13 @@ pub struct VerifyAgeFromDobResponse {
     result_ciphertext: Vec<u8>,
 }
 
+/// Maximum accepted ciphertext size for homomorphic operations (512 KiB).
+/// Ciphertexts exceeding this limit may indicate corruption or an attack.
+const MAX_CIPHERTEXT_BYTES: usize = 512 * 1024;
+
+/// Minimum expected ciphertext size. Valid TFHE ciphertexts have encoding overhead.
+const MIN_CIPHERTEXT_BYTES: usize = 32;
+
 #[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
 pub async fn verify_age_from_dob(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
     let payload: VerifyAgeFromDobRequest = transport::decode_msgpack(&headers, body)?;
@@ -75,6 +82,21 @@ pub async fn verify_age_from_dob(headers: HeaderMap, body: Bytes) -> Result<Resp
         key_id,
     } = payload;
     let ciphertext_bytes = ciphertext.len();
+
+    // Validate ciphertext size bounds before performing expensive homomorphic operations.
+    // This prevents resource exhaustion from oversized payloads and detects corruption.
+    if ciphertext_bytes < MIN_CIPHERTEXT_BYTES {
+        return Err(FheError::InvalidInput(format!(
+            "Ciphertext too small: {} bytes (minimum {})",
+            ciphertext_bytes, MIN_CIPHERTEXT_BYTES
+        )));
+    }
+    if ciphertext_bytes > MAX_CIPHERTEXT_BYTES {
+        return Err(FheError::InvalidInput(format!(
+            "Ciphertext too large: {} bytes (maximum {})",
+            ciphertext_bytes, MAX_CIPHERTEXT_BYTES
+        )));
+    }
     let result_ciphertext = run_cpu_bound(move || {
         info_span!(
             "fhe.verify.age_from_dob",

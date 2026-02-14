@@ -36,6 +36,21 @@ import type {
 
 import { ethers } from "ethers";
 
+/**
+ * Maximum allowed duration for decryption signatures (days).
+ * Limits the blast radius of a compromised signature. While the fhEVM
+ * SDK defaults to 365 days, this cap ensures an upper bound is enforced
+ * client-side to prevent indefinite authorization.
+ */
+const MAX_DURATION_DAYS = 365;
+
+/**
+ * Minimum remaining validity for a cached signature to be considered usable (seconds).
+ * Prevents using a signature that's about to expire mid-operation, which would
+ * cause Gateway rejections during the re-encryption flow.
+ */
+const EXPIRY_SAFETY_MARGIN_SECONDS = 300; // 5 minutes
+
 /** Current Unix timestamp in seconds */
 function timestampNow(): number {
   return Math.floor(Date.now() / 1000);
@@ -267,6 +282,23 @@ export class FhevmDecryptionSignature {
     if (!FhevmDecryptionSignature.checkIs(parameters)) {
       throw new TypeError("Invalid FhevmDecryptionSignatureType");
     }
+
+    // Enforce maximum duration to limit blast radius of compromised signatures
+    if (parameters.durationDays > MAX_DURATION_DAYS) {
+      throw new RangeError(
+        `Duration ${parameters.durationDays} days exceeds maximum of ${MAX_DURATION_DAYS} days`
+      );
+    }
+
+    // Reject signatures with start timestamps far in the future (clock skew attack)
+    const now = timestampNow();
+    const maxFutureSkew = 300; // 5 minutes
+    if (parameters.startTimestamp > now + maxFutureSkew) {
+      throw new RangeError(
+        "Signature start timestamp is too far in the future"
+      );
+    }
+
     this.#publicKey = parameters.publicKey;
     this.#privateKey = parameters.privateKey;
     this.#signature = parameters.signature;
@@ -370,11 +402,15 @@ export class FhevmDecryptionSignature {
     return s.signature === this.#signature;
   }
 
-  /** Check if this session is still within its validity period */
+  /**
+   * Check if this session is still within its validity period.
+   *
+   * Includes a safety margin to avoid using signatures that are about to
+   * expire, which would cause mid-operation failures during re-encryption.
+   */
   isValid(): boolean {
-    return (
-      timestampNow() < this.#startTimestamp + this.#durationDays * 24 * 60 * 60
-    );
+    const expiresAt = this.#startTimestamp + this.#durationDays * 24 * 60 * 60;
+    return timestampNow() + EXPIRY_SAFETY_MARGIN_SECONDS < expiresAt;
   }
 
   /**
@@ -501,7 +537,7 @@ export class FhevmDecryptionSignature {
     try {
       const userAddress = (await signer.getAddress()) as `0x${string}`;
       const startTimestamp = timestampNow();
-      const durationDays = 365;
+      const durationDays = Math.min(365, MAX_DURATION_DAYS);
 
       const normalizedContractAddresses =
         normalizeContractAddresses(contractAddresses);

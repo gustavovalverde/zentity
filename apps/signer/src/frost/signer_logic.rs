@@ -39,7 +39,17 @@ struct StoredSecret {
 struct StoredNonces {
     ciphersuite: Ciphersuite,
     bytes: Vec<u8>,
+    /// When these nonces were created (for TTL eviction).
+    created_at: std::time::Instant,
 }
+
+/// Maximum number of concurrent signing nonces stored in memory.
+/// Prevents memory exhaustion from abandoned signing sessions.
+const MAX_CONCURRENT_NONCES: usize = 64;
+
+/// Time-to-live for signing nonces (15 minutes).
+/// Nonces from abandoned signing sessions are automatically evicted.
+const NONCE_TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
 /// Signer service for FROST key share operations.
 pub struct SignerService {
@@ -171,11 +181,34 @@ impl SignerService {
             });
         }
 
+        // Evict expired nonces before storing new ones (prevents unbounded growth
+        // from abandoned signing sessions where sign_partial is never called).
+        let now = std::time::Instant::now();
+        let before_count = map.len();
+        map.retain(|_, stored| now.duration_since(stored.created_at) < NONCE_TTL);
+        let evicted = before_count - map.len();
+        if evicted > 0 {
+            tracing::warn!(
+                evicted_count = evicted,
+                remaining = map.len(),
+                "Evicted expired signing nonces"
+            );
+        }
+
+        // Enforce maximum concurrent nonce limit to prevent memory exhaustion
+        if map.len() >= MAX_CONCURRENT_NONCES {
+            return Err(SignerError::RateLimitExceeded(format!(
+                "Too many concurrent signing nonces ({MAX_CONCURRENT_NONCES}). \
+                 This may indicate abandoned signing sessions or a resource exhaustion attack."
+            )));
+        }
+
         map.insert(
             nonces_key,
             StoredNonces {
                 ciphersuite: self.ciphersuite,
                 bytes: nonces_bytes,
+                created_at: now,
             },
         );
         drop(map);
@@ -187,12 +220,28 @@ impl SignerService {
             .signing_nonces
             .lock()
             .map_err(|e| SignerError::Internal(format!("Signing nonces mutex poisoned: {e}")))?;
-        nonces_map.remove(nonces_key).ok_or_else(|| {
+
+        let stored = nonces_map.remove(nonces_key).ok_or_else(|| {
             SignerError::SessionNotFound(format!(
                 "No nonces for session {} group {}",
                 nonces_key.1, nonces_key.0
             ))
-        })
+        })?;
+
+        // Reject expired nonces — they should never be used for signing
+        if std::time::Instant::now().duration_since(stored.created_at) >= NONCE_TTL {
+            tracing::warn!(
+                session_id = %nonces_key.1,
+                group_pubkey_prefix = %&nonces_key.0[..std::cmp::min(16, nonces_key.0.len())],
+                "Rejected expired signing nonces"
+            );
+            return Err(SignerError::SessionExpired(format!(
+                "Signing nonces expired for session {}",
+                nonces_key.1
+            )));
+        }
+
+        Ok(stored)
     }
 
     // =========================================================================
