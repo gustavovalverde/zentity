@@ -43,3 +43,10 @@ The service listens on `http://localhost:5004` by default.
 - `PORT` - service port (default: `5004`)
 - `INTERNAL_SERVICE_TOKEN` - enable internal auth for non-public routes
 - `INTERNAL_SERVICE_TOKEN_REQUIRED` - force auth even outside production
+- `OCR_ALLOW_RAW_IMAGE_INGRESS` - production override for legacy raw-image endpoints (`/extract`, `/ocr`)
+
+## Production raw-image ingress policy
+
+- `POST /process` remains enabled in production (primary verification flow).
+- `POST /extract` and `POST /ocr` are blocked by default in production.
+- Set `OCR_ALLOW_RAW_IMAGE_INGRESS=1` to re-enable `/extract` and `/ocr` in production.

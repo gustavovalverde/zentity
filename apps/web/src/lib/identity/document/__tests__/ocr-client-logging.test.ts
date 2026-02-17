@@ -57,4 +57,14 @@ describe("ocr-client request logging", () => {
     expect(requestBody.userSalt).toBe("session-salt");
     expect(requestOptions.headers).not.toHaveProperty("image");
   });
+
+  it("rejects oversized image payloads before making a network call", async () => {
+    await expect(
+      processDocumentOcr({
+        image: "x".repeat(16_000_001),
+      })
+    ).rejects.toThrow("Image payload too large for OCR processing");
+
+    expect(fetchJson).not.toHaveBeenCalled();
+  });
 });

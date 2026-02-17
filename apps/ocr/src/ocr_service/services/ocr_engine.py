@@ -8,6 +8,7 @@ Supports Latin character recognition for Spanish text.
 from __future__ import annotations
 
 import base64
+import binascii
 import functools
 import io
 import logging
@@ -22,6 +23,9 @@ from rapidocr import RapidOCR
 logger = logging.getLogger(__name__)
 
 PASSPORT_MRZ_HINT_PATTERN = re.compile(r"P<[A-Z0-9]{3}", re.IGNORECASE)
+MAX_IMAGE_BASE64_CHARS = 16_000_000
+MAX_IMAGE_BYTES = 12 * 1024 * 1024
+MAX_IMAGE_PIXELS = 25_000_000
 
 # Fast engine settings for the MRZ region (trade accuracy for speed).
 # For full-document OCR, keep RapidOCR defaults for better recall on small text.
@@ -105,9 +109,26 @@ def decode_base64_image(base64_string: str) -> np.ndarray:
     if "," in base64_string:
         base64_string = base64_string.split(",", 1)[1]
 
-    image_bytes = base64.b64decode(base64_string)
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    return np.array(image)
+    if len(base64_string) > MAX_IMAGE_BASE64_CHARS:
+        raise ValueError("Image payload too large")
+
+    try:
+        image_bytes = base64.b64decode(base64_string, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Invalid base64 image payload") from exc
+
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise ValueError("Decoded image too large")
+
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        image.load()
+        if image.width * image.height > MAX_IMAGE_PIXELS:
+            raise ValueError("Image dimensions too large")
+        rgb_image = image.convert("RGB")
+        try:
+            return np.array(rgb_image)
+        finally:
+            rgb_image.close()
 
 
 def _build_result(text_blocks: list[TextBlock], full_text: str, elapsed_ms: int) -> OCRResult:
@@ -194,11 +215,12 @@ def extract_text_from_base64(base64_image: str) -> OCRResult:
         image = decode_base64_image(base64_image)
         return extract_text(image)
     except Exception as exc:
+        logger.warning("Failed to decode OCR image payload: %s: %s", type(exc).__name__, exc)
         return OCRResult(
             text_blocks=[],
             full_text="",
             processing_time_ms=0,
-            error=f"Failed to decode image: {exc}",
+            error="Failed to decode image",
         )
 
 
@@ -219,11 +241,12 @@ def extract_document_text_from_base64(base64_image: str) -> OCRResult:
     try:
         image = decode_base64_image(base64_image)
     except Exception as exc:
+        logger.warning("Failed to decode OCR document payload: %s: %s", type(exc).__name__, exc)
         return OCRResult(
             text_blocks=[],
             full_text="",
             processing_time_ms=0,
-            error=f"Failed to decode image: {exc}",
+            error="Failed to decode image",
         )
 
     height, width = image.shape[:2]

@@ -24,6 +24,7 @@ from .telemetry import instrument_app
 
 configure_logging()
 logger = logging.getLogger(__name__)
+_RAW_IMAGE_INGRESS_PATHS = frozenset({"/extract", "/ocr"})
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -53,6 +54,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         response.headers["X-Request-Id"] = get_request_id()
         return response
+
+    @app.middleware("http")
+    async def raw_image_ingress_guard(request: Request, call_next):
+        if (
+            request.method == "POST"
+            and request.url.path in _RAW_IMAGE_INGRESS_PATHS
+            and not settings.raw_image_ingress_enabled_for_path(request.url.path)
+        ):
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={"error": "Raw image ingress disabled in production for this endpoint"},
+            )
+        return await call_next(request)
 
     # Privacy: Avoid echoing request bodies (e.g., base64 images) back in 422 responses.
     @app.exception_handler(RequestValidationError)

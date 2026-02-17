@@ -5,6 +5,9 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 from pydantic.config import ConfigDict
 
+MAX_IMAGE_BASE64_CHARS = 16_000_000
+HEX_64_PATTERN = r"^[0-9a-fA-F]{64}$"
+
 
 def _to_camel(string: str) -> str:
     parts = string.split("_")
@@ -16,7 +19,12 @@ class APIModel(BaseModel):
 
 
 class ImageRequest(APIModel):
-    image: str = Field(..., description="Base64 encoded image")
+    image: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_IMAGE_BASE64_CHARS,
+        description="Base64 encoded image",
+    )
 
 
 class ExtractedDataResponse(APIModel):
@@ -87,9 +95,17 @@ class BuildInfoResponse(APIModel):
 class ProcessDocumentRequest(APIModel):
     """Request for full privacy-preserving document processing."""
 
-    image: str = Field(..., description="Base64 encoded document image")
+    image: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_IMAGE_BASE64_CHARS,
+        description="Base64 encoded document image",
+    )
     user_salt: str | None = Field(
         None,
+        min_length=64,
+        max_length=64,
+        pattern=HEX_64_PATTERN,
         description="Existing user salt. If not provided, a new one is generated.",
     )
 

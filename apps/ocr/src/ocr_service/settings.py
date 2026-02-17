@@ -48,6 +48,9 @@ class Settings:
     port: int
     internal_service_token: str
     internal_service_token_required: bool
+    # Production override: when true, allows legacy raw OCR endpoints
+    # (`/extract`, `/ocr`) in addition to `/process`.
+    ocr_allow_raw_image_ingress: bool
     node_env: str
     app_env: str
     rust_env: str
@@ -58,6 +61,17 @@ class Settings:
     @property
     def is_production(self) -> bool:
         return any(env == "production" for env in (self.node_env, self.app_env, self.rust_env))
+
+    def raw_image_ingress_enabled_for_path(self, path: str) -> bool:
+        """Whether raw image ingress is allowed for a specific endpoint path."""
+        if not self.is_production:
+            return True
+        # Keep the primary product flow working in production:
+        # dashboard verification depends on `/process`.
+        if path == "/process":
+            return True
+        # Legacy raw OCR endpoints remain explicitly opt-in in production.
+        return self.ocr_allow_raw_image_ingress
 
     def validate(self) -> None:
         requires_token = self.is_production or self.internal_service_token_required
@@ -73,6 +87,7 @@ class Settings:
             port=int(_env("PORT", "5004")),
             internal_service_token=_env("INTERNAL_SERVICE_TOKEN"),
             internal_service_token_required=_is_truthy(_env("INTERNAL_SERVICE_TOKEN_REQUIRED")),
+            ocr_allow_raw_image_ingress=_is_truthy(_env("OCR_ALLOW_RAW_IMAGE_INGRESS")),
             node_env=_env("NODE_ENV").lower(),
             app_env=_env("APP_ENV").lower(),
             rust_env=_env("RUST_ENV").lower(),

@@ -56,6 +56,15 @@ export interface OcrProcessResult {
 
 /** OCR processing timeout (40 seconds) - slightly less than client timeout. */
 const OCR_TIMEOUT_MS = 40_000;
+/** Upper bound for base64 image payloads sent to OCR service. */
+const MAX_OCR_IMAGE_PAYLOAD_BYTES = 16_000_000;
+
+function assertOcrImagePayloadSize(image: string): void {
+  const imageBytes = Buffer.byteLength(image);
+  if (imageBytes > MAX_OCR_IMAGE_PAYLOAD_BYTES) {
+    throw new Error("Image payload too large for OCR processing");
+  }
+}
 
 async function withOcrMetrics<T>(args: {
   operation: "process_document" | "ocr_document" | "health";
@@ -92,6 +101,7 @@ export function processDocumentOcr(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<OcrProcessResult> {
+  assertOcrImagePayloadSize(args.image);
   const url = `${getOcrServiceUrl()}/process`;
   const payload = JSON.stringify({
     image: args.image,
@@ -130,6 +140,7 @@ export function ocrDocumentOcr(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<unknown> {
+  assertOcrImagePayloadSize(args.image);
   const url = `${getOcrServiceUrl()}/ocr`;
   const payload = JSON.stringify({ image: args.image });
   const payloadBytes = Buffer.byteLength(payload);

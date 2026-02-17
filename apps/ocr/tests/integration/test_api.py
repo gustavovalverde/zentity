@@ -5,41 +5,72 @@ Tests all REST endpoints with realistic requests, error handling,
 authentication middleware, and privacy protections.
 """
 
-import os
-
 import pytest
 from fastapi.testclient import TestClient
 
 from ocr_service.main import create_app
 
 
-def _set_test_env(token: str = "") -> None:
-    os.environ["INTERNAL_SERVICE_TOKEN"] = token  # noqa: S105
-    os.environ["INTERNAL_SERVICE_TOKEN_REQUIRED"] = "0"  # noqa: S105
-    os.environ["NODE_ENV"] = "test"
-    os.environ["APP_ENV"] = "test"
-    os.environ["RUST_ENV"] = "test"
+def _patch_env(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    token: str = "",
+    node_env: str = "test",
+    app_env: str = "test",
+    rust_env: str = "test",
+    allow_raw_image_ingress: str = "",
+) -> None:
+    monkeypatch.setenv("INTERNAL_SERVICE_TOKEN", token)
+    monkeypatch.setenv("INTERNAL_SERVICE_TOKEN_REQUIRED", "0")
+    monkeypatch.setenv("NODE_ENV", node_env)
+    monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("RUST_ENV", rust_env)
+    monkeypatch.setenv("OCR_ALLOW_RAW_IMAGE_INGRESS", allow_raw_image_ingress)
+
+
+def _auth_headers(token: str) -> dict[str, str]:
+    return {"x-zentity-internal-token": token}
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """FastAPI test client."""
-    _set_test_env()
+    _patch_env(monkeypatch)
     return TestClient(create_app())
 
 
 @pytest.fixture
-def auth_client():
+def auth_client(monkeypatch):
     """FastAPI test client with auth token configured."""
-    # Set token for authenticated requests
-    _set_test_env(token="test-secret-token")  # noqa: S106
-    client = TestClient(create_app())
-    yield client
-    # Clean up
-    os.environ["INTERNAL_SERVICE_TOKEN"] = ""
-    os.environ["INTERNAL_SERVICE_TOKEN_REQUIRED"] = ""
-    os.environ["APP_ENV"] = ""
-    os.environ["RUST_ENV"] = ""
+    _patch_env(monkeypatch, token="test-secret-token")  # noqa: S106
+    return TestClient(create_app())
+
+
+@pytest.fixture
+def production_auth_client(monkeypatch):
+    token = "test-secret-token"  # noqa: S105
+    _patch_env(
+        monkeypatch,
+        token=token,
+        node_env="production",
+        app_env="production",
+        rust_env="production",
+    )
+    return TestClient(create_app()), token
+
+
+@pytest.fixture
+def production_auth_client_with_raw_ingress(monkeypatch):
+    token = "test-secret-token"  # noqa: S105
+    _patch_env(
+        monkeypatch,
+        token=token,
+        node_env="production",
+        app_env="production",
+        rust_env="production",
+        allow_raw_image_ingress="1",
+    )
+    return TestClient(create_app()), token
 
 
 # =============================================================================
@@ -326,6 +357,15 @@ class TestProcessEndpoint:
         data = response.json()
         assert data["commitments"] is None
 
+    def test_invalid_user_salt_format_returns_422(self, client, passport_icao_base64):
+        """User salt must be a 64-char hex string when provided."""
+        response = client.post(
+            "/process",
+            json={"image": passport_icao_base64, "userSalt": "not-a-valid-salt"},
+        )
+        assert response.status_code == 422
+        assert response.json()["error"] == "Invalid request"
+
 
 # =============================================================================
 # Verify Name Endpoint Tests
@@ -467,6 +507,51 @@ class TestPrivacyProtection:
         response = client.post("/process", json={"image": 12345})  # Wrong type
         assert response.status_code == 422
         assert "12345" not in response.text
+
+
+class TestRawImageIngressProtection:
+    """Tests for production raw-image ingress guardrails."""
+
+    @pytest.mark.parametrize("path", ["/extract", "/ocr"])
+    def test_blocks_raw_image_endpoints_in_production_by_default(
+        self, production_auth_client, passport_icao_base64, path
+    ):
+        """Production defaults to deny legacy raw OCR endpoints."""
+        client, token = production_auth_client
+        response = client.post(
+            path,
+            json={"image": passport_icao_base64},
+            headers=_auth_headers(token),
+        )
+        assert response.status_code == 403
+        assert (
+            response.json()["error"] == "Raw image ingress disabled in production for this endpoint"
+        )
+
+    def test_process_endpoint_remains_available_in_production(
+        self, production_auth_client, passport_icao_base64
+    ):
+        """Primary `/process` flow remains available in production."""
+        client, token = production_auth_client
+        response = client.post(
+            "/process",
+            json={"image": passport_icao_base64},
+            headers=_auth_headers(token),
+        )
+        assert response.status_code == 200
+
+    def test_allows_raw_image_endpoints_with_explicit_opt_in(
+        self, production_auth_client_with_raw_ingress, passport_icao_base64
+    ):
+        """Production can explicitly enable legacy raw OCR endpoints."""
+        client, token = production_auth_client_with_raw_ingress
+        for path in ("/extract", "/ocr"):
+            response = client.post(
+                path,
+                json={"image": passport_icao_base64},
+                headers=_auth_headers(token),
+            )
+            assert response.status_code == 200
 
 
 # =============================================================================
