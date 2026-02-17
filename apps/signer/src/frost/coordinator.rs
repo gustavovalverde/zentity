@@ -778,6 +778,40 @@ impl Coordinator {
             )));
         }
 
+        if request.message != session.message {
+            return Err(SignerError::InvalidInput(
+                "Partial signature context mismatch: message does not match session".to_string(),
+            ));
+        }
+
+        if request.all_commitments != session.commitments {
+            return Err(SignerError::InvalidInput(
+                "Partial signature context mismatch: commitments do not match session".to_string(),
+            ));
+        }
+
+        if session
+            .partial_signatures
+            .contains_key(&request.participant_id)
+        {
+            return Err(SignerError::ParticipantAlreadySubmitted(format!(
+                "Participant {} already submitted partial signature",
+                request.participant_id
+            )));
+        }
+
+        // Validate partial signature format before storing.
+        let mut candidate_share = HashMap::new();
+        candidate_share.insert(request.participant_id, request.partial_signature.clone());
+        match session.ciphersuite {
+            crate::config::Ciphersuite::Secp256k1 => {
+                decoders::decode_signature_shares_secp(&candidate_share)?;
+            }
+            crate::config::Ciphersuite::Ed25519 => {
+                decoders::decode_signature_shares_ed(&candidate_share)?;
+            }
+        }
+
         // Store partial signature
         session
             .partial_signatures

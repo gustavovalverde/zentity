@@ -332,6 +332,8 @@ export async function signRecoveryChallenge(params: {
       body: JSON.stringify({
         session_id: sessionId,
         participant_id: partial.participantId,
+        message: toBase64(params.message),
+        all_commitments: allCommitments,
         partial_signature: partial.partialSignature,
       }),
     });

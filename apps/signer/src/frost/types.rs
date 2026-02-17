@@ -619,6 +619,10 @@ pub struct SigningAggregateResponse {
 pub struct SigningSubmitPartialRequest {
     pub session_id: SessionId,
     pub participant_id: ParticipantId,
+    /// Message that was signed (base64 encoded). Must match the session message.
+    pub message: String,
+    /// Commitments used when generating this partial signature.
+    pub all_commitments: HashMap<ParticipantId, String>,
     /// Partial signature (base64 encoded).
     pub partial_signature: String,
 }
