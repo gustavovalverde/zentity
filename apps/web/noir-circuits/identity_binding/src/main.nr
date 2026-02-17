@@ -7,6 +7,8 @@
 //
 // Public inputs:
 //   - nonce: Challenge nonce for replay resistance
+//   - msg_sender_hash: Hash of caller identity context
+//   - audience_hash: Hash of relying party audience context
 //   - binding_commitment: Expected Poseidon2(binding_secret || user_id_hash || document_hash)
 //
 // Private inputs:
@@ -30,13 +32,21 @@ fn main(
     user_id_hash: Field,             // Private: hash of user ID
     document_hash: Field,            // Private: document commitment
     nonce: pub Field,                // Public: challenge nonce (replay resistance)
+    msg_sender_hash: pub Field,      // Public: caller context binding
+    audience_hash: pub Field,        // Public: audience context binding
     binding_commitment: pub Field    // Public: pre-computed commitment to verify
 ) -> pub bool {
     // Nonce is included as public input for replay resistance
     let _ = nonce;
 
     // Compute binding commitment from private inputs
-    let computed_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let computed_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
     // Verify the commitment matches
     assert(computed_commitment == binding_commitment, "Binding commitment mismatch");
@@ -56,10 +66,26 @@ fn test_passkey_binding() {
     let user_id_hash = hash_user_id(user_id);
     let document_hash: Field = 0xdeadbeef;
     let nonce: Field = 99999;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
-    let result = main(binding_secret, user_id_hash, document_hash, nonce, binding_commitment);
+    let result = main(
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
     assert(result == true);
 }
 
@@ -70,10 +96,26 @@ fn test_opaque_binding() {
     let user_id_hash = hash_user_id(user_id);
     let document_hash: Field = 0xcafebabe;
     let nonce: Field = 11111;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
-    let result = main(binding_secret, user_id_hash, document_hash, nonce, binding_commitment);
+    let result = main(
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
     assert(result == true);
 }
 
@@ -84,10 +126,26 @@ fn test_wallet_binding() {
     let user_id_hash = hash_user_id(user_id);
     let document_hash: Field = 0xf00df00d;
     let nonce: Field = 22222;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
-    let result = main(binding_secret, user_id_hash, document_hash, nonce, binding_commitment);
+    let result = main(
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
     assert(result == true);
 }
 
@@ -97,9 +155,19 @@ fn test_wrong_commitment_fails() {
     let user_id_hash: Field = 0x5678;
     let document_hash: Field = 0x9abc;
     let nonce: Field = 33333;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
     let wrong_commitment: Field = 0xbad;
 
-    let _ = main(binding_secret, user_id_hash, document_hash, nonce, wrong_commitment);
+    let _ = main(
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        wrong_commitment
+    );
 }
 
 #[test(should_fail_with = "Binding commitment mismatch")]
@@ -108,11 +176,27 @@ fn test_different_secret_fails() {
     let user_id_hash: Field = 0x5678;
     let document_hash: Field = 0x9abc;
     let nonce: Field = 44444;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
     let different_secret: Field = 0x4321;
-    let _ = main(different_secret, user_id_hash, document_hash, nonce, binding_commitment);
+    let _ = main(
+        different_secret,
+        user_id_hash,
+        document_hash,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
 }
 
 #[test(should_fail_with = "Binding commitment mismatch")]
@@ -122,12 +206,28 @@ fn test_different_user_fails() {
     let user_id_hash = hash_user_id(user_id);
     let document_hash: Field = 0x9abc;
     let nonce: Field = 55555;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
     let different_user: Field = 22222;
     let different_user_hash = hash_user_id(different_user);
-    let _ = main(binding_secret, different_user_hash, document_hash, nonce, binding_commitment);
+    let _ = main(
+        binding_secret,
+        different_user_hash,
+        document_hash,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
 }
 
 #[test(should_fail_with = "Binding commitment mismatch")]
@@ -136,11 +236,27 @@ fn test_different_document_fails() {
     let user_id_hash: Field = 0x5678;
     let document_hash: Field = 0x9abc;
     let nonce: Field = 66666;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
     let different_document: Field = 0xdef0;
-    let _ = main(binding_secret, user_id_hash, different_document, nonce, binding_commitment);
+    let _ = main(
+        binding_secret,
+        user_id_hash,
+        different_document,
+        nonce,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
 }
 
 #[test]
@@ -148,12 +264,36 @@ fn test_nonce_uniqueness() {
     let binding_secret: Field = 0xaabbccdd;
     let user_id_hash: Field = 0x11223344;
     let document_hash: Field = 0x55667788;
+    let msg_sender_hash: Field = 0x1111;
+    let audience_hash: Field = 0x2222;
 
-    let binding_commitment = poseidon2([binding_secret, user_id_hash, document_hash]);
+    let binding_commitment = poseidon2([
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        msg_sender_hash,
+        audience_hash
+    ]);
 
-    let result1 = main(binding_secret, user_id_hash, document_hash, 88888, binding_commitment);
+    let result1 = main(
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        88888,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
     assert(result1 == true);
 
-    let result2 = main(binding_secret, user_id_hash, document_hash, 99999, binding_commitment);
+    let result2 = main(
+        binding_secret,
+        user_id_hash,
+        document_hash,
+        99999,
+        msg_sender_hash,
+        audience_hash,
+        binding_commitment
+    );
     assert(result2 == true);
 }

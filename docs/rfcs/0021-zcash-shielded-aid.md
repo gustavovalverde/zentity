@@ -222,7 +222,7 @@ For MVP, Noir proofs remain off-chain with API-based verification:
 Reuse existing `identity_binding` circuit:
 
 ```text
-binding_commitment = Poseidon2(binding_secret || user_id_hash || document_hash)
+binding_commitment = Poseidon2(binding_secret || user_id_hash || document_hash || msg_sender_hash || audience_hash)
 ```
 
 This prevents credential theft/replay.

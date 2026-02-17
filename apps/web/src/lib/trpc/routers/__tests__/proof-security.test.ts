@@ -1,10 +1,16 @@
 import type { Session } from "@/lib/auth/auth";
 
+import { createHash } from "node:crypto";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { BN254_FR_MODULUS } from "@/lib/privacy/zk/proof-types";
 
 const mockGetSelectedIdentityDocumentByUserId = vi.fn();
 const mockVerifyNoirProof = vi.fn();
 const mockConsumeChallenge = vi.fn();
+const mockCreateChallenge = vi.fn();
+const mockGetActiveChallengeCount = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
@@ -31,6 +37,9 @@ vi.mock("@/lib/privacy/zk/challenge-store", async (importOriginal) => {
   return {
     ...actual,
     consumeChallenge: (...args: unknown[]) => mockConsumeChallenge(...args),
+    createChallenge: (...args: unknown[]) => mockCreateChallenge(...args),
+    getActiveChallengeCount: (...args: unknown[]) =>
+      mockGetActiveChallengeCount(...args),
   };
 });
 
@@ -45,6 +54,14 @@ const alternateUserSession = {
 } as unknown as Session;
 
 const nonce = "123";
+function contextField(value: string): string {
+  const digest = createHash("sha256").update(value).digest("hex");
+  return (BigInt(`0x${digest}`) % BN254_FR_MODULUS).toString();
+}
+const msgSenderHash = contextField("user-123");
+const audienceHash = contextField("http://localhost");
+const browserAudience = "http://localhost:3000";
+const browserAudienceHash = contextField(browserAudience);
 const bindingCommitment = "2";
 const isBound = "1";
 const expectedNormalizedNonce = (() => {
@@ -55,14 +72,36 @@ const expectedNormalizedNonce = (() => {
 
 const validProofArgs = {
   proof: "cHJvdG9wcm90b2RvY3Rvcg==",
-  publicInputs: [nonce, bindingCommitment, isBound],
+  publicInputs: [
+    nonce,
+    msgSenderHash,
+    audienceHash,
+    bindingCommitment,
+    isBound,
+  ],
   circuitType: "identity_binding" as const,
 };
 
-async function createCaller(session: Session | null) {
+const validProofArgsBrowserAudience = {
+  ...validProofArgs,
+  publicInputs: [
+    nonce,
+    msgSenderHash,
+    browserAudienceHash,
+    bindingCommitment,
+    isBound,
+  ],
+};
+
+async function createCaller(
+  session: Session | null,
+  options: { url?: string; headers?: HeadersInit } = {}
+) {
   const { cryptoRouter } = await import("@/lib/trpc/routers/crypto/router");
   return cryptoRouter.createCaller({
-    req: new Request("http://localhost/api/trpc"),
+    req: new Request(options.url ?? "http://localhost/api/trpc", {
+      headers: options.headers,
+    }),
     resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
@@ -89,6 +128,21 @@ describe("proof router replay and context binding", () => {
       verificationKeyPoseidonHash: null,
       bbVersion: null,
     });
+    mockGetActiveChallengeCount.mockResolvedValue(1);
+    mockCreateChallenge.mockImplementation(
+      async (
+        circuitType: string,
+        binding: { userId: string; msgSender: string; audience: string }
+      ) => ({
+        nonce: "challenge-nonce",
+        circuitType,
+        userId: binding.userId,
+        msgSender: binding.msgSender,
+        audience: binding.audience,
+        createdAt: 1,
+        expiresAt: 2,
+      })
+    );
   });
 
   it("uses a challenge once for a proof and rejects replay", async () => {
@@ -142,7 +196,13 @@ describe("proof router replay and context binding", () => {
     await expect(
       attacker.verifyProof({
         ...validProofArgs,
-        publicInputs: [nonce, bindingCommitment, isBound],
+        publicInputs: [
+          nonce,
+          contextField("user-456"),
+          audienceHash,
+          bindingCommitment,
+          isBound,
+        ],
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
@@ -164,7 +224,116 @@ describe("proof router replay and context binding", () => {
     await expect(
       caller.verifyProof({
         ...validProofArgs,
-        publicInputs: ["9999999999", bindingCommitment, isBound],
+        publicInputs: [
+          "9999999999",
+          msgSenderHash,
+          audienceHash,
+          bindingCommitment,
+          isBound,
+        ],
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects proofs when identity binding msg_sender hash mismatches caller", async () => {
+    const caller = await createCaller(authedUserSession);
+    await expect(
+      caller.verifyProof({
+        ...validProofArgs,
+        publicInputs: [
+          nonce,
+          contextField("user-999"),
+          audienceHash,
+          bindingCommitment,
+          isBound,
+        ],
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(mockConsumeChallenge).not.toHaveBeenCalled();
+  });
+
+  it("uses Origin header audience for identity binding context", async () => {
+    mockConsumeChallenge.mockResolvedValueOnce({
+      nonce,
+      circuitType: "identity_binding",
+      userId: "user-123",
+      msgSender: "user-123",
+      audience: browserAudience,
+      createdAt: 1,
+      expiresAt: 2,
+    });
+
+    const caller = await createCaller(authedUserSession, {
+      url: "http://localhost/api/trpc",
+      headers: { origin: browserAudience },
+    });
+    const result = await caller.verifyProof(validProofArgsBrowserAudience);
+    expect(result.isValid).toBe(true);
+
+    expect(mockConsumeChallenge).toHaveBeenCalledWith(
+      expectedNormalizedNonce,
+      "identity_binding",
+      {
+        userId: "user-123",
+        msgSender: "user-123",
+        audience: browserAudience,
+      }
+    );
+  });
+
+  it("binds challenge audience from Origin header", async () => {
+    const caller = await createCaller(authedUserSession, {
+      url: "http://localhost/api/trpc",
+      headers: { origin: browserAudience },
+    });
+
+    const result = await caller.createChallenge({ circuitType: "face_match" });
+
+    expect(result.circuitType).toBe("face_match");
+    expect(mockCreateChallenge).toHaveBeenCalledWith("face_match", {
+      userId: "user-123",
+      msgSender: "user-123",
+      audience: browserAudience,
+    });
+  });
+
+  it("binds challenge audience from forwarded headers when Origin is missing", async () => {
+    const caller = await createCaller(authedUserSession, {
+      url: "http://internal/api/trpc",
+      headers: {
+        "x-forwarded-host": "verify.example.com",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    await caller.createChallenge({ circuitType: "identity_binding" });
+
+    expect(mockCreateChallenge).toHaveBeenCalledWith("identity_binding", {
+      userId: "user-123",
+      msgSender: "user-123",
+      audience: "https://verify.example.com",
+    });
+  });
+
+  it.each([
+    ["age_verification", 5],
+    ["doc_validity", 4],
+    ["nationality_membership", 4],
+    ["face_match", 4],
+    ["identity_binding", 5],
+  ] as const)("storeProof rejects %s when public signals are below minimum", async (circuitType, minPublicInputs) => {
+    const caller = await createCaller(authedUserSession, {
+      headers: { origin: browserAudience },
+    });
+
+    await expect(
+      caller.storeProof({
+        circuitType,
+        proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+        publicSignals: Array.from({ length: minPublicInputs - 1 }, () => "1"),
+        generationTimeMs: 10,
+        documentId: "doc-1",
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });

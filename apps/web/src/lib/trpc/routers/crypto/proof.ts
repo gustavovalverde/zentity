@@ -39,12 +39,14 @@ import {
   verifyNoirProof,
 } from "@/lib/privacy/zk/noir-verifier";
 import {
+  BN254_FR_MODULUS,
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
 
 import { protectedProcedure } from "../../server";
 import { invalidateVerificationCache } from "../identity/helpers/verification-cache";
+import { resolveAudience } from "./audience";
 import { circuitTypeSchema } from "./challenge";
 import {
   assertPolicyVersion,
@@ -62,12 +64,9 @@ const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 type NoirVerificationResult = Awaited<ReturnType<typeof verifyNoirProof>>;
 type ProofVerificationResult = NoirVerificationResult & { reason?: string };
 
-function resolveAudience(url: string): string {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "unknown";
-  }
+function hashContextToField(value: string): bigint {
+  const digestHex = crypto.createHash("sha256").update(value).digest("hex");
+  return BigInt(`0x${digestHex}`) % BN254_FR_MODULUS;
 }
 
 async function verifyProofInternal(args: {
@@ -76,6 +75,8 @@ async function verifyProofInternal(args: {
   proof: string;
   publicInputs: string[];
   documentId: string | null;
+  msgSender: string;
+  audience: string;
 }): Promise<{ result: ProofVerificationResult; nonceHex: string }> {
   const circuitType = args.circuitType;
   const circuitSpec = PROOF_TYPE_SPECS[circuitType];
@@ -126,13 +127,49 @@ async function verifyProofInternal(args: {
   // Identity binding validation: binding_commitment only (auth_mode removed for privacy)
   if (circuitType === "identity_binding") {
     const bindingCommitment = parseFieldToBigInt(
-      args.publicInputs[1] // binding_commitment at index 1
+      args.publicInputs[circuitSpec.claimHashIndex]
     );
 
     if (bindingCommitment === BigInt(0)) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Invalid binding commitment (zero)",
+      });
+    }
+
+    const msgSenderIndex = circuitSpec.msgSenderIndex;
+    const audienceIndex = circuitSpec.audienceIndex;
+    if (
+      msgSenderIndex === undefined ||
+      audienceIndex === undefined ||
+      args.publicInputs[msgSenderIndex] === undefined ||
+      args.publicInputs[audienceIndex] === undefined
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing identity binding context inputs",
+      });
+    }
+
+    const providedMsgSenderHash = parseFieldToBigInt(
+      args.publicInputs[msgSenderIndex]
+    );
+    const providedAudienceHash = parseFieldToBigInt(
+      args.publicInputs[audienceIndex]
+    );
+    const expectedMsgSenderHash = hashContextToField(args.msgSender);
+    const expectedAudienceHash = hashContextToField(args.audience);
+
+    if (providedMsgSenderHash !== expectedMsgSenderHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Identity binding msg_sender mismatch",
+      });
+    }
+    if (providedAudienceHash !== expectedAudienceHash) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Identity binding audience mismatch",
       });
     }
   }
@@ -393,6 +430,8 @@ export const verifyProofProcedure = protectedProcedure
       proof: input.proof,
       publicInputs: input.publicInputs,
       documentId,
+      msgSender: ctx.userId,
+      audience: resolveAudience(ctx.req),
     });
 
     if (!result.isValid) {
@@ -402,7 +441,7 @@ export const verifyProofProcedure = protectedProcedure
     const challenge = await consumeChallenge(nonceHex, input.circuitType, {
       userId: ctx.userId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req.url),
+      audience: resolveAudience(ctx.req),
     });
     if (!challenge) {
       throw new TRPCError({
@@ -536,6 +575,8 @@ export const storeProofProcedure = protectedProcedure
       proof: input.proof,
       publicInputs: input.publicSignals,
       documentId,
+      msgSender: ctx.userId,
+      audience: resolveAudience(ctx.req),
     });
 
     if (!result.isValid) {
@@ -548,7 +589,7 @@ export const storeProofProcedure = protectedProcedure
     const challenge = await consumeChallenge(nonceHex, input.circuitType, {
       userId: ctx.userId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req.url),
+      audience: resolveAudience(ctx.req),
     });
     if (!challenge) {
       throw new TRPCError({

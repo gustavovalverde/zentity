@@ -301,7 +301,7 @@ export async function generateIdentityBindingProof(
   bindingSecret: string,
   userIdHash: string,
   documentHash: string,
-  options: { nonce: string }
+  options: { nonce: string; msgSender: string; audience: string }
 ): Promise<ProofResult> {
   const startTime = performance.now();
 
@@ -311,6 +311,8 @@ export async function generateIdentityBindingProof(
       userIdHashField: userIdHash,
       documentHashField: documentHash,
       nonce: options.nonce,
+      msgSender: options.msgSender,
+      audience: options.audience,
     });
     recordProofSuccess("identity_binding", result);
 

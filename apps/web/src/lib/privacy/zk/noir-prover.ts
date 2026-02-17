@@ -65,6 +65,8 @@ interface IdentityBindingInput {
   userIdHashField: string; // Hash of user ID
   documentHashField: string; // Document commitment
   nonce: string; // Hex nonce for replay resistance
+  msgSender: string; // Context binding: caller identity
+  audience: string; // Context binding: relying party audience
 }
 
 /**
@@ -254,6 +256,8 @@ export async function generateIdentityBindingProofNoir(
     userIdHashField: input.userIdHashField,
     documentHashField: input.documentHashField,
     nonce: input.nonce,
+    msgSender: input.msgSender,
+    audience: input.audience,
   });
 
   return {

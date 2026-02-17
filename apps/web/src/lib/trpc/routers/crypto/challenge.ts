@@ -6,6 +6,7 @@ import {
 } from "@/lib/privacy/zk/challenge-store";
 
 import { protectedProcedure } from "../../server";
+import { resolveAudience } from "./audience";
 
 export const circuitTypeSchema = z.enum([
   "age_verification",
@@ -14,14 +15,6 @@ export const circuitTypeSchema = z.enum([
   "face_match",
   "identity_binding",
 ]);
-
-function resolveAudience(url: string): string {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "unknown";
-  }
-}
 
 /**
  * Creates a challenge nonce for replay-resistant proof generation.
@@ -34,7 +27,7 @@ export const createChallengeProcedure = protectedProcedure
     const challenge = await createChallenge(input.circuitType, {
       userId: ctx.userId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req.url),
+      audience: resolveAudience(ctx.req),
     });
     ctx.span?.setAttribute("challenge.circuit_type", input.circuitType);
     ctx.span?.setAttribute(

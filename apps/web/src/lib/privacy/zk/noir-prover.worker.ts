@@ -422,6 +422,13 @@ async function reduceToField(hexValue: string): Promise<string> {
   return `0x${reduced.toString(16).padStart(64, "0")}`;
 }
 
+async function hashStringToField(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  const digestHex = `0x${Buffer.from(new Uint8Array(digest)).toString("hex")}`;
+  return await reduceToField(digestHex);
+}
+
 function getCircuitArtifact(circuit: CircuitName) {
   switch (circuit) {
     case "age_verification":
@@ -441,10 +448,32 @@ function getCircuitArtifact(circuit: CircuitName) {
   }
 }
 
+function assertIdentityBindingArtifactContextInputs(): void {
+  const artifact = identityBindingCircuit as {
+    abi?: { parameters?: Array<{ name?: string }> };
+  };
+  const parameterNames = new Set(
+    (artifact.abi?.parameters ?? []).map((parameter) => parameter.name)
+  );
+  if (
+    !(
+      parameterNames.has("msg_sender_hash") &&
+      parameterNames.has("audience_hash")
+    )
+  ) {
+    throw new Error(
+      "Identity binding circuit artifact is stale (missing msg_sender_hash/audience_hash). Run `pnpm run circuits:compile`."
+    );
+  }
+}
+
 async function getNoirInstance(circuit: CircuitName) {
   const existing = noirInstanceCache.get(circuit);
   if (existing) {
     return existing;
+  }
+  if (circuit === "identity_binding") {
+    assertIdentityBindingArtifactContextInputs();
   }
   await ensureNoirRuntimeReady();
   const { Noir } = await getModules();
@@ -754,24 +783,37 @@ async function generateIdentityBindingProof(
   logWorker("proof", "Executing identity binding witness");
 
   // Reduce all field values to BN254 field (values may exceed modulus)
-  const [bindingSecretReduced, userIdHashReduced, documentHashReduced] =
-    await Promise.all([
-      reduceToField(payload.bindingSecretField),
-      reduceToField(payload.userIdHashField),
-      reduceToField(payload.documentHashField),
-    ]);
+  const [
+    bindingSecretReduced,
+    userIdHashReduced,
+    documentHashReduced,
+    msgSenderHashField,
+    audienceHashField,
+  ] = await Promise.all([
+    reduceToField(payload.bindingSecretField),
+    reduceToField(payload.userIdHashField),
+    reduceToField(payload.documentHashField),
+    hashStringToField(payload.msgSender),
+    hashStringToField(payload.audience),
+  ]);
 
   logWorker("proof", "Reduced field values", {
     bindingSecret: `${bindingSecretReduced.slice(0, 20)}...`,
     userIdHash: `${userIdHashReduced.slice(0, 20)}...`,
     documentHash: `${documentHashReduced.slice(0, 20)}...`,
+    msgSenderHash: `${msgSenderHashField.slice(0, 20)}...`,
+    audienceHash: `${audienceHashField.slice(0, 20)}...`,
   });
 
-  // Compute binding_commitment = Poseidon2(binding_secret, user_id_hash, document_hash)
+  // Compute binding_commitment = Poseidon2(
+  //   binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash
+  // )
   const bindingCommitment = await poseidon2Hash([
     BigInt(bindingSecretReduced),
     BigInt(userIdHashReduced),
     BigInt(documentHashReduced),
+    BigInt(msgSenderHashField),
+    BigInt(audienceHashField),
   ]);
   const bindingCommitmentHex = `0x${bindingCommitment.toString(16)}`;
   logWorker("proof", "Computed binding commitment", {
@@ -783,6 +825,8 @@ async function generateIdentityBindingProof(
     user_id_hash: userIdHashReduced,
     document_hash: documentHashReduced,
     nonce: nonceToField(payload.nonce),
+    msg_sender_hash: msgSenderHashField,
+    audience_hash: audienceHashField,
     binding_commitment: bindingCommitmentHex,
   });
   logWorker("proof", "Identity binding witness ready", {

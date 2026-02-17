@@ -36,7 +36,7 @@ Zentity generates proofs **client‑side** so private inputs stay in the browser
 | `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
 | `address_jurisdiction` | Prove address in jurisdiction | Address country code + Merkle path | Merkle root, nonce, claim hash |
 | `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
-| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, binding commitment, is_bound |
+| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, binding commitment, is_bound |
 
 **Importance:** The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
 
@@ -56,14 +56,20 @@ The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as 
 **Binding commitment formula:**
 
 ```typescript
-commitment = Poseidon2(binding_secret || user_id_hash || document_hash)
+commitment = Poseidon2(
+  binding_secret ||
+  user_id_hash ||
+  document_hash ||
+  msg_sender_hash ||
+  audience_hash
+)
 ```
 
 This ensures that:
 
-- Same user + same document + same auth secret = same commitment (deterministic)
+- Same user + same document + same auth secret + same caller/audience context = same commitment (deterministic)
 - Different auth modes produce different commitments (domain separation)
-- Proofs cannot be replayed across users or documents
+- Proofs cannot be replayed across users, documents, callers, or relying-party audiences
 
 ### Mandatory Enforcement
 
@@ -95,6 +101,7 @@ The re-auth dialog blocks proof generation until credential material is availabl
 
 - **Nonces** (server‑issued) prevent replay.
 - **Claim hashes** bind proofs to server‑signed OCR/liveness claims.
+- **Context hashes** (`msg_sender_hash`, `audience_hash`) bind identity proofs to the authenticated caller and relying-party audience.
 - **Verifier metadata** stores circuit/version identifiers for audit.
 
 See [Tamper Model](tamper-model.md) for integrity rules and [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification.

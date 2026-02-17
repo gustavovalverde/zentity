@@ -13,6 +13,11 @@
  * - BIND → identity_binding (new)
  */
 
+/** BN254 scalar field modulus. Shared across server-side proof verification and tests. */
+export const BN254_FR_MODULUS = BigInt(
+  "21888242871839275222246405745257275088548364400416034343698204186575808495617"
+);
+
 /**
  * All proof types supported by the system.
  * Circuit names match the Noir circuit directory names.
@@ -55,6 +60,8 @@ interface ProofTypeSpec {
   nonceIndex: number;
   claimHashIndex: number;
   resultIndex: number;
+  msgSenderIndex?: number;
+  audienceIndex?: number;
   publicInputOrder: readonly string[];
   claimRequired?: string;
   description: string;
@@ -121,11 +128,19 @@ export const PROOF_TYPE_SPECS: Record<ProofType, ProofTypeSpec> = {
 
   [ProofType.IDENTITY_BINDING]: {
     circuitName: "identity_binding",
-    minPublicInputs: 3,
+    minPublicInputs: 5,
     nonceIndex: 0,
-    claimHashIndex: 1,
-    resultIndex: 2,
-    publicInputOrder: ["nonce", "binding_commitment", "is_bound"],
+    claimHashIndex: 3,
+    resultIndex: 4,
+    msgSenderIndex: 1,
+    audienceIndex: 2,
+    publicInputOrder: [
+      "nonce",
+      "msg_sender_hash",
+      "audience_hash",
+      "binding_commitment",
+      "is_bound",
+    ],
     description: "Binds proof to user identity without revealing auth mode",
   },
 };

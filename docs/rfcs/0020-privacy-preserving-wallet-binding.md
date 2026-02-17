@@ -26,7 +26,9 @@ The binding commitment formula is already privacy-preserving at the cryptographi
 
 ```text
 binding_secret = HKDF(signature, "zentity-binding-wallet-v1")
-binding_commitment = Poseidon2(binding_secret || user_id_hash || document_hash)
+msg_sender_hash = SHA256(authenticated_user_context) mod BN254
+audience_hash = SHA256(relying_party_origin) mod BN254
+binding_commitment = Poseidon2(binding_secret || user_id_hash || document_hash || msg_sender_hash || audience_hash)
 ```
 
 **However**, privacy is limited because:

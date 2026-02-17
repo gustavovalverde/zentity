@@ -153,6 +153,16 @@ describe("proof-types", () => {
       expect(spec.claimHashIndex).toBe(2);
       expect(spec.resultIndex).toBe(3);
     });
+
+    it("identity_binding has correct spec", () => {
+      const spec = PROOF_TYPE_SPECS.identity_binding;
+      expect(spec.minPublicInputs).toBe(5);
+      expect(spec.nonceIndex).toBe(0);
+      expect(spec.msgSenderIndex).toBe(1);
+      expect(spec.audienceIndex).toBe(2);
+      expect(spec.claimHashIndex).toBe(3);
+      expect(spec.resultIndex).toBe(4);
+    });
   });
 
   describe("isProofType", () => {

@@ -112,6 +112,8 @@ export interface IdentityBindingPayload {
   userIdHashField: string; // Hash of user ID
   documentHashField: string; // Document commitment
   nonce: string; // Hex string for replay resistance
+  msgSender: string; // Context binding: caller identity
+  audience: string; // Context binding: relying party audience/origin
 }
 
 export interface WorkerResponse {

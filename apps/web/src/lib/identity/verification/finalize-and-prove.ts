@@ -223,7 +223,13 @@ export async function generateAllProofs(params: {
     bindingInputs.bindingSecretField,
     bindingInputs.userIdHashField,
     bindingInputs.documentHashField,
-    { nonce: bindingChallenge.nonce }
+    {
+      nonce: bindingChallenge.nonce,
+      msgSender: bindingContext.userId,
+      audience:
+        globalThis.window?.location.origin ??
+        (globalThis.location?.origin || "unknown"),
+    }
   );
   enqueueStore({ circuitType: "identity_binding", ...bindingProof });
 
