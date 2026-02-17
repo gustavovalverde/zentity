@@ -86,17 +86,33 @@ const nextConfig: NextConfig = {
       { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
     ];
 
+    // CSP: strict in production; permissive in dev for HMR/fast-refresh
+    const cspValue =
+      process.env.NODE_ENV === "production"
+        ? [
+            "default-src 'self'",
+            // 'unsafe-inline' required for Next.js hydration scripts; 'wasm-unsafe-eval' for ZK/FHE WASM
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            // ws:/wss: for Socket.io liveness sessions
+            "connect-src 'self' ws: wss:",
+            // data:/blob: for document scans and selfie processing
+            "img-src 'self' data: blob:",
+            // blob: for WASM thread workers
+            "worker-src 'self' blob:",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+            "base-uri 'none'",
+          ].join("; ")
+        : "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'; " +
+          "worker-src 'self' blob:;";
+
+    securityHeaders.push({ key: "Content-Security-Policy", value: cspValue });
+
     if (process.env.NODE_ENV === "production") {
       securityHeaders.push({
         key: "Strict-Transport-Security",
         value: "max-age=31536000; includeSubDomains",
-      });
-    } else {
-      securityHeaders.push({
-        key: "Content-Security-Policy",
-        value:
-          "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'; " +
-          "worker-src 'self' blob:;",
       });
     }
 
