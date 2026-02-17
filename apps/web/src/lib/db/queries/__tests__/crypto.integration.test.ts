@@ -50,7 +50,7 @@ describe("crypto queries", () => {
 
     const summary = await getUserAgeProof(userId);
     const expectedHash = crypto
-      .createHash("sha256")
+      .createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "")
       .update(Buffer.from("ciphertext"))
       .digest("hex");
     expect(summary?.isOver18).toBe(true);
@@ -237,7 +237,10 @@ describe("crypto queries", () => {
     );
     expect(latestEncrypted?.ciphertext).toEqual(Buffer.from("cipher-2"));
     expect(latestEncrypted?.ciphertextHash).toBe(
-      crypto.createHash("sha256").update(Buffer.from("cipher-2")).digest("hex")
+      crypto
+        .createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "")
+        .update(Buffer.from("cipher-2"))
+        .digest("hex")
     );
     expect(latestEncrypted?.keyId).toBe("key-2");
     expect(latestEncrypted?.encryptionTimeMs).toBe(30);

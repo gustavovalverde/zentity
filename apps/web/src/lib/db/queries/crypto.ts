@@ -61,6 +61,16 @@ function parseSecretMetadata(
   }
 }
 
+function computeCiphertextHash(ciphertext: Buffer): string {
+  // TODO: use a dedicated CIPHERTEXT_HMAC_KEY env var instead of re-using BETTER_AUTH_SECRET
+  // so that key rotation for auth doesn't invalidate stored integrity tags.
+  const key = process.env.BETTER_AUTH_SECRET;
+  if (!key) {
+    throw new Error("BETTER_AUTH_SECRET is required for ciphertext integrity");
+  }
+  return crypto.createHmac("sha256", key).update(ciphertext).digest("hex");
+}
+
 function getCiphertextInfo(ciphertext: Buffer | null | undefined): {
   hash: string | null;
   byteLength: number | null;
@@ -68,12 +78,10 @@ function getCiphertextInfo(ciphertext: Buffer | null | undefined): {
   if (!ciphertext || ciphertext.byteLength === 0) {
     return { hash: null, byteLength: null };
   }
-  const hash = crypto.createHash("sha256").update(ciphertext).digest("hex");
-  return { hash, byteLength: ciphertext.byteLength };
-}
-
-function computeCiphertextHash(ciphertext: Buffer): string {
-  return crypto.createHash("sha256").update(ciphertext).digest("hex");
+  return {
+    hash: computeCiphertextHash(ciphertext),
+    byteLength: ciphertext.byteLength,
+  };
 }
 
 function ensureCiphertextIntegrity(params: {
@@ -85,7 +93,6 @@ function ensureCiphertextIntegrity(params: {
   const computed = computeCiphertextHash(params.ciphertext);
   const stored = params.ciphertextHash ?? "";
 
-  // Legacy rows may not have persisted hash. Use computed hash for compatibility.
   if (!stored) {
     return computed;
   }

@@ -3,10 +3,8 @@
 use axum::body::Bytes;
 use axum::http::HeaderMap;
 use axum::response::Response;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use tfhe::{generate_keys, CompressedPublicKey, CompressedServerKey, ConfigBuilder};
 use tracing::info_span;
 
 use super::run_cpu_bound;
@@ -65,53 +63,4 @@ pub async fn register_key(headers: HeaderMap, body: Bytes) -> Result<Response, F
     tracing::Span::current().record("decode_ms", tracing::field::display(decode_ms));
 
     transport::encode_msgpack(&headers, &RegisterKeyResponse { key_id })
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DebugKeyResponse {
-    #[serde(with = "serde_bytes")]
-    public_key: Vec<u8>,
-    key_id: String,
-}
-
-fn debug_keys_enabled() -> bool {
-    matches!(
-        std::env::var("FHE_DEBUG_KEYS").as_deref(),
-        Ok("true") | Ok("1") | Ok("yes")
-    )
-}
-
-#[tracing::instrument]
-pub async fn debug_keys() -> Result<Json<DebugKeyResponse>, FheError> {
-    if !debug_keys_enabled() {
-        return Err(FheError::InvalidInput(
-            "Debug keys are disabled".to_string(),
-        ));
-    }
-
-    let response = run_cpu_bound(move || {
-        let (_client_key, public_key, server_key) =
-            info_span!("fhe.generate_keys").in_scope(|| {
-                let config = ConfigBuilder::default().build();
-                let (client_key, _server_key) = generate_keys(config);
-                let public_key = CompressedPublicKey::new(&client_key);
-                let server_key = CompressedServerKey::new(&client_key);
-                (client_key, public_key, server_key)
-            });
-
-        let key_id = info_span!("fhe.register_key")
-            .in_scope(|| crypto::get_key_store().register_key(public_key.clone(), server_key))?;
-
-        let public_key_bytes =
-            info_span!("fhe.serialize_public_key").in_scope(|| bincode::serialize(&public_key))?;
-
-        Ok(DebugKeyResponse {
-            public_key: public_key_bytes,
-            key_id,
-        })
-    })
-    .await?;
-
-    Ok(Json(response))
 }

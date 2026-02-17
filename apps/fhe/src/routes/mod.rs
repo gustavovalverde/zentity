@@ -21,7 +21,7 @@ pub use compliance::encrypt_compliance_level;
 pub use country::encrypt_country_code;
 pub use dob::{encrypt_dob_days, verify_age_from_dob};
 pub use health::{build_info, health};
-pub use keys::{debug_keys, register_key};
+pub use keys::register_key;
 pub use liveness::{encrypt_liveness, verify_liveness_threshold};
 
 struct CpuLimiter {

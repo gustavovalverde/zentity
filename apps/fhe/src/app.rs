@@ -55,7 +55,6 @@ pub fn build_router(settings: &Settings) -> Router {
         .route("/health", get(routes::health))
         .route("/build-info", get(routes::build_info))
         .route("/keys/register", post(routes::register_key))
-        .route("/keys/debug", get(routes::debug_keys))
         // DOB days (days since 1900-01-01 - full precision)
         .route("/encrypt-dob-days", post(routes::encrypt_dob_days))
         .route("/verify-age-from-dob", post(routes::verify_age_from_dob))
