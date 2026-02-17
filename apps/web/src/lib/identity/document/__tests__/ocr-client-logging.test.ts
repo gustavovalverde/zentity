@@ -37,4 +37,24 @@ describe("ocr-client request logging", () => {
       })
     );
   });
+
+  it("sends image only in JSON body and never in headers", async () => {
+    await processDocumentOcr({
+      image: "sensitive-base64-pii-data",
+      userSalt: "session-salt",
+    });
+
+    const requestOptions = fetchJson.mock.calls[0]?.[1] as {
+      headers?: Record<string, string>;
+      body?: string;
+    };
+    const requestBody = JSON.parse(requestOptions.body ?? "{}") as {
+      image?: string;
+      userSalt?: string;
+    };
+
+    expect(requestBody.image).toBe("sensitive-base64-pii-data");
+    expect(requestBody.userSalt).toBe("session-salt");
+    expect(requestOptions.headers).not.toHaveProperty("image");
+  });
 });

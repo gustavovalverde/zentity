@@ -295,11 +295,15 @@ class TestProcessEndpoint:
         if data.get("commitments"):
             assert len(data["commitments"]["userSalt"]) == 64
 
-    def test_returns_extracted_data_for_display(self, client, passport_icao_base64):
-        """Returns extracted data for UI display (to be discarded)."""
+    def test_returns_sanitized_extracted_data_for_display(self, client, passport_icao_base64):
+        """The /process endpoint returns structured fields, not raw OCR blobs."""
         response = client.post("/process", json={"image": passport_icao_base64})
         data = response.json()
         assert "extractedData" in data
+        if data.get("extractedData"):
+            # No raw OCR dump/MRZ blob should be returned from /process.
+            assert "fullText" not in data["extractedData"]
+            assert "mrzRaw" not in data["extractedData"]
 
     def test_returns_validation_issues(self, client, passport_icao_base64):
         """Returns validation issues array."""
@@ -457,6 +461,12 @@ class TestPrivacyProtection:
         data = response.json()
         # Should be a generic error, not exposing internals
         assert "error" in data or "detail" in data
+
+    def test_process_validation_error_does_not_echo_image(self, client):
+        """Process endpoint validation errors must not echo raw image payload."""
+        response = client.post("/process", json={"image": 12345})  # Wrong type
+        assert response.status_code == 422
+        assert "12345" not in response.text
 
 
 # =============================================================================
