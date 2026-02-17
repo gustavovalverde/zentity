@@ -67,7 +67,8 @@ export interface FhevmInstance {
     publicKey: string,
     contractAddresses: string[],
     startTimestamp: number | string,
-    durationDays: number | string
+    durationDays: number | string,
+    nonce?: string
   ): EIP712Type;
   /**
    * Generate ephemeral keypair for re-encryption.
@@ -100,6 +101,8 @@ export interface FhevmDecryptionSignatureType {
   durationDays: number;
   /** User's wallet address that signed the authorization */
   userAddress: `0x${string}`;
+  /** Monotonic anti-replay nonce used when constructing the EIP-712 payload */
+  nonce: string;
   /** Contracts this authorization covers */
   contractAddresses: `0x${string}`[];
   /** Full EIP-712 typed data that was signed */

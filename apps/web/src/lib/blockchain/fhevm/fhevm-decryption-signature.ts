@@ -10,7 +10,7 @@
  *
  * ## Session-Based Approach
  * Instead of signing for every decryption, we use sessions:
- * 1. User signs once, authorizing decryption for 365 days
+ * 1. User signs once, authorizing decryption for a short, configurable window
  * 2. Session includes ephemeral keypair for re-encryption
  * 3. KMS re-encrypts data to user's ephemeral public key
  * 4. User decrypts locally with ephemeral private key
@@ -39,6 +39,28 @@ import { ethers } from "ethers";
 /** Current Unix timestamp in seconds */
 function timestampNow(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+/** Minimum validity window for decryption authorizations (days). */
+const DECRYPT_SIGNATURE_DURATION_DAYS = Math.max(
+  1,
+  Number.parseInt(
+    process.env.NEXT_PUBLIC_FHEVM_DECRYPT_SIGNATURE_DURATION_DAYS ?? "1",
+    10
+  ) || 1
+);
+
+let monotonicNonceCounter = 0;
+
+function nextMonotonicNonce(): string {
+  const unixSeconds = timestampNow();
+  monotonicNonceCounter += 1;
+  if (monotonicNonceCounter > 0xff_ff_ff_ff) {
+    monotonicNonceCounter = 0;
+  }
+  const counterHex = monotonicNonceCounter.toString(16).padStart(8, "0");
+  const randomHex = ethers.hexlify(ethers.randomBytes(24)).slice(2);
+  return `0x${unixSeconds.toString(16).padStart(8, "0")}${counterHex}${randomHex}`;
 }
 
 /** Type guard for non-null objects */
@@ -78,6 +100,14 @@ function isValidEIP712Structure(value: unknown): boolean {
     "message" in value &&
     "types" in value &&
     isNonNullObject(value.types)
+  );
+}
+
+function isValidSigningDomain(domain: EIP712Type["domain"]): boolean {
+  return (
+    Number.isInteger(domain.chainId) &&
+    domain.chainId > 0 &&
+    ethers.isAddress(domain.verifyingContract)
   );
 }
 
@@ -189,7 +219,8 @@ class FhevmDecryptionSignatureStorageKey {
       publicKey ?? ethers.ZeroAddress,
       sortedContractAddresses,
       0,
-      0
+      0,
+      ethers.ZeroHash
     );
 
     // Hash the EIP-712 structure to create a compact, unique identifier
@@ -259,6 +290,7 @@ export class FhevmDecryptionSignature {
   readonly #startTimestamp: number;
   readonly #durationDays: number;
   readonly #userAddress: `0x${string}`;
+  readonly #nonce: string;
   readonly #contractAddresses: `0x${string}`[];
   readonly #eip712: EIP712Type;
 
@@ -273,6 +305,7 @@ export class FhevmDecryptionSignature {
     this.#startTimestamp = parameters.startTimestamp;
     this.#durationDays = parameters.durationDays;
     this.#userAddress = parameters.userAddress;
+    this.#nonce = parameters.nonce;
     this.#contractAddresses = parameters.contractAddresses;
     this.#eip712 = parameters.eip712;
   }
@@ -312,6 +345,11 @@ export class FhevmDecryptionSignature {
     return this.#userAddress;
   }
 
+  /** Monotonic anti-replay nonce for this authorization */
+  get nonce() {
+    return this.#nonce;
+  }
+
   /** Type guard for validating signature data from storage */
   static checkIs(s: unknown): s is FhevmDecryptionSignatureType {
     if (!isNonNullObject(s)) {
@@ -321,7 +359,8 @@ export class FhevmDecryptionSignature {
     const hasRequiredStrings =
       hasStringProp(s, "publicKey") &&
       hasStringProp(s, "privateKey") &&
-      hasStringProp(s, "signature");
+      hasStringProp(s, "signature") &&
+      hasStringProp(s, "nonce");
 
     const hasRequiredNumbers =
       hasNumberProp(s, "startTimestamp") && hasNumberProp(s, "durationDays");
@@ -354,6 +393,7 @@ export class FhevmDecryptionSignature {
       startTimestamp: this.#startTimestamp,
       durationDays: this.#durationDays,
       userAddress: this.#userAddress,
+      nonce: this.#nonce,
       contractAddresses: this.#contractAddresses,
       eip712: this.#eip712,
     };
@@ -501,7 +541,8 @@ export class FhevmDecryptionSignature {
     try {
       const userAddress = (await signer.getAddress()) as `0x${string}`;
       const startTimestamp = timestampNow();
-      const durationDays = 365;
+      const durationDays = DECRYPT_SIGNATURE_DURATION_DAYS;
+      const nonce = nextMonotonicNonce();
 
       const normalizedContractAddresses =
         normalizeContractAddresses(contractAddresses);
@@ -511,8 +552,25 @@ export class FhevmDecryptionSignature {
         publicKey,
         normalizedContractAddresses,
         startTimestamp,
-        durationDays
+        durationDays,
+        nonce
       );
+      if (!isValidSigningDomain(eip712.domain)) {
+        return null;
+      }
+
+      const nonceField = eip712.types.UserDecryptRequestVerification?.find(
+        (field) => field.name === "nonce"
+      );
+      if (nonceField) {
+        const messageNonce = eip712.message.nonce;
+        if (
+          typeof messageNonce !== "string" ||
+          messageNonce.toLowerCase() !== nonce.toLowerCase()
+        ) {
+          return null;
+        }
+      }
 
       // Try standard ethers.js signTypedData first
       let signature = await signer.signTypedData(
@@ -556,6 +614,7 @@ export class FhevmDecryptionSignature {
         signature,
         eip712,
         userAddress,
+        nonce,
       });
     } catch {
       return null; // User rejected or wallet error
