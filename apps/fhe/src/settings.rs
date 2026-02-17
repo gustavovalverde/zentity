@@ -8,7 +8,9 @@ const DEFAULT_PORT: u16 = 5001;
 const DEFAULT_BODY_LIMIT_MB: usize = 64;
 const DEFAULT_CONCURRENCY_LIMIT: usize = 4;
 const DEFAULT_REQUEST_TIMEOUT_MS: u64 = 60_000;
-const DEFAULT_TEST_TIMEOUT_MS: u64 = 180_000;
+// HTTP integration tests execute many TFHE-heavy operations concurrently.
+// Give tests a larger timeout to avoid flaky 408s from queue contention.
+const DEFAULT_TEST_TIMEOUT_MS: u64 = 900_000;
 
 fn env_trim(name: &str) -> String {
     env::var(name).unwrap_or_default().trim().to_string()
