@@ -15,6 +15,14 @@ export const circuitTypeSchema = z.enum([
   "identity_binding",
 ]);
 
+function resolveAudience(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "unknown";
+  }
+}
+
 /**
  * Creates a challenge nonce for replay-resistant proof generation.
  * The nonce must be included in the proof's public inputs and will
@@ -23,12 +31,19 @@ export const circuitTypeSchema = z.enum([
 export const createChallengeProcedure = protectedProcedure
   .input(z.object({ circuitType: circuitTypeSchema }))
   .mutation(async ({ ctx, input }) => {
-    const challenge = await createChallenge(input.circuitType, ctx.userId);
+    const challenge = await createChallenge(input.circuitType, {
+      userId: ctx.userId,
+      msgSender: ctx.userId,
+      audience: resolveAudience(ctx.req.url),
+    });
     ctx.span?.setAttribute("challenge.circuit_type", input.circuitType);
     ctx.span?.setAttribute(
       "challenge.active_count",
       await getActiveChallengeCount()
     );
+    if (challenge.audience) {
+      ctx.span?.setAttribute("challenge.audience", challenge.audience);
+    }
     return {
       nonce: challenge.nonce,
       circuitType: challenge.circuitType,

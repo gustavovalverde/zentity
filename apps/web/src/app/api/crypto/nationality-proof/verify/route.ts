@@ -68,7 +68,11 @@ export async function POST(request: NextRequest) {
     const challenge = await consumeChallenge(
       nonceHex,
       "nationality_membership",
-      authResult.session.user.id
+      {
+        userId: authResult.session.user.id,
+        msgSender: authResult.session.user.id,
+        audience: new URL(request.url).origin,
+      }
     );
     if (!challenge) {
       return NextResponse.json(

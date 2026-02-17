@@ -52,6 +52,18 @@ describe("challenge-store", () => {
       expect(challenge.userId).toBeUndefined();
     });
 
+    it("creates challenge with msgSender and audience bindings", async () => {
+      const challenge = await createChallenge("age_verification", {
+        userId: "user-123",
+        msgSender: "did:zentity:user-123",
+        audience: "https://rp.example",
+      });
+
+      expect(challenge.userId).toBe("user-123");
+      expect(challenge.msgSender).toBe("did:zentity:user-123");
+      expect(challenge.audience).toBe("https://rp.example");
+    });
+
     it("sets expiry 15 minutes from creation", async () => {
       const now = Date.now();
       const challenge = await createChallenge("age_verification");
@@ -169,6 +181,68 @@ describe("challenge-store", () => {
       );
 
       expect(result).toBeNull();
+    });
+
+    it("rejects challenge bound to different msgSender", async () => {
+      const challenge = await createChallenge("identity_binding", {
+        userId: "user-123",
+        msgSender: "did:zentity:user-123",
+        audience: "https://rp.example",
+      });
+
+      const result = await consumeChallenge(
+        challenge.nonce,
+        "identity_binding",
+        {
+          userId: "user-123",
+          msgSender: "did:zentity:attacker",
+          audience: "https://rp.example",
+        }
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("rejects challenge bound to different audience", async () => {
+      const challenge = await createChallenge("identity_binding", {
+        userId: "user-123",
+        msgSender: "did:zentity:user-123",
+        audience: "https://rp.example",
+      });
+
+      const result = await consumeChallenge(
+        challenge.nonce,
+        "identity_binding",
+        {
+          userId: "user-123",
+          msgSender: "did:zentity:user-123",
+          audience: "https://evil.example",
+        }
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("consumes challenge when msgSender and audience match", async () => {
+      const challenge = await createChallenge("identity_binding", {
+        userId: "user-123",
+        msgSender: "did:zentity:user-123",
+        audience: "https://rp.example",
+      });
+
+      const result = await consumeChallenge(
+        challenge.nonce,
+        "identity_binding",
+        {
+          userId: "user-123",
+          msgSender: "did:zentity:user-123",
+          audience: "https://rp.example",
+        }
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.msgSender).toBe("did:zentity:user-123");
+      expect(result?.audience).toBe("https://rp.example");
     });
 
     it("allows consumption of user-bound challenge without user param", async () => {

@@ -16,10 +16,18 @@ import { eq, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db/connection";
 import { zkChallenges } from "@/lib/db/schema/crypto";
 
+interface ChallengeBinding {
+  userId?: string;
+  msgSender?: string;
+  audience?: string;
+}
+
 interface Challenge {
   nonce: string; // 128-bit hex string
   circuitType: ProofType;
   userId?: string; // Optional: bind to specific user
+  msgSender?: string; // Optional: bind to signer/did context
+  audience?: string; // Optional: bind to relying-party audience/domain
   createdAt: number;
   expiresAt: number;
 }
@@ -47,6 +55,18 @@ function generateNonce(): string {
   return randomBytes(16).toString("hex");
 }
 
+function normalizeBinding(
+  bindingOrUserId?: ChallengeBinding | string
+): ChallengeBinding {
+  if (!bindingOrUserId) {
+    return {};
+  }
+  if (typeof bindingOrUserId === "string") {
+    return { userId: bindingOrUserId };
+  }
+  return bindingOrUserId;
+}
+
 /**
  * Create a new challenge for proof generation
  *
@@ -56,9 +76,10 @@ function generateNonce(): string {
  */
 export async function createChallenge(
   circuitType: ProofType,
-  userId?: string
+  bindingOrUserId?: ChallengeBinding | string
 ): Promise<Challenge> {
   await cleanupExpiredChallenges();
+  const binding = normalizeBinding(bindingOrUserId);
 
   const now = Date.now();
   const expiresAt = now + CHALLENGE_TTL_MS;
@@ -72,13 +93,23 @@ export async function createChallenge(
         .values({
           nonce,
           circuitType,
-          userId: userId ?? null,
+          userId: binding.userId ?? null,
+          msgSender: binding.msgSender ?? null,
+          audience: binding.audience ?? null,
           createdAt: now,
           expiresAt,
         })
         .run();
 
-      return { nonce, circuitType, userId, createdAt: now, expiresAt };
+      return {
+        nonce,
+        circuitType,
+        userId: binding.userId,
+        msgSender: binding.msgSender,
+        audience: binding.audience,
+        createdAt: now,
+        expiresAt,
+      };
     } catch {
       // Retry on collision
     }
@@ -100,8 +131,9 @@ export async function createChallenge(
 export async function consumeChallenge(
   nonce: string,
   circuitType: ProofType,
-  userId?: string
+  bindingOrUserId?: ChallengeBinding | string
 ): Promise<Challenge | null> {
+  const binding = normalizeBinding(bindingOrUserId);
   // Cleanup runs during createChallenge(), so we skip it here
   return await db.transaction(async (tx) => {
     const row = await tx
@@ -109,6 +141,8 @@ export async function consumeChallenge(
         nonce: zkChallenges.nonce,
         circuitType: zkChallenges.circuitType,
         userId: zkChallenges.userId,
+        msgSender: zkChallenges.msgSender,
+        audience: zkChallenges.audience,
         createdAt: zkChallenges.createdAt,
         expiresAt: zkChallenges.expiresAt,
       })
@@ -123,7 +157,13 @@ export async function consumeChallenge(
     if (row.circuitType !== circuitType) {
       return null;
     }
-    if (row.userId && row.userId !== userId) {
+    if (row.userId && row.userId !== binding.userId) {
+      return null;
+    }
+    if (row.msgSender && row.msgSender !== binding.msgSender) {
+      return null;
+    }
+    if (row.audience && row.audience !== binding.audience) {
       return null;
     }
     if (row.expiresAt < Date.now()) {
@@ -137,6 +177,8 @@ export async function consumeChallenge(
       nonce: row.nonce,
       circuitType: row.circuitType,
       userId: row.userId ?? undefined,
+      msgSender: row.msgSender ?? undefined,
+      audience: row.audience ?? undefined,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     };

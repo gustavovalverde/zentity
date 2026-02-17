@@ -89,10 +89,16 @@ export const zkChallenges = sqliteTable(
     nonce: text("nonce").primaryKey(),
     circuitType: text("circuit_type").notNull(),
     userId: text("user_id"),
+    msgSender: text("msg_sender"),
+    audience: text("audience"),
     createdAt: integer("created_at").notNull(),
     expiresAt: integer("expires_at").notNull(),
   },
-  (table) => [index("idx_zk_challenges_expires_at").on(table.expiresAt)]
+  (table) => [
+    index("idx_zk_challenges_expires_at").on(table.expiresAt),
+    index("idx_zk_challenges_msg_sender").on(table.msgSender),
+    index("idx_zk_challenges_audience").on(table.audience),
+  ]
 );
 
 export const usedIntentJtis = sqliteTable(

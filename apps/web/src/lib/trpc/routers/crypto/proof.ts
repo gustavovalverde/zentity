@@ -62,6 +62,14 @@ const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 type NoirVerificationResult = Awaited<ReturnType<typeof verifyNoirProof>>;
 type ProofVerificationResult = NoirVerificationResult & { reason?: string };
 
+function resolveAudience(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "unknown";
+  }
+}
+
 async function verifyProofInternal(args: {
   userId: string;
   circuitType: z.infer<typeof circuitTypeSchema>;
@@ -391,11 +399,11 @@ export const verifyProofProcedure = protectedProcedure
       return result;
     }
 
-    const challenge = await consumeChallenge(
-      nonceHex,
-      input.circuitType,
-      ctx.userId
-    );
+    const challenge = await consumeChallenge(nonceHex, input.circuitType, {
+      userId: ctx.userId,
+      msgSender: ctx.userId,
+      audience: resolveAudience(ctx.req.url),
+    });
     if (!challenge) {
       throw new TRPCError({
         code: "BAD_REQUEST",
@@ -537,11 +545,11 @@ export const storeProofProcedure = protectedProcedure
       });
     }
 
-    const challenge = await consumeChallenge(
-      nonceHex,
-      input.circuitType,
-      ctx.userId
-    );
+    const challenge = await consumeChallenge(nonceHex, input.circuitType, {
+      userId: ctx.userId,
+      msgSender: ctx.userId,
+      audience: resolveAudience(ctx.req.url),
+    });
     if (!challenge) {
       throw new TRPCError({
         code: "BAD_REQUEST",
