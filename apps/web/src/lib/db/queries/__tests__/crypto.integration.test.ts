@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { db } from "@/lib/db/connection";
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
@@ -15,6 +17,7 @@ import {
   insertSignedClaim,
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
+import { encryptedAttributes } from "@/lib/db/schema/crypto";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("crypto queries", () => {
@@ -233,7 +236,35 @@ describe("crypto queries", () => {
       "birth_year_offset"
     );
     expect(latestEncrypted?.ciphertext).toEqual(Buffer.from("cipher-2"));
+    expect(latestEncrypted?.ciphertextHash).toBe(
+      crypto.createHash("sha256").update(Buffer.from("cipher-2")).digest("hex")
+    );
     expect(latestEncrypted?.keyId).toBe("key-2");
     expect(latestEncrypted?.encryptionTimeMs).toBe(30);
+  });
+
+  it("rejects tampered encrypted ciphertext when hash does not match", async () => {
+    const userId = await createTestUser();
+    const id = crypto.randomUUID();
+
+    await insertEncryptedAttribute({
+      id,
+      userId,
+      source: "web2_tfhe",
+      attributeType: "dob_days",
+      ciphertext: Buffer.from("cipher-original"),
+      keyId: "key-1",
+      encryptionTimeMs: 25,
+    });
+
+    await db
+      .update(encryptedAttributes)
+      .set({ ciphertext: Buffer.from("cipher-tampered") })
+      .where(eq(encryptedAttributes.id, id))
+      .run();
+
+    await expect(
+      getLatestEncryptedAttributeByUserAndType(userId, "dob_days")
+    ).rejects.toThrow("Encrypted attribute integrity check failed");
   });
 });

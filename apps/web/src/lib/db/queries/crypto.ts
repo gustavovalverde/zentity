@@ -72,6 +72,33 @@ function getCiphertextInfo(ciphertext: Buffer | null | undefined): {
   return { hash, byteLength: ciphertext.byteLength };
 }
 
+function computeCiphertextHash(ciphertext: Buffer): string {
+  return crypto.createHash("sha256").update(ciphertext).digest("hex");
+}
+
+function ensureCiphertextIntegrity(params: {
+  ciphertext: Buffer;
+  ciphertextHash: string | null;
+  userId: string;
+  attributeType: string;
+}): string {
+  const computed = computeCiphertextHash(params.ciphertext);
+  const stored = params.ciphertextHash ?? "";
+
+  // Legacy rows may not have persisted hash. Use computed hash for compatibility.
+  if (!stored) {
+    return computed;
+  }
+
+  if (!crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(computed))) {
+    throw new Error(
+      `Encrypted attribute integrity check failed for ${params.attributeType}:${params.userId}`
+    );
+  }
+
+  return stored;
+}
+
 export async function getUserAgeProof(
   userId: string
 ): Promise<AgeProofSummary | null> {
@@ -568,6 +595,7 @@ export async function getLatestEncryptedAttributeByUserAndType(
   attributeType: string
 ): Promise<{
   ciphertext: Buffer;
+  ciphertextHash: string;
   keyId: string | null;
   encryptionTimeMs: number | null;
   createdAt: string;
@@ -575,6 +603,7 @@ export async function getLatestEncryptedAttributeByUserAndType(
   const row = await db
     .select({
       ciphertext: encryptedAttributes.ciphertext,
+      ciphertextHash: encryptedAttributes.ciphertextHash,
       keyId: encryptedAttributes.keyId,
       encryptionTimeMs: encryptedAttributes.encryptionTimeMs,
       createdAt: encryptedAttributes.createdAt,
@@ -590,7 +619,24 @@ export async function getLatestEncryptedAttributeByUserAndType(
     .limit(1)
     .get();
 
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+
+  const ciphertextHash = ensureCiphertextIntegrity({
+    ciphertext: row.ciphertext,
+    ciphertextHash: row.ciphertextHash,
+    userId,
+    attributeType,
+  });
+
+  return {
+    ciphertext: row.ciphertext,
+    ciphertextHash,
+    keyId: row.keyId,
+    encryptionTimeMs: row.encryptionTimeMs,
+    createdAt: row.createdAt,
+  };
 }
 
 export async function listEncryptedSecretsByUserId(
@@ -674,8 +720,9 @@ export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
 }
 
 export async function insertEncryptedAttribute(
-  data: Omit<NewEncryptedAttribute, "createdAt">
+  data: Omit<NewEncryptedAttribute, "createdAt" | "ciphertextHash">
 ): Promise<void> {
+  const ciphertextHash = computeCiphertextHash(data.ciphertext);
   await db
     .insert(encryptedAttributes)
     .values({
@@ -684,6 +731,7 @@ export async function insertEncryptedAttribute(
       source: data.source,
       attributeType: data.attributeType,
       ciphertext: data.ciphertext,
+      ciphertextHash,
       keyId: data.keyId ?? null,
       encryptionTimeMs: data.encryptionTimeMs ?? null,
     })

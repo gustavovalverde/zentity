@@ -53,6 +53,7 @@ export const encryptedAttributes = sqliteTable(
     source: text("source").notNull(),
     attributeType: text("attribute_type").notNull(),
     ciphertext: blob("ciphertext", { mode: "buffer" }).notNull(),
+    ciphertextHash: text("ciphertext_hash").notNull().default(""),
     keyId: text("key_id"),
     encryptionTimeMs: integer("encryption_time_ms"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
