@@ -15,6 +15,7 @@ pub mod hpke_crypto;
 pub mod jwt_verification;
 pub mod key_format;
 mod macros;
+pub(crate) mod recovery_message;
 pub mod signer_logic;
 pub mod types;
 

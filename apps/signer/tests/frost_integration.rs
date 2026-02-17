@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use tempfile::TempDir;
+use uuid::Uuid;
 
 use signer_service::config::{Ciphersuite, Settings};
 use signer_service::frost::{
@@ -40,6 +41,15 @@ fn create_test_signer(
     let db_path = temp_dir.path().join(format!("{signer_id}.redb"));
     let storage = Storage::open(&db_path).expect("Failed to create storage");
     SignerService::new(storage, signer_id.to_string(), participant_id, ciphersuite)
+}
+
+fn encode_recovery_message() -> String {
+    let message = format!(
+        "zentity-recovery-intent:v1:{}:{}",
+        Uuid::new_v4(),
+        Uuid::new_v4()
+    );
+    BASE64.encode(message)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -300,7 +310,7 @@ async fn run_full_dkg_and_signing_flow(ciphersuite: Ciphersuite) {
     // ===== Signing Phase =====
 
     // 1. Initialize signing session
-    let message = BASE64.encode("Hello FROST!");
+    let message = encode_recovery_message();
     let sign_init = coordinator
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),
@@ -654,7 +664,7 @@ async fn test_sign_partial_nonce_is_single_use() {
         )
         .expect("Failed to store group key for signing");
 
-    let message = BASE64.encode("Single-use nonce replay test");
+    let message = encode_recovery_message();
     let sign_init = coordinator
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),
@@ -1066,7 +1076,7 @@ async fn test_signing_with_different_signer_subset() {
         .expect("Failed to persist group key record");
 
     // ===== Sign with signers 2 and 3 only =====
-    let message = BASE64.encode("Signed by signers 2 and 3");
+    let message = encode_recovery_message();
     let sign_init = coordinator
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),
@@ -1194,7 +1204,7 @@ async fn test_submit_partial_rejects_expired_session() {
         .unwrap();
 
     // Initialize signing session
-    let message = BASE64.encode("Test message");
+    let message = encode_recovery_message();
     let sign_init = coordinator
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.to_string(),
@@ -1473,7 +1483,7 @@ async fn test_aggregate_signatures_rejects_expired_session() {
         .unwrap();
 
     // Initialize signing session
-    let message = BASE64.encode("Test message for aggregation expiry");
+    let message = encode_recovery_message();
     let sign_init = coordinator
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.to_string(),
@@ -1702,7 +1712,7 @@ async fn test_invalid_signature_share_identifies_culprit() {
         .unwrap();
 
     // === Signing with corrupted partial from signer 2 ===
-    let message = BASE64.encode("Test message for culprit identification");
+    let message = encode_recovery_message();
     let sign_init = coordinator
         .init_signing(SigningInitRequest {
             group_pubkey: group_pubkey.clone(),

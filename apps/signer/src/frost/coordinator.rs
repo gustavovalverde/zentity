@@ -19,6 +19,7 @@ use crate::config::Settings;
 use crate::error::{SignerError, SignerResult};
 use crate::frost::decoders;
 use crate::frost::key_format::secp256k1_x_parity_from_group_pubkey_hex;
+use crate::frost::recovery_message;
 use crate::frost::types::{
     DkgFinalizeRequest, DkgFinalizeResponse, DkgInitRequest, DkgInitResponse, DkgRound1Request,
     DkgRound1Response, DkgRound2Request, DkgRound2Response, DkgSession, DkgState, GroupKeyRecord,
@@ -41,6 +42,15 @@ const SIGNING_EXPIRY_MINUTES: i64 = 10;
 
 /// HTTP client timeout for signer requests.
 const SIGNER_REQUEST_TIMEOUT_SECS: u64 = 30;
+
+fn validate_recovery_signing_message(message_b64: &str) -> SignerResult<()> {
+    let decoded = BASE64
+        .decode(message_b64)
+        .map_err(|e| SignerError::InvalidInput(format!("Invalid message base64: {e}")))?;
+    let message = std::str::from_utf8(&decoded)
+        .map_err(|_| SignerError::InvalidInput("Message must be UTF-8".to_string()))?;
+    recovery_message::validate(message)
+}
 
 /// Coordinator service for orchestrating DKG and signing.
 pub struct Coordinator {
@@ -578,6 +588,8 @@ impl Coordinator {
         &self,
         request: SigningInitRequest,
     ) -> SignerResult<SigningInitResponse> {
+        validate_recovery_signing_message(&request.message)?;
+
         let group_key = self
             .storage
             .get_group_key::<GroupKeyRecord>(&request.group_pubkey)?
@@ -1126,4 +1138,19 @@ mod tests {
         assert_eq!(session.state, SigningState::AwaitingCommitments);
         assert!(!session.commitments_complete());
     }
+
+    #[test]
+    fn test_validate_recovery_signing_message_base64_wrapper() {
+        let valid = BASE64.encode("zentity-recovery-intent:v1:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222");
+        assert!(validate_recovery_signing_message(&valid).is_ok());
+
+        let invalid_b64 = "not-valid-base64!!!";
+        assert!(validate_recovery_signing_message(invalid_b64).is_err());
+
+        let legacy = BASE64.encode(
+            "recovery:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222",
+        );
+        assert!(validate_recovery_signing_message(&legacy).is_err());
+    }
+    // Canonical format tests are in frost::recovery_message::tests
 }

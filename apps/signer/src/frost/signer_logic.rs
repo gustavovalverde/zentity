@@ -7,7 +7,7 @@
 //! Key shares are stored with envelope encryption (DEK wrapped by KEK).
 //! The signer never exposes plaintext key material outside its process.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Mutex;
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
@@ -15,6 +15,7 @@ use frost_ed25519 as frost_ed;
 use frost_secp256k1 as frost_secp;
 // Use frost's re-exported rand_core (0.6.4) for FROST operations
 use frost_secp::rand_core::OsRng;
+use sha2::{Digest, Sha256};
 
 use crate::config::Ciphersuite;
 use crate::error::{SignerError, SignerResult};
@@ -23,6 +24,7 @@ use crate::frost::jwt_verification::JwtVerifier;
 use crate::frost::macros::{
     impl_dkg_finalize, impl_dkg_round1, impl_dkg_round2, impl_sign_commit, impl_sign_partial,
 };
+use crate::frost::recovery_message;
 use crate::frost::types::{
     ParticipantId, SessionId, SignerCommitResponse, SignerDkgFinalizeResponse,
     SignerDkgRound1Response, SignerDkgRound2Response, SignerPartialSignResponse,
@@ -55,6 +57,9 @@ pub struct SignerService {
     /// In-memory signing nonces (cleared after use).
     /// Maps (group_pubkey, session_id) -> nonces.
     signing_nonces: Mutex<HashMap<(String, String), StoredNonces>>,
+    /// In-memory fingerprints of generated signing nonces to detect reuse.
+    /// Kept for process lifetime to fail closed on nonce collisions.
+    used_nonce_fingerprints: Mutex<HashSet<String>>,
     /// Optional JWT verifier for guardian assertions.
     jwt_verifier: Option<JwtVerifier>,
 }
@@ -75,6 +80,7 @@ impl SignerService {
             hpke_keypair: HpkeKeyPair::generate(),
             dkg_round1_secrets: Mutex::new(HashMap::new()),
             signing_nonces: Mutex::new(HashMap::new()),
+            used_nonce_fingerprints: Mutex::new(HashSet::new()),
             jwt_verifier: None,
         }
     }
@@ -95,6 +101,7 @@ impl SignerService {
             hpke_keypair: HpkeKeyPair::generate(),
             dkg_round1_secrets: Mutex::new(HashMap::new()),
             signing_nonces: Mutex::new(HashMap::new()),
+            used_nonce_fingerprints: Mutex::new(HashSet::new()),
             jwt_verifier: Some(JwtVerifier::new(jwks_url)),
         }
     }
@@ -159,6 +166,8 @@ impl SignerService {
         nonces_key: (String, String),
         nonces_bytes: Vec<u8>,
     ) -> SignerResult<()> {
+        let nonce_fingerprint = self.nonce_fingerprint(&nonces_key.0, &nonces_bytes);
+
         let mut map = self
             .signing_nonces
             .lock()
@@ -171,6 +180,16 @@ impl SignerService {
             });
         }
 
+        let mut used_fingerprints = self
+            .used_nonce_fingerprints
+            .lock()
+            .map_err(|e| SignerError::Internal(format!("Nonce fingerprint mutex poisoned: {e}")))?;
+        if used_fingerprints.contains(&nonce_fingerprint) {
+            return Err(SignerError::SigningFailed(
+                "Detected signing nonce reuse; refusing to proceed".to_string(),
+            ));
+        }
+
         map.insert(
             nonces_key,
             StoredNonces {
@@ -178,8 +197,18 @@ impl SignerService {
                 bytes: nonces_bytes,
             },
         );
+        used_fingerprints.insert(nonce_fingerprint);
         drop(map);
         Ok(())
+    }
+
+    fn nonce_fingerprint(&self, group_pubkey: &str, nonces_bytes: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.ciphersuite.to_string().as_bytes());
+        hasher.update(self.participant_id.get().to_be_bytes());
+        hasher.update(group_pubkey.as_bytes());
+        hasher.update(nonces_bytes);
+        hex::encode(hasher.finalize())
     }
 
     fn take_signing_nonces(&self, nonces_key: &(String, String)) -> SignerResult<StoredNonces> {
@@ -329,6 +358,12 @@ impl SignerService {
         all_commitments: &HashMap<ParticipantId, String>,
         guardian_assertion: Option<&str>,
     ) -> SignerResult<SignerPartialSignResponse> {
+        // Defense in depth: signer validates canonical recovery intent format
+        // independently from the coordinator.
+        let message_str = std::str::from_utf8(message)
+            .map_err(|_| SignerError::InvalidInput("Signing message must be UTF-8".to_string()))?;
+        recovery_message::validate(message_str)?;
+
         // Verify guardian assertion if JWT verification is enabled
         self.verify_guardian_assertion(session_id, guardian_assertion)
             .await?;
@@ -392,5 +427,24 @@ mod tests {
         assert!(!response.hpke_pubkey.is_empty());
     }
 
+    #[test]
+    fn test_rejects_signing_nonce_reuse_across_sessions() {
+        let signer = create_test_signer("signer-1", ParticipantId::new_unwrap(1));
+        let nonce_bytes = vec![7_u8; 32];
+
+        let first = signer.store_signing_nonces(
+            ("group-key".to_string(), "session-a".to_string()),
+            nonce_bytes.clone(),
+        );
+        assert!(first.is_ok());
+
+        let second = signer.store_signing_nonces(
+            ("group-key".to_string(), "session-b".to_string()),
+            nonce_bytes,
+        );
+        assert!(second.is_err());
+    }
+
     // Full DKG flow test would require multiple signers - will be tested in integration tests
+    // Recovery message format tests are in frost::recovery_message::tests
 }

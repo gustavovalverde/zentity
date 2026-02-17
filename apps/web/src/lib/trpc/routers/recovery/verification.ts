@@ -11,6 +11,8 @@ const RECOVERY_ID_PREFIX = "rec_";
 const TOTP_DIGITS = 6;
 const TOTP_PERIOD = 30;
 const OTP_CODE_RE = /^\d{6}$/;
+const RECOVERY_MESSAGE_PREFIX = "zentity-recovery-intent";
+const RECOVERY_MESSAGE_VERSION = "v1";
 
 export function isExpired(value: string): boolean {
   const date = new Date(value);
@@ -21,7 +23,12 @@ export function buildRecoveryMessage(params: {
   challengeId: string;
   challengeNonce: string;
 }): string {
-  return `recovery:${params.challengeId}:${params.challengeNonce}`;
+  return [
+    RECOVERY_MESSAGE_PREFIX,
+    RECOVERY_MESSAGE_VERSION,
+    params.challengeId,
+    params.challengeNonce,
+  ].join(":");
 }
 
 function normalizeOtpCode(code: string): string {
