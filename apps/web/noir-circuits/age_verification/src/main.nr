@@ -44,6 +44,10 @@ fn main(
     let current_days_u32 = current_days as u32;
     let min_age_days_u32 = min_age_days as u32;
 
+    // Sanity bound: current_days must be a plausible value.
+    // 99999 days from 1900-01-01 is approx year 2173, well beyond any realistic use.
+    assert(current_days_u32 <= 99999, "current_days unreasonably large");
+
     // SECURITY: Prevent wrap-around attack
     // Without this check, a dob_days > current_days would cause Field underflow,
     // resulting in a very large positive "age" that passes any min_age check.
@@ -175,4 +179,16 @@ fn test_future_dob_fails() {
     let doc_hash: Field = 333;
     let claim_hash = poseidon2([dob, doc_hash]);
     let _ = main(dob, doc_hash, current, min_age, 55555, claim_hash);
+}
+
+#[test(should_fail_with = "current_days unreasonably large")]
+fn test_implausibly_large_current_days_fails() {
+    // current_days = 100000 is beyond the sanity bound (approx year 2173)
+    let current: Field = 100000;
+    let dob: Field = 0;
+    let min_age: Field = 0;
+
+    let doc_hash: Field = 222;
+    let claim_hash = poseidon2([dob, doc_hash]);
+    let _ = main(dob, doc_hash, current, min_age, 66666, claim_hash);
 }

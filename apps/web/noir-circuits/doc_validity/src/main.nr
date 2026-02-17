@@ -29,9 +29,14 @@ fn main(
     let computed_hash = poseidon2([expiry_date, document_hash]);
     assert(computed_hash == claim_hash, "Claim hash mismatch");
 
+    // Sanity bound: current_date must be a plausible date (>= year 2000-01-01).
+    // Prevents current_date = 0 from making any document appear valid.
+    let current_date_u32 = current_date as u32;
+    assert(current_date_u32 >= 20000101, "current_date unreasonably low");
+
     // Document is valid if expiry date is >= current date
     // Using u32 comparison for date integers
-    let is_valid = expiry_date as u32 >= current_date as u32;
+    let is_valid = expiry_date as u32 >= current_date_u32;
 
     is_valid
 }
@@ -79,4 +84,20 @@ fn test_far_future_expiry() {
     let claim_hash = poseidon2([20301231, doc_hash]);
     let result = main(20301231, doc_hash, 20251212, 33333, claim_hash);
     assert(result == true);
+}
+
+#[test(should_fail_with = "current_date unreasonably low")]
+fn test_zero_current_date_fails() {
+    // current_date = 0 would make any document appear valid
+    let doc_hash = 111;
+    let claim_hash = poseidon2([20271231, doc_hash]);
+    let _ = main(20271231, doc_hash, 0, 77777, claim_hash);
+}
+
+#[test(should_fail_with = "current_date unreasonably low")]
+fn test_implausible_current_date_fails() {
+    // current_date = 19991231 is before year 2000
+    let doc_hash = 222;
+    let claim_hash = poseidon2([20271231, doc_hash]);
+    let _ = main(20271231, doc_hash, 19991231, 88888, claim_hash);
 }

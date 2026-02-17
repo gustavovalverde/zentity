@@ -11,6 +11,8 @@
 
 import type { Socket } from "socket.io";
 
+import { createHash } from "node:crypto";
+
 import {
   getIdentityDraftById,
   updateIdentityDraft,
@@ -687,11 +689,15 @@ async function handleVerifyingPhase(
   let draftUpdated = false;
   if (session.draftId && session.userId) {
     try {
+      const verifiedSelfieHash = session.baselineFrame
+        ? createHash("sha256").update(session.baselineFrame).digest("hex")
+        : null;
       await updateIdentityDraft(session.draftId, {
         userId: session.userId,
         antispoofScore: realScore,
         liveScore,
         livenessPassed: true,
+        verifiedSelfieHash,
       });
       draftUpdated = true;
       log.info(

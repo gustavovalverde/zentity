@@ -166,6 +166,10 @@ export const identityVerificationDrafts = sqliteTable(
     faceMatchConfidence: real("face_match_confidence"),
     faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
 
+    // SHA-256 of the baseline frame captured during liveness completion.
+    // Used to bind the selfie sent to faceMatch to the verified liveness session.
+    verifiedSelfieHash: text("verified_selfie_hash"),
+
     // DOB commitment (SHA256 hash - never store plaintext DOB)
     // Raw DOB is only processed transiently during OCR → FHE encryption
     dobCommitment: text("dob_commitment"),

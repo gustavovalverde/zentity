@@ -10,6 +10,8 @@ import "server-only";
 
 import type { ChallengeType } from "@/lib/identity/liveness/challenges";
 
+import { createHash } from "node:crypto";
+
 import z from "zod";
 
 import {
@@ -369,11 +371,9 @@ export const livenessRouter = router({
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
       const userId = ctx.session.user.id;
-
-      const human = await getHumanServer();
       const minConfidence = input.minConfidence ?? FACE_MATCH_MIN_CONFIDENCE;
 
-      // Validate draft ownership if draftId provided
+      // Validate draft ownership and selfie binding before any expensive work
       if (input.draftId) {
         const draft = await getIdentityDraftById(input.draftId);
         if (!draft) {
@@ -398,7 +398,34 @@ export const livenessRouter = router({
             error: "Draft does not belong to this user",
           };
         }
+        if (!draft.verifiedSelfieHash) {
+          return {
+            matched: false,
+            confidence: 0,
+            distance: 1,
+            threshold: minConfidence,
+            processingTimeMs: Date.now() - startTime,
+            idFaceExtracted: false,
+            error: "Liveness not completed for this draft",
+          };
+        }
+        const selfieHash = createHash("sha256")
+          .update(input.selfieImage)
+          .digest("hex");
+        if (selfieHash !== draft.verifiedSelfieHash) {
+          return {
+            matched: false,
+            confidence: 0,
+            distance: 1,
+            threshold: minConfidence,
+            processingTimeMs: Date.now() - startTime,
+            idFaceExtracted: false,
+            error: "Selfie does not match liveness session",
+          };
+        }
       }
+
+      const human = await getHumanServer();
 
       const idResultInitial = await detectFromBase64(input.idImage);
       const idFaceInitial = getLargestFace(idResultInitial);
