@@ -70,6 +70,44 @@ describe("key-derivation", () => {
 
       await expect(decryptAesGcm(kek2, encrypted)).rejects.toThrow();
     });
+
+    it("derives deterministic KEK when explicit HKDF salt is reused", async () => {
+      const prfOutput = new Uint8Array(32).fill(0x42);
+      const userId = "user-123";
+      const prfSalt = new Uint8Array(32).fill(0x77);
+      const kek1 = await deriveKekFromPrf(
+        prfOutput,
+        userId,
+        undefined,
+        prfSalt
+      );
+      const kek2 = await deriveKekFromPrf(
+        prfOutput,
+        userId,
+        undefined,
+        prfSalt
+      );
+
+      const testData = new TextEncoder().encode("test");
+      const encrypted = await encryptAesGcm(kek1, testData);
+      const decrypted = await decryptAesGcm(kek2, encrypted);
+
+      expect(decrypted).toEqual(testData);
+    });
+
+    it("derives different KEKs for different HKDF salts", async () => {
+      const prfOutput = new Uint8Array(32).fill(0x42);
+      const userId = "user-123";
+      const salt1 = new Uint8Array(32).fill(0x11);
+      const salt2 = new Uint8Array(32).fill(0x22);
+      const kek1 = await deriveKekFromPrf(prfOutput, userId, undefined, salt1);
+      const kek2 = await deriveKekFromPrf(prfOutput, userId, undefined, salt2);
+
+      const testData = new TextEncoder().encode("test");
+      const encrypted = await encryptAesGcm(kek1, testData);
+
+      await expect(decryptAesGcm(kek2, encrypted)).rejects.toThrow();
+    });
   });
 
   describe("deriveKekFromOpaqueExport", () => {

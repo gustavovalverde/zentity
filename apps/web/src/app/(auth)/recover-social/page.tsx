@@ -455,6 +455,7 @@ export default function RecoverSocialPage() {
             userId,
             dek: base64ToBytes(dek.dekBase64),
             prfOutput,
+            prfSalt,
           });
           return {
             secretId: dek.secretId,

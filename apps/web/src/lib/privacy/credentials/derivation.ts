@@ -37,7 +37,8 @@ export function generatePrfSalt(): Uint8Array {
 export async function deriveKekFromPrf(
   prfOutput: Uint8Array,
   userId: string,
-  info: string = HKDF_INFO.PASSKEY_KEK
+  info: string = HKDF_INFO.PASSKEY_KEK,
+  hkdfSalt?: Uint8Array
 ): Promise<CryptoKey> {
   if (!userId) {
     throw new Error("userId is required for KEK derivation.");
@@ -50,12 +51,15 @@ export async function deriveKekFromPrf(
     ["deriveKey"]
   );
 
-  const salt = new TextEncoder().encode(userId);
+  const salt = hkdfSalt ?? new TextEncoder().encode(userId);
+  if (salt.byteLength === 0) {
+    throw new Error("HKDF salt must not be empty.");
+  }
 
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
-      salt,
+      salt: toArrayBuffer(salt),
       hash: "SHA-256",
       info: new TextEncoder().encode(info),
     },

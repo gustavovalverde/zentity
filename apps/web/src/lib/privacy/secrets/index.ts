@@ -191,6 +191,7 @@ export async function storeSecretWithCredential(params: {
       userId: ctx.userId,
       dek,
       prfOutput: ctx.prfOutput,
+      prfSalt: ctx.prfSalt,
     });
     credentialId = ctx.credentialId;
     prfSalt = bytesToBase64(ctx.prfSalt);
@@ -294,6 +295,17 @@ async function resolveUserId(
   return userId;
 }
 
+function requireCredentialPrfSalt(
+  saltByCredential: Record<string, Uint8Array>,
+  credentialId: string
+): Uint8Array {
+  const salt = saltByCredential[credentialId];
+  if (!salt) {
+    throw new Error("Selected passkey salt is missing.");
+  }
+  return salt;
+}
+
 async function tryLoadWithPrf(
   ctx: SecretLoadContext,
   wrappers: SecretWrapper[],
@@ -331,6 +343,7 @@ async function tryLoadWithPrf(
     userId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput,
+    prfSalt: saltByCredential[selectedWrapper.credentialId],
   });
 
   const plaintext = await decryptWithDek({
@@ -602,6 +615,7 @@ export async function addWrapperForSecretType(params: {
       userId,
       dek,
       prfOutput: params.newPrfOutput,
+      prfSalt: params.newPrfSalt,
     });
 
     await trpc.secrets.addWrapper.mutate({
@@ -648,6 +662,10 @@ export async function addWrapperForSecretType(params: {
     userId: prfUserId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput: selectedOutput,
+    prfSalt: requireCredentialPrfSalt(
+      saltByCredential,
+      selectedWrapper.credentialId
+    ),
   });
 
   const wrappedDek = await wrapDekWithPrf({
@@ -656,6 +674,7 @@ export async function addWrapperForSecretType(params: {
     userId: prfUserId,
     dek,
     prfOutput: params.newPrfOutput,
+    prfSalt: params.newPrfSalt,
   });
 
   await trpc.secrets.addWrapper.mutate({
@@ -720,6 +739,10 @@ export async function addRecoveryWrapperForSecretType(params: {
     userId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput,
+    prfSalt: requireCredentialPrfSalt(
+      saltByCredential,
+      selectedWrapper.credentialId
+    ),
   });
 
   const recovery = await encryptDekForRecovery(dek);
@@ -788,6 +811,10 @@ export async function addOpaqueWrapperForSecretType(params: {
     userId: params.userId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput,
+    prfSalt: requireCredentialPrfSalt(
+      saltByCredential,
+      selectedWrapper.credentialId
+    ),
   });
 
   const opaqueWrapper = await createOpaqueWrapper({

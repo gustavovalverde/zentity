@@ -34,8 +34,14 @@ export async function wrapDekWithPrf(params: {
   userId: string;
   dek: Uint8Array;
   prfOutput: Uint8Array;
+  prfSalt: Uint8Array;
 }): Promise<string> {
-  const kek = await deriveKekFromPrf(params.prfOutput, params.userId);
+  const kek = await deriveKekFromPrf(
+    params.prfOutput,
+    params.userId,
+    undefined,
+    params.prfSalt
+  );
   return wrapDek({
     secretId: params.secretId,
     credentialId: params.credentialId,
@@ -61,8 +67,14 @@ export async function unwrapDekWithPrf(params: {
   userId: string;
   wrappedDek: string;
   prfOutput: Uint8Array;
+  prfSalt: Uint8Array;
 }): Promise<Uint8Array> {
-  const kek = await deriveKekFromPrf(params.prfOutput, params.userId);
+  const kek = await deriveKekFromPrf(
+    params.prfOutput,
+    params.userId,
+    undefined,
+    params.prfSalt
+  );
   return unwrapDek({
     secretId: params.secretId,
     credentialId: params.credentialId,
@@ -110,6 +122,7 @@ export async function createSecretEnvelope(params: {
     userId: params.userId,
     dek,
     prfOutput: params.prfOutput,
+    prfSalt: params.prfSalt,
   });
 
   return {
