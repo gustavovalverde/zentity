@@ -3,6 +3,7 @@
   "ignore": [
     ".synpress-wallet-setup-dist/**",
     "src/components/ui/**",
+    "src/lib/identity/liveness/attestation.ts",
     "src/lib/zk/noir-worker-manager.ts",
     "scripts/**",
     "public/coi-serviceworker.js",
