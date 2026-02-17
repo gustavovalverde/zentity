@@ -182,6 +182,9 @@ export function LivenessVerifyClient({
         description: "Privacy proofs generated successfully.",
       });
 
+      // Privacy hardening: purge transient PII once proofs are generated.
+      getStoreState().reset();
+
       router.push("/dashboard/verify");
       router.refresh();
     },

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomInt, randomUUID } from "node:crypto";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
 
 import {
   CHALLENGE_INSTRUCTIONS,
@@ -13,6 +13,8 @@ interface LivenessSession {
   challenges: ChallengeType[];
   currentIndex: number;
   createdAt: number;
+  attestationChallenge: string;
+  attestationConsumedAt: number | null;
 }
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
@@ -71,6 +73,8 @@ export function createLivenessSession(
     challenges,
     currentIndex: 0,
     createdAt: Date.now(),
+    attestationChallenge: randomBytes(16).toString("hex"),
+    attestationConsumedAt: null,
   };
 
   sessions.set(session.sessionId, session);
@@ -83,6 +87,16 @@ export function getLivenessSession(
   cleanupExpiredSessions();
   const session = sessions.get(sessionId);
   return session;
+}
+
+export function markLivenessSessionAttestationConsumed(
+  sessionId: string
+): void {
+  const session = sessions.get(sessionId);
+  if (!session) {
+    return;
+  }
+  session.attestationConsumedAt = Date.now();
 }
 
 export function getChallengeInfo(
