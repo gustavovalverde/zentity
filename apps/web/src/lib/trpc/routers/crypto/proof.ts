@@ -60,6 +60,7 @@ import {
 
 const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
+const U32_MAX = BigInt(0xff_ff_ff_ff);
 
 type NoirVerificationResult = Awaited<ReturnType<typeof verifyNoirProof>>;
 type ProofVerificationResult = NoirVerificationResult & { reason?: string };
@@ -67,6 +68,17 @@ type ProofVerificationResult = NoirVerificationResult & { reason?: string };
 function hashContextToField(value: string): bigint {
   const digestHex = crypto.createHash("sha256").update(value).digest("hex");
   return BigInt(`0x${digestHex}`) % BN254_FR_MODULUS;
+}
+
+function parseU32PublicInput(value: string, fieldName: string): number {
+  const parsed = parseFieldToBigInt(value);
+  if (parsed < BigInt(0) || parsed > U32_MAX) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Invalid ${fieldName}: must fit in uint32`,
+    });
+  }
+  return Number(parsed);
 }
 
 async function verifyProofInternal(args: {
@@ -175,8 +187,14 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "age_verification") {
-    const providedCurrentDays = Number(BigInt(args.publicInputs[0]));
-    const providedMinAgeDays = Number(BigInt(args.publicInputs[1]));
+    const providedCurrentDays = parseU32PublicInput(
+      args.publicInputs[0],
+      "current_days"
+    );
+    const providedMinAgeDays = parseU32PublicInput(
+      args.publicInputs[1],
+      "min_age_days"
+    );
     const actualCurrentDays = getTodayDobDays();
 
     // Allow minor drift to avoid timezone edge cases.

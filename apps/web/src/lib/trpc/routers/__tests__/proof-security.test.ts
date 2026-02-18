@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
 import { BN254_FR_MODULUS } from "@/lib/privacy/zk/proof-types";
 
 const mockGetSelectedIdentityDocumentByUserId = vi.fn();
@@ -314,6 +315,65 @@ describe("proof router replay and context binding", () => {
       msgSender: "user-123",
       audience: "https://verify.example.com",
     });
+  });
+
+  it("rejects age proofs when min_age_days exceeds uint32 range", async () => {
+    const caller = await createCaller(authedUserSession, {
+      headers: { origin: browserAudience },
+    });
+
+    const overflowMinAgeDays = (BigInt(2) ** BigInt(32) + BigInt(1)).toString();
+
+    await expect(
+      caller.verifyProof({
+        circuitType: "age_verification",
+        proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+        publicInputs: [
+          getTodayDobDays().toString(),
+          overflowMinAgeDays,
+          "1",
+          "1",
+          "1",
+        ],
+        documentId: "doc-1",
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("min_age_days"),
+    });
+
+    expect(mockVerifyNoirProof).not.toHaveBeenCalled();
+    expect(mockConsumeChallenge).not.toHaveBeenCalled();
+  });
+
+  it("rejects storing age proofs when min_age_days exceeds uint32 range", async () => {
+    const caller = await createCaller(authedUserSession, {
+      headers: { origin: browserAudience },
+    });
+
+    const overflowMinAgeDays = (BigInt(2) ** BigInt(32) + BigInt(1)).toString();
+
+    await expect(
+      caller.storeProof({
+        circuitType: "age_verification",
+        proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+        publicSignals: [
+          getTodayDobDays().toString(),
+          overflowMinAgeDays,
+          "1",
+          "1",
+          "1",
+        ],
+        generationTimeMs: 10,
+        documentId: "doc-1",
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("min_age_days"),
+    });
+
+    expect(mockVerifyNoirProof).not.toHaveBeenCalled();
+    expect(mockConsumeChallenge).not.toHaveBeenCalled();
   });
 
   it.each([

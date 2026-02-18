@@ -21,6 +21,8 @@ const DKG_SESSIONS: TableDefinition<&str, &[u8]> = TableDefinition::new("dkg_ses
 const SIGNING_SESSIONS: TableDefinition<&str, &[u8]> = TableDefinition::new("signing_sessions");
 const GROUP_KEYS: TableDefinition<&str, &[u8]> = TableDefinition::new("group_keys");
 const KEY_SHARES: TableDefinition<&str, &[u8]> = TableDefinition::new("key_shares");
+const SIGNING_NONCE_FINGERPRINTS: TableDefinition<&str, u8> =
+    TableDefinition::new("signing_nonce_fingerprints");
 const AUDIT_LOG: TableDefinition<u64, &[u8]> = TableDefinition::new("audit_log");
 
 /// Storage wrapper for ReDB.
@@ -51,6 +53,7 @@ impl Storage {
             let _ = write_txn.open_table(SIGNING_SESSIONS)?;
             let _ = write_txn.open_table(GROUP_KEYS)?;
             let _ = write_txn.open_table(KEY_SHARES)?;
+            let _ = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
         write_txn.commit()?;
@@ -73,6 +76,7 @@ impl Storage {
             let _ = write_txn.open_table(SIGNING_SESSIONS)?;
             let _ = write_txn.open_table(GROUP_KEYS)?;
             let _ = write_txn.open_table(KEY_SHARES)?;
+            let _ = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
         write_txn.commit()?;
@@ -270,6 +274,24 @@ impl Storage {
         Ok(keys)
     }
 
+    /// Check if a signing nonce fingerprint has been seen before.
+    pub fn has_signing_nonce_fingerprint(&self, fingerprint: &str) -> SignerResult<bool> {
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
+        Ok(table.get(fingerprint)?.is_some())
+    }
+
+    /// Persist a signing nonce fingerprint to prevent reuse after restarts.
+    pub fn put_signing_nonce_fingerprint(&self, fingerprint: &str) -> SignerResult<()> {
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
+            table.insert(fingerprint, 1)?;
+        }
+        write_txn.commit()?;
+        Ok(())
+    }
+
     // =========================================================================
     // Audit Log
     // =========================================================================
@@ -455,6 +477,18 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].1.event, "first");
         assert_eq!(entries[1].1.event, "second");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_signing_nonce_fingerprint_persistence() -> SignerResult<()> {
+        let storage = Storage::open_memory()?;
+        let fingerprint = "nonce-fingerprint-1";
+
+        assert!(!storage.has_signing_nonce_fingerprint(fingerprint)?);
+        storage.put_signing_nonce_fingerprint(fingerprint)?;
+        assert!(storage.has_signing_nonce_fingerprint(fingerprint)?);
 
         Ok(())
     }

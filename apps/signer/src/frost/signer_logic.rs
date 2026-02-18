@@ -168,6 +168,15 @@ impl SignerService {
     ) -> SignerResult<()> {
         let nonce_fingerprint = self.nonce_fingerprint(&nonces_key.0, &nonces_bytes);
 
+        if self
+            .storage
+            .has_signing_nonce_fingerprint(&nonce_fingerprint)?
+        {
+            return Err(SignerError::SigningFailed(
+                "Detected signing nonce reuse; refusing to proceed".to_string(),
+            ));
+        }
+
         let mut map = self
             .signing_nonces
             .lock()
@@ -197,8 +206,12 @@ impl SignerService {
                 bytes: nonces_bytes,
             },
         );
+        let persisted_fingerprint = nonce_fingerprint.clone();
         used_fingerprints.insert(nonce_fingerprint);
+        drop(used_fingerprints);
         drop(map);
+        self.storage
+            .put_signing_nonce_fingerprint(&persisted_fingerprint)?;
         Ok(())
     }
 
@@ -439,6 +452,39 @@ mod tests {
         assert!(first.is_ok());
 
         let second = signer.store_signing_nonces(
+            ("group-key".to_string(), "session-b".to_string()),
+            nonce_bytes,
+        );
+        assert!(second.is_err());
+    }
+
+    #[test]
+    fn test_rejects_signing_nonce_reuse_after_signer_restart() {
+        let storage = Storage::open_memory().expect("Failed to create test storage");
+        let participant_id = ParticipantId::new_unwrap(1);
+        let nonce_bytes = vec![9_u8; 32];
+
+        let signer_before_restart = SignerService::new(
+            storage.clone(),
+            "signer-1".to_string(),
+            participant_id,
+            Ciphersuite::Secp256k1,
+        );
+
+        let first = signer_before_restart.store_signing_nonces(
+            ("group-key".to_string(), "session-a".to_string()),
+            nonce_bytes.clone(),
+        );
+        assert!(first.is_ok());
+
+        let signer_after_restart = SignerService::new(
+            storage,
+            "signer-1".to_string(),
+            participant_id,
+            Ciphersuite::Secp256k1,
+        );
+
+        let second = signer_after_restart.store_signing_nonces(
             ("group-key".to_string(), "session-b".to_string()),
             nonce_bytes,
         );

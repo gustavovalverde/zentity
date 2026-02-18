@@ -44,6 +44,11 @@ fn main(
     let current_days_u32 = current_days as u32;
     let min_age_days_u32 = min_age_days as u32;
 
+    // SECURITY: Prevent truncation when casting Field -> u32.
+    assert(dob_days == dob_days_u32 as Field, "dob_days must fit in u32");
+    assert(current_days == current_days_u32 as Field, "current_days must fit in u32");
+    assert(min_age_days == min_age_days_u32 as Field, "min_age_days must fit in u32");
+
     // Sanity bound: current_days must be a plausible value.
     // 99999 days from 1900-01-01 is approx year 2173, well beyond any realistic use.
     assert(current_days_u32 <= 99999, "current_days unreasonably large");
@@ -191,4 +196,15 @@ fn test_implausibly_large_current_days_fails() {
     let doc_hash: Field = 222;
     let claim_hash = poseidon2([dob, doc_hash]);
     let _ = main(dob, doc_hash, current, min_age, 66666, claim_hash);
+}
+
+#[test(should_fail_with = "min_age_days must fit in u32")]
+fn test_min_age_days_overflow_fails() {
+    let dob: Field = 100;
+    let current: Field = 150;
+    let min_age: Field = 4294967297; // 2^32 + 1
+
+    let doc_hash: Field = 111;
+    let claim_hash = poseidon2([dob, doc_hash]);
+    let _ = main(dob, doc_hash, current, min_age, 77777, claim_hash);
 }
