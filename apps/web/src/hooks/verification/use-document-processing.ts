@@ -44,15 +44,15 @@ interface UseDocumentProcessingOptions {
 }
 
 interface UseDocumentProcessingReturn {
-  processingState: ProcessingState;
-  fileName: string | null;
-  previewUrl: string | null;
-  uploadError: string | null;
   documentResult: DocumentResult | null;
-  isVerified: boolean;
+  fileName: string | null;
   handleFile: (file: File) => Promise<void>;
   handleRemove: () => void;
+  isVerified: boolean;
+  previewUrl: string | null;
+  processingState: ProcessingState;
   resetState: () => void;
+  uploadError: string | null;
 }
 
 export function useDocumentProcessing(

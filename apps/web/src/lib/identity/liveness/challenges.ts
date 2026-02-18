@@ -2,12 +2,12 @@ export type ChallengeType = "smile" | "turn_left" | "turn_right";
 
 export interface ChallengeInfo {
   challengeType: ChallengeType;
-  index: number;
-  total: number;
-  title: string;
-  instruction: string;
   icon: string;
+  index: number;
+  instruction: string;
   timeoutSeconds: number;
+  title: string;
+  total: number;
 }
 
 export const CHALLENGE_INSTRUCTIONS: Record<

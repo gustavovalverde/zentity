@@ -65,25 +65,25 @@ type FhevmRelayerStatusType =
   | "creating";
 
 interface UseFhevmSdkParams {
-  /** EIP-1193 provider (globalThis.window.ethereum or wallet provider) */
-  provider: unknown;
   /** Current chain ID - triggers re-init on change */
   chainId: number | undefined;
   /** Enable/disable SDK initialization (default: true) */
   enabled?: boolean;
   /** Map of chainId → RPC URL for mock chains (Hardhat testing) */
   initialMockChains?: Readonly<Record<number, string>>;
+  /** EIP-1193 provider (globalThis.window.ethereum or wallet provider) */
+  provider: unknown;
   /** Provider implementation ID (e.g., "zama", "mock", "customVendor") */
   providerId?: string;
 }
 
 interface UseFhevmSdkReturn {
+  /** Initialization error if any */
+  error: Error | undefined;
   /** SDK instance when ready, undefined otherwise */
   instance: FhevmInstance | undefined;
   /** Force re-initialization (e.g., after chain switch) */
   refresh: () => void;
-  /** Initialization error if any */
-  error: Error | undefined;
   /** Current lifecycle state: idle → loading → ready/error */
   status: FhevmGoState;
 }
@@ -233,11 +233,11 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
 }
 
 interface CreateFhevmInstanceParams {
-  provider: unknown;
   mockChains?: Record<number, string>;
-  signal: AbortSignal;
   onStatusChange?: (status: FhevmRelayerStatusType) => void;
+  provider: unknown;
   providerId?: string;
+  signal: AbortSignal;
 }
 
 /** Thrown when SDK initialization is cancelled (e.g., chain switch mid-init) */

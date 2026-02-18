@@ -75,16 +75,16 @@ export function deriveAuthStrength(
  * Input data for computing assurance state
  */
 export interface AssuranceInput {
-  hasSession: boolean;
-  loginMethod: string | null | undefined;
-  hasSecuredKeys: boolean;
   documentVerified: boolean;
-  livenessVerified: boolean;
   faceMatchVerified: boolean;
-  zkProofsComplete: boolean;
   fheComplete: boolean;
-  onChainAttested: boolean;
+  hasSecuredKeys: boolean;
+  hasSession: boolean;
+  livenessVerified: boolean;
+  loginMethod: string | null | undefined;
   needsDocumentReprocessing?: boolean;
+  onChainAttested: boolean;
+  zkProofsComplete: boolean;
 }
 
 /**

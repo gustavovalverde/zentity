@@ -15,7 +15,6 @@
  * Encrypted input builder returned by `createEncryptedInput`.
  */
 export interface FhevmEncryptedInput {
-  addBool(value: boolean): void;
   add8(value: number): void;
   add16(value: number): void;
   add32(value: number): void;
@@ -23,6 +22,7 @@ export interface FhevmEncryptedInput {
   add128(value: number | bigint): void;
   add256(value: number | bigint): void;
   addAddress(value: string): void;
+  addBool(value: boolean): void;
   encrypt(): Promise<EncryptResult>;
 }
 
@@ -33,28 +33,6 @@ export interface FhevmEncryptedInput {
  * this interface so the app can remain vendor-agnostic.
  */
 export interface FhevmInstance {
-  /**
-   * Create an encrypted input builder bound to (contract, user).
-   */
-  createEncryptedInput(
-    contractAddress: string,
-    userAddress: string
-  ): FhevmEncryptedInput;
-
-  /**
-   * Decrypt encrypted handles with user authorization.
-   */
-  userDecrypt(
-    requests: { handle: string; contractAddress: string }[],
-    privateKey: string,
-    publicKey: string,
-    signature: string,
-    contractAddresses: string[],
-    userAddress: string,
-    startTimestamp: number | string,
-    durationDays: number | string
-  ): Promise<Record<string, string | bigint | boolean>>;
-
   /**
    * Create EIP-712 typed data for signing decryption authorization.
    *
@@ -71,10 +49,31 @@ export interface FhevmInstance {
     nonce?: string
   ): EIP712Type;
   /**
+   * Create an encrypted input builder bound to (contract, user).
+   */
+  createEncryptedInput(
+    contractAddress: string,
+    userAddress: string
+  ): FhevmEncryptedInput;
+  /**
    * Generate ephemeral keypair for re-encryption.
    * The KMS re-encrypts data to this public key, only the private key holder can decrypt.
    */
   generateKeypair(): { publicKey: string; privateKey: string };
+
+  /**
+   * Decrypt encrypted handles with user authorization.
+   */
+  userDecrypt(
+    requests: { handle: string; contractAddress: string }[],
+    privateKey: string,
+    publicKey: string,
+    signature: string,
+    contractAddresses: string[],
+    userAddress: string,
+    startTimestamp: number | string,
+    durationDays: number | string
+  ): Promise<Record<string, string | bigint | boolean>>;
 }
 
 /**
@@ -89,24 +88,24 @@ export interface FhevmInstance {
  * user's ephemeral public key. Only the private key holder can then decrypt.
  */
 export interface FhevmDecryptionSignatureType {
-  /** Ephemeral public key - KMS re-encrypts data to this key */
-  publicKey: string;
+  /** Contracts this authorization covers */
+  contractAddresses: `0x${string}`[];
+  /** How long authorization is valid (typically 365 days) */
+  durationDays: number;
+  /** Full EIP-712 typed data that was signed */
+  eip712: EIP712Type;
+  /** Monotonic anti-replay nonce used when constructing the EIP-712 payload */
+  nonce: string;
   /** Ephemeral private key - used to decrypt re-encrypted data locally */
   privateKey: string;
+  /** Ephemeral public key - KMS re-encrypts data to this key */
+  publicKey: string;
   /** User's EIP-712 signature authorizing decryption */
   signature: string;
   /** When authorization starts (Unix seconds) */
   startTimestamp: number;
-  /** How long authorization is valid (typically 365 days) */
-  durationDays: number;
   /** User's wallet address that signed the authorization */
   userAddress: `0x${string}`;
-  /** Monotonic anti-replay nonce used when constructing the EIP-712 payload */
-  nonce: string;
-  /** Contracts this authorization covers */
-  contractAddresses: `0x${string}`[];
-  /** Full EIP-712 typed data that was signed */
-  eip712: EIP712Type;
 }
 
 /**
@@ -122,7 +121,7 @@ export interface FhevmDecryptionSignatureType {
 export interface EIP712Type {
   /** Domain separator - prevents cross-dApp signature reuse */
   domain: {
-    chainId: number;
+    chainId: number | bigint;
     name: string;
     /** KMS contract that verifies this signature */
     verifyingContract: string;
@@ -134,10 +133,7 @@ export interface EIP712Type {
   primaryType: string;
   /** Type definitions for structured data */
   types: {
-    [key: string]: {
-      name: string;
-      type: string;
-    }[];
+    [key: string]: ReadonlyArray<{ name: string; type: string }>;
   };
 }
 
@@ -161,13 +157,13 @@ export type FhevmGoState = "idle" | "loading" | "ready" | "error";
  * 3. Gateway verifies user's signature and returns decrypted value
  */
 export interface FHEDecryptRequest {
+  /** Contract address where the encrypted value is stored */
+  contractAddress: `0x${string}`;
   /**
    * 256-bit handle referencing the encrypted value.
    * This is what contracts store instead of actual ciphertext.
    */
   handle: string;
-  /** Contract address where the encrypted value is stored */
-  contractAddress: `0x${string}`;
 }
 
 /**

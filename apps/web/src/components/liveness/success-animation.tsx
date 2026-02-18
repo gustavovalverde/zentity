@@ -6,22 +6,22 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils/classname";
 
 interface ConfettiParticle {
-  id: number;
-  x: number;
   color: string;
   delay: number;
+  id: number;
   size: number;
+  x: number;
 }
 
 interface SuccessAnimationProps {
-  /** Optional class name */
-  className?: string;
-  /** Whether to show confetti particles */
-  showConfetti?: boolean;
   /** Duration before auto-hiding (ms). Set to 0 to never hide. */
   autoHideDuration?: number;
+  /** Optional class name */
+  className?: string;
   /** Callback when animation completes */
   onComplete?: () => void;
+  /** Whether to show confetti particles */
+  showConfetti?: boolean;
 }
 
 /**

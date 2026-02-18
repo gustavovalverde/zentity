@@ -30,18 +30,18 @@ const CONNECTION_IDLE_TIMEOUT_MS = 30_000;
  * Stored credential record with metadata.
  */
 interface StoredCredentialRecord {
-  /** Primary key: `${userId}:${credentialId}` */
-  key: string;
-  /** User ID who owns this credential */
-  userId: string;
-  /** Unique credential ID derived from content */
-  credentialId: string;
-  /** Serialized credential JSON */
-  credential: SerializedBbsCredential;
-  /** When the credential was stored */
-  storedAt: number;
   /** Commitment salt for wallet credentials (base64-encoded) */
   commitmentSalt?: string;
+  /** Serialized credential JSON */
+  credential: SerializedBbsCredential;
+  /** Unique credential ID derived from content */
+  credentialId: string;
+  /** Primary key: `${userId}:${credentialId}` */
+  key: string;
+  /** When the credential was stored */
+  storedAt: number;
+  /** User ID who owns this credential */
+  userId: string;
 }
 
 // Connection pooling for IndexedDB
@@ -153,15 +153,15 @@ export function isBbsStorageAvailable(): boolean {
  * Get credential metadata without full deserialization.
  */
 export interface CredentialMetadata {
-  id: string;
-  issuer: string;
-  holder: string;
-  issuedAt: string;
-  network: string;
   chainId?: number;
-  tier: number;
-  storedAt: number;
   hasCommitmentSalt: boolean;
+  holder: string;
+  id: string;
+  issuedAt: string;
+  issuer: string;
+  network: string;
+  storedAt: number;
+  tier: number;
 }
 
 /**

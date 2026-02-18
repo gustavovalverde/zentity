@@ -9,10 +9,10 @@
 type FaceBoxArray = [number, number, number, number];
 
 interface FaceBoxObject {
+  height: number;
+  width: number;
   x: number;
   y: number;
-  width: number;
-  height: number;
 }
 
 type FaceBox = FaceBoxArray | FaceBoxObject;
@@ -25,17 +25,17 @@ interface EmotionScoresObject {
   disgust?: number;
   fear?: number;
   happy?: number;
+  neutral?: number;
   sad?: number;
   surprise?: number;
-  neutral?: number;
 }
 
 /**
  * Emotion item in array format (Human.js default).
  */
 interface EmotionItem {
-  score: number;
   emotion: string;
+  score: number;
 }
 
 /**
@@ -74,19 +74,26 @@ interface LivenessResult {
  * Uses permissive types to handle null/undefined variations in the library.
  */
 export interface HumanFaceResult {
+  age?: number | null;
+  angle?: {
+    yaw?: number;
+    pitch?: number;
+    roll?: number;
+  } | null;
+  annotations?: Record<string, number[][]> | null;
+  antispoof?: AntispoofResult | null;
   box?: FaceBox | null;
   boxRaw?: FaceBox | null;
-  embedding?: EmbeddingData;
-  descriptor?: EmbeddingData;
   description?: { embedding?: EmbeddingData } | EmbeddingData | null;
+  descriptor?: EmbeddingData;
+  embedding?: EmbeddingData;
   emotion?: EmotionScores | null;
   gender?: string | null;
   genderScore?: number | null;
-  age?: number | null;
-  real?: number | null;
   live?: number | null;
   liveness?: LivenessResult | null;
-  antispoof?: AntispoofResult | null;
+  mesh?: number[][] | null;
+  real?: number | null;
   rotation?: {
     angle?: {
       pitch?: number;
@@ -99,13 +106,6 @@ export interface HumanFaceResult {
     matrix?: unknown;
     gaze?: unknown;
   } | null;
-  angle?: {
-    yaw?: number;
-    pitch?: number;
-    roll?: number;
-  } | null;
-  mesh?: number[][] | null;
-  annotations?: Record<string, number[][]> | null;
   // Allow additional properties from Human.js
   [key: string]: unknown;
 }
@@ -115,15 +115,15 @@ export interface HumanFaceResult {
  * Uses permissive types to handle variations in the library output.
  */
 export interface HumanDetectionResult {
-  face?: HumanFaceResult[] | null;
   body?: unknown[] | null;
-  hand?: unknown[] | null;
+  face?: HumanFaceResult[] | null;
   gesture?: unknown[] | null;
+  hand?: unknown[] | null;
+  height?: number;
   object?: unknown[] | null;
   performance?: Record<string, number> | null;
   timestamp?: number;
   width?: number;
-  height?: number;
   // Allow additional properties from Human.js
   [key: string]: unknown;
 }

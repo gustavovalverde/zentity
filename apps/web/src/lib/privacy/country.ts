@@ -209,8 +209,8 @@ export function listCountryGroups(): CountryGroup[] {
 // ============================================================================
 
 interface NationalityCircuitInputs {
-  nationalityCode: number;
   merkleRoot: string;
+  nationalityCode: number;
   pathElements: string[];
   pathIndices: number[];
 }

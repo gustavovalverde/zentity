@@ -32,20 +32,21 @@ type CircuitName =
 
 interface ZkBenchmarkRow {
   circuit: CircuitName;
-  proveMsMedian: number;
-  verifyMsMedian: number;
   proofBytesMedian: number;
+  proveMsMedian: number;
   publicInputCount: number;
   runs: number;
+  verifyMsMedian: number;
 }
 
 interface FheBenchmarkRow {
-  operation: "key_registration" | "encrypt_dob_days" | "verify_age_from_dob";
   latencyMsMedian: number;
+  operation: "key_registration" | "encrypt_dob_days" | "verify_age_from_dob";
   runs: number;
 }
 
 interface BenchmarkOutput {
+  fhe: FheBenchmarkRow[];
   meta: {
     timestamp: string;
     nodeVersion: string;
@@ -55,7 +56,6 @@ interface BenchmarkOutput {
     runsFhe: number;
   };
   zk: ZkBenchmarkRow[];
-  fhe: FheBenchmarkRow[];
 }
 
 type Fr = Uint8Array;
@@ -67,8 +67,8 @@ interface FheRegisterKeyResponse {
 }
 
 interface FheEncryptBatchResponse {
-  dobDaysCiphertext?: Uint8Array | null;
   complianceLevelCiphertext?: Uint8Array | null;
+  dobDaysCiphertext?: Uint8Array | null;
   livenessScoreCiphertext?: Uint8Array | null;
 }
 

@@ -9,15 +9,15 @@
 export interface EarconEnvelope {
   attack: number; // Attack time in ms
   decay: number; // Decay time in ms
-  sustain: number; // Sustain level (0-1)
   release: number; // Release time in ms
+  sustain: number; // Sustain level (0-1)
 }
 
 export interface EarconConfig {
-  frequencies: number[]; // Hz values for the tones
   duration: number; // Total duration in ms
-  type: OscillatorType; // 'sine' | 'square' | 'sawtooth' | 'triangle'
   envelope: EarconEnvelope;
+  frequencies: number[]; // Hz values for the tones
+  type: OscillatorType; // 'sine' | 'square' | 'sawtooth' | 'triangle'
   volume?: number; // Optional volume multiplier (0-1), defaults to 0.7
 }
 

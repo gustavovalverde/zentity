@@ -10,12 +10,12 @@ import {
 export type PasskeyErrorLike = { code?: string; message?: string } | null;
 
 interface WebauthnResponse {
+  clientExtensionResults?: unknown;
   response?: {
     id?: string;
     rawId?: string;
     transports?: AuthenticatorTransport[];
   };
-  clientExtensionResults?: unknown;
 }
 
 export function isPasskeyAlreadyRegistered(error: PasskeyErrorLike): boolean {

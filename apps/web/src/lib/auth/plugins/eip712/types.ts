@@ -4,9 +4,9 @@ export interface Eip712TypedData {
     version: string;
     chainId: number;
   };
-  types: Record<string, Array<{ name: string; type: string }>>;
-  primaryType: string;
   message: Record<string, unknown>;
+  primaryType: string;
+  types: Record<string, Array<{ name: string; type: string }>>;
 }
 
 export interface BuildTypedDataParams {
@@ -17,7 +17,7 @@ export interface BuildTypedDataParams {
 
 export interface Eip712AuthOptions {
   appName?: string;
+  buildTypedData?: (params: BuildTypedDataParams) => Eip712TypedData;
   emailDomainName?: string;
   nonceTtlSeconds?: number;
-  buildTypedData?: (params: BuildTypedDataParams) => Eip712TypedData;
 }

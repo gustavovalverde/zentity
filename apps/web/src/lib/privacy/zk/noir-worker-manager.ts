@@ -28,8 +28,8 @@ type ProofType =
   | "identity_binding";
 
 export interface WorkerInitMessage {
-  type: "init";
   origin: string;
+  type: "init";
 }
 
 /**
@@ -39,7 +39,6 @@ export type HealthCheckPayload = Record<string, never>;
 
 export interface WorkerRequest {
   id: string;
-  type: ProofType;
   payload:
     | AgeProofPayload
     | DocValidityPayload
@@ -48,36 +47,37 @@ export interface WorkerRequest {
     | FaceMatchPayload
     | IdentityBindingPayload
     | HealthCheckPayload;
+  type: ProofType;
 }
 
 export interface AgeProofPayload {
-  /** DOB encoded as days since 1900-01-01 (UTC). */
-  dobDays: number;
+  claimHash: string; // Field element (hex) binding to signed claim
   /** Current date encoded as days since 1900-01-01 (UTC). */
   currentDays: number;
+  /** DOB encoded as days since 1900-01-01 (UTC). */
+  dobDays: number;
+  documentHashField: string; // Field element (hex) binding to document commitment
   /** Minimum age threshold encoded in days (e.g., floor(years * 365.25)). */
   minAgeDays: number;
   nonce: string; // Hex string for replay resistance
-  documentHashField: string; // Field element (hex) binding to document commitment
-  claimHash: string; // Field element (hex) binding to signed claim
 }
 
 export interface DocValidityPayload {
-  expiryDate: number;
-  currentDate: number;
-  nonce: string; // Hex string for replay resistance
-  documentHashField: string;
   claimHash: string;
+  currentDate: number;
+  documentHashField: string;
+  expiryDate: number;
+  nonce: string; // Hex string for replay resistance
 }
 
 export interface NationalityProofPayload {
-  nationalityCode: number; // ISO numeric (e.g., 276 for Germany)
+  claimHash: string;
+  documentHashField: string;
   merkleRoot: string; // Pre-computed Merkle root
+  nationalityCode: number; // ISO numeric (e.g., 276 for Germany)
+  nonce: string; // Hex string for replay resistance
   pathElements: string[]; // Pre-computed path (8 elements)
   pathIndices: number[]; // Pre-computed indices (8 values, 0 or 1)
-  nonce: string; // Hex string for replay resistance
-  documentHashField: string;
-  claimHash: string;
 }
 
 /**
@@ -86,19 +86,19 @@ export interface NationalityProofPayload {
  * This ensures nationality NEVER leaves the browser.
  */
 export interface NationalityClientPayload {
-  nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
-  groupName: string; // Group to prove membership in (e.g., "EU", "SCHENGEN")
-  nonce: string; // Hex string for replay resistance
-  documentHashField: string;
   claimHash: string;
+  documentHashField: string;
+  groupName: string; // Group to prove membership in (e.g., "EU", "SCHENGEN")
+  nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
+  nonce: string; // Hex string for replay resistance
 }
 
 export interface FaceMatchPayload {
+  claimHash: string;
+  documentHashField: string;
+  nonce: string; // Hex string for replay resistance
   similarityScore: number; // Scaled integer 0-10000
   threshold: number; // Scaled integer 0-10000
-  nonce: string; // Hex string for replay resistance
-  documentHashField: string;
-  claimHash: string;
 }
 
 /**
@@ -108,22 +108,22 @@ export interface FaceMatchPayload {
  * Auth mode is NOT revealed - privacy enhancement.
  */
 export interface IdentityBindingPayload {
-  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
-  userIdHashField: string; // Hash of user ID
-  documentHashField: string; // Document commitment
-  nonce: string; // Hex string for replay resistance
-  msgSender: string; // Context binding: caller identity
   audience: string; // Context binding: relying party audience/origin
+  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
+  documentHashField: string; // Document commitment
+  msgSender: string; // Context binding: caller identity
+  nonce: string; // Hex string for replay resistance
+  userIdHashField: string; // Hash of user ID
 }
 
 export interface WorkerResponse {
+  error?: string;
   id: string;
-  success: boolean;
   result?: {
     proof: number[]; // Uint8Array transferred as array
     publicInputs: string[];
   };
-  error?: string;
+  success: boolean;
 }
 
 interface ProofOutput {
@@ -136,8 +136,8 @@ const MAX_WORKER_COUNT = 4;
 
 interface WorkerState {
   index: number;
-  worker: Worker;
   inflight: number;
+  worker: Worker;
 }
 
 // Worker pool (optional parallelism)
@@ -159,10 +159,10 @@ const pendingRequests = new Map<
  * Worker log message type for diagnostic logging
  */
 interface WorkerLogMessage {
-  type: "log";
-  stage: string;
   msg: string;
+  stage: string;
   timestamp: string;
+  type: "log";
   [key: string]: unknown;
 }
 

@@ -6,8 +6,8 @@
  */
 
 interface CacheEntry<T> {
-  value: T;
   cachedAt: number;
+  value: T;
 }
 
 /**

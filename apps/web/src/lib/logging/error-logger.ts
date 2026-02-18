@@ -25,11 +25,11 @@ const STACK_LOCATION_PATTERN = /at\s+(?:(.+?)\s+\()?(.+?):(\d+):\d+\)?/;
 const SRC_PATH_PREFIX_PATTERN = /^.*?\/src\//;
 
 interface ErrorContext {
-  requestId?: string;
-  path?: string;
-  userId?: string;
-  operation?: string;
   duration?: number;
+  operation?: string;
+  path?: string;
+  requestId?: string;
+  userId?: string;
 }
 
 /**

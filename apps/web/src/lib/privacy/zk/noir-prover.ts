@@ -19,54 +19,54 @@ import {
 
 // Types for proof operations
 interface NoirProofResult {
+  generationTimeMs: number;
   proof: Uint8Array;
   publicInputs: string[];
-  generationTimeMs: number;
 }
 
 interface AgeProofInput {
-  /** DOB encoded as days since 1900-01-01 (UTC). */
-  dobDays: number;
+  claimHash: string;
   /** Current date encoded as days since 1900-01-01 (UTC). */
   currentDays: number;
+  /** DOB encoded as days since 1900-01-01 (UTC). */
+  dobDays: number;
+  documentHashField: string;
   /** Minimum age threshold encoded in days. */
   minAgeDays: number;
   nonce: string; // Hex nonce for replay resistance
-  documentHashField: string;
-  claimHash: string;
 }
 
 interface DocValidityInput {
-  expiryDate: number; // YYYYMMDD format
-  currentDate: number; // YYYYMMDD format
-  nonce: string; // Hex nonce for replay resistance
-  documentHashField: string;
   claimHash: string;
+  currentDate: number; // YYYYMMDD format
+  documentHashField: string;
+  expiryDate: number; // YYYYMMDD format
+  nonce: string; // Hex nonce for replay resistance
 }
 
 interface FaceMatchInput {
+  claimHash: string;
+  documentHashField: string;
+  nonce: string; // Hex nonce for replay resistance
   similarityScore: number; // Scaled integer 0-10000
   threshold: number; // Scaled integer 0-10000
-  nonce: string; // Hex nonce for replay resistance
-  documentHashField: string;
-  claimHash: string;
 }
 
 interface NationalityProofInput {
-  nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
-  groupName: string; // Group to prove membership (e.g., "EU", "SCHENGEN")
-  nonce: string; // Hex nonce for replay resistance
-  documentHashField: string;
   claimHash: string;
+  documentHashField: string;
+  groupName: string; // Group to prove membership (e.g., "EU", "SCHENGEN")
+  nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
+  nonce: string; // Hex nonce for replay resistance
 }
 
 interface IdentityBindingInput {
-  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
-  userIdHashField: string; // Hash of user ID
-  documentHashField: string; // Document commitment
-  nonce: string; // Hex nonce for replay resistance
-  msgSender: string; // Context binding: caller identity
   audience: string; // Context binding: relying party audience
+  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
+  documentHashField: string; // Document commitment
+  msgSender: string; // Context binding: caller identity
+  nonce: string; // Hex nonce for replay resistance
+  userIdHashField: string; // Hash of user ID
 }
 
 /**

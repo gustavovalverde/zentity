@@ -22,8 +22,8 @@ type ClientFetch = <T>(
 ) => Promise<BetterFetchResponse<T>>;
 
 interface OpaqueError {
-  message: string;
   code?: string;
+  message: string;
 }
 
 type Result<T> = { data: T; error: null } | { data: null; error: OpaqueError };

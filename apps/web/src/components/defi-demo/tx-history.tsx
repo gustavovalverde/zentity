@@ -35,22 +35,22 @@ import { trpcReact } from "@/lib/trpc/client";
 
 interface TxHistoryProps {
   networkId: string;
-  walletAddress: string;
   onMintClick?: () => void;
+  walletAddress: string;
 }
 
 interface Transfer {
-  txHash: string;
-  type: string;
+  amount?: string;
   blockNumber: number;
   from: string;
   to: string;
-  amount?: string;
+  txHash: string;
+  type: string;
 }
 
 interface TxHistoryData {
-  transfers: Transfer[];
   demo?: boolean;
+  transfers: Transfer[];
 }
 
 function TxDetailLine({

@@ -9,12 +9,12 @@ import {
 } from "./challenges";
 
 interface LivenessSession {
-  sessionId: string;
-  challenges: ChallengeType[];
-  currentIndex: number;
-  createdAt: number;
   attestationChallenge: string;
   attestationConsumedAt: number | null;
+  challenges: ChallengeType[];
+  createdAt: number;
+  currentIndex: number;
+  sessionId: string;
 }
 
 const SESSION_TTL_MS = 10 * 60 * 1000;

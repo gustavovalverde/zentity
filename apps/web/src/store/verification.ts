@@ -14,33 +14,33 @@ import { create } from "zustand";
  * Client-side navigation preserves this state between verification steps.
  */
 interface VerificationStore {
+  bestSelfieFrame: string | null;
+  documentId: string | null;
+  documentResult: DocumentResult | null;
   // Draft and document references (from server)
   draftId: string | null;
-  documentId: string | null;
+  extractedDOB: string | null;
+  extractedDocNumber: string | null;
+  extractedExpirationDate: string | null;
+  extractedFirstName: string | null;
+  extractedLastName: string | null;
+
+  // Extracted data from server OCR response
+  extractedName: string | null;
+  extractedNationality: string | null;
+  extractedNationalityCode: string | null;
 
   // Transient document data (for processing)
   idDocument: File | null;
   idDocumentBase64: string | null;
-  documentResult: DocumentResult | null;
+  reset: () => void;
 
   // Transient selfie data (from liveness flow)
   selfieImage: string | null;
-  bestSelfieFrame: string | null;
-
-  // Extracted data from server OCR response
-  extractedName: string | null;
-  extractedFirstName: string | null;
-  extractedLastName: string | null;
-  extractedDOB: string | null;
-  extractedDocNumber: string | null;
-  extractedNationality: string | null;
-  extractedNationalityCode: string | null;
-  extractedExpirationDate: string | null;
-  userSalt: string | null;
 
   // Actions
   set: (data: Partial<Omit<VerificationStore, "set" | "reset">>) => void;
-  reset: () => void;
+  userSalt: string | null;
 }
 
 const initialState: Omit<VerificationStore, "set" | "reset"> = {

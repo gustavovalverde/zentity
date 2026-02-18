@@ -13,14 +13,14 @@ import { cn } from "@/lib/utils/classname";
 interface AudioToggleProps {
   /** Whether audio feedback is enabled */
   audioEnabled: boolean;
-  /** Callback when audio is toggled */
-  onToggle: () => void;
   /** Optional additional class names */
   className?: string;
-  /** Tooltip text when audio is enabled */
-  enabledTooltip?: string;
   /** Tooltip text when audio is disabled */
   disabledTooltip?: string;
+  /** Tooltip text when audio is enabled */
+  enabledTooltip?: string;
+  /** Callback when audio is toggled */
+  onToggle: () => void;
 }
 
 /**

@@ -4,8 +4,8 @@ import type {
 } from "better-auth";
 
 export interface OpaqueResolvedUser {
-  user: BetterAuthUser;
   accounts: BetterAuthAccount[];
+  user: BetterAuthUser;
 }
 
 /**
@@ -34,10 +34,10 @@ export type ResolveUserByIdentifier = (
 
 interface OpaquePasswordResetOptions {
   /**
-   * Send password reset instructions to the user.
+   * Callback invoked after a successful password reset.
    */
-  sendResetPassword: (
-    data: { user: BetterAuthUser; url: string; token: string },
+  onPasswordReset?: (
+    data: { user: BetterAuthUser },
     request?: Request
   ) => Promise<void>;
   /**
@@ -51,10 +51,10 @@ interface OpaquePasswordResetOptions {
    */
   revokeSessionsOnPasswordReset?: boolean;
   /**
-   * Callback invoked after a successful password reset.
+   * Send password reset instructions to the user.
    */
-  onPasswordReset?: (
-    data: { user: BetterAuthUser },
+  sendResetPassword: (
+    data: { user: BetterAuthUser; url: string; token: string },
     request?: Request
   ) => Promise<void>;
 }
@@ -62,28 +62,28 @@ interface OpaquePasswordResetOptions {
 export interface OpaquePluginOptions
   extends Partial<OpaquePasswordResetOptions> {
   /**
+   * Resolve a user + accounts from a login identifier (email or recovery ID).
+   * If omitted, we fall back to email lookup only.
+   */
+  resolveUserByIdentifier?: ResolveUserByIdentifier;
+  /**
    * OPAQUE server setup string or a getter function that returns it.
    * Using a getter function allows lazy evaluation (deferred until runtime),
    * which is necessary for Next.js builds where env vars may not be available.
    * Generate with: npx @serenity-kit/opaque@latest create-server-setup
    */
   serverSetup: string | (() => string);
-  /**
-   * Resolve a user + accounts from a login identifier (email or recovery ID).
-   * If omitted, we fall back to email lookup only.
-   */
-  resolveUserByIdentifier?: ResolveUserByIdentifier;
 }
 
 export interface OpaqueClientOptions {
-  /**
-   * Optional server public key for OPAQUE pinning.
-   * Prefer setting via NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY in production.
-   */
-  serverPublicKey?: string;
   /**
    * If true, throw when server public key mismatches.
    * Defaults to true. The public key is fetched from the API automatically.
    */
   enforceServerPublicKey?: boolean;
+  /**
+   * Optional server public key for OPAQUE pinning.
+   * Prefer setting via NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY in production.
+   */
+  serverPublicKey?: string;
 }

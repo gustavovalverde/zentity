@@ -70,14 +70,14 @@ export function getBlockedReason(
  * Requirements for advancing to the next tier
  */
 interface TierAdvancementRequirement {
-  id: string;
-  label: string;
-  description: string;
-  completed: boolean;
   action?: {
     label: string;
     href: string;
   };
+  completed: boolean;
+  description: string;
+  id: string;
+  label: string;
 }
 
 /**

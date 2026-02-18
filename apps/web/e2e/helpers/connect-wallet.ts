@@ -13,16 +13,16 @@ interface BrowserEthereum {
 }
 
 interface BrowserAppKit {
-  open?: () => void;
   close?: () => void;
+  getAccount?: (namespace?: string) => { isConnected?: boolean } | undefined;
+  getActiveChainNamespace?: () => string;
+  open?: () => void;
   setCaipAddress?: (
     address: string,
     namespace?: string,
     sync?: boolean
   ) => void;
   setStatus?: (status: string, namespace?: string) => void;
-  getActiveChainNamespace?: () => string;
-  getAccount?: (namespace?: string) => { isConnected?: boolean } | undefined;
 }
 
 type BrowserWindow = Window & {
@@ -31,10 +31,10 @@ type BrowserWindow = Window & {
 };
 
 interface ConnectWalletOptions {
-  page: Page;
-  metamask: MetaMask;
   accountName?: string;
   chainId: number;
+  metamask: MetaMask;
+  page: Page;
 }
 
 function escapeRegExp(value: string) {

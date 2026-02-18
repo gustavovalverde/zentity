@@ -35,9 +35,9 @@ const authedSession = {
 } as unknown as Session;
 
 interface LivenessSessionWithAttestation {
-  sessionId: string;
-  challenges: Array<"smile" | "turn_left" | "turn_right">;
   attestationChallenge: string;
+  challenges: Array<"smile" | "turn_left" | "turn_right">;
+  sessionId: string;
 }
 
 function createCaller(session: Session | null) {

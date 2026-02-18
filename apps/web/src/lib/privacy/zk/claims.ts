@@ -16,40 +16,40 @@ export type AttestationClaimType =
 
 export interface LivenessClaimData {
   antispoofScore: number;
-  liveScore: number;
-  passed: boolean;
   antispoofScoreFixed: number;
+  liveScore: number;
   liveScoreFixed: number;
+  passed: boolean;
 }
 
 export interface FaceMatchClaimData {
+  claimHash: string | null;
   confidence: number;
   confidenceFixed: number;
-  thresholdFixed: number;
   passed: boolean;
-  claimHash: string | null;
+  thresholdFixed: number;
 }
 
 export interface OcrClaimData {
-  documentType?: string | null;
-  issuerCountry?: string | null;
-  confidence?: number | null;
   claimHashes: {
     age?: string | null;
     docValidity?: string | null;
     nationality?: string | null;
   };
+  confidence?: number | null;
+  documentType?: string | null;
+  issuerCountry?: string | null;
 }
 
 export interface AttestationClaimPayload {
-  type: AttestationClaimType;
-  userId: string;
-  issuedAt: string;
-  version: number;
-  policyVersion: string;
+  data: LivenessClaimData | FaceMatchClaimData | OcrClaimData;
   documentHash?: string | null;
   documentHashField?: string | null;
-  data: LivenessClaimData | FaceMatchClaimData | OcrClaimData;
+  issuedAt: string;
+  policyVersion: string;
+  type: AttestationClaimType;
+  userId: string;
+  version: number;
 }
 
 function getSigningKey(): Uint8Array {

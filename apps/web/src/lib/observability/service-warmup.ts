@@ -15,11 +15,11 @@ import { logger } from "@/lib/logging/logger";
 import { getFheServiceUrl, getOcrServiceUrl } from "@/lib/utils/service-urls";
 
 interface ServiceHealth {
-  name: string;
-  url: string;
-  healthy: boolean;
   durationMs: number;
   error?: string;
+  healthy: boolean;
+  name: string;
+  url: string;
 }
 
 async function checkServiceHealth(

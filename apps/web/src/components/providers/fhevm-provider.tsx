@@ -23,18 +23,18 @@ import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { useIsMounted } from "@/hooks/use-is-mounted";
 
 export interface FhevmContextValue {
-  /** The FHEVM SDK instance for encryption/decryption operations */
-  instance: FhevmInstance | undefined;
-  /** Current loading state */
-  status: FhevmGoState;
   /** Error if initialization failed */
   error: Error | undefined;
-  /** Whether the FHEVM SDK instance is ready for use */
-  isReady: boolean;
+  /** The FHEVM SDK instance for encryption/decryption operations */
+  instance: FhevmInstance | undefined;
   /** Whether the instance is currently loading */
   isLoading: boolean;
+  /** Whether the FHEVM SDK instance is ready for use */
+  isReady: boolean;
   /** Refresh the FHEVM SDK instance (e.g., after chain switch) */
   refresh: () => void;
+  /** Current loading state */
+  status: FhevmGoState;
 }
 
 const FhevmContext = createContext<FhevmContextValue | undefined>(undefined);

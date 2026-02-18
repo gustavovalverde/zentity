@@ -12,11 +12,11 @@ const defaultFromName = process.env.MAIL_FROM_NAME || "Zentity";
 let resendClient: Resend | null = null;
 
 export interface ResendMessage {
-  to: string[];
-  subject: string;
-  text: string;
   html?: string;
+  subject: string;
   tags?: string[];
+  text: string;
+  to: string[];
 }
 
 function getResendClient(): Resend {

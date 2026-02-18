@@ -3,14 +3,14 @@
  * Avoids pulling an external dependency while keeping payloads small.
  */
 interface ResizeOptions {
-  maxWidth?: number;
   maxHeight?: number;
+  maxWidth?: number;
   quality?: number; // 0-1 for JPEG/WebP
 }
 
 interface ResizeResult {
-  file: File;
   dataUrl: string;
+  file: File;
 }
 
 export async function resizeImageFile(

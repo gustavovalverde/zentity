@@ -25,12 +25,12 @@ import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { encryptBatchFhe, FheServiceError } from "./service";
 
 export interface FheEncryptionSchedule {
-  userId: string;
-  requestId?: string;
-  flowId?: string;
-  reason?: string;
   /** Full DOB as days since 1900-01-01 (UTC) */
   dobDays?: number | null;
+  flowId?: string;
+  reason?: string;
+  requestId?: string;
+  userId: string;
 }
 
 const activeFheJobs = new Set<string>();

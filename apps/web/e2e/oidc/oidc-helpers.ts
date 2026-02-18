@@ -81,8 +81,8 @@ async function buildCookieHeaderFromContext(
 
 interface AuthResult {
   cookies: string[] | undefined;
-  userId?: string;
   email?: string | null;
+  userId?: string;
 }
 
 async function readAuthUser(

@@ -29,27 +29,27 @@ function getInternalServiceAuthHeaders(
 
 interface OcrCommitments {
   documentHash: string;
-  nameCommitment: string;
   issuingCountryCommitment?: string;
+  nameCommitment: string;
   userSalt: string;
 }
 
 interface OcrExtractedData {
-  fullName?: string;
-  firstName?: string;
-  lastName?: string;
-  documentNumber?: string;
   dateOfBirth?: string;
+  documentNumber?: string;
   expirationDate?: string; // ISO 8601: YYYY-MM-DD
-  nationalityCode?: string; // ISO 3166-1 alpha-3
+  firstName?: string;
+  fullName?: string;
   gender?: string; // "M" | "F"
+  lastName?: string;
+  nationalityCode?: string; // ISO 3166-1 alpha-3
 }
 
 export interface OcrProcessResult {
   commitments?: OcrCommitments;
-  documentType: string;
-  documentOrigin?: string; // ISO 3166-1 alpha-3 country code
   confidence: number;
+  documentOrigin?: string; // ISO 3166-1 alpha-3 country code
+  documentType: string;
   extractedData?: OcrExtractedData;
   validationIssues: string[];
 }
@@ -101,7 +101,11 @@ export function processDocumentOcr(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<OcrProcessResult> {
-  assertOcrImagePayloadSize(args.image);
+  try {
+    assertOcrImagePayloadSize(args.image);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   const url = `${getOcrServiceUrl()}/process`;
   const payload = JSON.stringify({
     image: args.image,
@@ -140,7 +144,11 @@ export function ocrDocumentOcr(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<unknown> {
-  assertOcrImagePayloadSize(args.image);
+  try {
+    assertOcrImagePayloadSize(args.image);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   const url = `${getOcrServiceUrl()}/ocr`;
   const payload = JSON.stringify({ image: args.image });
   const payloadBytes = Buffer.byteLength(payload);

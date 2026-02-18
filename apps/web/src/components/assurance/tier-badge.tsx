@@ -6,11 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils/classname";
 
 interface TierBadgeProps {
-  tier: AccountTier;
+  className?: string;
   label?: TierName;
   showIcon?: boolean;
   size?: "sm" | "md" | "lg";
-  className?: string;
+  tier: AccountTier;
 }
 
 const TIER_ICONS = {

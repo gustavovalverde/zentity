@@ -46,29 +46,29 @@ export interface ComputedClaimHashes {
  * Document processing result from shared OCR + validation logic.
  */
 export interface DocumentProcessingResult {
-  ocrResult: OcrProcessResult | null;
-  draftId: string;
-  documentId: string;
-  documentProcessed: boolean;
+  claimHashes: ComputedClaimHashes;
   documentHash: string | null;
   documentHashField: string | null;
-  isDuplicateDocument: boolean;
+  documentId: string;
+  documentProcessed: boolean;
+  draftId: string;
   isDocumentValid: boolean;
+  isDuplicateDocument: boolean;
   issuerCountry: string | null;
   issues: string[];
+  ocrResult: OcrProcessResult | null;
   parsedDates: ParsedDateValues;
-  claimHashes: ComputedClaimHashes;
 }
 
 /**
  * Input parameters for document processing.
  */
 export interface ProcessDocumentParams {
+  existingDocumentId?: string | null;
+  existingDraftId?: string | null;
+  flowId?: string;
   image: string;
   requestId: string;
-  flowId?: string;
-  existingDraftId?: string | null;
-  existingDocumentId?: string | null;
 }
 
 /**

@@ -40,42 +40,42 @@ const DECIMAL_NUMBER_PATTERN = /^\d+$/;
 const HEX_CHARS_PATTERN = /^[0-9a-fA-F]+$/;
 
 interface NoirVerifyInput {
+  circuitType: ProofType;
   proof: string; // Base64 encoded Uint8Array
   publicInputs: string[];
-  circuitType: ProofType;
 }
 
 interface NoirVerifyResult {
-  isValid: boolean;
-  reason?: string;
-  verificationTimeMs: number;
-  circuitType: ProofType;
-  noirVersion: string | null;
+  bbVersion: string | null;
   circuitHash: string | null;
   circuitId: string | null;
+  circuitType: ProofType;
+  isValid: boolean;
+  noirVersion: string | null;
+  reason?: string;
   verificationKeyHash: string | null;
   verificationKeyPoseidonHash: string | null;
-  bbVersion: string | null;
+  verificationTimeMs: number;
 }
 
 interface CircuitIdentity {
-  circuitType: ProofType;
-  noirVersion: string | null;
-  circuitHash: string | null;
   bbVersion: string | null;
   bytecodeHash: string | null;
+  circuitHash: string | null;
+  circuitId: string | null;
+  circuitType: ProofType;
+  noirVersion: string | null;
+  publicInputCount: number | null;
   verificationKeyHash: string | null;
   verificationKeyPoseidonHash: string | null;
-  publicInputCount: number | null;
-  circuitId: string | null;
 }
 
 interface VerificationKeyResult {
+  publicInputCount: number;
+  size: number;
   verificationKey: string;
   verificationKeyHash: string;
   verificationKeyPoseidonHash: string;
-  publicInputCount: number;
-  size: number;
 }
 
 // CRS cache configuration

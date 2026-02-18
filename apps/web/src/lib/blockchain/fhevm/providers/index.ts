@@ -17,8 +17,8 @@ import { createZamaRelayerInstance } from "./zama/relayer";
 export type FhevmProviderId = "zama" | "mock" | (string & Record<never, never>);
 
 interface FhevmProviderInitParams {
-  provider: unknown;
   chainId: number;
+  provider: unknown;
   rpcUrl?: string;
   signal: AbortSignal;
 }

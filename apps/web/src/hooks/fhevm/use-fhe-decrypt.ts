@@ -60,22 +60,22 @@ import { FhevmDecryptionSignature } from "@/lib/blockchain/fhevm/fhevm-decryptio
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 interface UseFHEDecryptParams {
-  /** FHEVM SDK instance (from useFhevmSdk) */
-  instance: FhevmInstance | undefined;
+  /** Current chain ID - used for stale detection */
+  chainId: number | undefined;
   /** User's wallet signer for authorization */
   ethersSigner: ethers.Signer | undefined;
   /** Storage for caching decryption signatures */
   fhevmDecryptionSignatureStorage: GenericStringStorage;
-  /** Current chain ID - used for stale detection */
-  chainId: number | undefined;
-  /** Handles to decrypt - each points to an encrypted value on-chain */
-  requests: readonly FHEDecryptRequest[] | undefined;
+  /** FHEVM SDK instance (from useFhevmSdk) */
+  instance: FhevmInstance | undefined;
   /**
    * Optional refresh hook for the FHEVM SDK instance.
    * Useful when the local Hardhat relayer is restarted and metadata changes,
    * which can invalidate EIP-712 signatures built from stale instance state.
    */
   refreshFhevmInstance?: () => void | Promise<void>;
+  /** Handles to decrypt - each points to an encrypted value on-chain */
+  requests: readonly FHEDecryptRequest[] | undefined;
 }
 
 export const useFHEDecrypt = (params: UseFHEDecryptParams) => {

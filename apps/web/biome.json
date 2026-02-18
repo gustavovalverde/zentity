@@ -59,6 +59,16 @@
   },
   "overrides": [
     {
+      "includes": ["e2e/**/*.ts", "e2e/**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noSkippedTests": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["src/components/ui/**/*.tsx"],
       "linter": {
         "rules": {

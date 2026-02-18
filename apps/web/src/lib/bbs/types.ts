@@ -14,8 +14,8 @@
  * - publicKey: 96 bytes (BLS12-381 G2 point)
  */
 export interface BbsKeyPair {
-  secretKey: Uint8Array;
   publicKey: Uint8Array;
+  secretKey: Uint8Array;
 }
 
 /**
@@ -34,12 +34,12 @@ export interface BbsMessage {
  * The signature is 80 bytes for BLS12-381 SHAKE256 ciphersuite.
  */
 export interface BbsSignature {
-  /** Raw signature bytes */
-  signature: Uint8Array;
   /** Header bound to signature (optional context) */
   header?: Uint8Array;
   /** Number of messages signed */
   messageCount: number;
+  /** Raw signature bytes */
+  signature: Uint8Array;
 }
 
 /**
@@ -58,14 +58,14 @@ export interface DisclosureRequest {
  * Proves knowledge of hidden messages without revealing them.
  */
 export interface BbsProof {
+  /** Presentation header (binds proof to context) */
+  presentationHeader?: Uint8Array;
   /** Derived proof bytes */
   proof: Uint8Array;
   /** Indices of revealed messages */
   revealedIndices: number[];
   /** Revealed message values (in index order) */
   revealedMessages: Uint8Array[];
-  /** Presentation header (binds proof to context) */
-  presentationHeader?: Uint8Array;
 }
 
 // ============================================================================
@@ -92,16 +92,16 @@ export type WalletCredentialClaimKey =
  * Claims for wallet binding in identity circuit.
  */
 export interface WalletIdentitySubject {
-  /** Wallet address commitment: hash(address || salt) */
-  walletCommitment: string;
-  /** Blockchain network (e.g., "ethereum", "polygon") */
-  network: string;
   /** Chain ID (optional, for EVM chains) */
   chainId?: number;
-  /** ISO 8601 timestamp of verification */
-  verifiedAt: string;
+  /** Blockchain network (e.g., "ethereum", "polygon") */
+  network: string;
   /** Verification tier achieved */
   tier: number;
+  /** ISO 8601 timestamp of verification */
+  verifiedAt: string;
+  /** Wallet address commitment: hash(address || salt) */
+  walletCommitment: string;
 }
 
 // ============================================================================
@@ -118,22 +118,22 @@ export type CredentialType = "wallet";
  * Format follows W3C VC Data Model where applicable.
  */
 export interface BbsCredential {
-  /** Credential format identifier */
-  format: "bbs+vc";
   /** Credential type for claim ordering */
   credentialType: CredentialType;
-  /** Issuer DID (did:web:zentity.xyz) */
-  issuer: string;
+  /** Credential format identifier */
+  format: "bbs+vc";
   /** Holder DID (did:key from Ed25519 public key) */
   holder: string;
   /** ISO 8601 issuance timestamp */
   issuedAt: string;
-  /** Credential subject claims */
-  subject: WalletIdentitySubject;
-  /** BBS+ signature over claims */
-  signature: BbsSignature;
+  /** Issuer DID (did:web:zentity.xyz) */
+  issuer: string;
   /** Issuer public key for verification */
   issuerPublicKey: Uint8Array;
+  /** BBS+ signature over claims */
+  signature: BbsSignature;
+  /** Credential subject claims */
+  subject: WalletIdentitySubject;
 }
 
 /**
@@ -141,30 +141,30 @@ export interface BbsCredential {
  * Contains only revealed claims and proof of hidden ones.
  */
 export interface BbsPresentation {
-  /** Presentation format */
-  format: "bbs+vp";
   /** Credential type for claim ordering */
   credentialType: CredentialType;
+  /** Presentation format */
+  format: "bbs+vp";
+  /** Original credential header */
+  header?: Uint8Array;
   /** Original credential issuer */
   issuer: string;
+  /** Issuer public key for verification */
+  issuerPublicKey: Uint8Array;
   /** Derived proof with selective disclosure */
   proof: BbsProof;
   /** Revealed claims (subset of original) */
   revealedClaims: Partial<WalletIdentitySubject>;
-  /** Issuer public key for verification */
-  issuerPublicKey: Uint8Array;
-  /** Original credential header */
-  header?: Uint8Array;
 }
 
 /**
  * Result of BBS+ proof verification.
  */
 export interface BbsVerifyResult {
-  /** Whether verification succeeded */
-  verified: boolean;
   /** Error message if verification failed */
   error?: string;
+  /** Whether verification succeeded */
+  verified: boolean;
 }
 
 /**

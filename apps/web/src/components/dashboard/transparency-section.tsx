@@ -28,13 +28,13 @@ const NEVER_STORED_ITEMS = [
 ] as const;
 
 interface TransparencySectionProps {
-  documentHash?: string;
-  nameCommitment?: string;
-  birthYearOffsetCiphertextHash?: string | null;
   birthYearOffsetCiphertextBytes?: number | null;
-  hasAgeProof: boolean;
-  proofTypes?: string[];
+  birthYearOffsetCiphertextHash?: string | null;
+  documentHash?: string;
   encryptedAttributes?: string[];
+  hasAgeProof: boolean;
+  nameCommitment?: string;
+  proofTypes?: string[];
   signedClaimTypes?: string[];
 }
 

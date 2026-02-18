@@ -48,14 +48,14 @@ import {
 } from "@/lib/auth/oidc/scope-display";
 
 export interface ConsentRow {
-  consentId: string;
-  clientId: string;
-  scopes: unknown;
-  createdAt: Date | null;
-  updatedAt: Date | null;
-  clientName: string | null;
   clientIcon: string | null;
+  clientId: string;
+  clientName: string | null;
   clientUri: string | null;
+  consentId: string;
+  createdAt: Date | null;
+  scopes: unknown;
+  updatedAt: Date | null;
 }
 
 function formatDate(date: Date | null): string {

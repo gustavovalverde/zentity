@@ -12,10 +12,10 @@ import { cn } from "@/lib/utils/classname";
 type NudgeDirection = "left" | "right" | "up" | "down" | null;
 
 interface DirectionalNudgeProps {
-  /** Direction to nudge the user */
-  readonly direction: NudgeDirection;
   /** Optional className for container */
   readonly className?: string;
+  /** Direction to nudge the user */
+  readonly direction: NudgeDirection;
 }
 
 const ARROW_ICONS = {

@@ -17,22 +17,22 @@ const GREETING_NAME_KEY = "zentity:greeting";
 const WHITESPACE_RE = /\s+/;
 
 export interface ProfileSecretPayload {
-  fullName?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  dateOfBirth?: string | null;
-  birthYear?: number | null;
-  residentialAddress?: string | null;
   addressCountryCode?: string | null;
-  expiryDateInt?: number | null;
+  birthYear?: number | null;
+  dateOfBirth?: string | null;
+  documentHash?: string | null;
   documentNumber?: string | null;
-  documentType?: string | null;
   documentOrigin?: string | null;
+  documentType?: string | null;
+  expiryDateInt?: number | null;
+  firstName?: string | null;
+  fullName?: string | null;
+  lastName?: string | null;
   nationality?: string | null;
   nationalityCode?: string | null;
-  documentHash?: string | null;
-  userSalt?: string | null;
+  residentialAddress?: string | null;
   updatedAt: string;
+  userSalt?: string | null;
 }
 
 let cached:

@@ -27,12 +27,12 @@ import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 type Stage = "idle" | "verifying" | "done";
 
 interface BindingAuthDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   authMode: "opaque" | "wallet";
-  wallet: { address: string; chainId: number } | null;
-  userId: string;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  open: boolean;
+  userId: string;
+  wallet: { address: string; chainId: number } | null;
 }
 
 function WalletSignButton({

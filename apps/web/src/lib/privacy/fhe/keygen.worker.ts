@@ -6,21 +6,21 @@ interface WorkerRequest {
 }
 
 interface WorkerSuccess {
+  durationMs: number;
   id: number;
-  type: "result";
   storedKeys: {
     clientKey: Uint8Array;
     publicKey: Uint8Array;
     serverKey: Uint8Array;
     createdAt: string;
   };
-  durationMs: number;
+  type: "result";
 }
 
 interface WorkerError {
   id: number;
-  type: "error";
   message: string;
+  type: "error";
 }
 
 interface TfheClientKey {
@@ -41,11 +41,8 @@ interface TfheConfigBuilder {
 
 interface TfheModuleStatic {
   default(wasmPath?: string): Promise<unknown>;
-  initThreadPool(threads: number): Promise<void>;
   init_panic_hook(): void;
-  TfheConfigBuilder: {
-    default(): TfheConfigBuilder;
-  };
+  initThreadPool(threads: number): Promise<void>;
   TfheClientKey: {
     generate(config: unknown): TfheClientKey;
   };
@@ -54,6 +51,9 @@ interface TfheModuleStatic {
   };
   TfheCompressedServerKey: {
     new: (clientKey: TfheClientKey) => TfheCompressedServerKey;
+  };
+  TfheConfigBuilder: {
+    default(): TfheConfigBuilder;
   };
 }
 

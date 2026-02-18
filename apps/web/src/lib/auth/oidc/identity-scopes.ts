@@ -10,10 +10,6 @@
  * Matches OIDC standard claims + Zentity-specific fields.
  */
 export interface IdentityFields {
-  given_name?: string;
-  family_name?: string;
-  name?: string;
-  birthdate?: string;
   address?: {
     formatted?: string;
     street_address?: string;
@@ -22,11 +18,15 @@ export interface IdentityFields {
     postal_code?: string;
     country?: string;
   };
+  birthdate?: string;
   document_number?: string;
   document_type?: string;
+  family_name?: string;
+  given_name?: string;
   issuing_country?: string;
-  nationality?: string;
+  name?: string;
   nationalities?: string[];
+  nationality?: string;
 }
 
 /**

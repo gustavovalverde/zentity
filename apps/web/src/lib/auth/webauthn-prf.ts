@@ -8,8 +8,8 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
 
 export interface PrfSupportStatus {
-  supported: boolean;
   reason?: string;
+  supported: boolean;
 }
 
 /**
@@ -17,11 +17,11 @@ export interface PrfSupportStatus {
  * This data is needed for server-side verification during authentication.
  */
 export interface CredentialRegistrationData {
-  credentialId: string;
-  publicKey: string; // Base64URL-encoded COSE public key
-  counter: number;
-  deviceType: "platform" | "cross-platform" | null;
   backedUp: boolean;
+  counter: number;
+  credentialId: string;
+  deviceType: "platform" | "cross-platform" | null;
+  publicKey: string; // Base64URL-encoded COSE public key
   transports: AuthenticatorTransport[];
 }
 

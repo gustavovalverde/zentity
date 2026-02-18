@@ -34,9 +34,9 @@ type CryptoOutputs = RouterOutputs["crypto"];
 
 // Types for ZK proof operations
 export interface ProofResult {
+  generationTimeMs: number;
   proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
-  generationTimeMs: number;
 }
 
 export type ClientProofType =
@@ -71,9 +71,9 @@ function recordProofError(proofType: ClientProofType, startTime: number): void {
 }
 
 interface ChallengeResponse {
-  nonce: string;
   circuitType: string;
   expiresAt: string;
+  nonce: string;
 }
 
 /**
@@ -82,8 +82,8 @@ interface ChallengeResponse {
 const CHALLENGE_TTL_MS = 60_000; // 1 minute
 
 interface TimestampedEntry<T> {
-  promise: T;
   createdAt: number;
+  promise: T;
 }
 
 const challengeInFlight = new Map<
@@ -163,11 +163,11 @@ export async function generateAgeProof(
  * @param groupName - Group to prove membership (e.g., "EU", "SCHENGEN", "EEA", "LATAM", "FIVE_EYES")
  */
 interface GenerateNationalityProofOptions {
-  nationalityCode: string;
-  groupName: string;
-  nonce: string;
-  documentHashField: string;
   claimHash: string;
+  documentHashField: string;
+  groupName: string;
+  nationalityCode: string;
+  nonce: string;
 }
 
 async function _generateNationalityProof(
@@ -381,14 +381,14 @@ export async function getProofChallenge(
 interface StoreProofOptions {
   /** The type of circuit used to generate the proof */
   circuitType: ClientProofType;
+  /** Optional document ID to bind proof storage to a specific document */
+  documentId?: string | null;
+  /** Time to generate the ZK proof */
+  generationTimeMs: number;
   /** Base64 encoded UltraHonk ZK proof */
   proof: string;
   /** The public signals from the proof */
   publicSignals: string[];
-  /** Time to generate the ZK proof */
-  generationTimeMs: number;
-  /** Optional document ID to bind proof storage to a specific document */
-  documentId?: string | null;
 }
 
 export async function storeProof(options: StoreProofOptions): Promise<{

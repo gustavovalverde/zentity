@@ -54,19 +54,19 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 /** ABI input/output parameter definition */
 interface AbiParameter {
+  components?: AbiParameter[];
+  internalType?: string;
   name: string;
   type: string;
-  internalType?: string;
-  components?: AbiParameter[];
 }
 
 /** ABI function item */
 interface AbiFunctionItem {
-  type: "function";
-  name: string;
   inputs: AbiParameter[];
+  name: string;
   outputs?: AbiParameter[];
   stateMutability?: string;
+  type: "function";
 }
 
 /** ABI item (function, event, etc.) */
@@ -126,8 +126,6 @@ export const toHex = (value: Uint8Array | string): `0x${string}` => {
  * handles in the result.
  */
 interface RelayerEncryptedInput {
-  /** Add encrypted boolean (ebool in contract) */
-  addBool(value: boolean): void;
   /** Add encrypted uint8 (euint8 in contract) */
   add8(value: number): void;
   /** Add encrypted uint16 (euint16 in contract) */
@@ -142,17 +140,19 @@ interface RelayerEncryptedInput {
   add256(value: number | bigint): void;
   /** Add encrypted address (eaddress in contract) */
   addAddress(value: string): void;
+  /** Add encrypted boolean (ebool in contract) */
+  addBool(value: boolean): void;
   /** Encrypt all queued values and return handles + ZK proof */
   encrypt(): Promise<EncryptResult>;
 }
 
 interface UseFHEEncryptionParams {
-  /** FHEVM SDK instance (from useFhevmSdk) */
-  instance: FhevmInstance | undefined;
-  /** User's wallet signer for deriving encryption context */
-  ethersSigner: ethers.Signer | undefined;
   /** Target contract address - encryption is bound to this contract */
   contractAddress: `0x${string}` | undefined;
+  /** User's wallet signer for deriving encryption context */
+  ethersSigner: ethers.Signer | undefined;
+  /** FHEVM SDK instance (from useFhevmSdk) */
+  instance: FhevmInstance | undefined;
 }
 
 export const useFHEEncryption = (params: UseFHEEncryptionParams) => {

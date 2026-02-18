@@ -220,9 +220,9 @@ async function withFheError<T>(
 }
 
 interface FheBatchEncryptResponse {
+  complianceLevelCiphertext?: Uint8Array | null;
   /** Encrypted DOB days (days since 1900-01-01, UTC) */
   dobDaysCiphertext?: Uint8Array | null;
-  complianceLevelCiphertext?: Uint8Array | null;
   livenessScoreCiphertext?: Uint8Array | null;
 }
 

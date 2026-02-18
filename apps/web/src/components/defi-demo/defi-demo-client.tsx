@@ -30,9 +30,9 @@ import { TransferForm } from "./transfer-form";
 import { TxHistory } from "./tx-history";
 
 interface DefiDemoClientProps {
-  isVerified: boolean;
   attestedNetworkId: string | null;
   attestedWallet: string | null;
+  isVerified: boolean;
 }
 
 export function DefiDemoClient({

@@ -28,8 +28,8 @@ export const generateFheKeyMaterialForStorage =
 
 // Types for FHE operations
 interface VerifyAgeFHEResult {
-  isOver18: boolean;
   computationTimeMs: number;
+  isOver18: boolean;
 }
 
 /**
@@ -38,8 +38,8 @@ interface VerifyAgeFHEResult {
 const REGISTRATION_TTL_MS = 120_000; // 2 minutes
 
 interface TimestampedEntry<T> {
-  promise: T;
   createdAt: number;
+  promise: T;
 }
 
 const registerFheKeyInFlight = new Map<

@@ -17,11 +17,11 @@ const defaultFromEmail =
 const defaultFromName = process.env.MAIL_FROM_NAME || "Zentity";
 
 export interface MailpitMessage {
-  to: string[];
-  subject: string;
-  text: string;
   html?: string;
+  subject: string;
   tags?: string[];
+  text: string;
+  to: string[];
 }
 
 export function isMailpitConfigured(): boolean {

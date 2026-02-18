@@ -37,8 +37,8 @@ import {
 } from "@/lib/db/queries/identity";
 
 interface IdentityCardProps {
-  userId: string | undefined;
   assuranceState: AssuranceState | null;
+  userId: string | undefined;
 }
 
 /**

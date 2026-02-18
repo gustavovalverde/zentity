@@ -59,14 +59,6 @@ import { cn } from "@/lib/utils/classname";
 import { getAttestationError } from "@/lib/utils/error-messages";
 
 interface NetworkStatus {
-  id: string;
-  name: string;
-  chainId: number;
-  type: "fhevm" | "evm";
-  features: string[];
-  explorer?: string;
-  identityRegistry?: string | null;
-  complianceRules?: string | null;
   attestation: {
     id: string;
     status: "pending" | "submitted" | "confirmed" | "failed";
@@ -77,6 +69,14 @@ interface NetworkStatus {
     explorerUrl?: string;
     walletAddress: string;
   } | null;
+  chainId: number;
+  complianceRules?: string | null;
+  explorer?: string;
+  features: string[];
+  id: string;
+  identityRegistry?: string | null;
+  name: string;
+  type: "fhevm" | "evm";
 }
 
 interface OnChainAttestationProps {
@@ -382,14 +382,6 @@ const STATUS_VARIANT: Record<
 
 // Network type from tRPC may have slightly different status typing
 interface ApiNetworkStatus {
-  id: string;
-  name: string;
-  chainId: number;
-  type: "fhevm" | "evm";
-  features: string[];
-  explorer?: string;
-  identityRegistry?: string | null;
-  complianceRules?: string | null;
   attestation: {
     id: string;
     status: "pending" | "submitted" | "confirmed" | "failed" | null;
@@ -400,30 +392,38 @@ interface ApiNetworkStatus {
     explorerUrl?: string;
     walletAddress: string;
   } | null;
+  chainId: number;
+  complianceRules?: string | null;
+  explorer?: string;
+  features: string[];
+  id: string;
+  identityRegistry?: string | null;
+  name: string;
+  type: "fhevm" | "evm";
 }
 
 interface AttestationContentBodyProps {
-  isConnected: boolean;
-  networksLoading: boolean;
-  networks: ApiNetworkStatus[] | undefined;
-  walletChanged: boolean;
   address: string | undefined;
-  selectedNetwork: string | null;
-  selectedNetworkData: NetworkStatus | undefined;
-  onNetworkSelect: (networkId: string) => void;
-  onSubmit: () => void;
-  onRefresh: () => void;
-  isSubmitting: boolean;
-  isRefreshing: boolean;
-  error: string | undefined;
-  needsReAttestation: boolean;
-  showComplianceAccess: boolean;
-  isCheckingOnChain: boolean;
-  showComplianceCard: boolean;
+  complianceExplorerUrl: string | null;
   complianceGranted: boolean;
   complianceTxHash: string | null;
-  complianceExplorerUrl: string | null;
+  error: string | undefined;
   invalidateComplianceAccess: () => void;
+  isCheckingOnChain: boolean;
+  isConnected: boolean;
+  isRefreshing: boolean;
+  isSubmitting: boolean;
+  needsReAttestation: boolean;
+  networks: ApiNetworkStatus[] | undefined;
+  networksLoading: boolean;
+  onNetworkSelect: (networkId: string) => void;
+  onRefresh: () => void;
+  onSubmit: () => void;
+  selectedNetwork: string | null;
+  selectedNetworkData: NetworkStatus | undefined;
+  showComplianceAccess: boolean;
+  showComplianceCard: boolean;
+  walletChanged: boolean;
 }
 
 /**

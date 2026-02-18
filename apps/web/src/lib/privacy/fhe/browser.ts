@@ -43,11 +43,11 @@ interface FheBool {
 
 interface TfheModuleStatic {
   default(wasmPath?: string): Promise<unknown>;
-  initThreadPool(threads: number): Promise<void>;
-  init_panic_hook(): void;
-  TfheConfigBuilder: {
-    default(): TfheConfigBuilder;
+  FheBool: {
+    deserialize(bytes: Uint8Array): FheBool;
   };
+  init_panic_hook(): void;
+  initThreadPool(threads: number): Promise<void>;
   TfheClientKey: {
     generate(config: unknown): TfheClientKey;
     deserialize(bytes: Uint8Array): TfheClientKey;
@@ -60,8 +60,8 @@ interface TfheModuleStatic {
     new: (clientKey: TfheClientKey) => TfheCompressedServerKey;
     deserialize(bytes: Uint8Array): TfheCompressedServerKey;
   };
-  FheBool: {
-    deserialize(bytes: Uint8Array): FheBool;
+  TfheConfigBuilder: {
+    default(): TfheConfigBuilder;
   };
 }
 
@@ -70,11 +70,11 @@ type TfheModule = TfheModuleStatic;
 
 interface FheKeyMaterial {
   clientKey: TfheClientKey;
-  publicKey: TfheCompressedPublicKey;
-  serverKey: TfheCompressedServerKey;
-  publicKeyBytes: Uint8Array;
-  serverKeyBytes: Uint8Array;
   keyId?: string;
+  publicKey: TfheCompressedPublicKey;
+  publicKeyBytes: Uint8Array;
+  serverKey: TfheCompressedServerKey;
+  serverKeyBytes: Uint8Array;
 }
 
 let tfheInitPromise: Promise<TfheModule> | null = null;

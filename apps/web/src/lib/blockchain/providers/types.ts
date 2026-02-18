@@ -12,8 +12,6 @@ import type { NetworkConfig } from "../networks";
  * Parameters for submitting an attestation.
  */
 export interface AttestationParams {
-  /** User's wallet address to attest */
-  userAddress: string;
   /** Identity proof data from Zentity verification */
   identityData: {
     /** Birth year offset (0-255, years since 1900) */
@@ -25,6 +23,8 @@ export interface AttestationParams {
     /** Whether user is blacklisted */
     isBlacklisted: boolean;
   };
+  /** User's wallet address to attest */
+  userAddress: string;
 }
 
 /**
@@ -40,42 +40,42 @@ export type AttestationErrorCode =
  * Result of submitting an attestation transaction.
  */
 export interface AttestationResult {
-  /** Transaction status */
-  status: "submitted" | "failed";
-  /** Transaction hash (if submitted) */
-  txHash?: string;
   /** Error message (if failed) */
   error?: string;
   /** Error category for frontend handling */
   errorCode?: AttestationErrorCode;
+  /** Transaction status */
+  status: "submitted" | "failed";
+  /** Transaction hash (if submitted) */
+  txHash?: string;
 }
 
 /**
  * Current attestation status for a user on a network.
  */
 export interface AttestationStatus {
+  /** Timestamp of attestation */
+  attestedAt?: string;
+  /** Block number where attestation was confirmed */
+  blockNumber?: number;
   /** Whether user has a confirmed attestation */
   isAttested: boolean;
   /** Transaction hash of the attestation */
   txHash?: string;
-  /** Block number where attestation was confirmed */
-  blockNumber?: number;
-  /** Timestamp of attestation */
-  attestedAt?: string;
 }
 
 /**
  * Transaction confirmation status.
  */
 export interface TransactionStatus {
-  /** Whether transaction is confirmed */
-  confirmed: boolean;
-  /** Whether transaction failed/reverted */
-  failed: boolean;
   /** Block number (if confirmed) */
   blockNumber?: number;
+  /** Whether transaction is confirmed */
+  confirmed: boolean;
   /** Error message (if failed) */
   error?: string;
+  /** Whether transaction failed/reverted */
+  failed: boolean;
 }
 
 /**
@@ -87,14 +87,29 @@ export interface TransactionStatus {
  * - Checking attestation status
  */
 export interface IAttestationProvider {
+  /**
+   * Check if a transaction has been confirmed.
+   *
+   * @param txHash - Transaction hash to check
+   * @returns Transaction status
+   */
+  checkTransaction(txHash: string): Promise<TransactionStatus>;
+
+  /** Network configuration */
+  readonly config: NetworkConfig;
+
+  /**
+   * Check if a user is attested on this network.
+   *
+   * @param userAddress - User's wallet address
+   * @returns Current attestation status
+   */
+  getAttestationStatus(userAddress: string): Promise<AttestationStatus>;
   /** Network ID this provider handles */
   readonly networkId: string;
 
   /** Human-readable network name */
   readonly networkName: string;
-
-  /** Network configuration */
-  readonly config: NetworkConfig;
 
   /**
    * Submit an attestation for a user.
@@ -106,20 +121,4 @@ export interface IAttestationProvider {
    * @returns Result with transaction hash or error
    */
   submitAttestation(params: AttestationParams): Promise<AttestationResult>;
-
-  /**
-   * Check if a user is attested on this network.
-   *
-   * @param userAddress - User's wallet address
-   * @returns Current attestation status
-   */
-  getAttestationStatus(userAddress: string): Promise<AttestationStatus>;
-
-  /**
-   * Check if a transaction has been confirmed.
-   *
-   * @param txHash - Transaction hash to check
-   * @returns Transaction status
-   */
-  checkTransaction(txHash: string): Promise<TransactionStatus>;
 }

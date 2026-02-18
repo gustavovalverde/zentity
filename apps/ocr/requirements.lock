@@ -25,11 +25,9 @@ charset-normalizer==3.4.4
     # via requests
 click==8.3.1
     # via uvicorn
-coloredlogs==15.0.1
-    # via onnxruntime
 colorlog==6.10.1
     # via rapidocr
-fastapi==0.128.0
+fastapi==0.129.0
     # via ocr-service (pyproject.toml)
 flatbuffers==25.12.19
     # via onnxruntime
@@ -37,7 +35,7 @@ googleapis-common-protos==1.72.0
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
-grpcio==1.76.0
+grpcio==1.78.0
     # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
@@ -47,8 +45,6 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via ocr-service (pyproject.toml)
-humanfriendly==10.0
-    # via coloredlogs
 idna==3.11
     # via
     #   anyio
@@ -62,7 +58,7 @@ mpmath==1.3.0
     # via sympy
 mrz==0.6.2
     # via ocr-service (pyproject.toml)
-numpy==2.2.6
+numpy==2.4.2
     # via
     #   ocr-service (pyproject.toml)
     #   onnxruntime
@@ -72,11 +68,11 @@ numpy==2.2.6
     #   shapely
 omegaconf==2.3.0
     # via rapidocr
-onnxruntime==1.23.2
+onnxruntime==1.24.1
     # via ocr-service (pyproject.toml)
-opencv-python==4.13.0.90
+opencv-python==4.13.0.92
     # via rapidocr
-opencv-python-headless==4.12.0.88
+opencv-python-headless==4.13.0.92
     # via ocr-service (pyproject.toml)
 opentelemetry-api==1.39.1
     # via
@@ -142,7 +138,7 @@ packaging==26.0
     # via
     #   onnxruntime
     #   opentelemetry-instrumentation
-pillow==12.0.0
+pillow==12.1.1
     # via
     #   ocr-service (pyproject.toml)
     #   rapidocr
@@ -159,13 +155,13 @@ pydantic==2.12.5
     #   ocr-service (pyproject.toml)
 pydantic-core==2.41.5
     # via pydantic
-python-stdnum==2.1
+python-stdnum==2.2
     # via ocr-service (pyproject.toml)
 pyyaml==6.0.3
     # via
     #   omegaconf
     #   rapidocr
-rapidocr==3.4.5
+rapidocr==3.6.0
     # via ocr-service (pyproject.toml)
 requests==2.32.5
     # via
@@ -175,7 +171,7 @@ shapely==2.1.2
     # via rapidocr
 six==1.17.0
     # via rapidocr
-starlette==0.50.0
+starlette==0.52.1
     # via fastapi
 sympy==1.14.0
     # via onnxruntime
@@ -196,10 +192,12 @@ typing-extensions==4.15.0
     #   starlette
     #   typing-inspection
 typing-inspection==0.4.2
-    # via pydantic
+    # via
+    #   fastapi
+    #   pydantic
 urllib3==2.6.3
     # via requests
-uvicorn==0.40.0
+uvicorn==0.41.0
     # via ocr-service (pyproject.toml)
 wrapt==1.17.3
     # via

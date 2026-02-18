@@ -37,14 +37,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { useDevFaucet } from "@/lib/blockchain/wagmi/use-dev-faucet";
 
 interface ComplianceAccessCardProps {
-  identityRegistry: `0x${string}` | null | undefined;
   complianceRules: `0x${string}` | null | undefined;
-  isGranted: boolean;
-  onGranted: () => void;
   expectedChainId?: number;
   expectedNetworkName?: string;
-  grantedTxHash?: string | null;
   grantedExplorerUrl?: string | null;
+  grantedTxHash?: string | null;
+  identityRegistry: `0x${string}` | null | undefined;
+  isGranted: boolean;
+  onGranted: () => void;
 }
 
 export function ComplianceAccessCard({

@@ -21,8 +21,8 @@ type ApprovalState = "idle" | "approving" | "approved";
 
 interface ApprovalResult {
   approvals: number;
-  threshold: number;
   status: string;
+  threshold: number;
 }
 
 export function RecoverGuardianClient() {

@@ -22,59 +22,58 @@ export type SessionPhase =
   | "failed"; // Failure
 
 export interface ChallengeState {
-  type: ChallengeType;
-  index: number;
-  total: number;
-  progress: number; // 0-100
   hint: string | null;
+  index: number;
+  progress: number; // 0-100
+  total: number;
+  type: ChallengeType;
 }
 
 export interface FaceState {
-  detected: boolean;
   box: { x: number; y: number; width: number; height: number } | null;
+  detected: boolean;
 }
 
 export interface SessionState {
-  id: string;
-  phase: SessionPhase;
-  challenge: ChallengeState | null;
-  face: FaceState;
-  countdown: number | null;
-
-  // Identity draft linkage (for dashboard verification flow)
-  draftId: string | null;
-  userId: string | null;
-
-  // Internal tracking
-  challenges: ChallengeType[];
-  currentIndex: number;
-  consecutiveFaceDetections: number;
-  consecutiveChallengeDetections: number;
+  // Captured frames (base64)
+  baselineFrame: string | null;
   baselineHappy: number | null;
-  lastHappyScore: number | null;
-  turnStartYaw: number | null;
-  turnCentered: boolean;
-  countdownAwaitingClient: boolean;
-  countdownRequestedAt: number | null;
-  pendingBaselineFrame: string | null;
-  lastFrameDataUrl: string | null;
+  challenge: ChallengeState | null;
   challengeAwaitingClient: boolean;
+  challengeFrames: Map<ChallengeType, string>;
   challengeRequestedAt: number | null;
   challengeStartedAt: number | null;
 
-  // Captured frames (base64)
-  baselineFrame: string | null;
-  challengeFrames: Map<ChallengeType, string>;
+  // Internal tracking
+  challenges: ChallengeType[];
+  consecutiveChallengeDetections: number;
+  consecutiveFaceDetections: number;
+  countdown: number | null;
+  countdownAwaitingClient: boolean;
+  countdownRequestedAt: number | null;
+  currentIndex: number;
 
-  // Timing
-  startedAt: number;
+  // Identity draft linkage (for dashboard verification flow)
+  draftId: string | null;
+  face: FaceState;
+  id: string;
   lastFrameAt: number;
+  lastFrameDataUrl: string | null;
+  lastHappyScore: number | null;
+  pendingBaselineFrame: string | null;
+  phase: SessionPhase;
 
   // Retry tracking
   retryCount: number;
 
+  // Timing
+  startedAt: number;
+
   // Configurable timeouts
   timeouts: SessionTimeouts;
+  turnCentered: boolean;
+  turnStartYaw: number | null;
+  userId: string | null;
 }
 
 // Constants - consecutive frames needed for stable detection
@@ -85,12 +84,12 @@ const STABILITY_FRAMES = 2;
  * Configurable timeout settings for liveness sessions.
  */
 export interface SessionTimeouts {
-  /** Maximum session duration in milliseconds */
-  sessionTimeoutMs: number;
   /** Maximum time per challenge in milliseconds */
   challengeTimeoutMs: number;
   /** Countdown duration in milliseconds */
   countdownDurationMs: number;
+  /** Maximum session duration in milliseconds */
+  sessionTimeoutMs: number;
 }
 
 const DEFAULT_TIMEOUTS: SessionTimeouts = {

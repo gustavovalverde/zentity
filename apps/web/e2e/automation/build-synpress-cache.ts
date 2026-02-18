@@ -71,9 +71,9 @@ function stopHardhat() {
 }
 
 interface ContractsEnv {
-  identityRegistry?: string;
   complianceRules?: string;
   compliantErc20?: string;
+  identityRegistry?: string;
 }
 
 function deployContracts(): ContractsEnv {

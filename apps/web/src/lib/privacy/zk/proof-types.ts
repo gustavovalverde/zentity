@@ -55,16 +55,16 @@ export type AuthMode = (typeof AuthMode)[keyof typeof AuthMode];
  * Used for verification, storage, and cross-component consistency.
  */
 interface ProofTypeSpec {
-  circuitName: string;
-  minPublicInputs: number;
-  nonceIndex: number;
-  claimHashIndex: number;
-  resultIndex: number;
-  msgSenderIndex?: number;
   audienceIndex?: number;
-  publicInputOrder: readonly string[];
+  circuitName: string;
+  claimHashIndex: number;
   claimRequired?: string;
   description: string;
+  minPublicInputs: number;
+  msgSenderIndex?: number;
+  nonceIndex: number;
+  publicInputOrder: readonly string[];
+  resultIndex: number;
 }
 
 /**

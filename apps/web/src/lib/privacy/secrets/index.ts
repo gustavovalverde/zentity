@@ -262,25 +262,25 @@ export async function storeSecretWithCredential(params: {
 }
 
 interface SecretLoadContext {
-  secretId: string;
-  secretType: SecretType;
   encryptedBlob: Uint8Array;
-  metadata: Record<string, unknown> | null;
   envelopeFormat: EnvelopeFormat;
   label: string;
+  metadata: Record<string, unknown> | null;
+  secretId: string;
+  secretType: SecretType;
 }
 
 interface SecretLoadResult {
-  secretId: string;
-  plaintext: Uint8Array;
-  metadata: Record<string, unknown> | null;
   envelopeFormat: EnvelopeFormat;
+  metadata: Record<string, unknown> | null;
+  plaintext: Uint8Array;
+  secretId: string;
 }
 
 interface SecretWrapper {
   credentialId: string;
-  wrappedDek: string;
   prfSalt?: string | null;
+  wrappedDek: string;
 }
 
 async function resolveUserId(

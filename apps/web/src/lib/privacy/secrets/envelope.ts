@@ -26,8 +26,8 @@ const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
  */
 export interface EncryptedSecretPayload {
   alg: "AES-GCM";
-  iv: Uint8Array;
   ciphertext: Uint8Array;
+  iv: Uint8Array;
 }
 
 /**
@@ -35,17 +35,17 @@ export interface EncryptedSecretPayload {
  */
 interface EncryptedSecretPayloadJson {
   alg: "AES-GCM";
-  iv: string;
   ciphertext: string;
+  iv: string;
 }
 
 /**
  * Complete secret envelope ready for storage.
  */
 export interface SecretEnvelope {
-  secretId: string;
   encryptedBlob: Uint8Array;
   envelopeFormat: EnvelopeFormat;
+  secretId: string;
 }
 
 const textEncoder = new TextEncoder();

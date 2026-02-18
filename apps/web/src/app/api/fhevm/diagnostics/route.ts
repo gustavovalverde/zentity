@@ -12,13 +12,13 @@ import path from "node:path";
 export const runtime = "nodejs";
 
 interface DiagnosticResult {
-  ok: boolean;
   error?: string;
-  stack?: string;
-  relayerStatus?: number | null;
+  ok: boolean;
+  publicKeyId?: string | null;
   relayerKeyUrl?: string | null;
   relayerKeyUrlStatus?: number | null;
-  publicKeyId?: string | null;
+  relayerStatus?: number | null;
+  stack?: string;
 }
 
 const readEnv = (key: string) => process.env[key] || null;
@@ -119,10 +119,10 @@ export async function GET() {
   let crsSize: number | null = null;
   interface TfheModuleShape {
     __wasm?: unknown;
-    TfheCompactPublicKey?: {
+    CompactPkeCrs?: {
       safe_deserialize?: (bytes: Uint8Array, sizeLimit: bigint) => void;
     };
-    CompactPkeCrs?: {
+    TfheCompactPublicKey?: {
       safe_deserialize?: (bytes: Uint8Array, sizeLimit: bigint) => void;
     };
   }

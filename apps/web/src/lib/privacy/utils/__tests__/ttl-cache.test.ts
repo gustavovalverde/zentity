@@ -79,8 +79,8 @@ describe("createValidatedTtlCache", () => {
   });
 
   interface UserData {
-    userId: string;
     data: string;
+    userId: string;
   }
 
   it("validates against key on get", () => {

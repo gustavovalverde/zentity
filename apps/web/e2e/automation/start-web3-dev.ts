@@ -63,9 +63,9 @@ async function ensureHardhatNode(): Promise<boolean> {
 }
 
 interface ContractsEnv {
-  identityRegistry?: string;
   complianceRules?: string;
   compliantErc20?: string;
+  identityRegistry?: string;
 }
 
 function deployContracts(): ContractsEnv {

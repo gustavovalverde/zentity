@@ -63,12 +63,12 @@ function logWorker(
 
 // Module cache for lazy loading
 interface ModuleCache {
-  Noir: typeof import("@noir-lang/noir_js").Noir;
   Barretenberg: typeof import("@aztec/bb.js").Barretenberg;
-  UltraHonkBackend: typeof import("@aztec/bb.js").UltraHonkBackend;
   BN254_FR_MODULUS: bigint;
   initACVM: (input?: NoirWasmInitInput) => Promise<unknown>;
   initNoirC: (input?: NoirWasmInitInput) => Promise<unknown>;
+  Noir: typeof import("@noir-lang/noir_js").Noir;
+  UltraHonkBackend: typeof import("@aztec/bb.js").UltraHonkBackend;
 }
 
 let moduleCache: ModuleCache | null = null;
@@ -496,8 +496,8 @@ async function getProverBackend(circuit: CircuitName) {
 }
 
 interface MerkleCacheEntry {
-  levels: bigint[][];
   indexByCode: Map<number, number>;
+  levels: bigint[][];
 }
 
 const merkleCache = new Map<string, Promise<MerkleCacheEntry>>();

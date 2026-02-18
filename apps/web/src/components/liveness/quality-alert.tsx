@@ -23,9 +23,9 @@ export type QualityIssue =
   | null;
 
 interface QualityAlertConfig {
+  ariaLabel: string;
   icon: LucideIcon;
   message: string;
-  ariaLabel: string;
 }
 
 const ALERT_CONFIG: Record<Exclude<QualityIssue, null>, QualityAlertConfig> = {
@@ -62,10 +62,10 @@ const ALERT_CONFIG: Record<Exclude<QualityIssue, null>, QualityAlertConfig> = {
 };
 
 interface QualityAlertProps {
-  /** Current quality issue to display, or null for no alert */
-  readonly issue: QualityIssue;
   /** Optional className for styling */
   readonly className?: string;
+  /** Current quality issue to display, or null for no alert */
+  readonly issue: QualityIssue;
 }
 
 /**

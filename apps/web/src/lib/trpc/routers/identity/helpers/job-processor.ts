@@ -32,9 +32,20 @@ import { invalidateVerificationCache } from "./verification-cache";
 export type FheStatus = "pending" | "complete" | "error";
 
 export interface VerifyIdentityResponse {
-  success: boolean;
-  verified: boolean;
   documentId?: string | null;
+  error?: string;
+  fheErrors?: Array<{
+    operation: string;
+    issue: string;
+    kind: string;
+    status?: number;
+    message?: string;
+    bodyText?: string;
+  }>;
+  fheStatus?: FheStatus;
+  issues: string[];
+
+  processingTimeMs: number;
 
   results: {
     documentProcessed: boolean;
@@ -50,6 +61,7 @@ export interface VerifyIdentityResponse {
     countryCodeEncrypted: boolean;
     livenessScoreEncrypted: boolean;
   };
+  success: boolean;
 
   transientData?: {
     fullName?: string;
@@ -58,19 +70,7 @@ export interface VerifyIdentityResponse {
     documentNumber?: string;
     dateOfBirth?: string;
   };
-
-  processingTimeMs: number;
-  issues: string[];
-  fheStatus?: FheStatus;
-  fheErrors?: Array<{
-    operation: string;
-    issue: string;
-    kind: string;
-    status?: number;
-    message?: string;
-    bodyText?: string;
-  }>;
-  error?: string;
+  verified: boolean;
 }
 
 const activeIdentityJobs = new Set<string>();

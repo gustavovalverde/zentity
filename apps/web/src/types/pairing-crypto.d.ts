@@ -12,21 +12,21 @@ declare module "@mattrglobal/pairing-crypto" {
   }
 
   interface KeyPair {
-    secretKey: Uint8Array;
     publicKey: Uint8Array;
+    secretKey: Uint8Array;
   }
 
   interface BbsSignRequest {
-    secretKey: Uint8Array;
-    publicKey: Uint8Array;
     header?: Uint8Array;
     messages: Uint8Array[];
+    publicKey: Uint8Array;
+    secretKey: Uint8Array;
   }
 
   interface BbsVerifyRequest {
-    publicKey: Uint8Array;
     header?: Uint8Array;
     messages: Uint8Array[];
+    publicKey: Uint8Array;
     signature: Uint8Array;
   }
 
@@ -35,36 +35,36 @@ declare module "@mattrglobal/pairing-crypto" {
   }
 
   interface BbsDeriveProofMessageRequest {
-    value: Uint8Array;
     reveal: boolean;
+    value: Uint8Array;
   }
 
   interface BbsDeriveProofRequest {
+    header?: Uint8Array;
+    messages: BbsDeriveProofMessageRequest[];
+    presentationHeader?: Uint8Array;
     publicKey: Uint8Array;
     signature: Uint8Array;
-    header?: Uint8Array;
-    presentationHeader?: Uint8Array;
     verifySignature?: boolean;
-    messages: BbsDeriveProofMessageRequest[];
   }
 
   interface BbsVerifyProofRequest {
-    publicKey: Uint8Array;
     header?: Uint8Array;
+    messages: Record<number, Uint8Array>;
     presentationHeader?: Uint8Array;
     proof: Uint8Array;
-    messages: Record<number, Uint8Array>;
+    publicKey: Uint8Array;
   }
 
   interface BbsCiphersuite {
+    deriveProof(request: BbsDeriveProofRequest): Promise<Uint8Array>;
+
+    generateKeyPair(request?: KeyGenerationRequest): Promise<KeyPair>;
     readonly PRIVATE_KEY_LENGTH: number;
     readonly PUBLIC_KEY_LENGTH: number;
     readonly SIGNATURE_LENGTH: number;
-
-    generateKeyPair(request?: KeyGenerationRequest): Promise<KeyPair>;
     sign(request: BbsSignRequest): Promise<Uint8Array>;
     verify(request: BbsVerifyRequest): Promise<BbsVerifyResult>;
-    deriveProof(request: BbsDeriveProofRequest): Promise<Uint8Array>;
     verifyProof(request: BbsVerifyProofRequest): Promise<BbsVerifyResult>;
   }
 

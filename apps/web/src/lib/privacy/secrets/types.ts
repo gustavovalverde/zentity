@@ -52,29 +52,29 @@ export type EnvelopeFormat = "json" | "msgpack";
  */
 export interface PasskeyEnrollmentContext {
   credentialId: string;
-  userId: string;
   prfOutput: Uint8Array;
   prfSalt: Uint8Array;
+  userId: string;
 }
 
 /**
  * Enrollment context for OPAQUE password credentials.
  */
 export interface OpaqueEnrollmentContext {
-  userId: string;
   exportKey: Uint8Array;
+  userId: string;
 }
 
 /**
  * Enrollment context for wallet (EIP-712) credentials.
  */
 export interface WalletEnrollmentContext {
-  userId: string;
   address: string;
   chainId: number;
+  expiresAt: number;
   signatureBytes: Uint8Array;
   signedAt: number;
-  expiresAt: number;
+  userId: string;
 }
 
 /**

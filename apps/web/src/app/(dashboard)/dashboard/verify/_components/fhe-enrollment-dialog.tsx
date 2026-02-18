@@ -75,10 +75,10 @@ const STAGE_LABELS: Record<EnrollmentStage, string> = {
 const KEK_SIGNATURE_VALIDITY_DAYS = 365;
 
 interface FheEnrollmentDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   hasPasskeys: boolean;
   hasPassword: boolean;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
   wallet: { address: string; chainId: number } | null;
 }
 
@@ -155,14 +155,14 @@ function WalletEnrollmentButton({
 }
 
 interface WalletContext {
+  address: string;
+  chainId: number;
   signTypedData: (args: {
     domain: Record<string, unknown>;
     types: Record<string, Array<{ name: string; type: string }>>;
     primaryType: string;
     message: Record<string, unknown>;
   }) => Promise<string>;
-  address: string;
-  chainId: number;
 }
 
 export function FheEnrollmentDialog({

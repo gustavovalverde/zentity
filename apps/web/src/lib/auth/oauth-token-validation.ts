@@ -22,10 +22,10 @@ import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 export interface OAuthTokenValidationResult {
-  valid: boolean;
   clientId?: string;
-  scopes?: string[];
   error?: string;
+  scopes?: string[];
+  valid: boolean;
 }
 
 const authIssuer = getAuthIssuer();

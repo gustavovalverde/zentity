@@ -3,9 +3,9 @@ import Image from "next/image";
 import { cn } from "@/lib/utils/classname";
 
 interface LogoProps {
-  variant?: "full" | "icon";
   className?: string;
   size?: "sm" | "md" | "lg";
+  variant?: "full" | "icon";
 }
 
 export function Logo({

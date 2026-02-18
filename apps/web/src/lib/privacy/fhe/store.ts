@@ -16,10 +16,10 @@ import { trpc } from "@/lib/trpc/client";
 
 export interface StoredFheKeys {
   clientKey: Uint8Array;
-  publicKey: Uint8Array;
-  serverKey: Uint8Array;
   createdAt: string;
   keyId?: string;
+  publicKey: Uint8Array;
+  serverKey: Uint8Array;
 }
 
 const SECRET_TYPE = SECRET_TYPES.FHE_KEYS;

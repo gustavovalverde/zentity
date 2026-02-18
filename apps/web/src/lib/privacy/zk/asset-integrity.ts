@@ -7,8 +7,8 @@ import { logger } from "@/lib/logging/logger";
 
 interface AssetCheck {
   id: string;
-  path: string;
   minBytes: number;
+  path: string;
 }
 
 const ASSETS: AssetCheck[] = [

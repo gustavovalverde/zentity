@@ -65,8 +65,8 @@ function normalizeHandle(handle: unknown): `0x${string}` | undefined {
  */
 interface DecryptedIdentity {
   birthYearOffset: number;
-  countryCode: number;
   complianceLevel: number;
+  countryCode: number;
   isBlacklisted: boolean;
 }
 

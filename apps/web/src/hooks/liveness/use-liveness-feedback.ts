@@ -37,52 +37,51 @@ export type FeedbackType = EarconType;
 interface FeedbackOptions {
   /** Enable/disable earcon audio. Default: true */
   audioEnabled?: boolean;
-  /** Enable/disable TTS speech. Default: true */
-  speechEnabled?: boolean;
   /** Enable/disable haptic vibration. Default: true */
   hapticEnabled?: boolean;
   /** Language for TTS. Default: auto-detected */
   language?: SupportedLanguage;
+  /** Enable/disable TTS speech. Default: true */
+  speechEnabled?: boolean;
 }
 
 interface FeedbackController {
-  // Unified feedback trigger with optional stereo pan (-1 = left, 0 = center, 1 = right)
-  feedback: (type: FeedbackType, pan?: number) => void;
-
-  // Individual feedback methods
-  playEarcon: (type: EarconType, pan?: number) => void;
-  speak: (key: SpeechKey, priority?: "low" | "high") => Promise<void>;
-  speakText: (text: string, priority?: "low" | "high") => Promise<void>;
-  triggerHaptic: (type: HapticType) => void;
-  cancelSpeech: () => void;
-
-  // State controls
-  setAudioEnabled: (enabled: boolean) => void;
-  setSpeechEnabled: (enabled: boolean) => void;
-  setHapticEnabled: (enabled: boolean) => void;
-
   // State getters
   audioEnabled: boolean;
-  speechEnabled: boolean;
-  hapticEnabled: boolean;
-  isSpeaking: boolean;
 
   // Support checks
   audioSupported: boolean;
-  speechSupported: boolean;
+  cancelSpeech: () => void;
+  // Unified feedback trigger with optional stereo pan (-1 = left, 0 = center, 1 = right)
+  feedback: (type: FeedbackType, pan?: number) => void;
+  hapticEnabled: boolean;
   hapticSupported: boolean;
 
   // Initialize audio/speech (must be called from user interaction)
   initAudio: () => void;
   initSpeech: () => void;
+  isSpeaking: boolean;
+
+  // Individual feedback methods
+  playEarcon: (type: EarconType, pan?: number) => void;
+
+  // State controls
+  setAudioEnabled: (enabled: boolean) => void;
+  setHapticEnabled: (enabled: boolean) => void;
+  setSpeechEnabled: (enabled: boolean) => void;
+  speak: (key: SpeechKey, priority?: "low" | "high") => Promise<void>;
+  speakText: (text: string, priority?: "low" | "high") => Promise<void>;
+  speechEnabled: boolean;
+  speechSupported: boolean;
+  triggerHaptic: (type: HapticType) => void;
 }
 
 const STORAGE_KEY = "zentity-liveness-feedback-prefs";
 
 interface StoredPrefs {
   audioEnabled: boolean;
-  speechEnabled: boolean;
   hapticEnabled: boolean;
+  speechEnabled: boolean;
 }
 
 function loadPrefs(): StoredPrefs | null {

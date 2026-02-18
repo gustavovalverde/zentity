@@ -31,16 +31,16 @@ type SpanAttributes = Record<string, string | number | boolean>;
 
 /** Base context available to all procedures (public and protected). */
 interface TrpcContext {
-  req: Request;
-  session: Session | null;
-  requestId: string;
   flowId: string | null;
   flowIdSource: "header" | "cookie" | "query" | "none";
-  traceId?: string;
-  spanId?: string;
-  span?: Span;
+  req: Request;
+  requestId: string;
   /** Response headers that will be merged with tRPC response. Use for Set-Cookie. */
   resHeaders: Headers;
+  session: Session | null;
+  span?: Span;
+  spanId?: string;
+  traceId?: string;
 }
 
 /**

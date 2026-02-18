@@ -61,8 +61,8 @@ async function waitForServer(api: ApiContext) {
 
 interface AuthSeed {
   email: string;
-  password: string;
   name: string;
+  password: string;
 }
 
 function getOrCreateSeed(): AuthSeed {

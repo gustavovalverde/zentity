@@ -10,10 +10,10 @@ import { getFlowId } from "@/lib/observability/flow-client";
 type MetricAttributes = Record<string, string | number | boolean>;
 
 interface ClientMetricEvent {
-  name: ClientMetricName;
-  value: number;
-  unit: ClientMetricUnit;
   attributes?: MetricAttributes;
+  name: ClientMetricName;
+  unit: ClientMetricUnit;
+  value: number;
 }
 
 const ENDPOINT = "/api/metrics/client";

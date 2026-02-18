@@ -8,8 +8,8 @@ import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
 export const runtime = "nodejs";
 
 interface VerifyAgePayload {
-  keyId?: string;
   currentYear?: number;
+  keyId?: string;
   minAge?: number;
 }
 

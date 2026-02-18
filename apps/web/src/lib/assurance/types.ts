@@ -63,16 +63,16 @@ export interface FeatureRequirement {
  * Verification details - breakdown of what the user has completed
  */
 export interface VerificationDetails {
-  isAuthenticated: boolean;
-  hasSecuredKeys: boolean;
   documentVerified: boolean;
-  livenessVerified: boolean;
   faceMatchVerified: boolean;
-  zkProofsComplete: boolean;
   fheComplete: boolean;
   hasIncompleteProofs: boolean;
+  hasSecuredKeys: boolean;
+  isAuthenticated: boolean;
+  livenessVerified: boolean;
   needsDocumentReprocessing: boolean;
   onChainAttested: boolean;
+  zkProofsComplete: boolean;
 }
 
 /**
@@ -82,11 +82,11 @@ export interface VerificationDetails {
  * Use it for feature gating and UI rendering decisions.
  */
 export interface AssuranceState {
+  authStrength: AuthStrength;
+  details: VerificationDetails;
+  loginMethod: LoginMethod | "none";
   tier: AccountTier;
   tierName: TierName;
-  authStrength: AuthStrength;
-  loginMethod: LoginMethod | "none";
-  details: VerificationDetails;
 }
 
 /**

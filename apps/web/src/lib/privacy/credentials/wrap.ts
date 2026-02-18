@@ -12,8 +12,8 @@ import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 interface WrappedDekPayload {
   alg: "AES-GCM";
-  iv: string;
   ciphertext: string;
+  iv: string;
 }
 
 function serializeWrappedDek(payload: WrappedDekPayload): string {

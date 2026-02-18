@@ -6,31 +6,31 @@ interface WorkerRequest {
 }
 
 interface WorkerSuccess {
+  durationMs: number;
   id: number;
-  type: "result";
   storedKeys: {
     clientKey: Uint8Array | ArrayBuffer;
     publicKey: Uint8Array | ArrayBuffer;
     serverKey: Uint8Array | ArrayBuffer;
     createdAt: string;
   };
-  durationMs: number;
+  type: "result";
 }
 
 interface WorkerError {
   id: number;
-  type: "error";
   message: string;
+  type: "error";
 }
 
 export interface FheKeygenResult {
+  durationMs: number;
   storedKeys: {
     clientKey: Uint8Array;
     publicKey: Uint8Array;
     serverKey: Uint8Array;
     createdAt: string;
   };
-  durationMs: number;
 }
 
 let workerInstance: Worker | null = null;

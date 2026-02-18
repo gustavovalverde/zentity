@@ -66,9 +66,9 @@ const METADATA_CLAIMS = new Set([
 ]);
 
 interface CredentialOfferState {
-  offerUri: string;
-  offer: Record<string, unknown>;
   expiresIn: number;
+  offer: Record<string, unknown>;
+  offerUri: string;
 }
 
 export function CredentialsContent() {

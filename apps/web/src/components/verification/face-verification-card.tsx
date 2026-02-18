@@ -17,12 +17,12 @@ import { cn } from "@/lib/utils/classname";
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
 interface FaceVerificationCardProps {
-  /** Current status of face matching */
-  status: FaceMatchStatus;
   /** Result from face matching, if available */
   result: FaceMatchResult | null;
   /** Selfie image (best frame or captured image) */
   selfieImage: string | null;
+  /** Current status of face matching */
+  status: FaceMatchStatus;
 }
 
 /**

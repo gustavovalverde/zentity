@@ -66,12 +66,12 @@ import { addWrapperForSecretType } from "@/lib/privacy/secrets";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 
 interface PasskeyCredential {
-  id: string;
-  credentialID: string;
-  name?: string | null;
-  deviceType?: string | null;
   backedUp?: boolean;
   createdAt?: string | Date | null;
+  credentialID: string;
+  deviceType?: string | null;
+  id: string;
+  name?: string | null;
 }
 
 function formatDate(dateValue: string | Date | null | undefined): string {

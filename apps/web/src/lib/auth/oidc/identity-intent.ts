@@ -19,11 +19,11 @@ const IntentPayloadSchema = z.object({
 });
 
 export interface IdentityIntentPayload {
-  jti: string;
-  userId: string;
   clientId: string;
-  scopeHash: string;
   exp: number;
+  jti: string;
+  scopeHash: string;
+  userId: string;
 }
 
 function normalizeScopes(scopes: string[]): string[] {

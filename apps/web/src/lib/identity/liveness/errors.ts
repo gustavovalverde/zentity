@@ -49,19 +49,19 @@ type RecoveryType =
   | "none";
 
 export interface RecoveryAction {
-  type: RecoveryType;
   /** Number of automatic retries before showing error UI */
   autoRetryCount?: number;
   /** User-facing recovery instruction */
   message: string;
+  type: RecoveryType;
 }
 
 export interface LivenessError {
-  state: LivenessErrorState;
-  message: string;
-  recovery: RecoveryAction;
   canRetry: boolean;
   details?: unknown;
+  message: string;
+  recovery: RecoveryAction;
+  state: LivenessErrorState;
 }
 
 type ErrorConfigEntry = Omit<LivenessError, "state" | "details">;

@@ -1,10 +1,10 @@
 export interface FaceMatchResult {
-  matched: boolean;
   confidence: number;
   distance: number;
-  threshold: number;
-  processingTimeMs: number;
+  error?: string;
   idFaceExtracted: boolean;
   idFaceImage?: string;
-  error?: string;
+  matched: boolean;
+  processingTimeMs: number;
+  threshold: number;
 }

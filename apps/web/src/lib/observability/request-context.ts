@@ -14,9 +14,9 @@ type SpanAttributeValue = string | number | boolean | undefined;
 type SpanAttributes = Record<string, SpanAttributeValue>;
 
 export interface RequestContext {
-  requestId: string;
   flowId: string | null;
   flowIdSource: FlowIdSource;
+  requestId: string;
 }
 
 function readHeader(headers: Headers, key: string): string | null {

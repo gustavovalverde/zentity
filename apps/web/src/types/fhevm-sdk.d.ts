@@ -5,8 +5,8 @@
  */
 
 interface RelayerSDK {
-  initSDK: () => Promise<void>;
   createInstance: (config: unknown) => Promise<unknown>;
+  initSDK: () => Promise<void>;
   MainnetConfig: unknown;
   SepoliaConfig: unknown;
 }

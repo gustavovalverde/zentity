@@ -34,18 +34,18 @@ import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 // ============================================================================
 
 interface ChallengeState {
-  type: ChallengeType;
-  index: number;
-  total: number;
-  progress: number;
   hint: string | null;
+  index: number;
+  progress: number;
+  total: number;
+  type: ChallengeType;
 }
 
 export interface FaceBox {
+  height: number;
+  width: number;
   x: number;
   y: number;
-  width: number;
-  height: number;
 }
 
 /**
@@ -53,18 +53,18 @@ export interface FaceBox {
  * Components rendering face overlays or status UI should subscribe here.
  */
 interface LivenessStateContextValue {
-  phase: LivenessPhase;
-  faceDetected: boolean;
-  faceBox: FaceBox | null;
-  countdown: number | null;
+  audioEnabled: boolean;
   challenge: ChallengeState | null;
-  selfieImage: string | null;
+  countdown: number | null;
   error: LivenessError | null;
+  faceBox: FaceBox | null;
+  faceDetected: boolean;
   hint: string;
   isCompleted: boolean;
   isFailed: boolean;
+  phase: LivenessPhase;
   retryCount: number;
-  audioEnabled: boolean;
+  selfieImage: string | null;
   speechEnabled: boolean;
 }
 
@@ -73,11 +73,11 @@ interface LivenessStateContextValue {
  * Components with buttons/controls should subscribe here to avoid re-renders.
  */
 interface LivenessActionsContextValue {
-  start: () => void;
-  retry: () => void;
   cancel: () => void;
-  toggleAudio: () => void;
   initAudio: () => void;
+  retry: () => void;
+  start: () => void;
+  toggleAudio: () => void;
 }
 
 /**
@@ -85,8 +85,8 @@ interface LivenessActionsContextValue {
  * Components rendering video should subscribe here.
  */
 interface LivenessCameraContextValue {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
   isStreaming: boolean;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
 // Three separate contexts for optimized re-renders
@@ -160,23 +160,23 @@ function useLivenessContext(): LivenessStateContextValue &
 
 export interface LivenessProviderProps {
   children: ReactNode;
-  /** Number of challenges (default: 2) */
-  numChallenges?: number;
   /** Enable debug logging */
   debug?: boolean;
   /** Identity draft ID for dashboard flow - enables server-side result persistence */
   draftId?: string;
-  /** User ID for dashboard flow - required if draftId is provided */
-  userId?: string;
+  /** Number of challenges (default: 2) */
+  numChallenges?: number;
+  /** Called when session resets */
+  onReset?: () => void;
+  /** Called on session errors (e.g., expired session) */
+  onSessionError?: () => void;
   /** Called when verification succeeds */
   onVerified?: (result: {
     selfieImage: string;
     bestSelfieFrame: string;
   }) => void;
-  /** Called when session resets */
-  onReset?: () => void;
-  /** Called on session errors (e.g., expired session) */
-  onSessionError?: () => void;
+  /** User ID for dashboard flow - required if draftId is provided */
+  userId?: string;
 }
 
 // ============================================================================

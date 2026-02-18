@@ -23,26 +23,26 @@ import {
 export interface BbsCredentialsState {
   /** List of stored wallet credentials */
   credentials: BbsCredential[];
-  /** Credential metadata for quick display */
-  metadata: CredentialMetadata[];
-  /** Whether credentials are currently loading */
-  isLoading: boolean;
-  /** Error message if loading failed */
-  error: string | null;
-  /** Whether IndexedDB storage is available */
-  isStorageAvailable: boolean;
-  /** Refresh credentials from storage */
-  refresh: () => Promise<void>;
   /** Delete a specific credential */
   deleteCredential: (credentialId: string) => Promise<void>;
+  /** Error message if loading failed */
+  error: string | null;
+  /** Whether credentials are currently loading */
+  isLoading: boolean;
+  /** Whether IndexedDB storage is available */
+  isStorageAvailable: boolean;
+  /** Credential metadata for quick display */
+  metadata: CredentialMetadata[];
+  /** Refresh credentials from storage */
+  refresh: () => Promise<void>;
 }
 
 interface State {
   credentials: BbsCredential[];
-  metadata: CredentialMetadata[];
-  isLoading: boolean;
   error: string | null;
+  isLoading: boolean;
   isStorageAvailable: boolean;
+  metadata: CredentialMetadata[];
 }
 
 type Action =

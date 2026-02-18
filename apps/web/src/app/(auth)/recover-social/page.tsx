@@ -59,8 +59,8 @@ const OTP_SLOT_KEYS = Array.from(
 type GuardianType = "email" | "twoFactor";
 
 interface ApprovalToken {
-  guardianId: string;
   email: string;
+  guardianId: string;
   guardianType: GuardianType;
   token: string;
   tokenExpiresAt: string;

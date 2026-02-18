@@ -23,14 +23,14 @@ import {
 } from "@/lib/auth/password-policy";
 
 interface PasswordSignUpFormProps {
+  disabled?: boolean;
   email: string;
+  onBack?: () => void;
   onSuccess: (result: {
     userId: string;
     email: string;
     exportKey: Uint8Array;
   }) => void;
-  onBack?: () => void;
-  disabled?: boolean;
 }
 
 export function PasswordSignUpForm({

@@ -26,10 +26,10 @@
 export interface GenericStringStorage {
   /** Retrieve value by key. Returns null if not found. */
   getItem(key: string): string | Promise<string | null> | null;
-  /** Store value at key. */
-  setItem(key: string, value: string): void | Promise<void>;
   /** Remove value at key. */
   removeItem(key: string): void | Promise<void>;
+  /** Store value at key. */
+  setItem(key: string, value: string): void | Promise<void>;
 }
 
 /**

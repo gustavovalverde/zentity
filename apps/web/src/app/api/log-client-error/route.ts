@@ -9,9 +9,9 @@ import {
 } from "@/lib/observability/request-context";
 
 interface ClientErrorPayload {
-  name?: string;
-  message?: string;
   digest?: string;
+  message?: string;
+  name?: string;
   path?: string;
   stack?: string;
 }

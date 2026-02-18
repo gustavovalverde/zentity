@@ -10,16 +10,16 @@ export type OvalFrameStatus =
   | "error";
 
 interface OvalFrameProps {
-  /** Current status determining frame color */
-  status: OvalFrameStatus;
-  /** Challenge progress 0-100 (transitions oval color from amber to green) */
-  progress?: number;
   /** Optional class name for the container */
   className?: string;
-  /** Whether to show the darkened mask outside the oval */
-  showMask?: boolean;
   /** Whether this is a mobile device (adjusts oval sizing) */
   isMobile?: boolean;
+  /** Challenge progress 0-100 (transitions oval color from amber to green) */
+  progress?: number;
+  /** Whether to show the darkened mask outside the oval */
+  showMask?: boolean;
+  /** Current status determining frame color */
+  status: OvalFrameStatus;
 }
 
 /**

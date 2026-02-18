@@ -14,14 +14,14 @@ import { ensureAuthSession } from "@/lib/auth/anonymous-session";
 import { authClient } from "@/lib/auth/auth-client";
 
 interface WalletSignUpFormProps {
+  disabled?: boolean;
   email?: string;
+  onBack?: () => void;
   onSuccess: (result: {
     userId: string;
     address: string;
     chainId: number;
   }) => void;
-  onBack?: () => void;
-  disabled?: boolean;
 }
 
 export function WalletSignUpForm({

@@ -46,15 +46,15 @@ import {
 } from "@/lib/privacy/secrets/profile";
 
 interface ClientMeta {
-  name: string;
   icon: string | null;
+  name: string;
   uri: string | null;
 }
 
 interface IdentityIntentState {
-  token: string;
   expiresAt: number;
   scopeKey: string;
+  token: string;
 }
 
 const INTENT_EXPIRY_GRACE_MS = 2000;
@@ -136,8 +136,8 @@ type VaultErrorCategory =
 
 interface VaultError {
   category: VaultErrorCategory;
-  title: string;
   remedy: string;
+  title: string;
 }
 
 type VaultState =

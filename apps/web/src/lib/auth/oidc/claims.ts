@@ -22,18 +22,18 @@ export const PROOF_DISCLOSURE_KEYS = [
 type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
 
 interface VerificationClaims extends Record<string, unknown> {
-  verification_level: VerificationStatus["level"];
-  verified: boolean;
-  document_verified: boolean;
-  liveness_verified: boolean;
   age_proof_verified: boolean;
-  doc_validity_proof_verified: boolean;
-  nationality_proof_verified: boolean;
-  face_match_verified: boolean;
-  policy_version?: string;
-  issuer_id?: string;
-  verification_time?: string;
   attestation_expires_at?: string;
+  doc_validity_proof_verified: boolean;
+  document_verified: boolean;
+  face_match_verified: boolean;
+  issuer_id?: string;
+  liveness_verified: boolean;
+  nationality_proof_verified: boolean;
+  policy_version?: string;
+  verification_level: VerificationStatus["level"];
+  verification_time?: string;
+  verified: boolean;
 }
 
 function mapVerificationClaims(status: VerificationStatus): VerificationClaims {

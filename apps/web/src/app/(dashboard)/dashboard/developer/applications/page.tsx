@@ -25,19 +25,19 @@ interface Org {
 
 interface OwnedClient {
   clientId: string;
-  name: string | null;
-  scopes: unknown;
-  redirectUris: unknown;
-  disabled: boolean;
   createdAt: number;
+  disabled: boolean;
+  name: string | null;
+  redirectUris: unknown;
+  scopes: unknown;
 }
 
 interface UnownedClient {
   clientId: string;
+  createdAt: number;
   name: string | null;
   redirectUris: unknown;
   scopes: unknown;
-  createdAt: number;
 }
 
 function slugify(value: string): string {

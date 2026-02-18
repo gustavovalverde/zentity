@@ -8,8 +8,8 @@ import {
 type Ciphersuite = "secp256k1" | "ed25519";
 
 interface SignerInfo {
-  participant_id: number;
   hpke_pubkey: string;
+  participant_id: number;
 }
 
 interface DkgInitResponse {

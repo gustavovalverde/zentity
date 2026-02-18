@@ -119,9 +119,9 @@ export async function generateAllProofs(params: {
       | "nationality_membership"
       | "face_match"
       | "identity_binding";
+    generationTimeMs: number;
     proof: string;
     publicSignals: string[];
-    generationTimeMs: number;
   }
 
   // Collect proof configs (NOT started promises) for truly sequential storage

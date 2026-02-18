@@ -46,13 +46,13 @@ export interface WalletKekEIP712TypedData {
     chainId: number;
     verifyingContract: `0x${string}`;
   };
-  types: {
-    KeyDerivation: Array<{ name: string; type: string }>;
-  };
-  primaryType: "KeyDerivation";
   message: {
     userId: string;
     purpose: string;
+  };
+  primaryType: "KeyDerivation";
+  types: {
+    KeyDerivation: Array<{ name: string; type: string }>;
   };
 }
 

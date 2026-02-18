@@ -9,14 +9,14 @@ type ChallengeType = "smile" | "turn_left" | "turn_right";
 interface ChallengeBannerProps {
   /** The type of challenge being performed */
   challenge: ChallengeType;
-  /** Current challenge index (1-based) */
-  currentIndex?: number;
-  /** Total number of challenges */
-  totalChallenges?: number;
-  /** Optional hint text to display */
-  hint?: string;
   /** Optional class name */
   className?: string;
+  /** Current challenge index (1-based) */
+  currentIndex?: number;
+  /** Optional hint text to display */
+  hint?: string;
+  /** Total number of challenges */
+  totalChallenges?: number;
 }
 
 /**
@@ -86,10 +86,10 @@ export function ChallengeBanner({
 }
 
 interface CountdownOverlayProps {
-  /** Countdown value (3, 2, 1) */
-  count: number;
   /** Optional class name */
   className?: string;
+  /** Countdown value (3, 2, 1) */
+  count: number;
 }
 
 /**

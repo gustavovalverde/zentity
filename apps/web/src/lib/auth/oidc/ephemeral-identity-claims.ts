@@ -9,15 +9,15 @@ import { usedIntentJtis } from "@/lib/db/schema/crypto";
 
 export interface EphemeralClaimsMeta {
   clientId: string;
-  scopeHash: string;
   intentJti: string;
+  scopeHash: string;
 }
 
 interface EphemeralEntry {
   claims: Partial<IdentityFields>;
-  scopes: string[];
   expiresAt: number;
   meta: EphemeralClaimsMeta;
+  scopes: string[];
 }
 
 const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes

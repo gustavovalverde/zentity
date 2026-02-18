@@ -8,12 +8,12 @@ version = "0.1.0"
 description = "Privacy-preserving OCR service for document processing"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi==0.128.0",
+    "fastapi==0.129.0",
     "iso3166==2.1.1",
     "mrz==0.6.2",
-    "numpy==2.2.6",
-    "onnxruntime==1.23.2",
-    "opencv-python-headless==4.12.0.88",
+    "numpy==2.4.2",
+    "onnxruntime==1.24.1",
+    "opencv-python-headless==4.13.0.92",
     "opentelemetry-api==1.39.1",
     "opentelemetry-exporter-otlp==1.39.1",
     "opentelemetry-instrumentation-fastapi==0.60b1",
@@ -21,11 +21,11 @@ dependencies = [
     "opentelemetry-instrumentation-requests==0.60b1",
     "opentelemetry-sdk==1.39.1",
     "httpx==0.28.1",
-    "pillow==12.0.0",
+    "pillow==12.1.1",
     "pydantic==2.12.5",
-    "python-stdnum==2.1",
-    "rapidocr==3.4.5",
-    "uvicorn==0.40.0",
+    "python-stdnum==2.2",
+    "rapidocr==3.6.0",
+    "uvicorn==0.41.0",
 ]
 
 [tool.setuptools]
@@ -42,11 +42,11 @@ test = [
     "httpx==0.28.1",
 ]
 dev = [
-    "ruff==0.14.10",
+    "ruff==0.15.1",
     "pre-commit==4.5.1",
     # Security auditing
     "pip-audit==2.10.0",
-    "bandit==1.9.2",
+    "bandit==1.9.3",
     # Include test deps in dev
     "pytest==9.0.2",
     "pytest-asyncio==1.3.0",

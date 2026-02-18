@@ -32,93 +32,93 @@ export type LivenessPhase =
   | "failed";
 
 interface ChallengeState {
-  type: ChallengeType;
-  index: number;
-  total: number;
-  progress: number;
   hint: string | null;
+  index: number;
+  progress: number;
+  total: number;
+  type: ChallengeType;
 }
 
 interface FaceState {
-  detected: boolean;
   box: { x: number; y: number; width: number; height: number } | null;
+  detected: boolean;
 }
 
 interface LivenessState {
+  challenge: ChallengeState | null;
+  countdown: number | null;
+  face: FaceState;
+  hint?: string;
   id: string;
   phase: LivenessPhase;
-  challenge: ChallengeState | null;
-  face: FaceState;
-  countdown: number | null;
-  hint?: string;
 }
 
 interface CompletedResult {
-  verified: boolean;
-  sessionId: string;
-  selfieImage: string;
-  confidence: number;
   antispoofPassed: boolean;
+  confidence: number;
   livenessPassed: boolean;
+  selfieImage: string;
+  sessionId: string;
+  verified: boolean;
 }
 
 interface FailedResult {
+  canRetry: boolean;
   code: string;
   message: string;
-  canRetry: boolean;
 }
 
 export interface UseLivenessArgs {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  isStreaming: boolean;
-  startCamera: () => Promise<void>;
-  stopCamera: () => void;
-  /** Number of challenges (default: 2) */
-  numChallenges?: number;
   /** Enable debug logging */
   debugEnabled?: boolean;
   /** Identity draft ID for dashboard flow - enables server-side result persistence */
   draftId?: string;
-  /** User ID for dashboard flow - required if draftId is provided */
-  userId?: string;
-  onVerified: (args: { selfieImage: string; bestSelfieFrame: string }) => void;
+  isStreaming: boolean;
+  /** Number of challenges (default: 2) */
+  numChallenges?: number;
   onReset: () => void;
   onSessionError?: () => void;
+  onVerified: (args: { selfieImage: string; bestSelfieFrame: string }) => void;
+  startCamera: () => Promise<void>;
+  stopCamera: () => void;
+  /** User ID for dashboard flow - required if draftId is provided */
+  userId?: string;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
 export interface UseLivenessResult {
-  /** Current phase */
-  phase: LivenessPhase;
-  /** Current challenge info */
-  challenge: ChallengeState | null;
-  /** Face detection state */
-  face: FaceState;
-  /** Countdown value (3, 2, 1) */
-  countdown: number | null;
-  /** Hint message from server */
-  hint: string;
-  /** Session ID */
-  sessionId: string | null;
-  /** Whether socket is connected */
-  isConnected: boolean;
   /** Start the liveness session */
   beginCamera: () => Promise<void>;
-  /** Signal that client finished countdown */
-  signalCountdownDone: () => void;
-  /** Signal that client finished challenge instruction */
-  signalChallengeReady: () => void;
-  /** Retry after failure */
-  retryChallenge: () => void;
   /** Cancel and reset to initial state (without restarting) */
   cancelSession: () => void;
-  /** Final selfie image after success */
-  selfieImage: string | null;
-  /** Error message if failed */
-  errorMessage: string | null;
+  /** Current challenge info */
+  challenge: ChallengeState | null;
+  /** Countdown value (3, 2, 1) */
+  countdown: number | null;
   /** Typed error object with recovery info */
   error: LivenessError | null;
+  /** Error message if failed */
+  errorMessage: string | null;
+  /** Face detection state */
+  face: FaceState;
+  /** Hint message from server */
+  hint: string;
+  /** Whether socket is connected */
+  isConnected: boolean;
   /** Whether a soft retry is in progress */
   isRetrying: boolean;
+  /** Current phase */
+  phase: LivenessPhase;
+  /** Retry after failure */
+  retryChallenge: () => void;
+  /** Final selfie image after success */
+  selfieImage: string | null;
+  /** Session ID */
+  sessionId: string | null;
+  /** Signal that client finished challenge instruction */
+  signalChallengeReady: () => void;
+  /** Signal that client finished countdown */
+  signalCountdownDone: () => void;
 }
 
 // Frame capture interval (ms) - balance between responsiveness and server load
@@ -135,8 +135,8 @@ const JPEG_QUALITY = 0.7;
 interface CanvasPool {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
-  width: number;
   height: number;
+  width: number;
 }
 
 function getOrCreateCanvas(

@@ -11,9 +11,9 @@ import { registerFheKey } from "@/lib/privacy/fhe/service";
 export const runtime = "nodejs";
 
 interface RegisterFheKeyPayload {
-  serverKey: Uint8Array;
   publicKey: Uint8Array;
   registrationToken?: string;
+  serverKey: Uint8Array;
 }
 
 function isNonEmptyBytes(value: unknown): value is Uint8Array {

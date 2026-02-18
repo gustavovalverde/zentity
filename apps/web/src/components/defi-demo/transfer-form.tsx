@@ -47,9 +47,9 @@ import { getUserFriendlyError } from "@/lib/utils/error-messages";
 import { parseTokenAmount } from "@/lib/utils/token";
 
 interface TransferFormProps {
-  networkId: string;
-  contractAddress: `0x${string}`;
   accessGranted?: boolean;
+  contractAddress: `0x${string}`;
+  networkId: string;
 }
 
 export function TransferForm({

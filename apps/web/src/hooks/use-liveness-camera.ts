@@ -39,48 +39,48 @@ function detectIsMobile(): boolean {
 }
 
 interface UseLivenessCameraOptions {
-  facingMode?: "user" | "environment";
-  /** Ideal video width */
-  idealWidth?: number;
-  /** Ideal video height */
-  idealHeight?: number;
-  /** Target brightness for correction (0-255) */
-  brightnessTarget?: number;
-  /** Skip brightness correction */
-  skipBrightnessCorrection?: boolean;
   /** Block virtual cameras (OBS, ManyCam, etc.) for security. Default: true */
   blockVirtualCameras?: boolean;
-  /** Validate frame rate meets minimum. Default: true */
-  validateFrameRateOption?: boolean;
+  /** Target brightness for correction (0-255) */
+  brightnessTarget?: number;
+  facingMode?: "user" | "environment";
+  /** Ideal video height */
+  idealHeight?: number;
+  /** Ideal video width */
+  idealWidth?: number;
   /** Minimum required frame rate. Default: 15 */
   minFrameRate?: number;
   /** Remember selected camera across sessions. Default: true */
   rememberDevice?: boolean;
+  /** Skip brightness correction */
+  skipBrightnessCorrection?: boolean;
+  /** Validate frame rate meets minimum. Default: true */
+  validateFrameRateOption?: boolean;
 }
 
 interface UseLivenessCameraResult {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  isStreaming: boolean;
-  permissionStatus: PermissionState;
-  startCamera: () => Promise<void>;
-  stopCamera: () => void;
-  captureFrame: () => string | null;
-  /** Capture frame optimized for streaming (smaller size, lower quality) */
-  captureStreamFrame: () => string | null;
-  /** Whether device is mobile (for UI decisions like fullscreen) */
-  isMobile: boolean;
   /** Available camera devices (physical cameras only if blockVirtualCameras is true) */
   availableDevices: MediaDeviceInfo[];
-  /** Currently selected device ID */
-  selectedDeviceId: string | null;
-  /** Select a specific camera device */
-  selectDevice: (deviceId: string | null) => void;
-  /** Enumerate available camera devices */
-  enumerateDevices: () => Promise<MediaDeviceInfo[]>;
   /** Camera-related error state, if any */
   cameraError: LivenessErrorState | null;
   /** Human-readable camera error message */
   cameraErrorMessage: string | null;
+  captureFrame: () => string | null;
+  /** Capture frame optimized for streaming (smaller size, lower quality) */
+  captureStreamFrame: () => string | null;
+  /** Enumerate available camera devices */
+  enumerateDevices: () => Promise<MediaDeviceInfo[]>;
+  /** Whether device is mobile (for UI decisions like fullscreen) */
+  isMobile: boolean;
+  isStreaming: boolean;
+  permissionStatus: PermissionState;
+  /** Select a specific camera device */
+  selectDevice: (deviceId: string | null) => void;
+  /** Currently selected device ID */
+  selectedDeviceId: string | null;
+  startCamera: () => Promise<void>;
+  stopCamera: () => void;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
 /**

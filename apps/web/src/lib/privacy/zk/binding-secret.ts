@@ -34,9 +34,9 @@ const BINDING_HKDF_INFO = {
  */
 interface PasskeyBindingParams {
   authMode: typeof AuthMode.PASSKEY;
+  documentHash: string;
   prfOutput: Uint8Array;
   userId: string;
-  documentHash: string;
 }
 
 /**
@@ -44,9 +44,9 @@ interface PasskeyBindingParams {
  */
 interface OpaqueBindingParams {
   authMode: typeof AuthMode.OPAQUE;
+  documentHash: string;
   exportKey: Uint8Array;
   userId: string;
-  documentHash: string;
 }
 
 /**
@@ -54,9 +54,9 @@ interface OpaqueBindingParams {
  */
 interface WalletBindingParams {
   authMode: typeof AuthMode.WALLET;
+  documentHash: string;
   signatureBytes: Uint8Array;
   userId: string;
-  documentHash: string;
 }
 
 /**
@@ -68,8 +68,8 @@ interface WalletBbsBindingParams {
   authMode: typeof AuthMode.WALLET_BBS;
   /** Hash of the BBS+ presentation proof (32 bytes) */
   bbsProofHash: Uint8Array;
-  userId: string;
   documentHash: string;
+  userId: string;
 }
 
 export type BindingParams =
@@ -83,8 +83,8 @@ export type BindingParams =
  */
 export interface BindingSecretResult {
   bindingSecret: Uint8Array;
-  userIdHash: Uint8Array;
   documentHashBytes: Uint8Array;
+  userIdHash: Uint8Array;
 }
 
 /**

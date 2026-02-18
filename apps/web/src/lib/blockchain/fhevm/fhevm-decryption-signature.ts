@@ -148,8 +148,9 @@ function isSignatureValid(
     const recovered = ethers.verifyTypedData(
       eip712.domain,
       {
-        UserDecryptRequestVerification:
-          eip712.types.UserDecryptRequestVerification,
+        UserDecryptRequestVerification: [
+          ...eip712.types.UserDecryptRequestVerification,
+        ],
       },
       eip712.message,
       signature
@@ -227,8 +228,9 @@ class FhevmDecryptionSignatureStorageKey {
     const hash = ethers.TypedDataEncoder.hash(
       emptyEIP712.domain,
       {
-        UserDecryptRequestVerification:
-          emptyEIP712.types.UserDecryptRequestVerification,
+        UserDecryptRequestVerification: [
+          ...emptyEIP712.types.UserDecryptRequestVerification,
+        ],
       },
       emptyEIP712.message
     );
@@ -576,8 +578,9 @@ export class FhevmDecryptionSignature {
       let signature = await signer.signTypedData(
         eip712.domain,
         {
-          UserDecryptRequestVerification:
-            eip712.types.UserDecryptRequestVerification,
+          UserDecryptRequestVerification: [
+            ...eip712.types.UserDecryptRequestVerification,
+          ],
         },
         eip712.message
       );

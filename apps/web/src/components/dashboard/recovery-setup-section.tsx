@@ -28,18 +28,18 @@ const SECRET_LABELS: Record<string, string> = {
 
 // Type for guardian from API
 interface Guardian {
-  id: string;
   email: string | null;
   guardianType: string;
+  id: string;
   participantIndex: number;
   status: string;
 }
 
 // Type for wrapper secret from API
 interface WrapperSecret {
+  hasWrapper: boolean;
   secretId: string;
   secretType: string;
-  hasWrapper: boolean;
 }
 
 /**

@@ -115,8 +115,9 @@ describe("FhevmDecryptionSignature", () => {
     const recovered = verifyTypedData(
       signatureData.eip712.domain,
       {
-        UserDecryptRequestVerification:
-          signatureData.eip712.types.UserDecryptRequestVerification,
+        UserDecryptRequestVerification: [
+          ...signatureData.eip712.types.UserDecryptRequestVerification,
+        ],
       },
       signatureData.eip712.message,
       signatureData.signature

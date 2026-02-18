@@ -17,19 +17,19 @@ import { db } from "@/lib/db/connection";
 import { zkChallenges } from "@/lib/db/schema/crypto";
 
 interface ChallengeBinding {
-  userId?: string;
-  msgSender?: string;
   audience?: string;
+  msgSender?: string;
+  userId?: string;
 }
 
 interface Challenge {
-  nonce: string; // 128-bit hex string
-  circuitType: ProofType;
-  userId?: string; // Optional: bind to specific user
-  msgSender?: string; // Optional: bind to signer/did context
   audience?: string; // Optional: bind to relying-party audience/domain
+  circuitType: ProofType;
   createdAt: number;
   expiresAt: number;
+  msgSender?: string; // Optional: bind to signer/did context
+  nonce: string; // 128-bit hex string
+  userId?: string; // Optional: bind to specific user
 }
 
 // 15 minute TTL for challenges (covers slower client-side proving on low-end devices)

@@ -35,9 +35,9 @@ import { completeSignOut } from "@/lib/auth/session-manager";
 import { isWeb3Enabled } from "@/lib/feature-flags";
 
 interface NavItem {
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
   url: string;
-  icon: React.ComponentType<{ className?: string }>;
 }
 
 interface AppSidebarProps {

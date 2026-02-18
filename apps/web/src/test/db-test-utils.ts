@@ -41,11 +41,11 @@ import {
 } from "@/lib/db/schema/oidc4vci";
 
 export interface CreateUserInput {
-  id?: string;
+  createdAt?: string;
   email?: string;
   emailVerified?: boolean;
+  id?: string;
   image?: string | null;
-  createdAt?: string;
   updatedAt?: string;
 }
 

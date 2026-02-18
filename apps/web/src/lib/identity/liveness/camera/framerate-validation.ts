@@ -9,14 +9,14 @@
 export const MIN_FRAMERATE = 15;
 
 export interface FrameRateValidation {
-  /** Whether the frame rate meets minimum requirements */
-  isValid: boolean;
   /** Actual frame rate reported by the camera */
   actualFrameRate: number;
-  /** Minimum frame rate required */
-  minRequired: number;
   /** Raw capabilities from the track, if available */
   capabilities?: MediaTrackCapabilities;
+  /** Whether the frame rate meets minimum requirements */
+  isValid: boolean;
+  /** Minimum frame rate required */
+  minRequired: number;
 }
 
 /**

@@ -13,23 +13,23 @@ const registrationIdentifier = (token: string) =>
   `fhe-enrollment:registration:${token}`;
 
 export interface RegistrationBlobMeta {
+  blobHash: string;
+  blobRef: string;
+  blobSize: number;
   secretId: string;
   secretType: string;
-  blobRef: string;
-  blobHash: string;
-  blobSize: number;
 }
 
 interface FheEnrollmentContextValue {
-  userId: string;
+  createdAt: string;
   email: string | null;
   registrationToken: string;
-  createdAt: string;
+  userId: string;
 }
 
 interface RegistrationTokenValue {
-  contextToken: string;
   blob?: RegistrationBlobMeta;
+  contextToken: string;
   createdAt: string;
 }
 

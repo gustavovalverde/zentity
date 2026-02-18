@@ -20,10 +20,10 @@ import { cn } from "@/lib/utils/classname";
 export type CredentialType = "passkey" | "password" | "wallet";
 
 interface CredentialChoiceProps {
+  activeType?: CredentialType | null;
+  disabled?: boolean;
   onSelect: (type: CredentialType) => void;
   prfSupported: boolean;
-  disabled?: boolean;
-  activeType?: CredentialType | null;
   processingType?: CredentialType | null;
 }
 

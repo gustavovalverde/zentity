@@ -24,24 +24,24 @@ import {
 } from "../schema/crypto";
 
 export interface ZkProofInsert {
-  id: string;
-  userId: string;
+  bbVersion?: string | null;
+  circuitHash?: string | null;
+  circuitType?: string | null;
   documentId?: string | null;
-  proofType: string;
-  proofHash: string;
-  publicInputs?: string | null;
+  generationTimeMs?: number | null;
+  id: string;
+  isOver18?: boolean | null;
+  noirVersion?: string | null;
   nonce?: string | null;
   policyVersion?: string | null;
-  verified?: boolean;
+  proofHash: string;
   proofPayload?: string | null;
-  isOver18?: boolean | null;
-  generationTimeMs?: number | null;
-  circuitType?: string | null;
-  noirVersion?: string | null;
-  circuitHash?: string | null;
+  proofType: string;
+  publicInputs?: string | null;
+  userId: string;
   verificationKeyHash?: string | null;
   verificationKeyPoseidonHash?: string | null;
-  bbVersion?: string | null;
+  verified?: boolean;
 }
 
 export type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {

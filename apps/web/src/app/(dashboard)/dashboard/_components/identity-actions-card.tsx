@@ -23,8 +23,8 @@ import { cn } from "@/lib/utils/classname";
 
 interface IdentityActionsCardProps {
   assuranceState: AssuranceState | null;
-  web3Enabled: boolean;
   hasPasskeys: boolean;
+  web3Enabled: boolean;
 }
 
 /**
@@ -152,15 +152,15 @@ function ActionButton({
 }
 
 interface ActionCardProps {
-  title: string;
+  actionHref: string;
+  actionLabel: string;
+  badge?: string;
   description: string;
   icon: React.ElementType;
-  actionLabel: string;
-  actionHref: string;
   locked: boolean;
-  requiredTier: number;
-  badge?: string;
   passkeyAction?: "auth" | "enroll";
+  requiredTier: number;
+  title: string;
 }
 
 function ActionCard({

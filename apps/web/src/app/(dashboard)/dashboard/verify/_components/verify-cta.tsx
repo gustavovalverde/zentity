@@ -13,13 +13,13 @@ const FheEnrollmentDialog = dynamic(
 );
 
 interface VerifyCtaProps {
-  nextStepHref: string;
-  nextStepTitle: string;
+  cookies: string | null;
   hasEnrollment: boolean;
   hasPasskeys: boolean;
   hasPassword: boolean;
+  nextStepHref: string;
+  nextStepTitle: string;
   wallet: { address: string; chainId: number } | null;
-  cookies: string | null;
 }
 
 /**

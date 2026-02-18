@@ -16,10 +16,10 @@ import {
 
 interface SpeechOptions {
   lang?: SupportedLanguage;
-  rate?: number; // 0.1 to 10, default 0.95
   pitch?: number; // 0 to 2, default 1
-  volume?: number; // 0 to 1, default 1
   priority?: "low" | "high"; // high = cancel current speech
+  rate?: number; // 0.1 to 10, default 0.95
+  volume?: number; // 0 to 1, default 1
 }
 
 class LivenessSpeechEngine {

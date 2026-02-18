@@ -21,32 +21,32 @@ export type NetworkFeature = "encrypted" | "basic";
 type ContractName = "IdentityRegistry" | "ComplianceRules" | "CompliantERC20";
 
 export interface NetworkConfig {
-  /** Unique identifier (e.g., "fhevm_sepolia", "hardhat") */
-  id: string;
-  /** Display name for UI */
-  name: string;
   /** EVM chain ID */
   chainId: number;
-  /** RPC endpoint URL */
-  rpcUrl: string;
-  /** Registrar private key for this network (server-side only) */
-  registrarPrivateKey?: string;
-  /** Provider type - determines which provider class to use */
-  type: NetworkType;
-  /** Provider implementation ID for FHEVM networks (e.g., "zama", "mock") */
-  providerId?: string;
-  /** Network capabilities */
-  features: NetworkFeature[];
   /** Deployed contract addresses */
   contracts: {
     identityRegistry: string;
     complianceRules?: string;
     compliantERC20?: string;
   };
-  /** Block explorer URL (for tx links) */
-  explorer?: string;
   /** Whether this network is currently enabled */
   enabled: boolean;
+  /** Block explorer URL (for tx links) */
+  explorer?: string;
+  /** Network capabilities */
+  features: NetworkFeature[];
+  /** Unique identifier (e.g., "fhevm_sepolia", "hardhat") */
+  id: string;
+  /** Display name for UI */
+  name: string;
+  /** Provider implementation ID for FHEVM networks (e.g., "zama", "mock") */
+  providerId?: string;
+  /** Registrar private key for this network (server-side only) */
+  registrarPrivateKey?: string;
+  /** RPC endpoint URL */
+  rpcUrl: string;
+  /** Provider type - determines which provider class to use */
+  type: NetworkType;
 }
 
 /**
