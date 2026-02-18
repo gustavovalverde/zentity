@@ -6,7 +6,7 @@
 
 Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, **audit metadata (hashes + signatures)**, and **client‑held keys (Passkeys + OPAQUE + Wallet)** so banks, exchanges, and Web3 protocols can verify compliance **without receiving raw PII**. These cryptographic pillars are used together throughout the system.
 
-- **ZK proofs**: age (day-precise), document validity, nationality membership, address jurisdiction, face match threshold, identity binding (replay protection).
+- **ZK proofs**: age (day-precise), document validity, nationality membership, face match threshold, identity binding (replay protection).
 - **FHE encryption**: DOB days (days since 1900-01-01) for server-side age threshold computation, liveness score for server-side threshold checks.
 - **Commitments + hashes**: document hash, name commitment, DOB commitment, address commitment, proof hashes.
 - **Screening attestations**: PEP/sanctions screening results stored as signed claims (boolean + provider + timestamp).
@@ -22,7 +22,7 @@ This architecture supports:
 
 - **US (FinCEN CIP Rule)**: Full DOB precision, address collection, name verification
 - **EU (AMLD5/AMLD6)**: 5-year retention, PEP/sanctions screening, re-verification scheduling
-- **FATF Travel Rule**: Address and jurisdiction proofs without exposing exact addresses
+- **FATF Travel Rule**: Address collection + eligibility disclosures with minimal data release
 
 ---
 
@@ -78,7 +78,6 @@ This architecture supports:
 | Age >= threshold | ✅ | ◐ | Proof hash | — | Boolean eligibility; no DOB revealed. Uses `dobDays` for day-level precision. |
 | Document validity | ✅ | — | Proof hash | — | Binary eligibility; no expiry disclosure. |
 | Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only (EU, US, etc.). |
-| Address in jurisdiction | ✅ | — | Merkle root | — | **NEW**: Proves residence in allowed jurisdiction. |
 | Face match >= threshold | ✅ | — | Proof hash | — | Pass/fail only. |
 | Liveness score | — | ✅ | Signed claim | — | Score stays private; server attests. |
 | Compliance level | — | ✅ | Server-derived | — | Policy gating input. |

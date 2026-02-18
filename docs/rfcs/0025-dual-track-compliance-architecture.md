@@ -2659,4 +2659,4 @@ These are examples of “Track A friendly” proofs where we can avoid retaining
 | Nationality membership | `nationality_membership` | Prove nationality is in an allowlist |
 | Document validity | `doc_validity` | Prove document is not expired |
 | Face match | `face_match` | Prove selfie matches document photo above threshold |
-| Jurisdiction checks | `address_jurisdiction` | Prove country/region membership without full address |
+| Jurisdiction checks (planned) | `address_jurisdiction` (not active) | Historical/proposed circuit for country/region membership without full address |

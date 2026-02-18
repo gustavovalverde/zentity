@@ -34,7 +34,6 @@ Zentity generates proofs **client‑side** so private inputs stay in the browser
 | `age_verification` | Prove age >= threshold | DOB (days since 1900) + document hash | Current days, min age days, nonce, claim hash |
 | `doc_validity` | Prove document not expired | Expiry date + document hash | Current date, nonce, claim hash |
 | `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
-| `address_jurisdiction` | Prove address in jurisdiction | Address country code + Merkle path | Merkle root, nonce, claim hash |
 | `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
 | `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, binding commitment, is_bound |
 
@@ -118,6 +117,7 @@ See [Tamper Model](tamper-model.md) for integrity rules and [Attestation & Priva
 - **Nonce binding** prevents proof replay.
 - **Claim binding** ties proofs to server‑signed measurements (OCR, liveness, face match).
 - **Range checks** avoid wrap‑around and invalid inputs (dates, scores, thresholds).
+- **Date input sanity checks** enforce plausible ranges (`current_days`, `min_age_days`, `current_date`) at both circuit and server validation layers.
 
 ## BN254 Field Constraints
 

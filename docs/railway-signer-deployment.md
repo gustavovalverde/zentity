@@ -98,6 +98,8 @@ Each service requires a persistent volume for the ReDB database:
 | signer-2 | `/var/lib/zentity/signer` | Encrypted key share |
 | signer-3 | `/var/lib/zentity/signer` | Encrypted key share |
 
+**Important:** signer volumes must be durable across restarts. Signers persist nonce fingerprints to prevent FROST nonce reuse; ephemeral or rolled-back storage can invalidate safety guarantees.
+
 Create volumes via Railway dashboard:
 
 1. Go to service settings
@@ -162,7 +164,9 @@ curl http://signer-3.railway.internal:5101/health
 
 3. **Key Isolation**: Each signer holds exactly one encrypted key share. The coordinator never sees plaintext shares.
 
-4. **mTLS (Future)**: Production deployments should enable mTLS between coordinator and signers using:
+4. **Nonce Reuse Safety**: Do not restore signer DB snapshots to an older point-in-time while active signing sessions may still be replayed. Nonce fingerprint state must be monotonic.
+
+5. **mTLS (Future)**: Production deployments should enable mTLS between coordinator and signers using:
    - `SIGNER_MTLS_CA_PATH`
    - `SIGNER_MTLS_CERT_PATH`
    - `SIGNER_MTLS_KEY_PATH`

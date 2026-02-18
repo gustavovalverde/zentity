@@ -64,6 +64,12 @@ These must be verified by the backend or by on-chain cryptographic checks.
 - Client creates ZK proofs over **signed claim hashes** (e.g., Poseidon2(value, document_hash)).
 - Server verifies signature before accepting any proof. No raw PII is stored in claim payloads.
 
+### Liveness-to-Face-Match Binding
+
+- When liveness completes, backend stores a SHA-256 hash of the verified selfie frame on the verification draft.
+- `faceMatch` requires a `draftId`, verifies draft ownership, and checks the submitted selfie hash against the stored liveness hash before running face detection.
+- This blocks selfie substitution attacks where a client reuses a valid liveness session with a different selfie.
+
 ### FHE Input Validation
 
 - Web3: rely on FHEVM input proofs and on-chain InputVerifier.
@@ -90,11 +96,12 @@ These must be verified by the backend or by on-chain cryptographic checks.
 ## Tamper-Safe Verification Decision Flow
 
 1. Backend performs OCR, liveness, and face match.
-2. Backend signs derived attributes and thresholds.
-3. Client generates ZK proofs using those values.
-4. Backend verifies proofs and signatures.
-5. Backend updates evidence pack (policy_hash + proof_set_hash).
-6. Backend issues attestation.
+2. Backend binds face match input to the verified liveness selfie hash.
+3. Backend signs derived attributes and thresholds.
+4. Client generates ZK proofs using those values.
+5. Backend verifies proofs and signatures.
+6. Backend updates evidence pack (policy_hash + proof_set_hash).
+7. Backend issues attestation.
 
 ## Rationale
 
