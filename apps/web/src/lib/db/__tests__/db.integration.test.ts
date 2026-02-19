@@ -43,6 +43,7 @@ describe("Database Module", () => {
       expect(status.checks.docValidityProof).toBe(false);
       expect(status.checks.nationalityProof).toBe(false);
       expect(status.checks.faceMatchProof).toBe(false);
+      expect(status.checks.identityBindingProof).toBe(false);
     });
   });
 
@@ -166,6 +167,7 @@ describe("Document selection", () => {
       "doc_validity",
       "nationality_membership",
       "face_match",
+      "identity_binding",
     ]) {
       await insertZkProofRecord({
         id: crypto.randomUUID(),

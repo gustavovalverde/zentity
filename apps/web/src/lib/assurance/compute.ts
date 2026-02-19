@@ -17,16 +17,13 @@ import type {
 
 /**
  * Required ZK proof types for full verification (Tier 2)
- *
- * Note: identity_binding is NOT required for Tier 2 but IS required for
- * on-chain attestation (prevents replay attacks). It's validated separately
- * during attestation flow.
  */
 export const REQUIRED_ZK_PROOF_TYPES = [
   "age_verification",
   "doc_validity",
   "nationality_membership",
   "face_match",
+  "identity_binding",
 ] as const;
 
 /**

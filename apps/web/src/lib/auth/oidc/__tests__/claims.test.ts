@@ -1,33 +1,45 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db/queries/identity", () => ({
-  getVerificationStatus: vi.fn().mockResolvedValue({
-    verified: true,
-    level: "full",
-    checks: {
-      document: true,
-      liveness: true,
-      ageProof: true,
-      docValidityProof: true,
-      nationalityProof: true,
-      faceMatchProof: true,
-      identityBindingProof: true,
-    },
-  }),
-  getIdentityBundleByUserId: vi.fn().mockResolvedValue({
-    policyVersion: "policy-1",
-    issuerId: "issuer-1",
-    attestationExpiresAt: "2030-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  }),
-  getLatestIdentityDocumentByUserId: vi.fn().mockResolvedValue({
-    verifiedAt: "2026-01-02T00:00:00.000Z",
-  }),
+  getVerificationStatus: vi.fn(),
+  getIdentityBundleByUserId: vi.fn(),
+  getLatestIdentityDocumentByUserId: vi.fn(),
 }));
+
+import {
+  getIdentityBundleByUserId,
+  getLatestIdentityDocumentByUserId,
+  getVerificationStatus,
+} from "@/lib/db/queries/identity";
 
 import { buildOidcVerifiedClaims, buildProofClaims } from "../claims";
 
 describe("oidc claim mapping", () => {
+  beforeEach(() => {
+    vi.mocked(getVerificationStatus).mockResolvedValue({
+      verified: true,
+      level: "full",
+      checks: {
+        document: true,
+        liveness: true,
+        ageProof: true,
+        docValidityProof: true,
+        nationalityProof: true,
+        faceMatchProof: true,
+        identityBindingProof: true,
+      },
+    });
+    vi.mocked(getIdentityBundleByUserId).mockResolvedValue({
+      policyVersion: "policy-1",
+      issuerId: "issuer-1",
+      attestationExpiresAt: "2030-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as Awaited<ReturnType<typeof getIdentityBundleByUserId>>);
+    vi.mocked(getLatestIdentityDocumentByUserId).mockResolvedValue({
+      verifiedAt: "2026-01-02T00:00:00.000Z",
+    } as Awaited<ReturnType<typeof getLatestIdentityDocumentByUserId>>);
+  });
+
   it("builds derived proof claims from verification data", async () => {
     const claims = await buildProofClaims("user-1");
 
@@ -67,7 +79,6 @@ describe("oidc claim mapping", () => {
   });
 
   it("returns null verified_claims when no assurance", async () => {
-    const { getVerificationStatus } = await import("@/lib/db/queries/identity");
     vi.mocked(getVerificationStatus).mockResolvedValueOnce({
       verified: false,
       level: "none",

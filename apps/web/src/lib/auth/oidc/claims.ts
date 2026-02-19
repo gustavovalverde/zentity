@@ -86,7 +86,7 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
     getLatestIdentityDocumentByUserId(userId),
   ]);
 
-  if (status.level === "none") {
+  if (!status.verified) {
     return null;
   }
 

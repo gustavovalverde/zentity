@@ -112,28 +112,22 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
       : Promise.resolve([]),
   ]);
 
-  // Core verification checks required for Tier 3
+  // Core verification checks required for full verification.
   const coreChecks = {
     document: selectedDocument?.status === "verified",
     liveness: signedClaimTypes.includes("liveness_score"),
     ageProof: zkProofTypes.includes("age_verification"),
     docValidityProof: zkProofTypes.includes("doc_validity"),
     nationalityProof: zkProofTypes.includes("nationality_membership"),
-    // Accept either ZK proof (Tier 3) or signed claim (Tier 2) for face match
+    // Accept either ZK proof or signed claim for face match.
     faceMatchProof:
       zkProofTypes.includes("face_match") ||
       signedClaimTypes.includes("face_match_score"),
-  };
-
-  // identity_binding is NOT required for Tier 3 verification but IS required
-  // for on-chain attestation. It's included in the response for UI display
-  // but excluded from the verification calculation.
-  const checks = {
-    ...coreChecks,
     identityBindingProof: zkProofTypes.includes("identity_binding"),
   };
 
-  // Only count core checks for verification status (excludes identity binding)
+  const checks = coreChecks;
+
   const passedChecks = Object.values(coreChecks).filter(Boolean).length;
   const totalChecks = Object.values(coreChecks).length;
 
@@ -269,6 +263,7 @@ export const getSelectedIdentityDocumentByUserId = cache(
       "doc_validity",
       "nationality_membership",
       "face_match",
+      "identity_binding",
     ];
     const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
 

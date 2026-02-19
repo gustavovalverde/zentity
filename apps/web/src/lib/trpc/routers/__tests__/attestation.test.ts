@@ -192,6 +192,7 @@ describe("attestation router", () => {
         docValidityProof: true,
         nationalityProof: true,
         faceMatchProof: true,
+        identityBindingProof: true,
       },
     });
     mockGetSelectedIdentityDocumentByUserId.mockReturnValue({

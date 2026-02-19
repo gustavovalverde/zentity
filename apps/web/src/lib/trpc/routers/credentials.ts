@@ -70,7 +70,7 @@ export const credentialsRouter = router({
     .mutation(async ({ ctx }) => {
       // Verify user has completed identity verification
       const status = await getVerificationStatus(ctx.userId);
-      if (!status.verified && status.level === "none") {
+      if (!status.verified) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message:

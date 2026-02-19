@@ -181,6 +181,7 @@ describe("assurance data layer", () => {
         "doc_validity",
         "nationality_membership",
         "face_match",
+        "identity_binding",
       ];
       for (const proofType of proofTypes) {
         await insertZkProofRecord({
@@ -317,6 +318,7 @@ describe("assurance data layer", () => {
         "doc_validity",
         "nationality_membership",
         "face_match",
+        "identity_binding",
       ]) {
         await insertZkProofRecord({
           id: crypto.randomUUID(),

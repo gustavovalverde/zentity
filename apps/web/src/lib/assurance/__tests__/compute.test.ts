@@ -225,7 +225,7 @@ describe("areZkProofsComplete", () => {
 
   it("returns true with extra proofs", () => {
     expect(
-      areZkProofsComplete([...REQUIRED_ZK_PROOF_TYPES, "identity_binding"])
+      areZkProofsComplete([...REQUIRED_ZK_PROOF_TYPES, "experimental_proof"])
     ).toBe(true);
   });
 });
