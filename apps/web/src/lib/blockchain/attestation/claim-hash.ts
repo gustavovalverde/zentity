@@ -3,6 +3,10 @@ import "server-only";
 import { BN254_FR_MODULUS } from "@aztec/bb.js";
 
 import { getBarretenberg } from "@/lib/privacy/primitives/barretenberg";
+import {
+  HASH_TO_FIELD_INFO,
+  hashToFieldHexFromHex,
+} from "@/lib/privacy/zk/hash-to-field";
 
 type Fr = Uint8Array;
 
@@ -23,13 +27,13 @@ function frToHex(fr: Fr): string {
   return `0x${hex}`;
 }
 
-export function getDocumentHashField(documentHashHex: string): string {
-  const normalized = documentHashHex.startsWith("0x")
-    ? documentHashHex.slice(2)
-    : documentHashHex;
-  const hashBigInt = BigInt(`0x${normalized}`);
-  const reduced = hashBigInt % BN254_FR_MODULUS;
-  return frToHex(bigIntToFr(reduced));
+export async function getDocumentHashField(
+  documentHashHex: string
+): Promise<string> {
+  return await hashToFieldHexFromHex(
+    documentHashHex,
+    HASH_TO_FIELD_INFO.DOCUMENT_HASH
+  );
 }
 
 export async function computeClaimHash(args: {

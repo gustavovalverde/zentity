@@ -67,8 +67,8 @@ export const eip712AuthClient = () => ({
           );
           if (signature1 !== signature2) {
             throw new Error(
-              "wallet_nondeterministic: Wallet does not produce deterministic signatures. " +
-                "Sign up with a wallet that supports RFC 6979."
+              "wallet_nondeterministic: Wallet signatures are not stable for this message. " +
+                "Use passkey/password sign-up, or switch wallets and set up backup recovery."
             );
           }
 

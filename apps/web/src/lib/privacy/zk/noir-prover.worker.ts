@@ -31,6 +31,12 @@ import type {
 import { getCountryWeightedSum } from "@zkpassport/utils";
 
 import { COUNTRY_GROUPS, TREE_DEPTH } from "@/lib/privacy/country";
+import {
+  HASH_TO_FIELD_INFO,
+  hashToFieldHexFromHex,
+  hashToFieldHexFromString,
+  normalizeFieldHex,
+} from "@/lib/privacy/zk/hash-to-field";
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
@@ -411,24 +417,6 @@ async function poseidon2Hash(values: bigint[]): Promise<bigint> {
   return BigInt(`0x${hex}`);
 }
 
-/**
- * Reduce a hex string to BN254 field element.
- * Values exceeding field modulus are reduced via modular arithmetic.
- */
-async function reduceToField(hexValue: string): Promise<string> {
-  const { BN254_FR_MODULUS } = await getModules();
-  const bigIntValue = BigInt(hexValue);
-  const reduced = bigIntValue % BN254_FR_MODULUS;
-  return `0x${reduced.toString(16).padStart(64, "0")}`;
-}
-
-async function hashStringToField(value: string): Promise<string> {
-  const encoded = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  const digestHex = `0x${Buffer.from(new Uint8Array(digest)).toString("hex")}`;
-  return await reduceToField(digestHex);
-}
-
 function getCircuitArtifact(circuit: CircuitName) {
   switch (circuit) {
     case "age_verification":
@@ -782,7 +770,7 @@ async function generateIdentityBindingProof(
   const noir = await getNoirInstance("identity_binding");
   logWorker("proof", "Executing identity binding witness");
 
-  // Reduce all field values to BN254 field (values may exceed modulus)
+  // Hash high-entropy values into the BN254 field and normalize field inputs.
   const [
     bindingSecretReduced,
     userIdHashReduced,
@@ -790,11 +778,23 @@ async function generateIdentityBindingProof(
     msgSenderHashField,
     audienceHashField,
   ] = await Promise.all([
-    reduceToField(payload.bindingSecretField),
-    reduceToField(payload.userIdHashField),
-    reduceToField(payload.documentHashField),
-    hashStringToField(payload.msgSender),
-    hashStringToField(payload.audience),
+    hashToFieldHexFromHex(
+      payload.bindingSecretField,
+      HASH_TO_FIELD_INFO.IDENTITY_BINDING_SECRET
+    ),
+    hashToFieldHexFromHex(
+      payload.userIdHashField,
+      HASH_TO_FIELD_INFO.IDENTITY_USER_ID_HASH
+    ),
+    Promise.resolve(normalizeFieldHex(payload.documentHashField)),
+    hashToFieldHexFromString(
+      payload.msgSender,
+      HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+    ),
+    hashToFieldHexFromString(
+      payload.audience,
+      HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE
+    ),
   ]);
 
   logWorker("proof", "Reduced field values", {

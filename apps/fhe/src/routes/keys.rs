@@ -12,6 +12,10 @@ use crate::crypto;
 use crate::error::FheError;
 use crate::transport;
 
+const MIN_KEY_BYTES: usize = 16;
+const MAX_PUBLIC_KEY_BYTES: usize = 16 * 1024 * 1024; // 16 MB
+const MAX_SERVER_KEY_BYTES: usize = 48 * 1024 * 1024; // 48 MB
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterKeyRequest {
@@ -29,6 +33,30 @@ pub struct RegisterKeyResponse {
     key_id: String,
 }
 
+fn validate_key_sizes(public_key_bytes: usize, server_key_bytes: usize) -> Result<(), FheError> {
+    if public_key_bytes < MIN_KEY_BYTES || server_key_bytes < MIN_KEY_BYTES {
+        return Err(FheError::InvalidInput(
+            "FHE key payload is too small".to_string(),
+        ));
+    }
+
+    if public_key_bytes > MAX_PUBLIC_KEY_BYTES {
+        return Err(FheError::InvalidInput(format!(
+            "Public key exceeds {} bytes",
+            MAX_PUBLIC_KEY_BYTES
+        )));
+    }
+
+    if server_key_bytes > MAX_SERVER_KEY_BYTES {
+        return Err(FheError::InvalidInput(format!(
+            "Server key exceeds {} bytes",
+            MAX_SERVER_KEY_BYTES
+        )));
+    }
+
+    Ok(())
+}
+
 #[tracing::instrument(
     skip(headers, body),
     fields(request_bytes = body.len(), decode_ms = tracing::field::Empty)
@@ -41,6 +69,7 @@ pub async fn register_key(headers: HeaderMap, body: Bytes) -> Result<Response, F
     } = payload;
     let server_key_bytes = server_key.len();
     let public_key_bytes = public_key.len();
+    validate_key_sizes(public_key_bytes, server_key_bytes)?;
 
     let (key_id, decode_ms) = run_cpu_bound(move || {
         let decode_start = Instant::now();

@@ -326,7 +326,7 @@ Circuits available:
 - `face_match` — Prove face similarity above threshold
 - `identity_binding` — Bind proofs to user identity for replay protection (works with passkey, OPAQUE, and wallet auth)
 
-**Critical: BN254 field constraints** — All circuit inputs must fit the BN254 scalar field (~254 bits). Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256) are 256 bits and **must be reduced** via `value % BN254_FR_MODULUS` before use. See [ZK Architecture](docs/zk-architecture.md#bn254-field-constraints).
+**Critical: BN254 field constraints** — All circuit inputs must fit the BN254 scalar field (~254 bits). Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256) must use HKDF-based hash-to-field (512-bit expansion, then modulo BN254) before use. See [ZK Architecture](docs/zk-architecture.md#bn254-field-constraints).
 
 ## Environment Variables
 

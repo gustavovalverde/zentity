@@ -175,7 +175,7 @@ const VAULT_ERRORS: Record<
   wallet_nondeterministic: {
     title: "This wallet does not produce deterministic signatures.",
     remedy:
-      "Use a passkey/password unlock method, or switch to a wallet that supports RFC 6979.",
+      "Use a passkey/password unlock method, or switch wallets and set up backup recovery.",
   },
   unknown: {
     title: "Unable to unlock your identity vault.",
@@ -330,8 +330,8 @@ function WalletVaultUnlockButton({
 
       if (signature1 !== signature2) {
         throw new Error(
-          "wallet_nondeterministic: Wallet does not produce deterministic signatures. " +
-            "Encryption requires a wallet that implements RFC 6979."
+          "wallet_nondeterministic: Wallet signatures are not stable for this message. " +
+            "Use passkey/password unlock, or switch wallets and set up backup recovery."
         );
       }
 

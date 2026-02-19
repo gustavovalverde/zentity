@@ -141,7 +141,9 @@ OPAQUE is an **augmented PAKE** that keeps raw passwords off the server:
 
 Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
 
-- The user signs an EIP-712 typed data message on sign-up and sign-in to derive a KEK (via HKDF) that wraps the DEK, mirroring the passkey PRF flow. At sign-up, the signature is verified for determinism (signed twice, compared) to reject non-RFC-6979 wallets.
+- The user signs an EIP-712 typed data message on sign-up and sign-in to derive a KEK (via HKDF) that wraps the DEK, mirroring the passkey PRF flow.
+- At sign-up, we perform a best-effort stability check (sign twice, compare) to reject obviously unstable wallet signers.
+- This check is not a long-term guarantee across wallet firmware/app changes or device migrations. Wallet users should immediately add a backup passkey and/or guardian recovery wrapper.
 - Sign-in also requires a **SIWE (EIP-191)** signature for session authentication (nonce-based replay protection).
 - The private key never leaves the wallet; the signature stays in the browser.
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.
@@ -198,7 +200,7 @@ Every circuit accepts a public nonce that is issued by the server and consumed o
 
 **Identity binding** is mandatory for all proof sets. The `identity_binding` circuit computes a Poseidon2 commitment over auth-mode-specific secrets (passkey PRF, OPAQUE export key, or wallet signature), hashed user ID, document hash, and caller/audience context hashes (`msg_sender_hash`, `audience_hash`). This ensures proofs cannot be replayed across users, documents, or relying-party audiences, regardless of which authentication method was used. If the user's credential material cache has expired, a re-authentication dialog blocks proof generation until material is re-obtained. See [ZK Architecture — Identity Binding](zk-architecture.md#identity-binding-circuit) for details.
 
-**Field constraints**: All circuit inputs must fit within the BN254 scalar field (~254 bits). Cryptographic outputs (PRF, OPAQUE export keys, SHA-256 hashes) are 256 bits and must be reduced modulo `BN254_FR_MODULUS` before use. See [ZK Architecture § BN254 Field Constraints](zk-architecture.md#bn254-field-constraints).
+**Field constraints**: All circuit inputs must fit within the BN254 scalar field (~254 bits). Cryptographic outputs (PRF, OPAQUE export keys, SHA-256 hashes) are mapped with HKDF-based hash-to-field (512-bit expansion, then modulo BN254) before use. See [ZK Architecture § BN254 Field Constraints](zk-architecture.md#bn254-field-constraints).
 
 See [ZK Architecture](zk-architecture.md) for circuit flows and verifier isolation, and [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md) for privacy-preserving wallet binding enhancements.
 

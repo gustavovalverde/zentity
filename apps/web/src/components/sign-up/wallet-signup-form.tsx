@@ -7,7 +7,7 @@ import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChainId, useSignTypedData } from "wagmi";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ensureAuthSession } from "@/lib/auth/anonymous-session";
@@ -123,6 +123,15 @@ export function WalletSignUpForm({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <Alert variant="warning">
+        <AlertTitle>Set up a backup after wallet sign-up</AlertTitle>
+        <AlertDescription>
+          Wallet signatures can change across wallet apps or firmware updates.
+          Add a backup passkey or guardian recovery right after account
+          creation.
+        </AlertDescription>
+      </Alert>
 
       {isReady ? (
         <div className="space-y-4">

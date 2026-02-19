@@ -194,7 +194,9 @@ OPAQUE sign-up mirrors the passkey flow but uses a password-derived export key:
 
 Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
-- User signs an EIP-712 typed data message on sign-up (wrap new keys) and sign-in (unwrap existing keys). At sign-up, the signature is verified for determinism (signed twice, compared) to reject non-RFC-6979 wallets before key wrapping.
+- User signs an EIP-712 typed data message on sign-up (wrap new keys) and sign-in (unwrap existing keys).
+- At sign-up, we run a best-effort stability check (sign twice, compare) to reject clearly unstable signers before key wrapping.
+- This check does not guarantee future wallet behavior across firmware/app changes or device migration, so wallet users should add a backup passkey and/or guardian recovery wrapper.
 - Signature bytes are processed through **HKDF-SHA256** to derive the KEK.
 - The private key never leaves the wallet; the signature stays in the browser.
 - Server stores the wallet address for account association.

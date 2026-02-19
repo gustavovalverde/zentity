@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
@@ -35,6 +33,10 @@ import { withSpan } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyAttestationClaim } from "@/lib/privacy/zk/claims";
+import {
+  HASH_TO_FIELD_INFO,
+  hashToFieldHexFromString,
+} from "@/lib/privacy/zk/hash-to-field";
 import { getTodayAsInt } from "@/lib/privacy/zk/noir-prover";
 import {
   getBbJsVersion,
@@ -42,7 +44,6 @@ import {
   verifyNoirProof,
 } from "@/lib/privacy/zk/noir-verifier";
 import {
-  BN254_FR_MODULUS,
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
@@ -130,9 +131,13 @@ async function requireActiveProofSession(args: {
   return proofSession;
 }
 
-function hashContextToField(value: string): bigint {
-  const digestHex = crypto.createHash("sha256").update(value).digest("hex");
-  return BigInt(`0x${digestHex}`) % BN254_FR_MODULUS;
+async function hashContextToField(
+  value: string,
+  info:
+    | typeof HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+    | typeof HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE
+): Promise<bigint> {
+  return BigInt(await hashToFieldHexFromString(value, info));
 }
 
 function parseU32PublicInput(value: string, fieldName: string): number {
@@ -234,8 +239,13 @@ async function verifyProofInternal(args: {
     const providedAudienceHash = parseFieldToBigInt(
       args.publicInputs[audienceIndex]
     );
-    const expectedMsgSenderHash = hashContextToField(args.msgSender);
-    const expectedAudienceHash = hashContextToField(args.audience);
+    const [expectedMsgSenderHash, expectedAudienceHash] = await Promise.all([
+      hashContextToField(
+        args.msgSender,
+        HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+      ),
+      hashContextToField(args.audience, HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE),
+    ]);
 
     if (providedMsgSenderHash !== expectedMsgSenderHash) {
       throw new TRPCError({

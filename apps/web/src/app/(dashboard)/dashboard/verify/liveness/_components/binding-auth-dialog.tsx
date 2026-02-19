@@ -100,8 +100,8 @@ function WalletSignButton({
 
       if (signature1 !== signature2) {
         throw new Error(
-          "Wallet does not produce deterministic signatures. " +
-            "Encryption key wrapping requires a wallet that implements RFC 6979."
+          "Wallet signatures are not stable for this message. " +
+            "Use passkey/password setup or switch wallets, then add backup recovery."
         );
       }
 

@@ -178,8 +178,8 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           if (signature !== signature2) {
             throw new APIError("BAD_REQUEST", {
               message:
-                "Wallet does not produce deterministic signatures. " +
-                "Sign up with a wallet that supports RFC 6979.",
+                "Wallet signatures are not stable for this message. " +
+                "Use passkey/password sign-up, or switch wallets and set up backup recovery.",
             });
           }
 

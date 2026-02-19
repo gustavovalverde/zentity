@@ -140,29 +140,40 @@ BN254_FR_MODULUS = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f00
 | SHA-256 hash | 32 bytes (256 bits) | ⚠️ Can exceed modulus |
 | Poseidon2 output | ~254 bits | ✓ Always valid |
 
-### Required: Field Reduction
+### Required: Hash-to-Field Mapping
 
-Any 256-bit value from cryptographic operations **must** be reduced before use in circuits:
+Direct `value % BN254_FR_MODULUS` on 256-bit cryptographic outputs introduces
+small statistical bias. For cryptographic inputs (SHA-256 hashes, PRF outputs,
+wallet signatures), we now use **HKDF-based hash-to-field**:
 
-```typescript
-// WRONG: Fr constructor throws if value >= modulus
-const fr = new Fr(rawValue); // Error!
-
-// CORRECT: Reduce first, then construct
-const reduced = rawValue % BN254_FR_MODULUS;
-const fr = new Fr(reduced); // Safe
-```
-
-The worker uses `reduceToField()` to handle this:
+1. HKDF-Extract+Expand (SHA-256) with domain-separated `info`
+2. Expand to 512 bits
+3. Reduce modulo `BN254_FR_MODULUS`
 
 ```typescript
-async function reduceToField(hexValue: string): Promise<string> {
-  const { BN254_FR_MODULUS } = await getModules();
-  const bigIntValue = BigInt(hexValue);
-  const reduced = bigIntValue % BN254_FR_MODULUS;
+async function hashToField(hexValue: string, info: string): Promise<string> {
+  const input = hexToBytes(hexValue);
+  const key = await crypto.subtle.importKey("raw", input, "HKDF", false, [
+    "deriveBits",
+  ]);
+  const wideBits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(32), // zero salt
+      info: new TextEncoder().encode(info),
+    },
+    key,
+    512
+  );
+  const wide = bytesToBigInt(new Uint8Array(wideBits));
+  const reduced = wide % BN254_FR_MODULUS;
   return `0x${reduced.toString(16).padStart(64, "0")}`;
 }
 ```
+
+For values that are already field elements (e.g., previously normalized
+`documentHashField`), we only canonicalize formatting.
 
 ### Where This Matters
 

@@ -61,9 +61,9 @@ export function SignUpForm() {
     };
   }, []);
 
-  const finalizeSignUp = () => {
+  const finalizeSignUp = (nextPath = "/dashboard") => {
     setIsRedirecting(true);
-    redirectTo("/dashboard");
+    redirectTo(nextPath);
   };
 
   const completeAccountCreation = async (params?: {
@@ -178,7 +178,7 @@ export function SignUpForm() {
       await completeAccountCreation({
         wallet: { address: result.address, chainId: result.chainId },
       });
-      finalizeSignUp();
+      finalizeSignUp("/dashboard/settings?tab=recovery&walletRisk=1");
     } catch (err) {
       setError(
         err instanceof Error

@@ -161,6 +161,19 @@ If the cache expires or the user closes the browser:
 - Wallet users: Can re-request EIP-712 signature
 - OPAQUE users: **Must re-authenticate with password**
 
+### Wallet Signature Stability Caveat
+
+Wallet-derived KEKs are operationally fragile compared to passkeys/passwords:
+
+- ECDSA permits multiple valid signatures for the same message.
+- Sign-up includes a best-effort stability check (sign twice, compare), but this does not guarantee future wallet firmware/app behavior.
+- If a wallet later emits different signature bytes for the same payload, the derived KEK changes and wallet-only wrappers become unrecoverable.
+
+For this reason, wallet-auth users should set up at least one independent recovery path immediately:
+
+- Add a backup passkey, and/or
+- Enable guardian recovery wrappers.
+
 This is why OPAQUE users see "Please sign in again" errors when their session cache expires but their HTTP session is still valid.
 
 ## Can FHE Enrollment Be Deferred?

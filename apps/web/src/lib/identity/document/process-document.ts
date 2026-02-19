@@ -283,7 +283,7 @@ export async function processDocumentWithOcr(
   let documentHashField: string | null = null;
   if (documentHash) {
     try {
-      documentHashField = getDocumentHashField(documentHash);
+      documentHashField = await getDocumentHashField(documentHash);
     } catch (error) {
       logger.error(
         { error: String(error), documentHash },

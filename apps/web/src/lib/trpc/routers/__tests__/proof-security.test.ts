@@ -1,12 +1,13 @@
 import type { Session } from "@/lib/auth/auth";
 
-import { createHash } from "node:crypto";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
-import { BN254_FR_MODULUS } from "@/lib/privacy/zk/proof-types";
+import {
+  HASH_TO_FIELD_INFO,
+  hashToFieldHexFromString,
+} from "@/lib/privacy/zk/hash-to-field";
 
 const mockGetSelectedIdentityDocumentByUserId = vi.fn();
 const mockVerifyNoirProof = vi.fn();
@@ -79,14 +80,16 @@ const alternateUserSession = {
 } as unknown as Session;
 
 const nonce = "123";
-function contextField(value: string): string {
-  const digest = createHash("sha256").update(value).digest("hex");
-  return (BigInt(`0x${digest}`) % BN254_FR_MODULUS).toString();
+async function contextField(
+  value: string,
+  info:
+    | typeof HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+    | typeof HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE
+): Promise<string> {
+  const mapped = await hashToFieldHexFromString(value, info);
+  return BigInt(mapped).toString();
 }
-const msgSenderHash = contextField("user-123");
-const audienceHash = contextField("http://localhost");
 const browserAudience = "http://localhost:3000";
-const browserAudienceHash = contextField(browserAudience);
 const bindingCommitment = "2";
 const isBound = "1";
 const proofSessionId = "11111111-1111-4111-8111-111111111111";
@@ -96,28 +99,20 @@ const expectedNormalizedNonce = (() => {
   return (raw % limit).toString(16).padStart(32, "0");
 })();
 
-const validProofArgs = {
-  proof: "cHJvdG9wcm90b2RvY3Rvcg==",
-  publicInputs: [
-    nonce,
-    msgSenderHash,
-    audienceHash,
-    bindingCommitment,
-    isBound,
-  ],
-  circuitType: "identity_binding" as const,
-  proofSessionId,
+let msgSenderHash = "";
+let audienceHash = "";
+let browserAudienceHash = "";
+let validProofArgs: {
+  circuitType: "identity_binding";
+  proof: string;
+  proofSessionId: string;
+  publicInputs: string[];
 };
-
-const validProofArgsBrowserAudience = {
-  ...validProofArgs,
-  publicInputs: [
-    nonce,
-    msgSenderHash,
-    browserAudienceHash,
-    bindingCommitment,
-    isBound,
-  ],
+let validProofArgsBrowserAudience: {
+  circuitType: "identity_binding";
+  proof: string;
+  proofSessionId: string;
+  publicInputs: string[];
 };
 
 async function createCaller(
@@ -138,7 +133,37 @@ async function createCaller(
 }
 
 describe("proof router replay and context binding", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    [msgSenderHash, audienceHash, browserAudienceHash] = await Promise.all([
+      contextField("user-123", HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER),
+      contextField("http://localhost", HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE),
+      contextField(browserAudience, HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE),
+    ]);
+
+    validProofArgs = {
+      proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+      publicInputs: [
+        nonce,
+        msgSenderHash,
+        audienceHash,
+        bindingCommitment,
+        isBound,
+      ],
+      circuitType: "identity_binding",
+      proofSessionId,
+    };
+
+    validProofArgsBrowserAudience = {
+      ...validProofArgs,
+      publicInputs: [
+        nonce,
+        msgSenderHash,
+        browserAudienceHash,
+        bindingCommitment,
+        isBound,
+      ],
+    };
+
     vi.clearAllMocks();
     mockGetSelectedIdentityDocumentByUserId.mockResolvedValue({
       id: "doc-1",
@@ -254,6 +279,10 @@ describe("proof router replay and context binding", () => {
       expiresAt: Date.now() + 60_000,
       closedAt: null,
     });
+    const attackerMsgSenderHash = await contextField(
+      "user-456",
+      HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+    );
 
     const attacker = await createCaller(alternateUserSession);
     await expect(
@@ -261,7 +290,7 @@ describe("proof router replay and context binding", () => {
         ...validProofArgs,
         publicInputs: [
           nonce,
-          contextField("user-456"),
+          attackerMsgSenderHash,
           audienceHash,
           bindingCommitment,
           isBound,
@@ -300,13 +329,17 @@ describe("proof router replay and context binding", () => {
   });
 
   it("rejects proofs when identity binding msg_sender hash mismatches caller", async () => {
+    const mismatchedMsgSenderHash = await contextField(
+      "user-999",
+      HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+    );
     const caller = await createCaller(authedUserSession);
     await expect(
       caller.verifyProof({
         ...validProofArgs,
         publicInputs: [
           nonce,
-          contextField("user-999"),
+          mismatchedMsgSenderHash,
           audienceHash,
           bindingCommitment,
           isBound,

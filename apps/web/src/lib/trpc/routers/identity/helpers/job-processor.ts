@@ -172,7 +172,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         let documentHashField = draft.documentHashField ?? null;
         if (!documentHashField && documentHash) {
           try {
-            documentHashField = getDocumentHashField(documentHash);
+            documentHashField = await getDocumentHashField(documentHash);
             await updateIdentityDraft(draft.id, { documentHashField });
           } catch (error) {
             logger.error(

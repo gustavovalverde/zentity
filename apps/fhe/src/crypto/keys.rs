@@ -6,10 +6,12 @@
 use once_cell::sync::OnceCell;
 use redb::{Database, ReadableDatabase, TableDefinition};
 use std::collections::HashMap;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::Instant;
-use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, ServerKey};
+use tfhe::prelude::*;
+use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, FheUint8, ServerKey};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -48,6 +50,41 @@ pub fn decode_compressed_server_key(
     server_key_bytes: &[u8],
 ) -> Result<CompressedServerKey, FheError> {
     super::decode_tfhe_binary(server_key_bytes)
+}
+
+/// Validate uploaded key material before persistence.
+///
+/// This performs a lightweight key sanity check:
+/// 1. Decompress server key
+/// 2. Set thread-local server key
+/// 3. Encrypt a small sentinel value with the public key
+/// 4. Serialize the encrypted value
+///
+/// Panics from malformed keys are caught and mapped to InvalidInput.
+pub fn validate_registered_keys(
+    public_key: &CompressedPublicKey,
+    server_key: &CompressedServerKey,
+) -> Result<(), FheError> {
+    const SENTINEL: u8 = 7;
+
+    let public_key = public_key.clone();
+    let server_key = server_key.clone();
+
+    let validation = catch_unwind(AssertUnwindSafe(move || {
+        let decompressed = server_key.decompress();
+        set_server_key(decompressed);
+
+        let encrypted = FheUint8::try_encrypt(SENTINEL, &public_key)
+            .map_err(|error| FheError::InvalidInput(format!("Invalid public key: {error}")))?;
+        super::encode_tfhe_binary(&encrypted).map(|_| ())
+    }));
+
+    match validation {
+        Ok(result) => result,
+        Err(_) => Err(FheError::InvalidInput(
+            "Invalid FHE key material: validation panicked".to_string(),
+        )),
+    }
 }
 
 impl KeyStore {
@@ -264,6 +301,9 @@ impl KeyStore {
         public_key: CompressedPublicKey,
         server_key: CompressedServerKey,
     ) -> Result<String, FheError> {
+        tracing::info_span!("fhe.validate_key_material")
+            .in_scope(|| validate_registered_keys(&public_key, &server_key))?;
+
         let key_id = Uuid::new_v4().to_string();
 
         let persist_ms = self
@@ -298,24 +338,42 @@ impl KeyStore {
 
     /// Get a server key by ID (decompressed).
     pub fn get_server_key(&self, key_id: &str) -> Option<ServerKey> {
-        if let Some(key) = self
-            .server_keys
-            .read()
-            .expect("RwLock poisoned - concurrent panic occurred")
-            .get(key_id)
-            .cloned()
-        {
+        let cached_server_key = {
+            let guard = match self.server_keys.read() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    warn!(
+                        key_id = %key_id,
+                        error = %error,
+                        "Server key cache lock poisoned; continuing with inner state"
+                    );
+                    error.into_inner()
+                }
+            };
+            guard.get(key_id).cloned()
+        };
+
+        if let Some(key) = cached_server_key {
             return Some(key);
         }
 
         let compressed = {
-            if let Some(key) = self
-                .server_keys_compressed
-                .read()
-                .expect("RwLock poisoned - concurrent panic occurred")
-                .get(key_id)
-                .cloned()
-            {
+            let compressed_cached = {
+                let guard = match self.server_keys_compressed.read() {
+                    Ok(guard) => guard,
+                    Err(error) => {
+                        warn!(
+                            key_id = %key_id,
+                            error = %error,
+                            "Compressed server key cache lock poisoned; continuing with inner state"
+                        );
+                        error.into_inner()
+                    }
+                };
+                guard.get(key_id).cloned()
+            };
+
+            if let Some(key) = compressed_cached {
                 Some(key)
             } else {
                 self.load_compressed_server_key_from_db(key_id)
@@ -323,38 +381,83 @@ impl KeyStore {
         };
 
         let compressed = compressed?;
-        let server_key = tracing::info_span!("fhe.decompress_server_key", key_id = %key_id)
-            .in_scope(|| compressed.decompress());
+        let server_key_result = tracing::info_span!("fhe.decompress_server_key", key_id = %key_id)
+            .in_scope(|| catch_unwind(AssertUnwindSafe(|| compressed.decompress())));
+        let server_key = match server_key_result {
+            Ok(key) => key,
+            Err(_) => {
+                warn!(key_id = %key_id, "Server key decompression panicked");
+                return None;
+            }
+        };
 
-        self.server_keys
-            .write()
-            .expect("RwLock poisoned - concurrent panic occurred")
-            .insert(key_id.to_string(), server_key.clone());
-        self.server_keys_compressed
-            .write()
-            .expect("RwLock poisoned - concurrent panic occurred")
-            .insert(key_id.to_string(), compressed);
+        {
+            let mut guard = match self.server_keys.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    warn!(
+                        key_id = %key_id,
+                        error = %error,
+                        "Server key cache write lock poisoned; continuing with inner state"
+                    );
+                    error.into_inner()
+                }
+            };
+            guard.insert(key_id.to_string(), server_key.clone());
+        }
+        {
+            let mut guard = match self.server_keys_compressed.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    warn!(
+                        key_id = %key_id,
+                        error = %error,
+                        "Compressed server key cache write lock poisoned; continuing with inner state"
+                    );
+                    error.into_inner()
+                }
+            };
+            guard.insert(key_id.to_string(), compressed);
+        }
 
         Some(server_key)
     }
 
     /// Get a public key by ID
     pub fn get_public_key(&self, key_id: &str) -> Option<CompressedPublicKey> {
-        if let Some(key) = self
-            .public_keys
-            .read()
-            .expect("RwLock poisoned - concurrent panic occurred")
-            .get(key_id)
-            .cloned()
-        {
+        let cached_public_key = {
+            let guard = match self.public_keys.read() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    warn!(
+                        key_id = %key_id,
+                        error = %error,
+                        "Public key cache lock poisoned; continuing with inner state"
+                    );
+                    error.into_inner()
+                }
+            };
+            guard.get(key_id).cloned()
+        };
+        if let Some(key) = cached_public_key {
             return Some(key);
         }
 
         let key = self.load_public_key_from_db(key_id)?;
-        self.public_keys
-            .write()
-            .expect("RwLock poisoned - concurrent panic occurred")
-            .insert(key_id.to_string(), key.clone());
+        {
+            let mut guard = match self.public_keys.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    warn!(
+                        key_id = %key_id,
+                        error = %error,
+                        "Public key cache write lock poisoned; continuing with inner state"
+                    );
+                    error.into_inner()
+                }
+            };
+            guard.insert(key_id.to_string(), key.clone());
+        }
         Some(key)
     }
 }

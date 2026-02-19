@@ -112,21 +112,28 @@ pub async fn encrypt_batch(headers: HeaderMap, body: Bytes) -> Result<Response, 
                             .transpose()
                     });
 
-                    // Join all threads and collect results
-                    (
-                        dob_days_handle.join().expect("dob_days thread panicked"),
-                        country_code_handle
-                            .join()
-                            .expect("country_code thread panicked"),
-                        compliance_level_handle
-                            .join()
-                            .expect("compliance_level thread panicked"),
-                        liveness_score_handle
-                            .join()
-                            .expect("liveness_score thread panicked"),
-                    )
+                    // Join all threads and convert panics into typed errors.
+                    let dob_days_result = dob_days_handle
+                        .join()
+                        .map_err(|_| FheError::Internal("dob_days thread panicked".to_string()))?;
+                    let country_code_result = country_code_handle.join().map_err(|_| {
+                        FheError::Internal("country_code thread panicked".to_string())
+                    })?;
+                    let compliance_level_result = compliance_level_handle.join().map_err(|_| {
+                        FheError::Internal("compliance_level thread panicked".to_string())
+                    })?;
+                    let liveness_score_result = liveness_score_handle.join().map_err(|_| {
+                        FheError::Internal("liveness_score thread panicked".to_string())
+                    })?;
+
+                    Ok::<_, FheError>((
+                        dob_days_result,
+                        country_code_result,
+                        compliance_level_result,
+                        liveness_score_result,
+                    ))
                 })
-            });
+            })?;
 
         // Propagate any encryption errors
         let dob_days_ciphertext = dob_days_result?.map(ByteBuf::from);

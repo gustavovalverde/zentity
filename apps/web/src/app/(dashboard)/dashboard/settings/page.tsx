@@ -1,5 +1,11 @@
 import { eq } from "drizzle-orm";
-import { KeyRound, LifeBuoy, Settings, User } from "lucide-react";
+import {
+  KeyRound,
+  LifeBuoy,
+  Settings,
+  TriangleAlert,
+  User,
+} from "lucide-react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -15,14 +21,31 @@ import {
 import { TwoFactorCard } from "@/components/dashboard/two-factor-card";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { WalletBindingSection } from "@/components/dashboard/wallet-binding-section";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { db } from "@/lib/db/connection";
 import { userHasPassword } from "@/lib/db/queries/auth";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
 
-export default async function SettingsPage() {
+type SettingsTab = "security" | "recovery" | "profile" | "account";
+
+function parseDefaultTab(tab?: string): SettingsTab {
+  if (tab === "recovery" || tab === "profile" || tab === "account") {
+    return tab;
+  }
+  return "security";
+}
+
+export default async function SettingsPage({
+  searchParams,
+}: Readonly<{
+  searchParams: Promise<{ tab?: string; walletRisk?: string }>;
+}>) {
   const session = await getCachedSession(await headers());
+  const params = await searchParams;
+  const defaultTab = parseDefaultTab(params.tab);
+  const showWalletRiskNotice = params.walletRisk === "1";
 
   if (!session) {
     redirect("/sign-in");
@@ -58,7 +81,18 @@ export default async function SettingsPage() {
         </p>
       </div>
 
-      <Tabs className="w-full" defaultValue="security">
+      {showWalletRiskNotice && (
+        <Alert variant="warning">
+          <TriangleAlert />
+          <AlertTitle>Wallet access can be fragile</AlertTitle>
+          <AlertDescription>
+            Wallet signatures may change across firmware or wallet app changes.
+            Add a backup passkey or enable guardian recovery now.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Tabs className="w-full" defaultValue={defaultTab}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger className="gap-1.5" value="security">
             <KeyRound className="h-4 w-4" />
