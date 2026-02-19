@@ -402,9 +402,7 @@ export function LivenessVerifyClient({
     }
   }, [livenessCompleted, draftId, generateProofsWithBinding]);
 
-  const isVerified =
-    livenessCompleted &&
-    (faceMatchStatus === "matched" || faceMatchStatus === "no_match");
+  const isReadyToComplete = livenessCompleted && faceMatchStatus === "matched";
 
   return (
     <div className="space-y-6">
@@ -451,8 +449,21 @@ export function LivenessVerifyClient({
         </Alert>
       )}
 
+      {(faceMatchStatus === "no_match" || faceMatchStatus === "error") && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {faceMatchStatus === "no_match"
+              ? "Face match is required to complete verification. Retry liveness with better lighting and keep your face centered in frame."
+              : "Face verification could not be completed. Retry liveness to continue."}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex justify-end gap-3">
-        <Button disabled={!isVerified || isSubmitting} onClick={handleContinue}>
+        <Button
+          disabled={!isReadyToComplete || isSubmitting}
+          onClick={handleContinue}
+        >
           {isSubmitting ? <Spinner className="mr-2 size-4" /> : null}
           Complete Verification
         </Button>

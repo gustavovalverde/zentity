@@ -173,17 +173,17 @@ export const FaceVerificationCard = memo(function FaceVerificationCard({
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
           <AlertDescription className="ml-2">
-            The selfie does not match the ID document photo. You may proceed,
-            but additional verification may be required.
+            The selfie does not match the ID document photo. Retry liveness with
+            better lighting and keep your face centered.
           </AlertDescription>
         </Alert>
       ) : null}
 
       {status === "error" ? (
-        <Alert>
+        <Alert variant="destructive">
           <AlertDescription>
-            Face verification could not be completed. You may proceed, but
-            please ensure your ID and selfie are clear.
+            Face verification could not be completed. Retry liveness to continue
+            verification.
           </AlertDescription>
         </Alert>
       ) : null}
