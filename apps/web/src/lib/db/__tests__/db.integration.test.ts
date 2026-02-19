@@ -5,11 +5,13 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
   getAttestationEvidenceByUserAndDocument,
   upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import {
+  createZkProofSession,
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   getZkProofsByUserId,
@@ -73,12 +75,29 @@ describe("ZK proofs and encrypted attributes", () => {
 
   it("persists zk proof records", async () => {
     const userId = await createTestUser();
+    const documentId = crypto.randomUUID();
+    const proofSessionId = crypto.randomUUID();
+    const now = Date.now();
+
+    await createZkProofSession({
+      id: proofSessionId,
+      userId,
+      documentId,
+      msgSender: userId,
+      audience: "http://localhost:3000",
+      policyVersion: POLICY_VERSION,
+      createdAt: now,
+      expiresAt: now + 60_000,
+    });
 
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
+      documentId,
+      proofSessionId,
       proofType: "age_verification",
       proofHash: "proof-hash",
+      policyVersion: POLICY_VERSION,
       verified: true,
     });
 
@@ -162,6 +181,19 @@ describe("Document selection", () => {
       });
     }
 
+    const proofSessionId = crypto.randomUUID();
+    const now = Date.now();
+    await createZkProofSession({
+      id: proofSessionId,
+      userId,
+      documentId: docFull,
+      msgSender: userId,
+      audience: "http://localhost:3000",
+      policyVersion: POLICY_VERSION,
+      createdAt: now,
+      expiresAt: now + 60_000,
+    });
+
     for (const proofType of [
       "age_verification",
       "doc_validity",
@@ -173,8 +205,10 @@ describe("Document selection", () => {
         id: crypto.randomUUID(),
         userId,
         documentId: docFull,
+        proofSessionId,
         proofType,
         proofHash: `hash-${proofType}`,
+        policyVersion: POLICY_VERSION,
         verified: true,
       });
     }

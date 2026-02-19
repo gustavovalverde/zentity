@@ -22,6 +22,7 @@ import { bbsRouter } from "./bbs";
 import {
   challengeStatusProcedure,
   createChallengeProcedure,
+  createProofSessionProcedure,
 } from "./challenge";
 import { healthProcedure } from "./health";
 import {
@@ -35,6 +36,7 @@ import {
 export const cryptoRouter = router({
   health: healthProcedure,
   verifyProof: verifyProofProcedure,
+  createProofSession: createProofSessionProcedure,
   createChallenge: createChallengeProcedure,
   challengeStatus: challengeStatusProcedure,
   getUserProof: getUserProofProcedure,

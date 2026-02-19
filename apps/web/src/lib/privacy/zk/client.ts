@@ -76,6 +76,13 @@ interface ChallengeResponse {
   nonce: string;
 }
 
+interface ProofSessionResponse {
+  documentId: string;
+  expiresAt: string;
+  policyVersion: string;
+  proofSessionId: string;
+}
+
 /**
  * In-flight challenge request tracking with TTL cleanup.
  */
@@ -87,7 +94,7 @@ interface TimestampedEntry<T> {
 }
 
 const challengeInFlight = new Map<
-  ClientProofType,
+  string,
   TimestampedEntry<Promise<ChallengeResponse>>
 >();
 
@@ -345,17 +352,22 @@ export async function getSignedClaims(
  * @param circuitType - The type of circuit the nonce is for
  */
 export async function getProofChallenge(
-  circuitType: ClientProofType
+  circuitType: ClientProofType,
+  proofSessionId: string
 ): Promise<ChallengeResponse> {
   cleanupStaleChallenges();
 
-  const inFlight = challengeInFlight.get(circuitType);
+  const challengeKey = `${proofSessionId}:${circuitType}`;
+  const inFlight = challengeInFlight.get(challengeKey);
   if (inFlight) {
     return await inFlight.promise;
   }
   try {
-    const promise = trpc.crypto.createChallenge.mutate({ circuitType });
-    challengeInFlight.set(circuitType, { promise, createdAt: Date.now() });
+    const promise = trpc.crypto.createChallenge.mutate({
+      circuitType,
+      proofSessionId,
+    });
+    challengeInFlight.set(challengeKey, { promise, createdAt: Date.now() });
     const response = await promise;
     return response;
   } catch (error) {
@@ -363,7 +375,21 @@ export async function getProofChallenge(
       error instanceof Error ? error.message : "Failed to get challenge"
     );
   } finally {
-    challengeInFlight.delete(circuitType);
+    challengeInFlight.delete(challengeKey);
+  }
+}
+
+export async function createProofSession(
+  documentId?: string | null
+): Promise<ProofSessionResponse> {
+  try {
+    return documentId
+      ? await trpc.crypto.createProofSession.mutate({ documentId })
+      : await trpc.crypto.createProofSession.mutate();
+  } catch (error) {
+    throw new Error(
+      error instanceof Error ? error.message : "Failed to create proof session"
+    );
   }
 }
 
@@ -387,6 +413,8 @@ interface StoreProofOptions {
   generationTimeMs: number;
   /** Base64 encoded UltraHonk ZK proof */
   proof: string;
+  /** Cohesive proof-session identifier issued by the server */
+  proofSessionId: string;
   /** The public signals from the proof */
   publicSignals: string[];
 }
@@ -397,14 +425,21 @@ export async function storeProof(options: StoreProofOptions): Promise<{
   proofHash: string;
   verificationTimeMs: number;
 }> {
-  const { circuitType, proof, publicSignals, generationTimeMs, documentId } =
-    options;
+  const {
+    circuitType,
+    proof,
+    publicSignals,
+    generationTimeMs,
+    documentId,
+    proofSessionId,
+  } = options;
   try {
     return await trpc.crypto.storeProof.mutate({
       circuitType,
       proof,
       publicSignals,
       generationTimeMs,
+      proofSessionId,
       ...(documentId ? { documentId } : {}),
     });
   } catch (error) {

@@ -8,6 +8,7 @@ import type {
   SecretWrapperRecord,
   SignedClaimRecord,
   ZkProofRecord,
+  ZkProofSessionRecord,
 } from "../schema/crypto";
 
 import crypto from "node:crypto";
@@ -20,6 +21,7 @@ import {
   encryptedSecrets,
   secretWrappers,
   signedClaims,
+  zkProofSessions,
   zkProofs,
 } from "../schema/crypto";
 
@@ -36,12 +38,24 @@ export interface ZkProofInsert {
   policyVersion?: string | null;
   proofHash: string;
   proofPayload?: string | null;
+  proofSessionId: string;
   proofType: string;
   publicInputs?: string | null;
   userId: string;
   verificationKeyHash?: string | null;
   verificationKeyPoseidonHash?: string | null;
   verified?: boolean;
+}
+
+export interface ZkProofSessionInsert {
+  audience: string;
+  createdAt: number;
+  documentId: string;
+  expiresAt: number;
+  id: string;
+  msgSender: string;
+  policyVersion: string;
+  userId: string;
 }
 
 export type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
@@ -562,6 +576,47 @@ export async function getAllVerifiedProofsFull(userId: string): Promise<
   });
 }
 
+export async function createZkProofSession(
+  data: ZkProofSessionInsert
+): Promise<void> {
+  await db
+    .insert(zkProofSessions)
+    .values({
+      id: data.id,
+      userId: data.userId,
+      documentId: data.documentId,
+      msgSender: data.msgSender,
+      audience: data.audience,
+      policyVersion: data.policyVersion,
+      createdAt: data.createdAt,
+      expiresAt: data.expiresAt,
+      closedAt: null,
+    })
+    .run();
+}
+
+export async function getZkProofSessionById(
+  id: string
+): Promise<ZkProofSessionRecord | null> {
+  const row = await db
+    .select()
+    .from(zkProofSessions)
+    .where(eq(zkProofSessions.id, id))
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
+export async function closeZkProofSession(id: string): Promise<void> {
+  await db
+    .update(zkProofSessions)
+    .set({
+      closedAt: Date.now(),
+    })
+    .where(eq(zkProofSessions.id, id))
+    .run();
+}
+
 export async function getZkProofTypesByUserAndDocument(
   userId: string,
   documentId: string
@@ -573,6 +628,29 @@ export async function getZkProofTypesByUserAndDocument(
       and(
         eq(zkProofs.userId, userId),
         eq(zkProofs.documentId, documentId),
+        eq(zkProofs.verified, true)
+      )
+    )
+    .groupBy(zkProofs.proofType)
+    .orderBy(zkProofs.proofType)
+    .all();
+
+  return rows.map((row) => row.proofType);
+}
+
+export async function getZkProofTypesByUserDocumentAndSession(
+  userId: string,
+  documentId: string,
+  proofSessionId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ proofType: zkProofs.proofType })
+    .from(zkProofs)
+    .where(
+      and(
+        eq(zkProofs.userId, userId),
+        eq(zkProofs.documentId, documentId),
+        eq(zkProofs.proofSessionId, proofSessionId),
         eq(zkProofs.verified, true)
       )
     )
@@ -700,6 +778,28 @@ export async function getProofHashesByUserAndDocument(
   return rows.map((row) => row.proofHash);
 }
 
+export async function getProofHashesByUserDocumentAndSession(
+  userId: string,
+  documentId: string,
+  proofSessionId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ proofHash: zkProofs.proofHash })
+    .from(zkProofs)
+    .where(
+      and(
+        eq(zkProofs.userId, userId),
+        eq(zkProofs.documentId, documentId),
+        eq(zkProofs.proofSessionId, proofSessionId),
+        eq(zkProofs.verified, true)
+      )
+    )
+    .orderBy(zkProofs.proofHash)
+    .all();
+
+  return rows.map((row) => row.proofHash);
+}
+
 export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
   await db
     .insert(zkProofs)
@@ -707,6 +807,7 @@ export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
       id: data.id,
       userId: data.userId,
       documentId: data.documentId ?? null,
+      proofSessionId: data.proofSessionId,
       proofType: data.proofType,
       proofHash: data.proofHash,
       proofPayload: data.proofPayload ?? null,

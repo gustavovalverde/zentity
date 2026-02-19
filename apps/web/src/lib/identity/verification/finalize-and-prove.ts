@@ -8,6 +8,7 @@ import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
 import { clearCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { prepareBindingProofInputs } from "@/lib/privacy/zk/binding-secret";
 import {
+  createProofSession,
   generateAgeProof,
   generateDocValidityProof,
   generateFaceMatchProof,
@@ -159,6 +160,7 @@ export async function generateAllProofs(params: {
     faceClaim.documentHashField || documentHashField;
 
   // Fetch all proof challenges in parallel
+  const proofSession = await createProofSession(documentId);
   const [
     ageChallenge,
     docChallenge,
@@ -166,11 +168,11 @@ export async function generateAllProofs(params: {
     faceChallenge,
     bindingChallenge,
   ] = await Promise.all([
-    getProofChallenge("age_verification"),
-    getProofChallenge("doc_validity"),
-    getProofChallenge("nationality_membership"),
-    getProofChallenge("face_match"),
-    getProofChallenge("identity_binding"),
+    getProofChallenge("age_verification", proofSession.proofSessionId),
+    getProofChallenge("doc_validity", proofSession.proofSessionId),
+    getProofChallenge("nationality_membership", proofSession.proofSessionId),
+    getProofChallenge("face_match", proofSession.proofSessionId),
+    getProofChallenge("identity_binding", proofSession.proofSessionId),
   ]);
 
   // Generate proofs sequentially (CPU-bound WASM work)
@@ -246,6 +248,7 @@ export async function generateAllProofs(params: {
         proof: proof.proof,
         publicSignals: proof.publicSignals,
         generationTimeMs: proof.generationTimeMs,
+        proofSessionId: proofSession.proofSessionId,
         documentId,
       });
     }

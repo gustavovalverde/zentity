@@ -3,8 +3,10 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
+  createZkProofSession,
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   getLatestSignedClaimByUserTypeAndDocument,
@@ -20,6 +22,23 @@ import {
 import { encryptedAttributes } from "@/lib/db/schema/crypto";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
+async function createProofContext(userId: string, documentId?: string) {
+  const resolvedDocumentId = documentId ?? crypto.randomUUID();
+  const proofSessionId = crypto.randomUUID();
+  const now = Date.now();
+  await createZkProofSession({
+    id: proofSessionId,
+    userId,
+    documentId: resolvedDocumentId,
+    msgSender: userId,
+    audience: "http://localhost:3000",
+    policyVersion: POLICY_VERSION,
+    createdAt: now,
+    expiresAt: now + 60_000,
+  });
+  return { documentId: resolvedDocumentId, proofSessionId };
+}
+
 describe("crypto queries", () => {
   beforeEach(async () => {
     await resetDatabase();
@@ -27,12 +46,16 @@ describe("crypto queries", () => {
 
   it("returns age proof summary with encrypted attribute", async () => {
     const userId = await createTestUser();
+    const { documentId, proofSessionId } = await createProofContext(userId);
 
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
+      documentId,
+      proofSessionId,
       proofType: "age_verification",
       proofHash: "proof-hash",
+      policyVersion: POLICY_VERSION,
       verified: true,
       isOver18: true,
       generationTimeMs: 120,
@@ -64,14 +87,18 @@ describe("crypto queries", () => {
 
   it("returns full age proof payload", async () => {
     const userId = await createTestUser();
+    const { documentId, proofSessionId } = await createProofContext(userId);
     const payload = "proof-payload";
     const publicInputs = JSON.stringify(["1", "2", "3"]);
 
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
+      documentId,
+      proofSessionId,
       proofType: "age_verification",
       proofHash: "proof-hash",
+      policyVersion: POLICY_VERSION,
       verified: true,
       isOver18: false,
       proofPayload: payload,
@@ -90,12 +117,16 @@ describe("crypto queries", () => {
 
   it("parses latest zk proof payload and handles invalid JSON", async () => {
     const userId = await createTestUser();
+    const { documentId, proofSessionId } = await createProofContext(userId);
 
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
+      documentId,
+      proofSessionId,
       proofType: "doc_validity",
       proofHash: "proof-hash",
+      policyVersion: POLICY_VERSION,
       verified: true,
       proofPayload: "payload",
       publicInputs: JSON.stringify(["a", "b"]),
@@ -109,11 +140,16 @@ describe("crypto queries", () => {
     expect(parsed?.publicSignals).toEqual(["a", "b"]);
 
     const userIdInvalid = await createTestUser();
+    const { documentId: invalidDocumentId, proofSessionId: invalidSessionId } =
+      await createProofContext(userIdInvalid);
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId: userIdInvalid,
+      documentId: invalidDocumentId,
+      proofSessionId: invalidSessionId,
       proofType: "doc_validity",
       proofHash: "proof-hash-2",
+      policyVersion: POLICY_VERSION,
       verified: true,
       proofPayload: "payload",
       publicInputs: "not-json",
@@ -129,13 +165,16 @@ describe("crypto queries", () => {
   it("returns proof hashes and signed claim types", async () => {
     const userId = await createTestUser();
     const documentId = crypto.randomUUID();
+    const { proofSessionId } = await createProofContext(userId, documentId);
 
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
       documentId,
+      proofSessionId,
       proofType: "age_verification",
       proofHash: "hash-1",
+      policyVersion: POLICY_VERSION,
       verified: true,
     });
 
@@ -143,8 +182,10 @@ describe("crypto queries", () => {
       id: crypto.randomUUID(),
       userId,
       documentId,
+      proofSessionId,
       proofType: "doc_validity",
       proofHash: "hash-2",
+      policyVersion: POLICY_VERSION,
       verified: true,
     });
 
@@ -152,8 +193,10 @@ describe("crypto queries", () => {
       id: crypto.randomUUID(),
       userId,
       documentId,
+      proofSessionId,
       proofType: "face_match",
       proofHash: "hash-3",
+      policyVersion: POLICY_VERSION,
       verified: false,
     });
 

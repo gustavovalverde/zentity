@@ -19,6 +19,7 @@ import { zkChallenges } from "@/lib/db/schema/crypto";
 interface ChallengeBinding {
   audience?: string;
   msgSender?: string;
+  proofSessionId?: string;
   userId?: string;
 }
 
@@ -29,6 +30,7 @@ interface Challenge {
   expiresAt: number;
   msgSender?: string; // Optional: bind to signer/did context
   nonce: string; // 128-bit hex string
+  proofSessionId?: string; // Optional: bind to a cohesive proof session
   userId?: string; // Optional: bind to specific user
 }
 
@@ -93,6 +95,7 @@ export async function createChallenge(
         .values({
           nonce,
           circuitType,
+          proofSessionId: binding.proofSessionId ?? null,
           userId: binding.userId ?? null,
           msgSender: binding.msgSender ?? null,
           audience: binding.audience ?? null,
@@ -104,6 +107,7 @@ export async function createChallenge(
       return {
         nonce,
         circuitType,
+        proofSessionId: binding.proofSessionId,
         userId: binding.userId,
         msgSender: binding.msgSender,
         audience: binding.audience,
@@ -140,6 +144,7 @@ export async function consumeChallenge(
       .select({
         nonce: zkChallenges.nonce,
         circuitType: zkChallenges.circuitType,
+        proofSessionId: zkChallenges.proofSessionId,
         userId: zkChallenges.userId,
         msgSender: zkChallenges.msgSender,
         audience: zkChallenges.audience,
@@ -155,6 +160,9 @@ export async function consumeChallenge(
       return null;
     }
     if (row.circuitType !== circuitType) {
+      return null;
+    }
+    if (row.proofSessionId && row.proofSessionId !== binding.proofSessionId) {
       return null;
     }
     if (row.userId && row.userId !== binding.userId) {
@@ -176,6 +184,7 @@ export async function consumeChallenge(
     return {
       nonce: row.nonce,
       circuitType: row.circuitType,
+      proofSessionId: row.proofSessionId ?? undefined,
       userId: row.userId ?? undefined,
       msgSender: row.msgSender ?? undefined,
       audience: row.audience ?? undefined,

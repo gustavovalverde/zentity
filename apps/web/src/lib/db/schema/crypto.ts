@@ -10,6 +10,28 @@ import {
 
 import { users } from "./auth";
 
+export const zkProofSessions = sqliteTable(
+  "zk_proof_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    documentId: text("document_id").notNull(),
+    msgSender: text("msg_sender").notNull(),
+    audience: text("audience").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    closedAt: integer("closed_at"),
+  },
+  (table) => [
+    index("idx_zk_proof_sessions_user_id").on(table.userId),
+    index("idx_zk_proof_sessions_document_id").on(table.documentId),
+    index("idx_zk_proof_sessions_expires_at").on(table.expiresAt),
+  ]
+);
+
 export const zkProofs = sqliteTable(
   "zk_proofs",
   {
@@ -18,6 +40,12 @@ export const zkProofs = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     documentId: text("document_id"),
+    proofSessionId: text("proof_session_id").references(
+      () => zkProofSessions.id,
+      {
+        onDelete: "cascade",
+      }
+    ),
     proofType: text("proof_type").notNull(),
     proofHash: text("proof_hash").notNull(),
     proofPayload: text("proof_payload"),
@@ -37,6 +65,7 @@ export const zkProofs = sqliteTable(
   },
   (table) => [
     index("idx_zk_proofs_user_id").on(table.userId),
+    index("idx_zk_proofs_session_id").on(table.proofSessionId),
     index("idx_zk_proofs_type").on(table.proofType),
     index("idx_zk_proofs_document_id").on(table.documentId),
     index("idx_zk_proofs_hash").on(table.proofHash),
@@ -89,6 +118,12 @@ export const zkChallenges = sqliteTable(
   {
     nonce: text("nonce").primaryKey(),
     circuitType: text("circuit_type").notNull(),
+    proofSessionId: text("proof_session_id").references(
+      () => zkProofSessions.id,
+      {
+        onDelete: "cascade",
+      }
+    ),
     userId: text("user_id"),
     msgSender: text("msg_sender"),
     audience: text("audience"),
@@ -97,6 +132,7 @@ export const zkChallenges = sqliteTable(
   },
   (table) => [
     index("idx_zk_challenges_expires_at").on(table.expiresAt),
+    index("idx_zk_challenges_session_id").on(table.proofSessionId),
     index("idx_zk_challenges_msg_sender").on(table.msgSender),
     index("idx_zk_challenges_audience").on(table.audience),
   ]
@@ -168,6 +204,9 @@ export const secretWrappers = sqliteTable(
 
 export type ZkProofRecord = typeof zkProofs.$inferSelect;
 export type NewZkProofRecord = typeof zkProofs.$inferInsert;
+
+export type ZkProofSessionRecord = typeof zkProofSessions.$inferSelect;
+export type NewZkProofSessionRecord = typeof zkProofSessions.$inferInsert;
 
 export type EncryptedAttributeRecord = typeof encryptedAttributes.$inferSelect;
 export type NewEncryptedAttribute = typeof encryptedAttributes.$inferInsert;

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
 import { BN254_FR_MODULUS } from "@/lib/privacy/zk/proof-types";
 
@@ -12,7 +13,11 @@ const mockVerifyNoirProof = vi.fn();
 const mockConsumeChallenge = vi.fn();
 const mockCreateChallenge = vi.fn();
 const mockGetActiveChallengeCount = vi.fn();
-const mockGetZkProofTypesByUserAndDocument = vi.fn();
+const mockGetZkProofSessionById = vi.fn();
+const mockGetZkProofTypesByUserDocumentAndSession = vi.fn();
+const mockGetProofHashesByUserDocumentAndSession = vi.fn();
+const mockCloseZkProofSession = vi.fn();
+const mockCreateZkProofSession = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
@@ -50,8 +55,16 @@ vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/db/queries/crypto")>();
   return {
     ...actual,
-    getZkProofTypesByUserAndDocument: (...args: unknown[]) =>
-      mockGetZkProofTypesByUserAndDocument(...args),
+    getZkProofSessionById: (...args: unknown[]) =>
+      mockGetZkProofSessionById(...args),
+    getZkProofTypesByUserDocumentAndSession: (...args: unknown[]) =>
+      mockGetZkProofTypesByUserDocumentAndSession(...args),
+    getProofHashesByUserDocumentAndSession: (...args: unknown[]) =>
+      mockGetProofHashesByUserDocumentAndSession(...args),
+    closeZkProofSession: (...args: unknown[]) =>
+      mockCloseZkProofSession(...args),
+    createZkProofSession: (...args: unknown[]) =>
+      mockCreateZkProofSession(...args),
   };
 });
 
@@ -76,6 +89,7 @@ const browserAudience = "http://localhost:3000";
 const browserAudienceHash = contextField(browserAudience);
 const bindingCommitment = "2";
 const isBound = "1";
+const proofSessionId = "11111111-1111-4111-8111-111111111111";
 const expectedNormalizedNonce = (() => {
   const raw = BigInt(nonce);
   const limit = BigInt(2) ** BigInt(128);
@@ -92,6 +106,7 @@ const validProofArgs = {
     isBound,
   ],
   circuitType: "identity_binding" as const,
+  proofSessionId,
 };
 
 const validProofArgsBrowserAudience = {
@@ -140,20 +155,40 @@ describe("proof router replay and context binding", () => {
       verificationKeyPoseidonHash: null,
       bbVersion: null,
     });
-    mockGetZkProofTypesByUserAndDocument.mockResolvedValue([
+    mockGetZkProofSessionById.mockResolvedValue({
+      id: proofSessionId,
+      userId: "user-123",
+      documentId: "doc-1",
+      msgSender: "user-123",
+      audience: "http://localhost",
+      policyVersion: POLICY_VERSION,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      closedAt: null,
+    });
+    mockGetZkProofTypesByUserDocumentAndSession.mockResolvedValue([
       "identity_binding",
     ]);
+    mockGetProofHashesByUserDocumentAndSession.mockResolvedValue([]);
+    mockCloseZkProofSession.mockResolvedValue(undefined);
+    mockCreateZkProofSession.mockResolvedValue(undefined);
     mockGetActiveChallengeCount.mockResolvedValue(1);
     mockCreateChallenge.mockImplementation(
       async (
         circuitType: string,
-        binding: { userId: string; msgSender: string; audience: string }
+        binding: {
+          userId: string;
+          msgSender: string;
+          audience: string;
+          proofSessionId?: string;
+        }
       ) => ({
         nonce: "challenge-nonce",
         circuitType,
         userId: binding.userId,
         msgSender: binding.msgSender,
         audience: binding.audience,
+        proofSessionId: binding.proofSessionId,
         createdAt: 1,
         expiresAt: 2,
       })
@@ -190,6 +225,7 @@ describe("proof router replay and context binding", () => {
         userId: "user-123",
         msgSender: "user-123",
         audience: "http://localhost",
+        proofSessionId,
       }
     );
     expect(mockConsumeChallenge).toHaveBeenNthCalledWith(
@@ -200,12 +236,24 @@ describe("proof router replay and context binding", () => {
         userId: "user-123",
         msgSender: "user-123",
         audience: "http://localhost",
+        proofSessionId,
       }
     );
   });
 
   it("rejects proofs when challenge is missing for a different caller context", async () => {
     mockConsumeChallenge.mockResolvedValue(null);
+    mockGetZkProofSessionById.mockResolvedValueOnce({
+      id: proofSessionId,
+      userId: "user-456",
+      documentId: "doc-1",
+      msgSender: "user-456",
+      audience: "http://localhost",
+      policyVersion: POLICY_VERSION,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      closedAt: null,
+    });
 
     const attacker = await createCaller(alternateUserSession);
     await expect(
@@ -228,6 +276,7 @@ describe("proof router replay and context binding", () => {
         userId: "user-456",
         msgSender: "user-456",
         audience: "http://localhost",
+        proofSessionId,
       }
     );
   });
@@ -269,6 +318,17 @@ describe("proof router replay and context binding", () => {
   });
 
   it("uses Origin header audience for identity binding context", async () => {
+    mockGetZkProofSessionById.mockResolvedValueOnce({
+      id: proofSessionId,
+      userId: "user-123",
+      documentId: "doc-1",
+      msgSender: "user-123",
+      audience: browserAudience,
+      policyVersion: POLICY_VERSION,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      closedAt: null,
+    });
     mockConsumeChallenge.mockResolvedValueOnce({
       nonce,
       circuitType: "identity_binding",
@@ -293,27 +353,57 @@ describe("proof router replay and context binding", () => {
         userId: "user-123",
         msgSender: "user-123",
         audience: browserAudience,
+        proofSessionId,
       }
     );
   });
 
   it("binds challenge audience from Origin header", async () => {
+    mockGetZkProofSessionById.mockResolvedValueOnce({
+      id: proofSessionId,
+      userId: "user-123",
+      documentId: "doc-1",
+      msgSender: "user-123",
+      audience: browserAudience,
+      policyVersion: POLICY_VERSION,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      closedAt: null,
+    });
     const caller = await createCaller(authedUserSession, {
       url: "http://localhost/api/trpc",
       headers: { origin: browserAudience },
     });
 
-    const result = await caller.createChallenge({ circuitType: "face_match" });
+    const result = await caller.createChallenge({
+      circuitType: "face_match",
+      proofSessionId,
+    });
 
     expect(result.circuitType).toBe("face_match");
-    expect(mockCreateChallenge).toHaveBeenCalledWith("face_match", {
-      userId: "user-123",
-      msgSender: "user-123",
-      audience: browserAudience,
-    });
+    expect(mockCreateChallenge).toHaveBeenCalledWith(
+      "face_match",
+      expect.objectContaining({
+        userId: "user-123",
+        msgSender: "user-123",
+        audience: browserAudience,
+        proofSessionId,
+      })
+    );
   });
 
   it("binds challenge audience from forwarded headers when Origin is missing", async () => {
+    mockGetZkProofSessionById.mockResolvedValueOnce({
+      id: proofSessionId,
+      userId: "user-123",
+      documentId: "doc-1",
+      msgSender: "user-123",
+      audience: "https://verify.example.com",
+      policyVersion: POLICY_VERSION,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      closedAt: null,
+    });
     const caller = await createCaller(authedUserSession, {
       url: "http://internal/api/trpc",
       headers: {
@@ -322,19 +412,24 @@ describe("proof router replay and context binding", () => {
       },
     });
 
-    await caller.createChallenge({ circuitType: "identity_binding" });
-
-    expect(mockCreateChallenge).toHaveBeenCalledWith("identity_binding", {
-      userId: "user-123",
-      msgSender: "user-123",
-      audience: "https://verify.example.com",
+    await caller.createChallenge({
+      circuitType: "identity_binding",
+      proofSessionId,
     });
+
+    expect(mockCreateChallenge).toHaveBeenCalledWith(
+      "identity_binding",
+      expect.objectContaining({
+        userId: "user-123",
+        msgSender: "user-123",
+        audience: "https://verify.example.com",
+        proofSessionId,
+      })
+    );
   });
 
   it("rejects age proofs when min_age_days exceeds uint32 range", async () => {
-    const caller = await createCaller(authedUserSession, {
-      headers: { origin: browserAudience },
-    });
+    const caller = await createCaller(authedUserSession);
 
     const overflowMinAgeDays = (BigInt(2) ** BigInt(32) + BigInt(1)).toString();
 
@@ -349,6 +444,7 @@ describe("proof router replay and context binding", () => {
           "1",
           "1",
         ],
+        proofSessionId,
         documentId: "doc-1",
       })
     ).rejects.toMatchObject({
@@ -361,9 +457,7 @@ describe("proof router replay and context binding", () => {
   });
 
   it("rejects storing age proofs when min_age_days exceeds uint32 range", async () => {
-    const caller = await createCaller(authedUserSession, {
-      headers: { origin: browserAudience },
-    });
+    const caller = await createCaller(authedUserSession);
 
     const overflowMinAgeDays = (BigInt(2) ** BigInt(32) + BigInt(1)).toString();
 
@@ -379,6 +473,7 @@ describe("proof router replay and context binding", () => {
           "1",
         ],
         generationTimeMs: 10,
+        proofSessionId,
         documentId: "doc-1",
       })
     ).rejects.toMatchObject({
@@ -391,10 +486,8 @@ describe("proof router replay and context binding", () => {
   });
 
   it("rejects storing non-binding proofs until identity binding is stored", async () => {
-    mockGetZkProofTypesByUserAndDocument.mockResolvedValue([]);
-    const caller = await createCaller(authedUserSession, {
-      headers: { origin: browserAudience },
-    });
+    mockGetZkProofTypesByUserDocumentAndSession.mockResolvedValue([]);
+    const caller = await createCaller(authedUserSession);
 
     await expect(
       caller.storeProof({
@@ -402,6 +495,7 @@ describe("proof router replay and context binding", () => {
         proof: "cHJvdG9wcm90b2RvY3Rvcg==",
         publicSignals: [getTodayDobDays().toString(), "6570", "1", "1", "1"],
         generationTimeMs: 10,
+        proofSessionId,
         documentId: "doc-1",
       })
     ).rejects.toMatchObject({
@@ -420,9 +514,7 @@ describe("proof router replay and context binding", () => {
     ["face_match", 4],
     ["identity_binding", 5],
   ] as const)("storeProof rejects %s when public signals are below minimum", async (circuitType, minPublicInputs) => {
-    const caller = await createCaller(authedUserSession, {
-      headers: { origin: browserAudience },
-    });
+    const caller = await createCaller(authedUserSession);
 
     await expect(
       caller.storeProof({
@@ -430,6 +522,7 @@ describe("proof router replay and context binding", () => {
         proof: "cHJvdG9wcm90b2RvY3Rvcg==",
         publicSignals: Array.from({ length: minPublicInputs - 1 }, () => "1"),
         generationTimeMs: 10,
+        proofSessionId,
         documentId: "doc-1",
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });

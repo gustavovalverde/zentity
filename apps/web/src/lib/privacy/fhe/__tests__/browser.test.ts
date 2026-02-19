@@ -124,6 +124,7 @@ describe("crypto-client FHE", () => {
 
   it("dedupes concurrent proof challenge requests", async () => {
     const { getProofChallenge } = await import("@/lib/privacy/zk/client");
+    const proofSessionId = "11111111-1111-4111-8111-111111111111";
     const challenge = {
       nonce: "nonce",
       circuitType: "age_verification",
@@ -136,14 +137,18 @@ describe("crypto-client FHE", () => {
     const originalCreateChallenge = trpcClient.trpc.crypto.createChallenge;
     trpcClient.trpc.crypto.createChallenge = { mutate: createChallenge };
 
-    const first = getProofChallenge("age_verification");
-    const second = getProofChallenge("age_verification");
+    const first = getProofChallenge("age_verification", proofSessionId);
+    const second = getProofChallenge("age_verification", proofSessionId);
 
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
     expect(firstResult).toEqual(challenge);
     expect(secondResult).toEqual(challenge);
     expect(createChallenge).toHaveBeenCalledTimes(1);
+    expect(createChallenge).toHaveBeenCalledWith({
+      circuitType: "age_verification",
+      proofSessionId,
+    });
 
     trpcClient.trpc.crypto.createChallenge = originalCreateChallenge;
   });

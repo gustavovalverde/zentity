@@ -11,12 +11,14 @@ import {
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
+  closeZkProofSession,
   getAllVerifiedProofsFull,
   getLatestSignedClaimByUserTypeAndDocument,
-  getProofHashesByUserAndDocument,
+  getProofHashesByUserDocumentAndSession,
   getUserAgeProof,
   getUserAgeProofFull,
-  getZkProofTypesByUserAndDocument,
+  getZkProofSessionById,
+  getZkProofTypesByUserDocumentAndSession,
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
@@ -62,9 +64,71 @@ import {
 const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
 const U32_MAX = BigInt(0xff_ff_ff_ff);
+const REQUIRED_SESSION_PROOFS = [
+  "age_verification",
+  "doc_validity",
+  "nationality_membership",
+  "face_match",
+  "identity_binding",
+] as const;
 
 type NoirVerificationResult = Awaited<ReturnType<typeof verifyNoirProof>>;
 type ProofVerificationResult = NoirVerificationResult & { reason?: string };
+
+async function requireActiveProofSession(args: {
+  audience: string;
+  documentId?: string | null;
+  proofSessionId: string;
+  userId: string;
+}) {
+  const proofSession = await getZkProofSessionById(args.proofSessionId);
+  if (!proofSession) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Unknown proof session",
+    });
+  }
+  if (
+    proofSession.userId !== args.userId ||
+    proofSession.msgSender !== args.userId ||
+    proofSession.audience !== args.audience
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Proof session context mismatch",
+    });
+  }
+  if (
+    args.documentId !== undefined &&
+    args.documentId !== null &&
+    proofSession.documentId !== args.documentId
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Proof session does not match user/document context",
+    });
+  }
+  if (proofSession.policyVersion !== POLICY_VERSION) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Proof session policy version mismatch",
+    });
+  }
+  if (proofSession.expiresAt < Date.now()) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Proof session expired",
+    });
+  }
+  if (proofSession.closedAt !== null) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Proof session already closed",
+    });
+  }
+
+  return proofSession;
+}
 
 function hashContextToField(value: string): bigint {
   const digestHex = crypto.createHash("sha256").update(value).digest("hex");
@@ -435,14 +499,19 @@ export const verifyProofProcedure = protectedProcedure
       proof: z.string().min(1),
       publicInputs: z.array(z.string()),
       circuitType: circuitTypeSchema,
+      proofSessionId: z.string().uuid(),
       documentId: z.string().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const selectedDocument = await getSelectedIdentityDocumentByUserId(
-      ctx.userId
-    );
-    const documentId = input.documentId ?? selectedDocument?.id ?? null;
+    const currentAudience = resolveAudience(ctx.req);
+    const proofSession = await requireActiveProofSession({
+      proofSessionId: input.proofSessionId,
+      userId: ctx.userId,
+      audience: currentAudience,
+      documentId: input.documentId,
+    });
+    const documentId = input.documentId ?? proofSession.documentId;
     const { result, nonceHex } = await verifyProofInternal({
       userId: ctx.userId,
       circuitType: input.circuitType,
@@ -450,7 +519,7 @@ export const verifyProofProcedure = protectedProcedure
       publicInputs: input.publicInputs,
       documentId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req),
+      audience: currentAudience,
     });
 
     if (!result.isValid) {
@@ -460,7 +529,8 @@ export const verifyProofProcedure = protectedProcedure
     const challenge = await consumeChallenge(nonceHex, input.circuitType, {
       userId: ctx.userId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req),
+      audience: currentAudience,
+      proofSessionId: input.proofSessionId,
     });
     if (!challenge) {
       throw new TRPCError({
@@ -573,6 +643,7 @@ export const storeProofProcedure = protectedProcedure
       circuitType: circuitTypeSchema,
       proof: z.string().min(1),
       publicSignals: z.array(z.string()),
+      proofSessionId: z.string().uuid(),
       generationTimeMs: z.number().optional(),
       documentId: z.string().optional(),
     })
@@ -589,12 +660,21 @@ export const storeProofProcedure = protectedProcedure
       });
     }
 
+    const currentAudience = resolveAudience(ctx.req);
+    await requireActiveProofSession({
+      proofSessionId: input.proofSessionId,
+      userId: ctx.userId,
+      audience: currentAudience,
+      documentId,
+    });
+
     if (input.circuitType !== "identity_binding") {
-      const proofTypes = await getZkProofTypesByUserAndDocument(
+      const sessionProofTypes = await getZkProofTypesByUserDocumentAndSession(
         ctx.userId,
-        documentId
+        documentId,
+        input.proofSessionId
       );
-      if (!proofTypes.includes("identity_binding")) {
+      if (!sessionProofTypes.includes("identity_binding")) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
@@ -623,7 +703,8 @@ export const storeProofProcedure = protectedProcedure
     const challenge = await consumeChallenge(nonceHex, input.circuitType, {
       userId: ctx.userId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req),
+      audience: currentAudience,
+      proofSessionId: input.proofSessionId,
     });
     if (!challenge) {
       throw new TRPCError({
@@ -647,6 +728,7 @@ export const storeProofProcedure = protectedProcedure
           id: proofId,
           userId: ctx.userId,
           documentId,
+          proofSessionId: input.proofSessionId,
           proofType: input.circuitType,
           proofHash,
           proofPayload: input.proof,
@@ -665,9 +747,10 @@ export const storeProofProcedure = protectedProcedure
         })
     );
 
-    const proofHashes = await getProofHashesByUserAndDocument(
+    const proofHashes = await getProofHashesByUserDocumentAndSession(
       ctx.userId,
-      documentId
+      documentId,
+      input.proofSessionId
     );
     const proofSetHash = computeProofSetHash({
       proofHashes,
@@ -682,6 +765,18 @@ export const storeProofProcedure = protectedProcedure
         proofSetHash,
       })
     );
+
+    const sessionProofTypes = await getZkProofTypesByUserDocumentAndSession(
+      ctx.userId,
+      documentId,
+      input.proofSessionId
+    );
+    const sessionComplete = REQUIRED_SESSION_PROOFS.every((proofType) =>
+      sessionProofTypes.includes(proofType)
+    );
+    if (sessionComplete) {
+      await closeZkProofSession(input.proofSessionId);
+    }
 
     const verificationStatus = await getVerificationStatus(ctx.userId);
     if (verificationStatus.verified) {

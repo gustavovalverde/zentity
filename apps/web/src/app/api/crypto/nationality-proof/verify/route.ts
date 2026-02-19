@@ -7,13 +7,19 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import { getZkProofSessionById } from "@/lib/db/queries/crypto";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
+import { resolveAudience } from "@/lib/trpc/routers/crypto/audience";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * POST - Verify nationality membership ZK proof
@@ -35,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { proof, publicInputs } = body;
+    const { proof, publicInputs, proofSessionId } = body;
 
     // Validate inputs
     if (!proof) {
@@ -48,6 +54,14 @@ export async function POST(request: NextRequest) {
     if (!(publicInputs && Array.isArray(publicInputs))) {
       return NextResponse.json(
         { error: "publicInputs is required and must be an array" },
+        { status: 400 }
+      );
+    }
+    if (
+      !(typeof proofSessionId === "string" && UUID_REGEX.test(proofSessionId))
+    ) {
+      return NextResponse.json(
+        { error: "proofSessionId is required and must be a UUID" },
         { status: 400 }
       );
     }
@@ -65,13 +79,45 @@ export async function POST(request: NextRequest) {
     const nonceHex = normalizeChallengeNonce(
       publicInputs[PROOF_TYPE_SPECS.nationality_membership.nonceIndex]
     );
+    const audience = resolveAudience(request);
+    const proofSession = await getZkProofSessionById(proofSessionId);
+    if (!proofSession) {
+      return NextResponse.json(
+        { error: "Unknown proof session" },
+        { status: 400 }
+      );
+    }
+    if (
+      proofSession.userId !== authResult.session.user.id ||
+      proofSession.msgSender !== authResult.session.user.id ||
+      proofSession.audience !== audience
+    ) {
+      return NextResponse.json(
+        { error: "Proof session context mismatch" },
+        { status: 400 }
+      );
+    }
+    if (proofSession.policyVersion !== POLICY_VERSION) {
+      return NextResponse.json(
+        { error: "Proof session policy version mismatch" },
+        { status: 400 }
+      );
+    }
+    if (proofSession.expiresAt < Date.now() || proofSession.closedAt !== null) {
+      return NextResponse.json(
+        { error: "Proof session is not active" },
+        { status: 400 }
+      );
+    }
+
     const challenge = await consumeChallenge(
       nonceHex,
       "nationality_membership",
       {
         userId: authResult.session.user.id,
         msgSender: authResult.session.user.id,
-        audience: new URL(request.url).origin,
+        audience,
+        proofSessionId,
       }
     );
     if (!challenge) {

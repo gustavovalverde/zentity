@@ -8,11 +8,13 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
   createBlockchainAttestation,
   updateBlockchainAttestationConfirmed,
 } from "@/lib/db/queries/attestation";
 import {
+  createZkProofSession,
   insertEncryptedAttribute,
   insertSignedClaim,
   insertZkProofRecord,
@@ -49,6 +51,22 @@ async function createBundleWithKeys(userId: string) {
     fheKeyId: crypto.randomUUID(),
     fheStatus: "complete",
   });
+}
+
+async function createProofSession(userId: string, documentId: string) {
+  const sessionId = crypto.randomUUID();
+  const now = Date.now();
+  await createZkProofSession({
+    id: sessionId,
+    userId,
+    documentId,
+    msgSender: userId,
+    audience: "http://localhost:3000",
+    policyVersion: POLICY_VERSION,
+    createdAt: now,
+    expiresAt: now + 60_000,
+  });
+  return sessionId;
 }
 
 describe("assurance data layer", () => {
@@ -183,14 +201,17 @@ describe("assurance data layer", () => {
         "face_match",
         "identity_binding",
       ];
+      const proofSessionId = await createProofSession(userId, docId);
       for (const proofType of proofTypes) {
         await insertZkProofRecord({
           id: crypto.randomUUID(),
           userId,
           documentId: docId,
+          proofSessionId,
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),
           proofPayload: crypto.randomBytes(256).toString("hex"),
+          policyVersion: POLICY_VERSION,
           verified: true,
         });
       }
@@ -313,6 +334,7 @@ describe("assurance data layer", () => {
       }
 
       // All ZK proofs
+      const proofSessionId = await createProofSession(userId, docId);
       for (const proofType of [
         "age_verification",
         "doc_validity",
@@ -324,9 +346,11 @@ describe("assurance data layer", () => {
           id: crypto.randomUUID(),
           userId,
           documentId: docId,
+          proofSessionId,
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),
           proofPayload: crypto.randomBytes(256).toString("hex"),
+          policyVersion: POLICY_VERSION,
           verified: true,
         });
       }

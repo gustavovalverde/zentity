@@ -1,5 +1,12 @@
+import { TRPCError } from "@trpc/server";
 import z from "zod";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import {
+  createZkProofSession,
+  getZkProofSessionById,
+} from "@/lib/db/queries/crypto";
+import { getSelectedIdentityDocumentByUserId } from "@/lib/db/queries/identity";
 import {
   createChallenge,
   getActiveChallengeCount,
@@ -16,18 +23,95 @@ export const circuitTypeSchema = z.enum([
   "identity_binding",
 ]);
 
+const PROOF_SESSION_TTL_MS = 15 * 60 * 1000;
+
+export const createProofSessionProcedure = protectedProcedure
+  .input(z.object({ documentId: z.string().optional() }).optional())
+  .mutation(async ({ ctx, input }) => {
+    const selectedDocument = await getSelectedIdentityDocumentByUserId(
+      ctx.userId
+    );
+    const documentId = input?.documentId ?? selectedDocument?.id ?? null;
+    if (!documentId) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing document context for proof session",
+      });
+    }
+
+    const now = Date.now();
+    const expiresAt = now + PROOF_SESSION_TTL_MS;
+    const proofSessionId = crypto.randomUUID();
+    const audience = resolveAudience(ctx.req);
+
+    await createZkProofSession({
+      id: proofSessionId,
+      userId: ctx.userId,
+      documentId,
+      msgSender: ctx.userId,
+      audience,
+      policyVersion: POLICY_VERSION,
+      createdAt: now,
+      expiresAt,
+    });
+
+    return {
+      proofSessionId,
+      documentId,
+      expiresAt: new Date(expiresAt).toISOString(),
+      policyVersion: POLICY_VERSION,
+    };
+  });
+
 /**
  * Creates a challenge nonce for replay-resistant proof generation.
  * The nonce must be included in the proof's public inputs and will
  * be consumed on verification (single-use).
  */
 export const createChallengeProcedure = protectedProcedure
-  .input(z.object({ circuitType: circuitTypeSchema }))
+  .input(
+    z.object({
+      circuitType: circuitTypeSchema,
+      proofSessionId: z.string().uuid(),
+    })
+  )
   .mutation(async ({ ctx, input }) => {
+    const audience = resolveAudience(ctx.req);
+    const proofSession = await getZkProofSessionById(input.proofSessionId);
+    if (!proofSession) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Unknown proof session",
+      });
+    }
+    if (
+      proofSession.userId !== ctx.userId ||
+      proofSession.msgSender !== ctx.userId ||
+      proofSession.audience !== audience
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Proof session context mismatch",
+      });
+    }
+    if (proofSession.policyVersion !== POLICY_VERSION) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Proof session policy version mismatch",
+      });
+    }
+    if (proofSession.expiresAt < Date.now() || proofSession.closedAt !== null) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Proof session is not active",
+      });
+    }
+
     const challenge = await createChallenge(input.circuitType, {
       userId: ctx.userId,
       msgSender: ctx.userId,
-      audience: resolveAudience(ctx.req),
+      audience,
+      proofSessionId: input.proofSessionId,
     });
     ctx.span?.setAttribute("challenge.circuit_type", input.circuitType);
     ctx.span?.setAttribute(

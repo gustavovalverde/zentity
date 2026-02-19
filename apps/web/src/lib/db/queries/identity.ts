@@ -13,6 +13,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+
 import { db } from "../connection";
 import { attestationEvidence } from "../schema/attestation";
 import {
@@ -20,6 +22,8 @@ import {
   encryptedSecrets,
   secretWrappers,
   signedClaims,
+  zkChallenges,
+  zkProofSessions,
   zkProofs,
 } from "../schema/crypto";
 import {
@@ -28,10 +32,7 @@ import {
   identityVerificationDrafts,
   identityVerificationJobs,
 } from "../schema/identity";
-import {
-  getSignedClaimTypesByUserAndDocument,
-  getZkProofTypesByUserAndDocument,
-} from "./crypto";
+import { getSignedClaimTypesByUserAndDocument } from "./crypto";
 
 export async function documentHashExists(
   documentHash: string
@@ -65,6 +66,11 @@ export async function deleteIdentityData(userId: string): Promise<void> {
       .where(eq(encryptedSecrets.userId, userId))
       .run();
     await tx.delete(zkProofs).where(eq(zkProofs.userId, userId)).run();
+    await tx.delete(zkChallenges).where(eq(zkChallenges.userId, userId)).run();
+    await tx
+      .delete(zkProofSessions)
+      .where(eq(zkProofSessions.userId, userId))
+      .run();
     await tx
       .delete(identityVerificationJobs)
       .where(eq(identityVerificationJobs.userId, userId))
@@ -103,27 +109,90 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   const documentId = selectedDocument?.id ?? null;
 
   // Parallelize queries that don't depend on each other
-  const [zkProofTypes, signedClaimTypes] = await Promise.all([
+  const [sessionProofRows, signedClaimTypes] = await Promise.all([
     documentId
-      ? getZkProofTypesByUserAndDocument(userId, documentId)
+      ? db
+          .select({
+            proofSessionId: zkProofs.proofSessionId,
+            proofType: zkProofs.proofType,
+            createdAt: zkProofs.createdAt,
+          })
+          .from(zkProofs)
+          .where(
+            and(
+              eq(zkProofs.userId, userId),
+              eq(zkProofs.documentId, documentId),
+              eq(zkProofs.verified, true),
+              eq(zkProofs.policyVersion, POLICY_VERSION),
+              sql`${zkProofs.proofSessionId} is not null`
+            )
+          )
+          .all()
       : Promise.resolve([]),
     documentId
       ? getSignedClaimTypesByUserAndDocument(userId, documentId)
       : Promise.resolve([]),
   ]);
 
+  const requiredProofs = [
+    "age_verification",
+    "doc_validity",
+    "nationality_membership",
+    "face_match",
+    "identity_binding",
+  ];
+  const proofTypesBySession = new Map<
+    string,
+    { latestCreatedAt: string; types: Set<string> }
+  >();
+  for (const row of sessionProofRows) {
+    if (!row.proofSessionId) {
+      continue;
+    }
+    const current = proofTypesBySession.get(row.proofSessionId);
+    if (!current) {
+      proofTypesBySession.set(row.proofSessionId, {
+        latestCreatedAt: row.createdAt,
+        types: new Set([row.proofType]),
+      });
+      continue;
+    }
+    current.types.add(row.proofType);
+    if (row.createdAt > current.latestCreatedAt) {
+      current.latestCreatedAt = row.createdAt;
+    }
+  }
+
+  let selectedSessionProofTypes: Set<string> = new Set();
+  let latestCompleteSessionCreatedAt: string | null = null;
+  for (const session of proofTypesBySession.values()) {
+    const complete = requiredProofs.every((proofType) =>
+      session.types.has(proofType)
+    );
+    if (!complete) {
+      continue;
+    }
+    if (
+      !latestCompleteSessionCreatedAt ||
+      session.latestCreatedAt > latestCompleteSessionCreatedAt
+    ) {
+      latestCompleteSessionCreatedAt = session.latestCreatedAt;
+      selectedSessionProofTypes = session.types;
+    }
+  }
+
   // Core verification checks required for full verification.
   const coreChecks = {
     document: selectedDocument?.status === "verified",
     liveness: signedClaimTypes.includes("liveness_score"),
-    ageProof: zkProofTypes.includes("age_verification"),
-    docValidityProof: zkProofTypes.includes("doc_validity"),
-    nationalityProof: zkProofTypes.includes("nationality_membership"),
+    ageProof: selectedSessionProofTypes.has("age_verification"),
+    docValidityProof: selectedSessionProofTypes.has("doc_validity"),
+    nationalityProof: selectedSessionProofTypes.has("nationality_membership"),
     // Accept either ZK proof or signed claim for face match.
     faceMatchProof:
-      zkProofTypes.includes("face_match") ||
+      selectedSessionProofTypes.has("face_match") ||
       signedClaimTypes.includes("face_match_score"),
-    identityBindingProof: zkProofTypes.includes("identity_binding"),
+    identityBindingProof: selectedSessionProofTypes.has("identity_binding"),
   };
 
   const checks = coreChecks;
@@ -216,7 +285,9 @@ export const getSelectedIdentityDocumentByUserId = cache(
       db
         .select({
           documentId: zkProofs.documentId,
+          proofSessionId: zkProofs.proofSessionId,
           proofType: zkProofs.proofType,
+          policyVersion: zkProofs.policyVersion,
           verified: zkProofs.verified,
         })
         .from(zkProofs)
@@ -236,15 +307,31 @@ export const getSelectedIdentityDocumentByUserId = cache(
       return null;
     }
 
-    const proofTypesByDocument = new Map<string, Set<string>>();
+    const proofTypesByDocumentSession = new Map<
+      string,
+      Map<string, Set<string>>
+    >();
     for (const row of proofRows) {
-      if (!(row.documentId && row.verified)) {
+      if (
+        !(
+          row.documentId &&
+          row.proofSessionId &&
+          row.verified &&
+          row.policyVersion === POLICY_VERSION
+        )
+      ) {
         continue;
       }
-      if (!proofTypesByDocument.has(row.documentId)) {
-        proofTypesByDocument.set(row.documentId, new Set());
+      if (!proofTypesByDocumentSession.has(row.documentId)) {
+        proofTypesByDocumentSession.set(row.documentId, new Map());
       }
-      proofTypesByDocument.get(row.documentId)?.add(row.proofType);
+      const sessionProofs =
+        proofTypesByDocumentSession.get(row.documentId) ?? new Map();
+      if (!sessionProofs.has(row.proofSessionId)) {
+        sessionProofs.set(row.proofSessionId, new Set());
+      }
+      sessionProofs.get(row.proofSessionId)?.add(row.proofType);
+      proofTypesByDocumentSession.set(row.documentId, sessionProofs);
     }
 
     const claimTypesByDocument = new Map<string, Set<string>>();
@@ -274,9 +361,15 @@ export const getSelectedIdentityDocumentByUserId = cache(
       if (doc.status !== "verified") {
         continue;
       }
-      const proofs = proofTypesByDocument.get(doc.id);
+      const proofSessions = proofTypesByDocumentSession.get(doc.id);
+      const hasCompleteProofSession = Boolean(
+        proofSessions &&
+          [...proofSessions.values()].some((proofs) =>
+            hasAll(proofs, requiredProofs)
+          )
+      );
       const claims = claimTypesByDocument.get(doc.id);
-      if (hasAll(proofs, requiredProofs) && hasAll(claims, requiredClaims)) {
+      if (hasCompleteProofSession && hasAll(claims, requiredClaims)) {
         return doc;
       }
     }
