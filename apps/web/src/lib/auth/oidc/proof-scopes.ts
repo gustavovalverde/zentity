@@ -30,7 +30,11 @@ export function isProofScope(scope: string): scope is ProofScope {
 }
 
 const PROOF_SCOPE_CLAIMS: Record<ProofScope, ProofClaimKey[]> = {
-  "proof:verification": ["verification_level", "verified"],
+  "proof:verification": [
+    "verification_level",
+    "verified",
+    "identity_binding_verified",
+  ],
   "proof:age": ["age_proof_verified"],
   "proof:document": ["document_verified", "doc_validity_proof_verified"],
   "proof:liveness": ["liveness_verified", "face_match_verified"],

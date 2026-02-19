@@ -13,6 +13,7 @@ export const PROOF_DISCLOSURE_KEYS = [
   "doc_validity_proof_verified",
   "nationality_proof_verified",
   "face_match_verified",
+  "identity_binding_verified",
   "policy_version",
   "issuer_id",
   "verification_time",
@@ -27,6 +28,7 @@ interface VerificationClaims extends Record<string, unknown> {
   doc_validity_proof_verified: boolean;
   document_verified: boolean;
   face_match_verified: boolean;
+  identity_binding_verified: boolean;
   issuer_id?: string;
   liveness_verified: boolean;
   nationality_proof_verified: boolean;
@@ -46,6 +48,7 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
     doc_validity_proof_verified: status.checks.docValidityProof,
     nationality_proof_verified: status.checks.nationalityProof,
     face_match_verified: status.checks.faceMatchProof,
+    identity_binding_verified: status.checks.identityBindingProof,
   };
 }
 

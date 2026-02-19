@@ -12,6 +12,7 @@ const mockVerifyNoirProof = vi.fn();
 const mockConsumeChallenge = vi.fn();
 const mockCreateChallenge = vi.fn();
 const mockGetActiveChallengeCount = vi.fn();
+const mockGetZkProofTypesByUserAndDocument = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
@@ -41,6 +42,16 @@ vi.mock("@/lib/privacy/zk/challenge-store", async (importOriginal) => {
     createChallenge: (...args: unknown[]) => mockCreateChallenge(...args),
     getActiveChallengeCount: (...args: unknown[]) =>
       mockGetActiveChallengeCount(...args),
+  };
+});
+
+vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/queries/crypto")>();
+  return {
+    ...actual,
+    getZkProofTypesByUserAndDocument: (...args: unknown[]) =>
+      mockGetZkProofTypesByUserAndDocument(...args),
   };
 });
 
@@ -129,6 +140,9 @@ describe("proof router replay and context binding", () => {
       verificationKeyPoseidonHash: null,
       bbVersion: null,
     });
+    mockGetZkProofTypesByUserAndDocument.mockResolvedValue([
+      "identity_binding",
+    ]);
     mockGetActiveChallengeCount.mockResolvedValue(1);
     mockCreateChallenge.mockImplementation(
       async (
@@ -370,6 +384,29 @@ describe("proof router replay and context binding", () => {
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
       message: expect.stringContaining("min_age_days"),
+    });
+
+    expect(mockVerifyNoirProof).not.toHaveBeenCalled();
+    expect(mockConsumeChallenge).not.toHaveBeenCalled();
+  });
+
+  it("rejects storing non-binding proofs until identity binding is stored", async () => {
+    mockGetZkProofTypesByUserAndDocument.mockResolvedValue([]);
+    const caller = await createCaller(authedUserSession, {
+      headers: { origin: browserAudience },
+    });
+
+    await expect(
+      caller.storeProof({
+        circuitType: "age_verification",
+        proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+        publicSignals: [getTodayDobDays().toString(), "6570", "1", "1", "1"],
+        generationTimeMs: 10,
+        documentId: "doc-1",
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("Identity binding proof is required"),
     });
 
     expect(mockVerifyNoirProof).not.toHaveBeenCalled();

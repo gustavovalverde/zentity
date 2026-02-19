@@ -231,7 +231,8 @@ export async function generateAllProofs(params: {
         (globalThis.location?.origin || "unknown"),
     }
   );
-  enqueueStore({ circuitType: "identity_binding", ...bindingProof });
+  // Store identity binding first so server-side mandatory checks are enforced.
+  proofsToStore.unshift({ circuitType: "identity_binding", ...bindingProof });
 
   // Notify caller before storing (so UI can show "storing" status)
   onBeforeStore?.();

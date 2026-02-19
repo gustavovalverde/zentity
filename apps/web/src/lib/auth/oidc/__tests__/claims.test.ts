@@ -52,6 +52,7 @@ describe("oidc claim mapping", () => {
       doc_validity_proof_verified: true,
       nationality_proof_verified: true,
       face_match_verified: true,
+      identity_binding_verified: true,
       policy_version: "policy-1",
       issuer_id: "issuer-1",
       verification_time: "2026-01-02T00:00:00.000Z",
@@ -74,6 +75,7 @@ describe("oidc claim mapping", () => {
         verification_level: "full",
         verified: true,
         document_verified: true,
+        identity_binding_verified: true,
       },
     });
   });

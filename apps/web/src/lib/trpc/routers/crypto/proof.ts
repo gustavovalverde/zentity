@@ -16,6 +16,7 @@ import {
   getProofHashesByUserAndDocument,
   getUserAgeProof,
   getUserAgeProofFull,
+  getZkProofTypesByUserAndDocument,
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
@@ -560,6 +561,7 @@ export const getSignedClaimsProcedure = protectedProcedure
  *
  * Validates:
  * - Public signals format matches circuit spec
+ * - Identity binding exists before storing non-binding proofs
  * - Policy enforcement (age/current date/thresholds)
  * - Signed claim binding via claim_hash
  * - Cryptographic proof validity
@@ -585,6 +587,20 @@ export const storeProofProcedure = protectedProcedure
         code: "BAD_REQUEST",
         message: "Missing document context for proof storage",
       });
+    }
+
+    if (input.circuitType !== "identity_binding") {
+      const proofTypes = await getZkProofTypesByUserAndDocument(
+        ctx.userId,
+        documentId
+      );
+      if (!proofTypes.includes("identity_binding")) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Identity binding proof is required before storing other proofs",
+        });
+      }
     }
 
     const { result, nonceHex } = await verifyProofInternal({
