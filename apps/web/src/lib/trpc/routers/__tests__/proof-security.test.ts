@@ -19,6 +19,7 @@ const mockGetZkProofTypesByUserDocumentAndSession = vi.fn();
 const mockGetProofHashesByUserDocumentAndSession = vi.fn();
 const mockCloseZkProofSession = vi.fn();
 const mockCreateZkProofSession = vi.fn();
+const mockGetUserBaseCommitments = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
@@ -66,6 +67,8 @@ vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
       mockCloseZkProofSession(...args),
     createZkProofSession: (...args: unknown[]) =>
       mockCreateZkProofSession(...args),
+    getUserBaseCommitments: (...args: unknown[]) =>
+      mockGetUserBaseCommitments(...args),
   };
 });
 
@@ -90,6 +93,7 @@ async function contextField(
   return BigInt(mapped).toString();
 }
 const browserAudience = "http://localhost:3000";
+const baseCommitment = "3";
 const bindingCommitment = "2";
 const isBound = "1";
 const proofSessionId = "11111111-1111-4111-8111-111111111111";
@@ -146,6 +150,7 @@ describe("proof router replay and context binding", () => {
         nonce,
         msgSenderHash,
         audienceHash,
+        baseCommitment,
         bindingCommitment,
         isBound,
       ],
@@ -159,6 +164,7 @@ describe("proof router replay and context binding", () => {
         nonce,
         msgSenderHash,
         browserAudienceHash,
+        baseCommitment,
         bindingCommitment,
         isBound,
       ],
@@ -197,6 +203,7 @@ describe("proof router replay and context binding", () => {
     mockGetProofHashesByUserDocumentAndSession.mockResolvedValue([]);
     mockCloseZkProofSession.mockResolvedValue(undefined);
     mockCreateZkProofSession.mockResolvedValue(undefined);
+    mockGetUserBaseCommitments.mockResolvedValue([baseCommitment]);
     mockGetActiveChallengeCount.mockResolvedValue(1);
     mockCreateChallenge.mockImplementation(
       async (
@@ -292,6 +299,7 @@ describe("proof router replay and context binding", () => {
           nonce,
           attackerMsgSenderHash,
           audienceHash,
+          baseCommitment,
           bindingCommitment,
           isBound,
         ],
@@ -321,6 +329,7 @@ describe("proof router replay and context binding", () => {
           "9999999999",
           msgSenderHash,
           audienceHash,
+          baseCommitment,
           bindingCommitment,
           isBound,
         ],
@@ -341,6 +350,7 @@ describe("proof router replay and context binding", () => {
           nonce,
           mismatchedMsgSenderHash,
           audienceHash,
+          baseCommitment,
           bindingCommitment,
           isBound,
         ],
@@ -545,7 +555,7 @@ describe("proof router replay and context binding", () => {
     ["doc_validity", 4],
     ["nationality_membership", 4],
     ["face_match", 4],
-    ["identity_binding", 5],
+    ["identity_binding", 6],
   ] as const)("storeProof rejects %s when public signals are below minimum", async (circuitType, minPublicInputs) => {
     const caller = await createCaller(authedUserSession);
 

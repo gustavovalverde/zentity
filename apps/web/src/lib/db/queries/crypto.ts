@@ -387,6 +387,7 @@ export async function upsertSecretWrapper(data: {
   wrappedDek: string;
   prfSalt?: string | null;
   kekSource?: string;
+  baseCommitment?: string | null;
 }): Promise<SecretWrapperRecord> {
   const kekSource = data.kekSource ?? "prf";
 
@@ -400,6 +401,7 @@ export async function upsertSecretWrapper(data: {
       wrappedDek: data.wrappedDek,
       prfSalt: data.prfSalt ?? null,
       kekSource,
+      baseCommitment: data.baseCommitment ?? null,
     })
     .onConflictDoUpdate({
       target: [secretWrappers.secretId, secretWrappers.credentialId],
@@ -407,6 +409,7 @@ export async function upsertSecretWrapper(data: {
         wrappedDek: data.wrappedDek,
         prfSalt: data.prfSalt ?? null,
         kekSource,
+        baseCommitment: data.baseCommitment ?? null,
         updatedAt: sql`datetime('now')`,
       },
     })
@@ -861,6 +864,16 @@ export async function insertSignedClaim(
       issuedAt: data.issuedAt,
     })
     .run();
+}
+
+export async function getUserBaseCommitments(
+  userId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ baseCommitment: secretWrappers.baseCommitment })
+    .from(secretWrappers)
+    .where(eq(secretWrappers.userId, userId));
+  return rows.map((r) => r.baseCommitment).filter(Boolean) as string[];
 }
 
 export async function getLatestSignedClaimByUserTypeAndDocument(

@@ -103,6 +103,7 @@ export const secretsRouter = router({
         credentialId: z.string().min(1),
         metadata: metadataSchema,
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
+        baseCommitment: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -192,6 +193,7 @@ export const secretsRouter = router({
             wrappedDek: input.wrappedDek,
             prfSalt: input.prfSalt ?? null,
             kekSource,
+            baseCommitment: input.baseCommitment ?? null,
           })
           .onConflictDoUpdate({
             target: [secretWrappers.secretId, secretWrappers.credentialId],
@@ -199,6 +201,7 @@ export const secretsRouter = router({
               wrappedDek: input.wrappedDek,
               prfSalt: input.prfSalt ?? null,
               kekSource,
+              baseCommitment: input.baseCommitment ?? null,
               updatedAt: sql`datetime('now')`,
             },
           })
@@ -246,6 +249,7 @@ export const secretsRouter = router({
         wrappedDek: wrappedDekSchema,
         prfSalt: prfSaltSchema.optional(),
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
+        baseCommitment: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -268,6 +272,7 @@ export const secretsRouter = router({
         wrappedDek: input.wrappedDek,
         prfSalt: input.prfSalt,
         kekSource: input.kekSource,
+        baseCommitment: input.baseCommitment,
       });
 
       return { wrapper };

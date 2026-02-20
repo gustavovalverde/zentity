@@ -128,16 +128,17 @@ export const PROOF_TYPE_SPECS: Record<ProofType, ProofTypeSpec> = {
 
   [ProofType.IDENTITY_BINDING]: {
     circuitName: "identity_binding",
-    minPublicInputs: 5,
+    minPublicInputs: 6,
     nonceIndex: 0,
-    claimHashIndex: 3,
-    resultIndex: 4,
+    claimHashIndex: 4, // binding_commitment is index 4
+    resultIndex: 5, // is_bound is index 5
     msgSenderIndex: 1,
     audienceIndex: 2,
     publicInputOrder: [
       "nonce",
       "msg_sender_hash",
       "audience_hash",
+      "base_commitment",
       "binding_commitment",
       "is_bound",
     ],

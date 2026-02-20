@@ -24,6 +24,7 @@ import { bytesToBase64 } from "@/lib/utils/base64";
 
 import {
   generateAgeProofNoir,
+  generateBaseCommitmentNoir,
   generateDocValidityProofNoir,
   generateFaceMatchProofNoir,
   generateIdentityBindingProofNoir,
@@ -330,6 +331,38 @@ export async function generateIdentityBindingProof(
     };
   } catch (error) {
     recordProofError("identity_binding", startTime);
+    throw error;
+  }
+}
+
+/**
+ * Generate a base commitment for identity binding enrollment (CLIENT-SIDE)
+ */
+export async function generateBaseCommitment(
+  bindingSecretField: string,
+  userIdHashField: string
+): Promise<string> {
+  const startTime = performance.now();
+
+  try {
+    const result = await generateBaseCommitmentNoir({
+      bindingSecretField,
+      userIdHashField,
+    });
+
+    recordClientMetric({
+      name: "client.noir.proof.duration",
+      value: performance.now() - startTime,
+      attributes: { proof_type: "base_commitment", result: "ok" },
+    });
+
+    return result;
+  } catch (error) {
+    recordClientMetric({
+      name: "client.noir.proof.duration",
+      value: performance.now() - startTime,
+      attributes: { proof_type: "base_commitment", result: "error" },
+    });
     throw error;
   }
 }

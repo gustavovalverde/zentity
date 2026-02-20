@@ -188,6 +188,7 @@ export const secretWrappers = sqliteTable(
     wrappedDek: text("wrapped_dek").notNull(),
     prfSalt: text("prf_salt"),
     kekSource: text("kek_source").notNull().default("prf"),
+    baseCommitment: text("base_commitment"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },

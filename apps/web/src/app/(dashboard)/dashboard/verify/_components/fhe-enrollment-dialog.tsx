@@ -46,6 +46,12 @@ import {
 } from "@/lib/privacy/fhe/store";
 import { uploadSecretBlob } from "@/lib/privacy/secrets/storage";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import {
+  deriveBindingSecret,
+  prepareBindingProofInputs,
+} from "@/lib/privacy/zk/binding-secret";
+import { generateBaseCommitment } from "@/lib/privacy/zk/client";
+import { AuthMode } from "@/lib/privacy/zk/proof-types";
 import { trpc } from "@/lib/trpc/client";
 
 type EnrollmentMethod = "passkey" | "wallet" | "password" | "create-password";
@@ -349,6 +355,19 @@ export function FheEnrollmentDialog({
       });
 
       setStage("finalizing");
+
+      const secretParams = await deriveBindingSecret({
+        authMode: AuthMode.PASSKEY,
+        userId,
+        documentHash: "0x00",
+        prfOutput: signInResult.prfOutput,
+      });
+      const proofInputs = prepareBindingProofInputs(secretParams);
+      const baseCommitment = await generateBaseCommitment(
+        proofInputs.bindingSecretField,
+        proofInputs.userIdHashField
+      );
+
       const completeResponse = await fetch("/api/fhe/enrollment/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -359,6 +378,7 @@ export function FheEnrollmentDialog({
           credentialId: signInResult.credentialId,
           keyId: registration.keyId,
           envelopeFormat: enrollment.envelopeFormat,
+          baseCommitment,
         }),
       });
       if (!completeResponse.ok) {
@@ -395,6 +415,18 @@ export function FheEnrollmentDialog({
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
+      const secretParams = await deriveBindingSecret({
+        authMode: AuthMode.OPAQUE,
+        userId,
+        documentHash: "0x00",
+        exportKey: result.data.exportKey,
+      });
+      const proofInputs = prepareBindingProofInputs(secretParams);
+      const baseCommitment = await generateBaseCommitment(
+        proofInputs.bindingSecretField,
+        proofInputs.userIdHashField
+      );
+
       setStage("encrypting");
       await storeFheKeysWithCredential({
         keys: storedKeys,
@@ -402,6 +434,7 @@ export function FheEnrollmentDialog({
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
         },
+        baseCommitment,
       });
 
       setStage("registering");
@@ -440,6 +473,18 @@ export function FheEnrollmentDialog({
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
+      const secretParams = await deriveBindingSecret({
+        authMode: AuthMode.OPAQUE,
+        userId,
+        documentHash: "0x00",
+        exportKey: result.data.exportKey,
+      });
+      const proofInputs = prepareBindingProofInputs(secretParams);
+      const baseCommitment = await generateBaseCommitment(
+        proofInputs.bindingSecretField,
+        proofInputs.userIdHashField
+      );
+
       setStage("encrypting");
       await storeFheKeysWithCredential({
         keys: storedKeys,
@@ -447,6 +492,7 @@ export function FheEnrollmentDialog({
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
         },
+        baseCommitment,
       });
 
       setStage("registering");
@@ -507,6 +553,18 @@ export function FheEnrollmentDialog({
       setStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
+      const secretParams = await deriveBindingSecret({
+        authMode: AuthMode.WALLET,
+        userId,
+        documentHash: "0x00",
+        signatureBytes,
+      });
+      const proofInputs = prepareBindingProofInputs(secretParams);
+      const baseCommitment = await generateBaseCommitment(
+        proofInputs.bindingSecretField,
+        proofInputs.userIdHashField
+      );
+
       setStage("encrypting");
       await storeFheKeysWithCredential({
         keys: storedKeys,
@@ -521,6 +579,7 @@ export function FheEnrollmentDialog({
             expiresAt,
           },
         },
+        baseCommitment,
       });
 
       setStage("registering");

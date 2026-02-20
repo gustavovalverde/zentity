@@ -25,7 +25,8 @@ type ProofType =
   | "nationality"
   | "nationality_client"
   | "face_match"
-  | "identity_binding";
+  | "identity_binding"
+  | "base_commitment";
 
 export interface WorkerInitMessage {
   origin: string;
@@ -46,6 +47,7 @@ export interface WorkerRequest {
     | NationalityClientPayload
     | FaceMatchPayload
     | IdentityBindingPayload
+    | BaseCommitmentPayload
     | HealthCheckPayload;
   type: ProofType;
 }
@@ -114,6 +116,11 @@ export interface IdentityBindingPayload {
   msgSender: string; // Context binding: caller identity
   nonce: string; // Hex string for replay resistance
   userIdHashField: string; // Hash of user ID
+}
+
+export interface BaseCommitmentPayload {
+  bindingSecretField: string;
+  userIdHashField: string;
 }
 
 export interface WorkerResponse {
@@ -387,4 +394,10 @@ export function generateIdentityBindingProofWorker(
   payload: IdentityBindingPayload
 ): Promise<ProofOutput> {
   return sendProofRequest("identity_binding", payload);
+}
+
+export function generateBaseCommitmentWorker(
+  payload: BaseCommitmentPayload
+): Promise<ProofOutput> {
+  return sendProofRequest("base_commitment", payload);
 }

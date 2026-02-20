@@ -6,44 +6,10 @@ const HEX_NONCE_PATTERN = /^[0-9a-f]{32}$/;
 // Mock server-only
 vi.mock("server-only", () => ({}));
 
-// Mock circuit artifacts
-vi.mock(
-  "@/noir-circuits/age_verification/artifacts/age_verification.json",
-  () => ({
-    default: {
-      noir_version: "0.35.0",
-      hash: 12_345,
-      bytecode: "base64_bytecode_age",
-    },
-  })
-);
-
-vi.mock("@/noir-circuits/doc_validity/artifacts/doc_validity.json", () => ({
-  default: {
-    noir_version: "0.35.0",
-    hash: 67_890,
-    bytecode: "base64_bytecode_doc",
-  },
-}));
-
-vi.mock(
-  "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json",
-  () => ({
-    default: {
-      noir_version: "0.35.0",
-      hash: 11_111,
-      bytecode: "base64_bytecode_nat",
-    },
-  })
-);
-
-vi.mock("@/noir-circuits/face_match/artifacts/face_match.json", () => ({
-  default: {
-    noir_version: "0.35.0",
-    hash: 22_222,
-    bytecode: "base64_bytecode_face",
-  },
-}));
+import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
+import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
+import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
+import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
 
 import { getBbJsVersion, getCircuitMetadata } from "../noir-verifier";
 import {
@@ -54,32 +20,16 @@ import {
 
 describe("noir-verifier", () => {
   describe("getCircuitMetadata", () => {
-    it("returns metadata for age_verification circuit", () => {
-      const metadata = getCircuitMetadata("age_verification");
+    it.each([
+      ["age_verification", ageCircuit],
+      ["doc_validity", docValidityCircuit],
+      ["nationality_membership", nationalityCircuit],
+      ["face_match", faceMatchCircuit],
+    ] as const)("returns correct metadata for %s", (circuitType, artifact) => {
+      const metadata = getCircuitMetadata(circuitType);
 
-      expect(metadata.noirVersion).toBe("0.35.0");
-      expect(metadata.circuitHash).toBe("12345");
-    });
-
-    it("returns metadata for doc_validity circuit", () => {
-      const metadata = getCircuitMetadata("doc_validity");
-
-      expect(metadata.noirVersion).toBe("0.35.0");
-      expect(metadata.circuitHash).toBe("67890");
-    });
-
-    it("returns metadata for nationality_membership circuit", () => {
-      const metadata = getCircuitMetadata("nationality_membership");
-
-      expect(metadata.noirVersion).toBe("0.35.0");
-      expect(metadata.circuitHash).toBe("11111");
-    });
-
-    it("returns metadata for face_match circuit", () => {
-      const metadata = getCircuitMetadata("face_match");
-
-      expect(metadata.noirVersion).toBe("0.35.0");
-      expect(metadata.circuitHash).toBe("22222");
+      expect(metadata.noirVersion).toBe(artifact.noir_version);
+      expect(metadata.circuitHash).toBe(String(artifact.hash));
     });
 
     it("converts numeric hash to string", () => {
@@ -156,12 +106,12 @@ describe("proof-types", () => {
 
     it("identity_binding has correct spec", () => {
       const spec = PROOF_TYPE_SPECS.identity_binding;
-      expect(spec.minPublicInputs).toBe(5);
+      expect(spec.minPublicInputs).toBe(6);
       expect(spec.nonceIndex).toBe(0);
       expect(spec.msgSenderIndex).toBe(1);
       expect(spec.audienceIndex).toBe(2);
-      expect(spec.claimHashIndex).toBe(3);
-      expect(spec.resultIndex).toBe(4);
+      expect(spec.claimHashIndex).toBe(4);
+      expect(spec.resultIndex).toBe(5);
     });
   });
 

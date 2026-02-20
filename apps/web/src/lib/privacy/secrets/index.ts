@@ -167,6 +167,7 @@ export async function storeSecretWithCredential(params: {
   credential: EnrollmentCredential;
   envelopeFormat: EnvelopeFormat;
   metadata?: Record<string, unknown> | null;
+  baseCommitment?: string;
 }): Promise<{ secretId: string; envelopeFormat: EnvelopeFormat }> {
   const secretId = crypto.randomUUID();
   const dek = generateDek();
@@ -245,6 +246,7 @@ export async function storeSecretWithCredential(params: {
       envelopeFormat: params.envelopeFormat,
       metadata: params.metadata,
     }),
+    baseCommitment: params.baseCommitment,
   });
 
   try {

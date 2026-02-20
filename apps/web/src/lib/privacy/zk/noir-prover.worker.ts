@@ -18,6 +18,7 @@ import type { InitInput as AcvmInitInput } from "@noir-lang/acvm_js";
 import type { InitInput as NoirAbiInitInput } from "@noir-lang/noirc_abi";
 import type {
   AgeProofPayload,
+  BaseCommitmentPayload,
   DocValidityPayload,
   FaceMatchPayload,
   IdentityBindingPayload,
@@ -805,6 +806,13 @@ async function generateIdentityBindingProof(
     audienceHash: `${audienceHashField.slice(0, 20)}...`,
   });
 
+  // Compute base_commitment = Poseidon2(binding_secret, user_id_hash)
+  const baseCommitment = await poseidon2Hash([
+    BigInt(bindingSecretReduced),
+    BigInt(userIdHashReduced),
+  ]);
+  const baseCommitmentHex = `0x${baseCommitment.toString(16)}`;
+
   // Compute binding_commitment = Poseidon2(
   //   binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash
   // )
@@ -817,6 +825,7 @@ async function generateIdentityBindingProof(
   ]);
   const bindingCommitmentHex = `0x${bindingCommitment.toString(16)}`;
   logWorker("proof", "Computed binding commitment", {
+    baseCommitmentHex,
     bindingCommitmentHex,
   });
 
@@ -827,6 +836,7 @@ async function generateIdentityBindingProof(
     nonce: nonceToField(payload.nonce),
     msg_sender_hash: msgSenderHashField,
     audience_hash: audienceHashField,
+    base_commitment: baseCommitmentHex,
     binding_commitment: bindingCommitmentHex,
   });
   logWorker("proof", "Identity binding witness ready", {
@@ -844,6 +854,35 @@ async function generateIdentityBindingProof(
   return {
     proof: Array.from(proof.proof),
     publicInputs: proof.publicInputs,
+  };
+}
+
+async function generateBaseCommitment(
+  payload: BaseCommitmentPayload
+): Promise<{ proof: number[]; publicInputs: string[] }> {
+  logWorker("proof", "Generating base commitment only");
+
+  const [bindingSecretReduced, userIdHashReduced] = await Promise.all([
+    hashToFieldHexFromHex(
+      payload.bindingSecretField,
+      HASH_TO_FIELD_INFO.IDENTITY_BINDING_SECRET
+    ),
+    hashToFieldHexFromHex(
+      payload.userIdHashField,
+      HASH_TO_FIELD_INFO.IDENTITY_USER_ID_HASH
+    ),
+  ]);
+
+  const baseCommitment = await poseidon2Hash([
+    BigInt(bindingSecretReduced),
+    BigInt(userIdHashReduced),
+  ]);
+
+  const baseCommitmentHex = `0x${baseCommitment.toString(16)}`;
+
+  return {
+    proof: [],
+    publicInputs: [baseCommitmentHex],
   };
 }
 
@@ -895,6 +934,10 @@ globalThis.onmessage = (
         } else if (type === "identity_binding") {
           result = await generateIdentityBindingProof(
             payload as IdentityBindingPayload
+          );
+        } else if (type === "base_commitment") {
+          result = await generateBaseCommitment(
+            payload as BaseCommitmentPayload
           );
         } else {
           throw new Error(`Unknown proof type: ${type}`);

@@ -15,6 +15,7 @@ import {
   getProofHashesByUserDocumentAndSession,
   getUserAgeProof,
   getUserAgeProofFull,
+  getUserBaseCommitments,
   getZkProofSessionById,
   getZkProofTypesByUserDocumentAndSession,
   insertZkProofRecord,
@@ -233,19 +234,35 @@ async function verifyProofInternal(args: {
       });
     }
 
+    const baseCommitmentIndex =
+      circuitSpec.publicInputOrder.indexOf("base_commitment");
+    const providedBaseCommitment = parseFieldToBigInt(
+      args.publicInputs[baseCommitmentIndex]
+    );
+
+    if (providedBaseCommitment === BigInt(0)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Invalid base commitment (zero)",
+      });
+    }
+
     const providedMsgSenderHash = parseFieldToBigInt(
       args.publicInputs[msgSenderIndex]
     );
     const providedAudienceHash = parseFieldToBigInt(
       args.publicInputs[audienceIndex]
     );
-    const [expectedMsgSenderHash, expectedAudienceHash] = await Promise.all([
-      hashContextToField(
-        args.msgSender,
-        HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
-      ),
-      hashContextToField(args.audience, HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE),
-    ]);
+
+    const [expectedMsgSenderHash, expectedAudienceHash, storedCommitmentHexes] =
+      await Promise.all([
+        hashContextToField(
+          args.msgSender,
+          HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+        ),
+        hashContextToField(args.audience, HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE),
+        getUserBaseCommitments(args.userId),
+      ]);
 
     if (providedMsgSenderHash !== expectedMsgSenderHash) {
       throw new TRPCError({
@@ -257,6 +274,23 @@ async function verifyProofInternal(args: {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Identity binding audience mismatch",
+      });
+    }
+
+    const storedCommitments = storedCommitmentHexes.map((hex) => BigInt(hex));
+
+    if (storedCommitments.length === 0) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No registered credentials found for identity binding",
+      });
+    }
+
+    if (!storedCommitments.includes(providedBaseCommitment)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "Identity binding failed: Base commitment does not match any registered credential.",
       });
     }
   }

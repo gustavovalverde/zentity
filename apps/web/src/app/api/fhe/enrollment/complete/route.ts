@@ -63,6 +63,7 @@ const enrollmentSchema = z.object({
   credentialId: z.string().min(1),
   keyId: z.string().min(1),
   envelopeFormat: z.enum(["json", "msgpack"]),
+  baseCommitment: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -162,6 +163,7 @@ export async function POST(request: Request) {
     wrappedDek: enrollment.wrappedDek,
     prfSalt: enrollment.prfSalt,
     kekSource: "prf",
+    baseCommitment: enrollment.baseCommitment,
   });
 
   // Persist enrollment status server-side to avoid client-side races where other

@@ -11,6 +11,7 @@
 
 import {
   generateAgeProofWorker,
+  generateBaseCommitmentWorker,
   generateDocValidityProofWorker,
   generateFaceMatchProofWorker,
   generateIdentityBindingProofWorker,
@@ -67,6 +68,11 @@ interface IdentityBindingInput {
   msgSender: string; // Context binding: caller identity
   nonce: string; // Hex nonce for replay resistance
   userIdHashField: string; // Hash of user ID
+}
+
+interface BaseCommitmentInput {
+  bindingSecretField: string;
+  userIdHashField: string;
 }
 
 /**
@@ -265,6 +271,21 @@ export async function generateIdentityBindingProofNoir(
     publicInputs: result.publicInputs,
     generationTimeMs: performance.now() - startTime,
   };
+}
+
+export async function generateBaseCommitmentNoir(
+  input: BaseCommitmentInput
+): Promise<string> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const result = await generateBaseCommitmentWorker({
+    bindingSecretField: input.bindingSecretField,
+    userIdHashField: input.userIdHashField,
+  });
+
+  return result.publicInputs[0];
 }
 
 /**

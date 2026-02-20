@@ -123,6 +123,7 @@ export async function storeFheKeys(params: {
 export async function storeFheKeysWithCredential(params: {
   keys: StoredFheKeys;
   credential: EnrollmentCredential;
+  baseCommitment?: string;
 }): Promise<{ secretId: string }> {
   const secretPayload = serializeKeys(params.keys);
   const result = await storeSecretWithCredential({
@@ -130,6 +131,7 @@ export async function storeFheKeysWithCredential(params: {
     plaintext: secretPayload,
     credential: params.credential,
     envelopeFormat: FHE_ENVELOPE_FORMAT,
+    baseCommitment: params.baseCommitment,
   });
 
   cacheKeys(result.secretId, params.keys);
