@@ -11,7 +11,7 @@
  * - JS heap only — never touches localStorage, sessionStorage, or cookies
  * - Tab-scoped — cleared on page refresh or tab close
  * - Explicitly cleared after proof generation (success or failure)
- * - TTL fallback (15 min) as safety net for missed cleanup
+ * - TTL fallback (10 min) as safety net for missed cleanup
  */
 
 // --- Pending Passkey Unlock Deduplication ---
@@ -78,7 +78,7 @@ function clearCachedRecoveryKey(): void {
 // Holds raw credential material from FHE enrollment for identity binding proof.
 // Cleared after proof generation; TTL is a safety net only.
 
-const BINDING_MATERIAL_TTL_MS = 15 * 60 * 1000;
+const BINDING_MATERIAL_TTL_MS = 10 * 60 * 1000;
 
 export type CachedBindingMaterial =
   | {
@@ -93,9 +93,33 @@ export type CachedBindingMaterial =
 let bindingMaterial: CachedBindingMaterial | null = null;
 let bindingMaterialTimer: ReturnType<typeof setTimeout> | null = null;
 
+function wipeBytes(value: Uint8Array): void {
+  value.fill(0);
+}
+
+function wipeBindingMaterial(material: CachedBindingMaterial | null): void {
+  if (!material) {
+    return;
+  }
+
+  if (material.mode === "passkey") {
+    wipeBytes(material.prfOutput);
+    wipeBytes(material.prfSalt);
+    return;
+  }
+
+  if (material.mode === "opaque") {
+    wipeBytes(material.exportKey);
+    return;
+  }
+
+  wipeBytes(material.signatureBytes);
+}
+
 export function setCachedBindingMaterial(
   material: CachedBindingMaterial
 ): void {
+  wipeBindingMaterial(bindingMaterial);
   bindingMaterial = material;
   if (bindingMaterialTimer) {
     clearTimeout(bindingMaterialTimer);
@@ -111,6 +135,7 @@ export function getCachedBindingMaterial(): CachedBindingMaterial | null {
 }
 
 export function clearCachedBindingMaterial(): void {
+  wipeBindingMaterial(bindingMaterial);
   bindingMaterial = null;
   if (bindingMaterialTimer) {
     clearTimeout(bindingMaterialTimer);

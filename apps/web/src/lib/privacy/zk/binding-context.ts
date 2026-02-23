@@ -19,7 +19,10 @@ import {
   OPAQUE_CREDENTIAL_ID,
   WALLET_CREDENTIAL_PREFIX,
 } from "@/lib/privacy/credentials";
-import { getCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
+import {
+  clearCachedBindingMaterial,
+  getCachedBindingMaterial,
+} from "@/lib/privacy/credentials/cache";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes } from "@/lib/utils/base64";
@@ -160,6 +163,7 @@ export async function getBindingContext(
         userId,
         documentHash,
       });
+      clearCachedBindingMaterial();
       return { success: true, context: { bindingResult, userId } };
     }
 
@@ -178,6 +182,7 @@ export async function getBindingContext(
         userId,
         documentHash,
       });
+      clearCachedBindingMaterial();
       return { success: true, context: { bindingResult, userId } };
     }
 
@@ -204,6 +209,10 @@ export async function getBindingContext(
       userId,
       documentHash,
     });
+
+    if (cached?.mode === "passkey") {
+      clearCachedBindingMaterial();
+    }
 
     return {
       success: true,

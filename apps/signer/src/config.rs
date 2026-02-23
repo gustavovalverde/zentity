@@ -408,6 +408,15 @@ impl Settings {
                 .to_string());
         }
 
+        // In production, require signer-side independent authorization checks.
+        if self.internal_token_required && self.jwks_url.is_none() {
+            return Err(
+                "GUARDIAN_ASSERTION_JWKS_URL is required in production for signer role. \
+                 Configure JWKS so signers independently verify guardian assertions."
+                    .to_string(),
+            );
+        }
+
         Ok(())
     }
 
@@ -521,6 +530,22 @@ mod tests {
     #[test]
     fn test_signer_settings_validation() {
         let settings = Settings::for_signer_tests("signer-1", 5101);
+        assert!(settings.validate().is_ok());
+    }
+
+    #[test]
+    fn test_signer_requires_jwks_when_token_required() {
+        let mut settings = Settings::for_signer_tests("signer-1", 5101);
+        settings.internal_token_required = true;
+        settings.internal_token = Some("internal-token".to_string());
+        settings.jwks_url = None;
+
+        let error = settings
+            .validate()
+            .expect_err("expected jwks validation error");
+        assert!(error.contains("GUARDIAN_ASSERTION_JWKS_URL"));
+
+        settings.jwks_url = Some("https://issuer.example/.well-known/jwks.json".to_string());
         assert!(settings.validate().is_ok());
     }
 }
