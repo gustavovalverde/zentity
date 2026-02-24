@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
@@ -73,7 +74,7 @@ describe("crypto queries", () => {
 
     const summary = await getUserAgeProof(userId);
     const expectedHash = crypto
-      .createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "")
+      .createHmac("sha256", env.BETTER_AUTH_SECRET)
       .update(Buffer.from("ciphertext"))
       .digest("hex");
     expect(summary?.isOver18).toBe(true);
@@ -281,7 +282,7 @@ describe("crypto queries", () => {
     expect(latestEncrypted?.ciphertext).toEqual(Buffer.from("cipher-2"));
     expect(latestEncrypted?.ciphertextHash).toBe(
       crypto
-        .createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "")
+        .createHmac("sha256", env.BETTER_AUTH_SECRET)
         .update(Buffer.from("cipher-2"))
         .digest("hex")
     );

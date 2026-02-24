@@ -15,6 +15,7 @@ import {
 } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
+import { env } from "@/env";
 import { eip712AuthClient } from "@/lib/auth/plugins/eip712/client";
 import { opaqueClient } from "@/lib/auth/plugins/opaque/client";
 import { getSafeRedirectPath } from "@/lib/utils/navigation";
@@ -24,7 +25,7 @@ import { getSafeRedirectPath } from "@/lib/utils/navigation";
 const getAuthBaseURL = () => {
   const base =
     globalThis.window === undefined
-      ? process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      ? env.NEXT_PUBLIC_APP_URL
       : globalThis.window.location.origin;
   return new URL("/api/auth", base).toString();
 };

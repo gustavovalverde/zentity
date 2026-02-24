@@ -2,12 +2,12 @@ import "server-only";
 
 import { Resend } from "resend";
 
+import { env } from "@/env";
 import { logWarn } from "@/lib/logging/error-logger";
 
-const resendApiKey = process.env.RESEND_API_KEY?.trim() || "";
-const defaultFromEmail =
-  process.env.MAIL_FROM_EMAIL || "no-reply@zentity.local";
-const defaultFromName = process.env.MAIL_FROM_NAME || "Zentity";
+const resendApiKey = env.RESEND_API_KEY ?? "";
+const defaultFromEmail = env.MAIL_FROM_EMAIL;
+const defaultFromName = env.MAIL_FROM_NAME;
 
 let resendClient: Resend | null = null;
 

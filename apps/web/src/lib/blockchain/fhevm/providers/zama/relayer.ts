@@ -1,7 +1,7 @@
 import type { FhevmInstance } from "../../types";
 import type { FhevmProviderFactory } from "..";
 
-const DEFAULT_ZAMA_SDK_URL = "/fhevm/relayer-sdk-js.umd.js";
+const ZAMA_SDK_URL = "/fhevm/relayer-sdk-js.umd.js";
 
 let zamaSdkLoadPromise: Promise<void> | null = null;
 
@@ -14,8 +14,7 @@ async function ensureZamaRelayerSdkLoaded(signal?: AbortSignal): Promise<void> {
     return;
   }
 
-  const sdkUrl =
-    process.env.NEXT_PUBLIC_FHEVM_ZAMA_SDK_URL || DEFAULT_ZAMA_SDK_URL;
+  const sdkUrl = ZAMA_SDK_URL;
 
   zamaSdkLoadPromise ??= new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
@@ -97,38 +96,8 @@ export const createZamaRelayerInstance: FhevmProviderFactory = async ({
 
   await sdk.initSDK();
 
-  const relayerUrl = process.env.NEXT_PUBLIC_FHEVM_RELAYER_URL?.trim();
-  const chainId = Number(process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || "");
-  const gatewayChainId = Number(
-    process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID || ""
-  );
-  const aclContractAddress = process.env.NEXT_PUBLIC_FHEVM_ACL_CONTRACT_ADDRESS;
-  const kmsContractAddress = process.env.NEXT_PUBLIC_FHEVM_KMS_CONTRACT_ADDRESS;
-  const inputVerifierContractAddress =
-    process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS;
-  const verifyingContractAddressDecryption =
-    process.env.NEXT_PUBLIC_FHEVM_DECRYPTION_ADDRESS;
-  const verifyingContractAddressInputVerification =
-    process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS;
-
-  // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
-  const baseConfig = chainId === 1 ? sdk.MainnetConfig : sdk.SepoliaConfig;
-
   const instance = (await sdk.createInstance({
-    ...(baseConfig as Record<string, unknown>),
-    ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
-      ? { gatewayChainId }
-      : {}),
-    ...(aclContractAddress ? { aclContractAddress } : {}),
-    ...(kmsContractAddress ? { kmsContractAddress } : {}),
-    ...(inputVerifierContractAddress ? { inputVerifierContractAddress } : {}),
-    ...(verifyingContractAddressDecryption
-      ? { verifyingContractAddressDecryption }
-      : {}),
-    ...(verifyingContractAddressInputVerification
-      ? { verifyingContractAddressInputVerification }
-      : {}),
-    ...(relayerUrl ? { relayerUrl } : {}),
+    ...(sdk.SepoliaConfig as Record<string, unknown>),
     network: provider,
   })) as FhevmInstance;
 

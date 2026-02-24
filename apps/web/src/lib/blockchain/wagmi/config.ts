@@ -11,17 +11,11 @@ import { hardhat, sepolia } from "@reown/appkit/networks";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { cookieStorage, createStorage, injected } from "@wagmi/core";
 
-/**
- * fhEVM Sepolia network configuration.
- * Uses the same chainId as Sepolia (11155111) with a public Sepolia RPC.
- */
-const FHEVM_CHAIN_ID = Number(
-  process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID || 11_155_111
-);
-const FHEVM_NETWORK_NAME =
-  process.env.NEXT_PUBLIC_FHEVM_NETWORK_NAME || "fhEVM (Sepolia)";
-const FHEVM_EXPLORER_URL =
-  process.env.NEXT_PUBLIC_FHEVM_EXPLORER_URL || "https://sepolia.etherscan.io";
+import { env } from "@/env";
+
+const FHEVM_CHAIN_ID = 11_155_111;
+const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
+const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
 
 export const fhevmSepolia = {
   id: FHEVM_CHAIN_ID,
@@ -33,10 +27,7 @@ export const fhevmSepolia = {
   },
   rpcUrls: {
     default: {
-      http: [
-        process.env.NEXT_PUBLIC_FHEVM_RPC_URL ||
-          "https://ethereum-sepolia-rpc.publicnode.com",
-      ],
+      http: [env.NEXT_PUBLIC_FHEVM_RPC_URL],
     },
   },
   blockExplorers: {
@@ -60,20 +51,15 @@ const LOCALHOST_DEMO_PROJECT_ID = "b56e18d47c72ab683b10814fe9495694";
  * Falls back to demo ID on localhost for easier development.
  */
 function getProjectId(): string {
-  const envProjectId = process.env.NEXT_PUBLIC_PROJECT_ID;
-
-  if (envProjectId) {
-    return envProjectId;
+  if (env.NEXT_PUBLIC_PROJECT_ID) {
+    return env.NEXT_PUBLIC_PROJECT_ID;
   }
 
-  // Use demo project ID for localhost development (client-side check)
   const isLocalhost = globalThis.window?.location.hostname === "localhost";
-
   if (isLocalhost || process.env.NODE_ENV === "development") {
     return LOCALHOST_DEMO_PROJECT_ID;
   }
 
-  // Production without project ID - wallet connection won't work
   return "";
 }
 
@@ -85,16 +71,14 @@ export const projectId = getProjectId();
 function getEnabledNetworks(): [AppKitNetwork, ...AppKitNetwork[]] {
   const networks: AppKitNetwork[] = [];
 
-  const hardhatEnabled =
+  if (
     process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true";
-
-  if (hardhatEnabled) {
+    env.NEXT_PUBLIC_ENABLE_HARDHAT
+  ) {
     networks.push(hardhat);
   }
 
-  // Always include fhEVM network unless explicitly disabled
-  if (process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false") {
+  if (env.NEXT_PUBLIC_ENABLE_FHEVM) {
     networks.push(fhevmSepolia);
   }
 

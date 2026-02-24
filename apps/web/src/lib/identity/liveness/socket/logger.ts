@@ -8,19 +8,18 @@
 
 import pino from "pino";
 
+import { env } from "@/env";
+
 export type Logger = import("pino").Logger;
 
-const isDev = process.env.NODE_ENV !== "production";
-const logLevel = process.env.LOG_LEVEL || (isDev ? "debug" : "info");
+const isDev = env.NODE_ENV !== "production";
+const logLevel = env.LOG_LEVEL || (isDev ? "debug" : "info");
 
-/**
- * Socket handler logger instance.
- */
 export const socketLogger: Logger = pino({
   level: logLevel,
   base: {
     service: "zentity-web",
     component: "liveness-socket",
-    env: process.env.NODE_ENV || "development",
+    env: env.NODE_ENV,
   },
 });

@@ -15,8 +15,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
-const DEFAULT_WALLET_CLIENT_ID =
-  process.env.OIDC4VCI_WALLET_CLIENT_ID || "zentity-wallet";
+const DEFAULT_WALLET_CLIENT_ID = "zentity-wallet";
 
 const WALLET_CLIENT_SCOPES = ["openid", "proof:identity"];
 const WALLET_CLIENT_GRANT_TYPES = [

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { NextResponse } from "next/server";
 
+import { env } from "@/env";
 import {
   CORRELATION_ID_HEADER,
   FLOW_ID_HEADER,
@@ -26,7 +27,7 @@ function resolveFlowId(request: NextRequest): string | null {
 
 function getAllowedOrigins(): string[] {
   const origins = new Set<string>();
-  const fromEnv = process.env.TRUSTED_ORIGINS;
+  const fromEnv = env.TRUSTED_ORIGINS;
   if (fromEnv) {
     for (const origin of fromEnv.split(",")) {
       const trimmed = origin.trim();

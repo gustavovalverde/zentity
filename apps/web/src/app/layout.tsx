@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { env } from "@/env";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,9 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "https://zentity.xyz"
-  ),
+  metadataBase: new URL(env.NEXT_PUBLIC_APP_URL),
   title: "Zentity - Privacy-First Identity Verification",
   description:
     "Verify identity without exposing personal data using passkeys, zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.",

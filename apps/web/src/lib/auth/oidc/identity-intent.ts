@@ -6,7 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { z } from "zod";
 
-import { getBetterAuthSecret } from "@/lib/utils/env";
+import { env } from "@/env";
 
 const IDENTITY_INTENT_TTL_SECONDS = 120;
 
@@ -63,7 +63,7 @@ export async function createIdentityIntentToken(input: {
   const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString(
     "base64url"
   );
-  const signature = await makeSignature(encodedPayload, getBetterAuthSecret());
+  const signature = await makeSignature(encodedPayload, env.BETTER_AUTH_SECRET);
 
   return {
     intentToken: `${encodedPayload}.${signature}`,
@@ -83,7 +83,7 @@ export async function verifyIdentityIntentToken(
 
   const expectedSignature = await makeSignature(
     encodedPayload,
-    getBetterAuthSecret()
+    env.BETTER_AUTH_SECRET
   );
   if (!constantTimeEqual(signature, expectedSignature)) {
     throw new Error("invalid_intent_token");

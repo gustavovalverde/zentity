@@ -3,11 +3,11 @@ import { headers } from "next/headers";
 import { Suspense } from "react";
 
 import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
+import { isWeb3Enabled } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { db } from "@/lib/db/connection";
 import { passkeys } from "@/lib/db/schema/auth";
-import { isWeb3Enabled } from "@/lib/feature-flags";
 
 import { IdentityActionsCard } from "./_components/identity-actions-card";
 import {
@@ -18,7 +18,7 @@ import {
 export default async function DashboardPage() {
   const session = await getCachedSession(await headers());
   const userId = session?.user?.id;
-  const web3Enabled = isWeb3Enabled();
+  const web3Enabled = isWeb3Enabled;
 
   // Parallelize assurance state and passkey queries to eliminate waterfall
   const [assuranceState, hasPasskeys] = userId

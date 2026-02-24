@@ -1,9 +1,6 @@
 import "server-only";
 
-import {
-  getSignerCoordinatorUrl,
-  getSignerEndpoints,
-} from "@/lib/utils/service-urls";
+import { env } from "@/env";
 
 type Ciphersuite = "secp256k1" | "ed25519";
 
@@ -32,7 +29,7 @@ interface SigningAggregateResponse {
 const DEFAULT_CIPHERSUITE: Ciphersuite = "secp256k1";
 
 function getAuthHeaders(): Record<string, string> {
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
+  const token = env.INTERNAL_SERVICE_TOKEN;
   if (!token) {
     return {};
   }
@@ -71,7 +68,7 @@ function toParticipantMap<T>(entries: [number, T][]): Record<string, T> {
 }
 
 function resolveSignerEndpoints(total: number): string[] {
-  const endpoints = getSignerEndpoints();
+  const endpoints = env.SIGNER_ENDPOINTS;
   if (endpoints.length < total) {
     throw new Error(
       `Not enough signer endpoints configured. Need ${total}, have ${endpoints.length}.`
@@ -108,7 +105,7 @@ export async function createRecoveryKeySet(params: {
   const totalGuardians = params.totalGuardians ?? 3;
   const ciphersuite = params.ciphersuite ?? DEFAULT_CIPHERSUITE;
 
-  const coordinatorUrl = getSignerCoordinatorUrl();
+  const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
   const signerEndpoints = resolveSignerEndpoints(totalGuardians);
 
   const signerInfos = await Promise.all(
@@ -240,7 +237,7 @@ export async function signRecoveryChallenge(params: {
   participantIds?: number[];
   totalParticipants?: number;
 }): Promise<{ signature: string; signaturesCollected: number }> {
-  const coordinatorUrl = getSignerCoordinatorUrl();
+  const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
   const totalParticipants = params.totalParticipants ?? params.threshold;
   const endpointMap = resolveSignerEndpointMap(totalParticipants);
   const participantIds =

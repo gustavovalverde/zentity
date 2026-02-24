@@ -8,10 +8,12 @@
  * Only cryptographic proofs are returned.
  */
 
+import { env } from "@/env";
+
 const ENABLE_WORKER_LOGS =
-  process.env.NEXT_PUBLIC_NOIR_DEBUG === "true" &&
+  env.NEXT_PUBLIC_NOIR_DEBUG === true &&
   (process.env.NODE_ENV === "development" ||
-    process.env.NEXT_PUBLIC_APP_ENV === "local");
+    env.NEXT_PUBLIC_APP_ENV === "local");
 
 /**
  * Timeout for proof generation operations.
@@ -174,11 +176,8 @@ interface WorkerLogMessage {
 }
 
 function getDesiredWorkerCount(): number {
-  const configured = Number.parseInt(
-    process.env.NEXT_PUBLIC_NOIR_WORKERS ?? "",
-    10
-  );
-  if (Number.isFinite(configured) && configured > 0) {
+  const configured = env.NEXT_PUBLIC_NOIR_WORKERS;
+  if (configured != null && configured > 0) {
     return Math.min(configured, MAX_WORKER_COUNT);
   }
   return DEFAULT_WORKER_COUNT;

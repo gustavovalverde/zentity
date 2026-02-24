@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { env } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import {
@@ -65,7 +66,7 @@ export default async function DocumentVerifyPage() {
       </div>
 
       <DocumentUploadClient
-        demoMode={process.env.DEMO_MODE === "true"}
+        demoMode={env.DEMO_MODE === true}
         resetOnMount={needsProofRegeneration || needsDocumentReprocessing}
       />
     </div>

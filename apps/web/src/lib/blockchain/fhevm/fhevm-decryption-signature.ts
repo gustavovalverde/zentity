@@ -42,13 +42,7 @@ function timestampNow(): number {
 }
 
 /** Minimum validity window for decryption authorizations (days). */
-const DECRYPT_SIGNATURE_DURATION_DAYS = Math.max(
-  1,
-  Number.parseInt(
-    process.env.NEXT_PUBLIC_FHEVM_DECRYPT_SIGNATURE_DURATION_DAYS ?? "1",
-    10
-  ) || 1
-);
+const DECRYPT_SIGNATURE_DURATION_DAYS = 1;
 
 let monotonicNonceCounter = 0;
 

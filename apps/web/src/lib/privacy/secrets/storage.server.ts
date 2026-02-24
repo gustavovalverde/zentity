@@ -16,13 +16,9 @@ import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-const DEFAULT_BLOB_DIR = ".data/secret-blobs";
-const DEFAULT_SECRET_BLOB_MAX_BYTES = 90 * 1024 * 1024; // 90 MiB
 const BLOB_REF_PATTERN = /^[a-f0-9]{64}$/;
-
-function getBlobDir(): string {
-  return process.env.SECRET_BLOB_DIR || join(process.cwd(), DEFAULT_BLOB_DIR);
-}
+const BLOB_DIR = ".data/secret-blobs";
+const BLOB_MAX_BYTES = 94_371_840; // 90 MiB
 
 export function computeSecretBlobRef(secretId: string): string {
   return createHash("sha256").update(secretId).digest("hex");
@@ -33,15 +29,7 @@ export function isValidSecretBlobRef(blobRef: string): boolean {
 }
 
 export function getSecretBlobMaxBytes(): number {
-  const fromEnv = process.env.SECRET_BLOB_MAX_BYTES?.trim();
-  if (!fromEnv) {
-    return DEFAULT_SECRET_BLOB_MAX_BYTES;
-  }
-  const parsed = Number.parseInt(fromEnv, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_SECRET_BLOB_MAX_BYTES;
-  }
-  return parsed;
+  return BLOB_MAX_BYTES;
 }
 
 export class SecretBlobTooLargeError extends Error {
@@ -54,7 +42,7 @@ export class SecretBlobTooLargeError extends Error {
 }
 
 async function ensureBlobDir(): Promise<string> {
-  const dir = getBlobDir();
+  const dir = BLOB_DIR;
   await mkdir(dir, { recursive: true });
   return dir;
 }

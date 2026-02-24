@@ -10,7 +10,6 @@ import {
 
 interface LivenessSession {
   attestationChallenge: string;
-  attestationConsumedAt: number | null;
   challenges: ChallengeType[];
   createdAt: number;
   currentIndex: number;
@@ -74,7 +73,6 @@ export function createLivenessSession(
     currentIndex: 0,
     createdAt: Date.now(),
     attestationChallenge: randomBytes(16).toString("hex"),
-    attestationConsumedAt: null,
   };
 
   sessions.set(session.sessionId, session);
@@ -87,16 +85,6 @@ export function getLivenessSession(
   cleanupExpiredSessions();
   const session = sessions.get(sessionId);
   return session;
-}
-
-export function markLivenessSessionAttestationConsumed(
-  sessionId: string
-): void {
-  const session = sessions.get(sessionId);
-  if (!session) {
-    return;
-  }
-  session.attestationConsumedAt = Date.now();
 }
 
 export function getChallengeInfo(

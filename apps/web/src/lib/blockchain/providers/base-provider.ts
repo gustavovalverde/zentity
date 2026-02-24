@@ -18,6 +18,8 @@ import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
 
+import { env } from "@/env";
+
 // Chain configurations for viem
 const VIEM_CHAINS = {
   11155111: sepolia,
@@ -39,7 +41,7 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
     this.networkId = config.id;
     this.networkName = config.name;
     this.registrarPrivateKey =
-      config.registrarPrivateKey || process.env.REGISTRAR_PRIVATE_KEY || "";
+      config.registrarPrivateKey || env.REGISTRAR_PRIVATE_KEY || "";
 
     if (!this.registrarPrivateKey) {
       /* Warning: Registrar private key not configured - write operations will fail */

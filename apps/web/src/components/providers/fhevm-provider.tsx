@@ -72,7 +72,7 @@ export function FhevmProvider({
   const chainId = useChainId();
   const { isConnected } = useAppKitAccount();
   const isMounted = useIsMounted();
-  const providerId = process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID;
+  const providerId = "zama";
 
   // Track provider in state so late-injected providers trigger re-render
   const [provider, setProvider] = useState<unknown | undefined>(undefined);

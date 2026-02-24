@@ -2,6 +2,8 @@ import type { OpaqueClientOptions } from "./types";
 
 import { client, ready } from "@serenity-kit/opaque";
 
+import { env } from "@/env";
+
 /**
  * Better-fetch returns { data: T | null, error: E | null }
  * This is the actual runtime type, not just T.
@@ -81,7 +83,7 @@ async function assertServerPublicKey(
   const isProduction = process.env.NODE_ENV === "production";
   const pinnedKey =
     options.serverPublicKey?.trim() ||
-    process.env.NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY?.trim();
+    env.NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY?.trim();
   const expectedKey = pinnedKey || (await fetchServerPublicKey());
 
   if (!expectedKey) {

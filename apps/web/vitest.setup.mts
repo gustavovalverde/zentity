@@ -13,7 +13,7 @@ import { afterAll, afterEach, vi } from "vitest";
 // Use file-based test database (schema pushed by globalSetup)
 process.env.TURSO_DATABASE_URL ||= "file:./.data/test.db";
 process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
-process.env.BETTER_AUTH_URL ||= "http://localhost:3000";
+process.env.OPAQUE_SERVER_SETUP ||= "test-opaque-server-setup-placeholder";
 
 // Disable logging in tests unless explicitly enabled
 process.env.DRIZZLE_LOG ||= "false";

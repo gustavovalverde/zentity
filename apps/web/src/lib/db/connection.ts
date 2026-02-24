@@ -5,6 +5,8 @@ import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 
+import { env } from "@/env";
+
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as attestationSchema from "./schema/attestation";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
@@ -59,12 +61,12 @@ function getDatabaseUrl(): string {
   if (isBuildTime()) {
     return "file::memory:";
   }
-  return process.env.TURSO_DATABASE_URL || "file:./.data/dev.db";
+  return env.TURSO_DATABASE_URL;
 }
 
 const dbClient = createClient({
   url: getDatabaseUrl(),
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  authToken: env.TURSO_AUTH_TOKEN,
 });
 
 // Configure SQLite for better concurrent access (defense in depth)
@@ -78,5 +80,5 @@ if (!isBuildTime()) {
 
 export const db: LibSQLDatabase<typeof schema> = drizzle(dbClient, {
   schema,
-  logger: process.env.DRIZZLE_LOG === "true",
+  logger: env.DRIZZLE_LOG ?? false,
 });

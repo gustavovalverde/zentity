@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
+import { env } from "@/env";
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 
@@ -196,7 +197,7 @@ export function BetterAuthUIProvider({
   const baseURL =
     globalThis.window !== undefined
       ? globalThis.window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "";
+      : env.NEXT_PUBLIC_APP_URL;
 
   return (
     <AuthUIProvider

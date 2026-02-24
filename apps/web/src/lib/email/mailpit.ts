@@ -1,20 +1,19 @@
 import "server-only";
 
+import { env } from "@/env";
 import { logWarn } from "@/lib/logging/error-logger";
 
-const baseUrl =
-  process.env.MAILPIT_BASE_URL || process.env.MAILPIT_API_URL || "";
+const baseUrl = env.MAILPIT_BASE_URL ?? "";
 
 const sendUrl =
-  process.env.MAILPIT_SEND_API_URL ||
+  env.MAILPIT_SEND_API_URL ||
   (baseUrl ? `${baseUrl.replace(/\/$/, "")}/api/v1/send` : "");
 
-const sendUsername = process.env.MAILPIT_SEND_API_USERNAME || "";
-const sendPassword = process.env.MAILPIT_SEND_API_PASSWORD || "";
+const sendUsername = env.MAILPIT_SEND_API_USERNAME ?? "";
+const sendPassword = env.MAILPIT_SEND_API_PASSWORD ?? "";
 
-const defaultFromEmail =
-  process.env.MAIL_FROM_EMAIL || "no-reply@zentity.local";
-const defaultFromName = process.env.MAIL_FROM_NAME || "Zentity";
+const defaultFromEmail = env.MAIL_FROM_EMAIL;
+const defaultFromName = env.MAIL_FROM_NAME;
 
 export interface MailpitMessage {
   html?: string;

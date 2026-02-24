@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { organizations } from "@/lib/db/schema/organization";
@@ -22,7 +23,7 @@ function getAdminKey(headers: Headers): string | null {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const expectedKey = process.env.ZENTITY_ADMIN_API_KEY;
+  const expectedKey = env.ZENTITY_ADMIN_API_KEY;
   if (!expectedKey) {
     return NextResponse.json(
       { error: "Admin API key not configured." },

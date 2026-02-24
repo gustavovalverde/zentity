@@ -12,6 +12,7 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { env } from "@/env";
 import { createPresentation } from "@/lib/bbs/holder";
 import { deriveBbsKeyPair } from "@/lib/bbs/keygen";
 import {
@@ -46,7 +47,7 @@ function getIssuerKeyPair() {
     return cachedKeyPairPromise;
   }
 
-  const issuerSecret = process.env.BBS_ISSUER_SECRET;
+  const issuerSecret = env.BBS_ISSUER_SECRET;
   if (!issuerSecret) {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",

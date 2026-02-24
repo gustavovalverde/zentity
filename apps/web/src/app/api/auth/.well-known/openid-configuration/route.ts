@@ -1,17 +1,8 @@
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth";
 
-const AUTH_PATH_SUFFIX = /\/api\/auth$/;
-
-/**
- * Get the base URL from environment variables (SSRF-safe - no request data used).
- * Falls back to localhost for development.
- */
 function getBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.BETTER_AUTH_URL?.replace(AUTH_PATH_SUFFIX, "") ||
-    "http://localhost:3000"
-  );
+  return env.NEXT_PUBLIC_APP_URL;
 }
 
 /**

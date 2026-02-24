@@ -20,10 +20,6 @@ import {
 } from "@/lib/db/queries/identity";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
-  isLivenessAttestationRequired,
-  verifyLivenessAttestationProof,
-} from "@/lib/identity/liveness/attestation";
-import {
   getEmbeddingVector,
   getFacingDirection,
   getHappyScore,
@@ -41,7 +37,6 @@ import {
   createLivenessSession,
   getChallengeInfo,
   getLivenessSession,
-  markLivenessSessionAttestationConsumed,
 } from "@/lib/identity/liveness/liveness-session-store";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
@@ -67,12 +62,6 @@ const createSessionSchema = z.object({
 const verifySchema = z.object({
   sessionId: z.string().min(1),
   baselineImage: z.string().min(1),
-  attestation: z
-    .object({
-      challenge: z.string().min(1),
-      proof: z.string().min(1),
-    })
-    .optional(),
   challenges: z.array(
     z.object({
       challengeType: challengeTypeSchema,
@@ -132,44 +121,6 @@ export const livenessRouter = router({
           error: "Invalid or expired liveness session",
           processingTimeMs: Date.now() - start,
         };
-      }
-
-      if (isLivenessAttestationRequired()) {
-        const attestation = input.attestation;
-        if (!attestation) {
-          return {
-            verified: false,
-            error: "Missing liveness attestation",
-            processingTimeMs: Date.now() - start,
-          };
-        }
-
-        if (
-          livenessSession.attestationConsumedAt !== null ||
-          attestation.challenge !== livenessSession.attestationChallenge
-        ) {
-          return {
-            verified: false,
-            error: "Invalid or replayed attestation challenge",
-            processingTimeMs: Date.now() - start,
-          };
-        }
-
-        const isValidProof = verifyLivenessAttestationProof({
-          sessionId: input.sessionId,
-          challenge: attestation.challenge,
-          proof: attestation.proof,
-        });
-
-        if (!isValidProof) {
-          return {
-            verified: false,
-            error: "Invalid liveness attestation proof",
-            processingTimeMs: Date.now() - start,
-          };
-        }
-
-        markLivenessSessionAttestationConsumed(input.sessionId);
       }
 
       const expected = livenessSession.challenges;

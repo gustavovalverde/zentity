@@ -1,13 +1,12 @@
 import "server-only";
 
+import { env } from "@/env";
+
 const TRAILING_SLASHES_REGEX = /\/+$/;
 const LEADING_SLASHES_REGEX = /^\/+/;
 
 export const getAuthIssuer = (): string => {
-  const base =
-    process.env.BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
+  const base = env.NEXT_PUBLIC_APP_URL;
   try {
     const url = new URL(base);
     if (!url.pathname || url.pathname === "/") {

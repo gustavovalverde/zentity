@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 
 import { UltraHonkBackend, UltraHonkVerifierBackend } from "@aztec/bb.js";
 
+import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 import { recordZkVerifyDuration } from "@/lib/observability/metrics";
 import {
@@ -79,8 +80,7 @@ interface VerificationKeyResult {
 }
 
 // CRS cache configuration
-const CRS_PATH =
-  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
+const CRS_PATH = env.BB_CRS_PATH;
 const CRS_FILES = [
   "bn254_g1.dat",
   "bn254_g1.dat.gz",
@@ -88,10 +88,6 @@ const CRS_FILES = [
   "g1.dat.gz",
   "bn254_g2.dat",
 ];
-
-if (!process.env.CRS_PATH) {
-  process.env.CRS_PATH = CRS_PATH;
-}
 
 try {
   mkdirSync(CRS_PATH, { recursive: true });
@@ -365,7 +361,7 @@ export async function warmupCRS(): Promise<void> {
       },
       "ZK verification key warmup failed"
     );
-    if (process.env.ZK_WARMUP_STRICT === "true") {
+    if (env.ZK_WARMUP_STRICT) {
       throw error;
     }
   }

@@ -14,6 +14,8 @@ import "server-only";
 
 import { resolveContractAddresses } from "@zentity/fhevm-contracts";
 
+import { env } from "@/env";
+
 export type NetworkType = "fhevm";
 
 export type NetworkFeature = "encrypted" | "basic";
@@ -56,27 +58,11 @@ export interface NetworkConfig {
  * - NEXT_PUBLIC_ENABLE_FHEVM (default: true)
  * - NEXT_PUBLIC_ENABLE_HARDHAT (development only)
  */
-const FHEVM_NETWORK_ID =
-  process.env.FHEVM_NETWORK_ID ||
-  process.env.NEXT_PUBLIC_FHEVM_NETWORK_ID ||
-  "fhevm_sepolia";
-const FHEVM_CHAIN_ID = Number(
-  process.env.FHEVM_CHAIN_ID ||
-    process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID ||
-    11_155_111
-);
-const FHEVM_NETWORK_NAME =
-  process.env.FHEVM_NETWORK_NAME ||
-  process.env.NEXT_PUBLIC_FHEVM_NETWORK_NAME ||
-  "fhEVM (Sepolia)";
-const FHEVM_EXPLORER_URL =
-  process.env.FHEVM_EXPLORER_URL ||
-  process.env.NEXT_PUBLIC_FHEVM_EXPLORER_URL ||
-  "https://sepolia.etherscan.io";
-const FHEVM_PROVIDER_ID =
-  process.env.FHEVM_PROVIDER_ID ||
-  process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID ||
-  "zama";
+const FHEVM_NETWORK_ID = "fhevm_sepolia";
+const FHEVM_CHAIN_ID = 11_155_111;
+const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
+const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
+const FHEVM_PROVIDER_ID = "zama";
 
 function toOverrides(values: Partial<Record<ContractName, string>>) {
   const overrides = Object.fromEntries(
@@ -102,19 +88,18 @@ function resolveNetworkContracts(
   };
 }
 
-const FHEVM_ENABLED = process.env.NEXT_PUBLIC_ENABLE_FHEVM !== "false";
+const FHEVM_ENABLED = env.NEXT_PUBLIC_ENABLE_FHEVM;
 const HARDHAT_ENABLED =
-  process.env.NODE_ENV === "development" &&
-  process.env.NEXT_PUBLIC_ENABLE_HARDHAT === "true";
+  process.env.NODE_ENV === "development" && env.NEXT_PUBLIC_ENABLE_HARDHAT;
 
 const FHEVM_CONTRACTS = FHEVM_ENABLED
   ? resolveNetworkContracts(
       FHEVM_CHAIN_ID,
       "sepolia",
       toOverrides({
-        IdentityRegistry: process.env.FHEVM_IDENTITY_REGISTRY,
-        ComplianceRules: process.env.FHEVM_COMPLIANCE_RULES,
-        CompliantERC20: process.env.FHEVM_COMPLIANT_ERC20,
+        IdentityRegistry: env.FHEVM_IDENTITY_REGISTRY,
+        ComplianceRules: env.FHEVM_COMPLIANCE_RULES,
+        CompliantERC20: env.FHEVM_COMPLIANT_ERC20,
       })
     )
   : null;
@@ -124,9 +109,9 @@ const LOCAL_CONTRACTS = HARDHAT_ENABLED
       31_337,
       "localhost",
       toOverrides({
-        IdentityRegistry: process.env.LOCAL_IDENTITY_REGISTRY,
-        ComplianceRules: process.env.LOCAL_COMPLIANCE_RULES,
-        CompliantERC20: process.env.LOCAL_COMPLIANT_ERC20,
+        IdentityRegistry: env.LOCAL_IDENTITY_REGISTRY,
+        ComplianceRules: env.LOCAL_COMPLIANCE_RULES,
+        CompliantERC20: env.LOCAL_COMPLIANT_ERC20,
       })
     )
   : null;
@@ -136,14 +121,9 @@ const NETWORKS: Record<string, NetworkConfig> = {
     id: FHEVM_NETWORK_ID,
     name: FHEVM_NETWORK_NAME,
     chainId: FHEVM_CHAIN_ID,
-    rpcUrl:
-      process.env.FHEVM_RPC_URL ||
-      process.env.NEXT_PUBLIC_FHEVM_RPC_URL ||
-      "https://ethereum-sepolia-rpc.publicnode.com",
+    rpcUrl: env.NEXT_PUBLIC_FHEVM_RPC_URL,
     registrarPrivateKey:
-      process.env.FHEVM_REGISTRAR_PRIVATE_KEY ||
-      process.env.REGISTRAR_PRIVATE_KEY ||
-      "",
+      env.FHEVM_REGISTRAR_PRIVATE_KEY || env.REGISTRAR_PRIVATE_KEY || "",
     type: "fhevm",
     providerId: FHEVM_PROVIDER_ID,
     features: ["encrypted"],
@@ -159,11 +139,9 @@ const NETWORKS: Record<string, NetworkConfig> = {
     id: "hardhat",
     name: "Local (Hardhat)",
     chainId: 31_337,
-    rpcUrl: process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545",
+    rpcUrl: env.LOCAL_RPC_URL,
     registrarPrivateKey:
-      process.env.LOCAL_REGISTRAR_PRIVATE_KEY ||
-      process.env.REGISTRAR_PRIVATE_KEY ||
-      "",
+      env.LOCAL_REGISTRAR_PRIVATE_KEY || env.REGISTRAR_PRIVATE_KEY || "",
     type: "fhevm",
     providerId: "mock",
     features: ["encrypted"],

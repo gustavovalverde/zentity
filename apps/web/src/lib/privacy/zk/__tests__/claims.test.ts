@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Mock the env module before importing the module under test
-vi.mock("@/lib/utils/env", () => ({
-  getBetterAuthSecret: () => "test-secret-at-least-32-characters-long",
+vi.mock("@/env", () => ({
+  env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
 
 // Mock server-only (no-op in test environment)

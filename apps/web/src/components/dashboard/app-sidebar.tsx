@@ -31,8 +31,8 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { isWeb3Enabled } from "@/env";
 import { completeSignOut } from "@/lib/auth/session-manager";
-import { isWeb3Enabled } from "@/lib/feature-flags";
 
 interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
@@ -94,7 +94,7 @@ const developerNavItems: NavItem[] = [
 export function AppSidebar({ user }: Readonly<AppSidebarProps>) {
   const pathname = usePathname();
   const router = useRouter();
-  const web3Enabled = isWeb3Enabled();
+  const web3Enabled = isWeb3Enabled;
   const queryClient = useQueryClient();
   const { clear: clearPrfOutput } = usePasskeyAuth();
   const prefetchedRef = useRef<Set<string>>(new Set());

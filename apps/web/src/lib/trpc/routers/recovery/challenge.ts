@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { symmetricEncrypt } from "better-auth/crypto";
 import { z } from "zod";
 
+import { env } from "@/env";
 import {
   consumeFheEnrollmentContext,
   createFheEnrollmentContext,
@@ -42,7 +43,6 @@ import {
 import { signRecoveryChallenge } from "@/lib/recovery/frost-service";
 import { decryptRecoveryWrappedDek } from "@/lib/recovery/recovery-keys";
 import { bytesToBase64 } from "@/lib/utils/base64";
-import { getBetterAuthSecret } from "@/lib/utils/env";
 
 import { publicProcedure } from "../../server";
 import {
@@ -273,7 +273,7 @@ export const approveGuardianProcedure = publicProcedure
 
       if (verification.method === "backup" && verification.updatedCodes) {
         const encryptedBackupCodes = await symmetricEncrypt({
-          key: getBetterAuthSecret(),
+          key: env.BETTER_AUTH_SECRET,
           data: JSON.stringify(verification.updatedCodes),
         });
         await updateTwoFactorBackupCodes({

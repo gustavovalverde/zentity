@@ -1,5 +1,6 @@
 import "server-only";
 
+import { env } from "@/env";
 import {
   recordOcrDuration,
   recordOcrImageBytes,
@@ -7,13 +8,12 @@ import {
 } from "@/lib/observability/metrics";
 import { injectTraceHeaders, withSpan } from "@/lib/observability/telemetry";
 import { fetchJson } from "@/lib/utils/http";
-import { getOcrServiceUrl } from "@/lib/utils/service-urls";
 
 function getInternalServiceAuthHeaders(
   requestId?: string,
   flowId?: string
 ): Record<string, string> {
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
+  const token = env.INTERNAL_SERVICE_TOKEN;
   const headers: Record<string, string> = {};
   if (token) {
     headers["X-Zentity-Internal-Token"] = token;
@@ -106,7 +106,7 @@ export function processDocumentOcr(args: {
   } catch (err) {
     return Promise.reject(err);
   }
-  const url = `${getOcrServiceUrl()}/process`;
+  const url = `${env.OCR_SERVICE_URL}/process`;
   const payload = JSON.stringify({
     image: args.image,
     userSalt: args.userSalt,
@@ -149,7 +149,7 @@ export function ocrDocumentOcr(args: {
   } catch (err) {
     return Promise.reject(err);
   }
-  const url = `${getOcrServiceUrl()}/ocr`;
+  const url = `${env.OCR_SERVICE_URL}/ocr`;
   const payload = JSON.stringify({ image: args.image });
   const payloadBytes = Buffer.byteLength(payload);
   const imageBytes = Buffer.byteLength(args.image);
@@ -184,7 +184,7 @@ export function getOcrHealth(args?: {
   flowId?: string;
   trace?: boolean;
 }): Promise<unknown> {
-  const url = `${getOcrServiceUrl()}/health`;
+  const url = `${env.OCR_SERVICE_URL}/health`;
   const run = () =>
     fetchJson<unknown>(url, {
       headers: injectTraceHeaders({

@@ -4,7 +4,7 @@ import type { JWTPayload } from "jose";
 
 import { jwtVerify, SignJWT } from "jose";
 
-import { getBetterAuthSecret } from "@/lib/utils/env";
+import { env } from "@/env";
 
 const CLAIMS_ISSUER = "zentity-attestation";
 const CLAIMS_AUDIENCE = "zentity-claims";
@@ -53,7 +53,7 @@ export interface AttestationClaimPayload {
 }
 
 function getSigningKey(): Uint8Array {
-  const secret = getBetterAuthSecret();
+  const secret = env.BETTER_AUTH_SECRET;
   return new TextEncoder().encode(secret);
 }
 

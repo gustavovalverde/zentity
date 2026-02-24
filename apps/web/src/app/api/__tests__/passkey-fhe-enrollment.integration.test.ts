@@ -13,6 +13,22 @@ vi.mock("@/lib/auth/api-auth", () => ({
   requireSession: authMocks.requireSession,
 }));
 
+// SECRET_BLOB_DIR is set dynamically per test; proxy it through process.env
+vi.mock("@/env", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/env")>();
+  return {
+    ...mod,
+    env: new Proxy(mod.env, {
+      get(target, prop) {
+        if (prop === "SECRET_BLOB_DIR") {
+          return process.env.SECRET_BLOB_DIR ?? Reflect.get(target, prop);
+        }
+        return Reflect.get(target, prop);
+      },
+    }),
+  };
+});
+
 import { POST as completeEnrollment } from "@/app/api/fhe/enrollment/complete/route";
 import { POST as uploadSecretBlob } from "@/app/api/secrets/blob/route";
 import {

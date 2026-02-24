@@ -1,5 +1,7 @@
 import "server-only";
 
+import { env } from "@/env";
+
 import { isMailpitConfigured, sendMailpitMessage } from "./mailpit";
 import { isResendConfigured, sendResendMessage } from "./resend";
 
@@ -11,18 +13,11 @@ interface GuardianApprovalToken {
 const TRAILING_SLASH_PATTERN = /\/$/;
 
 function isProduction(): boolean {
-  return (
-    process.env.NODE_ENV === "production" ||
-    process.env.APP_ENV === "production"
-  );
+  return process.env.NODE_ENV === "production";
 }
 
 function getAppUrl(): string {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.BETTER_AUTH_URL ||
-    "http://localhost:3000";
-  return appUrl.replace(TRAILING_SLASH_PATTERN, "");
+  return env.NEXT_PUBLIC_APP_URL.replace(TRAILING_SLASH_PATTERN, "");
 }
 
 function buildApprovalLink(token: string): string {

@@ -306,8 +306,7 @@ async function createFhevmInstance(
     });
     const chainId = Number.parseInt(chainIdHex as string, 16);
 
-    const resolvedProviderId =
-      providerId || process.env.NEXT_PUBLIC_FHEVM_PROVIDER_ID || "zama";
+    const resolvedProviderId = providerId || "zama";
 
     const isMockChain = Object.hasOwn(defaultMockChains, chainId);
     const effectiveProviderId =

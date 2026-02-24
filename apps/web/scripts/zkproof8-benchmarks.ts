@@ -76,12 +76,7 @@ interface FheVerifyAgeResponse {
   resultCiphertext: Uint8Array;
 }
 
-const CRS_PATH =
-  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
-
-if (!process.env.CRS_PATH) {
-  process.env.CRS_PATH = CRS_PATH;
-}
+const CRS_PATH = process.env.BB_CRS_PATH || "/tmp/.bb-crs";
 
 const FHE_SERVICE_URL = (
   process.env.FHE_SERVICE_URL || "http://localhost:5001"

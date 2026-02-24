@@ -4,8 +4,9 @@ import { Readable } from "node:stream";
 
 import { type NextRequest, NextResponse } from "next/server";
 
-const CRS_DIR =
-  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
+import { env } from "@/env";
+
+const CRS_DIR = env.BB_CRS_PATH;
 
 // CDN filenames → local pre-warmed filenames
 const FILE_MAP: Record<string, string> = {

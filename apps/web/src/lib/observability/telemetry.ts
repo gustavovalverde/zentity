@@ -24,6 +24,8 @@ import {
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 
+import { env } from "@/env";
+
 const DEFAULT_OTLP_TRACE_ENDPOINT = "http://localhost:4318/v1/traces";
 const DEFAULT_OTLP_METRICS_ENDPOINT = "http://localhost:4318/v1/metrics";
 const OTLP_SIGNAL_SUFFIX_REGEX = /\/v1\/(traces|metrics|logs)$/;
@@ -54,7 +56,7 @@ function parseHeaders(raw?: string): Record<string, string> | undefined {
 }
 
 export function getServiceName(): string {
-  return process.env.OTEL_SERVICE_NAME || "zentity-web";
+  return env.OTEL_SERVICE_NAME;
 }
 
 export function getServiceVersion(): string {
@@ -67,26 +69,18 @@ export function getServiceVersion(): string {
 }
 
 function getEnvironmentName(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_ENV ||
-    process.env.APP_ENV ||
-    process.env.NODE_ENV ||
-    "development"
-  );
+  return env.NEXT_PUBLIC_APP_ENV ?? env.NODE_ENV;
 }
 
 function tracingEnabled(): boolean {
-  return (
-    process.env.OTEL_ENABLED === "true" ||
-    Boolean(process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
-  );
+  return env.OTEL_ENABLED === true || Boolean(env.OTEL_EXPORTER_OTLP_ENDPOINT);
 }
 
 function metricsEnabled(): boolean {
   return (
-    process.env.OTEL_ENABLED === "true" ||
-    Boolean(process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) ||
-    Boolean(process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
+    env.OTEL_ENABLED === true ||
+    Boolean(env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) ||
+    Boolean(env.OTEL_EXPORTER_OTLP_ENDPOINT)
   );
 }
 
@@ -97,14 +91,14 @@ function telemetryEnabled(): boolean {
 function resolveOtlpEndpoint(signal: "traces" | "metrics"): string {
   const specificEnv =
     signal === "traces"
-      ? process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-      : process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+      ? env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+      : env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
 
   if (specificEnv) {
     return specificEnv;
   }
 
-  const shared = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  const shared = env.OTEL_EXPORTER_OTLP_ENDPOINT;
   if (shared) {
     if (shared.endsWith(`/v1/${signal}`)) {
       return shared;
@@ -131,15 +125,7 @@ function resolveOtlpEndpoint(signal: "traces" | "metrics"): string {
 }
 
 function getMetricsExportIntervalMs(): number {
-  const raw = process.env.OTEL_METRICS_EXPORT_INTERVAL_MS;
-  if (!raw) {
-    return 60_000;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  if (Number.isNaN(parsed) || parsed <= 0) {
-    return 60_000;
-  }
-  return parsed;
+  return env.OTEL_METRICS_EXPORT_INTERVAL_MS;
 }
 
 export function initTelemetry(): void {
@@ -152,7 +138,7 @@ export function initTelemetry(): void {
 
   const traceEndpoint = resolveOtlpEndpoint("traces");
   const metricsEndpoint = resolveOtlpEndpoint("metrics");
-  const headers = parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS);
+  const headers = parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS);
 
   const traceExporter = tracingEnabled()
     ? new OTLPTraceExporter({

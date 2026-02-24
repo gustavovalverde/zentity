@@ -26,7 +26,6 @@ const metadata = {
   icons: ["/icon.png"],
 };
 
-const analyticsEnabled = process.env.NEXT_PUBLIC_APPKIT_ANALYTICS !== "false";
 const defaultNetwork = networks[0] ?? fhevmSepolia;
 
 // Initialize AppKit once at module level — must use the same adapter as WagmiProvider
@@ -37,18 +36,12 @@ if (globalThis.window !== undefined && projectId) {
     networks,
     defaultNetwork,
     metadata,
-    enableInjected: process.env.NEXT_PUBLIC_APPKIT_ENABLE_INJECTED !== "false",
-    enableWalletConnect:
-      process.env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT !== "false",
-    enableEIP6963: process.env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963 !== "false",
-    enableCoinbase: process.env.NEXT_PUBLIC_APPKIT_ENABLE_COINBASE !== "false",
-    includeWalletIds: process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS
-      ? process.env.NEXT_PUBLIC_APPKIT_INCLUDE_WALLETS.split(",")
-          .map((value) => value.trim())
-          .filter(Boolean)
-      : undefined,
+    enableInjected: true,
+    enableWalletConnect: true,
+    enableEIP6963: true,
+    enableCoinbase: true,
     features: {
-      analytics: analyticsEnabled,
+      analytics: true,
       email: false,
       socials: false,
     },

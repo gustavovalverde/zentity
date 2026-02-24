@@ -6,8 +6,14 @@ import {
   verifyIdentityIntentToken,
 } from "@/lib/auth/oidc/identity-intent";
 
+const TEST_SECRET = "test-secret-at-least-32-characters-long";
+
 const authMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+}));
+
+vi.mock("@/env", () => ({
+  env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
 
 vi.mock("@/lib/auth/auth", () => ({
@@ -19,10 +25,7 @@ import { POST } from "../route";
 async function makeSignedOAuthQuery(params: Record<string, string>) {
   const query = new URLSearchParams(params);
   query.set("exp", String(Math.floor(Date.now() / 1000) + 300));
-  const sig = await makeSignature(
-    query.toString(),
-    process.env.BETTER_AUTH_SECRET as string
-  );
+  const sig = await makeSignature(query.toString(), TEST_SECRET);
   query.set("sig", sig);
   return query.toString();
 }
@@ -38,7 +41,6 @@ function makeRequest(body: unknown) {
 describe("oauth2 identity intent route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.BETTER_AUTH_SECRET = "test-secret-at-least-32-characters-long";
     authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
   });
 

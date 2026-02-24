@@ -26,8 +26,20 @@ vi.mock("@/lib/assurance/data", () => ({
   getAssuranceState: (...args: unknown[]) => mockGetAssuranceState(...args),
 }));
 
-// Set up BBS issuer secret for tests (64 hex chars = 32 bytes)
-process.env.BBS_ISSUER_SECRET = "0".repeat(64);
+vi.mock("@/env", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/env")>();
+  return {
+    ...mod,
+    env: new Proxy(mod.env, {
+      get(target, prop) {
+        if (prop === "BBS_ISSUER_SECRET") {
+          return "0".repeat(64);
+        }
+        return Reflect.get(target, prop);
+      },
+    }),
+  };
+});
 
 function createTier2State() {
   return {

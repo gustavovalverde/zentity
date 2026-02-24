@@ -15,6 +15,8 @@ import crypto from "node:crypto";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
+import { env } from "@/env";
+
 import { db } from "../connection";
 import {
   encryptedAttributes,
@@ -76,13 +78,10 @@ function parseSecretMetadata(
 }
 
 function computeCiphertextHash(ciphertext: Buffer): string {
-  // TODO: use a dedicated CIPHERTEXT_HMAC_KEY env var instead of re-using BETTER_AUTH_SECRET
-  // so that key rotation for auth doesn't invalidate stored integrity tags.
-  const key = process.env.BETTER_AUTH_SECRET;
-  if (!key) {
-    throw new Error("BETTER_AUTH_SECRET is required for ciphertext integrity");
-  }
-  return crypto.createHmac("sha256", key).update(ciphertext).digest("hex");
+  return crypto
+    .createHmac("sha256", env.BETTER_AUTH_SECRET)
+    .update(ciphertext)
+    .digest("hex");
 }
 
 function getCiphertextInfo(ciphertext: Buffer | null | undefined): {

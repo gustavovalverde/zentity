@@ -3,12 +3,7 @@ import path from "node:path";
 
 import { UltraHonkBackend } from "@aztec/bb.js";
 
-const crsPath =
-  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
-
-if (!process.env.CRS_PATH) {
-  process.env.CRS_PATH = crsPath;
-}
+const crsPath = process.env.BB_CRS_PATH || "/tmp/.bb-crs";
 
 try {
   mkdirSync(crsPath, { recursive: true });

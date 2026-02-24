@@ -4,6 +4,7 @@ import { createDecipheriv } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { env } from "@/env";
 import {
   ML_KEM_SECRET_KEY_BYTES,
   mlKemDecapsulate,
@@ -12,12 +13,9 @@ import {
 } from "@/lib/privacy/primitives/ml-kem";
 import { bytesToBase64 } from "@/lib/utils/base64";
 
-const DEFAULT_KEY_ID = "v1";
-const DEFAULT_KEY_PATH = join(process.cwd(), ".data", "recovery-key.bin");
-
-const KEY_ID = process.env.RECOVERY_KEY_ID || DEFAULT_KEY_ID;
-const KEY_PATH = process.env.RECOVERY_ML_KEM_KEY_PATH || DEFAULT_KEY_PATH;
-const KEY_ENV = process.env.RECOVERY_ML_KEM_SECRET_KEY;
+const KEY_ID = "v1";
+const KEY_PATH = join(process.cwd(), ".data/recovery-key.bin");
+const KEY_ENV = env.RECOVERY_ML_KEM_SECRET_KEY;
 
 let cachedKeys: {
   keyId: string;
@@ -26,10 +24,7 @@ let cachedKeys: {
 } | null = null;
 
 function isProduction(): boolean {
-  return (
-    process.env.NODE_ENV === "production" ||
-    process.env.APP_ENV === "production"
-  );
+  return process.env.NODE_ENV === "production";
 }
 
 function ensureKeyDir(filePath: string) {

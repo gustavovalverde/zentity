@@ -4,8 +4,8 @@ import { base32 } from "@better-auth/utils/base32";
 import { createOTP } from "@better-auth/utils/otp";
 import { symmetricDecrypt } from "better-auth/crypto";
 
+import { env } from "@/env";
 import { getTwoFactorByUserId } from "@/lib/db/queries/two-factor";
-import { getBetterAuthSecret } from "@/lib/utils/env";
 
 const RECOVERY_ID_PREFIX = "rec_";
 const TOTP_DIGITS = 6;
@@ -64,7 +64,7 @@ export async function verifyTwoFactorGuardianCode(params: {
   }
 
   const decryptedSecret = await symmetricDecrypt({
-    key: getBetterAuthSecret(),
+    key: env.BETTER_AUTH_SECRET,
     data: twoFactor.secret,
   });
   const otp = createOTP(decryptedSecret, {
@@ -80,7 +80,7 @@ export async function verifyTwoFactorGuardianCode(params: {
   }
 
   const decryptedBackup = await symmetricDecrypt({
-    key: getBetterAuthSecret(),
+    key: env.BETTER_AUTH_SECRET,
     data: twoFactor.backupCodes,
   });
   let backupCodes: string[] = [];

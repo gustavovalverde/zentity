@@ -82,54 +82,13 @@ export class FhevmZamaProvider
       responseProto.__fhevmBytesPatch = true;
     }
 
-    const { createInstance, MainnetConfig, SepoliaConfig } = await import(
+    const { createInstance, SepoliaConfig } = await import(
       "@zama-fhe/relayer-sdk/node"
     );
 
-    const relayerUrl =
-      process.env.FHEVM_RELAYER_URL ||
-      process.env.NEXT_PUBLIC_FHEVM_RELAYER_URL;
-    const gatewayChainId = Number(
-      process.env.FHEVM_GATEWAY_CHAIN_ID ||
-        process.env.NEXT_PUBLIC_FHEVM_GATEWAY_CHAIN_ID ||
-        ""
-    );
-    const aclContractAddress =
-      process.env.FHEVM_ACL_CONTRACT_ADDRESS ||
-      process.env.NEXT_PUBLIC_FHEVM_ACL_CONTRACT_ADDRESS;
-    const kmsContractAddress =
-      process.env.FHEVM_KMS_CONTRACT_ADDRESS ||
-      process.env.NEXT_PUBLIC_FHEVM_KMS_CONTRACT_ADDRESS;
-    const inputVerifierContractAddress =
-      process.env.FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS ||
-      process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFIER_CONTRACT_ADDRESS;
-    const verifyingContractAddressDecryption =
-      process.env.FHEVM_DECRYPTION_ADDRESS ||
-      process.env.NEXT_PUBLIC_FHEVM_DECRYPTION_ADDRESS;
-    const verifyingContractAddressInputVerification =
-      process.env.FHEVM_INPUT_VERIFICATION_ADDRESS ||
-      process.env.NEXT_PUBLIC_FHEVM_INPUT_VERIFICATION_ADDRESS;
-
-    // Select config based on chain ID (mainnet = 1, otherwise Sepolia)
-    const baseConfig =
-      this.config.chainId === 1 ? MainnetConfig : SepoliaConfig;
-
     return createInstance({
-      ...baseConfig,
+      ...SepoliaConfig,
       chainId: this.config.chainId,
-      ...(Number.isFinite(gatewayChainId) && gatewayChainId > 0
-        ? { gatewayChainId }
-        : {}),
-      ...(aclContractAddress ? { aclContractAddress } : {}),
-      ...(kmsContractAddress ? { kmsContractAddress } : {}),
-      ...(inputVerifierContractAddress ? { inputVerifierContractAddress } : {}),
-      ...(verifyingContractAddressDecryption
-        ? { verifyingContractAddressDecryption }
-        : {}),
-      ...(verifyingContractAddressInputVerification
-        ? { verifyingContractAddressInputVerification }
-        : {}),
-      ...(relayerUrl ? { relayerUrl } : {}),
       network: this.config.rpcUrl,
     });
   }

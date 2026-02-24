@@ -1,13 +1,13 @@
+import { env } from "@/env";
 import {
   getBbJsVersion,
   getCircuitMetadata,
   prewarmVerificationKeys,
 } from "@/lib/privacy/zk/noir-verifier";
-import { getFheServiceUrl } from "@/lib/utils/service-urls";
 
 import { publicProcedure } from "../../server";
 
-const FHE_SERVICE_URL = getFheServiceUrl();
+const FHE_SERVICE_URL = env.FHE_SERVICE_URL;
 
 async function checkServiceUncached(
   url: string,

@@ -15,12 +15,14 @@ import "server-only";
 
 import pino from "pino";
 
+import { env } from "@/env";
+
 import { REDACT_KEYS } from "./redact";
 
 export type Logger = import("pino").Logger;
 
 const isDev = process.env.NODE_ENV !== "production";
-const logLevel = process.env.LOG_LEVEL || (isDev ? "debug" : "info");
+const logLevel = env.LOG_LEVEL ?? (isDev ? "debug" : "info");
 
 /**
  * Base logger instance - created once at module load.

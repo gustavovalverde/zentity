@@ -10,8 +10,11 @@ vi.mock("@/lib/utils/http", () => ({
   HttpError: class HttpError extends Error {},
 }));
 
-vi.mock("@/lib/utils/service-urls", () => ({
-  getOcrServiceUrl: () => "http://ocr.local",
+vi.mock("@/env", () => ({
+  env: {
+    OCR_SERVICE_URL: "http://ocr.local",
+    INTERNAL_SERVICE_TOKEN: undefined,
+  },
 }));
 
 import { processDocumentOcr } from "../ocr-client";

@@ -4,6 +4,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 import { decode, encode } from "@msgpack/msgpack";
 
+import { env } from "@/env";
 import {
   recordFheDuration,
   recordFhePayloadBytes,
@@ -14,13 +15,12 @@ import {
   withSpan,
 } from "@/lib/observability/telemetry";
 import { HttpError } from "@/lib/utils/http";
-import { getFheServiceUrl } from "@/lib/utils/service-urls";
 
 function getInternalServiceAuthHeaders(
   requestId?: string,
   flowId?: string
 ): Record<string, string> {
-  const token = process.env.INTERNAL_SERVICE_TOKEN;
+  const token = env.INTERNAL_SERVICE_TOKEN;
   const headers: Record<string, string> = {};
   if (token) {
     headers["X-Zentity-Internal-Token"] = token;
@@ -255,7 +255,7 @@ export function encryptBatchFhe(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<FheBatchEncryptResponse> {
-  const url = `${getFheServiceUrl()}/encrypt-batch`;
+  const url = `${env.FHE_SERVICE_URL}/encrypt-batch`;
   const payload = {
     keyId: args.keyId,
     dobDays: args.dobDays,
@@ -290,7 +290,7 @@ export function registerFheKey(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<FheRegisterKeyResult> {
-  const url = `${getFheServiceUrl()}/keys/register`;
+  const url = `${env.FHE_SERVICE_URL}/keys/register`;
   const payload = {
     serverKey: args.serverKey,
     publicKey: args.publicKey,
@@ -331,7 +331,7 @@ export function verifyAgeFromDobFhe(args: {
   requestId?: string;
   flowId?: string;
 }): Promise<FheVerifyAgeResult> {
-  const url = `${getFheServiceUrl()}/verify-age-from-dob`;
+  const url = `${env.FHE_SERVICE_URL}/verify-age-from-dob`;
   const payload = {
     ciphertext: args.ciphertext,
     currentDays: args.currentDays,

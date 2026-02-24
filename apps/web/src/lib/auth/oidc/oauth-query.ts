@@ -2,7 +2,7 @@ import "server-only";
 
 import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 
-import { getBetterAuthSecret } from "@/lib/utils/env";
+import { env } from "@/env";
 
 export async function verifySignedOAuthQuery(
   query: string
@@ -14,7 +14,7 @@ export async function verifySignedOAuthQuery(
 
   const verifySig = await makeSignature(
     params.toString(),
-    getBetterAuthSecret()
+    env.BETTER_AUTH_SECRET
   );
   if (
     !(sig && constantTimeEqual(sig, verifySig)) ||

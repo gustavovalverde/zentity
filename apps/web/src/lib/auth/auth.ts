@@ -19,6 +19,7 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 
+import { env } from "@/env";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
   buildOidcVerifiedClaims,
@@ -74,7 +75,6 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
-import { getBetterAuthSecret, getOpaqueServerSetup } from "@/lib/utils/env";
 
 const betterAuthSchema = {
   user: users,
@@ -101,10 +101,7 @@ const betterAuthSchema = {
 // In production: only the configured app URL + any explicit TRUSTED_ORIGINS
 // In development: also trust all localhost variants (IPv4/IPv6)
 const getAppOrigin = (): string => {
-  const base =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.BETTER_AUTH_URL ||
-    "http://localhost:3000";
+  const base = env.NEXT_PUBLIC_APP_URL;
   try {
     return new URL(base).origin;
   } catch {
@@ -122,7 +119,7 @@ const getTrustedOrigins = (): string[] => {
 
   // Allow additional trusted origins via env var (comma-separated)
   // Useful for local Docker development where NODE_ENV=production but localhost access is needed
-  const additionalOrigins = process.env.TRUSTED_ORIGINS;
+  const additionalOrigins = env.TRUSTED_ORIGINS;
   if (additionalOrigins) {
     origins.push(
       ...additionalOrigins
@@ -148,7 +145,7 @@ const getTrustedOrigins = (): string[] => {
 };
 
 const parseGenericOAuthConfig = () => {
-  const raw = process.env.GENERIC_OAUTH_PROVIDERS;
+  const raw = env.GENERIC_OAUTH_PROVIDERS;
   if (!raw) {
     return [];
   }
@@ -239,7 +236,7 @@ const advertisedClaims = Array.from(
     ...identityClaimKeys,
   ])
 );
-const isOidcE2e = process.env.E2E_OIDC_ONLY === "true";
+const isOidcE2e = env.E2E_OIDC_ONLY === true;
 const oidc4vciCredentialConfigurations = [
   {
     id: "zentity_identity",
@@ -373,7 +370,7 @@ export const auth = betterAuth({
     provider: "sqlite",
     schema: betterAuthSchema,
   }),
-  secret: getBetterAuthSecret(),
+  secret: env.BETTER_AUTH_SECRET,
   baseURL: authIssuer,
   trustedOrigins: getTrustedOrigins(),
   rateLimit: isOidcE2e
@@ -462,16 +459,16 @@ export const auth = betterAuth({
   // OAuth providers for account linking (users must complete identity verification first)
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      clientId: env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
       // Enable account linking
       mapProfileToUser: (profile) => ({
         image: profile.picture,
       }),
     },
     github: {
-      clientId: process.env.GITHUB_CLIENT_ID || "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
+      clientId: env.GITHUB_CLIENT_ID ?? "",
+      clientSecret: env.GITHUB_CLIENT_SECRET ?? "",
       // Enable account linking
       mapProfileToUser: (profile) => ({
         image: profile.avatar_url,
@@ -535,7 +532,7 @@ export const auth = betterAuth({
   plugins: [
     nextCookies(),
     opaque({
-      serverSetup: getOpaqueServerSetup,
+      serverSetup: () => env.OPAQUE_SERVER_SETUP,
       resolveUserByIdentifier: resolveOpaqueUserByIdentifier,
       sendResetPassword: async ({ user: _user, url: _url }) => {
         // TODO: Implement email sending when SMTP is configured
@@ -544,7 +541,7 @@ export const auth = betterAuth({
       revokeSessionsOnPasswordReset: true,
     }),
     anonymous({
-      emailDomainName: process.env.ANONYMOUS_EMAIL_DOMAIN || "anon.zentity.app",
+      emailDomainName: "anon.zentity.app",
     }),
     magicLink({
       sendMagicLink: async ({ email: _email, url: _url }) => {
@@ -564,7 +561,7 @@ export const auth = betterAuth({
     }),
     eip712Auth({
       appName: "Zentity",
-      emailDomainName: process.env.EIP712_EMAIL_DOMAIN || "wallet.zentity.app",
+      emailDomainName: "wallet.zentity.app",
     }),
     genericOAuth({
       config: parseGenericOAuthConfig(),
@@ -654,8 +651,7 @@ export const auth = betterAuth({
         buildOidcVerifiedClaims(user.id),
     }),
     oidc4vci({
-      defaultWalletClientId:
-        process.env.OIDC4VCI_WALLET_CLIENT_ID || "zentity-wallet",
+      defaultWalletClientId: "zentity-wallet",
       credentialIssuer: authIssuer,
       issuerBaseURL: authIssuer,
       credentialAudience: oidc4vciCredentialAudience,
@@ -672,7 +668,7 @@ export const auth = betterAuth({
       allowedIssuers: [authIssuer],
       resolveIssuerJwks: async (issuer: string) => {
         const jwksUrl =
-          process.env.OIDC4VP_JWKS_URL || joinAuthIssuerPath(issuer, "jwks");
+          env.OIDC4VP_JWKS_URL ?? joinAuthIssuerPath(issuer, "jwks");
         const response = await fetch(jwksUrl);
         if (!response.ok) {
           throw new Error("Unable to resolve issuer JWKS");

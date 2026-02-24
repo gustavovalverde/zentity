@@ -11,8 +11,8 @@
 
 import "server-only";
 
+import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
-import { getFheServiceUrl, getOcrServiceUrl } from "@/lib/utils/service-urls";
 
 interface ServiceHealth {
   durationMs: number;
@@ -66,8 +66,8 @@ export async function warmupServices(): Promise<void> {
   const startTime = Date.now();
 
   const results = await Promise.allSettled([
-    checkServiceHealth("FHE", getFheServiceUrl()),
-    checkServiceHealth("OCR", getOcrServiceUrl()),
+    checkServiceHealth("FHE", env.FHE_SERVICE_URL),
+    checkServiceHealth("OCR", env.OCR_SERVICE_URL),
   ]);
 
   const services = results.map((r) =>

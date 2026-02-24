@@ -10,6 +10,7 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { env } from "@/env";
 import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
@@ -22,18 +23,13 @@ import { protectedProcedure, router } from "../server";
 const DEFAULT_CREDENTIAL_CONFIG_ID = "zentity_identity";
 
 /** Wallet client ID for dashboard-initiated issuance (must match OIDC4VCI plugin's defaultWalletClientId) */
-const WALLET_CLIENT_ID =
-  process.env.OIDC4VCI_WALLET_CLIENT_ID || "zentity-wallet";
+const WALLET_CLIENT_ID = "zentity-wallet";
 
 /** Credential offer expiration in seconds (5 minutes) */
 const OFFER_EXPIRES_IN_SECONDS = 300;
 
 function getAuthBaseUrl(): string {
-  const baseUrl =
-    process.env.BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
-  return `${baseUrl}/api/auth`;
+  return `${env.NEXT_PUBLIC_APP_URL}/api/auth`;
 }
 
 export const credentialsRouter = router({
@@ -79,7 +75,7 @@ export const credentialsRouter = router({
       }
 
       const authBaseUrl = getAuthBaseUrl();
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const appUrl = env.NEXT_PUBLIC_APP_URL;
 
       const offerResponse = await fetch(
         `${authBaseUrl}/oidc4vci/credential-offer`,

@@ -11,6 +11,7 @@ import "server-only";
 
 import { BackendType, Barretenberg, BN254_FR_MODULUS } from "@aztec/bb.js";
 
+import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 
 let bbInstance: Barretenberg | null = null;
@@ -29,8 +30,7 @@ function bigIntToFr(value: bigint): Uint8Array {
   return bytes;
 }
 
-const CRS_PATH =
-  process.env.BB_CRS_PATH || process.env.CRS_PATH || "/tmp/.bb-crs";
+const CRS_PATH = env.BB_CRS_PATH;
 
 export function getBarretenberg(): Promise<Barretenberg> {
   if (bbInstance) {
