@@ -20,7 +20,7 @@
 		"@hugeicons/react": "^1.1.5",
 		"@sd-jwt/core": "^0.19.0",
 		"@sd-jwt/types": "^0.19.0",
-		"better-auth": "file:../web/vendor/better-auth-1.5.0-beta.13.tgz",
+		"better-auth": "1.5.0-beta.18",
 		"better-sqlite3": "^12.6.2",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",

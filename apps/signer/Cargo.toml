@@ -71,7 +71,7 @@ sha2 = "0.10.9"
 
 # JWT verification (guardian assertions)
 # Using rust_crypto backend for consistency with other RustCrypto crates
-jsonwebtoken = { version = "10.2.0", default-features = false, features = [
+jsonwebtoken = { version = "10.3.0", default-features = false, features = [
     "rust_crypto",
 ] }
 
