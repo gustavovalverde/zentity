@@ -106,7 +106,7 @@ export async function validateOAuthAccessToken(
 }
 
 /**
- * Compute SHA-256 fingerprint of a public key.
+ * Compute SHA-256 fingerprint of a public key (algorithm-agnostic).
  */
 export async function computeKeyFingerprint(
   publicKeyBase64: string
@@ -114,17 +114,4 @@ export async function computeKeyFingerprint(
   const keyBytes = Buffer.from(publicKeyBase64, "base64");
   const hashBuffer = await crypto.subtle.digest("SHA-256", keyBytes);
   return Buffer.from(hashBuffer).toString("hex");
-}
-
-/**
- * Validate X25519 public key format.
- * X25519 keys are exactly 32 bytes (256 bits).
- */
-export function isValidX25519PublicKey(publicKeyBase64: string): boolean {
-  try {
-    const keyBytes = Buffer.from(publicKeyBase64, "base64");
-    return keyBytes.length === 32;
-  } catch {
-    return false;
-  }
 }

@@ -36,7 +36,7 @@ fn main(
     audience_hash: pub Field,        // Public: audience context binding
     base_commitment: pub Field,      // Public: pre-registered base commitment
     binding_commitment: pub Field    // Public: pre-computed commitment to verify
-) {
+) -> pub bool {
     // Nonce is included as public input for replay resistance
     let _ = nonce;
 
@@ -55,6 +55,8 @@ fn main(
 
     // Verify the commitment matches
     assert(computed_commitment == binding_commitment, "Binding commitment mismatch");
+
+    true
 }
 
 // Helper function to compute user ID hash (for testing)
@@ -82,7 +84,7 @@ fn test_passkey_binding() {
         audience_hash
     ]);
 
-    main(
+    assert(main(
         binding_secret,
         user_id_hash,
         document_hash,
@@ -91,7 +93,7 @@ fn test_passkey_binding() {
         audience_hash,
         base_commitment,
         binding_commitment
-    );
+    ));
 }
 
 #[test]
@@ -114,7 +116,7 @@ fn test_opaque_binding() {
         audience_hash
     ]);
 
-    main(
+    assert(main(
         binding_secret,
         user_id_hash,
         document_hash,
@@ -123,7 +125,7 @@ fn test_opaque_binding() {
         audience_hash,
         base_commitment,
         binding_commitment
-    );
+    ));
 }
 
 #[test]
@@ -146,7 +148,7 @@ fn test_wallet_binding() {
         audience_hash
     ]);
 
-    main(
+    assert(main(
         binding_secret,
         user_id_hash,
         document_hash,
@@ -155,7 +157,7 @@ fn test_wallet_binding() {
         audience_hash,
         base_commitment,
         binding_commitment
-    );
+    ));
 }
 
 #[test(should_fail_with = "Binding commitment mismatch")]
@@ -298,7 +300,7 @@ fn test_nonce_uniqueness() {
         audience_hash
     ]);
 
-    main(
+    assert(main(
         binding_secret,
         user_id_hash,
         document_hash,
@@ -307,9 +309,9 @@ fn test_nonce_uniqueness() {
         audience_hash,
         base_commitment,
         binding_commitment
-    );
+    ));
 
-    main(
+    assert(main(
         binding_secret,
         user_id_hash,
         document_hash,
@@ -318,5 +320,5 @@ fn test_nonce_uniqueness() {
         audience_hash,
         base_commitment,
         binding_commitment
-    );
+    ));
 }

@@ -60,9 +60,9 @@ SIGNER_COORDINATOR_URL=http://localhost:5002
 SIGNER_ENDPOINTS=http://localhost:5101,http://localhost:5102,http://localhost:5103
 INTERNAL_SERVICE_TOKEN=dev-internal-token
 
-# Recovery keys (server-side)
-RECOVERY_RSA_PRIVATE_KEY=...            # production
-RECOVERY_RSA_PRIVATE_KEY_PATH=.data/recovery-key.pem
+# Recovery keys (server-side, ML-KEM-768)
+RECOVERY_ML_KEM_SECRET_KEY=...          # production (base64 of 2400 bytes)
+RECOVERY_ML_KEM_KEY_PATH=.data/recovery-key.bin
 RECOVERY_KEY_ID=v1
 
 # Email delivery

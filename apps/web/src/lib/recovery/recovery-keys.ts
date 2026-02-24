@@ -1,25 +1,28 @@
 import "server-only";
 
-import {
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-  privateDecrypt,
-} from "node:crypto";
+import { createDecipheriv } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import {
+  ML_KEM_SECRET_KEY_BYTES,
+  mlKemDecapsulate,
+  mlKemGetPublicKey,
+  mlKemKeygen,
+} from "@/lib/privacy/primitives/ml-kem";
+import { bytesToBase64 } from "@/lib/utils/base64";
+
 const DEFAULT_KEY_ID = "v1";
-const DEFAULT_KEY_PATH = join(process.cwd(), ".data", "recovery-key.pem");
+const DEFAULT_KEY_PATH = join(process.cwd(), ".data", "recovery-key.bin");
 
 const KEY_ID = process.env.RECOVERY_KEY_ID || DEFAULT_KEY_ID;
-const KEY_PATH = process.env.RECOVERY_RSA_PRIVATE_KEY_PATH || DEFAULT_KEY_PATH;
-const KEY_ENV = process.env.RECOVERY_RSA_PRIVATE_KEY;
+const KEY_PATH = process.env.RECOVERY_ML_KEM_KEY_PATH || DEFAULT_KEY_PATH;
+const KEY_ENV = process.env.RECOVERY_ML_KEM_SECRET_KEY;
 
 let cachedKeys: {
   keyId: string;
-  privateKey: ReturnType<typeof createPrivateKey>;
-  publicKey: ReturnType<typeof createPublicKey>;
+  secretKey: Uint8Array;
+  publicKey: Uint8Array;
 } | null = null;
 
 function isProduction(): boolean {
@@ -36,38 +39,38 @@ function ensureKeyDir(filePath: string) {
   }
 }
 
-function loadOrCreatePrivateKeyPem(): string {
+function loadOrCreateSecretKey(): Uint8Array {
   if (KEY_ENV?.trim()) {
-    return KEY_ENV.trim().replaceAll(String.raw`\n`, "\n");
+    const bytes = Buffer.from(KEY_ENV.trim(), "base64");
+    if (bytes.length !== ML_KEM_SECRET_KEY_BYTES) {
+      throw new Error(
+        `RECOVERY_ML_KEM_SECRET_KEY must be ${ML_KEM_SECRET_KEY_BYTES} bytes (base64), got ${bytes.length}`
+      );
+    }
+    return new Uint8Array(bytes);
   }
 
   if (existsSync(KEY_PATH)) {
-    return readFileSync(KEY_PATH, "utf8");
+    const raw = readFileSync(KEY_PATH);
+    if (raw.length !== ML_KEM_SECRET_KEY_BYTES) {
+      throw new Error(
+        `Recovery key file must be ${ML_KEM_SECRET_KEY_BYTES} bytes, got ${raw.length}`
+      );
+    }
+    return new Uint8Array(raw);
   }
 
   if (isProduction()) {
     throw new Error(
-      "RECOVERY_RSA_PRIVATE_KEY is required in production environments."
+      "RECOVERY_ML_KEM_SECRET_KEY is required in production environments."
     );
   }
 
-  const { privateKey } = generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    publicExponent: 0x1_00_01,
-    privateKeyEncoding: {
-      type: "pkcs8",
-      format: "pem",
-    },
-    publicKeyEncoding: {
-      type: "spki",
-      format: "pem",
-    },
-  });
-
+  const { secretKey } = mlKemKeygen();
   ensureKeyDir(KEY_PATH);
-  writeFileSync(KEY_PATH, privateKey, { mode: 0o600 });
+  writeFileSync(KEY_PATH, Buffer.from(secretKey), { mode: 0o600 });
 
-  return privateKey;
+  return secretKey;
 }
 
 function loadKeys() {
@@ -75,30 +78,31 @@ function loadKeys() {
     return cachedKeys;
   }
 
-  const privateKeyPem = loadOrCreatePrivateKeyPem();
-  const privateKey = createPrivateKey(privateKeyPem);
-  const publicKey = createPublicKey(privateKey);
+  const secretKey = loadOrCreateSecretKey();
+  const publicKey = mlKemGetPublicKey(secretKey);
 
-  cachedKeys = {
-    keyId: KEY_ID,
-    privateKey,
-    publicKey,
-  };
-
+  cachedKeys = { keyId: KEY_ID, secretKey, publicKey };
   return cachedKeys;
 }
 
-export function getRecoveryPublicKey(): { keyId: string; jwk: JsonWebKey } {
+export function getRecoveryPublicKey(): {
+  keyId: string;
+  alg: "ML-KEM-768";
+  publicKey: string;
+} {
   const keys = loadKeys();
-  const jwk = keys.publicKey.export({ format: "jwk" }) as JsonWebKey;
   return {
     keyId: keys.keyId,
-    jwk: {
-      ...jwk,
-      alg: "RSA-OAEP-256",
-      use: "enc",
-    },
+    alg: "ML-KEM-768",
+    publicKey: bytesToBase64(keys.publicKey),
   };
+}
+
+export interface RecoveryEnvelope {
+  alg: "ML-KEM-768";
+  ciphertext: string;
+  iv: string;
+  kemCipherText: string;
 }
 
 export function decryptRecoveryWrappedDek(params: {
@@ -110,13 +114,31 @@ export function decryptRecoveryWrappedDek(params: {
     throw new Error("Recovery key mismatch.");
   }
 
-  const plaintext = privateDecrypt(
-    {
-      key: keys.privateKey,
-      oaepHash: "sha256",
-    },
-    Buffer.from(params.wrappedDek, "base64")
+  const envelope: RecoveryEnvelope = JSON.parse(params.wrappedDek);
+  if (envelope.alg !== "ML-KEM-768") {
+    throw new Error(`Unsupported recovery envelope algorithm: ${envelope.alg}`);
+  }
+
+  const kemCipherText = Buffer.from(envelope.kemCipherText, "base64");
+  const sharedSecret = mlKemDecapsulate(
+    new Uint8Array(kemCipherText),
+    keys.secretKey
   );
 
-  return new Uint8Array(plaintext);
+  const iv = Buffer.from(envelope.iv, "base64");
+  const ciphertext = Buffer.from(envelope.ciphertext, "base64");
+
+  // AES-256-GCM: last 16 bytes of ciphertext are the auth tag
+  const authTagLength = 16;
+  const encrypted = ciphertext.subarray(0, ciphertext.length - authTagLength);
+  const authTag = ciphertext.subarray(ciphertext.length - authTagLength);
+
+  const decipher = createDecipheriv("aes-256-gcm", sharedSecret, iv);
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([
+    decipher.update(encrypted),
+    decipher.final(),
+  ]);
+  return new Uint8Array(decrypted);
 }

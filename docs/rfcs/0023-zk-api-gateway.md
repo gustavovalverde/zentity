@@ -2241,7 +2241,7 @@ Throughout the Zentity user journey, multiple proofs are generated:
 │  │  │      "employment_verified": true     // From Reclaim            │ │   │
 │  │  │    },                                                            │ │  │
 │  │  │    "proof": {                        // VC signature, NOT ZK    │ │   │
-│  │  │      "type": "Ed25519Signature2020",                            │ │   │
+│  │  │      "type": "MlDsa65Signature2024",                            │ │   │
 │  │  │      "verificationMethod": "did:web:zentity.xyz#key-1"          │ │   │
 │  │  │    }                                                             │ │  │
 │  │  │  }                                                                │ │ │
@@ -2266,7 +2266,7 @@ Throughout the Zentity user journey, multiple proofs are generated:
 **For OIDC4VCI/VP interoperability**: The proof system choice is **irrelevant** because:
 
 1. ZK proofs are verified by Zentity backend
-2. Zentity issues VCs with standard signatures (Ed25519, ES256)
+2. Zentity issues VCs with ML-DSA-65 signatures (post-quantum)
 3. Relying Parties verify VC signatures, not ZK proofs
 4. The credential format (JWT-VC, JSON-LD, SD-JWT) determines interoperability
 

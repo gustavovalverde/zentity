@@ -16,11 +16,11 @@ import { evaluatePrf } from "@/lib/auth/webauthn-prf";
 import {
   clearPendingUnlock,
   createOpaqueWrapper,
-  getCachedRecoveryKey,
+  getCachedRecoveryPublicKey,
   getPendingUnlock,
   getWalletCredentialId,
   OPAQUE_CREDENTIAL_ID,
-  setCachedRecoveryKey,
+  setCachedRecoveryPublicKey,
   setPendingUnlock,
   unwrapDekWithOpaqueExport,
   unwrapDekWithPrf,
@@ -30,6 +30,7 @@ import {
   wrapDekWithPrf,
   wrapDekWithWalletSignature,
 } from "@/lib/privacy/credentials";
+import { mlKemEncapsulate } from "@/lib/privacy/primitives/ml-kem";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
@@ -117,44 +118,54 @@ function mergeSecretMetadata(params: {
   };
 }
 
-async function getRecoveryEncryptionKey(): Promise<{
+async function getRecoveryPublicKeyBytes(): Promise<{
   keyId: string;
-  cryptoKey: CryptoKey;
+  publicKey: Uint8Array;
 }> {
-  const cached = getCachedRecoveryKey();
+  const cached = getCachedRecoveryPublicKey();
   if (cached) {
     return cached;
   }
 
-  const { keyId, jwk } = await trpc.recovery.publicKey.query();
-  const cryptoKey = await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {
-      name: "RSA-OAEP",
-      hash: "SHA-256",
-    },
-    false,
-    ["encrypt"]
-  );
+  const { keyId, publicKey: publicKeyBase64 } =
+    await trpc.recovery.publicKey.query();
+  const publicKey = base64ToBytes(publicKeyBase64);
 
-  setCachedRecoveryKey({ keyId, cryptoKey });
-  return { keyId, cryptoKey };
+  setCachedRecoveryPublicKey({ keyId, publicKey });
+  return { keyId, publicKey };
 }
 
 async function encryptDekForRecovery(dek: Uint8Array): Promise<{
   wrappedDek: string;
   keyId: string;
 }> {
-  const { keyId, cryptoKey } = await getRecoveryEncryptionKey();
-  const dekCopy = new Uint8Array(dek.byteLength);
-  dekCopy.set(dek);
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "RSA-OAEP" },
-    cryptoKey,
-    dekCopy
+  const { keyId, publicKey } = await getRecoveryPublicKeyBytes();
+
+  const { cipherText, sharedSecret } = mlKemEncapsulate(publicKey);
+
+  const aesKey = await crypto.subtle.importKey(
+    "raw",
+    Uint8Array.from(sharedSecret).buffer,
+    "AES-GCM",
+    false,
+    ["encrypt"]
   );
-  return { wrappedDek: bytesToBase64(new Uint8Array(encrypted)), keyId };
+
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    aesKey,
+    Uint8Array.from(dek).buffer
+  );
+
+  const envelope = {
+    alg: "ML-KEM-768",
+    kemCipherText: bytesToBase64(cipherText),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+  };
+
+  return { wrappedDek: JSON.stringify(envelope), keyId };
 }
 
 /**

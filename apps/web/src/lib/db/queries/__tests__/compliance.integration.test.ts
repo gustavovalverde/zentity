@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db/connection";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { ML_KEM_PUBLIC_KEY_BYTES } from "@/lib/privacy/primitives/ml-kem";
 import { resetDatabase } from "@/test/db-test-utils";
 
 import {
@@ -29,8 +30,10 @@ async function createTestOAuthClient(clientId: string): Promise<void> {
     .run();
 }
 
-// Valid X25519 public key (32 bytes, base64 encoded)
-const testPublicKey = Buffer.from(crypto.randomBytes(32)).toString("base64");
+// ML-KEM-768 public key (1184 bytes, base64 encoded)
+const testPublicKey = Buffer.from(
+  crypto.randomBytes(ML_KEM_PUBLIC_KEY_BYTES)
+).toString("base64");
 const testFingerprint = crypto
   .createHash("sha256")
   .update(Buffer.from(testPublicKey, "base64"))
@@ -39,7 +42,6 @@ const testFingerprint = crypto
 describe("compliance queries - RP encryption keys", () => {
   beforeEach(async () => {
     await resetDatabase();
-    // Also clean up compliance tables not in resetDatabase
     await db.delete(rpEncryptionKeys).run();
   });
 
@@ -51,13 +53,12 @@ describe("compliance queries - RP encryption keys", () => {
       const key = await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
       expect(key.clientId).toBe(clientId);
       expect(key.publicKey).toBe(testPublicKey);
-      expect(key.keyAlgorithm).toBe("x25519");
+      expect(key.keyAlgorithm).toBe("ml-kem-768");
       expect(key.keyFingerprint).toBe(testFingerprint);
       expect(key.status).toBe("active");
       expect(key.previousKeyId).toBeNull();
@@ -70,7 +71,6 @@ describe("compliance queries - RP encryption keys", () => {
       await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
@@ -78,12 +78,9 @@ describe("compliance queries - RP encryption keys", () => {
         createRpEncryptionKey({
           clientId,
           publicKey: testPublicKey,
-          keyAlgorithm: "x25519",
           keyFingerprint: `${testFingerprint}-second`,
         })
-      ).rejects.toThrow(
-        "Active encryption key already exists for this client and algorithm"
-      );
+      ).rejects.toThrow("Active encryption key already exists for this client");
     });
 
     it("creates key with custom ID", async () => {
@@ -95,25 +92,10 @@ describe("compliance queries - RP encryption keys", () => {
         id: customId,
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
       expect(key.id).toBe(customId);
-    });
-
-    it("creates key with ml-kem algorithm", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      const key = await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyAlgorithm: "x25519-ml-kem",
-        keyFingerprint: testFingerprint,
-      });
-
-      expect(key.keyAlgorithm).toBe("x25519-ml-kem");
     });
   });
 
@@ -125,7 +107,6 @@ describe("compliance queries - RP encryption keys", () => {
       await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
@@ -140,35 +121,13 @@ describe("compliance queries - RP encryption keys", () => {
       expect(key).toBeNull();
     });
 
-    it("filters by algorithm", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
-        keyFingerprint: testFingerprint,
-      });
-
-      const x25519Key = await getActiveRpEncryptionKey(clientId, "x25519");
-      const mlKemKey = await getActiveRpEncryptionKey(
-        clientId,
-        "x25519-ml-kem"
-      );
-
-      expect(x25519Key).not.toBeNull();
-      expect(mlKemKey).toBeNull();
-    });
-
-    it("does not return rotated keys", async () => {
+    it("does not return revoked keys", async () => {
       const clientId = "test-client";
       await createTestOAuthClient(clientId);
 
       const key = await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
@@ -187,7 +146,6 @@ describe("compliance queries - RP encryption keys", () => {
       const created = await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
@@ -207,11 +165,9 @@ describe("compliance queries - RP encryption keys", () => {
       const clientId = "test-client";
       await createTestOAuthClient(clientId);
 
-      // Create and rotate
       const key1 = await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
@@ -220,7 +176,6 @@ describe("compliance queries - RP encryption keys", () => {
       await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: `${testFingerprint}-new`,
       });
 
@@ -242,13 +197,12 @@ describe("compliance queries - RP encryption keys", () => {
       const oldKey = await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
-      const newPublicKey = Buffer.from(crypto.randomBytes(32)).toString(
-        "base64"
-      );
+      const newPublicKey = Buffer.from(
+        crypto.randomBytes(ML_KEM_PUBLIC_KEY_BYTES)
+      ).toString("base64");
       const newFingerprint = crypto
         .createHash("sha256")
         .update(Buffer.from(newPublicKey, "base64"))
@@ -260,12 +214,10 @@ describe("compliance queries - RP encryption keys", () => {
         newFingerprint
       );
 
-      // New key is active
       expect(newKey.status).toBe("active");
       expect(newKey.publicKey).toBe(newPublicKey);
       expect(newKey.previousKeyId).toBe(oldKey.id);
 
-      // Old key is rotated
       const oldKeyAfter = await getRpEncryptionKeyById(oldKey.id);
       expect(oldKeyAfter?.status).toBe("rotated");
       expect(oldKeyAfter?.rotatedAt).not.toBeNull();
@@ -284,29 +236,6 @@ describe("compliance queries - RP encryption keys", () => {
       expect(newKey.status).toBe("active");
       expect(newKey.previousKeyId).toBeNull();
     });
-
-    it("rotates specific algorithm keys independently", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      // Create x25519 key
-      const x25519Key = await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
-        keyFingerprint: testFingerprint,
-      });
-
-      // Rotate only x25519 key
-      const newX25519Key = await rotateRpEncryptionKey(
-        clientId,
-        testPublicKey,
-        `${testFingerprint}-new`,
-        "x25519"
-      );
-
-      expect(newX25519Key.previousKeyId).toBe(x25519Key.id);
-    });
   });
 
   describe("revokeRpEncryptionKey", () => {
@@ -317,7 +246,6 @@ describe("compliance queries - RP encryption keys", () => {
       const key = await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
       });
 
@@ -336,15 +264,7 @@ describe("compliance queries - RP encryption keys", () => {
       await createRpEncryptionKey({
         clientId,
         publicKey: testPublicKey,
-        keyAlgorithm: "x25519",
         keyFingerprint: testFingerprint,
-      });
-
-      await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyAlgorithm: "x25519-ml-kem",
-        keyFingerprint: `${testFingerprint}-mlkem`,
       });
 
       await deleteAllRpEncryptionKeys(clientId);

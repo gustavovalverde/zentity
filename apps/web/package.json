@@ -61,6 +61,7 @@
     "@libsql/client": "0.17.0",
     "@mattrglobal/pairing-crypto": "0.4.2",
     "@msgpack/msgpack": "3.1.3",
+    "@noble/post-quantum": "^0.5.4",
     "@noir-lang/acvm_js": "1.0.0-beta.18",
     "@noir-lang/noir_js": "1.0.0-beta.18",
     "@noir-lang/noirc_abi": "1.0.0-beta.18",

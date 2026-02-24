@@ -29,7 +29,6 @@ import { verifyAccessToken } from "better-auth/oauth2";
 import {
   computeKeyFingerprint,
   extractBearerToken,
-  isValidX25519PublicKey,
   validateOAuthAccessToken,
 } from "../oauth-token-validation";
 
@@ -98,31 +97,6 @@ describe("oauth token validation", () => {
       const fp2 = await computeKeyFingerprint(key2);
 
       expect(fp1).not.toBe(fp2);
-    });
-  });
-
-  describe("isValidX25519PublicKey", () => {
-    it("returns true for valid 32-byte key", () => {
-      const validKey = crypto.randomBytes(32).toString("base64");
-      expect(isValidX25519PublicKey(validKey)).toBe(true);
-    });
-
-    it("returns false for key that is too short", () => {
-      const shortKey = crypto.randomBytes(16).toString("base64");
-      expect(isValidX25519PublicKey(shortKey)).toBe(false);
-    });
-
-    it("returns false for key that is too long", () => {
-      const longKey = crypto.randomBytes(64).toString("base64");
-      expect(isValidX25519PublicKey(longKey)).toBe(false);
-    });
-
-    it("returns false for invalid base64", () => {
-      expect(isValidX25519PublicKey("not-valid-base64!!!")).toBe(false);
-    });
-
-    it("returns false for empty string", () => {
-      expect(isValidX25519PublicKey("")).toBe(false);
     });
   });
 

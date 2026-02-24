@@ -26,11 +26,11 @@ This document explains, in plain terms, what your current recovery implementatio
 1. **Recovery wrappers** (DEK wrapped under server-published recovery public key)
 
 - Stored server-side (DB).
-- Wrapped using RSA-OAEP with a server-generated/persisted RSA keypair.
+- Wrapped using ML-KEM-768 (post-quantum KEM) with a server-generated/persisted ML-KEM keypair.
 
 ### Where the recovery key lives
 
-- The recovery RSA **private key is server-held** (env var or local file) and used for decryption.
+- The recovery ML-KEM-768 **secret key is server-held** (env var or local file) and used for decapsulation.
 
 ### Current flows (visual)
 
@@ -56,9 +56,9 @@ sequenceDiagram
   S->>DB: Persist primary wrapper
 
   Note over C,S: Optional recovery wrapper
-  C->>S: Fetch recovery public key (JWK)
-  C->>C: RSA-OAEP encrypt(DEK) using recovery public key
-  C->>S: Store recovery wrapper (wrappedDek, keyId)
+  C->>S: Fetch recovery public key (raw ML-KEM-768 bytes)
+  C->>C: ML-KEM-768 encapsulate → sharedSecret; AES-GCM wrap DEK
+  C->>S: Store recovery wrapper (JSON envelope with kemCipherText + wrappedDek, keyId)
   S->>DB: Persist recovery wrapper
 ```
 
@@ -71,7 +71,7 @@ sequenceDiagram
   participant C as Client (Browser)
   participant S as Web Server (apps/web)
   participant DB as DB
-  participant RK as Server Recovery Key (RSA private key)
+  participant RK as Server Recovery Key (ML-KEM-768 secret key)
 
   U->>C: Start recovery
   C->>S: Create recovery challenge
@@ -86,7 +86,7 @@ sequenceDiagram
 
   Note over S,RK: Server decrypts recovery wrapper
   S->>DB: Load recovery wrapper(s)
-  S->>RK: RSA-OAEP decrypt(wrapped DEK) -> DEK
+  S->>RK: ML-KEM-768 decapsulate(kemCipherText) → sharedSecret; AES-GCM unwrap → DEK
   S->>C: Return plaintext DEK (base64)
 
   Note over C: Client re-wraps DEKs under new credential (passkey PRF / OPAQUE / wallet)
@@ -100,7 +100,7 @@ sequenceDiagram
 
 For any user who has a stored recovery wrapper:
 
-- If the server still has the recovery RSA private key for that wrapper's `keyId`, it can decrypt the DEK at any time.
+- If the server still has the recovery ML-KEM-768 secret key for that wrapper's `keyId`, it can decrypt the DEK at any time.
 - If you rotate keys but retain old private keys for backward recovery, the capability persists for older wrappers too.
 
 ### Can the server decrypt "without recovery being started"?
@@ -112,7 +112,7 @@ Yes.
 If the server process (or an attacker with code execution / secrets access) can:
 
 - read `recovery_secret_wrappers.wrapped_dek`, and
-- access the recovery RSA private key material,
+- access the recovery ML-KEM-768 secret key material,
 
 then it can compute `DEK = decrypt(wrapped_dek)` offline and decrypt the corresponding encrypted blob.
 
@@ -121,7 +121,7 @@ then it can compute `DEK = decrypt(wrapped_dek)` offline and decrypt the corresp
 It means enabling recovery (as implemented today) changes the security posture for those users:
 
 - **Without recovery wrappers**: server compromise yields encrypted blobs + wrapped DEKs, but no credential material to derive KEKs (assuming the passkey/OPAQUE/wallet material truly never reaches the server).
-- **With recovery wrappers**: server compromise + recovery private key yields plaintext DEKs, which yields plaintext secrets (because blobs are server-readable and DEK decrypts them).
+- **With recovery wrappers**: server compromise + recovery secret key yields plaintext DEKs, which yields plaintext secrets (because blobs are server-readable and DEK decrypts them).
 
 This is why this is a patent/security-claims issue: some statements like "server lacks decryption capability" or "server compromise cannot recover key material" must be scoped or qualified if recovery is implemented as a server-held private key.
 
@@ -135,7 +135,7 @@ The goal is:
 The key nuance:
 
 - **Email/TOTP approvals are not cryptographic shares**.
-- They can authorize an action, but they do not prevent a malicious server (or server compromise) from acting unilaterally if the server already holds the recovery private key.
+- They can authorize an action, but they do not prevent a malicious server (or server compromise) from acting unilaterally if the server already holds the recovery secret key.
 
 ## Design Options Using Your Existing Architecture
 
@@ -145,7 +145,7 @@ This does *not* achieve "not even the server can unilaterally recover", but it r
 
 Changes:
 
-- Move recovery private key into KMS/HSM (no raw PEM on disk/env).
+- Move recovery secret key into KMS/HSM (no raw key on disk/env).
 - Enforce "decrypt only with an audit trail and strict policy" (rate limits, explicit operator approval, separate service identity).
 - Ensure recovery wrapper decryption is only possible through a dedicated service with tight IAM.
 
@@ -219,13 +219,13 @@ Pick one:
 
 ### Step 2: Remove plaintext DEK release to the client (even in Model A)
 
-Even if you keep server-held RSA, consider changing the API so the server never returns plaintext DEK directly:
+Even if you keep a server-held recovery key, consider changing the API so the server never returns plaintext DEK directly:
 
 - Instead return DEK re-wrapped under the new credential (client provides a wrapper public input).
 
 This improves "accidental leakage" risk and logging hygiene, but does not fix the fundamental trust model.
 
-### Step 3: Replace RSA recovery wrapper with threshold-controlled recovery wrapper
+### Step 3: Replace server-held recovery wrapper with threshold-controlled recovery wrapper
 
 - Shamir path: introduce share storage/retrieval for guardians.
 - Threshold signature/decryption path: move signing shares to guardian-controlled devices/services and ensure server cannot invoke them unilaterally.

@@ -1,7 +1,7 @@
 /**
  * RP Compliance Key Management API
  *
- * REST endpoint for RPs to register and manage their X25519 public keys
+ * REST endpoint for RPs to register and manage their ML-KEM-768 public keys
  * for encrypted compliance data.
  *
  * Authentication: OAuth 2.0 client_credentials bearer token
@@ -18,7 +18,6 @@ import { z } from "zod";
 import {
   computeKeyFingerprint,
   extractBearerToken,
-  isValidX25519PublicKey,
   validateOAuthAccessToken,
 } from "@/lib/auth/oauth-token-validation";
 import {
@@ -29,10 +28,11 @@ import {
 } from "@/lib/db/queries/compliance";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
+import { isValidMlKemPublicKey } from "@/lib/privacy/primitives/ml-kem";
 
+// ML-KEM-768 public key: 1184 bytes raw → ~1580 chars base64
 const RegisterKeySchema = z.object({
-  public_key: z.string().min(40).max(100), // Base64 X25519 key (32 bytes = ~44 chars)
-  key_algorithm: z.enum(["x25519", "x25519-ml-kem"]).default("x25519"),
+  public_key: z.string().min(1500).max(1700),
 });
 
 const COMPLIANCE_KEY_READ_SCOPE = "compliance:key:read";
@@ -44,8 +44,6 @@ interface RouteParams {
 
 /**
  * GET /api/oauth2/clients/:clientId/compliance-key
- *
- * Retrieve the active encryption key for this client.
  */
 export async function GET(
   request: Request,
@@ -53,7 +51,6 @@ export async function GET(
 ): Promise<Response> {
   const { clientId } = await params;
 
-  // Validate OAuth token
   const token = extractBearerToken(request.headers);
   if (!token) {
     return NextResponse.json(
@@ -70,7 +67,6 @@ export async function GET(
     return NextResponse.json({ error: validation.error }, { status });
   }
 
-  // Ensure client can only access their own keys
   if (validation.clientId !== clientId) {
     return NextResponse.json(
       { error: "Cannot access keys for other clients" },
@@ -95,8 +91,6 @@ export async function GET(
 
 /**
  * POST /api/oauth2/clients/:clientId/compliance-key
- *
- * Register a new encryption key. If an active key exists, this rotates it.
  */
 export async function POST(
   request: Request,
@@ -104,7 +98,6 @@ export async function POST(
 ): Promise<Response> {
   const { clientId } = await params;
 
-  // Validate OAuth token
   const token = extractBearerToken(request.headers);
   if (!token) {
     return NextResponse.json(
@@ -128,7 +121,6 @@ export async function POST(
     );
   }
 
-  // Parse and validate request body
   let body: unknown;
   try {
     body = await request.json();
@@ -144,31 +136,25 @@ export async function POST(
     );
   }
 
-  const { public_key, key_algorithm } = parseResult.data;
+  const { public_key } = parseResult.data;
 
-  // Validate key format
-  if (key_algorithm === "x25519" && !isValidX25519PublicKey(public_key)) {
+  if (!isValidMlKemPublicKey(public_key)) {
     return NextResponse.json(
-      { error: "Invalid X25519 public key (must be 32 bytes base64-encoded)" },
+      {
+        error:
+          "Invalid ML-KEM-768 public key (must be 1184 bytes base64-encoded)",
+      },
       { status: 400 }
     );
   }
 
-  // Compute fingerprint
   const keyFingerprint = await computeKeyFingerprint(public_key);
 
-  // Check if a key already exists (rotate) or create new
-  const existingKey = await getActiveRpEncryptionKey(clientId, key_algorithm);
+  const existingKey = await getActiveRpEncryptionKey(clientId);
 
   let newKey: Awaited<ReturnType<typeof createRpEncryptionKey>>;
   if (existingKey) {
-    // Rotate: mark old key as rotated, create new one
-    newKey = await rotateRpEncryptionKey(
-      clientId,
-      public_key,
-      keyFingerprint,
-      key_algorithm
-    );
+    newKey = await rotateRpEncryptionKey(clientId, public_key, keyFingerprint);
     logger.info(
       {
         clientId: hashIdentifier(clientId),
@@ -178,11 +164,9 @@ export async function POST(
       "RP encryption key rotated"
     );
   } else {
-    // Create first key
     newKey = await createRpEncryptionKey({
       clientId,
       publicKey: public_key,
-      keyAlgorithm: key_algorithm,
       keyFingerprint,
     });
     logger.info(
@@ -210,8 +194,6 @@ export async function POST(
 
 /**
  * DELETE /api/oauth2/clients/:clientId/compliance-key
- *
- * Revoke the active encryption key.
  */
 export async function DELETE(
   request: Request,
@@ -219,7 +201,6 @@ export async function DELETE(
 ): Promise<Response> {
   const { clientId } = await params;
 
-  // Validate OAuth token
   const token = extractBearerToken(request.headers);
   if (!token) {
     return NextResponse.json(

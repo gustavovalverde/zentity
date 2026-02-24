@@ -338,7 +338,7 @@ erDiagram
   RP_ENCRYPTION_KEYS {
     text id PK
     text clientId FK
-    text algorithm "x25519 | x25519-ml-kem"
+    text algorithm "ml-kem-768"
     text status "active | rotated | revoked"
   }
 

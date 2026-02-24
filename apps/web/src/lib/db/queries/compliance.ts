@@ -9,11 +9,9 @@ import {
 
 /**
  * Get the active encryption key for an RP client.
- * Returns null if no active key exists.
  */
 export async function getActiveRpEncryptionKey(
-  clientId: string,
-  keyAlgorithm: "x25519" | "x25519-ml-kem" = "x25519"
+  clientId: string
 ): Promise<RpEncryptionKey | null> {
   const row = await db
     .select()
@@ -21,7 +19,6 @@ export async function getActiveRpEncryptionKey(
     .where(
       and(
         eq(rpEncryptionKeys.clientId, clientId),
-        eq(rpEncryptionKeys.keyAlgorithm, keyAlgorithm),
         eq(rpEncryptionKeys.status, "active")
       )
     )
@@ -62,29 +59,22 @@ export function getAllRpEncryptionKeys(
 
 /**
  * Register a new encryption key for an RP.
- * If an active key already exists for this algorithm, this will fail.
+ * If an active key already exists, this will fail.
  * Use rotateRpEncryptionKey instead for key rotation.
  */
 export async function createRpEncryptionKey(
-  data: Omit<NewRpEncryptionKey, "createdAt" | "updatedAt">
+  data: Omit<NewRpEncryptionKey, "createdAt" | "keyAlgorithm" | "updatedAt">
 ): Promise<RpEncryptionKey> {
-  const keyAlgorithm = data.keyAlgorithm ?? "x25519";
-  const existing = await getActiveRpEncryptionKey(data.clientId, keyAlgorithm);
+  const existing = await getActiveRpEncryptionKey(data.clientId);
   if (existing) {
-    throw new Error(
-      "Active encryption key already exists for this client and algorithm"
-    );
+    throw new Error("Active encryption key already exists for this client");
   }
 
   const id = data.id ?? crypto.randomUUID();
 
   await db
     .insert(rpEncryptionKeys)
-    .values({
-      ...data,
-      keyAlgorithm,
-      id,
-    })
+    .values({ ...data, id })
     .run();
 
   const created = await getRpEncryptionKeyById(id);
@@ -102,12 +92,10 @@ export async function createRpEncryptionKey(
 export async function rotateRpEncryptionKey(
   clientId: string,
   newPublicKey: string,
-  newKeyFingerprint: string,
-  keyAlgorithm: "x25519" | "x25519-ml-kem" = "x25519"
+  newKeyFingerprint: string
 ): Promise<RpEncryptionKey> {
-  const oldKey = await getActiveRpEncryptionKey(clientId, keyAlgorithm);
+  const oldKey = await getActiveRpEncryptionKey(clientId);
 
-  // Mark old key as rotated if it exists
   if (oldKey) {
     await db
       .update(rpEncryptionKeys)
@@ -120,11 +108,9 @@ export async function rotateRpEncryptionKey(
       .run();
   }
 
-  // Create new active key
   return createRpEncryptionKey({
     clientId,
     publicKey: newPublicKey,
-    keyAlgorithm,
     keyFingerprint: newKeyFingerprint,
     previousKeyId: oldKey?.id ?? null,
     status: "active",
@@ -133,7 +119,6 @@ export async function rotateRpEncryptionKey(
 
 /**
  * Revoke an RP's encryption key.
- * This should be called if a key is compromised.
  */
 export async function revokeRpEncryptionKey(keyId: string): Promise<void> {
   await db
@@ -148,7 +133,6 @@ export async function revokeRpEncryptionKey(keyId: string): Promise<void> {
 
 /**
  * Delete all encryption keys for an RP.
- * Called when an RP is deleted.
  */
 export async function deleteAllRpEncryptionKeys(
   clientId: string

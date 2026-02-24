@@ -15,9 +15,9 @@
 export {
   clearAllCredentialCaches,
   clearPendingUnlock,
-  getCachedRecoveryKey,
+  getCachedRecoveryPublicKey,
   getPendingUnlock,
-  setCachedRecoveryKey,
+  setCachedRecoveryPublicKey,
   setPendingUnlock,
 } from "./cache";
 // --- KEK Derivation ---

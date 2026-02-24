@@ -131,8 +131,8 @@ export const env = createEnv({
     MAILPIT_SEND_API_PASSWORD: z.string().optional(),
 
     // ========== RECOVERY ==========
-    RECOVERY_RSA_PRIVATE_KEY: z.string().optional(),
-    RECOVERY_RSA_PRIVATE_KEY_PATH: z.string().default(".data/recovery-key.pem"),
+    RECOVERY_ML_KEM_SECRET_KEY: z.string().optional(),
+    RECOVERY_ML_KEM_KEY_PATH: z.string().default(".data/recovery-key.bin"),
     RECOVERY_KEY_ID: z.string().default("v1"),
 
     // ========== OBSERVABILITY ==========

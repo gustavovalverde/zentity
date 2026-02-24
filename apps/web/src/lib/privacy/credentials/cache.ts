@@ -52,26 +52,29 @@ export function clearPendingUnlock(
   }
 }
 
-// --- Recovery Key Cache (CryptoKey, not credential material) ---
+// --- Recovery Key Cache (raw ML-KEM public key bytes) ---
 
-let cachedRecoveryKey: { keyId: string; cryptoKey: CryptoKey } | null = null;
-
-export function getCachedRecoveryKey(): {
+let cachedRecoveryPublicKey: {
   keyId: string;
-  cryptoKey: CryptoKey;
+  publicKey: Uint8Array;
+} | null = null;
+
+export function getCachedRecoveryPublicKey(): {
+  keyId: string;
+  publicKey: Uint8Array;
 } | null {
-  return cachedRecoveryKey;
+  return cachedRecoveryPublicKey;
 }
 
-export function setCachedRecoveryKey(params: {
+export function setCachedRecoveryPublicKey(params: {
   keyId: string;
-  cryptoKey: CryptoKey;
+  publicKey: Uint8Array;
 }): void {
-  cachedRecoveryKey = params;
+  cachedRecoveryPublicKey = params;
 }
 
-function clearCachedRecoveryKey(): void {
-  cachedRecoveryKey = null;
+function clearCachedRecoveryPublicKey(): void {
+  cachedRecoveryPublicKey = null;
 }
 
 // --- Binding Material Cache ---
@@ -148,6 +151,6 @@ export function clearCachedBindingMaterial(): void {
 export function clearAllCredentialCaches(): void {
   pendingUnlock = null;
   pendingUnlockKey = null;
-  clearCachedRecoveryKey();
+  clearCachedRecoveryPublicKey();
   clearCachedBindingMaterial();
 }

@@ -260,12 +260,11 @@ Track B (Compliance-Ready): Regulated RPs
 ```
 
 ```text
-PRINCIPLE 3: POST-QUANTUM READY DOCUMENT STORAGE
+PRINCIPLE 3: POST-QUANTUM DOCUMENT STORAGE
 ════════════════════════════════════════════════
-For 5-year document retention, use hybrid encryption:
-  • Classical: X25519 ECDH + AES-256-GCM (current security)
-  • Post-quantum: ML-KEM-768 (Kyber) + AES-256-GCM (future security)
-  • Dual-encapsulation ensures security against both classical and quantum attacks
+For 5-year document retention, use post-quantum encryption:
+  • ML-KEM-768 encapsulation → AES-256-GCM (quantum-resistant)
+  • No classical fallback needed — ML-KEM-768 is the sole encryption path
 ```
 
 ### 4.2 Track Comparison
@@ -274,7 +273,7 @@ For 5-year document retention, use hybrid encryption:
 |--------|-------------------------|----------------------------|
 | **Target RPs** | DeFi, gaming, non-regulated | Banks, exchanges, fintechs |
 | **Data stored** | ZK proofs, commitments only | RP-encrypted documents + identity |
-| **Encryption** | None (no PII to encrypt) | X25519 → AES-256-GCM to RP key |
+| **Encryption** | None (no PII to encrypt) | ML-KEM-768 → AES-256-GCM to RP key |
 | **Decryption** | N/A | Only RP can decrypt |
 | **Retention** | Until user deletes account | 5 years from relationship end |
 | **OIDC scopes** | `openid proof:identity` | `openid proof:identity compliance:documents` |
@@ -288,17 +287,10 @@ COMPLIANCE DATA ENCRYPTION FLOW
 2. Client fetches RP's public key from Zentity
 3. Client encrypts document:
 
-   Classical (X25519):
-   ├─► Generate ephemeral X25519 keypair
-   ├─► ECDH(ephemeral_private, rp_public) → shared_secret
-   ├─► HKDF(shared_secret) → AES key
-   └─► AES-256-GCM(document, AES key) → ciphertext
-
-   Hybrid (X25519 + ML-KEM-768) [future]:
-   ├─► X25519 encapsulation → ss1
-   ├─► ML-KEM encapsulation → ss2
-   ├─► HKDF(ss1 || ss2) → AES key
-   └─► AES-256-GCM(document, AES key) → ciphertext
+   ML-KEM-768:
+   ├─► mlKemEncapsulate(rp_public_key) → {cipherText, sharedSecret}
+   ├─► AES-256-GCM(document, sharedSecret) → encrypted
+   └─► Bundle: {alg: "ML-KEM-768", kemCipherText, iv, ciphertext}
 
 4. Client sends encrypted document to Zentity
 5. Zentity stores ciphertext (CANNOT decrypt)
@@ -489,7 +481,7 @@ Add new OAuth scopes for compliance data access:
 RP KEY REGISTRATION (OAuth 2.1 Dynamic Client Registration Extension)
 ═════════════════════════════════════════════════════════════════════
 1. RP registers OAuth client (existing flow)
-2. RP generates X25519 keypair (private key stays with RP)
+2. RP generates ML-KEM-768 keypair (secret key stays with RP)
 3. RP registers public key via new endpoint:
 
    POST /api/auth/oauth2/clients/{client_id}/compliance-key
@@ -497,8 +489,7 @@ RP KEY REGISTRATION (OAuth 2.1 Dynamic Client Registration Extension)
    Content-Type: application/json
 
    {
-     "public_key": "base64-encoded-x25519-public-key",
-     "key_algorithm": "x25519",
+     "public_key": "base64-encoded-ml-kem-768-public-key",
      "intended_use": "compliance_encryption"
    }
 
@@ -524,19 +515,20 @@ RP COMPLIANCE DATA RETRIEVAL
      "documents": [
        {
          "type": "passport",
+         "alg": "ML-KEM-768",
+         "kem_ciphertext": "base64-kem-ciphertext",
+         "iv": "base64-iv",
          "encrypted_content": "base64-ciphertext",
-         "ephemeral_public_key": "base64-x25519-pubkey",
          "content_hash": "sha256-of-plaintext",
          "uploaded_at": "2026-02-03T..."
        }
      ]
    }
 
-4. RP decrypts with their private key:
+4. RP decrypts with their ML-KEM-768 secret key:
 
-   shared_secret = X25519(rp_private, ephemeral_public)
-   aes_key = HKDF(shared_secret, "zentity:compliance:document")
-   plaintext = AES-GCM-Decrypt(encrypted_content, aes_key)
+   shared_secret = mlKemDecapsulate(kem_ciphertext, rp_secret_key)
+   plaintext = AES-GCM-Decrypt(encrypted_content, shared_secret, iv)
 ```
 
 ### 5.6 OIDC4VCI Integration
@@ -940,7 +932,7 @@ User clicks "Sign up with Zentity" on Bank website
                     ▼ (User consents)
 
 Client-side encryption:
-• User's browser encrypts documents to Bank's X25519 public key
+• User's browser encrypts documents to Bank's ML-KEM-768 public key
 • User's browser encrypts identity fields to Bank's key
 • Encrypted blobs sent to Zentity for storage
 • Zentity CANNOT decrypt (no key)
@@ -1580,19 +1572,11 @@ await createUser({
 | Server compromise | MEDIUM (OCR sees docs) | LOW (TEE or client-side) | TEE processing |
 | Insider threat | MEDIUM (ops can query) | LOW (no decrypt keys) | Zentity holds no keys |
 | RP compromise | LOW (RPs get proofs) | MEDIUM (RPs hold keys) | RP responsibility |
-| Quantum attack | HIGH (X25519 vulnerable) | LOW (hybrid ML-KEM) | Post-quantum encryption |
+| Quantum attack | N/A (ML-KEM-768 is quantum-resistant) | LOW | Post-quantum encryption already implemented |
 
-### 6.2 Post-Quantum Considerations
+### 6.2 Post-Quantum Status
 
-For 5-year document retention, current encryption (X25519, AES-256) may be vulnerable to "harvest now, decrypt later" attacks by quantum computers.
-
-**Recommendation**: Use hybrid encryption combining:
-
-- **ML-KEM-768** (NIST PQC standard, formerly Kyber)
-- **X25519** (classical security)
-- **AES-256-GCM** (symmetric, quantum-resistant with sufficient key size)
-
-This ensures documents remain secure even if quantum computers break classical ECDH.
+Compliance encryption uses **ML-KEM-768** (NIST FIPS 203) for key encapsulation and **AES-256-GCM** for symmetric encryption. This provides quantum resistance for 5-year document retention without "harvest now, decrypt later" vulnerability.
 
 ### 6.3 Trust Model Summary
 
@@ -1720,9 +1704,9 @@ export const rpEncryptionKeys = sqliteTable("rp_encryption_keys", {
   id: text("id").primaryKey(),
   clientId: text("client_id").notNull()
     .references(() => oauthClients.clientId, { onDelete: "cascade" }),
-  publicKey: text("public_key").notNull(), // Base64 X25519
-  keyAlgorithm: text("key_algorithm", { enum: ["x25519", "x25519-ml-kem"] })
-    .notNull().default("x25519"),
+  publicKey: text("public_key").notNull(), // Base64 ML-KEM-768 (1184 bytes)
+  keyAlgorithm: text("key_algorithm", { enum: ["ml-kem-768"] })
+    .notNull().default("ml-kem-768"),
   keyFingerprint: text("key_fingerprint").notNull(), // SHA-256 of public key
   intendedUse: text("intended_use").notNull().default("compliance_encryption"),
   status: text("status", { enum: ["active", "rotated", "revoked"] })
@@ -1762,9 +1746,9 @@ export const complianceDocuments = sqliteTable("compliance_documents", {
   documentPurpose: text("document_purpose", {
     enum: ["identity", "address_proof", "sof", "sow", "other"]
   }).notNull().default("identity"),
-  // Encrypted content (X25519-ECDH + AES-256-GCM)
+  // Encrypted content (ML-KEM-768 + AES-256-GCM)
   encryptedContent: blob("encrypted_content", { mode: "buffer" }).notNull(),
-  ephemeralPublicKey: text("ephemeral_public_key").notNull(),
+  kemCipherText: text("kem_cipher_text").notNull(), // ML-KEM-768 encapsulation
   nonce: text("nonce").notNull(),
   // Integrity
   contentHash: text("content_hash").notNull(), // SHA-256 of plaintext
@@ -1950,7 +1934,7 @@ PHASE 2: RP Key Management
 PHASE 3: Compliance Storage
 ├─► Add compliance_documents table
 ├─► Add compliance_identity_data table
-├─► Implement client-side X25519 encryption
+├─► Implement client-side ML-KEM-768 encryption
 ├─► Add consent UI for compliance scopes
 └─► Add RP retrieval API
 
@@ -1973,7 +1957,7 @@ PHASE 5: TEE Migration (Future)
 | Schema | `apps/web/src/lib/db/schema/compliance.ts` | New file with compliance tables |
 | Query | `apps/web/src/lib/db/queries/compliance.ts` | New file for compliance queries |
 | Privacy | `apps/web/src/lib/privacy/fhe/encryption.ts` | Encrypt DOB immediately |
-| Privacy | `apps/web/src/lib/privacy/compliance/rp-encryption.ts` | New X25519 encryption |
+| Privacy | `apps/web/src/lib/privacy/compliance/encrypt.ts` | ML-KEM-768 encryption for RP compliance data |
 | OAuth | `apps/web/src/lib/auth/oauth/scopes.ts` | Add compliance scopes |
 | Router | `apps/web/src/lib/trpc/routers/compliance.ts` | New compliance router |
 
@@ -2109,7 +2093,7 @@ If a user re-verifies with the same RP (e.g., document expired), the retention c
 
 ### 9.3 Multi-RP Compliance: Per-RP Encrypted Copies
 
-**Decision**: Each regulated RP receives their **own independently encrypted copy** of compliance data, encrypted to their unique X25519 public key.
+**Decision**: Each regulated RP receives their **own independently encrypted copy** of compliance data, encrypted to their unique ML-KEM-768 public key.
 
 **Rationale**:
 
@@ -2170,72 +2154,21 @@ UNIQUE INDEX idx_compliance_identity_user_client ON compliance_identity_data(use
 
 ---
 
-### 9.4 Post-Quantum Strategy: X25519 Now, ML-KEM Migration Path
+### 9.4 Post-Quantum Encryption: ML-KEM-768
 
-**Decision**: Implement **X25519 only** for initial release, with a clear **migration path to hybrid X25519 + ML-KEM-768**.
+**Status**: Implemented.
 
-**Rationale**:
+Compliance encryption uses **ML-KEM-768** (NIST FIPS 203) as the sole key encapsulation mechanism. This eliminates the "harvest now, decrypt later" (HNDL) threat for 5-year document retention.
 
-The threat model for post-quantum (PQ) attacks is "harvest now, decrypt later" (HNDL). An adversary captures encrypted traffic/data today and waits for quantum computers capable of breaking ECDH. For 5-year document retention, this is a real concern.
+| Property | Value |
+|----------|-------|
+| **Algorithm** | ML-KEM-768 |
+| **Public key size** | 1184 bytes |
+| **Ciphertext size** | 1088 bytes |
+| **Shared secret** | 32 bytes (used as AES-256-GCM key) |
+| **Library** | `@noble/post-quantum/ml-kem` |
 
-However, practical constraints favor a phased approach:
-
-| Factor | X25519 Only | Hybrid X25519 + ML-KEM |
-|--------|-------------|------------------------|
-| **Library maturity** | Excellent (noble-curves, WebCrypto) | Emerging (liboqs, ml-kem npm) |
-| **Browser support** | Native WebCrypto | Requires WASM/JS polyfill |
-| **Ciphertext size** | 32 bytes (pubkey) + 16 bytes (tag) | 1088 bytes (ML-KEM-768 ciphertext) |
-| **Key size** | 32 bytes | 1184 bytes (public key) |
-| **Performance** | ~1ms keygen/encap | ~10ms keygen/encap (JS) |
-| **Standardization** | RFC 7748 | NIST FIPS 203 (August 2024) |
-
-**Timeline Assessment**:
-
-- **2024-2026**: Cryptographically relevant quantum computers (CRQC) remain theoretical
-- **2026-2029**: NIST PQC algorithms stabilize; browser native support likely
-- **2029+**: CRQC emergence possible; hybrid encryption becomes essential
-
-For documents uploaded in 2026 with 5-year retention (expiry 2031), the risk window is the last 2 years. A migration to hybrid encryption by 2028 would protect all data.
-
-**Migration Path**:
-
-```text
-PHASE 1 (Now): X25519 Only
-├─► keyAlgorithm = "x25519"
-├─► 32-byte ephemeral public keys
-└─► Standard ECIES construction
-
-PHASE 2 (2027-2028): Hybrid Support
-├─► Add keyAlgorithm = "x25519-ml-kem"
-├─► RPs register hybrid public keys (X25519 || ML-KEM-768)
-├─► Client encrypts with dual encapsulation
-├─► Both encapsulated secrets fed to HKDF
-└─► Existing X25519-only data remains valid
-
-PHASE 3 (2028+): X25519 Deprecation
-├─► New RP registrations require hybrid keys
-├─► Existing RPs prompted to rotate to hybrid
-└─► X25519-only data re-encrypted on user login (opportunistic)
-```
-
-**Schema Support**:
-
-The `keyAlgorithm` field in `rpEncryptionKeys` already supports this:
-
-```typescript
-keyAlgorithm: text("key_algorithm", { enum: ["x25519", "x25519-ml-kem"] })
-  .notNull().default("x25519"),
-```
-
-**Dual Encapsulation Construction** (for Phase 2):
-
-```text
-shared_secret = HKDF(
-  ikm: X25519_shared_secret || ML-KEM_shared_secret,
-  salt: ephemeral_x25519_pubkey || ml_kem_ciphertext,
-  info: "zentity:compliance:hybrid"
-) → AES-256-GCM key
-```
+**Implementation**: See `apps/web/src/lib/privacy/compliance/encrypt.ts` and `decrypt.ts`.
 
 ---
 
@@ -2432,29 +2365,29 @@ User → Document → OCR → Extract fields → Store commitments
 
 | Scope | Fields Included | Encryption | Retention |
 |-------|-----------------|------------|-----------|
-| `compliance:identity` | All identity fields (convenience) | RP X25519 | 5 years |
-| `compliance:identity.name` | Full legal name | RP X25519 | 5 years |
-| `compliance:identity.dob` | Full date of birth | RP X25519 | 5 years |
-| `compliance:identity.address` | Residential address | RP X25519 | 5 years |
-| `compliance:identity.document` | ID number, doc type, issuer | RP X25519 | 5 years |
-| `compliance:identity.nationality` | Citizenship, country of residence | RP X25519 | 5 years |
+| `compliance:identity` | All identity fields (convenience) | RP ML-KEM-768 | 5 years |
+| `compliance:identity.name` | Full legal name | RP ML-KEM-768 | 5 years |
+| `compliance:identity.dob` | Full date of birth | RP ML-KEM-768 | 5 years |
+| `compliance:identity.address` | Residential address | RP ML-KEM-768 | 5 years |
+| `compliance:identity.document` | ID number, doc type, issuer | RP ML-KEM-768 | 5 years |
+| `compliance:identity.nationality` | Citizenship, country of residence | RP ML-KEM-768 | 5 years |
 
 #### Documents
 
 | Scope | Document Types | Encryption | Retention |
 |-------|----------------|------------|-----------|
-| `compliance:documents` | All document types (convenience) | RP X25519 | 5 years |
-| `compliance:documents.identity` | Passport, ID card, license | RP X25519 | 5 years |
-| `compliance:documents.address` | Utility bills, bank statements | RP X25519 | 5 years |
-| `compliance:documents.sof` | Source of Funds declarations | RP X25519 | 5 years |
-| `compliance:documents.sow` | Source of Wealth declarations | RP X25519 | 5 years |
+| `compliance:documents` | All document types (convenience) | RP ML-KEM-768 | 5 years |
+| `compliance:documents.identity` | Passport, ID card, license | RP ML-KEM-768 | 5 years |
+| `compliance:documents.address` | Utility bills, bank statements | RP ML-KEM-768 | 5 years |
+| `compliance:documents.sof` | Source of Funds declarations | RP ML-KEM-768 | 5 years |
+| `compliance:documents.sow` | Source of Wealth declarations | RP ML-KEM-768 | 5 years |
 
 #### Other Compliance Data
 
 | Scope | Data Access | Encryption | Retention |
 |-------|-------------|------------|-----------|
 | `compliance:screening` | PEP/sanctions results + audit | Server-signed | 5 years |
-| `compliance:biometrics` | Face template (IAL3 only) | RP X25519 | 5 years |
+| `compliance:biometrics` | Face template (IAL3 only) | RP ML-KEM-768 | 5 years |
 
 ### B.3 Scope Hierarchy
 
