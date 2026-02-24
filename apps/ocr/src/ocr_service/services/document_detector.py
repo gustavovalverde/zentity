@@ -6,10 +6,10 @@ based on text markers and patterns. Supports international documents.
 """
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 
-class DocumentType(str, Enum):
+class DocumentType(StrEnum):
     PASSPORT = "passport"
     NATIONAL_ID = "national_id"  # Generic national ID (cedula, DNI, etc.)
     DRIVERS_LICENSE = "drivers_license"
