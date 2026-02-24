@@ -1,0 +1,45 @@
+diff --git a/dist/db/adapter/factory.mjs b/dist/db/adapter/factory.mjs
+index cc2354a359b2f596c9ed6edd51097f32cb8c3b86..8a060794d57f332cbffd6a7d92cdaf9ecd065f6e 100644
+--- a/dist/db/adapter/factory.mjs
++++ b/dist/db/adapter/factory.mjs
+@@ -1,7 +1,7 @@
++import { getAuthTables } from "../get-tables.mjs";
+ import { getColorDepth } from "../../env/color-depth.mjs";
+ import { TTY_COLORS, createLogger } from "../../env/logger.mjs";
+ import "../../env/index.mjs";
+-import { getAuthTables } from "../get-tables.mjs";
+ import { BetterAuthError } from "../../error/index.mjs";
+ import { safeJSONParse } from "../../utils/json.mjs";
+ import { initGetDefaultModelName } from "./get-default-model-name.mjs";
+diff --git a/dist/db/adapter/get-id-field.d.mts b/dist/db/adapter/get-id-field.d.mts
+index 338cf1ac2bb2dee3409c5a2181015c4f0dce2f23..3b20887df34e223a37557d4da23ef3545f3203f1 100644
+--- a/dist/db/adapter/get-id-field.d.mts
++++ b/dist/db/adapter/get-id-field.d.mts
+@@ -28,7 +28,7 @@ declare const initGetIdField: ({
+   forceAllowId?: boolean;
+ }) => {
+   transform: {
+-    input: (value: DBPrimitive) => string | number | true | unknown[] | Date | Record<string, unknown> | undefined;
++    input: (value: DBPrimitive) => string | number | true | Record<string, unknown> | Date | unknown[] | undefined;
+     output: (value: DBPrimitive) => string | undefined;
+   };
+   defaultValue?: (() => string | false | undefined) | undefined;
+diff --git a/dist/types/plugin.d.mts b/dist/types/plugin.d.mts
+index 6dcde9c911d0aed8e9a7c6e4884ea22577ab563a..ac5bfd8902458339749360c60b8891ac304bcd12 100644
+--- a/dist/types/plugin.d.mts
++++ b/dist/types/plugin.d.mts
+@@ -37,6 +37,14 @@ type BetterAuthPlugin = BetterAuthPluginErrorCodePart & {
+   endpoints?: {
+     [key: string]: Endpoint;
+   } | undefined;
++  /**
++   * Public endpoints that should be mounted at the origin root path (/).
++   * The main handler auto-routes `/.well-known/*` to these endpoints; other
++   * public paths require using `publicHandler` directly.
++   */
++  publicEndpoints?: {
++    [key: string]: Endpoint;
++  } | undefined;
+   middlewares?: {
+     path: string;
+     middleware: Middleware;
