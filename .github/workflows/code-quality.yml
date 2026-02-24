@@ -18,10 +18,51 @@ env:
 
 jobs:
   # ============================================
-  # Pre-commit (runs all hooks with caching)
+  # Detect which paths changed (gates downstream jobs)
   # ============================================
-  pre-commit:
-    name: Pre-commit Hooks
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      landing: ${{ steps.filter.outputs.landing }}
+      python: ${{ steps.filter.outputs.python }}
+      rust: ${{ steps.filter.outputs.rust }}
+      markdown: ${{ steps.filter.outputs.markdown }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'apps/demo-rp/**'
+            landing:
+              - 'apps/landing/**'
+            python:
+              - 'apps/ocr/**'
+            rust:
+              - 'apps/fhe/**'
+              - 'apps/signer/**'
+            markdown:
+              - '**/*.md'
+              - '.markdownlint.json'
+            ci:
+              - '.github/workflows/code-quality.yml'
+              - '.pre-commit-config.yaml'
+
+  # ============================================
+  # File hygiene (always runs, lightweight)
+  # ============================================
+  hygiene:
+    name: File Hygiene
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -30,38 +71,37 @@ jobs:
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-        with:
-          node-version: "24"
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
-        with:
-          version: 10.19.0
-      - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # master
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          components: rustfmt, clippy
-      - name: Install pnpm dependencies (web)
-        run: pnpm install --frozen-lockfile
-        working-directory: apps/web
-      - name: Install pnpm dependencies (landing)
-        run: pnpm install --frozen-lockfile
-        working-directory: apps/landing
       - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          key: pre-commit-hygiene-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: |
-            pre-commit-${{ runner.os }}-
+            pre-commit-hygiene-${{ runner.os }}-
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         env:
-          # Skip no-commit-to-branch hook in CI - it's meant for local dev only
-          SKIP: no-commit-to-branch
+          SKIP: no-commit-to-branch,biome-check-web,biome-check-landing,tsc-check-web,tsc-check-landing,knip-check-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,cargo-fmt-signer,cargo-clippy-signer,commitlint
+
+  # ============================================
+  # Commit & PR Quality
+  # ============================================
+  commitlint:
+    name: Commit Messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
 
   # ============================================
   # TypeScript / JavaScript (apps/web)
   # ============================================
-  typescript-web:
-    name: TypeScript - Web (Biome + tsc)
+  web-lint:
+    name: Web (Biome + tsc + Knip)
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -79,32 +119,13 @@ jobs:
         working-directory: apps/web
       - run: pnpm run type-check
         working-directory: apps/web
+      - run: pnpm run knip
+        working-directory: apps/web
 
-  # ============================================
-  # TypeScript / JavaScript (apps/landing)
-  # ============================================
-  typescript-landing:
-    name: TypeScript - Landing (Biome + tsc)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-        with:
-          node-version: "24"
-      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
-        with:
-          version: 10.19.0
-      - run: pnpm install --frozen-lockfile
-        working-directory: apps/landing
-      - run: pnpm run lint:check
-        working-directory: apps/landing
-      - run: pnpm run type-check
-        working-directory: apps/landing
-
-  js-security:
-    name: JavaScript (Security Audit)
+  web-security:
+    name: Web (Security Audit)
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -122,8 +143,13 @@ jobs:
         run: pnpm audit --audit-level moderate || echo "Some vulnerabilities found - review required"
         working-directory: apps/web
 
-  markdown:
-    name: Markdown (markdownlint)
+  # ============================================
+  # TypeScript / JavaScript (apps/landing)
+  # ============================================
+  landing-lint:
+    name: Landing (Biome + tsc)
+    needs: changes
+    if: needs.changes.outputs.landing == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -136,16 +162,19 @@ jobs:
         with:
           version: 10.19.0
       - run: pnpm install --frozen-lockfile
-        working-directory: apps/web
-      - name: Run markdownlint (repo-wide)
-        run: pnpm exec markdownlint "../../**/*.md" --config ../../.markdownlint.json --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "../../docs/archive/**" --ignore "../../docs/internal/**"
-        working-directory: apps/web
+        working-directory: apps/landing
+      - run: pnpm run lint:check
+        working-directory: apps/landing
+      - run: pnpm run type-check
+        working-directory: apps/landing
 
   # ============================================
-  # Python
+  # Python (apps/ocr)
   # ============================================
-  python:
+  python-lint:
     name: Python (Ruff)
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -160,6 +189,8 @@ jobs:
 
   python-security:
     name: Python (Security Audit)
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -176,14 +207,16 @@ jobs:
         run: pip-audit
         continue-on-error: true
       - name: Run bandit (code security)
-        run: bandit -r apps/ocr/app -ll -ii
+        run: bandit -r apps/ocr/src -ll -ii
         continue-on-error: true
 
   # ============================================
-  # Rust
+  # Rust (apps/fhe + apps/signer)
   # ============================================
-  rust:
+  rust-lint:
     name: Rust (fmt + clippy)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -193,30 +226,27 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: rustfmt, clippy
-      # FHE service
       - run: cargo fmt --manifest-path apps/fhe/Cargo.toml -- --check
       - run: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
-      # Signer service
       - run: cargo fmt --manifest-path apps/signer/Cargo.toml -- --check
       - run: cargo clippy --manifest-path apps/signer/Cargo.toml -- -D warnings
 
   rust-security:
     name: Rust (Security Audit)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           persist-credentials: false
-      # Set up Rust toolchain with caching
       - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      # cargo-deny for banned crates and source restrictions
       - uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
         with:
           manifest-path: apps/fhe/Cargo.toml
           command: check bans sources
-      # cargo-audit for CVE scanning
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Run cargo-audit (FHE service)
@@ -227,15 +257,25 @@ jobs:
         continue-on-error: true
 
   # ============================================
-  # Commit & PR Quality
+  # Markdown (repo-wide)
   # ============================================
-  commitlint:
-    name: Commit Messages
+  markdown:
+    name: Markdown (markdownlint)
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+        with:
+          version: 10.19.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: apps/web
+      - name: Run markdownlint (repo-wide)
+        run: pnpm exec markdownlint "../../**/*.md" --config ../../.markdownlint.json --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "../../docs/archive/**" --ignore "../../docs/internal/**"
+        working-directory: apps/web
