@@ -361,9 +361,7 @@ export function DocumentUploadClient({
           <div className="flex flex-col items-center gap-3 py-4">
             <FileText className="h-12 w-12 text-muted-foreground" />
             <p className="font-medium text-sm">{fileName}</p>
-            <p className="text-muted-foreground text-xs">
-              PDF document uploaded
-            </p>
+            <p className="text-muted-foreground text-xs">Image uploaded</p>
           </div>
         </div>
       ) : null}

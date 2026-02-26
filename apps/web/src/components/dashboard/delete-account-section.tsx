@@ -101,9 +101,10 @@ export function DeleteAccountSection({
           </p>
           <p className="mt-2 text-muted-foreground text-sm">
             Due to our privacy-first architecture, we do not store plaintext
-            PII. Your encrypted profile data is passkey-sealed, and your email
-            is stored only for authentication. Deleting your account removes
-            encrypted data, commitments, proofs, and credentials.
+            PII. Your encrypted profile data is credential-sealed (passkey,
+            password, or wallet), and your email is stored only for
+            authentication. Deleting your account removes encrypted data,
+            commitments, proofs, and credentials.
           </p>
 
           <Dialog onOpenChange={setIsOpen} open={isOpen}>

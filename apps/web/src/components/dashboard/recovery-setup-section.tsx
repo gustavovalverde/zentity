@@ -69,7 +69,7 @@ const RecoveryIdSection = memo(function RecoveryIdSection({
     if (!recoveryId) {
       return;
     }
-    const content = `Zentity Recovery ID\n\n${recoveryId}\n\nKeep this ID safe. You can use it to start account recovery if you lose access to your passkey.`;
+    const content = `Zentity Recovery ID\n\n${recoveryId}\n\nKeep this ID safe. You can use it to start account recovery if you lose access to your account.`;
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -90,7 +90,7 @@ const RecoveryIdSection = memo(function RecoveryIdSection({
       </div>
       <p className="text-muted-foreground text-sm">
         Keep this ID safe. You can use it to start a recovery if you lose access
-        to your passkey.
+        to your account.
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input readOnly value={recoveryId ?? "Loading..."} />
@@ -472,7 +472,7 @@ export function RecoverySetupSection() {
         <CardTitle>Guardian Recovery</CardTitle>
         <CardDescription>
           Add trusted contacts who can approve a recovery if you lose access to
-          your passkey.
+          your account.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

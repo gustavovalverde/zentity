@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
 
-export const alt = "Zentity - Prove everything. Reveal nothing.";
+export const alt = "Zentity - Privacy by default. Disclosure by choice.";
 export const size = {
   width: 1200,
   height: 630,
@@ -112,7 +112,7 @@ export default async function Image() {
               lineHeight: 1.1,
             }}
           >
-            Prove everything.
+            Privacy by default.
           </span>
           <span
             style={{
@@ -122,7 +122,7 @@ export default async function Image() {
               lineHeight: 1.1,
             }}
           >
-            Reveal nothing.
+            Disclosure by choice.
           </span>
         </div>
 

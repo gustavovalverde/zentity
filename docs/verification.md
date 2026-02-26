@@ -83,7 +83,7 @@ Current limitations:
 | "No one tampered with the artifact" | **Yes** | Rekor transparency log |
 | "The deployed service runs this exact code" | **No** | Requires TEE (future roadmap) |
 
-For maximum verifiability of the FHE service, we are evaluating Trusted Execution Environment (TEE) options including AWS Nitro Enclaves. See our [verifiable deployments research](./verifiable-deployments.md) for details.
+For maximum verifiability of the FHE service, we are evaluating Trusted Execution Environment (TEE) options including AWS Nitro Enclaves. See our [tamper model and integrity controls](./tamper-model.md) for related security design context.
 
 ## Transparency Logs
 
@@ -112,4 +112,4 @@ If you discover a discrepancy between attested builds and deployed services, ple
 - [SLSA Framework](https://slsa.dev/)
 - [Sigstore Documentation](https://docs.sigstore.dev/)
 - [GitHub Artifact Attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations)
-- [Zentity Verifiable Deployments Research](./verifiable-deployments.md)
+- [Zentity Tamper Model and Integrity Controls](./tamper-model.md)

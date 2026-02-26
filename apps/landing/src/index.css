@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/manrope";
 @import "@fontsource-variable/inter";
 
 @custom-variant dark (&:is(.dark *));
@@ -8,6 +9,7 @@
 :root {
   /* Navigation height for scroll-margin calculations */
   --nav-height: 4rem;
+  --font-display: "Manrope Variable", "Inter Variable", sans-serif;
 
   /* Semantic text colors (APCA 60+ on white for accessibility) */
   --text-success: oklch(0.45 0.15 160);
@@ -21,30 +23,30 @@
   --icon-error: oklch(0.65 0.22 25);
   --icon-info: oklch(0.6 0.18 250);
 
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.147 0.004 49.25);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.147 0.004 49.25);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.147 0.004 49.25);
-  --primary: oklch(0.216 0.006 56.043);
+  --background: oklch(0.988 0.002 95);
+  --foreground: oklch(0.236 0.018 233);
+  --card: oklch(0.995 0.002 95);
+  --card-foreground: oklch(0.236 0.018 233);
+  --popover: oklch(0.995 0.002 95);
+  --popover-foreground: oklch(0.236 0.018 233);
+  --primary: oklch(0.31 0.07 223);
   --primary-foreground: oklch(0.985 0.001 106.423);
-  --secondary: oklch(0.97 0.001 106.424);
-  --secondary-foreground: oklch(0.216 0.006 56.043);
-  --muted: oklch(0.97 0.001 106.424);
-  --muted-foreground: oklch(0.553 0.013 58.071);
-  --accent: oklch(0.97 0.001 106.424);
-  --accent-foreground: oklch(0.216 0.006 56.043);
+  --secondary: oklch(0.955 0.006 214);
+  --secondary-foreground: oklch(0.236 0.018 233);
+  --muted: oklch(0.955 0.006 214);
+  --muted-foreground: oklch(0.47 0.025 232);
+  --accent: oklch(0.955 0.006 214);
+  --accent-foreground: oklch(0.236 0.018 233);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.923 0.003 48.717);
-  --input: oklch(0.923 0.003 48.717);
-  --ring: oklch(0.709 0.01 56.259);
+  --border: oklch(0.87 0.014 223);
+  --input: oklch(0.87 0.014 223);
+  --ring: oklch(0.52 0.09 223);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.875rem;
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0.001 106.423);
   --sidebar-foreground: oklch(0.147 0.004 49.25);
   --sidebar-primary: oklch(0.216 0.006 56.043);
@@ -102,7 +104,7 @@
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", sans-serif;
+  --font-sans: "Manrope Variable", "Inter Variable", sans-serif;
 
   /* Semantic colors for accessibility */
   --color-text-success: var(--text-success);
@@ -202,5 +204,76 @@
   /* Tabular numbers for data comparisons and aligned numeric columns */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  .landing-section {
+    @apply px-4 py-14 md:px-6 md:py-16;
+  }
+
+  .landing-band-flat {
+    @apply bg-background;
+  }
+
+  .landing-band-muted {
+    @apply bg-muted/30;
+  }
+
+  .landing-container {
+    @apply mx-auto max-w-6xl;
+  }
+
+  .landing-grid-2 {
+    @apply grid gap-5 lg:grid-cols-2;
+  }
+
+  .landing-card {
+    @apply rounded-lg border border-border bg-card;
+  }
+
+  .landing-card-soft {
+    @apply rounded-lg border border-border bg-muted/30;
+  }
+
+  .landing-icon {
+    @apply size-5 text-primary;
+  }
+
+  .landing-heading {
+    @apply text-3xl leading-tight sm:text-4xl;
+  }
+
+  .landing-copy {
+    @apply text-muted-foreground text-sm leading-7 sm:text-base;
+  }
+
+  .landing-body {
+    @apply text-muted-foreground text-sm leading-relaxed sm:text-base;
+  }
+
+  .landing-caption {
+    @apply text-muted-foreground text-xs leading-relaxed sm:text-sm;
+  }
+
+  .landing-section-header {
+    @apply mb-10 md:mb-12;
+  }
+
+  .landing-section-title {
+    @apply text-3xl leading-tight sm:text-4xl;
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
+  }
+
+  .landing-section-subtitle {
+    @apply mt-3 text-muted-foreground text-sm leading-7 sm:text-base;
+  }
+
+  .landing-card-title {
+    @apply font-semibold text-lg leading-snug;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
   }
 }

@@ -1,11 +1,5 @@
 import { eq } from "drizzle-orm";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-  Scan,
-  User,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Scan } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -84,26 +78,19 @@ export default async function VerifyPage() {
   const steps = [
     {
       id: "document",
-      title: "Scan ID",
-      description: "Upload a government-issued ID document",
+      title: "Upload ID",
+      description: "Upload a photo of your government-issued ID document",
       icon: FileText,
       completed: details.documentVerified,
       href: "/dashboard/verify/document",
     },
     {
       id: "liveness",
-      title: "Take Selfie",
-      description: "Quick liveness check to confirm you're a real person",
+      title: "Liveness & Face Match",
+      description:
+        "Complete gesture challenges and match your face to your ID photo",
       icon: Scan,
-      completed: details.livenessVerified,
-      href: "/dashboard/verify/liveness",
-    },
-    {
-      id: "face-match",
-      title: "Face Match",
-      description: "Match your selfie to your document photo",
-      icon: User,
-      completed: details.faceMatchVerified,
+      completed: details.livenessVerified && details.faceMatchVerified,
       href: "/dashboard/verify/liveness",
     },
   ];
@@ -142,8 +129,7 @@ export default async function VerifyPage() {
             </span>
           </CardTitle>
           <CardDescription>
-            Complete all steps to reach Verified tier and unlock on-chain
-            attestation
+            Complete all steps to reach Verified tier
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -240,7 +226,7 @@ export default async function VerifyPage() {
                 <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 p-3 text-blue-700 dark:text-blue-400">
                   <Scan className="h-5 w-5 animate-pulse" />
                   <span className="text-sm">
-                    Verification complete! Finalizing encryption...
+                    Proofs generated. Finalizing encryption in the background...
                   </span>
                 </div>
                 <p className="text-muted-foreground text-sm">
@@ -289,8 +275,9 @@ export default async function VerifyPage() {
             </p>
             <p>
               Only cryptographic commitments, signed claims, and zero-knowledge
-              proofs are persisted. Your raw images are deleted immediately
-              after processing.
+              proofs are persisted. Your raw images are never written to disk —
+              they are processed in memory and discarded after verification
+              completes.
             </p>
           </div>
         </CardContent>

@@ -245,7 +245,7 @@ export function SignUpForm() {
             value={email}
           />
           <p className="text-muted-foreground text-xs">
-            Used for account recovery. You can skip this.
+            Optional. Used to identify your account.
           </p>
         </Field>
       </FieldGroup>
@@ -257,8 +257,9 @@ export function SignUpForm() {
           <AlertDescription>
             {prfUnsupportedMessage}
             <div className="mt-2 text-muted-foreground text-xs">
-              Supported: Chrome, Edge, or Firefox with device biometrics. Safari
-              requires iCloud Keychain.
+              Supported: Chrome or Edge on Windows/Mac/Android, Safari on iOS
+              17+ or macOS Sonoma+. Firefox does not currently support the
+              required PRF extension.
             </div>
           </AlertDescription>
         </Alert>

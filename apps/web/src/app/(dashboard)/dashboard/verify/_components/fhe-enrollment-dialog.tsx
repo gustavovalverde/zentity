@@ -69,7 +69,7 @@ type EnrollmentStage =
 const STAGE_LABELS: Record<EnrollmentStage, string> = {
   idle: "",
   checking: "Checking existing keys...",
-  unlocking: "Unlocking your credential...",
+  unlocking: "Confirming your identity...",
   generating: "Generating encryption keys...",
   encrypting: "Encrypting keys on-device...",
   uploading: "Uploading encrypted keys...",
@@ -649,7 +649,7 @@ export function FheEnrollmentDialog({
 
         setError(
           isCancelled
-            ? "You cancelled the verification step. Try again when ready."
+            ? "Key setup was cancelled. Try again when ready."
             : message
         );
         setStage("idle");
@@ -693,13 +693,13 @@ export function FheEnrollmentDialog({
               <ShieldCheck className="h-5 w-5" />
             )}
             {isRunning
-              ? "Setting up secure verification..."
-              : "Secure your verification"}
+              ? "Setting up encryption keys..."
+              : "Set up encryption keys"}
           </DialogTitle>
           <DialogDescription>
             {isRunning
               ? stageLabel
-              : "Choose how to protect your encryption keys. This is a one-time setup."}
+              : "Choose how to protect your personal encryption keys. This is a one-time setup required before verification."}
           </DialogDescription>
         </DialogHeader>
 

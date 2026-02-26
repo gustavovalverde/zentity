@@ -1,21 +1,27 @@
 import {
+  IconBrandGithub,
   IconDeviceDesktop,
   IconMenu2,
   IconMoon,
   IconSun,
 } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { Logo } from "@/components/logo";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  NavigationMenu,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+} from "@/components/ui/navigation-menu";
 import {
   Sheet,
   SheetContent,
@@ -27,9 +33,12 @@ import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { href: "#how-it-works", label: "How It Works" },
-  { href: "#features", label: "Features" },
-  { href: "#use-cases", label: "Use Cases" },
+  { href: "/", label: "Home" },
+  { href: "/zk-auth", label: "ZK-Auth" },
+  { href: "/compliance", label: "Compliance" },
+  { href: "/interoperability", label: "Standards" },
+  { href: "/docs/attestation-privacy", label: "Privacy Model" },
+  { href: "/docs/architecture", label: "Docs" },
 ];
 
 function ThemeToggle() {
@@ -70,6 +79,7 @@ function ThemeToggle() {
 }
 
 export function Nav() {
+  const location = useLocation();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
@@ -91,59 +101,56 @@ export function Nav() {
           : "bg-transparent",
       )}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-        <div className="flex items-center gap-3">
+      <nav className="mx-auto flex h-16 max-w-6xl items-center px-4">
+        <div className="flex flex-1 items-center justify-start">
           <a href="/" className="flex items-center" aria-label="Zentity Home">
             <Logo variant="full" size="sm" />
           </a>
-          <Badge variant="secondary" className="hidden sm:inline-flex">
-            Alpha
-          </Badge>
         </div>
 
         {/* Desktop Navigation */}
-        <div className="hidden items-center gap-6 md:flex">
-          {navLinks.map((link) =>
-            link.href.startsWith("/") ? (
-              <Link
-                key={link.href}
-                to={link.href}
-                className="rounded-sm font-medium text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                {link.label}
-              </Link>
-            ) : (
-              <a
-                key={link.href}
-                href={link.href}
-                className="rounded-sm font-medium text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                {link.label}
-              </a>
-            ),
-          )}
-        </div>
+        <NavigationMenu className="hidden md:flex">
+          <NavigationMenuList>
+            {navLinks.map((link) => (
+              <NavigationMenuItem key={link.href}>
+                <NavigationMenuLink
+                  active={location.pathname === link.href}
+                  render={<Link to={link.href} />}
+                >
+                  {link.label}
+                </NavigationMenuLink>
+              </NavigationMenuItem>
+            ))}
+          </NavigationMenuList>
+        </NavigationMenu>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden flex-1 items-center justify-end gap-3 md:flex">
           <ThemeToggle />
-          <Button
-            size="sm"
-            render={
-              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-              <a
-                href="https://app.zentity.xyz/sign-up?fresh=1"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Try Demo"
-              />
-            }
+          <a
+            href="https://github.com/gustavovalverde/zentity"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View source on GitHub"
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon" }),
+              "size-8",
+            )}
           >
-            Try Demo
-          </Button>
+            <IconBrandGithub className="size-4" />
+          </a>
+          <a
+            href="https://app.zentity.xyz/sign-up?fresh=1"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Explore the Demo"
+            className={cn(buttonVariants({ size: "sm" }))}
+          >
+            Explore the Demo
+          </a>
         </div>
 
         {/* Mobile Menu */}
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex flex-1 items-center justify-end gap-2 md:hidden">
           <ThemeToggle />
           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger
@@ -181,20 +188,15 @@ export function Nav() {
                 )}
               </nav>
               <div className="mt-6 flex flex-col gap-2 border-border border-t pt-4">
-                <Button
-                  className="w-full"
-                  render={
-                    /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-                    <a
-                      href="https://app.zentity.xyz/sign-up?fresh=1"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Try Demo"
-                    />
-                  }
+                <a
+                  href="https://app.zentity.xyz/sign-up?fresh=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Explore the Demo"
+                  className={cn(buttonVariants(), "w-full")}
                 >
-                  Try Demo
-                </Button>
+                  Explore the Demo
+                </a>
               </div>
             </SheetContent>
           </Sheet>

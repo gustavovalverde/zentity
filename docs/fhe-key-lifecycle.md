@@ -267,7 +267,8 @@ Suggested framing for the preflight step:
 
 Avoid mentioning “FHE/PRF/OPAQUE/EIP-712”. The user action is simply “confirm with passkey / wallet / password” and “wait while we prepare encryption”.
 
-For a concrete Option A (uniform deferred) design, see `docs/verification-preflight-option-a.md`.
+For a concrete implementation reference of the deferred preflight flow, see
+`docs/architecture.md` (Sign-Up and Verification sequence).
 
 ## OAuth Flows and FHE Keys
 

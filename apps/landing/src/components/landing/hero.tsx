@@ -1,108 +1,117 @@
 import {
+  IconArrowRight,
+  IconBook2,
+  IconCertificate,
   IconFileCheck,
   IconKey,
   IconLock,
-  IconShield,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 
+import { Link } from "react-router-dom";
+
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ColoredIconBox } from "@/components/ui/colored-icon-box";
+import { buttonVariants } from "@/components/ui/button";
+import { iconSemanticColors } from "@/lib/icon-semantics";
+import { cn } from "@/lib/utils";
 
 export function Hero() {
   return (
-    <section className="relative flex min-h-[90vh] items-center justify-center px-4 pt-16">
-      {/* Gradient Background */}
+    <section className="relative flex min-h-[90vh] items-center justify-center overflow-hidden px-4 pt-20 md:px-6 md:pt-24">
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-0 left-1/2 h-[500px] w-full -translate-x-1/2 bg-gradient-to-b from-primary/20 via-blue-900/10 to-transparent blur-[100px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,oklch(0.9_0.04_220)_0%,transparent_42%),radial-gradient(circle_at_82%_84%,oklch(0.9_0.04_170)_0%,transparent_38%)] dark:bg-[radial-gradient(circle_at_20%_15%,oklch(0.22_0.04_220)_0%,transparent_42%),radial-gradient(circle_at_82%_84%,oklch(0.22_0.04_170)_0%,transparent_38%)]" />
       </div>
 
       <div className="mx-auto max-w-4xl text-center">
         <Badge
           variant="outline"
-          className="mb-6 border-border bg-background/50 px-4 py-1.5 text-sm backdrop-blur-sm"
+          className="mb-6 inline-flex items-center justify-center gap-2 rounded-full border-border bg-background/50 px-4 py-1.5 text-sm leading-none backdrop-blur-sm"
         >
-          <span className="mr-2 inline-flex items-center">
-            <span
-              className="inline-block h-2 w-2 animate-pulse rounded-full bg-green-500"
-              aria-hidden="true"
-            />
-            <span className="sr-only">Status: Active</span>
+          <span aria-hidden="true" className="relative inline-flex size-2.5">
+            <span className="absolute inline-flex size-2.5 animate-ping rounded-full bg-green-500/40" />
+            <span className="relative inline-flex size-2.5 rounded-full bg-green-500" />
           </span>
-          Alpha
+          <span className="leading-none">Alpha</span>
         </Badge>
 
-        <h1 className="mb-6 bg-gradient-to-b from-foreground to-foreground/60 bg-clip-text font-extrabold text-5xl text-transparent tracking-tight md:text-7xl">
-          Prove everything.
+        <h1 className="font-display font-semibold text-5xl leading-[0.98] tracking-tight sm:text-7xl md:text-8xl">
+          Privacy by default.
           <br className="hidden md:block" />
-          Reveal nothing.
+          <span className="text-muted-foreground">Disclosure by choice.</span>
         </h1>
 
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-7 sm:text-xl">
-          Identity verification that stores encrypted proofs, not plaintext PII.
-          Same compliance. No honeypot.
+        <p className="mx-auto mt-8 max-w-3xl text-muted-foreground text-xl leading-9 sm:text-2xl">
+          Decrease liability, increase conversion, and meet compliance without
+          hoarding toxic PII. Verify users while maintaining absolute privacy.
         </p>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-muted-foreground text-xs">
-          <span>
-            <span className="font-medium text-foreground">Compliance</span> —
-            minimize PII exposure
-          </span>
-          <span>
-            <span className="font-medium text-foreground">Product</span> —
-            drop-in verification
-          </span>
-          <span>
-            <span className="font-medium text-foreground">Engineering</span> —
-            privacy-first stack
-          </span>
+        <div className="mx-auto mt-8 grid max-w-5xl gap-2 text-muted-foreground text-sm sm:text-base md:grid-cols-[auto_auto] md:justify-center md:gap-x-10 md:gap-y-3">
+          <p className="text-center">
+            <span className="font-semibold text-foreground">Users</span> - share
+            only what each service needs
+          </p>
+          <p className="text-center">
+            <span className="font-semibold text-foreground">Companies</span> -
+            meet compliance with less user data
+          </p>
+          <p className="text-center md:col-span-2 md:justify-self-center">
+            <span className="font-semibold text-foreground">Developers</span> -
+            plug in with OAuth/OIDC and OIDC4 profiles
+          </p>
         </div>
 
-        <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-          <Button
-            size="lg"
-            className="w-full px-8 text-base sm:w-auto"
-            render={
-              /* biome-ignore lint/a11y/useAnchorContent: Content provided by Button children via render prop */
-              <a
-                href="https://app.zentity.xyz/sign-up?fresh=1"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Try Live Demo"
-              />
-            }
+        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <a
+            href="https://app.zentity.xyz/sign-up?fresh=1"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Explore the Demo"
+            className={cn(
+              buttonVariants({ size: "lg" }),
+              "h-11 px-7 text-base",
+            )}
           >
-            Try Live Demo
-          </Button>
+            Explore the Demo
+            <IconArrowRight className="ml-2 size-4" />
+          </a>
+          <Link
+            to="/docs/architecture"
+            className={cn(
+              buttonVariants({ size: "lg", variant: "outline" }),
+              "h-11 px-7 text-base",
+            )}
+          >
+            <IconBook2 className="mr-2 size-4" />
+            Read Architecture
+          </Link>
         </div>
 
-        {/* Trust Signal */}
-        <div className="mt-16 flex flex-col items-center gap-4">
-          <div className="flex flex-wrap justify-center gap-6">
-            <div className="flex items-center gap-2 text-sm">
-              <ColoredIconBox icon={IconShield} color="purple" size="sm" />
-              <span className="text-muted-foreground">
-                Zero-Knowledge Proofs
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <ColoredIconBox icon={IconLock} color="blue" size="sm" />
-              <span className="text-muted-foreground">
-                Fully Homomorphic Encryption
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <ColoredIconBox icon={IconFileCheck} color="emerald" size="sm" />
-              <span className="text-muted-foreground">
-                Cryptographic Commitments
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <ColoredIconBox icon={IconKey} color="amber" size="sm" />
-              <span className="text-muted-foreground">
-                Multi-Credential Vaults
-              </span>
-            </div>
+        <div className="mt-16 flex flex-wrap items-center justify-center gap-x-7 gap-y-4 text-muted-foreground text-sm sm:text-base">
+          <div className="flex items-center gap-2">
+            <IconShieldCheck
+              className={cn("size-4", iconSemanticColors.shield)}
+            />
+            <span>Zero-Knowledge Proofs</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <IconLock className={cn("size-4", iconSemanticColors.lock)} />
+            <span>Fully Homomorphic Encryption</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <IconFileCheck
+              className={cn("size-4", iconSemanticColors.commitment)}
+            />
+            <span>Cryptographic Commitments</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <IconKey className={cn("size-4", iconSemanticColors.key)} />
+            <span>Multi-Credential Vaults</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <IconCertificate
+              className={cn("size-4", iconSemanticColors.oauth)}
+            />
+            <span>OIDC4VCI/VP/IDA</span>
           </div>
         </div>
       </div>

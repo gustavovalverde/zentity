@@ -1,21 +1,64 @@
-import { IconBrandX } from "@tabler/icons-react";
+import { IconBrandGithub, IconBrandX } from "@tabler/icons-react";
+import { Link } from "react-router-dom";
+
+interface FooterLink {
+  label: string;
+  href: string;
+  external?: boolean;
+}
+
+const footerLinkClasses =
+  "rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
+function FooterLinkItem({ link }: { link: FooterLink }) {
+  if (link.external || link.href.startsWith("mailto:")) {
+    return (
+      <a
+        href={link.href}
+        className={footerLinkClasses}
+        {...(link.external && {
+          target: "_blank",
+          rel: "noopener noreferrer",
+        })}
+      >
+        {link.label}
+      </a>
+    );
+  }
+
+  return (
+    <Link to={link.href} className={footerLinkClasses}>
+      {link.label}
+    </Link>
+  );
+}
 
 const footerLinks = {
   product: [
-    { label: "Features", href: "#features" },
-    { label: "Use Cases", href: "#use-cases" },
-    { label: "How It Works", href: "#how-it-works" },
-  ],
+    { label: "Home", href: "/" },
+    { label: "Compliance", href: "/compliance" },
+    { label: "Standards", href: "/interoperability" },
+    { label: "Docs", href: "/docs/architecture" },
+  ] satisfies FooterLink[],
   developers: [
+    {
+      label: "Documentation",
+      href: "/docs/architecture",
+    },
+    {
+      label: "GitHub",
+      href: "https://github.com/gustavovalverde/zentity",
+      external: true,
+    },
     {
       label: "Contact",
       href: "mailto:hello@zentity.xyz",
     },
-  ],
+  ] satisfies FooterLink[],
   legal: [
     { label: "Privacy Policy", href: "/privacy" },
     { label: "Terms of Service", href: "/terms" },
-  ],
+  ] satisfies FooterLink[],
 };
 
 export function Footer() {
@@ -27,15 +70,24 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <span className="font-bold text-xl">Zentity</span>
             <p className="mt-4 text-muted-foreground text-sm">
-              Privacy-first identity verification powered by zero-knowledge
-              cryptography.
+              Privacy-first identity verification powered by ZK and FHE
+              cryptography with standards-based OIDC integration.
             </p>
             <div className="mt-4 flex gap-2">
+              <a
+                href="https://github.com/gustavovalverde/zentity"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="GitHub"
+              >
+                <IconBrandGithub className="size-5" />
+              </a>
               <a
                 href="https://x.com/gustavovalverde"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="X (Twitter)"
               >
                 <IconBrandX className="size-5" />
@@ -49,12 +101,7 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.product.map((link) => (
                 <li key={link.href}>
-                  <a
-                    href={link.href}
-                    className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    {link.label}
-                  </a>
+                  <FooterLinkItem link={link} />
                 </li>
               ))}
             </ul>
@@ -66,12 +113,7 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.developers.map((link) => (
                 <li key={link.href}>
-                  <a
-                    href={link.href}
-                    className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    {link.label}
-                  </a>
+                  <FooterLinkItem link={link} />
                 </li>
               ))}
             </ul>
@@ -83,12 +125,7 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.legal.map((link) => (
                 <li key={link.href}>
-                  <a
-                    href={link.href}
-                    className="rounded-sm text-muted-foreground text-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    {link.label}
-                  </a>
+                  <FooterLinkItem link={link} />
                 </li>
               ))}
             </ul>

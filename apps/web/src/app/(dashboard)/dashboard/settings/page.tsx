@@ -127,7 +127,7 @@ export default async function SettingsPage({
         {/* RECOVERY TAB - Backup access options */}
         <TabsContent className="mt-6 space-y-6" value="recovery">
           <SectionHeader
-            description="Set up backup options in case you lose access to your passkey"
+            description="Set up backup options in case you lose access to your account"
             title="Account Recovery"
           />
           <RecoverySetupSection />

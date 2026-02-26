@@ -287,9 +287,6 @@ pnpm test:integration src/lib/bbs/__tests__/bbs-lifecycle.integration.test.ts
 # tRPC router tests
 pnpm test:unit src/lib/trpc/routers/__tests__/bbs.test.ts
 
-# Presentation verification API tests
-pnpm test:integration src/app/api/verify/__tests__/presentation.integration.test.ts
-
-# E2E tests (requires BBS_ISSUER_SECRET configured)
-pnpm test:e2e --project=bbs
+# E2E OIDC credential flow (BBS+ enabled when BBS_ISSUER_SECRET is configured)
+pnpm test:e2e --project=oidc
 ```

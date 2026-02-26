@@ -1,31 +1,30 @@
 import {
-  IconFingerprint,
+  IconFileCheck,
   IconKey,
   IconLock,
-  IconShield,
+  IconShieldCheck,
 } from "@tabler/icons-react";
 
-import { ColoredIconBox } from "@/components/ui/colored-icon-box";
+import { SectionHeader } from "@/components/landing/section-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { colorStyles, type SemanticColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 
 const pillars: Array<{
-  icon: typeof IconShield;
+  icon: typeof IconShieldCheck;
   color: SemanticColor;
   title: string;
   subtitle: string;
   description: string;
-  tech: string;
   example: string;
 }> = [
   {
-    icon: IconShield,
+    icon: IconShieldCheck,
     color: "purple",
     title: "Zero-Knowledge Proofs",
     subtitle: "Prove claims without revealing data",
     description:
       'Prove you\'re over 21 without showing your birthday. Prove you\'re an EU citizen without revealing which country. The verifier learns only "yes" or "no."',
-    tech: "Noir circuits + UltraHonk",
     example:
       "Verifier learns: eligible. Nothing about your name, address, or birth date.",
   },
@@ -35,21 +34,19 @@ const pillars: Array<{
     title: "Fully Homomorphic Encryption",
     subtitle: "Compute on encrypted data",
     description:
-      "Compliance checks run on your encrypted data. The server computes age thresholds and nationality rules without ever decrypting your actual values.",
-    tech: "TFHE-rs (Rust)",
+      "Compliance checks run on encrypted attributes. The server evaluates age, liveness, and compliance thresholds without decrypting underlying values.",
     example:
-      "Server computes without decrypting. Only you see the actual values.",
+      "Server computes on ciphertext. Results are decrypted with user-held keys.",
   },
   {
-    icon: IconFingerprint,
+    icon: IconFileCheck,
     color: "emerald",
     title: "Cryptographic Commitments",
     subtitle: "Verify without storing",
     description:
-      'Your name and document number become irreversible codes. The server can verify "same person" without knowing who that person is.',
-    tech: "Salted SHA256",
+      "Commitments and hashes bind verification evidence for integrity and audit without storing reversible source values.",
     example:
-      "Your name becomes an irreversible hash. Can't be reversed by anyone.",
+      "Commitments remain verifiable while sensitive profile fields stay in encrypted secrets.",
   },
   {
     icon: IconKey,
@@ -57,67 +54,45 @@ const pillars: Array<{
     title: "Multi-Credential Key Custody",
     subtitle: "Your keys, your control",
     description:
-      "Your passkey, password, or wallet unlocks your encrypted vault locally. The server stores only data it cannot decrypt. Three ways in, same security.",
-    tech: "Passkeys + Passwords + Wallets",
+      "Your passkey, password, or wallet unlocks encrypted profile secrets locally. Three credential paths, one user-controlled custody model.",
     example:
-      "Full database breach? Your data stays locked. Only you hold the keys.",
+      "Encrypted profile data remains locked unless the user approves credential-based unlock.",
   },
 ];
 
 export function FourPillars() {
   return (
-    <section className="bg-muted/30 px-4 py-24 md:px-6" id="how-it-works">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-16 text-center">
-          <h2 className="font-bold text-3xl sm:text-4xl">
-            Four cryptographic pillars.
-            <br />
-            <span className="text-muted-foreground">
-              One privacy guarantee.
-            </span>
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Different privacy techniques for different needs, combined for
-            complete protection. Key custody stays with users via passkeys,
-            passwords, or wallets.
-          </p>
-        </div>
+    <section className="landing-section landing-band-muted" id="how-it-works">
+      <div className="landing-container">
+        <SectionHeader
+          title="Four cryptographic pillars for liability-free verification"
+          subtitle="Built on cutting-edge privacy tech to help you stop hoarding data and ship faster."
+          maxWidth="lg"
+        />
 
-        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           {pillars.map((pillar) => {
-            const styles = colorStyles[pillar.color];
             return (
-              <div
-                key={pillar.title}
-                className="flex flex-col rounded-xl border border-border bg-card/50 p-6 lg:p-8"
-              >
-                <ColoredIconBox
-                  icon={pillar.icon}
-                  color={pillar.color}
-                  size="xl"
-                  className="mb-4 w-fit"
-                />
-
-                <h3 className="font-semibold text-xl">{pillar.title}</h3>
-                <p className="mt-1 text-muted-foreground text-sm">
-                  {pillar.subtitle}
-                </p>
-
-                <p className="mt-4 grow text-muted-foreground">
-                  {pillar.description}
-                </p>
-
-                <div
-                  className={cn(
-                    "mt-6 border-l-2 pl-4",
-                    styles.border.replace("/20", "/40"),
-                  )}
-                >
-                  <p className="text-muted-foreground text-sm italic">
-                    {pillar.example}
-                  </p>
-                </div>
-              </div>
+              <Card key={pillar.title} className="flex h-full flex-col">
+                <CardHeader className="pb-0">
+                  <pillar.icon
+                    className={cn(
+                      "mb-4 size-6",
+                      colorStyles[pillar.color].iconText,
+                    )}
+                  />
+                  <CardTitle className="landing-card-title">
+                    {pillar.title}
+                  </CardTitle>
+                  <p className="landing-body mt-1">{pillar.subtitle}</p>
+                </CardHeader>
+                <CardContent className="flex grow flex-col pt-4">
+                  <p className="landing-body grow">{pillar.description}</p>
+                  <div className="mt-6 border-border border-l-2 pl-4">
+                    <p className="landing-body italic">{pillar.example}</p>
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>

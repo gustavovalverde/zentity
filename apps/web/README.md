@@ -7,9 +7,11 @@ Next.js 16 and React 19.
 
 This is the main web application for Zentity, providing:
 
-- **Sign-up** — 2-step wizard (email optional → account + FHE key enrollment)
-  with three authentication methods: passkeys, OPAQUE passwords, or wallet
-  signatures (EIP-712)
+- **Sign-up** — 2-step wizard (email optional → account creation) with three
+  authentication methods: passkeys, OPAQUE passwords, or wallet signatures
+  (EIP-712)
+- **Verification preflight** — FHE key enrollment is performed when users start
+  verification
 - **Dashboard verification** — Document upload + liveness + proof generation
 - **Dashboard** — View verification status and privacy proofs
 - **Partner integrations** — OAuth provider flow for third-party verification
@@ -131,7 +133,7 @@ NODE_OPTIONS=--inspect=0.0.0.0 pnpm run dev
 Run the social recovery flow (no Synpress required):
 
 ```bash
-pnpm run test:e2e -- e2e/social-recovery.spec.ts
+pnpm run test:e2e -- e2e/recovery/social-recovery.spec.ts
 ```
 
 ### E2E (Playwright + Synpress + MetaMask)
@@ -185,15 +187,13 @@ src/
 │   │   ├── auth/           # Authentication endpoints (better-auth)
 │   │   ├── trpc/           # Internal app API (tRPC)
 │   │   ├── crypto/         # ZK artifacts + nationality helpers
-│   │   ├── identity/       # Disclosure endpoints
+│   │   ├── identity/       # Identity status endpoints
 │   │   └── password/       # Password pwned checks
 ├── components/
 │   ├── dashboard/          # Dashboard components
 │   ├── sign-up/            # Sign-up wizard components
 │   ├── verification/       # Dashboard verification components
 │   └── ui/                 # Shared UI components (shadcn)
-├── features/
-│   └── auth/               # Authentication logic
 ├── lib/                    # Utilities and helpers
 └── hooks/                  # Custom React hooks
 ```
@@ -205,7 +205,7 @@ src/
 | `/api/auth/*` | Various | Auth (Better Auth, passkey, OAuth) |
 | `/api/trpc/*` | Various | Internal APIs (crypto, sign-up, verification) |
 | `/api/fhe-enrollment/context` | POST | Create FHE enrollment context + token |
-| `/api/identity/disclosure` | POST | Disclosure bundle (demo/integrations) |
+| `/api/identity/fhe-status` | POST | Persist FHE enrollment status for current user |
 | `/api/crypto/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
 | `/api/crypto/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |
 | `/api/crypto/nationality-proof` | GET/POST | Nationality helpers |

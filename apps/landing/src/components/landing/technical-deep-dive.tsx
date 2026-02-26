@@ -12,7 +12,8 @@ import {
   IconShieldCheck,
 } from "@tabler/icons-react";
 
-import { ColoredIconBox } from "@/components/ui/colored-icon-box";
+import { SectionHeader } from "@/components/landing/section-header";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { colorStyles } from "@/lib/colors";
 import { cn } from "@/lib/utils";
@@ -20,20 +21,16 @@ import { cn } from "@/lib/utils";
 export function TechnicalDeepDive() {
   return (
     <section
-      className="border-border/50 border-y bg-muted/30 py-24"
+      className="landing-section landing-band-flat border-border/50 border-y"
       id="architecture"
     >
-      <div className="mx-auto max-w-6xl px-4 md:px-6">
-        <div className="mb-16 text-center">
-          <h2 className="mb-4 font-bold text-3xl md:text-4xl">
-            Technical Deep-Dive
-          </h2>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
-            Under the hood of the privacy machine.
-          </p>
-        </div>
+      <div className="landing-container">
+        <SectionHeader
+          title="Technical Deep Dive"
+          subtitle="Core flows, trust boundaries, and disclosure paths"
+        />
 
-        <div className="mx-auto max-w-6xl">
+        <div>
           <Tabs defaultValue="dataflow" className="w-full">
             {/* Pill-shaped Tabs */}
             <div className="mb-12 flex justify-center">
@@ -86,11 +83,11 @@ export function TechnicalDeepDive() {
             {/* macOS Window Container */}
             <div className="relative overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
               {/* Window Title Bar */}
-              <div className="flex h-10 items-center gap-2 border-border border-b bg-muted/30 px-4">
-                <div className="h-3 w-3 rounded-full bg-red-500/80" />
-                <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
-                <div className="h-3 w-3 rounded-full bg-green-500/80" />
-                <div className="ml-4 font-mono text-muted-foreground text-xs">
+              <div className="flex h-9 items-center gap-1.5 border-border border-b bg-muted/30 px-3">
+                <div className="size-2.5 rounded-full bg-red-500/80" />
+                <div className="size-2.5 rounded-full bg-yellow-500/80" />
+                <div className="size-2.5 rounded-full bg-green-500/80" />
+                <div className="ml-2 font-mono text-[11px] text-muted-foreground">
                   privacy-stack
                 </div>
               </div>
@@ -101,27 +98,27 @@ export function TechnicalDeepDive() {
                   <div className="grid items-center gap-12 md:grid-cols-2">
                     <div className="space-y-8">
                       <div>
-                        <h3 className="mb-2 font-bold text-2xl">
+                        <h3 className="mb-2 font-display font-bold text-2xl">
                           Core Service Stack
                         </h3>
-                        <p className="text-muted-foreground">
+                        <p className="landing-copy">
                           Web app plus dedicated OCR and FHE services.
                         </p>
                       </div>
 
                       <div className="space-y-6">
                         <div className="flex gap-4">
-                          <ColoredIconBox
-                            icon={IconDeviceDesktop}
-                            color="blue"
-                            size="lg"
-                            className="h-fit"
+                          <IconDeviceDesktop
+                            className={cn(
+                              "size-6 shrink-0",
+                              colorStyles.blue.iconText,
+                            )}
                           />
                           <div>
                             <h4 className="font-semibold text-foreground">
                               Web Client (Next.js)
                             </h4>
-                            <p className="mt-1 text-muted-foreground text-sm">
+                            <p className="landing-body mt-1">
                               Handles UI, multi-credential authentication,
                               encrypted vault management, and client-side ZK
                               proof generation tied to verified documents.
@@ -129,34 +126,34 @@ export function TechnicalDeepDive() {
                           </div>
                         </div>
                         <div className="flex gap-4">
-                          <ColoredIconBox
-                            icon={IconServer}
-                            color="orange"
-                            size="lg"
-                            className="h-fit"
+                          <IconServer
+                            className={cn(
+                              "size-6 shrink-0",
+                              colorStyles.orange.iconText,
+                            )}
                           />
                           <div>
                             <h4 className="font-semibold text-foreground">
                               FHE Service (Rust)
                             </h4>
-                            <p className="mt-1 text-muted-foreground text-sm">
-                              Performs encrypted computations using TFHE-rs.
-                              Never sees plaintext.
+                            <p className="landing-body mt-1">
+                              Performs encrypted computations using TFHE-rs on
+                              server-side ciphertext operations.
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-4">
-                          <ColoredIconBox
-                            icon={IconCpu}
-                            color="yellow"
-                            size="lg"
-                            className="h-fit"
+                          <IconCpu
+                            className={cn(
+                              "size-6 shrink-0",
+                              colorStyles.yellow.iconText,
+                            )}
                           />
                           <div>
                             <h4 className="font-semibold text-foreground">
                               OCR Service (Python)
                             </h4>
-                            <p className="mt-1 text-muted-foreground text-sm">
+                            <p className="landing-body mt-1">
                               Transiently extracts document attributes, then
                               discards raw images.
                             </p>
@@ -166,7 +163,7 @@ export function TechnicalDeepDive() {
                     </div>
 
                     {/* Architecture Diagram */}
-                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-6">
                       {/* User + Credential Box */}
                       {/* biome-ignore lint/a11y/useSemanticElements: Diagram element, not a form fieldset */}
                       <div
@@ -179,10 +176,7 @@ export function TechnicalDeepDive() {
                             User + Credential
                           </div>
                           <IconKey
-                            className={cn(
-                              "h-4 w-4",
-                              colorStyles.amber.iconText,
-                            )}
+                            className={cn("size-4", colorStyles.amber.iconText)}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
@@ -207,7 +201,7 @@ export function TechnicalDeepDive() {
                             Client (Browser)
                           </div>
                           <IconDeviceDesktop
-                            className={cn("h-4 w-4", colorStyles.blue.iconText)}
+                            className={cn("size-4", colorStyles.blue.iconText)}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
@@ -235,22 +229,22 @@ export function TechnicalDeepDive() {
                           <div className="font-mono font-semibold text-foreground text-sm">
                             API Gateway
                           </div>
-                          <IconServer className="h-4 w-4 text-muted-foreground" />
+                          <IconServer className="size-4 text-muted-foreground" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="flex items-center justify-center gap-1.5 rounded border border-border bg-muted/50 p-2 font-medium text-foreground text-xs">
+                          <div className="flex items-center justify-center gap-1.5 rounded border border-border bg-muted/30 p-2 font-medium text-foreground text-xs">
                             <IconServer
                               className={cn(
-                                "h-3 w-3",
+                                "size-3",
                                 colorStyles.orange.iconText,
                               )}
                             />
                             FHE
                           </div>
-                          <div className="flex items-center justify-center gap-1.5 rounded border border-border bg-muted/50 p-2 font-medium text-foreground text-xs">
+                          <div className="flex items-center justify-center gap-1.5 rounded border border-border bg-muted/30 p-2 font-medium text-foreground text-xs">
                             <IconCpu
                               className={cn(
-                                "h-3 w-3",
+                                "size-3",
                                 colorStyles.yellow.iconText,
                               )}
                             />
@@ -269,7 +263,7 @@ export function TechnicalDeepDive() {
                       <div
                         role="group"
                         className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm"
-                        aria-label="Database stores only proofs and sealed data"
+                        aria-label="Database stores encrypted secrets, proofs, commitments, and signed attestations"
                       >
                         <div className="flex items-center justify-between">
                           <div className="font-mono font-semibold text-foreground text-sm">
@@ -277,13 +271,13 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconDatabase
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.emerald.iconText,
                             )}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
-                          Proofs + sealed data
+                          Encrypted secrets + attestations
                         </div>
                       </div>
                     </div>
@@ -293,28 +287,26 @@ export function TechnicalDeepDive() {
                 {/* Data Flow Tab */}
                 <TabsContent value="dataflow" className="mt-0">
                   <div className="space-y-8">
-                    <h3 className="mb-6 font-bold text-2xl">
+                    <h3 className="mb-6 font-display font-bold text-2xl">
                       Privacy-Preserving Flow
                     </h3>
 
                     <div className="relative space-y-0">
                       {/* Connecting Line */}
-                      <div className="absolute top-8 bottom-8 left-[27px] -z-10 w-0.5 bg-border" />
+                      <div className="absolute top-4 bottom-4 left-[15px] -z-10 w-0.5 bg-border" />
 
                       <div className="flex items-start gap-6">
-                        <div
-                          className={cn(
-                            "z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold shadow-sm",
-                            colorStyles.red.iconText,
-                          )}
+                        <Badge
+                          variant="outline"
+                          className="z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-card p-0 text-sm text-foreground"
                         >
                           1
-                        </div>
-                        <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
+                        </Badge>
+                        <div className="flex-1 rounded-lg border border-border bg-card p-4 shadow-sm">
                           <h4 className="mb-1 font-semibold text-foreground">
                             Data Extraction
                           </h4>
-                          <p className="mb-2 text-muted-foreground text-sm">
+                          <p className="landing-body mb-2">
                             OCR extracts fields; images discarded; claim hashes
                             created.
                           </p>
@@ -325,19 +317,17 @@ export function TechnicalDeepDive() {
                       </div>
 
                       <div className="flex items-start gap-6 pt-8">
-                        <div
-                          className={cn(
-                            "z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold shadow-sm",
-                            colorStyles.purple.iconText,
-                          )}
+                        <Badge
+                          variant="outline"
+                          className="z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-card p-0 text-sm text-foreground"
                         >
                           2
-                        </div>
-                        <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
+                        </Badge>
+                        <div className="flex-1 rounded-lg border border-border bg-card p-4 shadow-sm">
                           <h4 className="mb-1 font-semibold text-foreground">
                             Proof Generation
                           </h4>
-                          <p className="mb-2 text-muted-foreground text-sm">
+                          <p className="landing-body mb-2">
                             Client unlocks encrypted profile with your
                             credential, then proves eligibility with
                             zero-knowledge proofs.
@@ -349,21 +339,20 @@ export function TechnicalDeepDive() {
                       </div>
 
                       <div className="flex items-start gap-6 pt-8">
-                        <div
-                          className={cn(
-                            "z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-border bg-background font-bold shadow-sm",
-                            colorStyles.emerald.iconText,
-                          )}
+                        <Badge
+                          variant="outline"
+                          className="z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-card p-0 text-sm text-foreground"
                         >
                           3
-                        </div>
-                        <div className="flex-1 rounded-xl border border-border bg-card p-4 shadow-sm">
+                        </Badge>
+                        <div className="flex-1 rounded-lg border border-border bg-card p-4 shadow-sm">
                           <h4 className="mb-1 font-semibold text-foreground">
                             Verification
                           </h4>
-                          <p className="mb-2 text-muted-foreground text-sm">
-                            Server verifies proofs and stores encrypted
-                            artifacts. Disclosure requires user consent.
+                          <p className="landing-body mb-2">
+                            Server verifies proofs and stores signed
+                            attestations, commitments, and encrypted artifacts.
+                            Identity disclosure requires user consent.
                           </p>
                           <div
                             className={cn(
@@ -371,10 +360,39 @@ export function TechnicalDeepDive() {
                               colorStyles.emerald.text,
                             )}
                           >
-                            <IconCircleCheck className="h-3 w-3" /> VERIFIED:
-                            Age ≥ 18
+                            <IconCircleCheck className="size-3" /> VERIFIED: Age
+                            ≥ 18
                           </div>
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                      <div className="mb-3 flex items-center gap-2">
+                        <IconLink
+                          className={cn("size-4", colorStyles.blue.iconText)}
+                        />
+                        <h4 className="font-semibold text-foreground text-sm">
+                          OAuth/OIDC scope progression
+                        </h4>
+                      </div>
+                      <ol className="grid gap-2 text-sm md:grid-cols-2">
+                        <li className="rounded-md border border-border bg-muted/30 p-3">
+                          Sign in with proof scopes
+                        </li>
+                        <li className="rounded-md border border-border bg-muted/30 p-3">
+                          User starts a higher-risk action
+                        </li>
+                        <li className="rounded-md border border-border bg-muted/30 p-3">
+                          Request identity scopes when required
+                        </li>
+                        <li className="rounded-md border border-border bg-muted/30 p-3">
+                          Return scoped response and continue
+                        </li>
+                      </ol>
+                      <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs">
+                        Bank example: sign-in `openid email proof:verification`
+                        {" -> "}identity request `identity.name`
                       </div>
                     </div>
                   </div>
@@ -385,20 +403,20 @@ export function TechnicalDeepDive() {
                   <div className="grid items-center gap-12 md:grid-cols-2">
                     <div className="space-y-6">
                       <div>
-                        <h3 className="mb-2 font-bold text-2xl">
+                        <h3 className="mb-2 font-display font-bold text-2xl">
                           Multi-Credential Key Custody
                         </h3>
-                        <p className="text-muted-foreground">
-                          Three ways to authenticate—same security guarantee.
+                        <p className="landing-copy">
+                          Three ways to authenticate with one custody model.
                         </p>
                       </div>
 
                       <div className="space-y-4">
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconFingerprint
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.amber.iconText,
                               )}
                             />
@@ -406,18 +424,18 @@ export function TechnicalDeepDive() {
                               Passkey
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Face ID, Touch ID, or Windows Hello. No passwords to
                             remember—your biometric unlocks your encrypted
                             vault.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconKey
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.blue.iconText,
                               )}
                             />
@@ -425,18 +443,18 @@ export function TechnicalDeepDive() {
                               Password
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Strong password authentication where the server
                             never learns your password—only you can unlock your
                             data.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconLock
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.purple.iconText,
                               )}
                             />
@@ -444,17 +462,17 @@ export function TechnicalDeepDive() {
                               Crypto Wallet
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Use the Ethereum wallet you already have. One
                             signature unlocks your encrypted identity vault.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconShieldCheck
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.emerald.iconText,
                               )}
                             />
@@ -462,27 +480,28 @@ export function TechnicalDeepDive() {
                               Same Security Model
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
-                            All three credentials provide the same level of
-                            protection. Your data is encrypted locally—the
-                            server stores only opaque blobs it cannot read.
+                          <p className="landing-body">
+                            All three credentials follow the same custody flow,
+                            with different UX and security tradeoffs. Profile
+                            data is encrypted client-side, while disclosure
+                            requires explicit user unlock.
                           </p>
                         </div>
                       </div>
                     </div>
 
                     {/* Key Custody Flow Diagram */}
-                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-6">
                       {/* Credential Options */}
                       <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
                         <div className="mb-2 font-mono font-semibold text-foreground text-sm">
                           Your Credential
                         </div>
                         <div className="grid grid-cols-3 gap-2">
-                          <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/50 p-2">
+                          <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/30 p-2">
                             <IconFingerprint
                               className={cn(
-                                "h-4 w-4",
+                                "size-4",
                                 colorStyles.amber.iconText,
                               )}
                             />
@@ -490,10 +509,10 @@ export function TechnicalDeepDive() {
                               Passkey
                             </span>
                           </div>
-                          <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/50 p-2">
+                          <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/30 p-2">
                             <IconKey
                               className={cn(
-                                "h-4 w-4",
+                                "size-4",
                                 colorStyles.blue.iconText,
                               )}
                             />
@@ -501,10 +520,10 @@ export function TechnicalDeepDive() {
                               Password
                             </span>
                           </div>
-                          <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/50 p-2">
+                          <div className="flex flex-col items-center gap-1 rounded border border-border bg-muted/30 p-2">
                             <IconLock
                               className={cn(
-                                "h-4 w-4",
+                                "size-4",
                                 colorStyles.purple.iconText,
                               )}
                             />
@@ -528,7 +547,7 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconKey
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.emerald.iconText,
                             )}
                           />
@@ -549,10 +568,10 @@ export function TechnicalDeepDive() {
                           <div className="font-mono font-semibold text-foreground text-sm">
                             Server
                           </div>
-                          <IconServer className="h-4 w-4 text-muted-foreground" />
+                          <IconServer className="size-4 text-muted-foreground" />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
-                          Stores encrypted data only
+                          Stores encrypted secrets + signed metadata
                         </div>
                         <div
                           className={cn(
@@ -560,7 +579,7 @@ export function TechnicalDeepDive() {
                             colorStyles.red.iconText,
                           )}
                         >
-                          <IconShieldCheck className="h-3 w-3" />
+                          <IconShieldCheck className="size-3" />
                           Cannot decrypt without your credential
                         </div>
                       </div>
@@ -573,21 +592,20 @@ export function TechnicalDeepDive() {
                   <div className="grid items-center gap-12 md:grid-cols-2">
                     <div className="space-y-6">
                       <div>
-                        <h3 className="mb-2 font-bold text-2xl">
+                        <h3 className="mb-2 font-display font-bold text-2xl">
                           Verifiable Credentials
                         </h3>
-                        <p className="text-muted-foreground">
-                          Issue and present credentials via OIDC4VCI/VP
-                          standards.
+                        <p className="landing-copy">
+                          Issue and present credentials via standard protocols.
                         </p>
                       </div>
 
                       <div className="space-y-4">
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconFileCode
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.purple.iconText,
                               )}
                             />
@@ -595,20 +613,20 @@ export function TechnicalDeepDive() {
                               SD-JWT Credentials
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             <code className="rounded bg-muted px-1 text-xs">
-                              dc+sd-jwt
+                              selective disclosure
                             </code>{" "}
-                            format with selective disclosure. 12 claim types
-                            including ZK-derived attributes.
+                            format. Contains 12 claim types, including
+                            cryptographically derived attributes.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconDatabase
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.blue.iconText,
                               )}
                             />
@@ -616,17 +634,17 @@ export function TechnicalDeepDive() {
                               OIDC4VCI Issuance
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Pre-authorized code flow for credential issuance.
                             Compatible with EUDI wallet architecture.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconShieldCheck
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.emerald.iconText,
                               )}
                             />
@@ -634,17 +652,17 @@ export function TechnicalDeepDive() {
                               OIDC4VP Presentation
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Present credentials to external verifiers with
                             user-controlled selective disclosure.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconLink
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.amber.iconText,
                               )}
                             />
@@ -652,19 +670,19 @@ export function TechnicalDeepDive() {
                               OIDC4IDA Assurance
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             <code className="rounded bg-muted px-1 text-xs">
                               verified_claims
                             </code>{" "}
-                            structure with assurance levels matching eIDAS trust
-                            frameworks.
+                            structure with assurance metadata for identity
+                            verification responses.
                           </p>
                         </div>
                       </div>
                     </div>
 
                     {/* Credential Flow Diagram */}
-                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-6">
                       {/* Zentity Box */}
                       <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
                         <div className="flex items-center justify-between">
@@ -673,7 +691,7 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconServer
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.purple.iconText,
                             )}
                           />
@@ -699,10 +717,7 @@ export function TechnicalDeepDive() {
                             User Wallet
                           </div>
                           <IconKey
-                            className={cn(
-                              "h-4 w-4",
-                              colorStyles.amber.iconText,
-                            )}
+                            className={cn("size-4", colorStyles.amber.iconText)}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
@@ -727,7 +742,7 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconShieldCheck
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.emerald.iconText,
                             )}
                           />
@@ -741,7 +756,7 @@ export function TechnicalDeepDive() {
                             colorStyles.emerald.text,
                           )}
                         >
-                          <IconCircleCheck className="h-3 w-3" />
+                          <IconCircleCheck className="size-3" />
                           Selective disclosure enforced
                         </div>
                       </div>
@@ -754,18 +769,18 @@ export function TechnicalDeepDive() {
                   <div className="grid items-center gap-12 md:grid-cols-2">
                     <div className="space-y-6">
                       <div>
-                        <h3 className="mb-2 font-bold text-2xl">
+                        <h3 className="mb-2 font-display font-bold text-2xl">
                           Fully Homomorphic Encryption
                         </h3>
-                        <p className="text-muted-foreground">
+                        <p className="landing-copy">
                           Compute on encrypted data—without decrypting.
                         </p>
                       </div>
 
-                      <p className="text-muted-foreground text-sm">
+                      <p className="landing-body">
                         The server runs compliance checks on your encrypted
-                        values—age thresholds, nationality allowlists—without
-                        ever decrypting them. Only you see the actual data.
+                        values—age, liveness, and compliance thresholds—without
+                        decrypting the underlying values.
                       </p>
 
                       <div className="space-y-4">
@@ -773,11 +788,11 @@ export function TechnicalDeepDive() {
                           How It Works
                         </h4>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                          <div className="rounded-lg border border-border bg-muted/30 p-3">
                             <div className="flex items-center gap-2">
                               <IconLock
                                 className={cn(
-                                  "h-3.5 w-3.5",
+                                  "size-3.5",
                                   colorStyles.blue.iconText,
                                 )}
                               />
@@ -785,31 +800,31 @@ export function TechnicalDeepDive() {
                                 Age Checks
                               </span>
                             </div>
-                            <div className="mt-1 text-muted-foreground text-xs">
+                            <p className="landing-caption mt-1">
                               Verify age thresholds on encrypted data
-                            </div>
+                            </p>
                           </div>
-                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                          <div className="rounded-lg border border-border bg-muted/30 p-3">
                             <div className="flex items-center gap-2">
                               <IconLock
                                 className={cn(
-                                  "h-3.5 w-3.5",
+                                  "size-3.5",
                                   colorStyles.blue.iconText,
                                 )}
                               />
                               <span className="font-medium text-foreground text-sm">
-                                Nationality Rules
+                                Compliance Level Rules
                               </span>
                             </div>
-                            <div className="mt-1 text-muted-foreground text-xs">
-                              Evaluate allowlists without decrypting
-                            </div>
+                            <p className="landing-caption mt-1">
+                              Evaluate policy thresholds without decrypting
+                            </p>
                           </div>
-                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                          <div className="rounded-lg border border-border bg-muted/30 p-3">
                             <div className="flex items-center gap-2">
                               <IconLock
                                 className={cn(
-                                  "h-3.5 w-3.5",
+                                  "size-3.5",
                                   colorStyles.blue.iconText,
                                 )}
                               />
@@ -817,15 +832,15 @@ export function TechnicalDeepDive() {
                                 Compliance Gating
                               </span>
                             </div>
-                            <div className="mt-1 text-muted-foreground text-xs">
+                            <p className="landing-caption mt-1">
                               Policy decisions on encrypted inputs
-                            </div>
+                            </p>
                           </div>
-                          <div className="rounded-lg border border-border bg-card/50 p-3">
+                          <div className="rounded-lg border border-border bg-muted/30 p-3">
                             <div className="flex items-center gap-2">
                               <IconLock
                                 className={cn(
-                                  "h-3.5 w-3.5",
+                                  "size-3.5",
                                   colorStyles.blue.iconText,
                                 )}
                               />
@@ -833,16 +848,16 @@ export function TechnicalDeepDive() {
                                 Anti-Spoofing
                               </span>
                             </div>
-                            <div className="mt-1 text-muted-foreground text-xs">
+                            <p className="landing-caption mt-1">
                               Liveness verification stays encrypted
-                            </div>
+                            </p>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     {/* FHE Flow Diagram */}
-                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-6">
                       {/* Browser Box - Encrypt */}
                       <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
                         <div className="flex items-center justify-between">
@@ -850,7 +865,7 @@ export function TechnicalDeepDive() {
                             Your Browser
                           </div>
                           <IconDeviceDesktop
-                            className={cn("h-4 w-4", colorStyles.blue.iconText)}
+                            className={cn("size-4", colorStyles.blue.iconText)}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
@@ -871,7 +886,7 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconServer
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.orange.iconText,
                             )}
                           />
@@ -894,7 +909,7 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconDeviceDesktop
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.emerald.iconText,
                             )}
                           />
@@ -908,7 +923,7 @@ export function TechnicalDeepDive() {
                             colorStyles.emerald.text,
                           )}
                         >
-                          <IconCircleCheck className="h-3 w-3" />
+                          <IconCircleCheck className="size-3" />
                           Only you see the answer
                         </div>
                       </div>
@@ -921,21 +936,21 @@ export function TechnicalDeepDive() {
                   <div className="grid items-center gap-12 md:grid-cols-2">
                     <div className="space-y-6">
                       <div>
-                        <h3 className="mb-2 font-bold text-2xl">
+                        <h3 className="mb-2 font-display font-bold text-2xl">
                           Zero-Knowledge Circuits
                         </h3>
-                        <p className="text-muted-foreground">
+                        <p className="landing-copy">
                           Client-side proofs that verify eligibility without
                           revealing private data.
                         </p>
                       </div>
 
                       <div className="space-y-4">
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconShieldCheck
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.purple.iconText,
                               )}
                             />
@@ -943,17 +958,17 @@ export function TechnicalDeepDive() {
                               Age Verification
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Prove you meet an age threshold without revealing
                             your date of birth.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconFileCode
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.blue.iconText,
                               )}
                             />
@@ -961,17 +976,17 @@ export function TechnicalDeepDive() {
                               Document Validity
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Prove your document is not expired without exposing
                             the expiry date.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconFileCode
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.emerald.iconText,
                               )}
                             />
@@ -979,17 +994,17 @@ export function TechnicalDeepDive() {
                               Nationality & Residency
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Prove membership in a country group (EU, Schengen)
                             without revealing which country.
                           </p>
                         </div>
 
-                        <div className="rounded-xl border border-border bg-card/50 p-4">
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
                           <div className="mb-2 flex items-center gap-3">
                             <IconFileCode
                               className={cn(
-                                "h-5 w-5",
+                                "size-5",
                                 colorStyles.amber.iconText,
                               )}
                             />
@@ -997,7 +1012,7 @@ export function TechnicalDeepDive() {
                               Liveness & Face Match
                             </h4>
                           </div>
-                          <p className="text-muted-foreground text-sm">
+                          <p className="landing-body">
                             Prove face similarity exceeds a threshold without
                             storing biometric templates.
                           </p>
@@ -1006,7 +1021,7 @@ export function TechnicalDeepDive() {
                     </div>
 
                     {/* ZK Visual */}
-                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-6">
+                    <div className="relative flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-6">
                       {/* Private Inputs */}
                       <div className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm">
                         <div className="flex items-center justify-between">
@@ -1015,13 +1030,13 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconLock
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.purple.iconText,
                             )}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
-                          Your data never leaves your device
+                          Private inputs stay in-browser during proof generation
                         </div>
                       </div>
 
@@ -1036,7 +1051,7 @@ export function TechnicalDeepDive() {
                             ZK Proof Generation
                           </div>
                           <IconShieldCheck
-                            className={cn("h-4 w-4", colorStyles.blue.iconText)}
+                            className={cn("size-4", colorStyles.blue.iconText)}
                           />
                         </div>
                         <div className="mt-1 text-muted-foreground/70 text-xs">
@@ -1056,7 +1071,7 @@ export function TechnicalDeepDive() {
                           </div>
                           <IconCircleCheck
                             className={cn(
-                              "h-4 w-4",
+                              "size-4",
                               colorStyles.emerald.iconText,
                             )}
                           />
@@ -1070,7 +1085,7 @@ export function TechnicalDeepDive() {
                             colorStyles.emerald.text,
                           )}
                         >
-                          <IconCircleCheck className="h-3 w-3" />
+                          <IconCircleCheck className="size-3" />
                           Result: eligible / not eligible
                         </div>
                       </div>
@@ -1082,144 +1097,104 @@ export function TechnicalDeepDive() {
                 <TabsContent value="interlock" className="mt-0">
                   <div className="space-y-8">
                     <div>
-                      <h3 className="mb-2 font-bold text-2xl">
+                      <h3 className="mb-2 font-display font-bold text-2xl">
                         Why This Architecture Works
                       </h3>
-                      <p className="text-muted-foreground">
+                      <p className="landing-copy">
                         Privacy emerges from how components depend on each
                         other—not from any single technology.
                       </p>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="rounded-lg border border-border bg-muted/30 p-5">
                         <div className="mb-3 flex items-center gap-3">
-                          <div
-                            className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-lg",
-                              colorStyles.amber.bg,
-                              colorStyles.amber.border,
-                              "border",
-                            )}
-                          >
-                            <IconKey
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.amber.iconText,
-                              )}
-                            />
-                          </div>
+                          <IconKey
+                            className={cn("size-5", colorStyles.amber.iconText)}
+                          />
                           <h4 className="font-semibold text-foreground">
                             User-Held Keys
                           </h4>
                         </div>
-                        <p className="text-muted-foreground text-sm">
-                          Encryption keys never leave your device. A database
-                          breach exposes only opaque blobs that cannot be
-                          decrypted.
+                        <p className="landing-body">
+                          Credential-derived keys stay user-controlled.
+                          Encrypted profile blobs remain unreadable without user
+                          unlock.
                         </p>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="rounded-lg border border-border bg-muted/30 p-5">
                         <div className="mb-3 flex items-center gap-3">
-                          <div
+                          <IconServer
                             className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-lg",
-                              colorStyles.orange.bg,
-                              colorStyles.orange.border,
-                              "border",
+                              "size-5",
+                              colorStyles.orange.iconText,
                             )}
-                          >
-                            <IconServer
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.orange.iconText,
-                              )}
-                            />
-                          </div>
+                          />
                           <h4 className="font-semibold text-foreground">
                             Server Integrity
                           </h4>
                         </div>
-                        <p className="text-muted-foreground text-sm">
+                        <p className="landing-body">
                           The server attests to document and liveness
                           measurements, ensuring clients cannot forge
                           verification results.
                         </p>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="rounded-lg border border-border bg-muted/30 p-5">
                         <div className="mb-3 flex items-center gap-3">
-                          <div
+                          <IconShieldCheck
                             className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-lg",
-                              colorStyles.purple.bg,
-                              colorStyles.purple.border,
-                              "border",
+                              "size-5",
+                              colorStyles.purple.iconText,
                             )}
-                          >
-                            <IconShieldCheck
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.purple.iconText,
-                              )}
-                            />
-                          </div>
+                          />
                           <h4 className="font-semibold text-foreground">
                             Zero-Knowledge Proofs
                           </h4>
                         </div>
-                        <p className="text-muted-foreground text-sm">
+                        <p className="landing-body">
                           Prove eligibility without revealing underlying
                           attributes. The verifier learns only yes or no.
                         </p>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-card/50 p-5">
+                      <div className="rounded-lg border border-border bg-muted/30 p-5">
                         <div className="mb-3 flex items-center gap-3">
-                          <div
+                          <IconFileCode
                             className={cn(
-                              "flex h-8 w-8 items-center justify-center rounded-lg",
-                              colorStyles.emerald.bg,
-                              colorStyles.emerald.border,
-                              "border",
+                              "size-5",
+                              colorStyles.emerald.iconText,
                             )}
-                          >
-                            <IconFileCode
-                              className={cn(
-                                "h-4 w-4",
-                                colorStyles.emerald.iconText,
-                              )}
-                            />
-                          </div>
+                          />
                           <h4 className="font-semibold text-foreground">
-                            Derived Claims Only
+                            Scoped Claims by Default
                           </h4>
                         </div>
-                        <p className="text-muted-foreground text-sm">
-                          Credentials contain verification results—never raw
-                          PII. Even with selective disclosure, nothing sensitive
-                          leaks.
+                        <p className="landing-body">
+                          `proof:*` scopes return derived verification results
+                          by default. `identity.*` claims require explicit user
+                          consent and vault unlock.
                         </p>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6">
+                    <div className="rounded-lg border border-border bg-muted/30 p-6">
                       <div className="flex items-center gap-3">
                         <IconLink
                           className={cn(
-                            "h-5 w-5 shrink-0",
+                            "size-5 shrink-0",
                             colorStyles.emerald.iconText,
                           )}
                         />
                         <p className="font-medium text-foreground">
-                          Math, not walls.
+                          Math, not walls
                         </p>
                       </div>
-                      <p className="mt-2 text-muted-foreground text-sm">
-                        The server can't read your data—not because of policy,
-                        but because of cryptography. Every privacy guarantee is
-                        mathematically enforced.
+                      <p className="landing-body mt-2">
+                        Critical privacy boundaries are enforced by cryptography
+                        and scope-based consent controls.
                       </p>
                     </div>
                   </div>

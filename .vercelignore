@@ -1,11 +1,10 @@
 # Only apps/landing is deployed to Vercel — exclude everything else
-apps/web
-apps/fhe
-apps/ocr
-apps/signer
-apps/demo-rp
-docs
-fixtures
+/apps/web
+/apps/fhe
+/apps/ocr
+/apps/signer
+/apps/demo-rp
+/fixtures
 node_modules
 .git
 .playwright-mcp

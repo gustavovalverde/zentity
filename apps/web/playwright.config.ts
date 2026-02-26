@@ -3,7 +3,7 @@
  *
  * Run specific projects:
  *   pnpm test:e2e --project=auth
- *   pnpm test:e2e --project=onboarding
+ *   pnpm test:e2e --project=sign-up
  *   pnpm test:e2e --project=web3-hardhat
  *   pnpm test:e2e --project=web3-sepolia
  *   pnpm test:e2e --project=oidc
@@ -75,10 +75,10 @@ export default defineConfig({
       testMatch: /e2e\/dashboard\/.*\.spec\.ts/,
       use: chromeOptions,
     },
-    // Onboarding flow tests
+    // Sign-up flow tests
     {
-      name: "onboarding",
-      testMatch: /e2e\/onboarding\/.*\.spec\.ts/,
+      name: "sign-up",
+      testMatch: /e2e\/sign-up\/.*\.spec\.ts/,
       use: chromeOptions,
     },
     // Web3 tests with local Hardhat
@@ -97,12 +97,6 @@ export default defineConfig({
     {
       name: "oidc",
       testMatch: /e2e\/oidc\/.*\.spec\.ts/,
-      use: chromeOptions,
-    },
-    // BBS+ credential tests
-    {
-      name: "bbs",
-      testMatch: /e2e\/bbs\/.*\.spec\.ts/,
       use: chromeOptions,
     },
     // Recovery flow tests

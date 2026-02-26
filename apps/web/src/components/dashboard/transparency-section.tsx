@@ -125,7 +125,7 @@ export function TransparencySection({
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">
-                      Birth Year Offset Ciphertext
+                      Date of Birth Ciphertext
                     </span>
                     <Badge className="text-xs" variant="outline">
                       FHE
@@ -142,7 +142,7 @@ export function TransparencySection({
                     </code>
                   ) : null}
                   <p className="text-muted-foreground text-xs">
-                    Homomorphically encrypted birth year offset
+                    Homomorphically encrypted date of birth
                   </p>
                 </div>
               </div>
@@ -153,7 +153,7 @@ export function TransparencySection({
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">Age Proof</span>
                     <Badge className="text-xs" variant="outline">
-                      ZK-SNARK
+                      ZK Proof
                     </Badge>
                     {hasAgeProof ? (
                       <Badge className="text-xs" variant="success">
@@ -242,7 +242,7 @@ export function TransparencySection({
               </h4>
               <p className="mb-2 text-muted-foreground text-xs">
                 Encrypted profile fields are stored and can only be unlocked
-                with your passkey.
+                with your registered credential (passkey, password, or wallet).
               </p>
               <div className="flex flex-wrap gap-2">
                 {NEVER_STORED_ITEMS.map((item) => (

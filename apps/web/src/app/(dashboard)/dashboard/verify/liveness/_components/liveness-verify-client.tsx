@@ -165,7 +165,7 @@ export function LivenessVerifyClient({
       }
 
       toast.info("Generating privacy proofs...", {
-        description: "This may take a moment. Please don't close this page.",
+        description: "This takes up to 30 seconds. Please keep this page open.",
       });
 
       const storeState = getStoreState();
@@ -293,14 +293,15 @@ export function LivenessVerifyClient({
 
         if (result.matched) {
           setFaceMatchStatus("matched");
-          toast.success("Verification complete!", {
-            description: "Your identity has been verified successfully.",
+          toast.success("Face match successful!", {
+            description:
+              "Click 'Complete Verification' to generate your privacy proofs.",
           });
         } else {
           setFaceMatchStatus("no_match");
-          toast.warning("Face match inconclusive", {
+          toast.warning("Face match failed", {
             description:
-              "The selfie may not clearly match your document photo.",
+              "Your selfie did not match the document photo. Retry with better lighting and keep your face centered.",
           });
         }
       } catch (error) {
@@ -431,9 +432,9 @@ export function LivenessVerifyClient({
         </CardHeader>
         <CardContent>
           <CardDescription>
-            Your selfie is captured for face matching with your ID, then deleted
-            after verification. Randomized gestures confirm you're a real
-            person.
+            Your selfie is used for face matching with your ID and is never
+            stored. A cryptographic hash of the verification frame is recorded
+            for integrity. Gesture challenges confirm you&apos;re a real person.
           </CardDescription>
         </CardContent>
       </Card>

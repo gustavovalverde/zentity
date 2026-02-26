@@ -56,6 +56,7 @@ const CLAIM_LABELS: Record<string, string> = {
   doc_validity_proof_verified: "Document Validity",
   nationality_proof_verified: "Nationality",
   face_match_verified: "Face Match",
+  identity_binding_verified: "Identity Binding",
 };
 
 const METADATA_CLAIMS = new Set([
@@ -226,7 +227,7 @@ export function CredentialsContent() {
             </EmptyHeader>
             <EmptyContent>
               <Button asChild>
-                <Link href="/sign-up">Complete Verification</Link>
+                <Link href="/dashboard/verify">Complete Verification</Link>
               </Button>
             </EmptyContent>
           </Empty>
@@ -355,9 +356,8 @@ export function CredentialsContent() {
 
           <div className="rounded-lg bg-muted p-3">
             <p className="text-muted-foreground text-xs">
-              <strong>Compatible wallets:</strong> Any wallet supporting
-              OpenID4VCI (e.g., walt.id, Talao, Lissi, EUDI Wallet Reference
-              Implementation).
+              <strong>Compatible wallets:</strong> Any wallet supporting the
+              OpenID for Verifiable Credential Issuance (OID4VCI) standard.
             </p>
           </div>
         </DialogContent>

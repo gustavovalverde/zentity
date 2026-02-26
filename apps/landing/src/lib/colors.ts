@@ -17,7 +17,7 @@ export type SemanticColor =
   | "red" // error/destructive
   | "yellow"; // OCR/processing
 
-export interface ColorStyle {
+interface ColorStyle {
   /** Background color with opacity (e.g., bg-purple-500/10) */
   bg: string;
   /** Border color with opacity (e.g., border-purple-500/20) */
@@ -82,18 +82,3 @@ export const colorStyles: Record<SemanticColor, ColorStyle> = {
     text: "text-yellow-700 dark:text-yellow-300",
   },
 };
-
-/**
- * Get a border class with custom opacity.
- * Useful for accent borders that need different emphasis.
- *
- * @param color - The semantic color
- * @param opacity - Opacity value (default: 20)
- * @returns Tailwind border class string
- */
-export function getBorderClass(
-  color: SemanticColor,
-  opacity: number = 20,
-): string {
-  return `border-${color}-500/${opacity}`;
-}

@@ -16,8 +16,8 @@ No admin pre-approval is required — the user controls data access at the conse
 
 | Scenario | Sign-In Scopes | Step-Up Scopes | Step-Up Action |
 |----------|---------------|----------------|----------------|
-| **Velocity Bank** | `openid profile email proof:verification` | `identity.name identity.address` | Open Account |
-| **Nova Exchange** | `openid profile email proof:verification` | `identity.nationality` | Start Trading |
+| **Velocity Bank** | `openid email proof:verification` | `identity.name` | Open Account |
+| **Nova Exchange** | `openid email proof:verification` | `identity.nationality` | Start Trading |
 | **Vino Delivery** | `openid email proof:age` | `identity.name identity.address` | Complete Purchase |
 | **Relief Global** | `openid email proof:verification` | `identity.name identity.nationality` | Claim Aid |
 
@@ -43,7 +43,7 @@ Each scenario page shows a DCR registration step, then sign-in, then step-up.
 
 1. Navigate to <http://localhost:3102/bank>
 2. Register with Zentity (DCR) → sign in → basic claims only
-3. Click "Open Account" → consent for identity.name + identity.address
+3. Click "Open Account" → consent for identity.name
 4. See full verified claims vs. what stays private
 
 **Exchange (progressive flow):**

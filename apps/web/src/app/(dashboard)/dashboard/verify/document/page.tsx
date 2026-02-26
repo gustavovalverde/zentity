@@ -61,7 +61,7 @@ export default async function DocumentVerifyPage() {
       <div>
         <h1 className="font-bold text-2xl">Verify Your Document</h1>
         <p className="text-muted-foreground">
-          Upload a government-issued ID to verify your identity
+          Upload a photo (JPEG, PNG, or WebP) of your government-issued ID
         </p>
       </div>
 

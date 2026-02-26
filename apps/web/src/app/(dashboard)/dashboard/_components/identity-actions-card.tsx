@@ -68,7 +68,7 @@ export function IdentityActionsCard({
           <ActionCard
             actionHref="/dashboard/credentials"
             actionLabel="Get Credentials"
-            description="Export your verified claims to any compatible wallet using OIDC4VCI."
+            description="Export your verified claims to any compatible identity wallet."
             icon={FileCheck2}
             locked={tier < 2}
             requiredTier={2}

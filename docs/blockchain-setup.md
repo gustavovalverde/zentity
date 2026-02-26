@@ -11,7 +11,7 @@ This guide explains how to configure blockchain-related environment variables fo
 Just run:
 
 ```bash
-bun run dev
+pnpm run dev
 ```
 
 The app automatically uses a [public demo project ID](https://github.com/reown-com/web-examples) that only works on localhost.
@@ -33,11 +33,10 @@ The app automatically uses a [public demo project ID](https://github.com/reown-c
 | `NEXT_PUBLIC_PROJECT_ID` | Public | [Reown Cloud Dashboard](#1-reown-appkit-project-id) |
 | `FHEVM_REGISTRAR_PRIVATE_KEY` | Secret | [Create a new wallet](#2-registrar-wallet) |
 | `LOCAL_REGISTRAR_PRIVATE_KEY` | Secret | [Create a new wallet](#2-registrar-wallet) |
-| `FHEVM_RPC_URL` | Public | [fhEVM Network Config](#3-fhevm-network) |
-| `FHEVM_NETWORK_ID` | Public | App network identifier (string) |
-| `FHEVM_CHAIN_ID` | Public | EVM chain ID |
-| `FHEVM_NETWORK_NAME` | Public | Display name |
-| `FHEVM_EXPLORER_URL` | Public | Block explorer base URL |
+| `NEXT_PUBLIC_FHEVM_RPC_URL` | Public | [fhEVM Network Config](#3-fhevm-network) |
+| `NEXT_PUBLIC_ENABLE_FHEVM` | Public | Enable Sepolia network in UI |
+| `NEXT_PUBLIC_ENABLE_HARDHAT` | Public | Enable local Hardhat network in UI |
+| `LOCAL_RPC_URL` | Public | Local Hardhat RPC URL |
 | `FHEVM_IDENTITY_REGISTRY` | Public | [Deploy contracts](#4-contract-addresses) |
 | `FHEVM_COMPLIANCE_RULES` | Public | [Deploy contracts](#4-contract-addresses) |
 
@@ -147,15 +146,11 @@ Save the private key to your `.env` file.
 
 ## 3. fhEVM Network
 
-**Variables**: `FHEVM_RPC_URL` (and `NEXT_PUBLIC_FHEVM_RPC_URL` for client wallets)
+**Variables**: `NEXT_PUBLIC_FHEVM_RPC_URL`, `NEXT_PUBLIC_ENABLE_FHEVM`,
+`NEXT_PUBLIC_ENABLE_HARDHAT`, `LOCAL_RPC_URL`
 
-Optional metadata (if you want to override defaults):
-`FHEVM_NETWORK_ID`, `FHEVM_CHAIN_ID`, `FHEVM_NETWORK_NAME`, `FHEVM_EXPLORER_URL`
-Optional provider selector:
-`FHEVM_PROVIDER_ID` (defaults to `zama`; use `mock` for local Hardhat)
-
-If you are running the frontend, mirror these as `NEXT_PUBLIC_*` so the client
-wallet config stays aligned (e.g., `NEXT_PUBLIC_FHEVM_RPC_URL`).
+Network metadata such as network ID, chain ID, display name, and explorer URL is
+defined in code (`apps/web/src/lib/blockchain/networks.ts`).
 
 The default FHEVM provider runs on Ethereum Sepolia testnet with additional FHE (Fully Homomorphic Encryption) capabilities. (Current provider: Zama fhEVM.)
 
@@ -168,7 +163,7 @@ The default FHEVM provider runs on Ethereum Sepolia testnet with additional FHE 
 | Chain ID | `11155111` |
 | Currency | SepoliaETH |
 | Explorer | <https://sepolia.etherscan.io> |
-| Relayer/Gateway | Managed by the Zama relayer SDK (optional override via `NEXT_PUBLIC_FHEVM_RELAYER_URL` if endpoints change) |
+| Relayer/Gateway | Managed by the Zama relayer SDK |
 
 ### Add to MetaMask
 
@@ -181,18 +176,10 @@ The default FHEVM provider runs on Ethereum Sepolia testnet with additional FHE 
 ### Add to your `.env`
 
 ```bash
-FHEVM_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-FHEVM_NETWORK_ID=fhevm_sepolia
-FHEVM_CHAIN_ID=11155111
-FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
-FHEVM_EXPLORER_URL=https://sepolia.etherscan.io
-FHEVM_PROVIDER_ID=zama
 NEXT_PUBLIC_FHEVM_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-NEXT_PUBLIC_FHEVM_NETWORK_ID=fhevm_sepolia
-NEXT_PUBLIC_FHEVM_CHAIN_ID=11155111
-NEXT_PUBLIC_FHEVM_NETWORK_NAME="fhEVM (Sepolia)"
-NEXT_PUBLIC_FHEVM_EXPLORER_URL=https://sepolia.etherscan.io
-NEXT_PUBLIC_FHEVM_PROVIDER_ID=zama
+NEXT_PUBLIC_ENABLE_FHEVM=true
+NEXT_PUBLIC_ENABLE_HARDHAT=false
+LOCAL_RPC_URL=http://127.0.0.1:8545
 ```
 
 ### Getting Testnet ETH
@@ -318,7 +305,7 @@ NEXT_PUBLIC_ENABLE_FHEVM=true
 NEXT_PUBLIC_ENABLE_HARDHAT=false
 
 # fhEVM Sepolia
-FHEVM_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+NEXT_PUBLIC_FHEVM_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 FHEVM_IDENTITY_REGISTRY=0x...  # Your deployed contract
 FHEVM_COMPLIANCE_RULES=0x...   # Your deployed contract
 ```

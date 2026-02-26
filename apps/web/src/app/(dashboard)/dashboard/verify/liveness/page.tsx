@@ -63,9 +63,10 @@ export default async function LivenessVerifyPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-bold text-2xl">Liveness Verification</h1>
+        <h1 className="font-bold text-2xl">Liveness & Face Match</h1>
         <p className="text-muted-foreground">
-          Complete a quick liveness check to verify you're a real person
+          Complete gesture challenges to prove you&apos;re a real person, then
+          we&apos;ll match your face to your ID
         </p>
       </div>
 

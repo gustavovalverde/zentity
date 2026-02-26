@@ -141,7 +141,7 @@ OPAQUE is an **augmented PAKE** that keeps raw passwords off the server:
 
 Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
 
-- The user signs an EIP-712 typed data message on sign-up and sign-in to derive a KEK (via HKDF) that wraps the DEK, mirroring the passkey PRF flow.
+- The user signs an EIP-712 typed data message during wallet authentication and verification preflight to derive a KEK (via HKDF) that wraps/unlocks the DEK, mirroring the passkey PRF flow.
 - At sign-up, we perform a best-effort stability check (sign twice, compare) to reject obviously unstable wallet signers.
 - This check is not a long-term guarantee across wallet firmware/app changes or device migrations. Wallet users should immediately add a backup passkey and/or guardian recovery wrapper.
 - Sign-in also requires a **SIWE (EIP-191)** signature for session authentication (nonce-based replay protection).

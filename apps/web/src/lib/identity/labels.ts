@@ -9,17 +9,20 @@ const PROOF_TYPE_LABELS: Record<string, string> = {
   doc_validity: "Document Valid",
   nationality_membership: "Nationality Group",
   face_match: "Face Match",
+  identity_binding: "Identity Binding",
 };
 
 /** Labels for signed claim types */
 const CLAIM_TYPE_LABELS: Record<string, string> = {
   liveness_score: "Liveness Score",
   face_match_score: "Face Match Score",
+  ocr_result: "Document OCR",
 };
 
 /** Labels for FHE encrypted attributes */
 const ENCRYPTED_ATTRIBUTE_LABELS: Record<string, string> = {
   dob_days: "Date of Birth",
+  birth_year_offset: "Birth Year",
   country_code: "Country Code",
   compliance_level: "Compliance Level",
   liveness_score: "Liveness Score",

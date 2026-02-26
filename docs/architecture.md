@@ -20,7 +20,7 @@ Non-goals:
 
 | Area | Technologies | Responsibility / Notes |
 |---|---|---|
-| Web UI + API | Next.js 16 (App Router), React 19, Bun, tRPC | Primary UI and orchestration layer with type-safe API routes. |
+| Web UI + API | Next.js 16 (App Router), React 19, Node.js, pnpm, tRPC | Primary UI and orchestration layer with type-safe API routes. |
 | ZK proofs | Noir, bb.js (Barretenberg), UltraHonk | Client-side proving in Web Workers; server-side verification. |
 | Liveness + face match | Human.js + tfjs-node | Multi-gesture liveness and face match; real-time guidance on client, verification on server. |
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
@@ -181,20 +181,20 @@ sequenceDiagram
   API-->>UI: Verification complete (Tier progression)
 ```
 
-**Password (OPAQUE) sign-up**
+**Password (OPAQUE) flow**
 
-OPAQUE sign-up mirrors the passkey flow but uses a password-derived export key:
+OPAQUE authentication uses a password-derived export key:
 
 - Client performs OPAQUE registration and derives an **export key**.
-- Export key → HKDF → KEK wraps the DEK.
+- Export key → HKDF → KEK wraps/unlocks the DEK during verification preflight and other step-up flows.
 - Server stores the OPAQUE **registration record** (no plaintext password).
 - Secret wrappers are stored with `kek_source = "opaque"`.
 
-**Wallet (EIP-712) sign-up/sign-in**
+**Wallet (EIP-712) flow**
 
 Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
-- User signs an EIP-712 typed data message on sign-up (wrap new keys) and sign-in (unwrap existing keys).
+- User signs an EIP-712 typed data message during wallet authentication and verification preflight.
 - At sign-up, we run a best-effort stability check (sign twice, compare) to reject clearly unstable signers before key wrapping.
 - This check does not guarantee future wallet behavior across firmware/app changes or device migration, so wallet users should add a backup passkey and/or guardian recovery wrapper.
 - Signature bytes are processed through **HKDF-SHA256** to derive the KEK.

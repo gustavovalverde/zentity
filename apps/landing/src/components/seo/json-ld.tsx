@@ -7,7 +7,10 @@ export function OrganizationSchema() {
     logo: "https://zentity.xyz/favicon.svg",
     description:
       "Privacy-preserving KYC layer using zero-knowledge proofs, fully homomorphic encryption (FHE), cryptographic commitments, and passkey authentication with vaults.",
-    sameAs: ["https://x.com/gustavovalverde"],
+    sameAs: [
+      "https://github.com/gustavovalverde/zentity",
+      "https://x.com/gustavovalverde",
+    ],
   };
 
   return (
@@ -39,6 +42,9 @@ export function SoftwareApplicationSchema() {
       "Face matching without biometric storage",
       "Nationality proofs with Merkle trees",
       "Multi-credential encrypted vault",
+      "OIDC4VCI and OIDC4VP credential interoperability",
+      "Post-quantum ML-KEM-768 encryption",
+      "Post-quantum ML-DSA-65 issuer signatures",
       "GDPR-compliant data erasure",
     ],
     license: "https://osaasy.dev/",
@@ -75,9 +81,14 @@ export function FAQSchema() {
         "Yes, Zentity can be self-hosted on your own infrastructure with Docker Compose. You maintain full control over your deployment and data.",
     },
     {
+      question: "Does Zentity support post-quantum cryptography?",
+      answer:
+        "Yes. Current architecture includes ML-KEM-768 for selected encryption surfaces and ML-DSA-65 for issuer signing, aligned with NIST post-quantum standards.",
+    },
+    {
       question: "How does GDPR compliance work?",
       answer:
-        "Zentity uses salted hash commitments. When you request data deletion, we delete your salt, which makes all your commitments cryptographically unlinkable—a true 'right to be forgotten.'",
+        "When you delete your account, all identity data is hard-deleted: commitments, encrypted attributes, ZK proofs, and the credential-sealed profile. Without the sealed profile, no one can re-derive the original data. This is equivalent to cryptographic erasure under GDPR.",
     },
   ];
 

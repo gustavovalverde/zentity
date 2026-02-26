@@ -14,6 +14,9 @@ import {
 export const SCOPE_DESCRIPTIONS: Record<string, string> = {
   email: "Email address",
   offline_access: "Access when you're not using the app",
+  "proof:identity": "All identity verification proofs",
+  "compliance:key:read": "Read compliance encryption key",
+  "compliance:key:write": "Manage compliance encryption key",
   ...PROOF_SCOPE_DESCRIPTIONS,
   ...IDENTITY_SCOPE_DESCRIPTIONS,
 };
@@ -32,7 +35,7 @@ export function groupScopes(scopes: string[]): ScopeGroup[] {
   const identity: string[] = [];
 
   for (const scope of scopes) {
-    if (isProofScope(scope)) {
+    if (scope === "proof:identity" || isProofScope(scope)) {
       proofs.push(scope);
     } else if (isIdentityScope(scope)) {
       identity.push(scope);

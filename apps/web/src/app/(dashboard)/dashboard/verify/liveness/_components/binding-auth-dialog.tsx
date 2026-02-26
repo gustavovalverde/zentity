@@ -206,8 +206,8 @@ export function BindingAuthDialog({
           <DialogTitle>Confirm Your Identity</DialogTitle>
           <DialogDescription>
             {authMode === "opaque"
-              ? "Enter your password to generate identity binding proofs."
-              : "Sign with your wallet to generate identity binding proofs."}
+              ? "Your session credential expired. Enter your password to continue generating proofs."
+              : "Your session credential expired. Sign with your wallet to continue generating proofs."}
           </DialogDescription>
         </DialogHeader>
 

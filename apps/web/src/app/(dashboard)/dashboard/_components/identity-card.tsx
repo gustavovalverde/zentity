@@ -198,7 +198,9 @@ export async function IdentityCard({
               <div>
                 <p className="font-medium text-success">Fully Verified</p>
                 <p className="text-muted-foreground text-sm">
-                  Ready for on-chain attestation
+                  {assuranceState?.authStrength === "strong"
+                    ? "Ready for on-chain attestation"
+                    : "Identity verified — add a passkey to enable on-chain attestation"}
                 </p>
               </div>
             </div>

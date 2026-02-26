@@ -27,9 +27,7 @@ export default async function SignUpPage() {
     <Card className="w-full max-w-lg">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Create Account</CardTitle>
-        <CardDescription>
-          Start your privacy-first verification journey
-        </CardDescription>
+        <CardDescription>Create your account to get started</CardDescription>
       </CardHeader>
       <CardContent>
         <SignUpForm />

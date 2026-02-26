@@ -101,9 +101,10 @@ export function CredentialChoice({
               <TooltipContent className="max-w-xs" side="top">
                 <p className="font-medium">WebAuthn with PRF Extension</p>
                 <p className="mt-1 text-muted">
-                  Your biometric (fingerprint/face) is used to unlock key
-                  material locally. We only store encrypted data and will ask
-                  you to secure verification data later during onboarding.
+                  Your device authenticator (fingerprint/face) unlocks a derived
+                  encryption key locally. Only encrypted data is stored. You
+                  will set up encryption keys when you start identity
+                  verification.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -154,7 +155,8 @@ export function CredentialChoice({
                 <p className="mt-1 text-muted">
                   Your password is never sent to the server, not even in
                   encrypted form. OPAQUE proves you know the password without
-                  revealing it and can secure verification data later.
+                  revealing it. You will use it to set up encryption keys when
+                  starting identity verification.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -198,9 +200,10 @@ export function CredentialChoice({
               <TooltipContent className="max-w-xs" side="top">
                 <p className="font-medium">EIP-712 Signature</p>
                 <p className="mt-1 text-muted">
-                  Your wallet can sign a structured message to secure your
-                  verification data. The signature stays in your browser and the
-                  server never sees it.
+                  Your wallet signs a structured message to prove ownership of
+                  your address. The signature is verified server-side to
+                  authenticate you, and your private key never leaves your
+                  wallet.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -222,10 +225,10 @@ export function CredentialChoice({
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
           <div className="space-y-3 rounded-lg border bg-muted/30 p-4 text-sm">
             <p className="text-muted-foreground">
-              Your data is encrypted with a key that only you can access. We
-              store the encrypted version, so even if our servers were
-              compromised your data would be useless without your passkey,
-              password, or wallet.
+              Your identity data will be encrypted with a key only you can
+              access, using your chosen credential. The server stores only the
+              encrypted version. This encryption is set up when you begin
+              identity verification.
             </p>
             <p className="text-muted-foreground text-xs">
               Tap the{" "}
@@ -237,7 +240,7 @@ export function CredentialChoice({
       </Collapsible>
 
       <p className="text-center text-muted-foreground text-xs">
-        You can add additional methods later in Settings.
+        You can add more passkeys or a password later in Settings.
       </p>
     </div>
   );

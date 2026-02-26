@@ -964,7 +964,8 @@ export function OAuthConsentClient({
             <ClientAvatar meta={clientMeta} />
           </div>
           <CardTitle className="text-lg">
-            {clientName} wants to access your account
+            {clientName} wants to access your{" "}
+            {hasApprovedIdentityScopes ? "personal information" : "account"}
           </CardTitle>
           <CardDescription>
             {hasOptional
@@ -1009,7 +1010,7 @@ export function OAuthConsentClient({
 
           {visible.length === 0 && (
             <p className="text-muted-foreground text-sm">
-              No additional permissions requested.
+              Basic sign-in only — no additional data will be shared.
             </p>
           )}
 
@@ -1059,7 +1060,6 @@ export function OAuthConsentClient({
             <Button
               disabled={
                 isSubmitting ||
-                visible.length === 0 ||
                 (hasApprovedIdentityScopes &&
                   (vaultState.status !== "loaded" ||
                     !hasValidIdentityIntent ||
