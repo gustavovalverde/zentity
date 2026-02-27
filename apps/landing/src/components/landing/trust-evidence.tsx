@@ -90,7 +90,7 @@ const audienceContent: Array<{
       "Requests stay limited to what each flow needs.",
     ],
     ctaLabel: "Read compliance mapping",
-    ctaHref: "/compliance",
+    ctaHref: "/#compliance",
     flow: [
       {
         title: "Define policy requirements",

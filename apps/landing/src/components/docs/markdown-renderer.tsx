@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import React, { lazy, Suspense } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router-dom";
@@ -148,8 +148,10 @@ const components: Components = {
   li: ({ children }) => <li className="leading-7">{children}</li>,
   hr: () => <hr className="my-8 border-border" />,
   table: ({ children }) => (
-    <div className="my-6">
-      <Table>{children}</Table>
+    <div className="my-8 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="overflow-x-auto">
+        <Table>{children}</Table>
+      </div>
     </div>
   ),
   thead: ({ children }) => <TableHeader>{children}</TableHeader>,
@@ -157,17 +159,38 @@ const components: Components = {
   tr: ({ children }) => <TableRow>{children}</TableRow>,
   th: ({ children }) => <TableHead>{children}</TableHead>,
   td: ({ children }) => <TableCell>{children}</TableCell>,
-  pre: ({ children }) => (
-    <pre className="my-4 overflow-x-auto rounded-lg bg-muted p-4">
-      {children}
-    </pre>
-  ),
+  pre: ({ children, ...props }) => {
+    // If the child is a mermaid code block, don't wrap it in a <pre>
+    const childArray = React.Children.toArray(children);
+    if (
+      childArray.length === 1 &&
+      React.isValidElement(childArray[0]) &&
+      (
+        childArray[0] as React.ReactElement<{ className?: string }>
+      ).props.className?.includes("language-mermaid")
+    ) {
+      return <>{children}</>;
+    }
+    return (
+      <pre className="my-4 overflow-x-auto rounded-lg bg-muted p-4" {...props}>
+        {children}
+      </pre>
+    );
+  },
   code: ({ className, children }) => {
     const match = (className || "").match(LANGUAGE_RE);
     const language = match ? match[1] : "";
 
     // Handle Mermaid diagrams with lazy loading
     if (language === "mermaid") {
+      const getChartString = (child: React.ReactNode): string => {
+        if (typeof child === "string") return child;
+        if (Array.isArray(child)) return child.map(getChartString).join("");
+        return "";
+      };
+
+      const chartString = getChartString(children).trim();
+
       return (
         <Suspense
           fallback={
@@ -176,7 +199,7 @@ const components: Components = {
             </div>
           }
         >
-          <MermaidBlock chart={String(children).trim()} />
+          <MermaidBlock chart={chartString} />
         </Suspense>
       );
     }

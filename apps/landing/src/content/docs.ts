@@ -5,6 +5,7 @@ import blockchainSetup from "../../../../docs/blockchain-setup.md?raw";
 import cryptographicPillars from "../../../../docs/cryptographic-pillars.md?raw";
 import oauthIntegrations from "../../../../docs/oauth-integrations.md?raw";
 import passwordSecurity from "../../../../docs/password-security.md?raw";
+import ssiArchitecture from "../../../../docs/ssi-architecture.md?raw";
 import tamperModel from "../../../../docs/tamper-model.md?raw";
 import verification from "../../../../docs/verification.md?raw";
 import web3Architecture from "../../../../docs/web3-architecture.md?raw";
@@ -59,6 +60,12 @@ const docs: Record<string, DocMeta> = {
       "Argon2id password hashing implementation and security considerations",
     content: passwordSecurity,
   },
+  "ssi-architecture": {
+    title: "SSI Architecture",
+    description:
+      "Self-Sovereign Identity through verifiable credentials, selective disclosure, and non-custodial key custody",
+    content: ssiArchitecture,
+  },
   "web3-architecture": {
     title: "Web3 Architecture",
     description:
@@ -111,7 +118,10 @@ export const docsNav = [
   },
   {
     title: "Integration",
-    items: [{ title: "OAuth Integrations", slug: "oauth-integrations" }],
+    items: [
+      { title: "OAuth Integrations", slug: "oauth-integrations" },
+      { title: "SSI Architecture", slug: "ssi-architecture" },
+    ],
   },
   {
     title: "Trust & Verification",

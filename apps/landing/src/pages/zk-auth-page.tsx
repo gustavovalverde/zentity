@@ -2,8 +2,10 @@ import {
   IconArrowRight,
   IconCheck,
   IconDatabaseOff,
+  IconKey,
   IconLock,
   IconShieldCheck,
+  IconShieldLock,
   IconUserCheck,
   IconX,
 } from "@tabler/icons-react";
@@ -57,11 +59,124 @@ function PageLayout({ title, description, children }: PageLayoutProps) {
   );
 }
 
+// Syntax token classes
+const cm = "text-zinc-500"; // comment
+const kw = "text-purple-400"; // keyword
+const fn = "text-blue-400"; // function/method
+const str = "text-emerald-400"; // string
+const num = "text-amber-400"; // number/boolean
+const prop = "text-sky-300"; // property key
+
+function CodeWindow({ filename }: { readonly filename: string }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+      {/* macOS title bar */}
+      <div className="flex h-9 items-center gap-1.5 border-border border-b bg-muted/30 px-3">
+        <div className="size-2.5 rounded-full bg-red-500/80" />
+        <div className="size-2.5 rounded-full bg-yellow-500/80" />
+        <div className="size-2.5 rounded-full bg-green-500/80" />
+        <div className="ml-2 font-mono text-[11px] text-muted-foreground">
+          {filename}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto bg-zinc-950 p-4 text-[13px] leading-relaxed font-mono dark:bg-zinc-900">
+        <pre className="text-zinc-300">
+          <span className={cm}>
+            {"// Step 1 \u2014 Dynamic Client Registration (RFC 7591)"}
+          </span>
+          {"\n"}
+          <span className={kw}>const</span> reg ={" "}
+          <span className={kw}>await</span> <span className={fn}>fetch</span>(
+          {"\n"}
+          {"  "}
+          <span className={str}>
+            {'"https://app.zentity.xyz/api/auth/oauth2/register"'}
+          </span>
+          ,{"\n"}
+          {"  "}
+          {"{ "}
+          <span className={prop}>method</span>:{" "}
+          <span className={str}>{'"POST"'}</span>,{" "}
+          <span className={prop}>body</span>: JSON.
+          <span className={fn}>stringify</span>({"{"}
+          {"\n"}
+          {"    "}
+          <span className={prop}>client_name</span>:{" "}
+          <span className={str}>{'"My App"'}</span>,{"\n"}
+          {"    "}
+          <span className={prop}>redirect_uris</span>: [
+          <span className={str}>{'"https://myapp.com/callback"'}</span>],
+          {"\n"}
+          {"    "}
+          <span className={prop}>scope</span>:{" "}
+          <span className={str}>{'"openid email proof:verification"'}</span>,
+          {"\n"}
+          {"    "}
+          <span className={prop}>grant_types</span>: [
+          <span className={str}>{'"authorization_code"'}</span>],{"\n"}
+          {"    "}
+          <span className={prop}>token_endpoint_auth_method</span>:{" "}
+          <span className={str}>{'"none"'}</span>,{"\n"}
+          {"  "}
+          {"})"}
+          {"}"}){"\n"}
+          );{"\n"}
+          <span className={kw}>const</span> {"{ "}
+          <span className={prop}>client_id</span>
+          {" }"} = <span className={kw}>await</span> reg.
+          <span className={fn}>json</span>();{"\n"}
+          {"\n"}
+          <span className={cm}>
+            {"// Step 2 \u2014 Standard OIDC redirect with PKCE"}
+          </span>
+          {"\n"}
+          <span className={cm}>
+            {"// scope: openid email proof:verification"}
+          </span>
+          {"\n"}
+          <span className={cm}>
+            {"//   \u2192 returns boolean verification flags"}
+          </span>
+          {"\n"}
+          <span className={cm}>{"// scope: identity.name identity.dob"}</span>
+          {"\n"}
+          <span className={cm}>
+            {"//   \u2192 step-up: returns PII via id_token only"}
+          </span>
+          {"\n\n"}
+          <span className={cm}>
+            {"// Step 3 \u2014 Userinfo returns proofs, not PII"}
+          </span>
+          {"\n"}
+          {"{\n"}
+          {"  "}
+          <span className={str}>{'"sub"'}</span>:{" "}
+          <span className={str}>{'"usr_abc123"'}</span>,{"\n"}
+          {"  "}
+          <span className={str}>{'"email"'}</span>:{" "}
+          <span className={str}>{'"user@example.com"'}</span>,{"\n"}
+          {"  "}
+          <span className={str}>{'"verified"'}</span>:{" "}
+          <span className={num}>true</span>,{"\n"}
+          {"  "}
+          <span className={str}>{'"verification_level"'}</span>:{" "}
+          <span className={str}>{'"full"'}</span>,{"\n"}
+          {"  "}
+          <span className={str}>{'"identity_binding_verified"'}</span>:{" "}
+          <span className={num}>true</span>
+          {"\n}"}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export function ZkAuthPage() {
   return (
     <PageLayout
       title="ZK-Auth: Zero-Knowledge Identity Provider"
-      description="Transform your user onboarding with Zero-Liability SSO. Embed our “Login with Zentity” button to onboard verified users instantly, without absorbing the liability of storing their private data."
+      description="Zero-knowledge cryptography changes the SSO model: Instead of receiving raw PII, relying parties receive cryptographic proofs: verified answers without the underlying data."
     >
       <div className="space-y-12">
         {/* The Paradigm Shift Section */}
@@ -71,8 +186,8 @@ export function ZkAuthPage() {
               The Zero-Liability SSO Paradigm
             </h2>
             <p className="landing-body mt-2">
-              Why developers are switching from Data-for-Convenience to
-              Zero-Knowledge Auth.
+              How Zero-Knowledge Auth replaces the Data-for-Convenience
+              trade-off.
             </p>
           </div>
 
@@ -166,15 +281,108 @@ export function ZkAuthPage() {
           </div>
         </section>
 
+        {/* What makes this different */}
+        <section>
+          <h2 className="font-display text-2xl font-semibold">
+            What makes this different from normal OAuth
+          </h2>
+          <p className="landing-body mt-2 max-w-2xl">
+            Zentity uses standard OAuth 2.1 and OIDC, but the default response
+            is fundamentally different: services receive cryptographic proofs,
+            not personal data.
+          </p>
+
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <IconShieldCheck
+                    className={cn("size-5", iconSemanticColors.shield)}
+                  />
+                  <h3 className="font-semibold">Proofs first, data second</h3>
+                </div>
+                <p className="landing-body">
+                  Most identity providers hand over raw PII the moment a user
+                  logs in. Zentity returns proof-based scopes (
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    proof:age
+                  </code>
+                  ,{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    proof:verification
+                  </code>
+                  ) that answer the question without revealing the underlying
+                  data. A service learns "this person is over 21" without ever
+                  seeing a date of birth.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <IconLock className={cn("size-5", iconSemanticColors.lock)} />
+                  <h3 className="font-semibold">Encrypted computation</h3>
+                </div>
+                <p className="landing-body">
+                  Compliance checks often require processing personal data — age
+                  thresholds, jurisdiction membership, risk scoring. With fully
+                  homomorphic encryption (FHE), the server evaluates these
+                  policies directly on ciphertexts. It returns an encrypted yes
+                  or no without ever decrypting the underlying attributes. The
+                  data stays encrypted throughout the entire computation.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <IconKey className={cn("size-5", iconSemanticColors.key)} />
+                  <h3 className="font-semibold">User-controlled vault</h3>
+                </div>
+                <p className="landing-body">
+                  When a service legally needs actual personal data (e.g., a
+                  bank opening an account), the user unlocks their credential
+                  vault with their passkey, password, or wallet and approves
+                  exactly which fields to share. Zentity cannot release PII
+                  without the user actively participating in the consent and
+                  unlock flow.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <IconShieldLock
+                    className={cn("size-5", iconSemanticColors.lock)}
+                  />
+                  <h3 className="font-semibold">Post-quantum delivery</h3>
+                </div>
+                <p className="landing-body">
+                  When PII is shared, it is encrypted with ML-KEM-768 (NIST FIPS
+                  203), a post-quantum key encapsulation standard. This protects
+                  against "harvest now, decrypt later" attacks where adversaries
+                  capture encrypted traffic today and break it with a future
+                  quantum computer. Compliance records often have multi-year
+                  retention requirements, so the encryption must outlast the
+                  retention period.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
         {/* Developer Experience */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            Familiar developer experience
+            How integration works
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            You don't need a PhD in cryptography to use Zentity. We expose our
-            Zero-Knowledge network through standard OAuth 2.1 and OIDC
-            protocols.
+            The integration surface is standard OAuth 2.1 and OIDC — no
+            cryptography expertise required. The zero-knowledge layer is
+            invisible to the relying party.
           </p>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -191,8 +399,9 @@ export function ZkAuthPage() {
                     <div>
                       <h3 className="font-semibold">Standard OIDC Flow</h3>
                       <p className="landing-body mt-1">
-                        Redirect users to our authorization endpoint, receive an
-                        auth code, and exchange it for a standard JWT.
+                        The relying party redirects to an authorization
+                        endpoint, receives an auth code, and exchanges it for a
+                        standard JWT — the same flow as any OIDC provider.
                       </p>
                     </div>
                   </li>
@@ -206,19 +415,19 @@ export function ZkAuthPage() {
                     <div>
                       <h3 className="font-semibold">Scope-Based Proofs</h3>
                       <p className="landing-body mt-1">
-                        Request boolean verification flags with{" "}
+                        Scopes like{" "}
                         <code className="rounded bg-muted px-1 py-0.5 font-mono">
                           proof:verification
                         </code>{" "}
                         or{" "}
                         <code className="rounded bg-muted px-1 py-0.5 font-mono">
                           proof:age
-                        </code>
-                        . Step up to PII with{" "}
+                        </code>{" "}
+                        return boolean verification flags. PII scopes like{" "}
                         <code className="rounded bg-muted px-1 py-0.5 font-mono">
                           identity.name
                         </code>{" "}
-                        only when policy requires it.
+                        are only requested when policy requires it.
                       </p>
                     </div>
                   </li>
@@ -236,42 +445,7 @@ export function ZkAuthPage() {
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden bg-zinc-950 text-zinc-50 dark:bg-zinc-900 border-none">
-              <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4 py-2 text-xs font-mono text-zinc-400">
-                <span>implementation.ts</span>
-              </div>
-              <div className="p-4 overflow-x-auto text-sm font-mono">
-                <pre>
-                  {`// 1. Register via Dynamic Client Registration
-const reg = await fetch(
-  "https://app.zentity.xyz/api/auth/oauth2/register",
-  { method: "POST", body: JSON.stringify({
-    client_name: "My App",
-    redirect_uris: ["https://myapp.com/callback"],
-    scope: "openid email proof:verification",
-    grant_types: ["authorization_code"],
-    token_endpoint_auth_method: "none",
-  })}
-);
-const { client_id } = await reg.json();
-
-// 2. Redirect with PKCE
-// scope: openid email proof:verification
-//   → returns boolean verification flags
-// scope: identity.name identity.dob
-//   → step-up: returns PII via id_token only
-
-// 3. Userinfo returns proofs, not PII
-{
-  "sub": "usr_abc123",
-  "email": "user@example.com",
-  "verified": true,
-  "verification_level": "full",
-  "identity_binding_verified": true
-}`}
-                </pre>
-              </div>
-            </Card>
+            <CodeWindow filename="example-integration.ts" />
           </div>
         </section>
       </div>

@@ -1,5 +1,4 @@
 import {
-  IconArrowRight,
   IconCertificate,
   IconCheck,
   IconFileCode,
@@ -10,7 +9,6 @@ import {
 import { Link } from "react-router-dom";
 
 import { SectionHeader } from "@/components/landing/section-header";
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -100,7 +98,7 @@ export function ComplianceStandards() {
         />
 
         <div className="landing-grid-2">
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader className="pb-0">
               <div className="mb-1 flex items-center gap-2">
                 <IconScale
@@ -112,44 +110,36 @@ export function ComplianceStandards() {
               </div>
             </CardHeader>
             <CardContent className="pt-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Framework</TableHead>
-                    <TableHead>Regulatory scope</TableHead>
-                    <TableHead>Architecture mapping</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {frameworks.map((item) => (
-                    <TableRow key={item.framework}>
-                      <TableCell className="font-medium">
-                        {item.framework}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {item.scope}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {item.mapping}
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Framework</TableHead>
+                      <TableHead>Regulatory scope</TableHead>
+                      <TableHead>Architecture mapping</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {frameworks.map((item) => (
+                      <TableRow key={item.framework}>
+                        <TableCell className="font-medium">
+                          {item.framework}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {item.scope}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {item.mapping}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <p className="landing-caption mt-4">
                 This is architecture mapping guidance, not legal certification
                 or legal advice.
               </p>
-              <Link
-                to="/compliance"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "mt-4 h-9 rounded-sm px-4",
-                )}
-              >
-                Open compliance page
-                <IconArrowRight className="ml-2 size-4" />
-              </Link>
             </CardContent>
           </Card>
 
@@ -191,16 +181,6 @@ export function ComplianceStandards() {
                 No custom protocol is required. Teams can integrate through
                 OAuth/OIDC scopes and user-approved claim sharing.
               </p>
-              <Link
-                to="/interoperability"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "mt-4 h-9 rounded-sm px-4",
-                )}
-              >
-                Open standards page
-                <IconArrowRight className="ml-2 size-4" />
-              </Link>
             </CardContent>
           </Card>
         </div>

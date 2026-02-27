@@ -20,7 +20,7 @@ import { useDocumentHead } from "@/lib/use-document-head";
 import { useHashAnchorScroll } from "@/lib/use-hash-anchor-scroll";
 import { DocsPage } from "@/pages/docs-page";
 import { PrivacyPage, TermsPage } from "@/pages/legal-pages";
-import { CompliancePage, InteroperabilityPage } from "@/pages/platform-pages";
+import { WhitepaperPage } from "@/pages/whitepaper-page";
 import { ZkAuthPage } from "@/pages/zk-auth-page";
 
 function LandingPage() {
@@ -79,12 +79,19 @@ function App() {
             </DocsLayout>
           }
         />
-        <Route path="/compliance" element={<CompliancePage />} />
-        <Route path="/interoperability" element={<InteroperabilityPage />} />
+        <Route
+          path="/compliance"
+          element={<Navigate to="/#compliance" replace />}
+        />
+        <Route
+          path="/interoperability"
+          element={<Navigate to="/#compliance" replace />}
+        />
         <Route
           path="/go-live"
           element={<Navigate to="/docs/oauth-integrations" replace />}
         />
+        <Route path="/whitepaper" element={<WhitepaperPage />} />
         <Route path="/zk-auth" element={<ZkAuthPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />

@@ -22,7 +22,7 @@ export function Hero() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,oklch(0.9_0.04_220)_0%,transparent_42%),radial-gradient(circle_at_82%_84%,oklch(0.9_0.04_170)_0%,transparent_38%)] dark:bg-[radial-gradient(circle_at_20%_15%,oklch(0.22_0.04_220)_0%,transparent_42%),radial-gradient(circle_at_82%_84%,oklch(0.22_0.04_170)_0%,transparent_38%)]" />
       </div>
 
-      <div className="mx-auto max-w-4xl text-center">
+      <div className="mx-auto max-w-4xl text-center lg:max-w-5xl">
         <Badge
           variant="outline"
           className="mb-6 inline-flex items-center justify-center gap-2 rounded-full border-border bg-background/50 px-4 py-1.5 text-sm leading-none backdrop-blur-sm"
@@ -34,10 +34,10 @@ export function Hero() {
           <span className="leading-none">Alpha</span>
         </Badge>
 
-        <h1 className="font-display font-semibold text-5xl leading-[0.98] tracking-tight sm:text-7xl md:text-8xl">
-          Privacy by default.
-          <br className="hidden md:block" />
-          <span className="text-muted-foreground">Disclosure by choice.</span>
+        <h1 className="font-display font-semibold text-5xl leading-[0.98] tracking-tight sm:text-7xl lg:text-8xl">
+          Privacy by default
+          <br />
+          <span className="text-muted-foreground">Disclosure by choice</span>
         </h1>
 
         <p className="mx-auto mt-8 max-w-3xl text-muted-foreground text-xl leading-9 sm:text-2xl">

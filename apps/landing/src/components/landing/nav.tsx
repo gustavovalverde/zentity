@@ -34,9 +34,8 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/", label: "Home" },
+  { href: "/whitepaper", label: "White Paper" },
   { href: "/zk-auth", label: "ZK-Auth" },
-  { href: "/compliance", label: "Compliance" },
-  { href: "/interoperability", label: "Standards" },
   { href: "/docs/attestation-privacy", label: "Privacy Model" },
   { href: "/docs/architecture", label: "Docs" },
 ];
