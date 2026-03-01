@@ -3,6 +3,6 @@ const authToken = process.env.DATABASE_AUTH_TOKEN;
 
 export default {
   schema: "./src/lib/db/schema.ts",
-  dialect: "sqlite" as const,
+  dialect: "turso" as const,
   dbCredentials: { url, authToken },
 };
