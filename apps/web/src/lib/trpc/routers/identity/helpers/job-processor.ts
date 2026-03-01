@@ -22,6 +22,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { identityVerificationJobs } from "@/lib/db/schema/identity";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import { logError } from "@/lib/logging/error-logger";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { signAttestationClaim } from "@/lib/privacy/zk/claims";
@@ -439,10 +440,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         span.setAttribute("identity.issue_count", issues.length);
         span.setAttribute("identity.processing_ms", Date.now() - startTime);
       } catch (error) {
+        logError(error, { operation: "identity/job-processor", path: jobId });
         await updateIdentityVerificationJobStatus({
           jobId,
           status: "error",
-          error: error instanceof Error ? error.message : "Job failed",
+          error: "Verification processing failed",
           finishedAt: new Date().toISOString(),
         });
         span.setAttribute("identity.job_error", true);

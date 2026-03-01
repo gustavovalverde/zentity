@@ -16,6 +16,7 @@ import {
   SecretBlobTooLargeError,
   writeSecretBlob,
 } from "@/lib/privacy/secrets/storage.server";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 
 export const runtime = "nodejs";
 
@@ -100,13 +101,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json(blobMeta, { status: 201 });
   } catch (error) {
     if (error instanceof SecretBlobTooLargeError) {
-      return NextResponse.json({ error: error.message }, { status: 413 });
+      return NextResponse.json(
+        { error: "Secret blob too large." },
+        { status: 413 }
+      );
     }
-    console.error("[secrets/blob] POST error:", error);
+    const ref = sanitizeAndLogApiError(error, request, {
+      operation: "secrets/blob",
+    });
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Internal server error",
-      },
+      { error: `Failed to store secret. (Ref: ${ref})` },
       { status: 500 }
     );
   }

@@ -7,6 +7,7 @@ import {
   updateEncryptedSecretMetadata,
 } from "@/lib/db/queries/crypto";
 import { registerFheKey } from "@/lib/privacy/fhe/service";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 
 export const runtime = "nodejs";
 
@@ -106,9 +107,9 @@ export async function POST(req: Request) {
 
     return msgpackResponse({ keyId });
   } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "FHE key registration failed.",
-      502
-    );
+    const ref = sanitizeAndLogApiError(error, req, {
+      operation: "fhe/keys/register",
+    });
+    return jsonError(`FHE key registration failed. (Ref: ${ref})`, 502);
   }
 }

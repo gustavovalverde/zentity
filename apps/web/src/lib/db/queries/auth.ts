@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { cache } from "react";
 import { getAddress } from "viem";
 
@@ -111,6 +111,27 @@ export const userHasPassword = cache(async function userHasPassword(
 
   return !!row?.registrationRecord && row.registrationRecord.length > 0;
 });
+
+/**
+ * Deletes any anonymous user rows that hold a given email, excluding the
+ * current user. This cleans up stale rows from previous incomplete signup
+ * attempts so the email can be reused without hitting a UNIQUE constraint.
+ */
+export async function deleteStaleAnonymousUserByEmail(
+  email: string,
+  excludeUserId: string
+): Promise<void> {
+  await db
+    .delete(users)
+    .where(
+      and(
+        eq(users.email, email),
+        eq(users.isAnonymous, true),
+        ne(users.id, excludeUserId)
+      )
+    )
+    .run();
+}
 
 /**
  * Delete an incomplete signup (anonymous, unverified user) and all related records.

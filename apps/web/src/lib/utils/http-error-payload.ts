@@ -38,8 +38,8 @@ export function toServiceErrorPayload(
     return { status: error.status, payload: { error: message } };
   }
 
-  if (error instanceof Error && error.message) {
-    return { status: 503, payload: { error: error.message } };
+  if (error instanceof Error) {
+    return { status: 503, payload: { error: fallbackMessage } };
   }
 
   return { status: 503, payload: { error: fallbackMessage } };

@@ -273,10 +273,7 @@ export function PasskeyManagementSection() {
       });
 
       if (!result.data || result.error) {
-        const message =
-          result.error?.message ||
-          "Password verification failed. Please try again.";
-        throw new Error(message);
+        throw new Error("Password verification failed. Please try again.");
       }
 
       const userId = result.data.user?.id ?? null;

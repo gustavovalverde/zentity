@@ -51,7 +51,7 @@ export const finalizeProcedure = protectedProcedure
     if (!(draft.livenessPassed && draft.faceMatchPassed)) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: `Please complete liveness verification first. Draft state: livenessPassed=${draft.livenessPassed}, faceMatchPassed=${draft.faceMatchPassed}`,
+        message: "Please complete liveness verification first.",
       });
     }
 
@@ -128,7 +128,9 @@ export const finalizeStatusProcedure = protectedProcedure
       jobId: job.id,
       status: job.status,
       result,
-      error: job.error ?? undefined,
+      error: job.error
+        ? "Verification processing failed. Please try again."
+        : undefined,
       startedAt: job.startedAt ?? undefined,
       finishedAt: job.finishedAt ?? undefined,
     };

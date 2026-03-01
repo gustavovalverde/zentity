@@ -18,6 +18,7 @@ import {
   updateIdentityBundleFheStatus,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 import { base64ToBytes } from "@/lib/utils/base64";
 
 export const runtime = "nodejs";
@@ -95,13 +96,11 @@ export async function POST(request: Request) {
   try {
     registration = await consumeRegistrationBlob(enrollment.registrationToken);
   } catch (error) {
+    const ref = sanitizeAndLogApiError(error, request, {
+      operation: "fhe/enrollment/complete",
+    });
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Registration token invalid.",
-      },
+      { error: `Registration token invalid or expired. (Ref: ${ref})` },
       { status: 400 }
     );
   }

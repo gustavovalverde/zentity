@@ -72,7 +72,23 @@ export async function createTrpcContext(args: {
   };
 }
 
-const trpc = initTRPC.context<TrpcContext>().create();
+const trpc = initTRPC.context<TrpcContext>().create({
+  errorFormatter({ shape, error, ctx }) {
+    // Sanitize unexpected errors so raw DB/system details never reach clients.
+    // Intentional TRPCErrors (BAD_REQUEST, FORBIDDEN, CONFLICT, etc.) keep
+    // their messages since we control them. INTERNAL_SERVER_ERROR means an
+    // unhandled error slipped through — replace with a generic message.
+    // Include a short reference ID so users can report it for debugging.
+    if (error.code === "INTERNAL_SERVER_ERROR") {
+      const ref = ctx?.requestId?.slice(0, 8);
+      const message = ref
+        ? `An unexpected error occurred. (Ref: ${ref})`
+        : "An unexpected error occurred.";
+      return { ...shape, message };
+    }
+    return shape;
+  },
+});
 
 const withTracing = trpc.middleware(({ path, type, input, ctx, next }) => {
   const tracer = getTracer();

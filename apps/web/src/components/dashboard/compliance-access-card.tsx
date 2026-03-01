@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppKitAccount } from "@reown/appkit/react";
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 /**
  * Compliance Access Card
  *
@@ -8,13 +9,6 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * to their encrypted identity data in IdentityRegistry.
  */
 import { AlertTriangle, CheckCircle, ShieldCheck } from "lucide-react";
-
-/** Matches error reason text (e.g., "reason: Some error message") */
-const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
-/** Matches hex error data (e.g., "data: 0x12345abc") */
-const ERROR_DATA_PATTERN = /data:\s*(0x[a-fA-F0-9]+)/;
-
-import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 import { useEffect, useState } from "react";
 import {
   useBalance,
@@ -35,6 +29,7 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useDevFaucet } from "@/lib/blockchain/wagmi/use-dev-faucet";
+import { getUserFriendlyError } from "@/lib/utils/error-messages";
 
 interface ComplianceAccessCardProps {
   complianceRules: `0x${string}` | null | undefined;
@@ -303,33 +298,7 @@ export function ComplianceAccessCard({
         {error ? (
           <Alert variant="destructive">
             <AlertDescription className="wrap-break-word">
-              {(() => {
-                if (!(error instanceof Error)) {
-                  return "Grant failed";
-                }
-                const msg = error.message;
-                // Check for FHE/ACL error selectors
-                if (msg.includes("0x23dada53")) {
-                  return "ACL permission denied. The contract lacks permission to your encrypted data. Please update your attestation.";
-                }
-                if (msg.includes("0x99efb890")) {
-                  return "Identity not attested. Please attest on-chain first.";
-                }
-                if (msg.includes("0x72c0afff") || msg.includes("0xa4fbc572")) {
-                  return "Invalid encrypted data. Your attestation may have expired. Please re-attest.";
-                }
-                // Extract reason or show more context
-                const reason = ERROR_REASON_PATTERN.exec(msg)?.[1];
-                if (reason) {
-                  return reason;
-                }
-                // Show error data if present
-                const dataMatch = ERROR_DATA_PATTERN.exec(msg);
-                if (dataMatch) {
-                  return `Contract reverted with: ${dataMatch[1].slice(0, 10)}…`;
-                }
-                return msg.split("\n").slice(0, 3).join(" ").slice(0, 250);
-              })()}
+              {getUserFriendlyError(error)}
             </AlertDescription>
           </Alert>
         ) : null}

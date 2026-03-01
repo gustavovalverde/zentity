@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
 import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 
 export const runtime = "nodejs";
 
@@ -81,9 +82,9 @@ export async function POST(req: Request) {
       computationTimeMs: Date.now() - start,
     });
   } catch (error) {
-    return jsonError(
-      error instanceof Error ? error.message : "FHE verification failed.",
-      502
-    );
+    const ref = sanitizeAndLogApiError(error, req, {
+      operation: "fhe/verify-age",
+    });
+    return jsonError(`FHE verification failed. (Ref: ${ref})`, 502);
   }
 }

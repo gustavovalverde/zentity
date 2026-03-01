@@ -5,8 +5,8 @@ import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 import { HttpError } from "@/lib/utils/http";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 interface OCRRequest {
   image: string;
@@ -33,20 +33,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json(data);
   } catch (error) {
-    if (error instanceof HttpError) {
-      const { status, payload } = toServiceErrorPayload(
-        error,
-        "OCR service error"
-      );
-      return NextResponse.json(
-        { error: `OCR service error: ${payload.error}` },
-        { status }
-      );
-    }
+    const ref = sanitizeAndLogApiError(error, request, { operation: "ocr" });
+    const status = error instanceof HttpError ? error.status : 500;
 
     return NextResponse.json(
       {
-        error: "Failed to process document",
+        error: `OCR service unavailable. (Ref: ${ref})`,
         documentType: "unknown",
         documentOrigin: null,
         confidence: 0,
@@ -54,7 +46,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         validationIssues: ["ocr_service_unavailable"],
         processingTimeMs: 0,
       },
-      { status: 500 }
+      { status }
     );
   }
 }

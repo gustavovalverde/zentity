@@ -98,10 +98,8 @@ export async function validateOAuthAccessToken(
       clientId,
       scopes,
     };
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Invalid access token";
-    return { valid: false, error: message };
+  } catch {
+    return { valid: false, error: "Invalid access token" };
   }
 }
 

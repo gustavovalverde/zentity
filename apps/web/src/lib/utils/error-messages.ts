@@ -103,15 +103,12 @@ export function getUserFriendlyError(error: unknown): string {
     return "Encrypted data not found. Your attestation may have expired. Please re-attest.";
   }
 
-  // Extract the reason from viem/wagmi errors, or show first 3 lines
+  // Extract the reason from viem/wagmi errors
   const reasonMatch = ERROR_REASON_PATTERN.exec(msg);
   if (reasonMatch) {
     return reasonMatch[1];
   }
-  return (
-    msg.split("\n").slice(0, 3).join(" ").slice(0, 200) ||
-    "An unexpected error occurred"
-  );
+  return "Transaction failed. Please try again.";
 }
 
 /**
@@ -123,13 +120,10 @@ export function getUserFriendlyError(error: unknown): string {
  */
 export function getAttestationError(error: unknown): string {
   const msg = getErrorMessage(error);
-  // Extract the reason from viem/tRPC errors, or show more context
+  // Extract the reason from viem/tRPC errors
   const reasonMatch = ERROR_REASON_PATTERN.exec(msg);
   if (reasonMatch) {
     return reasonMatch[1];
   }
-  return (
-    msg.split("\n").slice(0, 3).join(" ").slice(0, 200) ||
-    "An unexpected error occurred"
-  );
+  return "Attestation failed. Please try again.";
 }
