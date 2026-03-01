@@ -92,8 +92,8 @@ export function ComplianceStandards() {
     <section className="landing-section landing-band-muted" id="compliance">
       <div className="landing-container">
         <SectionHeader
-          title="Compliance mapping and interoperability without bespoke lock-in"
-          subtitle="Map your compliance requirements to open standards so teams can integrate faster and avoid custom protocol lock-in"
+          title="Standards alignment"
+          subtitle="Traditional compliance requires holding data to evaluate it. This architecture maps the same requirements to open standards that operate on proofs and encrypted data."
           maxWidth="lg"
         />
 

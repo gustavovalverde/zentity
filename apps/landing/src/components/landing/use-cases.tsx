@@ -1,4 +1,5 @@
 import {
+  IconArrowRight,
   IconBuildingBank,
   IconCurrencyBitcoin,
   IconGlass,
@@ -6,8 +7,10 @@ import {
   IconShieldCheck,
   IconWallet,
 } from "@tabler/icons-react";
+import { Link } from "react-router-dom";
 
 import { SectionHeader } from "@/components/landing/section-header";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { colorStyles, type SemanticColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
@@ -23,42 +26,42 @@ const useCases: Array<{
     color: "orange",
     title: "Crypto Exchanges",
     description:
-      "Meet MiCA and FATF Travel Rule requirements with proof-first checks, then request identity details only when required.",
+      "ZK proofs confirm sanctions compliance. FHE runs ongoing screening on encrypted data. Identity details are requested only when regulation requires it.",
   },
   {
     icon: IconBuildingBank,
     color: "orange",
     title: "Digital Banking Step-Up",
     description:
-      "Start with quick verification checks, then ask for identity details only at account opening when policy requires it.",
+      "Trust is spatial: viewing a balance needs basic login, wiring funds needs document-verified identity. One OAuth scope model handles both.",
   },
   {
     icon: IconGlass,
     color: "pink",
     title: "Age-Restricted Commerce",
     description:
-      "Prove age eligibility for checkout without revealing full identity by default.",
+      "A threshold proof on age. The retailer learns 'old enough' and nothing else. No document copies, no PII liability.",
   },
   {
     icon: IconShieldCheck,
     color: "purple",
-    title: "Humanitarian Aid Eligibility",
+    title: "Humanitarian Aid",
     description:
-      "Verify beneficiary eligibility with minimal data sharing and user consent for additional details.",
+      "Biometric nullifiers prevent duplicate claims without a name database. Threshold keys ensure beneficiaries keep control in unstable environments.",
   },
   {
     icon: IconPlugConnected,
     color: "purple",
-    title: "OAuth/OIDC Identity Layer",
+    title: "Zero-Knowledge SSO",
     description:
-      "Use one OAuth/OIDC integration for sign-in and identity verification.",
+      "Standard OAuth redirect. Pairwise pseudonyms per relying party. ZK proofs instead of PII in tokens. No custom protocol.",
   },
   {
     icon: IconWallet,
     color: "amber",
     title: "Credential Portability",
     description:
-      "Issue wallet-compatible credentials via OIDC4VCI/VP/IDA so users can reuse verification results across compatible services.",
+      "SD-JWT credentials issued via OIDC4VCI. Users choose which claims to present at each service through selective disclosure.",
   },
 ];
 
@@ -70,8 +73,8 @@ export function UseCases() {
     >
       <div className="landing-container">
         <SectionHeader
-          title="Built for real-world privacy"
-          subtitle="Practical examples that balance user privacy and regulatory requirements"
+          title="Where this applies"
+          subtitle="These scenarios vary in what needs to be verified and how deeply the verifier needs to see. The same four mechanisms power all of them."
         />
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -95,6 +98,19 @@ export function UseCases() {
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        <div className="mt-8 text-center">
+          <Link
+            to="/capabilities"
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "h-9 rounded-sm px-4",
+            )}
+          >
+            See all capabilities
+            <IconArrowRight className="ml-2 size-4" />
+          </Link>
         </div>
       </div>
     </section>

@@ -24,7 +24,7 @@ const pillars: Array<{
     title: "Zero-Knowledge Proofs",
     subtitle: "Prove claims without revealing data",
     description:
-      'Prove you\'re over 21 without showing your birthday. Prove you\'re an EU citizen without revealing which country. The verifier learns only "yes" or "no."',
+      "A verifier confirms eligibility without seeing the data behind it. Prove you are over 21 without revealing your birthday. Prove EU citizenship without naming the country.",
     example:
       "Verifier learns: eligible. Nothing about your name, address, or birth date.",
   },
@@ -34,7 +34,7 @@ const pillars: Array<{
     title: "Fully Homomorphic Encryption",
     subtitle: "Compute on encrypted data",
     description:
-      "Compliance checks run on encrypted attributes. The server evaluates age, liveness, and compliance thresholds without decrypting underlying values.",
+      "The server evaluates compliance rules without decrypting the data. Age thresholds, liveness scores, and sanctions checks all run on ciphertexts.",
     example:
       "Server computes on ciphertext. Results are decrypted with user-held keys.",
   },
@@ -44,7 +44,7 @@ const pillars: Array<{
     title: "Cryptographic Commitments",
     subtitle: "Verify without storing",
     description:
-      "Commitments and hashes bind verification evidence for integrity and audit without storing reversible source values.",
+      "Evidence is bound for integrity and audit without being stored in reversible form. Commitments prove that verification happened. They cannot reveal what was verified.",
     example:
       "Commitments remain verifiable while sensitive profile fields stay in encrypted secrets.",
   },
@@ -54,7 +54,7 @@ const pillars: Array<{
     title: "Multi-Credential Key Custody",
     subtitle: "Your keys, your control",
     description:
-      "Your passkey, password, or wallet unlocks encrypted profile secrets locally. Three credential paths, one user-controlled custody model.",
+      "The server stores encrypted blobs it cannot read. Only the user's credential, whether passkey, password, or wallet, unlocks them. Three paths, one custody model.",
     example:
       "Encrypted profile data remains locked unless the user approves credential-based unlock.",
   },
@@ -65,8 +65,8 @@ export function FourPillars() {
     <section className="landing-section landing-band-muted" id="how-it-works">
       <div className="landing-container">
         <SectionHeader
-          title="Four cryptographic pillars for liability-free verification"
-          subtitle="Built on cutting-edge privacy tech to help you stop hoarding data and ship faster."
+          title="What makes verification without disclosure possible"
+          subtitle="Each primitive breaks a different link between knowing data and using it. Together they ensure that verification never requires revelation."
           maxWidth="lg"
         />
 

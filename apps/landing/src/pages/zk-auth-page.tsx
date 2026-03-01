@@ -1,9 +1,11 @@
 import {
   IconArrowRight,
   IconCheck,
+  IconCode,
   IconDatabaseOff,
   IconKey,
   IconLock,
+  IconPlugConnected,
   IconShieldCheck,
   IconShieldLock,
   IconUserCheck,
@@ -42,17 +44,20 @@ function PageLayout({ title, description, children }: PageLayoutProps) {
         Skip to content
       </a>
       <Nav />
-      <main
-        id="main-content"
-        className="mx-auto w-full max-w-5xl flex-1 px-4 py-24 md:py-28"
-      >
-        <header className="mb-8 max-w-3xl">
-          <h1 className="font-display font-semibold text-4xl leading-tight">
-            {title}
-          </h1>
-          <p className="landing-copy mt-3">{description}</p>
-        </header>
-        {children}
+      <main id="main-content" className="flex-1">
+        <section className="landing-band-flat px-4 pt-24 pb-8 md:px-6 md:pt-28">
+          <div className="landing-container">
+            <header className="max-w-3xl">
+              <h1 className="font-display font-semibold text-4xl leading-tight">
+                {title}
+              </h1>
+              <p className="landing-copy mt-3">{description}</p>
+            </header>
+          </div>
+        </section>
+        <section className="landing-section landing-band-flat">
+          <div className="landing-container">{children}</div>
+        </section>
       </main>
       <Footer />
     </div>
@@ -83,7 +88,7 @@ function CodeWindow({ filename }: { readonly filename: string }) {
       <div className="overflow-x-auto bg-zinc-950 p-4 text-[13px] leading-relaxed font-mono dark:bg-zinc-900">
         <pre className="text-zinc-300">
           <span className={cm}>
-            {"// Step 1 \u2014 Dynamic Client Registration (RFC 7591)"}
+            {"// Step 1: Dynamic Client Registration (RFC 7591)"}
           </span>
           {"\n"}
           <span className={kw}>const</span> reg ={" "}
@@ -128,7 +133,7 @@ function CodeWindow({ filename }: { readonly filename: string }) {
           <span className={fn}>json</span>();{"\n"}
           {"\n"}
           <span className={cm}>
-            {"// Step 2 \u2014 Standard OIDC redirect with PKCE"}
+            {"// Step 2: Standard OIDC redirect with PKCE"}
           </span>
           {"\n"}
           <span className={cm}>
@@ -146,7 +151,7 @@ function CodeWindow({ filename }: { readonly filename: string }) {
           </span>
           {"\n\n"}
           <span className={cm}>
-            {"// Step 3 \u2014 Userinfo returns proofs, not PII"}
+            {"// Step 3: Userinfo returns proofs, not PII"}
           </span>
           {"\n"}
           {"{\n"}
@@ -176,7 +181,7 @@ export function ZkAuthPage() {
   return (
     <PageLayout
       title="ZK-Auth: Zero-Knowledge Identity Provider"
-      description="Zero-knowledge cryptography changes the SSO model: Instead of receiving raw PII, relying parties receive cryptographic proofs: verified answers without the underlying data."
+      description="Zero-knowledge cryptography changes the SSO model: instead of receiving raw PII, relying parties receive cryptographic proofs, verified answers without the underlying data."
     >
       <div className="space-y-12">
         {/* The Paradigm Shift Section */}
@@ -214,7 +219,7 @@ export function ZkAuthPage() {
                     />
                     <span className="landing-body">
                       <strong>Massive Liability:</strong> You receive raw PII
-                      (emails, names, dates of birth). You must secure it,
+                      (emails, names, and dates of birth). You must secure it,
                       comply with GDPR/CCPA, and risk devastating breaches.
                     </span>
                   </li>
@@ -288,8 +293,10 @@ export function ZkAuthPage() {
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
             Zentity uses standard OAuth 2.1 and OIDC, but the default response
-            is fundamentally different: services receive cryptographic proofs,
-            not personal data.
+            is fundamentally different:{" "}
+            <strong>
+              services receive cryptographic proofs, not personal data.
+            </strong>
           </p>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -312,8 +319,8 @@ export function ZkAuthPage() {
                     proof:verification
                   </code>
                   ) that answer the question without revealing the underlying
-                  data. A service learns "this person is over 21" without ever
-                  seeing a date of birth.
+                  data. A service learns "this person is over 21"{" "}
+                  <strong>without ever seeing a date of birth.</strong>
                 </p>
               </CardContent>
             </Card>
@@ -325,12 +332,14 @@ export function ZkAuthPage() {
                   <h3 className="font-semibold">Encrypted computation</h3>
                 </div>
                 <p className="landing-body">
-                  Compliance checks often require processing personal data — age
-                  thresholds, jurisdiction membership, risk scoring. With fully
-                  homomorphic encryption (FHE), the server evaluates these
-                  policies directly on ciphertexts. It returns an encrypted yes
-                  or no without ever decrypting the underlying attributes. The
-                  data stays encrypted throughout the entire computation.
+                  Compliance checks often require processing personal data (age
+                  thresholds, jurisdiction membership, and risk scoring). With
+                  fully homomorphic encryption (FHE), the server evaluates these
+                  policies directly on ciphertexts, returning an encrypted yes
+                  or no{" "}
+                  <strong>
+                    without ever decrypting the underlying attributes.
+                  </strong>
                 </p>
               </CardContent>
             </Card>
@@ -345,9 +354,12 @@ export function ZkAuthPage() {
                   When a service legally needs actual personal data (e.g., a
                   bank opening an account), the user unlocks their credential
                   vault with their passkey, password, or wallet and approves
-                  exactly which fields to share. Zentity cannot release PII
-                  without the user actively participating in the consent and
-                  unlock flow.
+                  exactly which fields to share.{" "}
+                  <strong>
+                    Zentity cannot release PII without the user actively
+                    participating
+                  </strong>{" "}
+                  in the consent and unlock flow.
                 </p>
               </CardContent>
             </Card>
@@ -366,24 +378,78 @@ export function ZkAuthPage() {
                   against "harvest now, decrypt later" attacks where adversaries
                   capture encrypted traffic today and break it with a future
                   quantum computer. Compliance records often have multi-year
-                  retention requirements, so the encryption must outlast the
-                  retention period.
+                  retention requirements, so{" "}
+                  <strong>
+                    the encryption must outlast the retention period.
+                  </strong>
                 </p>
               </CardContent>
             </Card>
           </div>
         </section>
 
-        {/* Developer Experience */}
+        {/* Protocol-Level Integration */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            How integration works
+            Integration at the protocol level, not the library level
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            The integration surface is standard OAuth 2.1 and OIDC — no
-            cryptography expertise required. The zero-knowledge layer is
-            invisible to the relying party.
+            Most identity verification platforms require a proprietary SDK: a
+            library to install, a protocol to learn, and infrastructure to host.
+            Zentity requires none of that; the integration boundary is OAuth 2.1
+            and OpenID Connect, the same protocols your application already
+            speaks.{" "}
+            <strong>
+              If you can add "Sign in with Google," you can add Zentity.
+            </strong>
           </p>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <Card>
+              <CardContent className="pt-6">
+                <IconPlugConnected
+                  className={cn("size-5", iconSemanticColors.oauth)}
+                />
+                <h3 className="mt-3 font-semibold">No SDK to install</h3>
+                <p className="landing-body mt-1">
+                  Any language, any framework, any OAuth library. Django, Rails,
+                  Spring, Express, Laravel, or a raw HTTP client.{" "}
+                  <strong>The protocol is the interface.</strong>
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <IconCode
+                  className={cn("size-5", iconSemanticColors.developer)}
+                />
+                <h3 className="mt-3 font-semibold">No cryptography code</h3>
+                <p className="landing-body mt-1">
+                  Zero-knowledge proofs, FHE, and cryptographic commitments
+                  happen behind the protocol boundary.{" "}
+                  <strong>
+                    The relying party never touches a proof, a circuit, or a
+                    ciphertext.
+                  </strong>
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <IconUserCheck
+                  className={cn("size-5", iconSemanticColors.oauth)}
+                />
+                <h3 className="mt-3 font-semibold">No new infrastructure</h3>
+                <p className="landing-body mt-1">
+                  No blockchain nodes, no relay servers, and no WebSocket
+                  connections. The relying party calls standard HTTPS endpoints
+                  and reads standard JWTs.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
             <Card>
@@ -397,11 +463,12 @@ export function ZkAuthPage() {
                       )}
                     />
                     <div>
-                      <h3 className="font-semibold">Standard OIDC Flow</h3>
+                      <h3 className="font-semibold">Standard OIDC flow</h3>
                       <p className="landing-body mt-1">
-                        The relying party redirects to an authorization
-                        endpoint, receives an auth code, and exchanges it for a
-                        standard JWT — the same flow as any OIDC provider.
+                        Redirect to the authorization endpoint, receive an auth
+                        code, exchange it for a JWT. Dynamic Client Registration
+                        (RFC 7591) means the entire setup can be automated with
+                        a single POST request.
                       </p>
                     </div>
                   </li>
@@ -413,21 +480,22 @@ export function ZkAuthPage() {
                       )}
                     />
                     <div>
-                      <h3 className="font-semibold">Scope-Based Proofs</h3>
+                      <h3 className="font-semibold">Scope-based proofs</h3>
                       <p className="landing-body mt-1">
                         Scopes like{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 font-mono">
-                          proof:verification
-                        </code>{" "}
-                        or{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                           proof:age
                         </code>{" "}
+                        or{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                          proof:verification
+                        </code>{" "}
                         return boolean verification flags. PII scopes like{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                           identity.name
                         </code>{" "}
-                        are only requested when policy requires it.
+                        are requested only when regulation requires the actual
+                        data.
                       </p>
                     </div>
                   </li>
@@ -439,7 +507,7 @@ export function ZkAuthPage() {
                     "mt-6 h-9 rounded-sm px-4",
                   )}
                 >
-                  Open OAuth Integration Docs
+                  Open OAuth integration docs
                   <IconArrowRight className="ml-2 size-4" />
                 </Link>
               </CardContent>

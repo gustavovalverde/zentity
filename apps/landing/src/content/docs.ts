@@ -3,10 +3,12 @@ import architecture from "../../../../docs/architecture.md?raw";
 import attestationPrivacy from "../../../../docs/attestation-privacy-architecture.md?raw";
 import blockchainSetup from "../../../../docs/blockchain-setup.md?raw";
 import cryptographicPillars from "../../../../docs/cryptographic-pillars.md?raw";
+import features from "../../../../docs/FEATURES.md?raw";
 import oauthIntegrations from "../../../../docs/oauth-integrations.md?raw";
 import passwordSecurity from "../../../../docs/password-security.md?raw";
 import ssiArchitecture from "../../../../docs/ssi-architecture.md?raw";
 import tamperModel from "../../../../docs/tamper-model.md?raw";
+import useCasesDoc from "../../../../docs/USE_CASES.md?raw";
 import verification from "../../../../docs/verification.md?raw";
 import web3Architecture from "../../../../docs/web3-architecture.md?raw";
 import zkArchitecture from "../../../../docs/zk-architecture.md?raw";
@@ -89,6 +91,18 @@ const docs: Record<string, DocMeta> = {
       "How to verify that deployed services match the public source code",
     content: verification,
   },
+  features: {
+    title: "Features",
+    description:
+      "Capabilities that emerge from Zentity's architectural primitives — what they are and what they enable",
+    content: features,
+  },
+  "use-cases": {
+    title: "Use Cases",
+    description:
+      "Concrete scenarios where privacy-preserving identity verification applies, from age gates to humanitarian aid",
+    content: useCasesDoc,
+  },
 };
 
 export const docsNav = [
@@ -126,6 +140,13 @@ export const docsNav = [
   {
     title: "Trust & Verification",
     items: [{ title: "Deployment Verification", slug: "verification" }],
+  },
+  {
+    title: "Product",
+    items: [
+      { title: "Features", slug: "features" },
+      { title: "Use Cases", slug: "use-cases" },
+    ],
   },
 ];
 

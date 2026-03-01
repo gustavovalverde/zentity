@@ -41,22 +41,24 @@ export function Hero() {
         </h1>
 
         <p className="mx-auto mt-8 max-w-3xl text-muted-foreground text-xl leading-9 sm:text-2xl">
-          Decrease liability, increase conversion, and meet compliance without
-          hoarding toxic PII. Verify users while maintaining absolute privacy.
+          Identity systems force a trade: share data to prove anything about it.
+          Zentity eliminates the trade. Users verify once, then produce
+          cryptographic proofs on demand. The verifier learns the answer.
+          Nothing else.
         </p>
 
         <div className="mx-auto mt-8 grid max-w-5xl gap-2 text-muted-foreground text-sm sm:text-base md:grid-cols-[auto_auto] md:justify-center md:gap-x-10 md:gap-y-3">
           <p className="text-center">
-            <span className="font-semibold text-foreground">Users</span> - share
-            only what each service needs
+            <span className="font-semibold text-foreground">Users</span> - prove
+            facts without revealing data
           </p>
           <p className="text-center">
             <span className="font-semibold text-foreground">Companies</span> -
-            meet compliance with less user data
+            verify without collecting
           </p>
           <p className="text-center md:col-span-2 md:justify-self-center">
             <span className="font-semibold text-foreground">Developers</span> -
-            plug in with OAuth/OIDC and OIDC4 profiles
+            integrate with standard OAuth/OIDC
           </p>
         </div>
 

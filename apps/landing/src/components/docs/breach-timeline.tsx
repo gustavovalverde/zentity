@@ -20,10 +20,9 @@ function inlineBold(text: string): ReactNode {
 /**
  * Parse the markdown between `<!-- BREACH_TIMELINE -->` markers into
  * structured entries. Expected format per line:
- *   - **2024** — National Public Data, 2.9 billion records...
+ *   - **2024.** **National Public Data**, 2.9 billion records...
  *
- * The last non-bullet paragraph (starting with `**And it has not stopped**`)
- * is returned separately as the closing text.
+ * The last non-bullet paragraph is returned separately as the closing text.
  */
 function parseTimeline(md: string): {
   entries: BreachEntry[];
@@ -35,7 +34,9 @@ function parseTimeline(md: string): {
   let pastBullets = false;
 
   for (const line of lines) {
-    const bulletMatch = /^-\s+\*\*(\d{4})\*\*\s*[—–-]\s*(.*)/.exec(line);
+    const bulletMatch = /^-\s+\*\*(\d{4})\.?\*\*\s*(?:[—–-]\s*)?(.*)/.exec(
+      line,
+    );
     if (bulletMatch && !pastBullets) {
       entries.push({
         year: Number.parseInt(bulletMatch[1], 10),

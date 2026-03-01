@@ -159,8 +159,8 @@ export function TrustEvidence() {
     <section className="landing-section landing-band-flat" id="audiences">
       <div className="landing-container">
         <SectionHeader
-          title="What each audience gets"
-          subtitle="One sign-in and verification flow for everyone. Start with simple proof results, then request personal details only when needed and approved."
+          title="One flow, three concerns"
+          subtitle="Users, companies, and developers interact with the same proof-first disclosure flow. What varies is what each cares about: what is revealed, what is retained, or how to integrate."
           maxWidth="lg"
         />
 

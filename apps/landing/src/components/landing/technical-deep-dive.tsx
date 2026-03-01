@@ -26,8 +26,8 @@ export function TechnicalDeepDive() {
     >
       <div className="landing-container">
         <SectionHeader
-          title="Technical Deep Dive"
-          subtitle="Core flows, trust boundaries, and disclosure paths"
+          title="How the architecture enforces privacy"
+          subtitle="Privacy is a consequence of how these components depend on each other, not a feature added on top."
         />
 
         <div>
