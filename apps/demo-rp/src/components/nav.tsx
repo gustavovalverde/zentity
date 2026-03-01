@@ -40,7 +40,7 @@ export function Nav() {
           rel="noopener noreferrer"
           target="_blank"
         >
-          Create Zentity Account
+          Sign Up for Zentity
         </a>
       </nav>
     </header>

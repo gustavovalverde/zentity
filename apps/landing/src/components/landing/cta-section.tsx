@@ -21,7 +21,7 @@ export function CTASection() {
 
             <div className="flex flex-col justify-center gap-3 sm:flex-row sm:justify-center">
               <a
-                href="https://app.zentity.xyz/sign-up?fresh=1"
+                href="https://demo.zentity.xyz"
                 target="_blank"
                 rel="noopener noreferrer"
                 className={cn(
@@ -29,7 +29,7 @@ export function CTASection() {
                   "h-11 px-7 text-base",
                 )}
               >
-                Explore the Demo
+                Try the Demo
                 <IconArrowRight className="ml-2 size-4" />
               </a>
               <Link

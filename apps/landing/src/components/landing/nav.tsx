@@ -138,13 +138,13 @@ export function Nav() {
             <IconBrandGithub className="size-4" />
           </a>
           <a
-            href="https://app.zentity.xyz/sign-up?fresh=1"
+            href="https://demo.zentity.xyz"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Explore the Demo"
+            aria-label="Try the Demo"
             className={cn(buttonVariants({ size: "sm" }))}
           >
-            Explore the Demo
+            Try the Demo
           </a>
         </div>
 
@@ -188,13 +188,13 @@ export function Nav() {
               </nav>
               <div className="mt-6 flex flex-col gap-2 border-border border-t pt-4">
                 <a
-                  href="https://app.zentity.xyz/sign-up?fresh=1"
+                  href="https://demo.zentity.xyz"
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label="Explore the Demo"
+                  aria-label="Try the Demo"
                   className={cn(buttonVariants(), "w-full")}
                 >
-                  Explore the Demo
+                  Try the Demo
                 </a>
               </div>
             </SheetContent>

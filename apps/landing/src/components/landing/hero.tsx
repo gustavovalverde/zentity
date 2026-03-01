@@ -64,16 +64,16 @@ export function Hero() {
 
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
-            href="https://app.zentity.xyz/sign-up?fresh=1"
+            href="https://demo.zentity.xyz"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Explore the Demo"
+            aria-label="Try the Demo"
             className={cn(
               buttonVariants({ size: "lg" }),
               "h-11 px-7 text-base",
             )}
           >
-            Explore the Demo
+            Try the Demo
             <IconArrowRight className="ml-2 size-4" />
           </a>
           <Link

@@ -134,9 +134,9 @@ export default function Page() {
           </h1>
 
           <p className="landing-copy mx-auto max-w-2xl text-lg md:text-xl">
-            Five scenarios, one architecture. Each uses ZK proofs and FHE to
-            answer a different compliance question without storing any personal
-            data.
+            Five scenarios, one architecture. Each authenticates via your
+            Zentity account and uses ZK proofs and FHE to answer a different
+            compliance question without storing personal data.
           </p>
         </div>
       </section>
@@ -241,10 +241,10 @@ export default function Page() {
         <div className="landing-container">
           <Card>
             <CardContent className="p-7 text-center md:p-10">
-              <h2 className="landing-section-title">Try Zentity yourself</h2>
+              <h2 className="landing-section-title">Get started</h2>
               <p className="landing-copy mx-auto mt-3 max-w-xl">
-                Create an account to see how each scenario verifies users
-                without collecting their data.
+                Each scenario authenticates through your Zentity account via
+                OAuth. Sign up once, then explore all five demos.
               </p>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <a
@@ -253,7 +253,7 @@ export default function Page() {
                   rel="noopener noreferrer"
                   target="_blank"
                 >
-                  Create Account
+                  Sign Up for Zentity
                 </a>
                 <a
                   className="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-background px-7 font-medium text-base transition-colors hover:bg-muted hover:text-foreground"
