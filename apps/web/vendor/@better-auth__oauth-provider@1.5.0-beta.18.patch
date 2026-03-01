@@ -59,7 +59,7 @@ index 8662941d8bf26315e8b3cccc4d2ef82307e1bff1..a292d676dd03909ed0da505eca41eb96
  //# sourceMappingURL=index.d.mts.map
 \ No newline at end of file
 diff --git a/dist/index.mjs b/dist/index.mjs
-index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd42267dece79a 100644
+index d5dd0bf602baf090ac81be4ae906e4998bcdca98..209448416cb33921e1b5ee95538091c5b3386345 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -1,4 +1,4 @@
@@ -434,7 +434,17 @@ index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd4226
  		post_logout_redirect_uris: postLogoutRedirectUris ?? void 0,
  		token_endpoint_auth_method: tokenEndpointAuthMethod ?? void 0,
  		grant_types: grantTypes ?? void 0,
-@@ -2721,7 +2903,8 @@ const oauthProvider = (options) => {
+@@ -1746,7 +1928,8 @@ const createOAuthClient = (opts) => createAuthEndpoint("/oauth2/create-client",
+ 			"web",
+ 			"native",
+ 			"user-agent-based"
+-		]).optional()
++		]).optional(),
++		id_token_signed_response_alg: z.enum(["EdDSA", "ML-DSA-65"]).optional()
+ 	}),
+ 	metadata: { openapi: {
+ 		description: "Register an OAuth2 application",
+@@ -2721,7 +2904,8 @@ const oauthProvider = (options) => {
  					scopes_supported: opts.advertisedMetadata?.scopes_supported ?? opts.scopes,
  					public_client_supported: opts.allowUnauthenticatedClientRegistration,
  					grant_types_supported: opts.grantTypes,
@@ -444,7 +454,7 @@ index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd4226
  				});
  			}),
  			getOpenIdConfig: createAuthEndpoint("/.well-known/openid-configuration", {
-@@ -2734,11 +2917,15 @@ const oauthProvider = (options) => {
+@@ -2734,11 +2918,15 @@ const oauthProvider = (options) => {
  			oauth2Authorize: createAuthEndpoint("/oauth2/authorize", {
  				method: "GET",
  				query: z.object({
@@ -461,7 +471,7 @@ index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd4226
  					code_challenge: z.string().optional(),
  					code_challenge_method: z.enum(["S256"]).optional(),
  					nonce: z.string().optional(),
-@@ -2909,16 +3096,21 @@ const oauthProvider = (options) => {
+@@ -2909,16 +3097,21 @@ const oauthProvider = (options) => {
  					grant_type: z.enum([
  						"authorization_code",
  						"client_credentials",
@@ -485,7 +495,17 @@ index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd4226
  				}),
  				metadata: {
  					allowedMediaTypes: ["application/x-www-form-urlencoded"],
-@@ -3621,7 +3813,21 @@ async function authorizeEndpoint(ctx, opts, settings) {
+@@ -3364,7 +3557,8 @@ const oauthProvider = (options) => {
+ 						"web",
+ 						"native",
+ 						"user-agent-based"
+-					]).optional()
++					]).optional(),
++					id_token_signed_response_alg: z.enum(["EdDSA", "ML-DSA-65"]).optional()
+ 				}),
+ 				metadata: { openapi: {
+ 					description: "Register an OAuth2 application",
+@@ -3621,7 +3815,21 @@ async function authorizeEndpoint(ctx, opts, settings) {
  		error_description: "request not found",
  		error: "invalid_request"
  	});
@@ -508,7 +528,7 @@ index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd4226
  	await oAuthState.set({ query: query.toString() });
  	if (!query.client_id) throw ctx.redirect(getErrorURL(ctx, "invalid_client", "client_id is required"));
  	if (!query.response_type) throw ctx.redirect(getErrorURL(ctx, "invalid_request", "response_type is required"));
-@@ -3788,7 +3994,8 @@ function authServerMetadata(ctx, opts, overrides) {
+@@ -3788,7 +3996,8 @@ function authServerMetadata(ctx, opts, overrides) {
  		token_endpoint_auth_methods_supported: [
  			...overrides?.public_client_supported ? ["none"] : [],
  			"client_secret_basic",
@@ -518,7 +538,7 @@ index d5dd0bf602baf090ac81be4ae906e4998bcdca98..8b3615f5c7b17dd823db6e91d8cd4226
  		],
  		introspection_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
  		revocation_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
-@@ -3804,7 +4011,8 @@ function oidcServerMetadata(ctx, opts) {
+@@ -3804,7 +4013,8 @@ function oidcServerMetadata(ctx, opts) {
  			scopes_supported: opts.advertisedMetadata?.scopes_supported ?? opts.scopes,
  			public_client_supported: opts.allowUnauthenticatedClientRegistration,
  			grant_types_supported: opts.grantTypes,

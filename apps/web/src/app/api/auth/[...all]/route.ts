@@ -8,7 +8,11 @@ import {
 
 const { GET: authGET, POST: authPOST } = toNextJsHandler(auth);
 
-const UNWRAP_PATHS = ["/oauth2/token", "/oidc4vci/credential"];
+const UNWRAP_PATHS = [
+  "/oauth2/token",
+  "/oidc4vci/credential",
+  "/oauth2/userinfo",
+];
 
 async function unwrapIfNeeded(request: Request, response: Response) {
   const url = new URL(request.url);

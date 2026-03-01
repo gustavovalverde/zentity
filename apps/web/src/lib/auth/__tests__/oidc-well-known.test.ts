@@ -44,4 +44,14 @@ describe("oidc4vci well-known metadata", () => {
       "http://localhost:3000/api/auth/oauth2/token"
     );
   });
+
+  it("points jwks_uri to the combined JWKS endpoint", async () => {
+    const metadata = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const config =
+      metadata instanceof Response
+        ? ((await metadata.json()) as Record<string, unknown>)
+        : (metadata as Record<string, unknown>);
+
+    expect(config.jwks_uri).toContain("pq-jwks");
+  });
 });

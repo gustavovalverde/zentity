@@ -68,6 +68,7 @@ sequenceDiagram
 | `POST /api/auth/oauth2/revoke` | Token revocation |
 | `GET /api/auth/oauth2/userinfo` | User claims |
 | `GET /api/auth/oauth2/end-session` | Session logout |
+| `GET /api/auth/pq-jwks` | Combined JWKS (Ed25519 + ML-DSA-65 public keys) |
 | `GET /api/auth/oauth2/get-consents` | List all consents for current user |
 | `GET /api/auth/oauth2/get-consent?id=...` | Get a specific consent |
 | `POST /api/auth/oauth2/delete-consent` | Revoke consent (`{ id }`) |
@@ -93,11 +94,17 @@ All RP admin endpoints require an authenticated session with an active organizat
 
 **DCR + assignment** — Clients registered via DCR start without an owner. An org admin can later assign these clients via the approve endpoint, linking them to an organization.
 
-**Client metadata** — Clients support an optional `metadata` JSON field. For scopes that should be selectable but not required, set `optionalScopes`:
+**Client metadata** — Clients support an optional `metadata` JSON field. Common metadata fields:
 
 ```json
-{ "optionalScopes": ["identity.dob", "identity.address"] }
+{
+  "optionalScopes": ["identity.dob", "identity.address"],
+  "id_token_signed_response_alg": "ML-DSA-65"
+}
 ```
+
+- `optionalScopes`: Scopes that should be selectable but not required at consent
+- `id_token_signed_response_alg`: `"EdDSA"` (default) or `"ML-DSA-65"` (post-quantum opt-in). Set via DCR or admin API.
 
 **Direct SQL setup** — OAuth clients are stored in the `oauth_client` table (`apps/web/src/lib/db/schema/oauth-provider.ts`):
 
@@ -110,6 +117,41 @@ VALUES (
   datetime('now')
 );
 ```
+
+### JWT signing and JWKS
+
+Zentity uses a dual-algorithm signing architecture for JWTs:
+
+| Token type | Signing algorithm | When |
+|---|---|---|
+| Access tokens | EdDSA (Ed25519) | Always — ensures standard library compatibility for resource servers |
+| ID tokens | EdDSA (Ed25519) | Default — works with any OAuth library (`jose`, `next-auth`, `openid-client`, etc.) |
+| ID tokens | ML-DSA-65 (post-quantum) | Opt-in per client via DCR metadata |
+
+**JWKS endpoint**: `GET /api/auth/pq-jwks` — serves both Ed25519 and ML-DSA-65 public keys.
+
+**Discovery metadata** (`/.well-known/openid-configuration`):
+
+```json
+{
+  "jwks_uri": "https://app.zentity.xyz/api/auth/pq-jwks",
+  "id_token_signing_alg_values_supported": ["EdDSA", "ML-DSA-65"]
+}
+```
+
+**Opting into ML-DSA-65**: Set `id_token_signed_response_alg` in DCR metadata:
+
+```json
+POST /api/auth/oauth2/register
+{
+  "redirect_uris": ["https://partner.example.com/callback"],
+  "id_token_signed_response_alg": "ML-DSA-65"
+}
+```
+
+**Key lifecycle**: Signing keys (both EdDSA and ML-DSA-65) are generated on first use and persisted in the `jwks` database table. This is the standard OIDC provider pattern (Auth0, Keycloak, etc.). Keys are not configured via environment variables — the database is the persistent store. The `expiresAt` column exists for future key rotation support.
+
+**Verifying tokens**: Standard OAuth libraries verify EdDSA-signed tokens against the JWKS endpoint without any special configuration. ML-DSA-65 tokens require a post-quantum-capable JWT library.
 
 ### Configuration
 

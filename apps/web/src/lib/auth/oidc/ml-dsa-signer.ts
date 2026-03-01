@@ -50,7 +50,7 @@ async function getOrCreateMlDsaSigningKey(): Promise<MlDsaSigningKey> {
   const kid = crypto.randomUUID();
 
   const publicKeyJson = JSON.stringify({
-    kty: "ML-DSA",
+    kty: "AKP",
     alg: ML_DSA_ALG,
     pub: bytesToBase64(publicKey),
   });
@@ -82,7 +82,7 @@ export async function signJwtWithMlDsa(
 ): Promise<string> {
   const { kid, secretKey } = await getOrCreateMlDsaSigningKey();
 
-  const header = { alg: ML_DSA_ALG, typ: "jwt", kid };
+  const header = { alg: ML_DSA_ALG, typ: "JWT", kid };
   const encodedHeader = encodeJwtPart(header);
   const encodedPayload = encodeJwtPart(payload);
 
@@ -92,20 +92,6 @@ export async function signJwtWithMlDsa(
   const signature = mlDsaSign(signingInput, secretKey);
 
   return `${encodedHeader}.${encodedPayload}.${bytesToBase64Url(signature)}`;
-}
-
-export async function getMlDsaPublicJwks(): Promise<
-  Array<{ kty: string; alg: string; kid: string; pub: string }>
-> {
-  const { kid, publicKey } = await getOrCreateMlDsaSigningKey();
-  return [
-    {
-      kty: "ML-DSA",
-      alg: ML_DSA_ALG,
-      kid,
-      pub: bytesToBase64(publicKey),
-    },
-  ];
 }
 
 /**

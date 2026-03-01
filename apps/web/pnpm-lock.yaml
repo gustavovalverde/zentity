@@ -19,7 +19,7 @@ patchedDependencies:
     hash: 6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1
     path: vendor/@better-auth__core@1.5.0-beta.18.patch
   '@better-auth/oauth-provider@1.5.0-beta.18':
-    hash: 57c125306f7cf8bb9895cfe6d98bc0344cd7300f76bfc3ac66810d23c9f9b738
+    hash: a34a79c8bd2e00ad683d7f81c3e4f5c8642dedfa4a76390d8de719a2da363cd1
     path: vendor/@better-auth__oauth-provider@1.5.0-beta.18.patch
   '@better-auth/passkey@1.5.0-beta.18':
     hash: 8d2b486cadfe0e93b63cfa5cfd7a321fe77ffff9b653ed7f9390b158f73be18b
@@ -43,7 +43,7 @@ importers:
         version: 1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/oauth-provider':
         specifier: 1.5.0-beta.18
-        version: 1.5.0-beta.18(patch_hash=57c125306f7cf8bb9895cfe6d98bc0344cd7300f76bfc3ac66810d23c9f9b738)(@better-auth/core@1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.0-beta.18(patch_hash=9c60dbc54f60a4f5ab0dc7eee8ea5e55117e873b8fe70803a0099634310be808)(4d4cbf34b9252b79c152995b45284042))(better-call@1.3.2(zod@4.3.6))
+        version: 1.5.0-beta.18(patch_hash=a34a79c8bd2e00ad683d7f81c3e4f5c8642dedfa4a76390d8de719a2da363cd1)(@better-auth/core@1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.0-beta.18(patch_hash=9c60dbc54f60a4f5ab0dc7eee8ea5e55117e873b8fe70803a0099634310be808)(4d4cbf34b9252b79c152995b45284042))(better-call@1.3.2(zod@4.3.6))
       '@better-auth/oidc4ida':
         specifier: file:vendor/better-auth-oidc4ida-0.0.0.tgz
         version: file:vendor/better-auth-oidc4ida-0.0.0.tgz(@better-auth/core@1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(better-auth@1.5.0-beta.18(patch_hash=9c60dbc54f60a4f5ab0dc7eee8ea5e55117e873b8fe70803a0099634310be808)(4d4cbf34b9252b79c152995b45284042))
@@ -8889,7 +8889,7 @@ snapshots:
       '@better-auth/utils': 0.3.1
       mongodb: 7.1.0
 
-  '@better-auth/oauth-provider@1.5.0-beta.18(patch_hash=57c125306f7cf8bb9895cfe6d98bc0344cd7300f76bfc3ac66810d23c9f9b738)(@better-auth/core@1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.0-beta.18(patch_hash=9c60dbc54f60a4f5ab0dc7eee8ea5e55117e873b8fe70803a0099634310be808)(4d4cbf34b9252b79c152995b45284042))(better-call@1.3.2(zod@4.3.6))':
+  '@better-auth/oauth-provider@1.5.0-beta.18(patch_hash=a34a79c8bd2e00ad683d7f81c3e4f5c8642dedfa4a76390d8de719a2da363cd1)(@better-auth/core@1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.0-beta.18(patch_hash=9c60dbc54f60a4f5ab0dc7eee8ea5e55117e873b8fe70803a0099634310be808)(4d4cbf34b9252b79c152995b45284042))(better-call@1.3.2(zod@4.3.6))':
     dependencies:
       '@better-auth/core': 1.5.0-beta.18(patch_hash=6f4db3add4bb3287bdaf2f0c7dc4f7aabe5bfd5e3202e0cace9e08cba89b33f1)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.0)
       '@better-auth/utils': 0.3.1

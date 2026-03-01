@@ -359,9 +359,11 @@ erDiagram
     text status "active | revoked"
   }
   JWKS {
-    text id PK
-    text public_key
-    text private_key
+    text id PK "kid — key identifier"
+    text public_key "JWK JSON (Ed25519) or custom JSON (ML-DSA-65)"
+    text private_key "JWK JSON or raw keying material"
+    text alg "EdDSA | ML-DSA-65"
+    text crv "Ed25519 | null"
   }
 ```
 
@@ -448,7 +450,7 @@ Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
 
 - `oidc4vci_offers`: Pre-authorized credential offers (short-lived)
 - `oidc4vci_issued_credentials`: Issued credential metadata + status
-- `jwks`: Signing key material for credential signatures
+- `jwks`: Signing key material — stores both EdDSA (Ed25519) keys for standard JWT signing and ML-DSA-65 keys for post-quantum opt-in. Keys are generated on first use and distinguished by the `alg` column. The combined JWKS endpoint (`/api/auth/pq-jwks`) serves public keys from all rows.
 
 ### Selective disclosure
 

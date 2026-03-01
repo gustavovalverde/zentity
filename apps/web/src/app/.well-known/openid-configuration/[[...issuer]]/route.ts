@@ -18,5 +18,14 @@ export async function GET(
   }
 
   const metadata = unwrapMetadata(await auth.api.getOpenIdConfig());
-  return buildWellKnownResponse(metadata);
+
+  const enriched =
+    typeof metadata === "object" && metadata !== null
+      ? {
+          ...(metadata as Record<string, unknown>),
+          id_token_signing_alg_values_supported: ["EdDSA", "ML-DSA-65"],
+        }
+      : metadata;
+
+  return buildWellKnownResponse(enriched);
 }

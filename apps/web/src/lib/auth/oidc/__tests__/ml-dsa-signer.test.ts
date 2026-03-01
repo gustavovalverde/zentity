@@ -42,7 +42,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
   it("produces valid compact JWT with 3 parts", () => {
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "test-kid" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "test-kid" },
       { sub: "user-1", iss: "zentity" },
       secretKey
     );
@@ -52,14 +52,14 @@ describe("ML-DSA-65 JWT signing", () => {
 
   it("header contains alg: ML-DSA-65", () => {
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "test-kid" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "test-kid" },
       { sub: "user-1" },
       secretKey
     );
 
     const { header } = parseJwtParts(jwt);
     expect(header.alg).toBe("ML-DSA-65");
-    expect(header.typ).toBe("jwt");
+    expect(header.typ).toBe("JWT");
     expect(header.kid).toBe("test-kid");
   });
 
@@ -72,7 +72,7 @@ describe("ML-DSA-65 JWT signing", () => {
     };
 
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "k1" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "k1" },
       inputPayload,
       secretKey
     );
@@ -83,7 +83,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
   it("signature verifies with mlDsaVerify against known public key", () => {
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "k1" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "k1" },
       { sub: "user-1" },
       secretKey
     );
@@ -94,7 +94,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
   it("tampered payload fails verification", () => {
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "k1" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "k1" },
       { sub: "user-1" },
       secretKey
     );
@@ -112,7 +112,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
   it("tampered header fails verification", () => {
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "k1" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "k1" },
       { sub: "user-1" },
       secretKey
     );
@@ -120,7 +120,7 @@ describe("ML-DSA-65 JWT signing", () => {
     const parts = jwt.split(".");
     const tamperedHeader = bytesToBase64Url(
       new TextEncoder().encode(
-        JSON.stringify({ alg: "ML-DSA-65", typ: "jwt", kid: "fake-kid" })
+        JSON.stringify({ alg: "ML-DSA-65", typ: "JWT", kid: "fake-kid" })
       )
     );
     const tampered = `${tamperedHeader}.${parts[1]}.${parts[2]}`;
@@ -131,7 +131,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
   it("wrong public key fails verification", () => {
     const jwt = buildJwt(
-      { alg: "ML-DSA-65", typ: "jwt", kid: "k1" },
+      { alg: "ML-DSA-65", typ: "JWT", kid: "k1" },
       { sub: "user-1" },
       secretKey
     );
@@ -161,7 +161,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
     it("empty signature part → fails verification", () => {
       const jwt = buildJwt(
-        { alg: "ML-DSA-65", typ: "jwt", kid: "k1" },
+        { alg: "ML-DSA-65", typ: "JWT", kid: "k1" },
         { sub: "user-1" },
         secretKey
       );
@@ -176,7 +176,7 @@ describe("ML-DSA-65 JWT signing", () => {
   describe("algorithm downgrade attacks", () => {
     it("alg: 'none' in header → signature still checked, verification fails", () => {
       const jwt = buildJwt(
-        { alg: "none", typ: "jwt", kid: "k1" },
+        { alg: "none", typ: "JWT", kid: "k1" },
         { sub: "user-1" },
         secretKey
       );
@@ -192,7 +192,7 @@ describe("ML-DSA-65 JWT signing", () => {
       // Even if attacker changes alg to EdDSA, the signature is ML-DSA
       // and only verifiable with ML-DSA verify. An EdDSA verifier would reject it.
       const jwt = buildJwt(
-        { alg: "EdDSA", typ: "jwt", kid: "k1" },
+        { alg: "EdDSA", typ: "JWT", kid: "k1" },
         { sub: "user-1" },
         secretKey
       );
@@ -203,7 +203,7 @@ describe("ML-DSA-65 JWT signing", () => {
 
     it("header alg mismatch is detectable post-verification", () => {
       const jwt = buildJwt(
-        { alg: "RS256", typ: "jwt", kid: "k1" },
+        { alg: "RS256", typ: "JWT", kid: "k1" },
         { sub: "user-1" },
         secretKey
       );

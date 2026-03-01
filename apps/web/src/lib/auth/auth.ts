@@ -33,7 +33,7 @@ import {
   IDENTITY_SCOPES,
   isIdentityScope,
 } from "@/lib/auth/oidc/identity-scopes";
-import { signJwtWithMlDsa } from "@/lib/auth/oidc/ml-dsa-signer";
+import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   extractProofScopes,
   filterProofClaimsByScopes,
@@ -572,12 +572,12 @@ export const auth = betterAuth({
     jwt({
       jwks: {
         disablePrivateKeyEncryption: true,
-        keyPairConfig: { alg: "ML-DSA-65" as "EdDSA" },
+        keyPairConfig: { alg: "EdDSA" },
         remoteUrl: joinAuthIssuerPath(authIssuer, "pq-jwks"),
       },
       jwt: {
         issuer: authIssuer,
-        sign: signJwtWithMlDsa,
+        sign: signJwt,
       },
     }),
     oauthProvider({
