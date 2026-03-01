@@ -210,9 +210,7 @@ function createAuth(clientIds: Record<ProviderId, string>) {
     secret: env.BETTER_AUTH_SECRET,
     account: {
       accountLinking: {
-        trustedProviders: PROVIDER_IDS.map(
-          (id: ProviderId) => `zentity-${id}`
-        ),
+        trustedProviders: PROVIDER_IDS.map((id: ProviderId) => `zentity-${id}`),
       },
     },
     advanced: {

@@ -46,9 +46,7 @@ export async function saveDcrClientId(
     });
 }
 
-export async function resolveClientId(
-  providerId: ProviderId
-): Promise<string> {
+export async function resolveClientId(providerId: ProviderId): Promise<string> {
   const dcrId = await readDcrClientId(providerId);
   if (dcrId) {
     return dcrId;

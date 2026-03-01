@@ -44,9 +44,9 @@ export async function GET(request: Request) {
 const postSchema = z.object({
   providerId: z.string(),
   clientName: z.string().min(1),
-  scopes: z.union([z.string().min(1), z.array(z.string().min(1))]).transform(
-    (v) => (Array.isArray(v) ? v.join(" ") : v)
-  ),
+  scopes: z
+    .union([z.string().min(1), z.array(z.string().min(1))])
+    .transform((v) => (Array.isArray(v) ? v.join(" ") : v)),
 });
 
 export async function POST(request: Request) {
