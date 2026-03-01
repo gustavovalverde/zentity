@@ -4,7 +4,6 @@ import { z } from "zod";
 import {
   isValidProviderId,
   readDcrClientId,
-  resolveClientId,
   saveDcrClientId,
 } from "@/lib/dcr";
 import { env } from "@/lib/env";
@@ -20,22 +19,9 @@ export async function GET(request: Request) {
     );
   }
 
-  const dcrClientId = await readDcrClientId(providerId);
-  if (dcrClientId) {
-    return NextResponse.json({
-      registered: true,
-      client_id: dcrClientId,
-      source: "dcr",
-    });
-  }
-
-  const clientId = await resolveClientId(providerId);
-  if (!clientId.startsWith("pending-dcr-")) {
-    return NextResponse.json({
-      registered: true,
-      client_id: clientId,
-      source: "preset",
-    });
+  const clientId = await readDcrClientId(providerId);
+  if (clientId) {
+    return NextResponse.json({ registered: true, client_id: clientId });
   }
 
   return NextResponse.json({ registered: false });

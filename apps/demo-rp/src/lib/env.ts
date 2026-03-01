@@ -30,12 +30,6 @@ export const env = createEnv({
     DATABASE_AUTH_TOKEN: z.string().optional(),
 
     OIDC4VCI_WALLET_CLIENT_ID: z.string().default("zentity-wallet"),
-
-    ZENTITY_BANK_CLIENT_ID: z.string().optional(),
-    ZENTITY_EXCHANGE_CLIENT_ID: z.string().optional(),
-    ZENTITY_WINE_CLIENT_ID: z.string().optional(),
-    ZENTITY_AID_CLIENT_ID: z.string().optional(),
-    ZENTITY_VERIPASS_CLIENT_ID: z.string().optional(),
   },
 
   client: {
@@ -52,11 +46,6 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
     OIDC4VCI_WALLET_CLIENT_ID: process.env.OIDC4VCI_WALLET_CLIENT_ID,
-    ZENTITY_BANK_CLIENT_ID: process.env.ZENTITY_BANK_CLIENT_ID,
-    ZENTITY_EXCHANGE_CLIENT_ID: process.env.ZENTITY_EXCHANGE_CLIENT_ID,
-    ZENTITY_WINE_CLIENT_ID: process.env.ZENTITY_WINE_CLIENT_ID,
-    ZENTITY_AID_CLIENT_ID: process.env.ZENTITY_AID_CLIENT_ID,
-    ZENTITY_VERIPASS_CLIENT_ID: process.env.ZENTITY_VERIPASS_CLIENT_ID,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   },
 });

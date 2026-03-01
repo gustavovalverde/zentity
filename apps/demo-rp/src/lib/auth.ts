@@ -5,6 +5,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session, user, verification } from "@/lib/db/schema";
@@ -12,7 +13,7 @@ import {
   currentClientIdKey,
   PROVIDER_IDS,
   type ProviderId,
-  resolveClientId,
+  readDcrClientId,
 } from "@/lib/dcr";
 import { env } from "@/lib/env";
 
@@ -36,13 +37,16 @@ function stripProviderFields(obj: Record<string, unknown>) {
   return obj;
 }
 
-function decodeIdTokenPayload(idToken: string): Record<string, unknown> {
-  const parts = idToken.split(".");
-  if (parts.length !== 3) {
-    return {};
-  }
+const zentityJwks = createRemoteJWKSet(
+  new URL("/api/auth/pq-jwks", env.ZENTITY_URL)
+);
+
+async function verifyIdToken(
+  idToken: string
+): Promise<Record<string, unknown>> {
   try {
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+    const { payload } = await jwtVerify(idToken, zentityJwks);
+    return payload as Record<string, unknown>;
   } catch {
     return {};
   }
@@ -61,11 +65,7 @@ async function fetchUserInfo(tokens: {
   if (!response.ok) {
     throw new Error(`Failed to fetch Zentity userinfo (${response.status})`);
   }
-  const raw = (await response.json()) as Record<string, unknown>;
-  const body =
-    raw.response && typeof raw.response === "object"
-      ? (raw.response as Record<string, unknown>)
-      : raw;
+  const body = (await response.json()) as Record<string, unknown>;
   const id =
     (typeof body.sub === "string" && body.sub) ||
     (typeof body.id === "string" && body.id);
@@ -78,7 +78,8 @@ async function fetchUserInfo(tokens: {
     emailVerified: Boolean(body.email_verified),
   };
   if (tokens.idToken) {
-    Object.assign(profile, decodeIdTokenPayload(tokens.idToken));
+    const idTokenClaims = await verifyIdToken(tokens.idToken);
+    Object.assign(profile, idTokenClaims);
   }
   stripProviderFields(profile);
   return { id, profile };
@@ -200,7 +201,17 @@ function makeProviderConfig(
   };
 }
 
-function createAuth(clientIds: Record<ProviderId, string>) {
+const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
+  bank: ["openid", "email", "proof:verification"],
+  exchange: ["openid", "email", "proof:verification"],
+  wine: ["openid", "email", "proof:age"],
+  aid: ["openid", "email", "proof:verification"],
+  veripass: ["openid", "email", "proof:verification"],
+};
+
+function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
+  const registeredProviders = PROVIDER_IDS.filter((id) => clientIds[id]);
+
   return betterAuth({
     database: drizzleAdapter(getDb(), {
       provider: "sqlite",
@@ -224,33 +235,13 @@ function createAuth(clientIds: Record<ProviderId, string>) {
     plugins: [
       nextCookies(),
       genericOAuth({
-        config: [
-          makeProviderConfig("zentity-bank", clientIds.bank, [
-            "openid",
-            "email",
-            "proof:verification",
-          ]),
-          makeProviderConfig("zentity-exchange", clientIds.exchange, [
-            "openid",
-            "email",
-            "proof:verification",
-          ]),
-          makeProviderConfig("zentity-wine", clientIds.wine, [
-            "openid",
-            "email",
-            "proof:age",
-          ]),
-          makeProviderConfig("zentity-aid", clientIds.aid, [
-            "openid",
-            "email",
-            "proof:verification",
-          ]),
-          makeProviderConfig("zentity-veripass", clientIds.veripass, [
-            "openid",
-            "email",
-            "proof:verification",
-          ]),
-        ],
+        config: registeredProviders.map((id) =>
+          makeProviderConfig(
+            `zentity-${id}`,
+            clientIds[id]!,
+            PROVIDER_SCOPES[id]
+          )
+        ),
       }),
     ],
   });
@@ -263,10 +254,13 @@ export async function getAuth() {
   const key = await currentClientIdKey();
   if (!_instance || key !== _cachedClientIds) {
     _cachedClientIds = key;
-    const clientIds = {} as Record<ProviderId, string>;
+    const clientIds: Partial<Record<ProviderId, string>> = {};
     await Promise.all(
       PROVIDER_IDS.map(async (id) => {
-        clientIds[id] = await resolveClientId(id);
+        const clientId = await readDcrClientId(id);
+        if (clientId) {
+          clientIds[id] = clientId;
+        }
       })
     );
     _instance = createAuth(clientIds);
