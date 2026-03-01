@@ -1,0 +1,28 @@
+import "server-only";
+
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+
+import { env } from "@/lib/env";
+
+import { account, session, user, verification } from "./schema";
+
+const dbSchema = { account, session, user, verification };
+
+function createDb() {
+  const client = createClient({
+    url: env.DATABASE_URL,
+    authToken: env.DATABASE_AUTH_TOKEN,
+  });
+  return drizzle(client, { schema: dbSchema });
+}
+
+type Db = ReturnType<typeof createDb>;
+let _db: Db | null = null;
+
+export function getDb(): Db {
+  if (!_db) {
+    _db = createDb();
+  }
+  return _db;
+}

@@ -1,0 +1,92 @@
+{
+  "extends": [
+    "ultracite/biome/core",
+    "ultracite/biome/react",
+    "ultracite/biome/next"
+  ],
+  "linter": {
+    "domains": {
+      "next": "recommended"
+    }
+  },
+  "files": {
+    "includes": [
+      "src/**",
+      "*.ts",
+      "*.mts",
+      "!!node_modules",
+      "!!.next",
+      "!!.data"
+    ]
+  },
+  "overrides": [
+    {
+      "includes": ["src/components/ui/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off",
+            "noNoninteractiveElementInteractions": "off",
+            "noSvgWithoutTitle": "off",
+            "useFocusableInteractive": "off",
+            "useKeyWithClickEvents": "off",
+            "useSemanticElements": "off"
+          },
+          "correctness": {
+            "noUnusedVariables": "off"
+          },
+          "performance": {
+            "noNamespaceImport": "off"
+          },
+          "style": {
+            "useImportType": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          },
+          "nursery": {
+            "noShadow": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/components/**/*.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off",
+            "noSvgWithoutTitle": "off"
+          },
+          "style": {
+            "noNestedTernary": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/hooks/**/*.ts"],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noFloatingPromises": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/app/**/page.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNestedTernary": "off"
+          },
+          "nursery": {
+            "noFloatingPromises": "off"
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json"
+}

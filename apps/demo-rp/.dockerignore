@@ -1,0 +1,23 @@
+# Exclude everything first, then whitelist only what's needed for the build.
+*
+
+# Include package manifests
+!package.json
+!pnpm-lock.yaml
+
+# Include source code
+!src/
+
+# Include public assets
+!public/
+
+# Include configuration files
+!next.config.ts
+!drizzle.config.ts
+!tsconfig.json
+!postcss.config.mjs
+!components.json
+
+# Include Dockerfile and railway config
+!Dockerfile
+!railway.toml

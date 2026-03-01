@@ -13,6 +13,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "apps/demo-rp/**"
       - "apps/fhe/**"
       - "apps/ocr/**"
       - "apps/web/**"
@@ -39,6 +40,7 @@ jobs:
       pull-requests: read # Required for paths-filter on PRs
       contents: read # Required to checkout code
     outputs:
+      demo-rp: ${{ steps.filter.outputs.demo-rp }}
       fhe: ${{ steps.filter.outputs.fhe }}
       ocr: ${{ steps.filter.outputs.ocr }}
       web: ${{ steps.filter.outputs.web }}
@@ -50,6 +52,10 @@ jobs:
         id: filter
         with:
           filters: |
+            demo-rp:
+              - 'apps/demo-rp/**'
+              - '.github/workflows/build-attest.yml'
+              - '.github/workflows/reusable-build-service.yml'
             fhe:
               - 'apps/fhe/**'
               - '.github/workflows/build-attest.yml'
@@ -62,6 +68,23 @@ jobs:
               - 'apps/web/**'
               - '.github/workflows/build-attest.yml'
               - '.github/workflows/reusable-build-service.yml'
+
+  # Build and attest Demo RP
+  build-demo-rp:
+    name: Build Demo RP
+    needs: changes
+    if: needs.changes.outputs.demo-rp == 'true' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/reusable-build-service.yml
+    with:
+      service_name: demo-rp
+      context_path: apps/demo-rp
+    secrets:
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
 
   # Build and attest FHE service
   build-fhe:
@@ -113,13 +136,15 @@ jobs:
   # Summary job
   summary:
     name: Build Summary
-    needs: [build-fhe, build-ocr, build-web]
+    needs: [build-demo-rp, build-fhe, build-ocr, build-web]
     if: always()
     runs-on: ubuntu-latest
     permissions: {} # No permissions needed - only writes to GITHUB_STEP_SUMMARY
     steps:
       - name: Summary
         env:
+          DEMO_RP_RESULT: ${{ needs.build-demo-rp.result }}
+          DEMO_RP_IMAGE: ${{ needs.build-demo-rp.outputs.image || 'skipped' }}
           FHE_RESULT: ${{ needs.build-fhe.result }}
           FHE_IMAGE: ${{ needs.build-fhe.outputs.image || 'skipped' }}
           OCR_RESULT: ${{ needs.build-ocr.result }}
@@ -134,6 +159,7 @@ jobs:
             echo ""
             echo "| Service | Status | Image |"
             echo "|---------|--------|-------|"
+            echo "| Demo RP | ${DEMO_RP_RESULT} | \`${DEMO_RP_IMAGE}\` |"
             echo "| FHE | ${FHE_RESULT} | \`${FHE_IMAGE}\` |"
             echo "| OCR | ${OCR_RESULT} | \`${OCR_IMAGE}\` |"
             echo "| Web | ${WEB_RESULT} | \`${WEB_IMAGE}\` |"
@@ -142,6 +168,7 @@ jobs:
             echo ""
             echo "**GitHub CLI (attestations):**"
             echo "\`\`\`bash"
+            echo "gh attestation verify oci://ghcr.io/${REPO}/demo-rp:latest --owner ${OWNER}"
             echo "gh attestation verify oci://ghcr.io/${REPO}/fhe-service:latest --owner ${OWNER}"
             echo "gh attestation verify oci://ghcr.io/${REPO}/ocr-service:latest --owner ${OWNER}"
             echo "gh attestation verify oci://ghcr.io/${REPO}/web:latest --owner ${OWNER}"
@@ -155,6 +182,7 @@ jobs:
             echo "\`\`\`"
             echo ""
             echo "**Build Info Endpoints:**"
+            echo "- Demo RP: \`GET /api/health\`"
             echo "- FHE: \`GET /build-info\`"
             echo "- OCR: \`GET /build-info\`"
             echo "- Web: \`GET /api/build-info\`"

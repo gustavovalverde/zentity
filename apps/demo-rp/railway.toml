@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://railway.com/railway.schema.json
+# Demo RP Service - Next.js on port 3102
+# Public domain: demo.zentity.xyz
+#
+# Required env vars (set via Railway dashboard/CLI):
+#   NODE_ENV=production
+#   BETTER_AUTH_SECRET=<secret>
+#   ZENTITY_URL=https://app.zentity.xyz
+#   NEXT_PUBLIC_APP_URL=https://demo.zentity.xyz
+#   DATABASE_URL=file:./.data/demo-rp.db (or libsql:// for Turso)
+
+[build]
+builder = "DOCKERFILE"
+
+[build.args]
+NEXT_PUBLIC_APP_URL = "https://demo.zentity.xyz"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "ALWAYS"
+numReplicas = 1
