@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { eq } from "drizzle-orm";
 
+import { getDb } from "@/lib/db/connection";
+import { dcrClient } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 
 const PROVIDER_IDS = ["bank", "exchange", "wine", "aid", "veripass"] as const;
@@ -18,25 +19,37 @@ export function isValidProviderId(id: string): id is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(id);
 }
 
-export function dcrPath(providerId: ProviderId): string {
-  return join(process.cwd(), ".data", `dcr-${providerId}.json`);
-}
-
-export function readDcrClientId(providerId: ProviderId): string | null {
-  const path = dcrPath(providerId);
-  if (!existsSync(path)) {
-    return null;
-  }
+export async function readDcrClientId(
+  providerId: ProviderId
+): Promise<string | null> {
   try {
-    const data = JSON.parse(readFileSync(path, "utf-8"));
-    return typeof data.client_id === "string" ? data.client_id : null;
+    const row = await getDb().query.dcrClient.findFirst({
+      where: eq(dcrClient.providerId, providerId),
+      columns: { clientId: true },
+    });
+    return row?.clientId ?? null;
   } catch {
     return null;
   }
 }
 
-export function resolveClientId(providerId: ProviderId): string {
-  const dcrId = readDcrClientId(providerId);
+export async function saveDcrClientId(
+  providerId: ProviderId,
+  clientId: string
+): Promise<void> {
+  await getDb()
+    .insert(dcrClient)
+    .values({ providerId, clientId })
+    .onConflictDoUpdate({
+      target: dcrClient.providerId,
+      set: { clientId },
+    });
+}
+
+export async function resolveClientId(
+  providerId: ProviderId
+): Promise<string> {
+  const dcrId = await readDcrClientId(providerId);
   if (dcrId) {
     return dcrId;
   }
@@ -50,10 +63,14 @@ export function resolveClientId(providerId: ProviderId): string {
   return `pending-dcr-${providerId}`;
 }
 
-export function currentClientIdKey(): string {
-  return PROVIDER_IDS.map((id) => `${id}:${readDcrClientId(id) ?? ""}`).join(
-    "|"
+export async function currentClientIdKey(): Promise<string> {
+  const parts = await Promise.all(
+    PROVIDER_IDS.map(async (id) => {
+      const clientId = await readDcrClientId(id);
+      return `${id}:${clientId ?? ""}`;
+    })
   );
+  return parts.join("|");
 }
 
 export { PROVIDER_IDS };

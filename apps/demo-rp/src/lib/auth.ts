@@ -200,7 +200,7 @@ function makeProviderConfig(
   };
 }
 
-function createAuth() {
+function createAuth(clientIds: Record<ProviderId, string>) {
   return betterAuth({
     database: drizzleAdapter(getDb(), {
       provider: "sqlite",
@@ -210,7 +210,9 @@ function createAuth() {
     secret: env.BETTER_AUTH_SECRET,
     account: {
       accountLinking: {
-        trustedProviders: PROVIDER_IDS.map((id: ProviderId) => `zentity-${id}`),
+        trustedProviders: PROVIDER_IDS.map(
+          (id: ProviderId) => `zentity-${id}`
+        ),
       },
     },
     advanced: {
@@ -225,27 +227,27 @@ function createAuth() {
       nextCookies(),
       genericOAuth({
         config: [
-          makeProviderConfig("zentity-bank", resolveClientId("bank"), [
+          makeProviderConfig("zentity-bank", clientIds.bank, [
             "openid",
             "email",
             "proof:verification",
           ]),
-          makeProviderConfig("zentity-exchange", resolveClientId("exchange"), [
+          makeProviderConfig("zentity-exchange", clientIds.exchange, [
             "openid",
             "email",
             "proof:verification",
           ]),
-          makeProviderConfig("zentity-wine", resolveClientId("wine"), [
+          makeProviderConfig("zentity-wine", clientIds.wine, [
             "openid",
             "email",
             "proof:age",
           ]),
-          makeProviderConfig("zentity-aid", resolveClientId("aid"), [
+          makeProviderConfig("zentity-aid", clientIds.aid, [
             "openid",
             "email",
             "proof:verification",
           ]),
-          makeProviderConfig("zentity-veripass", resolveClientId("veripass"), [
+          makeProviderConfig("zentity-veripass", clientIds.veripass, [
             "openid",
             "email",
             "proof:verification",
@@ -259,11 +261,17 @@ function createAuth() {
 let _instance: ReturnType<typeof createAuth> | null = null;
 let _cachedClientIds: string | undefined;
 
-export function getAuth() {
-  const key = currentClientIdKey();
+export async function getAuth() {
+  const key = await currentClientIdKey();
   if (!_instance || key !== _cachedClientIds) {
     _cachedClientIds = key;
-    _instance = createAuth();
+    const clientIds = {} as Record<ProviderId, string>;
+    await Promise.all(
+      PROVIDER_IDS.map(async (id) => {
+        clientIds[id] = await resolveClientId(id);
+      })
+    );
+    _instance = createAuth(clientIds);
   }
   return _instance;
 }

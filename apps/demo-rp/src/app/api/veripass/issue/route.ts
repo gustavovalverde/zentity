@@ -55,7 +55,7 @@ async function parseOfferUri(raw: string): Promise<CredentialOffer> {
  * for a token, generates a holder key pair, and requests the credential.
  */
 export async function POST(request: Request) {
-  const auth = getAuth();
+  const auth = await getAuth();
   const session = await auth.api.getSession({
     headers: await headers(),
   });

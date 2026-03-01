@@ -50,3 +50,8 @@ export const verification = sqliteTable("verification", {
   createdAt: text("createdAt").notNull().default("datetime('now')"),
   updatedAt: text("updatedAt").notNull().default("datetime('now')"),
 });
+
+export const dcrClient = sqliteTable("dcr_client", {
+  providerId: text("providerId").primaryKey(),
+  clientId: text("clientId").notNull(),
+});

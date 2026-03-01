@@ -1,17 +1,15 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
-  dcrPath,
   isValidProviderId,
   readDcrClientId,
   resolveClientId,
+  saveDcrClientId,
 } from "@/lib/dcr";
 import { env } from "@/lib/env";
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const providerId = searchParams.get("providerId");
 
@@ -22,7 +20,7 @@ export function GET(request: Request) {
     );
   }
 
-  const dcrClientId = readDcrClientId(providerId);
+  const dcrClientId = await readDcrClientId(providerId);
   if (dcrClientId) {
     return NextResponse.json({
       registered: true,
@@ -31,7 +29,7 @@ export function GET(request: Request) {
     });
   }
 
-  const clientId = resolveClientId(providerId);
+  const clientId = await resolveClientId(providerId);
   if (!clientId.startsWith("pending-dcr-")) {
     return NextResponse.json({
       registered: true,
@@ -46,7 +44,9 @@ export function GET(request: Request) {
 const postSchema = z.object({
   providerId: z.string(),
   clientName: z.string().min(1),
-  scopes: z.string().min(1),
+  scopes: z.union([z.string().min(1), z.array(z.string().min(1))]).transform(
+    (v) => (Array.isArray(v) ? v.join(" ") : v)
+  ),
 });
 
 export async function POST(request: Request) {
@@ -89,12 +89,7 @@ export async function POST(request: Request) {
 
   const result = (await response.json()) as { client_id: string };
 
-  const filePath = dcrPath(providerId);
-  const dir = dirname(filePath);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-  writeFileSync(filePath, JSON.stringify({ client_id: result.client_id }));
+  await saveDcrClientId(providerId, result.client_id);
 
   return NextResponse.json({
     client_id: result.client_id,

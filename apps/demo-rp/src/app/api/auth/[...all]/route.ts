@@ -2,7 +2,8 @@ import { getAuth } from "@/lib/auth";
 
 async function handle(request: Request) {
   try {
-    return await getAuth().handler(request);
+    const auth = await getAuth();
+    return await auth.handler(request);
   } catch (error) {
     console.error("[demo-rp auth]", error);
     return new Response(
@@ -14,10 +15,10 @@ async function handle(request: Request) {
   }
 }
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   return handle(request);
 }
 
-export function POST(request: Request) {
+export async function POST(request: Request) {
   return handle(request);
 }
