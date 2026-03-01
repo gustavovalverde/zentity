@@ -65,9 +65,9 @@ export async function continueOAuthFlow(): Promise<string | null> {
     throw new Error(response.error?.message || "Failed to continue OAuth flow");
   }
 
-  const data = response.data as { redirect?: boolean; uri?: string };
-  if (data.redirect && data.uri) {
-    return data.uri;
+  const data = response.data as { redirect?: boolean; url?: string };
+  if (data.redirect && data.url) {
+    return data.url;
   }
 
   return null;
