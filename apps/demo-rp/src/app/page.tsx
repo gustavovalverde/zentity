@@ -319,6 +319,16 @@ export default function Page() {
                 <li>
                   <a
                     className="text-muted-foreground text-sm transition-colors hover:text-foreground"
+                    href="https://zentity.xyz"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Zentity Home
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="text-muted-foreground text-sm transition-colors hover:text-foreground"
                     href="https://app.zentity.xyz/sign-up?fresh=1"
                     rel="noopener noreferrer"
                     target="_blank"
@@ -329,7 +339,7 @@ export default function Page() {
                 <li>
                   <a
                     className="text-muted-foreground text-sm transition-colors hover:text-foreground"
-                    href="https://zentity.xyz"
+                    href="https://zentity.xyz/docs/architecture"
                     rel="noopener noreferrer"
                     target="_blank"
                   >

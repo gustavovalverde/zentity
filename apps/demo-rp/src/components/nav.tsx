@@ -24,7 +24,7 @@ export function Nav() {
       )}
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-        <a aria-label="Zentity Home" className="flex items-center" href="/">
+        <a aria-label="Zentity Home" className="flex items-center" href="https://zentity.xyz">
           <Image
             alt="Zentity"
             className="object-contain dark:invert"
