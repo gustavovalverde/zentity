@@ -3,6 +3,7 @@
 import { KeyRound, TriangleAlert } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -61,10 +62,21 @@ function getLastUsedLabel(method: string | null): string | null {
 }
 
 export default function SignInPage() {
+  const searchParams = useSearchParams();
   const [lastUsedMethod, setLastUsedMethod] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("error") === "signup_disabled") {
+      toast.error("No account found", {
+        description:
+          "Please sign up first, then link your social account from Settings.",
+      });
+      window.history.replaceState({}, "", "/sign-in");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     setLastUsedMethod(authClient.getLastUsedLoginMethod?.() ?? null);

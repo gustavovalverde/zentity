@@ -1,16 +1,22 @@
-import type { ReactNode } from "react";
-
+import { MarkdownRenderer } from "@/components/docs/markdown-renderer";
 import { Footer } from "@/components/landing/footer";
 import { Nav } from "@/components/landing/nav";
 import { useDocumentHead } from "@/lib/use-document-head";
 
+import rawPrivacy from "../../../../docs/legal/privacy-policy.md?raw";
+import rawTerms from "../../../../docs/legal/terms-of-service.md?raw";
+
+function stripH1(md: string): string {
+  return md.replace(/^#\s+[^\n]*\n+/, "");
+}
+
 interface LegalLayoutProps {
   title: string;
   description: string;
-  children: ReactNode;
+  content: string;
 }
 
-function LegalLayout({ title, description, children }: LegalLayoutProps) {
+function LegalLayout({ title, description, content }: LegalLayoutProps) {
   useDocumentHead({
     title: `${title} | Zentity`,
     description,
@@ -27,13 +33,15 @@ function LegalLayout({ title, description, children }: LegalLayoutProps) {
       <Nav />
       <main
         id="main-content"
-        className="mx-auto w-full max-w-4xl flex-1 px-4 py-24"
+        className="mx-auto w-full max-w-3xl flex-1 px-4 py-24"
       >
         <article className="rounded-lg border border-border bg-card p-6 md:p-8">
           <h1 className="font-display font-semibold text-3xl leading-tight">
             {title}
           </h1>
-          <div className="landing-copy mt-6 space-y-4">{children}</div>
+          <div className="landing-copy mt-6">
+            <MarkdownRenderer content={content} />
+          </div>
         </article>
       </main>
       <Footer />
@@ -45,31 +53,9 @@ export function PrivacyPage() {
   return (
     <LegalLayout
       title="Privacy Policy"
-      description="How Zentity handles data in the public demo and documentation site."
-    >
-      <p>Last updated: February 25, 2026.</p>
-      <p>
-        Zentity is an active proof-of-concept project. We design flows to
-        minimize plaintext personal data exposure and avoid storing raw document
-        images or selfies after verification processing.
-      </p>
-      <p>
-        For the landing site itself, analytics and tracking are intentionally
-        minimal. For the product demo, handling of identity and cryptographic
-        artifacts follows the architecture and trust-boundary documentation in
-        the docs section.
-      </p>
-      <p>
-        If you need a signed enterprise privacy agreement or DPA, contact{" "}
-        <a
-          href="mailto:hello@zentity.xyz"
-          className="underline underline-offset-4"
-        >
-          hello@zentity.xyz
-        </a>
-        .
-      </p>
-    </LegalLayout>
+      description="How Zentity collects, uses, and protects your data."
+      content={stripH1(rawPrivacy)}
+    />
   );
 }
 
@@ -77,37 +63,8 @@ export function TermsPage() {
   return (
     <LegalLayout
       title="Terms of Service"
-      description="Terms for evaluating the Zentity landing site and public demo."
-    >
-      <p>Last updated: February 25, 2026.</p>
-      <p>
-        Zentity is provided as an alpha proof-of-concept for evaluation and
-        research. It is not represented as production-ready identity
-        infrastructure.
-      </p>
-      <p>
-        The source code is available under the{" "}
-        <a
-          href="https://osaasy.dev/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline underline-offset-4"
-        >
-          O&apos;Saasy License
-        </a>
-        . Use of the software and derivatives is governed by that license.
-      </p>
-      <p>
-        For commercial usage terms, integrations, or enterprise agreements,
-        contact{" "}
-        <a
-          href="mailto:hello@zentity.xyz"
-          className="underline underline-offset-4"
-        >
-          hello@zentity.xyz
-        </a>
-        .
-      </p>
-    </LegalLayout>
+      description="Terms for using the Zentity platform."
+      content={stripH1(rawTerms)}
+    />
   );
 }

@@ -5,19 +5,19 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
+import { prepareForNewSession } from "@/lib/auth/session-manager";
 
 export function SocialLoginButtons() {
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
 
   const handleSocialLogin = async (provider: "google" | "github") => {
     setLoadingProvider(provider);
+    prepareForNewSession();
     try {
-      // callbackURL is the fallback destination after social auth.
-      // The oauthProviderClient plugin automatically includes oauth_query from the URL,
-      // so if we're in an OAuth flow, better-auth redirects to consent page instead.
       await authClient.signIn.social({
         provider,
         callbackURL: "/dashboard",
+        errorCallbackURL: "/sign-in",
       });
     } catch {
       setLoadingProvider(null);

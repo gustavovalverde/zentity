@@ -456,23 +456,21 @@ export const auth = betterAuth({
       enabled: true,
     },
   },
-  // OAuth providers for account linking (users must complete identity verification first)
+  account: {
+    encryptOAuthTokens: true,
+  },
   socialProviders: {
     google: {
       clientId: env.GOOGLE_CLIENT_ID ?? "",
       clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
-      // Enable account linking
-      mapProfileToUser: (profile) => ({
-        image: profile.picture,
-      }),
+      disableSignUp: true,
+      disableDefaultScope: true,
+      scope: ["openid", "email"],
     },
     github: {
       clientId: env.GITHUB_CLIENT_ID ?? "",
       clientSecret: env.GITHUB_CLIENT_SECRET ?? "",
-      // Enable account linking
-      mapProfileToUser: (profile) => ({
-        image: profile.avatar_url,
-      }),
+      disableSignUp: true,
     },
   },
   session: {
