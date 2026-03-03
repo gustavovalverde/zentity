@@ -30,6 +30,7 @@ builder = "DOCKERFILE"
 
 [build.args]
 NEXT_PUBLIC_APP_URL = "https://app.zentity.xyz"
+NEXT_PUBLIC_ZKPASSPORT_ENABLED = "true"
 
 [deploy]
 healthcheckPath = "/api/health"
