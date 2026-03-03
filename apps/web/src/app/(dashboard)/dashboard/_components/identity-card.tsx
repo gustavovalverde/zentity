@@ -9,6 +9,7 @@ import {
   CheckCircle,
   CheckCircle2,
   Shield,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -35,6 +36,7 @@ import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
 } from "@/lib/db/queries/identity";
+import { getPassportChipVerificationByUserId } from "@/lib/db/queries/passport-chip";
 
 interface IdentityCardProps {
   assuranceState: AssuranceState | null;
@@ -129,6 +131,80 @@ export async function IdentityCard({
               </Button>
             </EmptyContent>
           </Empty>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Tier 3: Chip Verified display
+  if (tier === 3 && userId) {
+    const chipVerification = await getPassportChipVerificationByUserId(userId);
+
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle>Identity Status</CardTitle>
+            {assuranceState && <TierBadge tier={tier} />}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-2">
+          <div className="space-y-6">
+            <div className="flex items-center gap-4 rounded-lg border border-info/30 bg-info/5 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-info/10 text-info">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-medium text-info">Chip Verified</p>
+                <p className="text-muted-foreground text-sm">
+                  Passport NFC chip cryptographically verified — highest
+                  assurance level
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {chipVerification?.ageVerified && (
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+                    <CheckCircle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">
+                      Age Verified
+                    </p>
+                    <p className="font-medium">18+ Confirmed</p>
+                  </div>
+                </div>
+              )}
+              {chipVerification?.sanctionsCleared && (
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Sanctions</p>
+                    <p className="font-medium">Cleared</p>
+                  </div>
+                </div>
+              )}
+              {chipVerification?.verifiedAt && (
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
+                    <Calendar className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Verified On</p>
+                    <p className="font-medium">
+                      {new Date(
+                        chipVerification.verifiedAt
+                      ).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
     );

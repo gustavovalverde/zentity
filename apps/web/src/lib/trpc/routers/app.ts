@@ -26,6 +26,7 @@ import { credentialsRouter } from "./credentials";
 import { cryptoRouter } from "./crypto/router";
 import { identityRouter } from "./identity/router";
 import { livenessRouter } from "./liveness";
+import { passportChipRouter } from "./passport-chip";
 import { recoveryRouter } from "./recovery/router";
 import { secretsRouter } from "./secrets";
 import { signUpRouter } from "./sign-up";
@@ -39,6 +40,7 @@ export const appRouter = router({
   crypto: cryptoRouter,
   identity: identityRouter,
   liveness: livenessRouter,
+  passportChip: passportChipRouter,
   recovery: recoveryRouter,
   secrets: secretsRouter,
   signUp: signUpRouter,

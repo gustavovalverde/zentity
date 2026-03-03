@@ -13,6 +13,7 @@ import "client-only";
  */
 
 import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
+import type { CachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 
 import { evaluatePrf } from "@/lib/auth/webauthn-prf";
 import {
@@ -33,7 +34,7 @@ import { AuthMode } from "./proof-types";
 /**
  * Auth mode detection result.
  */
-interface AuthModeInfo {
+export interface AuthModeInfo {
   mode: "passkey" | "opaque" | "wallet";
   passkeyCreds?: { credentialId: string; prfSalt: Uint8Array }[];
 }
@@ -54,7 +55,7 @@ export type BindingContextResult =
  * Detect auth mode from secret wrappers.
  * Returns null if no wrappers are registered.
  */
-async function detectAuthMode(): Promise<AuthModeInfo | null> {
+export async function detectAuthMode(): Promise<AuthModeInfo | null> {
   const bundle = await trpc.secrets.getSecretBundle.query({
     secretType: SECRET_TYPES.FHE_KEYS,
   });
@@ -110,6 +111,53 @@ async function getPasskeyPrfOutput(
         : null) ?? prfOutputs.keys().next().value;
 
     return credentialId ? (prfOutputs.get(credentialId) ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prompt WebAuthn PRF and return full CachedBindingMaterial for vault storage.
+ * Unlike getPasskeyPrfOutput (which returns only the PRF bytes), this returns
+ * everything needed to build an EnrollmentCredential.
+ */
+export async function acquirePasskeyMaterial(
+  creds: { credentialId: string; prfSalt: Uint8Array }[]
+): Promise<CachedBindingMaterial | null> {
+  const saltByCredential: Record<string, Uint8Array> = {};
+  for (const cred of creds) {
+    saltByCredential[cred.credentialId] = cred.prfSalt;
+  }
+
+  try {
+    const { prfOutputs, selectedCredentialId } = await evaluatePrf({
+      credentialIdToSalt: saltByCredential,
+    });
+
+    const credentialId =
+      (selectedCredentialId && prfOutputs.has(selectedCredentialId)
+        ? selectedCredentialId
+        : null) ?? prfOutputs.keys().next().value;
+
+    if (!credentialId) {
+      return null;
+    }
+    const prfOutput = prfOutputs.get(credentialId);
+    if (!prfOutput) {
+      return null;
+    }
+
+    const cred = creds.find((c) => c.credentialId === credentialId);
+    if (!cred) {
+      return null;
+    }
+
+    return {
+      mode: "passkey",
+      prfOutput,
+      credentialId,
+      prfSalt: cred.prfSalt,
+    };
   } catch {
     return null;
   }

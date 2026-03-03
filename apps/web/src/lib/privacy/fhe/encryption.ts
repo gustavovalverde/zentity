@@ -28,6 +28,8 @@ export interface FheEncryptionSchedule {
   /** Full DOB as days since 1900-01-01 (UTC) */
   dobDays?: number | null;
   flowId?: string;
+  /** Synthetic liveness score for non-OCR paths (e.g. chip NFC = 1.0) */
+  livenessScore?: number | null;
   reason?: string;
   requestId?: string;
   userId: string;
@@ -111,7 +113,8 @@ async function runFheEncryption(
         typeof context?.dobDays === "number"
           ? context.dobDays
           : (transientDobDays.get(userId) ?? null);
-      const livenessScore = draft?.antispoofScore;
+      const livenessScore =
+        draft?.antispoofScore ?? context?.livenessScore ?? undefined;
 
       const verificationStatus = await getVerificationStatus(userId);
       const complianceLevel = verificationStatus.verified
@@ -321,6 +324,7 @@ export function scheduleFheEncryption(args: FheEncryptionSchedule): void {
     flowId: args.flowId ?? existing?.flowId,
     reason: args.reason ?? existing?.reason,
     dobDays: args.dobDays ?? existing?.dobDays,
+    livenessScore: args.livenessScore ?? existing?.livenessScore,
   });
   if (activeFheJobs.has(args.userId)) {
     return;

@@ -31,6 +31,7 @@ import {
   identityDocuments,
   identityVerificationDrafts,
   identityVerificationJobs,
+  passportChipVerifications,
 } from "../schema/identity";
 import { getSignedClaimTypesByUserAndDocument } from "./crypto";
 
@@ -94,7 +95,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   userId: string
 ): Promise<{
   verified: boolean;
-  level: "none" | "basic" | "full";
+  level: "none" | "basic" | "full" | "chip";
   checks: {
     document: boolean;
     liveness: boolean;
@@ -109,7 +110,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   const documentId = selectedDocument?.id ?? null;
 
   // Parallelize queries that don't depend on each other
-  const [sessionProofRows, signedClaimTypes] = await Promise.all([
+  const [sessionProofRows, signedClaimTypes, chipRow] = await Promise.all([
     documentId
       ? db
           .select({
@@ -132,6 +133,23 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     documentId
       ? getSignedClaimTypesByUserAndDocument(userId, documentId)
       : Promise.resolve([]),
+    db
+      .select({
+        id: passportChipVerifications.id,
+        ageVerified: passportChipVerifications.ageVerified,
+        sanctionsCleared: passportChipVerifications.sanctionsCleared,
+        faceMatchPassed: passportChipVerifications.faceMatchPassed,
+        nationalityCommitment: passportChipVerifications.nationalityCommitment,
+        uniqueIdentifier: passportChipVerifications.uniqueIdentifier,
+      })
+      .from(passportChipVerifications)
+      .where(
+        and(
+          eq(passportChipVerifications.userId, userId),
+          eq(passportChipVerifications.status, "verified")
+        )
+      )
+      .get(),
   ]);
 
   const requiredProofs = [
@@ -200,7 +218,27 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   const passedChecks = Object.values(coreChecks).filter(Boolean).length;
   const totalChecks = Object.values(coreChecks).length;
 
-  let level: "none" | "basic" | "full" = "none";
+  if (chipRow) {
+    return {
+      verified: true,
+      level: "chip" as const,
+      checks: {
+        // NFC chip verification = document authenticity (SOD signature)
+        document: true,
+        // NFC challenge-response = physical possession (implicit liveness)
+        liveness: true,
+        ageProof: chipRow.ageVerified === true,
+        // NFC SOD signature chain proves document validity
+        docValidityProof: true,
+        nationalityProof: Boolean(chipRow.nationalityCommitment),
+        faceMatchProof: chipRow.faceMatchPassed === true,
+        // Nullifier = cryptographic identity binding
+        identityBindingProof: Boolean(chipRow.uniqueIdentifier),
+      },
+    };
+  }
+
+  let level: "none" | "basic" | "full" | "chip" = "none";
   if (passedChecks === totalChecks) {
     level = "full";
   } else if (passedChecks >= Math.ceil(totalChecks / 2)) {
@@ -599,6 +637,7 @@ export async function upsertIdentityBundle(data: {
   fheKeyId?: string | null;
   fheStatus?: FheStatus | null;
   fheError?: string | null;
+  chipVerificationId?: string | null;
 }): Promise<void> {
   const insertValues: typeof identityBundles.$inferInsert = {
     userId: data.userId,
@@ -610,6 +649,7 @@ export async function upsertIdentityBundle(data: {
     fheKeyId: data.fheKeyId ?? null,
     fheStatus: data.fheStatus ?? null,
     fheError: data.fheError ?? null,
+    chipVerificationId: data.chipVerificationId ?? null,
   };
 
   // Treat this function as a partial upsert: undefined means "leave unchanged"
@@ -641,6 +681,9 @@ export async function upsertIdentityBundle(data: {
   }
   if (data.fheError !== undefined) {
     updateSet.fheError = data.fheError;
+  }
+  if (data.chipVerificationId !== undefined) {
+    updateSet.chipVerificationId = data.chipVerificationId;
   }
 
   await db

@@ -52,6 +52,16 @@ export const riskLevelEnum = ["low", "medium", "high", "critical"] as const;
 
 export type RiskLevel = (typeof riskLevelEnum)[number];
 
+export const chipVerificationStatusEnum = [
+  "pending",
+  "verified",
+  "failed",
+  "expired",
+] as const;
+
+export type ChipVerificationStatus =
+  (typeof chipVerificationStatusEnum)[number];
+
 export const identityBundles = sqliteTable(
   "identity_bundles",
   {
@@ -70,6 +80,8 @@ export const identityBundles = sqliteTable(
       enum: fheStatusEnum,
     }),
     fheError: text("fhe_error"),
+
+    chipVerificationId: text("chip_verification_id"),
 
     // Compliance commitments (SHA256 hashes - never store plaintext)
     dobCommitment: text("dob_commitment"),
@@ -213,6 +225,44 @@ export const identityVerificationJobs = sqliteTable(
     index("idx_identity_jobs_user").on(table.userId),
   ]
 );
+
+export const passportChipVerifications = sqliteTable(
+  "passport_chip_verifications",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    uniqueIdentifier: text("unique_identifier"),
+    requestId: text("request_id"),
+    status: text("status", {
+      enum: chipVerificationStatusEnum,
+    })
+      .notNull()
+      .default("pending"),
+    ageVerified: integer("age_verified", { mode: "boolean" }),
+    sanctionsCleared: integer("sanctions_cleared", { mode: "boolean" }),
+    faceMatchAvailable: integer("face_match_available", { mode: "boolean" }),
+    faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
+    nameCommitment: text("name_commitment"),
+    dobCommitment: text("dob_commitment"),
+    nationalityCommitment: text("nationality_commitment"),
+    documentType: text("document_type"),
+    issuingCountry: text("issuing_country"),
+    verifiedAt: text("verified_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_chip_verifications_user").on(table.userId),
+    index("idx_chip_verifications_nullifier").on(table.uniqueIdentifier),
+  ]
+);
+
+export type PassportChipVerification =
+  typeof passportChipVerifications.$inferSelect;
+export type NewPassportChipVerification =
+  typeof passportChipVerifications.$inferInsert;
 
 export type IdentityBundle = typeof identityBundles.$inferSelect;
 export type NewIdentityBundle = typeof identityBundles.$inferInsert;

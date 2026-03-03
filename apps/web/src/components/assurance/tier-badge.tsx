@@ -1,6 +1,6 @@
 import type { AccountTier, TierName } from "@/lib/assurance/types";
 
-import { CheckCircle2, Shield, User } from "lucide-react";
+import { CheckCircle2, Shield, ShieldCheck, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils/classname";
@@ -17,18 +17,21 @@ const TIER_ICONS = {
   0: Shield,
   1: User,
   2: CheckCircle2,
+  3: ShieldCheck,
 } as const;
 
 const TIER_VARIANTS = {
   0: "secondary",
   1: "outline",
   2: "success",
+  3: "info",
 } as const;
 
 const TIER_LABELS: Record<AccountTier, TierName> = {
   0: "Anonymous",
   1: "Account",
   2: "Verified",
+  3: "Chip Verified",
 };
 
 /**

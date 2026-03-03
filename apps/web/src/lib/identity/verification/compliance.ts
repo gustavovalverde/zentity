@@ -10,9 +10,11 @@
  */
 export function getComplianceLevel(status: {
   verified: boolean;
-  level: "none" | "basic" | "full";
+  level: "none" | "basic" | "full" | "chip";
 }): number {
   switch (status.level) {
+    case "chip":
+      return 4;
     case "full":
       return 3;
     case "basic":

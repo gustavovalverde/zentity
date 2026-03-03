@@ -82,6 +82,70 @@ describe("oidc claim mapping", () => {
     });
   });
 
+  it("builds chip-verified claims with correct check mappings", async () => {
+    mockGetVerificationStatus.mockResolvedValueOnce({
+      verified: true,
+      level: "chip",
+      checks: {
+        document: true,
+        liveness: true,
+        ageProof: true,
+        docValidityProof: true,
+        nationalityProof: true,
+        faceMatchProof: true,
+        identityBindingProof: true,
+      },
+    });
+
+    const claims = await buildProofClaims("user-chip");
+
+    expect(claims).toMatchObject({
+      verification_level: "chip",
+      verified: true,
+      chip_verified: true,
+      chip_verification_method: "nfc",
+      document_verified: true,
+      liveness_verified: true,
+      age_proof_verified: true,
+      doc_validity_proof_verified: true,
+      nationality_proof_verified: true,
+      face_match_verified: true,
+      identity_binding_verified: true,
+    });
+  });
+
+  it("builds chip-verified OIDC4IDA claims", async () => {
+    mockGetVerificationStatus.mockResolvedValueOnce({
+      verified: true,
+      level: "chip",
+      checks: {
+        document: true,
+        liveness: true,
+        ageProof: true,
+        docValidityProof: true,
+        nationalityProof: true,
+        faceMatchProof: false,
+        identityBindingProof: true,
+      },
+    });
+
+    const verifiedClaims = await buildOidcVerifiedClaims("user-chip");
+
+    expect(verifiedClaims).toMatchObject({
+      verification: {
+        trust_framework: "zentity",
+        assurance_level: "chip",
+      },
+      claims: {
+        verification_level: "chip",
+        verified: true,
+        chip_verified: true,
+        chip_verification_method: "nfc",
+        face_match_verified: false,
+      },
+    });
+  });
+
   it("returns null verified_claims when no assurance", async () => {
     mockGetVerificationStatus.mockResolvedValueOnce({
       verified: false,

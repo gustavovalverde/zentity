@@ -38,6 +38,7 @@ describe("computeAssuranceState", () => {
         hasSession: false,
         loginMethod: null,
         hasSecuredKeys: false,
+        chipVerified: false,
         documentVerified: false,
         livenessVerified: false,
         faceMatchVerified: false,
@@ -59,6 +60,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "opaque",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: false,
         livenessVerified: false,
         faceMatchVerified: false,
@@ -78,6 +80,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: false,
+        chipVerified: false,
         documentVerified: false,
         livenessVerified: false,
         faceMatchVerified: false,
@@ -95,6 +98,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: true,
@@ -114,6 +118,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: true,
@@ -133,6 +138,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: true,
@@ -150,6 +156,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: true,
@@ -167,6 +174,7 @@ describe("computeAssuranceState", () => {
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: false,
@@ -180,12 +188,69 @@ describe("computeAssuranceState", () => {
     });
   });
 
+  describe("Tier 3 - Chip Verified", () => {
+    it("returns Tier 3 for chip verified users with FHE complete", () => {
+      const state = computeAssuranceState({
+        hasSession: true,
+        loginMethod: "passkey",
+        hasSecuredKeys: true,
+        chipVerified: true,
+        documentVerified: false,
+        livenessVerified: false,
+        faceMatchVerified: false,
+        zkProofsComplete: false,
+        fheComplete: true,
+        onChainAttested: false,
+      });
+
+      expect(state.tier).toBe(3);
+      expect(state.tierName).toBe("Chip Verified");
+      expect(state.details.chipVerified).toBe(true);
+    });
+
+    it("Tier 3 takes precedence over Tier 2", () => {
+      const state = computeAssuranceState({
+        hasSession: true,
+        loginMethod: "passkey",
+        hasSecuredKeys: true,
+        chipVerified: true,
+        documentVerified: true,
+        livenessVerified: true,
+        faceMatchVerified: true,
+        zkProofsComplete: true,
+        fheComplete: true,
+        onChainAttested: false,
+      });
+
+      expect(state.tier).toBe(3);
+      expect(state.tierName).toBe("Chip Verified");
+    });
+
+    it("stays at Tier 1 if chipVerified but FHE incomplete", () => {
+      const state = computeAssuranceState({
+        hasSession: true,
+        loginMethod: "passkey",
+        hasSecuredKeys: true,
+        chipVerified: true,
+        documentVerified: false,
+        livenessVerified: false,
+        faceMatchVerified: false,
+        zkProofsComplete: false,
+        fheComplete: false,
+        onChainAttested: false,
+      });
+
+      expect(state.tier).toBe(1);
+    });
+  });
+
   describe("details population", () => {
     it("populates all details fields correctly", () => {
       const state = computeAssuranceState({
         hasSession: true,
         loginMethod: "passkey",
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: true,
@@ -197,6 +262,7 @@ describe("computeAssuranceState", () => {
       expect(state.details).toEqual({
         isAuthenticated: true,
         hasSecuredKeys: true,
+        chipVerified: false,
         documentVerified: true,
         livenessVerified: true,
         faceMatchVerified: true,

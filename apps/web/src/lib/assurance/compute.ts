@@ -72,6 +72,7 @@ export function deriveAuthStrength(
  * Input data for computing assurance state
  */
 export interface AssuranceInput {
+  chipVerified: boolean;
   documentVerified: boolean;
   faceMatchVerified: boolean;
   fheComplete: boolean;
@@ -97,6 +98,7 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     hasSession,
     loginMethod,
     hasSecuredKeys,
+    chipVerified,
     documentVerified,
     livenessVerified,
     faceMatchVerified,
@@ -124,7 +126,10 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
   if (hasSession && hasSecuredKeys) {
     tier = 1; // Account tier
 
-    if (identityComplete && proofsComplete) {
+    // Tier 3 (chip) takes precedence over Tier 2 (OCR)
+    if (chipVerified && fheComplete) {
+      tier = 3; // Chip Verified tier
+    } else if (identityComplete && proofsComplete) {
       tier = 2; // Verified tier
     }
   }
@@ -133,11 +138,13 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     0: "Anonymous",
     1: "Account",
     2: "Verified",
+    3: "Chip Verified",
   };
 
   const details: VerificationDetails = {
     isAuthenticated: hasSession,
     hasSecuredKeys,
+    chipVerified,
     documentVerified,
     livenessVerified,
     faceMatchVerified,

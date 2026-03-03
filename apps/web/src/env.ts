@@ -130,6 +130,7 @@ export const env = createEnv({
     // Feature flags
     NEXT_PUBLIC_ENABLE_FHEVM: booleanStringWithDefault("true"),
     NEXT_PUBLIC_ENABLE_HARDHAT: booleanStringWithDefault("false"),
+    NEXT_PUBLIC_ZKPASSPORT_ENABLED: booleanStringWithDefault("false"),
 
     // Web3
     NEXT_PUBLIC_PROJECT_ID: z.string().optional(),
@@ -212,6 +213,7 @@ export const env = createEnv({
     NEXT_PUBLIC_FHEVM_RPC_URL: process.env.NEXT_PUBLIC_FHEVM_RPC_URL,
     NEXT_PUBLIC_NOIR_DEBUG: process.env.NEXT_PUBLIC_NOIR_DEBUG,
     NEXT_PUBLIC_NOIR_WORKERS: process.env.NEXT_PUBLIC_NOIR_WORKERS,
+    NEXT_PUBLIC_ZKPASSPORT_ENABLED: process.env.NEXT_PUBLIC_ZKPASSPORT_ENABLED,
   },
 });
 

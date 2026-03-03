@@ -26,6 +26,7 @@ const FEATURE_REQUIREMENTS: Record<FeatureName, FeatureRequirement> = {
   attestation: { minTier: 2, requiresStrongAuth: true },
   token_minting: { minTier: 2, requiresStrongAuth: true },
   guardian_recovery: { minTier: 1, requiresStrongAuth: true },
+  enhanced_credentials: { minTier: 3, requiresStrongAuth: false },
 };
 
 /**
@@ -88,8 +89,8 @@ function getNextTierRequirements(
 ): TierAdvancementRequirement[] | null {
   const { tier, details } = state;
 
-  // Tier 2 is max
-  if (tier >= 2) {
+  // Tier 3 is max
+  if (tier >= 3) {
     return null;
   }
 
@@ -102,6 +103,25 @@ function getNextTierRequirements(
         description: "Sign up or sign in to access your dashboard",
         completed: details.isAuthenticated,
         action: { label: "Sign Up", href: "/sign-up" },
+      },
+    ];
+  }
+
+  // Tier 2 → 3: Upgrade via passport NFC chip
+  if (tier === 2) {
+    return [
+      {
+        id: "chip",
+        label: "Passport Chip",
+        description:
+          "Verify your passport's NFC chip for the highest assurance level",
+        completed: details.chipVerified,
+        action: details.chipVerified
+          ? undefined
+          : {
+              label: "Verify Passport",
+              href: "/dashboard/verify/passport-chip",
+            },
       },
     ];
   }

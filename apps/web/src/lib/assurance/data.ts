@@ -22,6 +22,7 @@ import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
 } from "@/lib/db/queries/identity";
+import { hasVerifiedChipVerification } from "@/lib/db/queries/passport-chip";
 
 import {
   areZkProofsComplete,
@@ -123,13 +124,19 @@ export const getAssuranceState = cache(async function getAssuranceState(
       ?.lastLoginMethod ?? null;
 
   // Gather primary data in parallel
-  const [hasSecuredKeys, selectedDocument, fheAttributeTypes, hasAttestation] =
-    await Promise.all([
-      hasSecuredFheKeys(userId),
-      getSelectedIdentityDocumentByUserId(userId),
-      getEncryptedAttributeTypesByUserId(userId),
-      hasOnChainAttestation(userId),
-    ]);
+  const [
+    hasSecuredKeys,
+    selectedDocument,
+    fheAttributeTypes,
+    hasAttestation,
+    chipVerified,
+  ] = await Promise.all([
+    hasSecuredFheKeys(userId),
+    getSelectedIdentityDocumentByUserId(userId),
+    getEncryptedAttributeTypesByUserId(userId),
+    hasOnChainAttestation(userId),
+    hasVerifiedChipVerification(userId),
+  ]);
 
   const documentId = selectedDocument?.id ?? null;
   const documentVerified = selectedDocument?.status === "verified";
@@ -155,6 +162,7 @@ export const getAssuranceState = cache(async function getAssuranceState(
     hasSession,
     loginMethod: lastLoginMethod,
     hasSecuredKeys,
+    chipVerified,
     documentVerified,
     livenessVerified,
     faceMatchVerified,
@@ -173,6 +181,7 @@ export function getUnauthenticatedAssuranceState(): AssuranceState {
     hasSession: false,
     loginMethod: null,
     hasSecuredKeys: false,
+    chipVerified: false,
     documentVerified: false,
     livenessVerified: false,
     faceMatchVerified: false,

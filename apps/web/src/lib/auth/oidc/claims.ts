@@ -18,6 +18,8 @@ export const PROOF_DISCLOSURE_KEYS = [
   "issuer_id",
   "verification_time",
   "attestation_expires_at",
+  "chip_verified",
+  "chip_verification_method",
 ] as const;
 
 type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
@@ -25,6 +27,8 @@ type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
 interface VerificationClaims extends Record<string, unknown> {
   age_proof_verified: boolean;
   attestation_expires_at?: string;
+  chip_verification_method?: "nfc";
+  chip_verified: boolean;
   doc_validity_proof_verified: boolean;
   document_verified: boolean;
   face_match_verified: boolean;
@@ -39,6 +43,7 @@ interface VerificationClaims extends Record<string, unknown> {
 }
 
 function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
+  const isChip = status.level === "chip";
   return {
     verification_level: status.level,
     verified: status.verified,
@@ -49,6 +54,8 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
     nationality_proof_verified: status.checks.nationalityProof,
     face_match_verified: status.checks.faceMatchProof,
     identity_binding_verified: status.checks.identityBindingProof,
+    chip_verified: isChip,
+    chip_verification_method: isChip ? "nfc" : undefined,
   };
 }
 

@@ -21,6 +21,7 @@ export const PROOF_SCOPES = [
   "proof:liveness",
   "proof:nationality",
   "proof:compliance",
+  "proof:chip",
 ] as const;
 
 export type ProofScope = (typeof PROOF_SCOPES)[number];
@@ -45,6 +46,7 @@ const PROOF_SCOPE_CLAIMS: Record<ProofScope, ProofClaimKey[]> = {
     "verification_time",
     "attestation_expires_at",
   ],
+  "proof:chip": ["chip_verified", "chip_verification_method"],
 };
 
 export const PROOF_SCOPE_DESCRIPTIONS: Record<ProofScope, string> = {
@@ -54,6 +56,7 @@ export const PROOF_SCOPE_DESCRIPTIONS: Record<ProofScope, string> = {
   "proof:liveness": "Liveness and photo match results",
   "proof:nationality": "Nationality verification",
   "proof:compliance": "Verification policy and timestamps",
+  "proof:chip": "Passport NFC chip verification status",
 };
 
 export function extractProofScopes(scopes: string[]): ProofScope[] {

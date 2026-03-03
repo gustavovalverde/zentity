@@ -79,6 +79,7 @@ function createTier2State(): AssuranceState {
     details: {
       isAuthenticated: true,
       hasSecuredKeys: true,
+      chipVerified: false,
       documentVerified: true,
       livenessVerified: true,
       faceMatchVerified: true,
@@ -100,6 +101,7 @@ function createTier1State(): AssuranceState {
     details: {
       isAuthenticated: true,
       hasSecuredKeys: true,
+      chipVerified: false,
       documentVerified: false,
       livenessVerified: false,
       faceMatchVerified: false,

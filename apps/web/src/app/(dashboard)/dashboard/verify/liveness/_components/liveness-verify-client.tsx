@@ -2,13 +2,12 @@
 
 import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
 import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
-import type { CachedBindingMaterial } from "@/lib/privacy/credentials/cache";
-import type { EnrollmentCredential } from "@/lib/privacy/secrets/types";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { BindingAuthDialog } from "@/components/auth/binding-auth-dialog";
 import { LivenessFlow } from "@/components/liveness/liveness-flow";
 import { LivenessProvider } from "@/components/liveness/liveness-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,52 +23,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
+import { buildEnrollmentCredential } from "@/lib/privacy/credentials/build-enrollment-credential";
 import { getCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { getBindingContext } from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
 
-import { BindingAuthDialog } from "./binding-auth-dialog";
-
 const getStoreState = () => useVerificationStore.getState();
-
-function buildEnrollmentCredential(
-  cached: CachedBindingMaterial,
-  userId: string,
-  wallet: { address: string; chainId: number } | null
-): EnrollmentCredential | null {
-  if (cached.mode === "passkey") {
-    return {
-      type: "passkey",
-      context: {
-        credentialId: cached.credentialId,
-        userId,
-        prfOutput: cached.prfOutput,
-        prfSalt: cached.prfSalt,
-      },
-    };
-  }
-  if (cached.mode === "opaque") {
-    return {
-      type: "opaque",
-      context: { userId, exportKey: cached.exportKey },
-    };
-  }
-  if (cached.mode === "wallet" && wallet) {
-    return {
-      type: "wallet",
-      context: {
-        userId,
-        address: wallet.address,
-        chainId: wallet.chainId,
-        signatureBytes: cached.signatureBytes,
-        signedAt: Math.floor(Date.now() / 1000),
-        expiresAt: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
-      },
-    };
-  }
-  return null;
-}
 
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
