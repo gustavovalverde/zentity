@@ -5,7 +5,7 @@
  * If any of these tests fail, the demo-rp OAuth integration will break.
  *
  * The demo-rp (apps/demo-rp) relies on:
- * 1. JWKS at /api/auth/pq-jwks serving RS256/EdDSA/ML-DSA-65 keys
+ * 1. JWKS at /api/auth/pq-jwks serving RS256/ES256/EdDSA/ML-DSA-65 keys
  * 2. jose's jwtVerify + createRemoteJWKSet to verify id_tokens
  * 3. Specific proof:* and identity.* scopes mapping to known claim keys
  * 4. RS256 as the default id_token signing algorithm (OIDC spec requirement)
@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 
+import { ID_TOKEN_SIGNING_ALGS } from "../../well-known-utils";
 import { PROOF_DISCLOSURE_KEYS } from "../claims";
 import { IDENTITY_SCOPE_CLAIMS, IDENTITY_SCOPES } from "../identity-scopes";
 import {
@@ -221,14 +222,13 @@ describe("RP contract — id_token signing", () => {
 
 describe("RP contract — discovery metadata shape", () => {
   it("advertised algorithms include RS256 (OIDC mandatory) plus Zentity extras", () => {
-    // This array must match what the .well-known routes return
-    const advertised = ["RS256", "EdDSA", "ML-DSA-65"];
-
     // OIDC Discovery 1.0 §3: RS256 MUST be included
-    expect(advertised).toContain("RS256");
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("RS256");
+    // HAIP §7: ES256 MUST be supported
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("ES256");
     // Zentity's advanced algorithms
-    expect(advertised).toContain("EdDSA");
-    expect(advertised).toContain("ML-DSA-65");
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("EdDSA");
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("ML-DSA-65");
   });
 
   it("OIDC Client Registration default alg (RS256) matches Zentity's id_token default", async () => {

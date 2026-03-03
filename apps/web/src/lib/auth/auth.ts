@@ -1,6 +1,18 @@
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import {
+  createDcqlMatcher,
+  createDpopAccessTokenValidator,
+  createDpopTokenBinding,
+  createJarmHandler,
+  createKeyAttestationValidator,
+  createParResolver,
+  createWalletAttestationStrategy,
+  createX5cHeaders,
+  haip,
+  WALLET_ATTESTATION_TYPE,
+} from "@better-auth/haip";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
@@ -33,12 +45,14 @@ import {
   IDENTITY_SCOPES,
   isIdentityScope,
 } from "@/lib/auth/oidc/identity-scopes";
+import { getJarmDecryptionKey } from "@/lib/auth/oidc/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   extractProofScopes,
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
@@ -57,6 +71,7 @@ import {
   verifications,
   walletAddresses,
 } from "@/lib/db/schema/auth";
+import { haipPushedRequests, haipVpSessions } from "@/lib/db/schema/haip";
 import { jwks } from "@/lib/db/schema/jwks";
 import {
   oauthAccessTokens,
@@ -95,6 +110,8 @@ const betterAuthSchema = {
   oidc4idaVerifiedClaim: oidc4idaVerifiedClaims,
   oidc4vciOffer: oidc4vciOffers,
   oidc4vciIssuedCredential: oidc4vciIssuedCredentials,
+  haipPushedRequest: haipPushedRequests,
+  haipVpSession: haipVpSessions,
 };
 
 // Build trusted origins based on environment
@@ -237,32 +254,35 @@ const advertisedClaims = Array.from(
   ])
 );
 const isOidcE2e = env.E2E_OIDC_ONLY === true;
-const oidc4vciCredentialConfigurations = [
-  {
-    id: "zentity_identity",
-    // Using HTTP URL format for VCT to support wallet interoperability (e.g., walt.id)
-    // Some wallets expect to resolve VCT URLs to fetch type metadata
-    vct: `${authIssuer}/vct/zentity_identity`,
-    format: "dc+sd-jwt" as const,
-    sdJwt: {
-      disclosures: [...PROOF_DISCLOSURE_KEYS],
-      decoyCount: 0,
+// scope field added for HAIP §4.1; the oidc4vci plugin type doesn't include it yet,
+// but it passes through to credential issuer metadata where the route handler picks it up
+const oidc4vciCredentialConfigurations: Oidc4vciOptions["credentialConfigurations"] =
+  [
+    {
+      id: "zentity_identity",
+      // Using HTTP URL format for VCT to support wallet interoperability (e.g., walt.id)
+      // Some wallets expect to resolve VCT URLs to fetch type metadata
+      vct: `${authIssuer}/vct/zentity_identity`,
+      format: "dc+sd-jwt",
+      sdJwt: {
+        disclosures: [...PROOF_DISCLOSURE_KEYS],
+        decoyCount: 0,
+      },
     },
-  },
-  ...(isOidcE2e
-    ? [
-        {
-          id: "zentity_identity_deferred",
-          vct: `${authIssuer}/vct/zentity_identity:deferred`,
-          format: "dc+sd-jwt" as const,
-          sdJwt: {
-            disclosures: [...PROOF_DISCLOSURE_KEYS],
-            decoyCount: 0,
+    ...(isOidcE2e
+      ? [
+          {
+            id: "zentity_identity_deferred",
+            vct: `${authIssuer}/vct/zentity_identity:deferred`,
+            format: "dc+sd-jwt" as const,
+            sdJwt: {
+              disclosures: [...PROOF_DISCLOSURE_KEYS],
+              decoyCount: 0,
+            },
           },
-        },
-      ]
-    : []),
-] satisfies Oidc4vciOptions["credentialConfigurations"];
+        ]
+      : []),
+  ];
 
 const oidc4vciDeferredIssuance = isOidcE2e
   ? {
@@ -280,6 +300,8 @@ const DCR_CLIENT_NAME_MAX = 100;
 const HTML_TAG_RE = /<[^>]+>/;
 const isDev =
   process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+
+const x5cChain = loadX5cChain();
 
 function isValidHttpsUrl(value: string): boolean {
   try {
@@ -580,6 +602,12 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
+      tokenBinding: createDpopTokenBinding({ requireDpop: false }),
+      requestUriResolver: createParResolver(),
+      clientAuthStrategies: {
+        [WALLET_ATTESTATION_TYPE]: createWalletAttestationStrategy() as never,
+      },
+      ...(env.PAIRWISE_SECRET ? { pairwiseSecret: env.PAIRWISE_SECRET } : {}),
       scopes: [
         // Standard OIDC scopes
         "openid",
@@ -598,6 +626,8 @@ export const auth = betterAuth({
         "identity.address", // address (OIDC standard format)
         "identity.document", // document_number, document_type, issuing_country
         "identity.nationality", // nationality, nationalities
+        // HAIP §4.1: credential configuration scope for OID4VCI
+        "zentity_identity",
       ],
       grantTypes: [
         "authorization_code",
@@ -673,6 +703,15 @@ export const auth = betterAuth({
       credentialAudience: oidc4vciCredentialAudience,
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
+      accessTokenValidator: createDpopAccessTokenValidator({
+        requireDpop: false,
+      }),
+      proofValidators: {
+        attestation: createKeyAttestationValidator(),
+      },
+      ...(x5cChain
+        ? { resolveCredentialHeaders: createX5cHeaders(x5cChain) }
+        : {}),
       resolveClaims: async ({ user }: { user: { id: string } }) =>
         buildProofClaims(user.id),
       ...(oidc4vciDeferredIssuance
@@ -682,6 +721,14 @@ export const auth = betterAuth({
     oidc4vp({
       expectedAudience: authIssuer,
       allowedIssuers: [authIssuer],
+      presentationMatcher: createDcqlMatcher(),
+      responseModeHandlers: {
+        "direct_post.jwt": createJarmHandler({
+          decryptionKey: getJarmDecryptionKey,
+          supportedAlgs: ["ECDH-ES"],
+          supportedEnc: ["A128GCM", "A256GCM"],
+        }),
+      },
       resolveIssuerJwks: async (issuer: string) => {
         const jwksUrl =
           env.OIDC4VP_JWKS_URL ?? joinAuthIssuerPath(issuer, "jwks");
@@ -702,6 +749,13 @@ export const auth = betterAuth({
     twoFactor({
       issuer: "Zentity",
       allowPasswordless: true,
+    }),
+    haip({
+      requirePar: true,
+      requireDpop: false,
+      dpopSigningAlgValues: ["ES256"],
+      parExpiresInSeconds: 60,
+      vpRequestExpiresInSeconds: 300,
     }),
   ],
 });

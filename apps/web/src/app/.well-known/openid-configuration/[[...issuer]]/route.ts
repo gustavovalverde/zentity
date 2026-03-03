@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth/auth";
 import {
   buildWellKnownResponse,
   DEFAULT_AUTH_BASE_PATH,
+  enrichDiscoveryMetadata,
   issuerPathMatches,
   unwrapMetadata,
 } from "@/lib/auth/well-known-utils";
@@ -21,14 +22,7 @@ export async function GET(
 
   const enriched =
     typeof metadata === "object" && metadata !== null
-      ? {
-          ...(metadata as Record<string, unknown>),
-          id_token_signing_alg_values_supported: [
-            "RS256",
-            "EdDSA",
-            "ML-DSA-65",
-          ],
-        }
+      ? enrichDiscoveryMetadata(metadata as Record<string, unknown>)
       : metadata;
 
   return buildWellKnownResponse(enriched);

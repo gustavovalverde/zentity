@@ -9,20 +9,38 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import { signJwtWithMlDsa } from "./ml-dsa-signer";
 
-type SigningAlg = "RS256" | "EdDSA" | "ML-DSA-65";
+type SigningAlg = "RS256" | "ES256" | "EdDSA" | "ML-DSA-65";
+
+type StandardAlg = "RS256" | "ES256" | "EdDSA";
 
 interface CachedSigningKey {
   kid: string;
   privateKey: CryptoKey;
 }
 
-let cachedRsaKey: CachedSigningKey | null = null;
-let cachedEdDsaKey: CachedSigningKey | null = null;
+const keyCache = new Map<StandardAlg, CachedSigningKey>();
+
+const KEY_GEN_OPTIONS: Record<
+  StandardAlg,
+  { alg: string; opts: Record<string, unknown>; crv: string | null }
+> = {
+  RS256: {
+    alg: "RS256",
+    opts: { modulusLength: 2048, extractable: true },
+    crv: null,
+  },
+  ES256: { alg: "ES256", opts: { extractable: true }, crv: "P-256" },
+  EdDSA: {
+    alg: "EdDSA",
+    opts: { crv: "Ed25519", extractable: true },
+    crv: "Ed25519",
+  },
+};
 
 async function getOrCreateSigningKey(
-  alg: "RS256" | "EdDSA"
+  alg: StandardAlg
 ): Promise<CachedSigningKey> {
-  const cached = alg === "RS256" ? cachedRsaKey : cachedEdDsaKey;
+  const cached = keyCache.get(alg);
   if (cached) {
     return cached;
   }
@@ -35,16 +53,8 @@ async function getOrCreateSigningKey(
     .get();
 
   if (!row) {
-    const keyPair =
-      alg === "RS256"
-        ? await generateKeyPair("RS256", {
-            modulusLength: 2048,
-            extractable: true,
-          })
-        : await generateKeyPair("EdDSA", {
-            crv: "Ed25519",
-            extractable: true,
-          });
+    const config = KEY_GEN_OPTIONS[alg];
+    const keyPair = await generateKeyPair(config.alg, config.opts);
     const publicJwk = await exportJWK(keyPair.publicKey);
     const privateJwk = await exportJWK(keyPair.privateKey);
     const kid = crypto.randomUUID();
@@ -56,16 +66,12 @@ async function getOrCreateSigningKey(
         publicKey: JSON.stringify(publicJwk),
         privateKey: JSON.stringify(privateJwk),
         alg,
-        crv: alg === "EdDSA" ? "Ed25519" : null,
+        crv: config.crv,
       })
       .run();
 
     const result = { kid, privateKey: keyPair.privateKey };
-    if (alg === "RS256") {
-      cachedRsaKey = result;
-    } else {
-      cachedEdDsaKey = result;
-    }
+    keyCache.set(alg, result);
     return result;
   }
 
@@ -77,17 +83,13 @@ async function getOrCreateSigningKey(
   }
 
   const result = { kid: row.id, privateKey };
-  if (alg === "RS256") {
-    cachedRsaKey = result;
-  } else {
-    cachedEdDsaKey = result;
-  }
+  keyCache.set(alg, result);
   return result;
 }
 
 async function signWithAlg(
   payload: Record<string, unknown>,
-  alg: "RS256" | "EdDSA"
+  alg: StandardAlg
 ): Promise<string> {
   const { kid, privateKey } = await getOrCreateSigningKey(alg);
 
@@ -134,7 +136,11 @@ async function getClientSigningAlg(clientId: string): Promise<SigningAlg> {
         ? (JSON.parse(client.metadata) as Record<string, unknown>)
         : (client.metadata as Record<string, unknown>);
     const requested = meta.id_token_signed_response_alg;
-    if (requested === "EdDSA" || requested === "ML-DSA-65") {
+    if (
+      requested === "ES256" ||
+      requested === "EdDSA" ||
+      requested === "ML-DSA-65"
+    ) {
       alg = requested;
     }
   }
@@ -164,5 +170,5 @@ export async function signJwt(
   if (alg === "ML-DSA-65") {
     return signJwtWithMlDsa(payload);
   }
-  return signWithAlg(payload, alg);
+  return signWithAlg(payload, alg as StandardAlg);
 }

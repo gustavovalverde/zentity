@@ -77,6 +77,7 @@ export const env = createEnv({
     GENERIC_OAUTH_PROVIDERS: z.string().optional(),
 
     // Identity & auth
+    PAIRWISE_SECRET: z.string().min(32).optional(),
     TRUSTED_ORIGINS: z.string().optional(),
     OIDC4VP_JWKS_URL: z.string().optional(),
 
@@ -165,6 +166,7 @@ export const env = createEnv({
     GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
     GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
     GENERIC_OAUTH_PROVIDERS: process.env.GENERIC_OAUTH_PROVIDERS,
+    PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
     OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,
     REGISTRAR_PRIVATE_KEY: process.env.REGISTRAR_PRIVATE_KEY,

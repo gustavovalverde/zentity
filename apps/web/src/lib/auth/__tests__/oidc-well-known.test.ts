@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { auth } from "@/lib/auth/auth";
 import {
   buildWellKnownResponse,
+  enrichDiscoveryMetadata,
+  ID_TOKEN_SIGNING_ALGS,
   unwrapMetadata,
 } from "@/lib/auth/well-known-utils";
 
@@ -60,45 +62,73 @@ describe("oidc well-known metadata", () => {
 
 describe("oidc discovery — signing algorithm advertisement", () => {
   it("enriched metadata includes RS256 as required by OIDC Discovery 1.0", () => {
-    const baseMetadata = { issuer: "https://example.com" };
-    const enriched = {
-      ...baseMetadata,
-      id_token_signing_alg_values_supported: ["RS256", "EdDSA", "ML-DSA-65"],
-    };
+    const enriched = enrichDiscoveryMetadata({ issuer: "https://example.com" });
 
     const response = buildWellKnownResponse(enriched);
     expect(response.status).toBe(200);
   });
 
   it("RS256 is first in the supported algorithms list", () => {
-    const algs = ["RS256", "EdDSA", "ML-DSA-65"];
-    expect(algs[0]).toBe("RS256");
-    expect(algs).toContain("EdDSA");
-    expect(algs).toContain("ML-DSA-65");
+    expect(ID_TOKEN_SIGNING_ALGS[0]).toBe("RS256");
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("ES256");
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("EdDSA");
+    expect(ID_TOKEN_SIGNING_ALGS).toContain("ML-DSA-65");
   });
 
   it("route handler enrichment matches expected algorithm set", async () => {
-    // Simulate what the well-known route handlers do
     const metadata = unwrapMetadata(await auth.api.getOpenIdConfig());
-    const config = parseOpenIdConfig(metadata);
-    const resolved = config instanceof Promise ? await config : config;
+    const resolved = await parseOpenIdConfig(metadata);
 
-    const enriched =
-      typeof resolved === "object" && resolved !== null
-        ? {
-            ...resolved,
-            id_token_signing_alg_values_supported: [
-              "RS256",
-              "EdDSA",
-              "ML-DSA-65",
-            ],
-          }
-        : resolved;
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
 
     expect(enriched.id_token_signing_alg_values_supported).toEqual([
-      "RS256",
-      "EdDSA",
-      "ML-DSA-65",
+      ...ID_TOKEN_SIGNING_ALGS,
     ]);
+  });
+});
+
+describe("oidc discovery — HAIP metadata fields", () => {
+  it("enrichDiscoveryMetadata adds PAR endpoint derived from issuer", () => {
+    const enriched = enrichDiscoveryMetadata({
+      issuer: "https://example.com/api/auth",
+    });
+
+    expect(enriched.pushed_authorization_request_endpoint).toBe(
+      "https://example.com/api/auth/oauth2/par"
+    );
+    expect(enriched.require_pushed_authorization_requests).toBe(true);
+    expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
+    expect(enriched.authorization_details_types_supported).toContain(
+      "openid_credential"
+    );
+  });
+
+  it("OpenID config enrichment includes HAIP fields", async () => {
+    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const resolved = await parseOpenIdConfig(raw);
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
+
+    expect(enriched.pushed_authorization_request_endpoint).toContain(
+      "oauth2/par"
+    );
+    expect(enriched.require_pushed_authorization_requests).toBe(true);
+    expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
+  });
+
+  it("OAuth AS config enrichment includes HAIP fields", async () => {
+    const raw = unwrapMetadata(await auth.api.getOAuthServerConfig());
+    const resolved = await parseOpenIdConfig(raw);
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
+
+    expect(enriched.pushed_authorization_request_endpoint).toContain(
+      "oauth2/par"
+    );
+    expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
   });
 });

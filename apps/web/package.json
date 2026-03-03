@@ -55,6 +55,7 @@
     "@better-auth/oauth-provider": "1.5.1-beta.3",
     "@better-auth/oidc4ida": "file:vendor/better-auth-oidc4ida-0.0.0.tgz",
     "@better-auth/oidc4vci": "file:vendor/better-auth-oidc4vci-0.0.0.tgz",
+    "@better-auth/haip": "file:vendor/better-auth-haip-0.0.0.tgz",
     "@better-auth/oidc4vp": "file:vendor/better-auth-oidc4vp-0.0.0.tgz",
     "@better-auth/passkey": "1.5.1-beta.3",
     "@better-auth/utils": "^0.3.1",
@@ -192,6 +193,11 @@
       "esbuild": ">=0.25.0"
     },
     "packageExtensions": {
+      "@better-auth/haip": {
+        "dependencies": {
+          "@better-auth/core": "*"
+        }
+      },
       "@better-auth/oidc4ida": {
         "dependencies": {
           "@better-auth/core": "*"

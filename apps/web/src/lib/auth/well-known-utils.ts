@@ -5,12 +5,45 @@
  * - /.well-known/openid-configuration
  * - /.well-known/oauth-authorization-server
  * - /.well-known/openid-credential-issuer
+ *
+ * HAIP metadata (PAR, DPoP) is added here rather than relying on
+ * plugin after-hooks, because Next.js route handlers call
+ * auth.api.getOpenIdConfig() directly — bypassing the HTTP hook chain.
  */
 
 const TRAILING_SLASHES_REGEX = /\/+$/;
 const LEADING_SLASHES_REGEX = /^\/+/;
 
 export const DEFAULT_AUTH_BASE_PATH = "/api/auth";
+
+/** Algorithms advertised in id_token_signing_alg_values_supported. */
+export const ID_TOKEN_SIGNING_ALGS = [
+  "RS256",
+  "ES256",
+  "EdDSA",
+  "ML-DSA-65",
+] as const;
+
+/**
+ * Enrich raw discovery metadata with signing algorithms and HAIP fields.
+ * Used by both openid-configuration and oauth-authorization-server route handlers.
+ */
+export function enrichDiscoveryMetadata(
+  metadata: Record<string, unknown>
+): Record<string, unknown> {
+  const issuer = metadata.issuer as string | undefined;
+  return {
+    ...metadata,
+    id_token_signing_alg_values_supported: [...ID_TOKEN_SIGNING_ALGS],
+    // HAIP §5.1: PAR and DPoP metadata
+    ...(issuer
+      ? { pushed_authorization_request_endpoint: `${issuer}/oauth2/par` }
+      : {}),
+    require_pushed_authorization_requests: true,
+    dpop_signing_alg_values_supported: ["ES256"],
+    authorization_details_types_supported: ["openid_credential"],
+  };
+}
 
 function normalizePath(value: string): string {
   return value

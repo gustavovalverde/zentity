@@ -489,6 +489,84 @@ export async function findIssuedCredentialRecord(credential: string) {
   }
 }
 
+// --- HAIP Helpers: DPoP and PAR ---
+
+/**
+ * Generate a DPoP proof JWT (RFC 9449).
+ * Uses ES256 (P-256) as required by HAIP §7.
+ */
+export async function createDpopProof(input: {
+  method: string;
+  url: string;
+  accessToken?: string;
+}) {
+  const dpopKey = await generateKeyPair("ES256");
+  const dpopJwk = await exportJWK(dpopKey.publicKey);
+  const jkt = await calculateJwkThumbprint(dpopJwk);
+
+  const builder = new SignJWT({
+    htm: input.method,
+    htu: input.url,
+    jti: crypto.randomUUID(),
+    ...(input.accessToken
+      ? {
+          ath: crypto
+            .createHash("sha256")
+            .update(input.accessToken)
+            .digest("base64url"),
+        }
+      : {}),
+  })
+    .setProtectedHeader({
+      alg: "ES256",
+      typ: "dpop+jwt",
+      jwk: dpopJwk,
+    })
+    .setIssuedAt();
+
+  const proof = await builder.sign(dpopKey.privateKey);
+  return { proof, jkt, dpopKey, dpopJwk };
+}
+
+/**
+ * Submit a Pushed Authorization Request (PAR) to the issuer.
+ * Returns the request_uri for use in the authorize redirect.
+ */
+export async function submitPar(
+  request: APIRequestContext,
+  input: {
+    clientId: string;
+    redirectUri: string;
+    scope: string;
+    state?: string;
+    codeChallenge?: string;
+    codeChallengeMethod?: string;
+  }
+) {
+  const form = new URLSearchParams();
+  form.set("client_id", input.clientId);
+  form.set("redirect_uri", input.redirectUri);
+  form.set("response_type", "code");
+  form.set("scope", input.scope);
+  if (input.state) {
+    form.set("state", input.state);
+  }
+  if (input.codeChallenge) {
+    form.set("code_challenge", input.codeChallenge);
+    form.set("code_challenge_method", input.codeChallengeMethod ?? "S256");
+  }
+
+  const res = await request.post(`${AUTH_BASE_URL}/oauth2/par`, {
+    data: form.toString(),
+    headers: {
+      Origin: BASE_URL,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  });
+
+  return res;
+}
+
 export const oidcConfig = {
   baseUrl: BASE_URL,
   authBaseUrl: AUTH_BASE_URL,

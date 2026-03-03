@@ -63,10 +63,12 @@ console.log("Generating cryptographic secrets...\n");
 const betterAuthSecret = randomBase64(32);
 const internalServiceToken = randomBase64(32);
 const bbsIssuerSecret = randomHex(32);
+const pairwiseSecret = randomHex(32);
 
 console.log("  BETTER_AUTH_SECRET       done");
 console.log("  INTERNAL_SERVICE_TOKEN   done");
 console.log("  BBS_ISSUER_SECRET        done");
+console.log("  PAIRWISE_SECRET          done");
 
 console.log("  OPAQUE_SERVER_SETUP      generating...");
 const { serverSetup, publicKey } = generateOpaqueSetup();
@@ -81,6 +83,7 @@ const replacements: Record<string, string> = {
   NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY: publicKey,
   INTERNAL_SERVICE_TOKEN: internalServiceToken,
   BBS_ISSUER_SECRET: bbsIssuerSecret,
+  PAIRWISE_SECRET: pairwiseSecret,
 };
 
 for (const [key, value] of Object.entries(replacements)) {
