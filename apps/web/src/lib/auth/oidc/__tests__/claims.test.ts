@@ -1,22 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/db/queries/identity", () => ({
-  getVerificationStatus: vi.fn(),
-  getIdentityBundleByUserId: vi.fn(),
-  getLatestIdentityDocumentByUserId: vi.fn(),
+// Reset module cache to avoid vmThreads mock registry leakage
+// where a previous test file's vi.mock for the same module persists.
+vi.resetModules();
+
+const mockGetVerificationStatus = vi.fn();
+const mockGetIdentityBundleByUserId = vi.fn();
+const mockGetLatestIdentityDocumentByUserId = vi.fn();
+
+vi.doMock("@/lib/db/queries/identity", () => ({
+  getVerificationStatus: mockGetVerificationStatus,
+  getIdentityBundleByUserId: mockGetIdentityBundleByUserId,
+  getLatestIdentityDocumentByUserId: mockGetLatestIdentityDocumentByUserId,
 }));
 
-import {
-  getIdentityBundleByUserId,
-  getLatestIdentityDocumentByUserId,
-  getVerificationStatus,
-} from "@/lib/db/queries/identity";
-
-import { buildOidcVerifiedClaims, buildProofClaims } from "../claims";
+const { buildOidcVerifiedClaims, buildProofClaims } = await import("../claims");
 
 describe("oidc claim mapping", () => {
   beforeEach(() => {
-    vi.mocked(getVerificationStatus).mockResolvedValue({
+    mockGetVerificationStatus.mockResolvedValue({
       verified: true,
       level: "full",
       checks: {
@@ -29,15 +31,15 @@ describe("oidc claim mapping", () => {
         identityBindingProof: true,
       },
     });
-    vi.mocked(getIdentityBundleByUserId).mockResolvedValue({
+    mockGetIdentityBundleByUserId.mockResolvedValue({
       policyVersion: "policy-1",
       issuerId: "issuer-1",
       attestationExpiresAt: "2030-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
-    } as Awaited<ReturnType<typeof getIdentityBundleByUserId>>);
-    vi.mocked(getLatestIdentityDocumentByUserId).mockResolvedValue({
+    });
+    mockGetLatestIdentityDocumentByUserId.mockResolvedValue({
       verifiedAt: "2026-01-02T00:00:00.000Z",
-    } as Awaited<ReturnType<typeof getLatestIdentityDocumentByUserId>>);
+    });
   });
 
   it("builds derived proof claims from verification data", async () => {
@@ -81,7 +83,7 @@ describe("oidc claim mapping", () => {
   });
 
   it("returns null verified_claims when no assurance", async () => {
-    vi.mocked(getVerificationStatus).mockResolvedValueOnce({
+    mockGetVerificationStatus.mockResolvedValueOnce({
       verified: false,
       level: "none",
       checks: {

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins";
 import { eq } from "drizzle-orm";

@@ -110,9 +110,8 @@ describe("fhe enrollment completion route", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "Registration token invalid.",
-    });
+    const body = await response.json();
+    expect(body.error).toContain("Registration token invalid or expired.");
   });
 
   it("rejects mismatched enrollment context", async () => {

@@ -89,13 +89,17 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
     }
 
     if (new Date(verification.expiresAt) < new Date()) {
-      await internalAdapter.deleteVerificationValue(verification.id);
+      await internalAdapter.deleteVerificationByIdentifier(
+        verification.identifier
+      );
       throw new APIError("UNAUTHORIZED", {
         message: "Invalid or expired nonce",
       });
     }
 
-    await internalAdapter.deleteVerificationValue(verification.id);
+    await internalAdapter.deleteVerificationByIdentifier(
+      verification.identifier
+    );
   }
 
   return {

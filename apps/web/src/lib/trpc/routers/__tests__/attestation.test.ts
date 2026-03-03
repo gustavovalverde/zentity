@@ -36,41 +36,35 @@ vi.mock("@/lib/blockchain/providers/factory", () => ({
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));
 
-vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/db/queries/identity")>();
-  return {
-    ...actual,
-    getVerificationStatus: (...args: unknown[]) =>
-      mockGetVerificationStatus(...args),
-    getSelectedIdentityDocumentByUserId: (...args: unknown[]) =>
-      mockGetSelectedIdentityDocumentByUserId(...args),
-  };
-});
+vi.mock("@/lib/db/queries/identity", () => ({
+  getVerificationStatus: (...args: unknown[]) =>
+    mockGetVerificationStatus(...args),
+  getSelectedIdentityDocumentByUserId: (...args: unknown[]) =>
+    mockGetSelectedIdentityDocumentByUserId(...args),
+  getLatestIdentityDraftByUserAndDocument: vi.fn(),
+}));
 
-vi.mock("@/lib/db/queries/attestation", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/lib/db/queries/attestation")>();
-  return {
-    ...actual,
-    getBlockchainAttestationsByUserId: (...args: unknown[]) =>
-      mockGetBlockchainAttestationsByUserId(...args),
-    getBlockchainAttestationByUserAndNetwork: (...args: unknown[]) =>
-      mockGetBlockchainAttestationByUserAndNetwork(...args),
-    createBlockchainAttestation: (...args: unknown[]) =>
-      mockCreateBlockchainAttestation(...args),
-    resetBlockchainAttestationForRetry: (...args: unknown[]) =>
-      mockResetBlockchainAttestationForRetry(...args),
-    updateBlockchainAttestationSubmitted: (...args: unknown[]) =>
-      mockUpdateBlockchainAttestationSubmitted(...args),
-    updateBlockchainAttestationFailed: (...args: unknown[]) =>
-      mockUpdateBlockchainAttestationFailed(...args),
-    updateBlockchainAttestationConfirmed: (...args: unknown[]) =>
-      mockUpdateBlockchainAttestationConfirmed(...args),
-    updateBlockchainAttestationWallet: (...args: unknown[]) =>
-      mockUpdateBlockchainAttestationWallet(...args),
-  };
-});
+vi.mock("@/lib/db/queries/attestation", () => ({
+  getBlockchainAttestationsByUserId: (...args: unknown[]) =>
+    mockGetBlockchainAttestationsByUserId(...args),
+  getBlockchainAttestationByUserAndNetwork: (...args: unknown[]) =>
+    mockGetBlockchainAttestationByUserAndNetwork(...args),
+  createBlockchainAttestation: (...args: unknown[]) =>
+    mockCreateBlockchainAttestation(...args),
+  resetBlockchainAttestationForRetry: (...args: unknown[]) =>
+    mockResetBlockchainAttestationForRetry(...args),
+  updateBlockchainAttestationSubmitted: (...args: unknown[]) =>
+    mockUpdateBlockchainAttestationSubmitted(...args),
+  updateBlockchainAttestationFailed: (...args: unknown[]) =>
+    mockUpdateBlockchainAttestationFailed(...args),
+  updateBlockchainAttestationConfirmed: (...args: unknown[]) =>
+    mockUpdateBlockchainAttestationConfirmed(...args),
+  updateBlockchainAttestationWallet: (...args: unknown[]) =>
+    mockUpdateBlockchainAttestationWallet(...args),
+  upsertAttestationEvidence: vi.fn(),
+  getAttestationEvidenceByUserAndDocument: vi.fn(),
+  deleteBlockchainAttestationsByUserId: vi.fn(),
+}));
 
 vi.mock("@/lib/assurance/data", () => ({
   getAssuranceState: (...args: unknown[]) => mockGetAssuranceState(...args),

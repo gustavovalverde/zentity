@@ -107,12 +107,12 @@ describe("oauth token validation", () => {
 
     it("returns invalid for invalid token", async () => {
       vi.mocked(verifyAccessToken).mockRejectedValueOnce(
-        new Error("token invalid")
+        new Error("Invalid access token")
       );
 
       const result = await validateOAuthAccessToken("invalid-token");
       expect(result.valid).toBe(false);
-      expect(result.error).toBe("token invalid");
+      expect(result.error).toBe("Invalid access token");
     });
 
     it("returns invalid for user token (not client credentials)", async () => {

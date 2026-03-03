@@ -1,0 +1,168 @@
+diff --git a/dist/api/index.d.mts b/dist/api/index.d.mts
+index 18133fd..9db7924 100644
+--- a/dist/api/index.d.mts
++++ b/dist/api/index.d.mts
+@@ -7,13 +7,15 @@ import "../types/index.mjs";
+ import { OAuthProvider } from "../oauth2/oauth-provider.mjs";
+ import "../oauth2/index.mjs";
+ import * as better_call0 from "better-call";
+-import { EndpointContext, EndpointOptions, StrictEndpoint } from "better-call";
++import { Endpoint, EndpointContext, EndpointMetadata, HTTPMethod, Middleware, ResolveBodyInput, ResolveErrorInput, ResolveMetaInput, ResolveQueryInput, StandardSchemaV1 } from "better-call";
+ import * as _better_auth_core0 from "@better-auth/core";
+ 
+ //#region src/api/index.d.ts
+-declare const optionsMiddleware: <InputCtx extends better_call0.MiddlewareInputContext<better_call0.MiddlewareOptions>>(inputContext: InputCtx) => Promise<AuthContext>;
++declare const optionsMiddleware: Middleware<(inputContext: Record<string, any>) => Promise<AuthContext>>;
+ declare const createAuthMiddleware: {
+-  <Options extends better_call0.MiddlewareOptions, R>(options: Options, handler: (ctx: better_call0.MiddlewareContext<Options, {
++  <R>(options: {
++    use?: Middleware[];
++  }, handler: (ctx: better_call0.MiddlewareContext<{
+     returned?: unknown | undefined;
+     responseHeaders?: Headers | undefined;
+   } & _better_auth_core0.PluginContext<_better_auth_core0.BetterAuthOptions> & _better_auth_core0.InfoContext & {
+@@ -141,8 +143,8 @@ declare const createAuthMiddleware: {
+     skipCSRFCheck: boolean;
+     runInBackground: (promise: Promise<unknown>) => void;
+     runInBackgroundOrAwait: (promise: Promise<unknown> | void) => _better_auth_core0.Awaitable<unknown>;
+-  }>) => Promise<R>): (inputContext: better_call0.MiddlewareInputContext<Options>) => Promise<R>;
+-  <Options extends better_call0.MiddlewareOptions, R_1>(handler: (ctx: better_call0.MiddlewareContext<Options, {
++  }>) => Promise<R>): Middleware<(inputContext: Record<string, any>) => Promise<R>>;
++  <R>(handler: (ctx: better_call0.MiddlewareContext<{
+     returned?: unknown | undefined;
+     responseHeaders?: Headers | undefined;
+   } & _better_auth_core0.PluginContext<_better_auth_core0.BetterAuthOptions> & _better_auth_core0.InfoContext & {
+@@ -270,13 +272,36 @@ declare const createAuthMiddleware: {
+     skipCSRFCheck: boolean;
+     runInBackground: (promise: Promise<unknown>) => void;
+     runInBackgroundOrAwait: (promise: Promise<unknown> | void) => _better_auth_core0.Awaitable<unknown>;
+-  }>) => Promise<R_1>): (inputContext: better_call0.MiddlewareInputContext<Options>) => Promise<R_1>;
++  }>) => Promise<R>): Middleware<(inputContext: Record<string, any>) => Promise<R>>;
+ };
+-type EndpointHandler<Path extends string, Options extends EndpointOptions, R> = (context: EndpointContext<Path, Options, AuthContext>) => Promise<R>;
+-declare function createAuthEndpoint<Path extends string, Options extends EndpointOptions, R>(path: Path, options: Options, handler: EndpointHandler<Path, Options, R>): StrictEndpoint<Path, Options, R>;
+-declare function createAuthEndpoint<Path extends string, Options extends EndpointOptions, R>(options: Options, handler: EndpointHandler<Path, Options, R>): StrictEndpoint<Path, Options, R>;
+-type AuthEndpoint<Path extends string, Opts extends EndpointOptions, R> = ReturnType<typeof createAuthEndpoint<Path, Opts, R>>;
+-type AuthMiddleware = ReturnType<typeof createAuthMiddleware>;
++type BodyOption<M, B extends object | undefined = undefined> = M extends "GET" | "HEAD" | ("GET" | "HEAD")[] ? {
++  body?: never;
++} : {
++  body?: B;
++};
++type AuthEndpointOptions<Method extends HTTPMethod | HTTPMethod[] | "*", BodySchema extends object | undefined, QuerySchema extends object | undefined, Use extends Middleware[], ReqHeaders extends boolean, ReqRequest extends boolean, Meta extends EndpointMetadata | undefined, ErrorSchema extends StandardSchemaV1 | undefined = undefined> = {
++  method: Method;
++} & BodyOption<Method, BodySchema> & {
++  query?: QuerySchema;
++  use?: [...Use];
++  requireHeaders?: ReqHeaders;
++  requireRequest?: ReqRequest;
++  error?: ErrorSchema;
++  cloneRequest?: boolean;
++  disableBody?: boolean;
++  metadata?: Meta;
++  [key: string]: any;
++};
++declare function createAuthEndpoint<Path extends string, Method extends HTTPMethod | HTTPMethod[] | "*", BodySchema extends object | undefined = undefined, QuerySchema extends object | undefined = undefined, Use extends Middleware[] = [], ReqHeaders extends boolean = false, ReqRequest extends boolean = false, R = unknown, Meta extends EndpointMetadata | undefined = undefined, ErrorSchema extends StandardSchemaV1 | undefined = undefined>(path: Path, options: AuthEndpointOptions<Method, BodySchema, QuerySchema, Use, ReqHeaders, ReqRequest, Meta, ErrorSchema>, handler: (ctx: EndpointContext<Path, Method, BodySchema, QuerySchema, Use, ReqHeaders, ReqRequest, AuthContext, Meta>) => Promise<R>): Endpoint<Path, any, ResolveBodyInput<BodySchema, Meta>, ResolveQueryInput<QuerySchema, Meta>, any, R, ResolveMetaInput<Meta>, ResolveErrorInput<ErrorSchema, Meta>>;
++declare function createAuthEndpoint<Method extends HTTPMethod | HTTPMethod[] | "*", BodySchema extends object | undefined = undefined, QuerySchema extends object | undefined = undefined, Use extends Middleware[] = [], ReqHeaders extends boolean = false, ReqRequest extends boolean = false, R = unknown, Meta extends EndpointMetadata | undefined = undefined, ErrorSchema extends StandardSchemaV1 | undefined = undefined>(options: AuthEndpointOptions<Method, BodySchema, QuerySchema, Use, ReqHeaders, ReqRequest, Meta, ErrorSchema>, handler: (ctx: EndpointContext<string, Method, BodySchema, QuerySchema, Use, ReqHeaders, ReqRequest, AuthContext, Meta>) => Promise<R>): Endpoint<string, any, ResolveBodyInput<BodySchema, Meta>, ResolveQueryInput<QuerySchema, Meta>, any, R, ResolveMetaInput<Meta>, ResolveErrorInput<ErrorSchema, Meta>>;
++type AuthEndpoint = ReturnType<typeof createAuthEndpoint>;
++/**
++ * The handler type for plugin hooks.
++ *
++ * Accepts both `Middleware` instances (from `createAuthMiddleware`)
++ * and plain async functions for better-call v1/v2 compatibility.
++ */
++type AuthMiddleware = (inputContext: Record<string, any>) => Promise<unknown>;
+ //#endregion
+ export { AuthEndpoint, AuthMiddleware, createAuthEndpoint, createAuthMiddleware, optionsMiddleware };
+ //# sourceMappingURL=index.d.mts.map
+\ No newline at end of file
+diff --git a/dist/api/index.mjs.map b/dist/api/index.mjs.map
+index 4493c93..d2cf985 100644
+--- a/dist/api/index.mjs.map
++++ b/dist/api/index.mjs.map
+@@ -1 +1 @@
+-{"version":3,"file":"index.mjs","names":[],"sources":["../../src/api/index.ts"],"sourcesContent":["import type {\n\tEndpointContext,\n\tEndpointOptions,\n\tStrictEndpoint,\n} from \"better-call\";\nimport { createEndpoint, createMiddleware } from \"better-call\";\nimport { runWithEndpointContext } from \"../context\";\nimport type { AuthContext } from \"../types\";\n\nexport const optionsMiddleware = createMiddleware(async () => {\n\t/**\n\t * This will be passed on the instance of\n\t * the context. Used to infer the type\n\t * here.\n\t */\n\treturn {} as AuthContext;\n});\n\nexport const createAuthMiddleware = createMiddleware.create({\n\tuse: [\n\t\toptionsMiddleware,\n\t\t/**\n\t\t * Only use for post hooks\n\t\t */\n\t\tcreateMiddleware(async () => {\n\t\t\treturn {} as {\n\t\t\t\treturned?: unknown | undefined;\n\t\t\t\tresponseHeaders?: Headers | undefined;\n\t\t\t};\n\t\t}),\n\t],\n});\n\nconst use = [optionsMiddleware];\n\ntype EndpointHandler<\n\tPath extends string,\n\tOptions extends EndpointOptions,\n\tR,\n> = (context: EndpointContext<Path, Options, AuthContext>) => Promise<R>;\n\nexport function createAuthEndpoint<\n\tPath extends string,\n\tOptions extends EndpointOptions,\n\tR,\n>(\n\tpath: Path,\n\toptions: Options,\n\thandler: EndpointHandler<Path, Options, R>,\n): StrictEndpoint<Path, Options, R>;\n\nexport function createAuthEndpoint<\n\tPath extends string,\n\tOptions extends EndpointOptions,\n\tR,\n>(\n\toptions: Options,\n\thandler: EndpointHandler<Path, Options, R>,\n): StrictEndpoint<Path, Options, R>;\n\nexport function createAuthEndpoint<\n\tPath extends string,\n\tOpts extends EndpointOptions,\n\tR,\n>(\n\tpathOrOptions: Path | Opts,\n\thandlerOrOptions: EndpointHandler<Path, Opts, R> | Opts,\n\thandlerOrNever?: any,\n) {\n\tconst path: Path | undefined =\n\t\ttypeof pathOrOptions === \"string\" ? pathOrOptions : undefined;\n\tconst options: Opts =\n\t\ttypeof handlerOrOptions === \"object\"\n\t\t\t? handlerOrOptions\n\t\t\t: (pathOrOptions as Opts);\n\tconst handler: EndpointHandler<Path, Opts, R> =\n\t\ttypeof handlerOrOptions === \"function\" ? handlerOrOptions : handlerOrNever;\n\n\tif (path) {\n\t\treturn createEndpoint(\n\t\t\tpath,\n\t\t\t{\n\t\t\t\t...options,\n\t\t\t\tuse: [...(options?.use || []), ...use],\n\t\t\t},\n\t\t\t// todo: prettify the code, we want to call `runWithEndpointContext` to top level\n\t\t\tasync (ctx) => runWithEndpointContext(ctx as any, () => handler(ctx)),\n\t\t);\n\t}\n\n\treturn createEndpoint(\n\t\t{\n\t\t\t...options,\n\t\t\tuse: [...(options?.use || []), ...use],\n\t\t},\n\t\t// todo: prettify the code, we want to call `runWithEndpointContext` to top level\n\t\tasync (ctx) => runWithEndpointContext(ctx as any, () => handler(ctx)),\n\t);\n}\n\nexport type AuthEndpoint<\n\tPath extends string,\n\tOpts extends EndpointOptions,\n\tR,\n> = ReturnType<typeof createAuthEndpoint<Path, Opts, R>>;\nexport type AuthMiddleware = ReturnType<typeof createAuthMiddleware>;\n"],"mappings":";;;;;AASA,MAAa,oBAAoB,iBAAiB,YAAY;;;;;;AAM7D,QAAO,EAAE;EACR;AAEF,MAAa,uBAAuB,iBAAiB,OAAO,EAC3D,KAAK,CACJ,mBAIA,iBAAiB,YAAY;AAC5B,QAAO,EAAE;EAIR,CACF,EACD,CAAC;AAEF,MAAM,MAAM,CAAC,kBAAkB;AA2B/B,SAAgB,mBAKf,eACA,kBACA,gBACC;CACD,MAAM,OACL,OAAO,kBAAkB,WAAW,gBAAgB;CACrD,MAAM,UACL,OAAO,qBAAqB,WACzB,mBACC;CACL,MAAM,UACL,OAAO,qBAAqB,aAAa,mBAAmB;AAE7D,KAAI,KACH,QAAO,eACN,MACA;EACC,GAAG;EACH,KAAK,CAAC,GAAI,SAAS,OAAO,EAAE,EAAG,GAAG,IAAI;EACtC,EAED,OAAO,QAAQ,uBAAuB,WAAkB,QAAQ,IAAI,CAAC,CACrE;AAGF,QAAO,eACN;EACC,GAAG;EACH,KAAK,CAAC,GAAI,SAAS,OAAO,EAAE,EAAG,GAAG,IAAI;EACtC,EAED,OAAO,QAAQ,uBAAuB,WAAkB,QAAQ,IAAI,CAAC,CACrE"}
+\ No newline at end of file
++{"version":3,"file":"index.mjs","names":[],"sources":["../../src/api/index.ts"],"sourcesContent":["import type {\n\tEndpoint,\n\tEndpointContext,\n\tEndpointMetadata,\n\tEndpointRuntimeOptions,\n\tHTTPMethod,\n\tMiddleware,\n\tResolveBodyInput,\n\tResolveErrorInput,\n\tResolveMetaInput,\n\tResolveQueryInput,\n\tStandardSchemaV1,\n} from \"better-call\";\nimport { createEndpoint, createMiddleware } from \"better-call\";\nimport { runWithEndpointContext } from \"../context\";\nimport type { AuthContext } from \"../types\";\n\nexport const optionsMiddleware = createMiddleware(async () => {\n\t/**\n\t * This will be passed on the instance of\n\t * the context. Used to infer the type\n\t * here.\n\t */\n\treturn {} as AuthContext;\n});\n\nexport const createAuthMiddleware = createMiddleware.create({\n\tuse: [\n\t\toptionsMiddleware,\n\t\t/**\n\t\t * Only use for post hooks\n\t\t */\n\t\tcreateMiddleware(async () => {\n\t\t\treturn {} as {\n\t\t\t\treturned?: unknown | undefined;\n\t\t\t\tresponseHeaders?: Headers | undefined;\n\t\t\t};\n\t\t}),\n\t],\n});\n\nconst use = [optionsMiddleware];\n\ntype BodyOption<M, B extends object | undefined = undefined> = M extends\n\t| \"GET\"\n\t| \"HEAD\"\n\t| (\"GET\" | \"HEAD\")[]\n\t? { body?: never }\n\t: { body?: B };\n\ntype AuthEndpointOptions<\n\tMethod extends HTTPMethod | HTTPMethod[] | \"*\",\n\tBodySchema extends object | undefined,\n\tQuerySchema extends object | undefined,\n\tUse extends Middleware[],\n\tReqHeaders extends boolean,\n\tReqRequest extends boolean,\n\tMeta extends EndpointMetadata | undefined,\n\tErrorSchema extends StandardSchemaV1 | undefined = undefined,\n> = { method: Method } & BodyOption<Method, BodySchema> & {\n\t\tquery?: QuerySchema;\n\t\tuse?: [...Use];\n\t\trequireHeaders?: ReqHeaders;\n\t\trequireRequest?: ReqRequest;\n\t\terror?: ErrorSchema;\n\t\tcloneRequest?: boolean;\n\t\tdisableBody?: boolean;\n\t\tmetadata?: Meta;\n\t\t[key: string]: any;\n\t};\n\n// Path + options + handler overload\nexport function createAuthEndpoint<\n\tPath extends string,\n\tMethod extends HTTPMethod | HTTPMethod[] | \"*\",\n\tBodySchema extends object | undefined = undefined,\n\tQuerySchema extends object | undefined = undefined,\n\tUse extends Middleware[] = [],\n\tReqHeaders extends boolean = false,\n\tReqRequest extends boolean = false,\n\tR = unknown,\n\tMeta extends EndpointMetadata | undefined = undefined,\n\tErrorSchema extends StandardSchemaV1 | undefined = undefined,\n>(\n\tpath: Path,\n\toptions: AuthEndpointOptions<\n\t\tMethod,\n\t\tBodySchema,\n\t\tQuerySchema,\n\t\tUse,\n\t\tReqHeaders,\n\t\tReqRequest,\n\t\tMeta,\n\t\tErrorSchema\n\t>,\n\thandler: (\n\t\tctx: EndpointContext<\n\t\t\tPath,\n\t\t\tMethod,\n\t\t\tBodySchema,\n\t\t\tQuerySchema,\n\t\t\tUse,\n\t\t\tReqHeaders,\n\t\t\tReqRequest,\n\t\t\tAuthContext,\n\t\t\tMeta\n\t\t>,\n\t) => Promise<R>,\n): Endpoint<\n\tPath,\n\tany,\n\tResolveBodyInput<BodySchema, Meta>,\n\tResolveQueryInput<QuerySchema, Meta>,\n\tany,\n\tR,\n\tResolveMetaInput<Meta>,\n\tResolveErrorInput<ErrorSchema, Meta>\n>;\n\n// Options-only (virtual/path-less) overload\nexport function createAuthEndpoint<\n\tMethod extends HTTPMethod | HTTPMethod[] | \"*\",\n\tBodySchema extends object | undefined = undefined,\n\tQuerySchema extends object | undefined = undefined,\n\tUse extends Middleware[] = [],\n\tReqHeaders extends boolean = false,\n\tReqRequest extends boolean = false,\n\tR = unknown,\n\tMeta extends EndpointMetadata | undefined = undefined,\n\tErrorSchema extends StandardSchemaV1 | undefined = undefined,\n>(\n\toptions: AuthEndpointOptions<\n\t\tMethod,\n\t\tBodySchema,\n\t\tQuerySchema,\n\t\tUse,\n\t\tReqHeaders,\n\t\tReqRequest,\n\t\tMeta,\n\t\tErrorSchema\n\t>,\n\thandler: (\n\t\tctx: EndpointContext<\n\t\t\tstring,\n\t\t\tMethod,\n\t\t\tBodySchema,\n\t\t\tQuerySchema,\n\t\t\tUse,\n\t\t\tReqHeaders,\n\t\t\tReqRequest,\n\t\t\tAuthContext,\n\t\t\tMeta\n\t\t>,\n\t) => Promise<R>,\n): Endpoint<\n\tstring,\n\tany,\n\tResolveBodyInput<BodySchema, Meta>,\n\tResolveQueryInput<QuerySchema, Meta>,\n\tany,\n\tR,\n\tResolveMetaInput<Meta>,\n\tResolveErrorInput<ErrorSchema, Meta>\n>;\n\n// Implementation\nexport function createAuthEndpoint(\n\tpathOrOptions: any,\n\thandlerOrOptions: any,\n\thandlerOrNever?: any,\n) {\n\tconst path: string | undefined =\n\t\ttypeof pathOrOptions === \"string\" ? pathOrOptions : undefined;\n\tconst options: EndpointRuntimeOptions =\n\t\ttypeof handlerOrOptions === \"object\" ? handlerOrOptions : pathOrOptions;\n\tconst handler =\n\t\ttypeof handlerOrOptions === \"function\" ? handlerOrOptions : handlerOrNever;\n\n\tif (path) {\n\t\treturn createEndpoint(\n\t\t\tpath,\n\t\t\t{\n\t\t\t\t...options,\n\t\t\t\tuse: [...(options?.use || []), ...use],\n\t\t\t} as any,\n\t\t\t// todo: prettify the code, we want to call `runWithEndpointContext` to top level\n\t\t\tasync (ctx: any) => runWithEndpointContext(ctx, () => handler(ctx)),\n\t\t);\n\t}\n\n\treturn createEndpoint(\n\t\t{\n\t\t\t...options,\n\t\t\tuse: [...(options?.use || []), ...use],\n\t\t} as any,\n\t\t// todo: prettify the code, we want to call `runWithEndpointContext` to top level\n\t\tasync (ctx: any) => runWithEndpointContext(ctx, () => handler(ctx)),\n\t);\n}\n\nexport type AuthEndpoint = ReturnType<typeof createAuthEndpoint>;\n/**\n * The handler type for plugin hooks.\n *\n * Accepts both `Middleware` instances (from `createAuthMiddleware`)\n * and plain async functions for better-call v1/v2 compatibility.\n */\nexport type AuthMiddleware = (\n\tinputContext: Record<string, any>,\n) => Promise<unknown>;\n"],"mappings":";;;;;AAiBA,MAAa,oBAAoB,iBAAiB,YAAY;;;;;;AAM7D,QAAO,EAAE;EACR;AAEF,MAAa,uBAAuB,iBAAiB,OAAO,EAC3D,KAAK,CACJ,mBAIA,iBAAiB,YAAY;AAC5B,QAAO,EAAE;EAIR,CACF,EACD,CAAC;AAEF,MAAM,MAAM,CAAC,kBAAkB;AA6H/B,SAAgB,mBACf,eACA,kBACA,gBACC;CACD,MAAM,OACL,OAAO,kBAAkB,WAAW,gBAAgB;CACrD,MAAM,UACL,OAAO,qBAAqB,WAAW,mBAAmB;CAC3D,MAAM,UACL,OAAO,qBAAqB,aAAa,mBAAmB;AAE7D,KAAI,KACH,QAAO,eACN,MACA;EACC,GAAG;EACH,KAAK,CAAC,GAAI,SAAS,OAAO,EAAE,EAAG,GAAG,IAAI;EACtC,EAED,OAAO,QAAa,uBAAuB,WAAW,QAAQ,IAAI,CAAC,CACnE;AAGF,QAAO,eACN;EACC,GAAG;EACH,KAAK,CAAC,GAAI,SAAS,OAAO,EAAE,EAAG,GAAG,IAAI;EACtC,EAED,OAAO,QAAa,uBAAuB,WAAW,QAAQ,IAAI,CAAC,CACnE"}
+\ No newline at end of file
+diff --git a/dist/context/endpoint-context.d.mts b/dist/context/endpoint-context.d.mts
+index d78c3ec..9807e97 100644
+--- a/dist/context/endpoint-context.d.mts
++++ b/dist/context/endpoint-context.d.mts
+@@ -4,7 +4,7 @@ import { EndpointContext, InputContext } from "better-call";
+ import { AsyncLocalStorage } from "@better-auth/core/async_hooks";
+ 
+ //#region src/context/endpoint-context.d.ts
+-type AuthEndpointContext = Partial<InputContext<string, any> & EndpointContext<string, any>> & {
++type AuthEndpointContext = Partial<InputContext<string, any, any, any, any, any> & EndpointContext<string, any, any, any, any, any, any, AuthContext>> & {
+   context: AuthContext;
+ };
+ /**
+diff --git a/dist/context/endpoint-context.mjs.map b/dist/context/endpoint-context.mjs.map
+index 53a5bf3..d83f805 100644
+--- a/dist/context/endpoint-context.mjs.map
++++ b/dist/context/endpoint-context.mjs.map
+@@ -1 +1 @@
+-{"version":3,"file":"endpoint-context.mjs","names":[],"sources":["../../src/context/endpoint-context.ts"],"sourcesContent":["import type { AsyncLocalStorage } from \"@better-auth/core/async_hooks\";\nimport { getAsyncLocalStorage } from \"@better-auth/core/async_hooks\";\nimport type { EndpointContext, InputContext } from \"better-call\";\nimport type { AuthContext } from \"../types\";\nimport { __getBetterAuthGlobal } from \"./global\";\n\nexport type AuthEndpointContext = Partial<\n\tInputContext<string, any> & EndpointContext<string, any>\n> & {\n\tcontext: AuthContext;\n};\n\nconst ensureAsyncStorage = async () => {\n\tconst betterAuthGlobal = __getBetterAuthGlobal();\n\tif (!betterAuthGlobal.context.endpointContextAsyncStorage) {\n\t\tconst AsyncLocalStorage = await getAsyncLocalStorage();\n\t\tbetterAuthGlobal.context.endpointContextAsyncStorage =\n\t\t\tnew AsyncLocalStorage<AuthEndpointContext>();\n\t}\n\treturn betterAuthGlobal.context\n\t\t.endpointContextAsyncStorage as AsyncLocalStorage<AuthEndpointContext>;\n};\n\n/**\n * This is for internal use only. Most users should use `getCurrentAuthContext` instead.\n *\n * It is exposed for advanced use cases where you need direct access to the AsyncLocalStorage instance.\n */\nexport async function getCurrentAuthContextAsyncLocalStorage() {\n\treturn ensureAsyncStorage();\n}\n\nexport async function getCurrentAuthContext(): Promise<AuthEndpointContext> {\n\tconst als = await ensureAsyncStorage();\n\tconst context = als.getStore();\n\tif (!context) {\n\t\tthrow new Error(\n\t\t\t\"No auth context found. Please make sure you are calling this function within a `runWithEndpointContext` callback.\",\n\t\t);\n\t}\n\treturn context;\n}\n\nexport async function runWithEndpointContext<T>(\n\tcontext: AuthEndpointContext,\n\tfn: () => T,\n): Promise<T> {\n\tconst als = await ensureAsyncStorage();\n\treturn als.run(context, fn);\n}\n"],"mappings":";;;;AAYA,MAAM,qBAAqB,YAAY;CACtC,MAAM,mBAAmB,uBAAuB;AAChD,KAAI,CAAC,iBAAiB,QAAQ,6BAA6B;EAC1D,MAAM,oBAAoB,MAAM,sBAAsB;AACtD,mBAAiB,QAAQ,8BACxB,IAAI,mBAAwC;;AAE9C,QAAO,iBAAiB,QACtB;;;;;;;AAQH,eAAsB,yCAAyC;AAC9D,QAAO,oBAAoB;;AAG5B,eAAsB,wBAAsD;CAE3E,MAAM,WADM,MAAM,oBAAoB,EAClB,UAAU;AAC9B,KAAI,CAAC,QACJ,OAAM,IAAI,MACT,oHACA;AAEF,QAAO;;AAGR,eAAsB,uBACrB,SACA,IACa;AAEb,SADY,MAAM,oBAAoB,EAC3B,IAAI,SAAS,GAAG"}
+\ No newline at end of file
++{"version":3,"file":"endpoint-context.mjs","names":[],"sources":["../../src/context/endpoint-context.ts"],"sourcesContent":["import type { AsyncLocalStorage } from \"@better-auth/core/async_hooks\";\nimport { getAsyncLocalStorage } from \"@better-auth/core/async_hooks\";\nimport type { EndpointContext, InputContext } from \"better-call\";\nimport type { AuthContext } from \"../types\";\nimport { __getBetterAuthGlobal } from \"./global\";\n\nexport type AuthEndpointContext = Partial<\n\tInputContext<string, any, any, any, any, any> &\n\t\tEndpointContext<string, any, any, any, any, any, any, AuthContext>\n> & {\n\tcontext: AuthContext;\n};\n\nconst ensureAsyncStorage = async () => {\n\tconst betterAuthGlobal = __getBetterAuthGlobal();\n\tif (!betterAuthGlobal.context.endpointContextAsyncStorage) {\n\t\tconst AsyncLocalStorage = await getAsyncLocalStorage();\n\t\tbetterAuthGlobal.context.endpointContextAsyncStorage =\n\t\t\tnew AsyncLocalStorage<AuthEndpointContext>();\n\t}\n\treturn betterAuthGlobal.context\n\t\t.endpointContextAsyncStorage as AsyncLocalStorage<AuthEndpointContext>;\n};\n\n/**\n * This is for internal use only. Most users should use `getCurrentAuthContext` instead.\n *\n * It is exposed for advanced use cases where you need direct access to the AsyncLocalStorage instance.\n */\nexport async function getCurrentAuthContextAsyncLocalStorage() {\n\treturn ensureAsyncStorage();\n}\n\nexport async function getCurrentAuthContext(): Promise<AuthEndpointContext> {\n\tconst als = await ensureAsyncStorage();\n\tconst context = als.getStore();\n\tif (!context) {\n\t\tthrow new Error(\n\t\t\t\"No auth context found. Please make sure you are calling this function within a `runWithEndpointContext` callback.\",\n\t\t);\n\t}\n\treturn context;\n}\n\nexport async function runWithEndpointContext<T>(\n\tcontext: AuthEndpointContext,\n\tfn: () => T,\n): Promise<T> {\n\tconst als = await ensureAsyncStorage();\n\treturn als.run(context, fn);\n}\n"],"mappings":";;;;AAaA,MAAM,qBAAqB,YAAY;CACtC,MAAM,mBAAmB,uBAAuB;AAChD,KAAI,CAAC,iBAAiB,QAAQ,6BAA6B;EAC1D,MAAM,oBAAoB,MAAM,sBAAsB;AACtD,mBAAiB,QAAQ,8BACxB,IAAI,mBAAwC;;AAE9C,QAAO,iBAAiB,QACtB;;;;;;;AAQH,eAAsB,yCAAyC;AAC9D,QAAO,oBAAoB;;AAG5B,eAAsB,wBAAsD;CAE3E,MAAM,WADM,MAAM,oBAAoB,EAClB,UAAU;AAC9B,KAAI,CAAC,QACJ,OAAM,IAAI,MACT,oHACA;AAEF,QAAO;;AAGR,eAAsB,uBACrB,SACA,IACa;AAEb,SADY,MAAM,oBAAoB,EAC3B,IAAI,SAAS,GAAG"}
+\ No newline at end of file
+diff --git a/dist/db/adapter/factory.mjs b/dist/db/adapter/factory.mjs
+index 8a06079..cc2354a 100644
+--- a/dist/db/adapter/factory.mjs
++++ b/dist/db/adapter/factory.mjs
+@@ -1,7 +1,7 @@
+-import { getAuthTables } from "../get-tables.mjs";
+ import { getColorDepth } from "../../env/color-depth.mjs";
+ import { TTY_COLORS, createLogger } from "../../env/logger.mjs";
+ import "../../env/index.mjs";
++import { getAuthTables } from "../get-tables.mjs";
+ import { BetterAuthError } from "../../error/index.mjs";
+ import { safeJSONParse } from "../../utils/json.mjs";
+ import { initGetDefaultModelName } from "./get-default-model-name.mjs";
+diff --git a/dist/types/context.d.mts b/dist/types/context.d.mts
+index 796895d..6302f53 100644
+--- a/dist/types/context.d.mts
++++ b/dist/types/context.d.mts
+@@ -51,9 +51,7 @@ type InferPluginOptions<O extends BetterAuthOptions, ID extends BetterAuthPlugin
+  */
+ interface BetterAuthPluginRegistry<AuthOptions, Options> {}
+ type BetterAuthPluginRegistryIdentifier = keyof BetterAuthPluginRegistry<unknown, unknown>;
+-type GenericEndpointContext<Options extends BetterAuthOptions = BetterAuthOptions> = EndpointContext<string, any> & {
+-  context: AuthContext<Options>;
+-};
++type GenericEndpointContext<Options extends BetterAuthOptions = BetterAuthOptions> = EndpointContext<string, any, any, any, any, any, any, AuthContext<Options>>;
+ interface InternalAdapter<_Options extends BetterAuthOptions = BetterAuthOptions> {
+   createOAuthUser(user: Omit<User, "id" | "createdAt" | "updatedAt">, account: Omit<Account, "userId" | "id" | "createdAt" | "updatedAt"> & Partial<Account>): Promise<{
+     user: User;
+diff --git a/dist/types/plugin.d.mts b/dist/types/plugin.d.mts
+index 6dcde9c..bf3548c 100644
+--- a/dist/types/plugin.d.mts
++++ b/dist/types/plugin.d.mts
+@@ -10,7 +10,10 @@ import { Migration } from "kysely";
+ 
+ //#region src/types/plugin.d.ts
+ type DeepPartial<T> = T extends Function ? T : T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+-type HookEndpointContext = Partial<EndpointContext<string, any> & Omit<InputContext<string, any>, "method">> & {
++type HookEndpointContext = Partial<EndpointContext<string, any, any, any, any, any, any, AuthContext & {
++  returned?: unknown | undefined;
++  responseHeaders?: Headers | undefined;
++}> & Omit<InputContext<string, any, any, any, any, any>, "method">> & {
+   path?: string;
+   context: AuthContext & {
+     returned?: unknown | undefined;
+@@ -37,6 +40,14 @@ type BetterAuthPlugin = BetterAuthPluginErrorCodePart & {
+   endpoints?: {
+     [key: string]: Endpoint;
+   } | undefined;
++  /**
++   * Public endpoints that should be mounted at the origin root path (/).
++   * The main handler auto-routes `/.well-known/*` to these endpoints; other
++   * public paths require using `publicHandler` directly.
++   */
++  publicEndpoints?: {
++    [key: string]: Endpoint;
++  } | undefined;
+   middlewares?: {
+     path: string;
+     middleware: Middleware;

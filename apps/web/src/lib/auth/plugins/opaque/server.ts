@@ -590,8 +590,8 @@ export const opaque = (options: OpaquePluginOptions) => {
             registrationRecord: ctx.body.registrationRecord,
           });
 
-          await ctx.context.internalAdapter.deleteVerificationValue(
-            verification.id
+          await ctx.context.internalAdapter.deleteVerificationByIdentifier(
+            verification.identifier
           );
 
           if (options.onPasswordReset) {
@@ -767,8 +767,8 @@ export const opaque = (options: OpaquePluginOptions) => {
           await setSessionCookie(ctx, { session, user });
 
           // Clean up verification token
-          await ctx.context.internalAdapter.deleteVerificationValue(
-            verification.id
+          await ctx.context.internalAdapter.deleteVerificationByIdentifier(
+            verification.identifier
           );
 
           return ctx.json({

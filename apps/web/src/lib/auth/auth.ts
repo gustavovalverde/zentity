@@ -1,12 +1,12 @@
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { APIError, betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import {
@@ -510,7 +510,8 @@ export const auth = betterAuth({
       if (ctx.path !== "/two-factor/disable") {
         return;
       }
-      const userId = ctx.context.session?.user?.id;
+      const userId = (ctx.context as { session?: { user?: { id?: string } } })
+        .session?.user?.id;
       if (!userId) {
         return;
       }
