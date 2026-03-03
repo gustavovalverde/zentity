@@ -5,73 +5,59 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_APP_URL=http://localhost:3000
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
         - NEXT_PUBLIC_PROJECT_ID=${NEXT_PUBLIC_PROJECT_ID:-}
         - NEXT_PUBLIC_ENABLE_FHEVM=${NEXT_PUBLIC_ENABLE_FHEVM:-false}
         - NEXT_PUBLIC_ENABLE_HARDHAT=${NEXT_PUBLIC_ENABLE_HARDHAT:-false}
         - NEXT_PUBLIC_COOP=${NEXT_PUBLIC_COOP:-same-origin-allow-popups}
         - NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY=${NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY:-}
         - NEXT_PUBLIC_FHEVM_RPC_URL=${NEXT_PUBLIC_FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
-        - NEXT_PUBLIC_FHEVM_NETWORK_ID=${NEXT_PUBLIC_FHEVM_NETWORK_ID:-fhevm_sepolia}
-        - NEXT_PUBLIC_FHEVM_CHAIN_ID=${NEXT_PUBLIC_FHEVM_CHAIN_ID:-11155111}
-        - NEXT_PUBLIC_FHEVM_NETWORK_NAME=${NEXT_PUBLIC_FHEVM_NETWORK_NAME:-fhEVM (Sepolia)}
-        - NEXT_PUBLIC_FHEVM_EXPLORER_URL=${NEXT_PUBLIC_FHEVM_EXPLORER_URL:-https://sepolia.etherscan.io}
-        - NEXT_PUBLIC_FHEVM_PROVIDER_ID=${NEXT_PUBLIC_FHEVM_PROVIDER_ID:-zama}
-        # Debug flags (baked at build time)
         - NEXT_PUBLIC_APP_ENV=${NEXT_PUBLIC_APP_ENV:-local}
         - NEXT_PUBLIC_NOIR_DEBUG=${NEXT_PUBLIC_NOIR_DEBUG:-true}
-        - FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY:-}
-        - FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES:-}
-        - FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20:-}
         # Build-time secret for Next.js static generation (not in final image due to multi-stage build)
         - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-docker-build-secret-change-in-production}
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-1}
-      - NEXT_PUBLIC_COOP=${NEXT_PUBLIC_COOP:-same-origin-allow-popups}
-      - NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY=${NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-debug}
+      # App
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-http://127.0.0.1:3000,http://[::1]:3000}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
+      - OPAQUE_SERVER_SETUP=${OPAQUE_SERVER_SETUP:-}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      # Cryptographic secrets
+      - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-}
+      - RECOVERY_ML_KEM_SECRET_KEY=${RECOVERY_ML_KEM_SECRET_KEY:-}
+      - PAIRWISE_SECRET=${PAIRWISE_SECRET:-}
+      # Inter-service (Docker DNS)
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
-      - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
-      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
-      - OTEL_SERVICE_NAME=zentity-web
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
-      - BETTER_AUTH_URL=http://localhost:3000
-      - OPAQUE_SERVER_SETUP=${OPAQUE_SERVER_SETUP:-}
-      # BBS+ Credentials (Privacy-Preserving Selective Disclosure)
-      - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-}
-      - NEXT_PUBLIC_APP_URL=http://localhost:3000
-      - TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://[::1]:3000
-      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      # Database
       - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}
       - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}
-      - SECRET_BLOB_DIR=/var/lib/zentity/web/secret-blobs
       - BB_CRS_PATH=/var/lib/zentity/bb-crs
       # Blockchain attestation (server-side)
       - REGISTRAR_PRIVATE_KEY=${REGISTRAR_PRIVATE_KEY:-}
       - FHEVM_REGISTRAR_PRIVATE_KEY=${FHEVM_REGISTRAR_PRIVATE_KEY:-}
       - LOCAL_REGISTRAR_PRIVATE_KEY=${LOCAL_REGISTRAR_PRIVATE_KEY:-}
-      - FHEVM_RPC_URL=${FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
-      - FHEVM_NETWORK_ID=${FHEVM_NETWORK_ID:-fhevm_sepolia}
-      - FHEVM_CHAIN_ID=${FHEVM_CHAIN_ID:-11155111}
-      - FHEVM_NETWORK_NAME=${FHEVM_NETWORK_NAME:-fhEVM (Sepolia)}
-      - FHEVM_EXPLORER_URL=${FHEVM_EXPLORER_URL:-https://sepolia.etherscan.io}
-      - FHEVM_PROVIDER_ID=${FHEVM_PROVIDER_ID:-zama}
       - FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY:-}
       - FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES:-}
       - FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20:-}
-      # Local email delivery (Mailpit)
+      # Email (Mailpit for local, Resend for production)
       - MAILPIT_BASE_URL=http://mailpit:8025
       - MAILPIT_SEND_API_URL=http://mailpit:8025/api/v1/send
       - MAIL_FROM_EMAIL=${MAIL_FROM_EMAIL:-no-reply@zentity.local}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Zentity}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
-      # Recovery key (generate with: cd apps/web && node -e "const{ml_kem768}=require('@noble/post-quantum/ml-kem.js');require('fs').writeFileSync('.data/recovery-key.bin',Buffer.from(ml_kem768.keygen().secretKey),{mode:0o600})")
-      - RECOVERY_ML_KEM_KEY_PATH=/var/lib/zentity/web/recovery-key.bin
+      # Observability
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
+      - OTEL_SERVICE_NAME=zentity-web
+      # Admin
+      - ZENTITY_ADMIN_API_KEY=${ZENTITY_ADMIN_API_KEY:-}
     depends_on:
       fhe-service:
         condition: service_healthy
