@@ -11,6 +11,7 @@
 !pnpm-lock.yaml
 !.npmrc
 !vendor/
+!patches/
 
 # Include source code
 !src/

@@ -34,8 +34,9 @@ WORKDIR ${APP_HOME}
 
 # Copy package files first for dependency caching
 COPY --link package.json pnpm-lock.yaml .npmrc ./
-# Include vendored dependencies (modified packages and patches)
+# Include vendored dependencies and pnpm patches
 COPY --link vendor ./vendor
+COPY --link patches ./patches
 
 # Install dependencies with BuildKit cache mount for pnpm
 # Cache persists across builds, significantly speeds up installs (Railway cache ID)
@@ -59,6 +60,13 @@ ARG NEXT_PUBLIC_FHEVM_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 ARG NEXT_PUBLIC_APP_ENV=production
 ARG NEXT_PUBLIC_NOIR_DEBUG=false
 ARG NEXT_PUBLIC_ZKPASSPORT_ENABLED=false
+# Blockchain contract addresses (public, needed by next build page data collection)
+ARG FHEVM_IDENTITY_REGISTRY
+ARG FHEVM_COMPLIANCE_RULES
+ARG FHEVM_COMPLIANT_ERC20
+ENV FHEVM_IDENTITY_REGISTRY=${FHEVM_IDENTITY_REGISTRY}
+ENV FHEVM_COMPLIANCE_RULES=${FHEVM_COMPLIANCE_RULES}
+ENV FHEVM_COMPLIANT_ERC20=${FHEVM_COMPLIANT_ERC20}
 # TODO: We should revert this to a secret mount once Railway supports it
 # Railway injects this as build arg (multi-stage build discards it from final image)
 ARG BETTER_AUTH_SECRET
