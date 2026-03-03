@@ -622,13 +622,30 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customIdTokenClaims: ({ user }) => {
+      customIdTokenClaims: async ({ user }) => {
         const ephemeral = consumeEphemeralClaimsByUser(user.id);
         if (!ephemeral) {
           return {};
         }
 
-        return filterIdentityByScopes(ephemeral.claims, ephemeral.scopes);
+        const identityClaims = filterIdentityByScopes(
+          ephemeral.claims,
+          ephemeral.scopes
+        );
+
+        const hasProofScopes =
+          ephemeral.scopes.includes("proof:identity") ||
+          extractProofScopes(ephemeral.scopes).length > 0;
+        if (!hasProofScopes) {
+          return identityClaims;
+        }
+
+        const allProofClaims = await buildProofClaims(user.id);
+        const proofClaims = filterProofClaimsByScopes(
+          allProofClaims,
+          ephemeral.scopes
+        );
+        return { ...identityClaims, ...proofClaims };
       },
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList: string[] = Array.isArray(scopes) ? scopes : [];

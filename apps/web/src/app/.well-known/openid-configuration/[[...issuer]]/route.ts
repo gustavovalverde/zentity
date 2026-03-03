@@ -23,7 +23,11 @@ export async function GET(
     typeof metadata === "object" && metadata !== null
       ? {
           ...(metadata as Record<string, unknown>),
-          id_token_signing_alg_values_supported: ["EdDSA", "ML-DSA-65"],
+          id_token_signing_alg_values_supported: [
+            "RS256",
+            "EdDSA",
+            "ML-DSA-65",
+          ],
         }
       : metadata;
 

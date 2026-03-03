@@ -98,12 +98,12 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 - **Sign-Up + Verification**: Passkeys, OPAQUE passwords, or wallet signatures create the account; commitments + signed claims are stored; ZK proofs are generated client-side.
 - **Compliance checks**: FHE ciphertexts allow encrypted evaluation; ZK proofs provide eligibility guarantees.
 - **Disclosure**: Passkeys, OPAQUE-derived keys, or wallet signatures authorize decryption and re-encryption to relying parties.
-- **Credential issuance**: SD-JWT VCs package derived claims from ZK proofs and signed claims. Signed with EdDSA (default) or ML-DSA-65 (opt-in) via the dual-algorithm JWT dispatcher.
+- **Credential issuance**: SD-JWT VCs package derived claims from ZK proofs and signed claims. Signed with RS256 (default), EdDSA (opt-in), or ML-DSA-65 (post-quantum opt-in) via the multi-algorithm JWT dispatcher.
 - **Auditability**: Commitments + proof hashes form an evidence pack for compliance.
 
 ## Supporting Techniques
 
-- **JWT Signing (EdDSA + ML-DSA-65)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. EdDSA (Ed25519) is the default for standard library compatibility. ML-DSA-65 (post-quantum, IANA-registered as `AKP` key type) is opt-in per client. Signing keys are generated on first use and persisted in the `jwks` database table — this is the standard OIDC provider pattern, distinct from encryption keys (like the ML-KEM recovery key) which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](oauth-integrations.md#jwt-signing-and-jwks).
+- **JWT Signing (RS256 + EdDSA + ML-DSA-65)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. RS256 (RSA-2048) is the default for id_tokens per OIDC Discovery 1.0 §3. EdDSA (Ed25519) is used for access tokens (compact size) and available as an opt-in for id_tokens. ML-DSA-65 (post-quantum, IANA-registered as `AKP` key type) is opt-in per client. Signing keys are generated on first use and persisted in the `jwks` database table — this is the standard OIDC provider pattern, distinct from encryption keys (like the ML-KEM recovery key) which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](oauth-integrations.md#jwt-signing-and-jwks).
 - **Merkle Trees**: Enable group membership proofs (e.g., EU nationality) without revealing which country. Used inside ZK proofs.
 - **Hash Functions**: Poseidon2 for ZK efficiency, SHA-256 for commitments.
 - **BBS+ Signatures**: Enable selective disclosure credentials for wallet users. A wallet can prove identity without revealing the wallet address, and multiple presentations are unlinkable. Used internally for privacy-preserving wallet binding. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md).

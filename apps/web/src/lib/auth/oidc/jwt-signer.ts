@@ -9,32 +9,42 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import { signJwtWithMlDsa } from "./ml-dsa-signer";
 
-type SigningAlg = "EdDSA" | "ML-DSA-65";
+type SigningAlg = "RS256" | "EdDSA" | "ML-DSA-65";
 
-interface EdDsaSigningKey {
+interface CachedSigningKey {
   kid: string;
   privateKey: CryptoKey;
 }
 
-let cachedEdDsaKey: EdDsaSigningKey | null = null;
+let cachedRsaKey: CachedSigningKey | null = null;
+let cachedEdDsaKey: CachedSigningKey | null = null;
 
-async function getOrCreateEdDsaSigningKey(): Promise<EdDsaSigningKey> {
-  if (cachedEdDsaKey) {
-    return cachedEdDsaKey;
+async function getOrCreateSigningKey(
+  alg: "RS256" | "EdDSA"
+): Promise<CachedSigningKey> {
+  const cached = alg === "RS256" ? cachedRsaKey : cachedEdDsaKey;
+  if (cached) {
+    return cached;
   }
 
   const row = await db
     .select()
     .from(jwks)
-    .where(eq(jwks.alg, "EdDSA"))
+    .where(eq(jwks.alg, alg))
     .limit(1)
     .get();
 
   if (!row) {
-    const keyPair = await generateKeyPair("EdDSA", {
-      crv: "Ed25519",
-      extractable: true,
-    });
+    const keyPair =
+      alg === "RS256"
+        ? await generateKeyPair("RS256", {
+            modulusLength: 2048,
+            extractable: true,
+          })
+        : await generateKeyPair("EdDSA", {
+            crv: "Ed25519",
+            extractable: true,
+          });
     const publicJwk = await exportJWK(keyPair.publicKey);
     const privateJwk = await exportJWK(keyPair.privateKey);
     const kid = crypto.randomUUID();
@@ -45,33 +55,44 @@ async function getOrCreateEdDsaSigningKey(): Promise<EdDsaSigningKey> {
         id: kid,
         publicKey: JSON.stringify(publicJwk),
         privateKey: JSON.stringify(privateJwk),
-        alg: "EdDSA",
-        crv: "Ed25519",
+        alg,
+        crv: alg === "EdDSA" ? "Ed25519" : null,
       })
       .run();
 
-    cachedEdDsaKey = { kid, privateKey: keyPair.privateKey };
-    return cachedEdDsaKey;
+    const result = { kid, privateKey: keyPair.privateKey };
+    if (alg === "RS256") {
+      cachedRsaKey = result;
+    } else {
+      cachedEdDsaKey = result;
+    }
+    return result;
   }
 
   const privateJwk = JSON.parse(row.privateKey) as Record<string, unknown>;
-  const privateKey = await importJWK(privateJwk, "EdDSA");
+  const privateKey = await importJWK(privateJwk, alg);
 
   if (!(privateKey instanceof CryptoKey)) {
-    throw new Error("Failed to import EdDSA private key as CryptoKey");
+    throw new Error(`Failed to import ${alg} private key as CryptoKey`);
   }
 
-  cachedEdDsaKey = { kid: row.id, privateKey };
-  return cachedEdDsaKey;
+  const result = { kid: row.id, privateKey };
+  if (alg === "RS256") {
+    cachedRsaKey = result;
+  } else {
+    cachedEdDsaKey = result;
+  }
+  return result;
 }
 
-async function signWithEdDsa(
-  payload: Record<string, unknown>
+async function signWithAlg(
+  payload: Record<string, unknown>,
+  alg: "RS256" | "EdDSA"
 ): Promise<string> {
-  const { kid, privateKey } = await getOrCreateEdDsaSigningKey();
+  const { kid, privateKey } = await getOrCreateSigningKey(alg);
 
   return new SignJWT(payload)
-    .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid })
+    .setProtectedHeader({ alg, typ: "JWT", kid })
     .sign(privateKey);
 }
 
@@ -98,7 +119,7 @@ async function getClientSigningAlg(clientId: string): Promise<SigningAlg> {
     return cached.alg;
   }
 
-  let alg: SigningAlg = "EdDSA";
+  let alg: SigningAlg = "RS256";
 
   const client = await db
     .select({ metadata: oauthClients.metadata })
@@ -112,8 +133,9 @@ async function getClientSigningAlg(clientId: string): Promise<SigningAlg> {
       typeof client.metadata === "string"
         ? (JSON.parse(client.metadata) as Record<string, unknown>)
         : (client.metadata as Record<string, unknown>);
-    if (meta.id_token_signed_response_alg === "ML-DSA-65") {
-      alg = "ML-DSA-65";
+    const requested = meta.id_token_signed_response_alg;
+    if (requested === "EdDSA" || requested === "ML-DSA-65") {
+      alg = requested;
     }
   }
 
@@ -122,25 +144,25 @@ async function getClientSigningAlg(clientId: string): Promise<SigningAlg> {
 }
 
 /**
- * Dual-algorithm JWT dispatcher.
+ * Multi-algorithm JWT dispatcher.
  *
- * - Access tokens (payload has `scope`) → always EdDSA for standard library compat
- * - ID tokens → EdDSA by default, ML-DSA-65 if client metadata opts in
+ * - Access tokens (payload has `scope`) → always EdDSA for compact size
+ * - ID tokens → RS256 by default (OIDC mandatory), EdDSA/ML-DSA-65 if client opts in
  */
 export async function signJwt(
   payload: Record<string, unknown>
 ): Promise<string> {
   if (typeof payload.scope === "string") {
-    return signWithEdDsa(payload);
+    return signWithAlg(payload, "EdDSA");
   }
 
   const clientId = resolveClientId(payload);
-  if (clientId) {
-    const alg = await getClientSigningAlg(clientId);
-    if (alg === "ML-DSA-65") {
-      return signJwtWithMlDsa(payload);
-    }
-  }
+  const alg: SigningAlg = clientId
+    ? await getClientSigningAlg(clientId)
+    : "RS256";
 
-  return signWithEdDsa(payload);
+  if (alg === "ML-DSA-65") {
+    return signJwtWithMlDsa(payload);
+  }
+  return signWithAlg(payload, alg);
 }
