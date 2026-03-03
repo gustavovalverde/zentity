@@ -83,9 +83,9 @@ const audienceContent: Array<{
     label: "Companies",
     title: "Can we satisfy compliance without collecting everything?",
     description:
-      "Yes. Banks, exchanges, and other services can meet policy requirements without collecting full identity data by default.",
+      "Yes. Banks, exchanges, and other services can meet policy requirements without collecting full identity data by default. Whether you verify through Zentity directly or through your existing provider, the relying party receives the same privacy-preserving proofs.",
     bullets: [
-      "One integration path replaces separate auth and KYC systems.",
+      "One integration path covers both auth and verification.",
       "Responses include decision context for audits.",
       "Requests stay limited to what each flow needs.",
     ],
@@ -120,11 +120,11 @@ const audienceContent: Array<{
     label: "Developers",
     title: "Can we integrate without rebuilding auth?",
     description:
-      "Yes. Integration stays close to standard OAuth/OIDC patterns, including dynamic client registration and scoped claim responses.",
+      "Yes. Integration stays close to standard OAuth/OIDC patterns, including dynamic client registration and scoped claim responses. Already have a verification provider? Zentity wraps their signed attestations in ZK proofs and delivers them via the same OIDC scopes.",
     bullets: [
       "Request only the proof and identity permissions your app needs.",
       "Proof results are returned in userinfo based on approved scopes.",
-      "Identity fields are returned in id_token only after user consent.",
+      "Same protocol whether verification is native or external.",
     ],
     ctaLabel: "Open OAuth integration docs",
     ctaHref: "/docs/oauth-integrations",

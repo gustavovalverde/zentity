@@ -31,7 +31,7 @@ export function Hero() {
             <span className="absolute inline-flex size-2.5 animate-ping rounded-full bg-green-500/40" />
             <span className="relative inline-flex size-2.5 rounded-full bg-green-500" />
           </span>
-          <span className="leading-none">Alpha</span>
+          <span className="leading-none">Pre-Audit Beta</span>
         </Badge>
 
         <h1 className="font-display font-semibold text-5xl leading-[0.98] tracking-tight sm:text-7xl lg:text-8xl">
@@ -41,10 +41,10 @@ export function Hero() {
         </h1>
 
         <p className="mx-auto mt-8 max-w-3xl text-muted-foreground text-xl leading-9 sm:text-2xl">
-          Identity systems force a trade: share data to prove anything about it.
-          Zentity eliminates the trade. Users verify once, then produce
-          cryptographic proofs on demand. The verifier learns the answer.
-          Nothing else.
+          Identity verification requires sharing data to prove anything about
+          it. Zentity is the cryptographic layer that separates the two. Verify
+          once through any provider, then produce proofs on demand. The verifier
+          learns the answer. Nothing else.
         </p>
 
         <div className="mx-auto mt-8 grid max-w-5xl gap-2 text-muted-foreground text-sm sm:text-base md:grid-cols-[auto_auto] md:justify-center md:gap-x-10 md:gap-y-3">
@@ -77,14 +77,14 @@ export function Hero() {
             <IconArrowRight className="ml-2 size-4" />
           </a>
           <Link
-            to="/docs/architecture"
+            to="/docs/oauth-integrations"
             className={cn(
               buttonVariants({ size: "lg", variant: "outline" }),
               "h-11 px-7 text-base",
             )}
           >
             <IconBook2 className="mr-2 size-4" />
-            Read Architecture
+            Read Integration Guide
           </Link>
         </div>
 

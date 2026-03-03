@@ -181,18 +181,18 @@ export function ZkAuthPage() {
   return (
     <PageLayout
       title="ZK-Auth: Zero-Knowledge Identity Provider"
-      description="Zero-knowledge cryptography changes the SSO model: instead of receiving raw PII, relying parties receive cryptographic proofs, verified answers without the underlying data."
+      description="Zero-knowledge cryptography changes what SSO delivers: instead of raw PII, relying parties receive cryptographic proofs. Verified answers without the underlying data, integrated via standard OAuth 2.1."
     >
       <div className="space-y-12">
         {/* The Paradigm Shift Section */}
         <section>
           <div className="mb-6">
             <h2 className="font-display text-2xl font-semibold">
-              The Zero-Liability SSO Paradigm
+              What changes when proofs replace PII
             </h2>
             <p className="landing-body mt-2">
-              How Zero-Knowledge Auth replaces the Data-for-Convenience
-              trade-off.
+              Standard SSO exchanges data for convenience. ZK-Auth exchanges
+              proofs for the same convenience, without the liability.
             </p>
           </div>
 
@@ -204,10 +204,10 @@ export function ZkAuthPage() {
                   <IconDatabaseOff
                     className={cn("size-5", colorStyles.red.iconText)}
                   />
-                  <h3>Traditional SSO</h3>
+                  <h3>Collection-based SSO</h3>
                 </div>
                 <p className="landing-caption mb-4 uppercase tracking-[0.16em]">
-                  The "Data-for-Convenience" Trade
+                  The data-for-convenience trade
                 </p>
                 <ul className="space-y-3">
                   <li className="flex items-start gap-3">
@@ -218,9 +218,10 @@ export function ZkAuthPage() {
                       )}
                     />
                     <span className="landing-body">
-                      <strong>Massive Liability:</strong> You receive raw PII
-                      (emails, names, and dates of birth). You must secure it,
-                      comply with GDPR/CCPA, and risk devastating breaches.
+                      <strong>Data liability:</strong> The relying party
+                      receives raw PII (emails, names, dates of birth) and
+                      inherits the obligation to secure, retain, and eventually
+                      delete it.
                     </span>
                   </li>
                   <li className="flex items-start gap-3">
@@ -231,9 +232,10 @@ export function ZkAuthPage() {
                       )}
                     />
                     <span className="landing-body">
-                      <strong>IdP Surveillance:</strong> The Identity Provider
-                      tracks every service your users log into, building massive
-                      advertising profiles.
+                      <strong>Correlation risk:</strong> The identity provider
+                      sees every service the user visits. The same identifier
+                      appears across all relying parties, enabling cross-service
+                      tracking.
                     </span>
                   </li>
                 </ul>
@@ -250,7 +252,7 @@ export function ZkAuthPage() {
                   <h3>Zentity ZK-Auth</h3>
                 </div>
                 <p className="landing-caption mb-4 uppercase tracking-[0.16em]">
-                  The "Zero-Liability" Paradigm
+                  Proof-based verification
                 </p>
                 <ul className="space-y-3">
                   <li className="flex items-start gap-3">
@@ -261,10 +263,11 @@ export function ZkAuthPage() {
                       )}
                     />
                     <span className="landing-body">
-                      <strong>Zero Liability:</strong> You request "proofs"
-                      (e.g., <code className="text-xs">proof:age</code>), and
-                      receive a verified boolean flag. You don't store the
-                      passport; you store the cryptographic proof.
+                      <strong>No data liability:</strong> The relying party
+                      requests proof scopes (e.g.,{" "}
+                      <code className="text-xs">proof:age</code>) and receives
+                      verified boolean flags. No passport stored, no PII
+                      retained.
                     </span>
                   </li>
                   <li className="flex items-start gap-3">
@@ -275,9 +278,10 @@ export function ZkAuthPage() {
                       )}
                     />
                     <span className="landing-body">
-                      <strong>Blind IdP:</strong> Zentity is cryptographically
-                      blind to where the user is logging in. The network
-                      verifies the truth without tracking the user.
+                      <strong>No correlation:</strong> Pairwise pseudonyms per
+                      relying party. The identity provider cannot track which
+                      services the user visits. Cross-service linking is
+                      mathematically prevented.
                     </span>
                   </li>
                 </ul>
@@ -289,13 +293,13 @@ export function ZkAuthPage() {
         {/* What makes this different */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            What makes this different from normal OAuth
+            What the protocol changes
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            Zentity uses standard OAuth 2.1 and OIDC, but the default response
-            is fundamentally different:{" "}
+            Standard OAuth 2.1 and OIDC, but the default payload is
+            fundamentally different:{" "}
             <strong>
-              services receive cryptographic proofs, not personal data.
+              relying parties receive cryptographic proofs, not personal data.
             </strong>
           </p>
 
@@ -309,8 +313,8 @@ export function ZkAuthPage() {
                   <h3 className="font-semibold">Proofs first, data second</h3>
                 </div>
                 <p className="landing-body">
-                  Most identity providers hand over raw PII the moment a user
-                  logs in. Zentity returns proof-based scopes (
+                  Collection-based identity flows deliver raw PII the moment a
+                  user logs in. Proof-based scopes (
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                     proof:age
                   </code>
@@ -318,8 +322,8 @@ export function ZkAuthPage() {
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                     proof:verification
                   </code>
-                  ) that answer the question without revealing the underlying
-                  data. A service learns "this person is over 21"{" "}
+                  ) answer the question without revealing the underlying data. A
+                  service learns "this person is over 21"{" "}
                   <strong>without ever seeing a date of birth.</strong>
                 </p>
               </CardContent>
@@ -394,14 +398,15 @@ export function ZkAuthPage() {
             Integration at the protocol level, not the library level
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            Most identity verification platforms require a proprietary SDK: a
-            library to install, a protocol to learn, and infrastructure to host.
-            Zentity requires none of that; the integration boundary is OAuth 2.1
-            and OpenID Connect, the same protocols your application already
-            speaks.{" "}
+            The integration boundary is OAuth 2.1 and OpenID Connect, the same
+            protocols your application already speaks. No SDK to install, no
+            custom protocol to learn, no cryptography infrastructure to host.{" "}
             <strong>
               If you can add "Sign in with Google," you can add Zentity.
-            </strong>
+            </strong>{" "}
+            This applies whether verification runs through Zentity directly or
+            through your existing identity provider: the relying party receives
+            the same privacy-preserving proofs via the same OIDC scopes.
           </p>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-3">

@@ -14,7 +14,7 @@ export default function Home() {
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="flex items-center gap-2">
             <Logo />
-            <Badge variant="secondary">Alpha</Badge>
+            <Badge variant="secondary">Pre-Audit Beta</Badge>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/sign-in">
@@ -36,7 +36,7 @@ export default function Home() {
           <h1 className="font-bold text-4xl tracking-tight sm:text-6xl">
             Privacy-First
             <br />
-            Identity Verification
+            Verification Layer
           </h1>
           <p className="mt-6 text-lg text-muted-foreground leading-8">
             Prove who you are without revealing your personal data. Zentity uses
@@ -47,9 +47,9 @@ export default function Home() {
 
           <Alert className="mt-8 text-left" variant="warning">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Proof of Concept</AlertTitle>
+            <AlertTitle>Pre-Audit Beta</AlertTitle>
             <AlertDescription>
-              Zentity is under active development. Our cryptographic approach is
+              Zentity is under active development. Cryptographic approach is
               being validated. Use for evaluation only.
             </AlertDescription>
           </Alert>

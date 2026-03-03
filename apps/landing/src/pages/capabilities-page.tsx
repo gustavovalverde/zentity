@@ -5,6 +5,7 @@ import {
   IconFingerprint,
   IconHeart,
   IconKey,
+  IconLayersLinked,
   IconLock,
   IconPlugConnected,
   IconShieldCheck,
@@ -56,7 +57,7 @@ const architecturalProperties: Array<{
     icon: IconLock,
     color: "blue",
     title: "Computation Without Decryption",
-    enables: "Perpetual KYC, encrypted re-screening, ongoing compliance",
+    enables: "Perpetual screening, encrypted re-evaluation, ongoing compliance",
     description:
       "Fully homomorphic encryption lets the server re-screen encrypted nationality and date-of-birth values against updated sanctions lists without decrypting. Unlike ZK proofs, FHE handles list updates without any user action.",
   },
@@ -101,8 +102,9 @@ const scenarios: ScenarioItem[] = [
     title: "Age Verification",
     description: (
       <>
-        ZK proof that a user meets an age threshold. The verifier learns{" "}
-        <strong>'old enough' and nothing else</strong>.
+        A retailer, platform, or regulator needs to know "old enough." A
+        threshold proof answers the question without creating the liability. The
+        verifier learns <strong>the answer and nothing else</strong>.
       </>
     ),
     signal: "Three jurisdictions enforcing simultaneously in 2026",
@@ -147,9 +149,10 @@ const scenarios: ScenarioItem[] = [
     title: "Zero-Knowledge SSO",
     description: (
       <>
-        Standard OIDC with pairwise pseudonyms and{" "}
-        <strong>ZK proofs instead of PII</strong>. Each service sees a unique
-        identifier.
+        Standard OIDC redirect with pairwise pseudonyms and{" "}
+        <strong>ZK proofs instead of PII in tokens</strong>. Each service sees a
+        unique identifier; the identity provider cannot track which services the
+        user visits.
       </>
     ),
     signal: "Passkey adoption up 412%, zero phishing on passwordless",
@@ -212,8 +215,8 @@ const scenarios: ScenarioItem[] = [
     description: (
       <>
         A <strong>single verification</strong> distributes to every connected
-        service through standard OAuth. Any application that already supports
-        OIDC can consume attestations without custom integration.
+        service through standard OAuth. Any application that supports OIDC can
+        consume attestations without custom integration or cryptography code.
       </>
     ),
     signal: "Reusable identity is the dominant market narrative",
@@ -264,7 +267,7 @@ const scenarios: ScenarioItem[] = [
         services see only what they explicitly request.
       </>
     ),
-    signal: "Progressive KYC now expected as table stakes",
+    signal: "Progressive verification now expected as table stakes",
     regulations: [],
     industries: ["Multi-Nationality", "Regulatory"],
   },
@@ -275,9 +278,10 @@ const scenarios: ScenarioItem[] = [
     title: "Jurisdiction Membership",
     description: (
       <>
-        Merkle proofs verify group inclusion (EU, Schengen, EEA){" "}
+        An exchange needs "eligible jurisdiction." Merkle proofs verify group
+        inclusion (EU, Schengen, EEA){" "}
         <strong>without revealing the specific country</strong>. The exchange
-        learns 'eligible jurisdiction,' not which one.
+        learns the answer, not which member.
       </>
     ),
     signal: "MiCA country-by-country transitions create immediate need",
@@ -409,7 +413,7 @@ export function CapabilitiesPage() {
   useDocumentHead({
     title: "Capabilities | Zentity",
     description:
-      "What Zentity's privacy-preserving architecture makes possible — from zero-knowledge verification to encrypted compliance — and where it applies.",
+      "Scenarios where verification must not require revelation: threshold proofs, graduated trust, portable verification, and the cryptographic primitives that address them.",
   });
 
   return (
@@ -428,14 +432,14 @@ export function CapabilitiesPage() {
           <div className="landing-container">
             <header className="max-w-3xl">
               <h1 className="font-display font-semibold text-4xl leading-tight">
-                What Zentity Enables
+                Where Verification Must Not Require Revelation
               </h1>
               <p className="landing-copy mt-3">
-                Every capability below is a consequence of separating
-                verification from revelation. The architecture combines
-                zero-knowledge proofs, fully homomorphic encryption, pairwise
-                identifiers, and credential-wrapped key custody so that proving
-                a fact never requires disclosing the data behind it.
+                These scenarios share a structural requirement: proving facts
+                about identity without disclosing the data behind them. The
+                cryptographic primitives are the same across all of them; what
+                varies is the fact being proved and the consequences of a
+                privacy failure.
               </p>
             </header>
           </div>
@@ -483,15 +487,65 @@ export function CapabilitiesPage() {
           </div>
         </section>
 
-        {/* Section 3: Where This Applies */}
+        {/* Section 2b: Two Integration Paths */}
         <section
           className="landing-section landing-band-muted"
+          id="integration-paths"
+        >
+          <div className="landing-container">
+            <SectionHeader
+              title="Two integration paths, one set of primitives"
+              subtitle="The same cryptographic architecture serves applications with no existing verification and applications with established providers. The primitives are identical; the verification source differs."
+            />
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card className="flex h-full flex-col">
+                <CardContent className="flex grow flex-col pt-6">
+                  <IconLayersLinked
+                    className={cn("size-5", colorStyles.purple.iconText)}
+                  />
+                  <h3 className="mt-3 font-semibold">
+                    Full-stack verification
+                  </h3>
+                  <p className="landing-body mt-2 grow">
+                    For applications without existing identity verification.
+                    Zentity handles document OCR, liveness detection, face
+                    matching, proof generation, and credential delivery. The
+                    relying party integrates via OAuth 2.1.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="flex h-full flex-col">
+                <CardContent className="flex grow flex-col pt-6">
+                  <IconPlugConnected
+                    className={cn("size-5", colorStyles.amber.iconText)}
+                  />
+                  <h3 className="mt-3 font-semibold">Proof layer</h3>
+                  <p className="landing-body mt-2 grow">
+                    The same cryptographic primitives work over
+                    externally-verified identity. When a trusted provider
+                    verifies identity, Zentity generates zero-knowledge proofs
+                    over those signed claims and delivers them via OIDC. The
+                    relying party receives proofs instead of raw identity data.
+                    The verification provider never learns which service
+                    requested the proof.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </section>
+
+        {/* Section 3: Where This Applies */}
+        <section
+          className="landing-section landing-band-flat"
           id="where-this-applies"
         >
           <div className="landing-container">
             <SectionHeader
               title="Where this applies"
-              subtitle="Each scenario is powered by a different combination of the same architectural properties. Ordered by adoption signal."
+              subtitle="Each scenario requires a different combination of the same primitives. Ordered by adoption signal strength."
             />
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

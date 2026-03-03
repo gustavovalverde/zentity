@@ -69,8 +69,8 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1">
             <span className="font-bold text-xl">Zentity</span>
             <p className="mt-4 text-muted-foreground text-sm">
-              Privacy-first identity verification powered by ZK and FHE
-              cryptography with standards-based OIDC integration.
+              Cryptographic verification layer. ZK proofs, FHE, and
+              credential-wrapped key custody, integrated via standard OIDC.
             </p>
             <div className="mt-4 flex gap-2">
               <a

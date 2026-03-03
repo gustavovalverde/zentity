@@ -13,8 +13,8 @@ export function CTASection() {
         <Card>
           <CardContent className="p-7 md:p-10">
             <SectionHeader
-              title="Validate Zentity in your own relying-party flow"
-              subtitle="Start with the live demo, then review integration and compliance details in the technical docs"
+              title="Integrate verification without collection into your stack"
+              subtitle="Start with the demo to see the full verification flow, then integrate via standard OAuth 2.1"
               maxWidth="lg"
               className="mb-8"
             />
@@ -33,13 +33,13 @@ export function CTASection() {
                 <IconArrowRight className="ml-2 size-4" />
               </a>
               <Link
-                to="/docs/architecture"
+                to="/docs/oauth-integrations"
                 className={cn(
                   buttonVariants({ size: "lg", variant: "outline" }),
                   "h-11 px-7 text-base",
                 )}
               >
-                Read Architecture
+                Read Integration Guide
               </Link>
             </div>
           </CardContent>

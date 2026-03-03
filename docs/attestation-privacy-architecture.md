@@ -16,9 +16,9 @@ Zentity separates **eligibility proofs (ZK)**, **sensitive attributes (FHE)**, *
 
 This model supports **multi-document identities**, **revocable attestations**, **periodic re-verification**, and **auditable disclosures** across Web2 and Web3.
 
-### Regulatory Compliance
+### Regulatory Alignment
 
-This architecture supports:
+Zentity provides the cryptographic infrastructure; the relying party determines which regulatory requirements apply to their use case. This architecture supports:
 
 - **US (FinCEN CIP Rule)**: Full DOB precision, address collection, name verification
 - **EU (AMLD5/AMLD6)**: 5-year retention, PEP/sanctions screening, re-verification scheduling

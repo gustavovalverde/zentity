@@ -10,123 +10,111 @@
 
 <div align="center">
 
-**Traditional KYC is a honeypot by design**
+**A cryptographic verification layer that proves compliance without collecting the evidence.**
 
-"Prove you're over 18" → stores your exact birthday<br>
-"Prove your identity" → stores your passport photo<br>
-"Prove you're real" → stores biometric templates
+Verification and revelation are separable operations. A bank needs to know "eligible";
+it does not need to store the passport. An exchange needs "permitted jurisdiction";
+it does not need the country. A retailer needs "old enough"; it does not need the date of birth.
 
-Every database is a breach waiting to happen. The model itself is broken.
-**We're storing data we don't need to store.**
-
----
-
-**Zentity** proves you can verify identity claims without storing plaintext
-underlying data. Built with passkeys, **OPAQUE**, and **wallet signatures (EIP-712)** for authentication and key custody,
-zero-knowledge proofs, fully homomorphic encryption, and cryptographic
-commitments.
+Zentity uses zero-knowledge proofs, fully homomorphic encryption, credential-wrapped
+key custody, and cryptographic commitments to satisfy these requirements through
+standard OAuth 2.1 and OpenID Connect, without storing plaintext personal data.
 
 </div>
 
 > [!CAUTION]
-> **Proof of Concept - Active Development**
+> **Pre-Audit Beta**
 >
-> Zentity is a PoC demonstrating privacy-preserving compliance and identity
-> verification. While we apply best-effort security practices:
+> Zentity's cryptographic architecture is implemented and functional. Independent
+> security audit is pending.
 >
-> - **Breaking changes expected** - Backward compatibility is not a goal
-> - **Cryptographic validation in progress** - Our ZK/FHE approach is still being validated
-> - **Not production-ready** - Do not use with sensitive personal data
-> - **No security guarantees** - Credentials and information may not be in a fully secure state
+> - **Breaking changes expected**: backward compatibility is not a goal
+> - **Cryptographic validation in progress**: the ZK/FHE approach is being validated
+> - **Not production-ready**: do not use with sensitive personal data
 >
-> Use this project for **evaluation and learning**, not production deployments with real user data.
+> Use this project for **evaluation and development integration**, not production deployments with real user data.
 
 ## Contents
 
 - [Zentity](#zentity)
   - [Contents](#contents)
-  - [Project Guide](#project-guide)
-    - [Why we are building this](#why-we-are-building-this)
-    - [What this project demonstrates](#what-this-project-demonstrates)
-    - [How the pieces connect](#how-the-pieces-connect)
-    - [Key custody in plain English](#key-custody-in-plain-english)
-    - [Tech choices and rationale](#tech-choices-and-rationale)
-    - [Documentation map](#documentation-map)
+  - [Three audiences, one protocol](#three-audiences-one-protocol)
+  - [Two integration paths](#two-integration-paths)
+  - [What a relying party receives](#what-a-relying-party-receives)
+  - [How the pieces connect](#how-the-pieces-connect)
+  - [Key custody in plain English](#key-custody-in-plain-english)
+  - [Tech choices and rationale](#tech-choices-and-rationale)
+  - [Documentation map](#documentation-map)
   - [TL;DR run and test](#tldr-run-and-test)
   - [Architecture](#architecture)
-  - [What’s implemented](#whats-implemented)
-  - [Use cases](#use-cases)
-  - [Planned features](#planned-features)
+  - [What's implemented](#whats-implemented)
+  - [Scenarios](#scenarios)
   - [Data handling at a glance](#data-handling-at-a-glance)
   - [Services and ports](#services-and-ports)
   - [License](#license)
   - [Contributing](#contributing)
 
-## Project Guide
+## Three audiences, one protocol
 
-Zentity is building a **privacy-first user management and KYC onboarding layer**
-that sits **alongside** existing authentication systems. It lets users prove
-things like age, residency, and verification status **without exposing raw
-PII**.
+- **Users** prove facts (age, nationality, verification status) without revealing the data behind them.
+- **Companies** verify compliance without collecting or storing identity documents.
+- **Developers** integrate via standard OAuth 2.1 and OpenID Connect. No SDK, no custom protocol, no cryptography code.
 
-### Why we are building this
+## Two integration paths
 
-- Minimize breach impact so attackers only see ciphertexts and proofs.
-- Allow selective disclosure without sharing full documents or attributes.
-- Keep the UX familiar and fast.
-- Support KYC-grade onboarding while storing as little sensitive data as possible.
-- Fit into existing IdPs and auth stacks instead of replacing them.
+**Full-stack verification:** For applications without existing identity verification. Zentity handles document OCR, liveness detection, face matching, proof generation, and credential delivery. The relying party integrates via OAuth 2.1.
 
-### What this project demonstrates
+**Proof layer:** The same cryptographic primitives work over externally-verified identity. When a trusted provider verifies identity, Zentity generates zero-knowledge proofs over those signed claims and delivers them via OIDC. The relying party receives proofs instead of raw identity data. The verification provider never learns which service requested the proof.
 
-- Four cryptographic pillars—passkeys + OPAQUE + wallet (auth + key custody), ZK proofs, FHE,
-  and commitments—work together in a real flow.
-- Three authentication methods (passkeys, passwords, wallets) all derive client-held keys for sealing secrets.
-- Merkle trees extend those pillars for private group membership proofs.
-- Privacy-preserving compliance can be practical without sacrificing usability.
+## What a relying party receives
 
-### How the pieces connect
+The protocol distinguishes between **proof scopes** and **identity scopes**:
 
-1. **Onboarding and KYC**:
+- `proof:age`, `proof:verification`, `proof:nationality`: boolean flags derived from ZK proofs. The relying party learns "eligible" without seeing the underlying data.
+- `identity.name`, `identity.dob`: actual PII, delivered ephemerally via `id_token` only when regulation requires it, after explicit user consent and credential unlock.
+
+Most integrations need only proof scopes.
+
+## How the pieces connect
+
+1. **Verification**:
    - Document capture and selfie/liveness flows run in the app.
    - OCR and liveness checks produce verified attributes and scores.
-   - Passkey registration creates the account and enables passwordless sign-in.
-   - OPAQUE password sign-up is available for users without passkeys.
-   - Wallet sign-up and sign-in (SIWE + EIP-712) is available for Web3-native users.
+   - The server signs extracted measurements as tamper-evident claims.
 2. **Encryption and storage**:
    - Sensitive attributes are encrypted before storage.
-   - All three auth methods derive KEKs to seal profiles and wrap FHE keys.
-3. **Proof layer**:
-   - ZK proofs are generated client-side.
-   - Proofs are verified server-side.
-4. **Consumption**:
-   - Apps request privacy-preserving signals such as `is_over_18`.
-   - Raw attributes are never shared with integrators.
+   - All three auth methods (passkey, OPAQUE password, wallet) derive KEKs to seal profiles and wrap FHE keys.
+3. **Proof generation**:
+   - ZK proofs are generated client-side over server-signed claims.
+   - Proofs are verified server-side; private inputs never leave the browser.
+4. **Delivery**:
+   - Relying parties request privacy-preserving signals via standard OIDC scopes.
+   - Raw attributes are never shared with integrators unless explicitly authorized.
 
-### Key custody in plain English
+## Key custody in plain English
 
 - The browser encrypts sensitive data with a random **data key (DEK)**.
-- That DEK is wrapped by a **key‑encryption key (KEK)** derived client-side.
-- The server stores only encrypted blobs + wrapped DEKs, so it **cannot decrypt** user data.
+- That DEK is wrapped by a **key-encryption key (KEK)** derived client-side from the user's credential.
+- The server stores only encrypted blobs and wrapped DEKs, so it **cannot decrypt** user data.
 - When a user unlocks, the browser unwraps the DEK and decrypts locally.
 
-### Tech choices and rationale
+## Tech choices and rationale
 
-| Capability | Tech | Why we chose it | Deep dive |
+| Capability | Tech | Why | Deep dive |
 | --- | --- | --- | --- |
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
-| Auth + key custody (passkeys + OPAQUE + wallet) | Passkey vaults + PRF-derived keys + OPAQUE export keys + EIP-712 wallet signatures | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
+| Auth + key custody | Passkey PRF + OPAQUE + EIP-712 Wallet | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
 | Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT | Standards-based interoperability with external wallets; selective disclosure preserves privacy | [SSI Architecture](docs/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
-| Data integrity and dedup | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
-| KYC extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
+| Data integrity | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
+| Document extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
 
-### Documentation map
+## Documentation map
 
 **Start here (recommended order)**:
 
 1. [docs/architecture.md](docs/architecture.md) - system map and data flow
-2. [docs/cryptographic-pillars.md](docs/cryptographic-pillars.md) - what we use and why
+2. [docs/cryptographic-pillars.md](docs/cryptographic-pillars.md) - the four cryptographic primitives and why each is necessary
 3. [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md) - data classification and privacy boundaries
 4. [docs/ssi-architecture.md](docs/ssi-architecture.md) - Self-Sovereign Identity and verifiable credentials
 5. [docs/tamper-model.md](docs/tamper-model.md) - integrity controls and threat model
@@ -203,9 +191,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 
 Quick manual test (happy path):
 
-- Go to `/sign-up` → complete the 4-step wizard (email → upload ID → liveness →
-  create account)
-- After completion, open `/dashboard` and check verification + proof status
+- Go to `/sign-up` and complete the onboarding wizard (email, upload ID, liveness, create account)
+- After completion, open `/dashboard` and check verification and proof status
 
 ## Architecture
 
@@ -233,65 +220,58 @@ flowchart LR
   API -->|attestation| BC
 ```
 
-## What’s implemented
+## What's implemented
 
-This is a proof of concept and will change quickly.
-
-- 4-step onboarding wizard: email → upload ID → liveness → create account
+- Onboarding wizard: email, upload ID, liveness, create account
 - Server-side OCR/liveness/face match with signed claims for tamper resistance
-- Client-side ZK proving (Web Worker) + server-side verification (Node
-  bb-worker):
+- Client-side ZK proving (Web Worker) + server-side verification (Node bb-worker):
   - age, doc validity, nationality membership, face-match threshold proofs
-- Multi-document identity model with document-scoped proofs + evidence packs
-- Salted SHA256 commitments for dedup + later integrity checks (name, document
-  number, nationality)
-- FHE key registration + encryption for birth_year_offset, country_code,
-  compliance_level, liveness score
+- Multi-document identity model with document-scoped proofs and evidence packs
+- Salted SHA256 commitments for dedup and integrity checks (name, document number, nationality)
+- FHE key registration + encryption for birth_year_offset, country_code, compliance_level, liveness score
 - Passkey-first auth with OPAQUE password and wallet (EIP-712) alternatives
 - Credential-sealed profile secret for user-controlled PII (client decrypt only)
-- Passkey-wrapped FHE key storage (multi-device support; explicit user unlock
-  required)
-- Social recovery with guardian approvals (email + authenticator) and Recovery
-  ID initiation, backed by FROST signer services
-- Disclosure demo flow (client decrypt → re-encrypt to RP + consent receipt)
-- OAuth 2.1 provider flow (authorize → consent → token exchange)
+- Credential-wrapped FHE key storage (multi-device support; explicit user unlock required)
+- Social recovery with guardian approvals (email + authenticator), backed by FROST signer services
+- OAuth 2.1 provider flow (authorize, consent, token exchange)
 - OIDC4VCI credential issuance (SD-JWT VC format with selective disclosure)
 - OIDC4VP credential presentation (verifier flow with holder binding)
 
-## Use cases
+## Scenarios
 
-- **Age verification** without revealing date of birth.
-- **Nationality group membership** without revealing the exact country.
-- **Liveness checks** without exposing biometric scores.
-- **Document validity** without sharing expiration dates.
+**Threshold proofs** (prove a value crosses a boundary without revealing it):
 
-## Planned features
+- **Age verification** without revealing date of birth
+- **Nationality group membership** without revealing the exact country
+- **Document validity** without sharing expiration dates
 
-- **AML and sanctions screening** with privacy-preserving list checks.
-- **Accredited investor verification** without exposing income.
-- **Source of funds verification** with minimal disclosure.
+**Graduated trust** (disclosure depth scales with risk, not with onboarding):
+
+- **Liveness checks** without exposing biometric scores
+- **Step-up authentication** from basic login to document-verified identity via OAuth scopes
+
+**Portable verification** (verify once, prove everywhere, correlate never):
+
+- **Zero-knowledge SSO** with pairwise pseudonyms per relying party
+- **SD-JWT credentials** issued via OIDC4VCI with selective disclosure
 
 ## Data handling at a glance
 
-The PoC stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
+The system stores a mix of auth data and cryptographic artifacts; it does **not** store raw ID images or selfies.
 
-- Plaintext at rest: account email; document metadata (type, issuer country,
-  document hash)
-- Encrypted at rest: passkey-sealed profile (full name, DOB, document number,
-  nationality), passkey-wrapped FHE key blobs
+- Plaintext at rest: account email; document metadata (type, issuer country, document hash)
+- Encrypted at rest: credential-sealed profile (full name, DOB, document number, nationality), credential-wrapped FHE key blobs
 - Non-reversible at rest: salted commitments (SHA256)
-- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes,
-  evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
-- On-chain (optional): encrypted identity attestation via FHEVM—registrar
-  encrypts, only user can decrypt
+- Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
+- On-chain (optional): encrypted identity attestation via fhEVM; registrar encrypts, only user can decrypt
 
-**User-controlled privacy:** The passkey vault derives encryption keys using
-WebAuthn PRF. Those PRF-derived keys seal the profile and wrap FHE keys, so the
+**User-controlled privacy:** The credential vault derives encryption keys using
+WebAuthn PRF, OPAQUE export keys, or wallet signatures via HKDF. These keys seal the profile and wrap FHE keys, so the
 server never holds a decryption secret. FHE keys are generated in the browser
-and stored server-side as passkey-wrapped encrypted secrets with per-credential
+and stored server-side as credential-wrapped encrypted secrets with per-credential
 wrappers. The server registers only public + server keys (evaluation keys) for
 computation and cannot decrypt user data. Only the user can decrypt their own
-encrypted attributes after an explicit passkey unlock.
+encrypted attributes after an explicit credential unlock.
 
 Details: [docs/architecture.md](docs/architecture.md) |
 [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)

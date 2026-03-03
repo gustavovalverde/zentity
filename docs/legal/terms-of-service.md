@@ -8,9 +8,9 @@ By accessing or using Zentity, you agree to these Terms of Service. If you do no
 
 ## 2. Description of Service
 
-Zentity is a privacy-preserving identity verification platform currently provided as an **alpha proof-of-concept**. The service uses zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments to enable identity verification without storing or exposing sensitive personal information.
+Zentity is a privacy-preserving identity verification platform currently provided as a **pre-audit beta**. The service uses zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments to enable identity verification without storing or exposing sensitive personal information.
 
-As an alpha product, features may change, break, or be removed without notice.
+As a pre-audit beta, features may change, break, or be removed without notice.
 
 ## 3. Account Registration
 
@@ -46,13 +46,13 @@ Your use of the service is also governed by our [Privacy Policy](https://zentity
 
 THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
 
-As alpha software, you should expect bugs, downtime, and breaking changes. We do not guarantee uninterrupted availability, data preservation, or backward compatibility.
+As pre-audit beta software, you should expect bugs, downtime, and breaking changes. We do not guarantee uninterrupted availability, data preservation, or backward compatibility.
 
 ## 8. Limitation of Liability
 
 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ZENTITY SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF DATA, LOSS OF PROFITS, OR BUSINESS INTERRUPTION.
 
-Total liability is limited to the amount you have paid for the service (currently $0 for the free alpha).
+Total liability is limited to the amount you have paid for the service (currently $0 for the free beta).
 
 ## 9. Termination
 

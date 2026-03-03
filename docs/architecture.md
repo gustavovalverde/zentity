@@ -4,7 +4,7 @@ This document describes **how Zentity's services connect**, **how data flows thr
 
 ## Scope & Non-Goals
 
-This is a **PoC**. Breaking changes are expected.
+This is a **pre-audit beta**. Breaking changes are expected.
 
 Non-goals:
 
@@ -112,7 +112,7 @@ Zentity supports guardian-approved recovery for passkey loss. Recovery is initia
 
 ---
 
-## Regulated vs Non-Regulated Usage
+## Graduated Disclosure Depth
 
 Zentity supports two usage modes that share the same core cryptography but differ in what is disclosed.
 

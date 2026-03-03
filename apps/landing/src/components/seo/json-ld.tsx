@@ -6,7 +6,7 @@ export function OrganizationSchema() {
     url: "https://zentity.xyz",
     logo: "https://zentity.xyz/favicon.svg",
     description:
-      "Privacy-preserving KYC layer using zero-knowledge proofs, fully homomorphic encryption (FHE), cryptographic commitments, and passkey authentication with vaults.",
+      "Cryptographic verification layer using zero-knowledge proofs, fully homomorphic encryption, and credential-wrapped key custody with standards-based OIDC integration.",
     sameAs: [
       "https://github.com/gustavovalverde/zentity",
       "https://x.com/gustavovalverde",
@@ -34,7 +34,7 @@ export function SoftwareApplicationSchema() {
       priceCurrency: "USD",
     },
     description:
-      "Privacy-first compliance/KYC layer that plugs into existing auth. Verify identity without storing personal data.",
+      "Cryptographic verification layer that proves compliance without storing personal data. Integrates via standard OAuth 2.1 and OpenID Connect.",
     featureList: [
       "Age verification with zero-knowledge proofs",
       "Document verification with OCR",
@@ -63,7 +63,7 @@ export function FAQSchema() {
     {
       question: "What is Zentity?",
       answer:
-        "Zentity is a privacy-preserving KYC layer that plugs into existing auth. It uses zero-knowledge proofs, fully homomorphic encryption (FHE), cryptographic commitments, and passkey authentication with vaults to verify identity without storing personal data.",
+        "Zentity is a cryptographic verification layer that proves compliance without collecting the evidence. It uses zero-knowledge proofs, fully homomorphic encryption (FHE), credential-wrapped key custody, and cryptographic commitments to verify identity claims without storing personal data, integrated via standard OAuth 2.1 and OpenID Connect.",
     },
     {
       question: "How does zero-knowledge proof work for age verification?",

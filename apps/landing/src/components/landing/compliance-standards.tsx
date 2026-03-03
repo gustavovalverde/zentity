@@ -30,7 +30,7 @@ const frameworks = [
   },
   {
     framework: "AMLD5/AMLD6 + AMLR",
-    scope: "EU AML and KYC",
+    scope: "EU AML and customer due diligence",
     mapping: "Verification evidence trails and retention-aware workflows",
   },
   {
@@ -92,8 +92,8 @@ export function ComplianceStandards() {
     <section className="landing-section landing-band-muted" id="compliance">
       <div className="landing-container">
         <SectionHeader
-          title="Standards alignment"
-          subtitle="Traditional compliance requires holding data to evaluate it. This architecture maps the same requirements to open standards that operate on proofs and encrypted data."
+          title="Regulatory alignment"
+          subtitle="Zentity is a cryptographic verification layer, not a compliance service. These mappings describe how the architecture's privacy properties align with regulatory frameworks. They are not certifications or legal guarantees."
           maxWidth="lg"
         />
 

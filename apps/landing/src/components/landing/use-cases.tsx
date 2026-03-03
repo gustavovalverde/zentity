@@ -1,8 +1,8 @@
 import {
   IconArrowRight,
   IconBuildingBank,
-  IconCurrencyBitcoin,
   IconGlass,
+  IconLock,
   IconPlugConnected,
   IconShieldCheck,
   IconWallet,
@@ -16,52 +16,59 @@ import { colorStyles, type SemanticColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 
 const useCases: Array<{
-  icon: typeof IconCurrencyBitcoin;
+  icon: typeof IconShieldCheck;
   color: SemanticColor;
   title: string;
   description: string;
+  cluster: string;
 }> = [
-  {
-    icon: IconCurrencyBitcoin,
-    color: "orange",
-    title: "Crypto Exchanges",
-    description:
-      "ZK proofs confirm sanctions compliance. FHE runs ongoing screening on encrypted data. Identity details are requested only when regulation requires it.",
-  },
-  {
-    icon: IconBuildingBank,
-    color: "orange",
-    title: "Digital Banking Step-Up",
-    description:
-      "Trust is spatial: viewing a balance needs basic login, wiring funds needs document-verified identity. One OAuth scope model handles both.",
-  },
   {
     icon: IconGlass,
     color: "pink",
-    title: "Age-Restricted Commerce",
+    title: "Age-Restricted Access",
+    cluster: "Threshold Proofs",
     description:
-      "A threshold proof on age. The retailer learns 'old enough' and nothing else. No document copies, no PII liability.",
+      "A retailer, a platform, or a regulator needs to know 'old enough.' The date of birth is irrelevant to the decision. A threshold proof answers the question without creating the liability.",
   },
   {
     icon: IconShieldCheck,
     color: "purple",
-    title: "Humanitarian Aid",
+    title: "Jurisdiction Eligibility",
+    cluster: "Threshold Proofs",
     description:
-      "Biometric nullifiers prevent duplicate claims without a name database. Threshold keys ensure beneficiaries keep control in unstable environments.",
+      "A crypto exchange needs 'eligible jurisdiction.' Which country is irrelevant to the transfer. A Merkle membership proof confirms group inclusion without naming the member.",
+  },
+  {
+    icon: IconBuildingBank,
+    color: "orange",
+    title: "Banking Step-Up",
+    cluster: "Graduated Trust",
+    description:
+      "Viewing a balance requires basic login. Wiring funds requires document-verified identity. The scope model handles both without treating every user as a compliance case from the start.",
+  },
+  {
+    icon: IconLock,
+    color: "blue",
+    title: "Compliance-Gated Finance",
+    cluster: "Graduated Trust",
+    description:
+      "Sanctions screening, ongoing monitoring, and Travel Rule reporting need encrypted attributes that can be re-evaluated without re-collecting. FHE computation addresses this without storing plaintext.",
   },
   {
     icon: IconPlugConnected,
     color: "purple",
     title: "Zero-Knowledge SSO",
+    cluster: "Portable Verification",
     description:
-      "Standard OAuth redirect. Pairwise pseudonyms per relying party. ZK proofs instead of PII in tokens. No custom protocol.",
+      "Standard OAuth redirect. Pairwise pseudonyms per relying party. The identity provider cannot track which services the user visits. The service cannot identify the user across providers.",
   },
   {
     icon: IconWallet,
     color: "amber",
     title: "Credential Portability",
+    cluster: "Portable Verification",
     description:
-      "SD-JWT credentials issued via OIDC4VCI. Users choose which claims to present at each service through selective disclosure.",
+      "SD-JWT credentials issued via OIDC4VCI. The user decides which claims to present at each service. The credential travels with the user, not with the issuer.",
   },
 ];
 
@@ -73,8 +80,8 @@ export function UseCases() {
     >
       <div className="landing-container">
         <SectionHeader
-          title="Where this applies"
-          subtitle="These scenarios vary in what needs to be verified and how deeply the verifier needs to see. The same four mechanisms power all of them."
+          title="Scenarios where verification must not require revelation"
+          subtitle="These scenarios share a structural need: proving a fact without disclosing the data behind it. What varies is the fact being proved, the depth of disclosure required, and the stakes of a privacy failure."
         />
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -88,9 +95,14 @@ export function UseCases() {
                       colorStyles[useCase.color].iconText,
                     )}
                   />
-                  <CardTitle className="landing-card-title">
-                    {useCase.title}
-                  </CardTitle>
+                  <div>
+                    <p className="landing-caption font-medium">
+                      {useCase.cluster}
+                    </p>
+                    <CardTitle className="landing-card-title">
+                      {useCase.title}
+                    </CardTitle>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-3">
@@ -108,7 +120,7 @@ export function UseCases() {
               "h-9 rounded-sm px-4",
             )}
           >
-            See all capabilities
+            See the full scenario taxonomy
             <IconArrowRight className="ml-2 size-4" />
           </Link>
         </div>
