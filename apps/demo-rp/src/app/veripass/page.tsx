@@ -17,6 +17,7 @@ import { VerifierScenarios } from "@/components/veripass/verifier-scenarios";
 import { VeriPassHeader } from "@/components/veripass/veripass-header";
 import type { VerifierScenario } from "@/data/veripass";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
+import { env } from "@/lib/env";
 import { getScenario } from "@/lib/scenarios";
 import {
   clearCredential,
@@ -413,7 +414,7 @@ function EmptyWallet({ onImport }: { onImport: (offerUri: string) => void }) {
             To receive a verifiable credential, go to your{" "}
             <a
               className="text-primary underline underline-offset-2 hover:text-primary/80"
-              href="http://localhost:3000/dashboard/credentials"
+              href={`${env.NEXT_PUBLIC_ZENTITY_URL}/dashboard/credentials`}
               rel="noopener noreferrer"
               target="_blank"
             >

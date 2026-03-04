@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
+import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
 export function Nav() {
@@ -24,7 +25,11 @@ export function Nav() {
       )}
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-        <a aria-label="Zentity Home" className="flex items-center" href="https://zentity.xyz">
+        <a
+          aria-label="Zentity Home"
+          className="flex items-center"
+          href="https://zentity.xyz"
+        >
           <Image
             alt="Zentity"
             className="object-contain dark:invert"
@@ -36,7 +41,7 @@ export function Nav() {
 
         <a
           className={cn(buttonVariants({ size: "sm" }))}
-          href="https://app.zentity.xyz/sign-up?fresh=1"
+          href={`${env.NEXT_PUBLIC_ZENTITY_URL}/sign-up?fresh=1`}
           rel="noopener noreferrer"
           target="_blank"
         >

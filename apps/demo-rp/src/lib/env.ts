@@ -34,6 +34,10 @@ export const env = createEnv({
 
   client: {
     NEXT_PUBLIC_APP_URL: z.string().default("http://localhost:3102"),
+    NEXT_PUBLIC_ZENTITY_URL: z
+      .string()
+      .default("http://localhost:3000")
+      .transform((s) => s.replace(TRAILING_SLASHES, "")),
   },
 
   emptyStringAsUndefined: true,
@@ -47,5 +51,6 @@ export const env = createEnv({
     DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
     OIDC4VCI_WALLET_CLIENT_ID: process.env.OIDC4VCI_WALLET_CLIENT_ID,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_ZENTITY_URL: process.env.NEXT_PUBLIC_ZENTITY_URL,
   },
 });
