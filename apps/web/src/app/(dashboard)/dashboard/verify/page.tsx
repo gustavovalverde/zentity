@@ -1,21 +1,16 @@
 import { eq } from "drizzle-orm";
 import {
   AlertTriangle,
-  Camera,
   CheckCircle2,
   FileText,
-  ImageUp,
-  Nfc,
   Scan,
   ShieldCheck,
-  SmartphoneNfc,
 } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { TierBadge } from "@/components/assurance/tier-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,10 +32,11 @@ import {
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 import { passkeys } from "@/lib/db/schema/auth";
 import { cn } from "@/lib/utils/classname";
+import { buildCountryDocumentList } from "@/lib/zkpassport/document-support";
 
-import { DownloadZkPassportDialog } from "./_components/download-zkpassport-dialog";
 import { FheErrorBanner } from "./_components/fhe-error-banner";
 import { FheStatusPoller } from "./_components/fhe-status-poller";
+import { VerificationMethodCards } from "./_components/verification-method-cards";
 import { VerifyCta } from "./_components/verify-cta";
 
 export default async function VerifyPage() {
@@ -53,7 +49,7 @@ export default async function VerifyPage() {
   }
   const cookies = headersObj.get("cookie");
 
-  const [assuranceState, bundle, hasPassword, passkeyRow, wallet] =
+  const [assuranceState, bundle, hasPassword, passkeyRow, wallet, countries] =
     await Promise.all([
       getAssuranceState(userId, session),
       getIdentityBundleByUserId(userId),
@@ -65,6 +61,7 @@ export default async function VerifyPage() {
         .limit(1)
         .get(),
       getPrimaryWalletAddress(userId),
+      buildCountryDocumentList(),
     ]);
 
   if (assuranceState.tier >= 3) {
@@ -95,7 +92,14 @@ export default async function VerifyPage() {
           </div>
           <TierBadge size="md" tier={assuranceState.tier} />
         </div>
-        <NfcMethodCard />
+        <Card>
+          <CardContent className="pt-6">
+            <VerificationMethodCards
+              countries={countries}
+              zkPassportEnabled={zkPassportEnabled}
+            />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -121,25 +125,11 @@ export default async function VerifyPage() {
 
         {hasEnrollment ? (
           <Card>
-            <CardContent className="space-y-5 pt-6">
-              {zkPassportEnabled && (
-                <>
-                  <NfcMethodSection />
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-card px-2 text-muted-foreground">
-                        or
-                      </span>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <DocumentScanMethodSection isAlternative={zkPassportEnabled} />
+            <CardContent className="pt-6">
+              <VerificationMethodCards
+                countries={countries}
+                zkPassportEnabled={zkPassportEnabled}
+              />
             </CardContent>
           </Card>
         ) : (
@@ -342,143 +332,6 @@ export default async function VerifyPage() {
       </Card>
 
       <PrivacyCard />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Verification method sections
-// ---------------------------------------------------------------------------
-
-function NfcMethodSection() {
-  return (
-    <div className="space-y-4 rounded-lg border p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-            <Nfc className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="font-semibold text-sm">NFC Chip Verification</p>
-            <p className="text-muted-foreground text-xs">
-              Strongest verification
-            </p>
-          </div>
-        </div>
-        <Badge variant="info">Chip Verified</Badge>
-      </div>
-
-      <p className="text-muted-foreground text-sm">
-        Read the cryptographic chip embedded in your document using the
-        ZKPassport app. Generates zero-knowledge proofs directly on your phone.
-      </p>
-
-      <div className="space-y-2">
-        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-          You&apos;ll need
-        </p>
-        <ul className="space-y-1.5 text-sm">
-          <li className="flex items-start gap-2">
-            <SmartphoneNfc className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span>
-              <strong>ZKPassport app</strong> on your phone (
-              <DownloadZkPassportDialog />)
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <Nfc className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span>
-              NFC-enabled{" "}
-              <strong>passport, national ID, or residence permit</strong>
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <SmartphoneNfc className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span>
-              Phone <strong>NFC</strong> enabled
-            </span>
-          </li>
-        </ul>
-      </div>
-
-      <Button asChild className="w-full" size="lg">
-        <Link href="/dashboard/verify/passport-chip">
-          Start NFC Verification
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
-function NfcMethodCard() {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <NfcMethodSection />
-      </CardContent>
-    </Card>
-  );
-}
-
-function DocumentScanMethodSection({
-  isAlternative,
-}: Readonly<{ isAlternative: boolean }>) {
-  return (
-    <div className="space-y-4 rounded-lg border p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="font-semibold text-sm">Document Scan</p>
-            <p className="text-muted-foreground text-xs">
-              {isAlternative
-                ? "For documents without NFC"
-                : "Photo upload + liveness check"}
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline">Verified</Badge>
-      </div>
-
-      <p className="text-muted-foreground text-sm">
-        Upload a photo of your government-issued document and complete a
-        liveness check to verify you&apos;re the document holder.
-      </p>
-
-      <div className="space-y-2">
-        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-          You&apos;ll need
-        </p>
-        <ul className="space-y-1.5 text-sm">
-          <li className="flex items-start gap-2">
-            <ImageUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span>
-              A <strong>photo</strong> of your government-issued ID
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <Camera className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span>
-              <strong>Camera access</strong> for liveness verification
-            </span>
-          </li>
-        </ul>
-      </div>
-
-      <Button
-        asChild
-        className="w-full"
-        size={isAlternative ? "default" : "lg"}
-        variant={isAlternative ? "outline" : "default"}
-      >
-        <Link href="/dashboard/verify/document">
-          {isAlternative
-            ? "My document doesn't have NFC"
-            : "Start Document Scan"}
-        </Link>
-      </Button>
     </div>
   );
 }
