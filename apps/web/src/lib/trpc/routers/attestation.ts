@@ -4,15 +4,10 @@
  * Handles on-chain identity attestation across multiple blockchain networks.
  * Uses a provider-agnostic architecture supporting fhEVM and standard EVM networks.
  *
- * Key flows:
- * - List available networks with user's attestation status on each
- * - Submit attestation to a specific network (server signs as registrar)
- * - Refresh pending attestation status (check tx confirmation)
- *
  * Security model:
- * - User must be fully verified (document + liveness + face match) to attest
+ * - User must be fully verified (OCR or NFC/chip verification) to attest
  * - Backend wallet acts as registrar (signs attestation transactions)
- * - Rate limited to prevent spam (3 attempts per hour per network)
+ * - Rate limited via DB retry count (survives restarts, works across instances)
  */
 import "server-only";
 
@@ -35,6 +30,7 @@ import {
   resetBlockchainAttestationForRetry,
   updateBlockchainAttestationConfirmed,
   updateBlockchainAttestationFailed,
+  updateBlockchainAttestationRevoked,
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
 } from "@/lib/db/queries/attestation";
@@ -43,6 +39,7 @@ import {
   getSelectedIdentityDocumentByUserId,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
+import { getPassportChipVerificationByUserId } from "@/lib/db/queries/passport-chip";
 import {
   countryCodeToNumeric,
   getComplianceLevel,
@@ -50,41 +47,9 @@ import {
 
 import { protectedProcedure, requireFeature, router } from "../server";
 
-// Rate limiting: max 3 attestation attempts per hour per network
-const RATE_LIMIT_MAX_ATTEMPTS = 3;
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-
-// Track recent attempts in memory (simple implementation)
-// In production, use Redis or database for distributed rate limiting
-const attemptTracker = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(userId: string, networkId: string): boolean {
-  const key = `${userId}:${networkId}`;
-  const now = Date.now();
-  const entry = attemptTracker.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    attemptTracker.set(key, {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS,
-    });
-    return true;
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX_ATTEMPTS) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
-
-// countryCodeToNumeric / getComplianceLevel moved to lib/identity/compliance
+const RATE_LIMIT_MAX_ATTEMPTS = 5;
 
 export const attestationRouter = router({
-  /**
-   * List all enabled networks with user's attestation status on each.
-   */
   networks: protectedProcedure.query(async ({ ctx }) => {
     const networks = getEnabledNetworks();
     const attestations =
@@ -125,9 +90,6 @@ export const attestationRouter = router({
     };
   }),
 
-  /**
-   * Get attestation status for a specific network.
-   */
   status: protectedProcedure
     .input(z.object({ networkId: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -153,16 +115,6 @@ export const attestationRouter = router({
       };
     }),
 
-  /**
-   * Submit attestation to a specific network.
-   *
-   * Requirements:
-   * - User must be Tier 3 with AAL2 (passkey auth) - enforced by requireFeature middleware
-   * - Network must be enabled and provider available
-   * - No existing confirmed attestation on this network
-   * - Rate limit not exceeded
-   *
-   */
   submit: protectedProcedure
     .use(requireFeature("attestation"))
     .input(
@@ -170,30 +122,36 @@ export const attestationRouter = router({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
         birthYearOffset: z.number().int().min(0).max(255),
+        forceUpdate: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Tier guard ensures user is verified (Tier 3 + AAL2)
-      // Get identity document and verification status for attestation data
-      const [verificationStatus, identityDocument] = await Promise.all([
-        getVerificationStatus(ctx.userId),
-        getSelectedIdentityDocumentByUserId(ctx.userId),
-      ]);
+      const [verificationStatus, identityDocument, chipVerification] =
+        await Promise.all([
+          getVerificationStatus(ctx.userId),
+          getSelectedIdentityDocumentByUserId(ctx.userId),
+          getPassportChipVerificationByUserId(ctx.userId),
+        ]);
 
-      if (!identityDocument) {
+      // Resolve issuing country from whichever verification path was used
+      let issuerCountry: string | undefined;
+
+      if (identityDocument) {
+        const draft = await getLatestIdentityDraftByUserAndDocument(
+          ctx.userId,
+          identityDocument.id
+        );
+        issuerCountry = draft?.issuerCountry || undefined;
+      } else if (chipVerification) {
+        issuerCountry = chipVerification.issuingCountry || undefined;
+      } else {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Identity document not found",
+          message:
+            "No identity verification found. Complete OCR or NFC verification first.",
         });
       }
 
-      // Get draft for metadata (issuerCountry stored in transient draft, not permanent document)
-      const draft = await getLatestIdentityDraftByUserAndDocument(
-        ctx.userId,
-        identityDocument.id
-      );
-
-      // Check network availability
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
         throw new TRPCError({
@@ -211,50 +169,83 @@ export const attestationRouter = router({
 
       const provider = createProvider(input.networkId);
 
-      // Check for existing attestation (DB)
       const existing = await getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
         input.networkId
       );
 
-      // If on-chain already attested, sync DB and return early (no re-attest).
+      // DB-based rate limiting
+      if (existing && existing.retryCount >= RATE_LIMIT_MAX_ATTEMPTS) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Too many attestation attempts (${RATE_LIMIT_MAX_ATTEMPTS}). Contact support.`,
+        });
+      }
+
       const chainStatus = await provider.getAttestationStatus(
         input.walletAddress
       );
+
+      // Already attested on-chain
       if (chainStatus.isAttested) {
-        let attestation = existing;
-        if (attestation) {
-          await updateBlockchainAttestationWallet(
-            attestation.id,
-            input.walletAddress,
-            network.chainId
-          );
+        // If forceUpdate requested, revoke first then proceed to re-attest
+        if (input.forceUpdate) {
+          try {
+            const revokeResult = await provider.revokeAttestation(
+              input.walletAddress
+            );
+            // Wait for revocation tx to confirm
+            if (revokeResult.txHash) {
+              await waitForConfirmation(provider, revokeResult.txHash);
+            }
+            if (existing) {
+              await updateBlockchainAttestationRevoked(existing.id);
+            }
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Revocation failed";
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Failed to revoke existing attestation: ${message}`,
+            });
+          }
+          // Fall through to submit new attestation below
         } else {
-          attestation = await createBlockchainAttestation({
-            userId: ctx.userId,
-            walletAddress: input.walletAddress,
-            networkId: input.networkId,
-            chainId: network.chainId,
-          });
+          // Sync DB and return early
+          let attestation = existing;
+          if (attestation) {
+            await updateBlockchainAttestationWallet(
+              attestation.id,
+              input.walletAddress,
+              network.chainId
+            );
+          } else {
+            attestation = await createBlockchainAttestation({
+              userId: ctx.userId,
+              walletAddress: input.walletAddress,
+              networkId: input.networkId,
+              chainId: network.chainId,
+            });
+          }
+
+          if (attestation.status !== "confirmed") {
+            await updateBlockchainAttestationConfirmed(
+              attestation.id,
+              chainStatus.blockNumber ?? null
+            );
+          }
+
+          const explorerUrl = chainStatus.txHash
+            ? getExplorerTxUrl(input.networkId, chainStatus.txHash)
+            : undefined;
+
+          return {
+            success: true,
+            status: "confirmed" as const,
+            txHash: chainStatus.txHash,
+            explorerUrl,
+          };
         }
-
-        if (attestation.status !== "confirmed") {
-          await updateBlockchainAttestationConfirmed(
-            attestation.id,
-            chainStatus.blockNumber ?? null
-          );
-        }
-
-        const explorerUrl = chainStatus.txHash
-          ? getExplorerTxUrl(input.networkId, chainStatus.txHash)
-          : undefined;
-
-        return {
-          success: true,
-          status: "confirmed" as const,
-          txHash: chainStatus.txHash,
-          explorerUrl,
-        };
       }
 
       // Block if there's a pending submission
@@ -265,37 +256,30 @@ export const attestationRouter = router({
         });
       }
 
-      // Rate limit check
-      if (!checkRateLimit(ctx.userId, input.networkId)) {
-        throw new TRPCError({
-          code: "TOO_MANY_REQUESTS",
-          message: "Rate limit exceeded. Try again in an hour.",
-        });
-      }
-
       // Create or reset attestation record
-      let attestation = existing;
-      if (attestation) {
-        // Sync wallet/chain for re-attestation (may have changed)
+      const attestation =
+        existing ??
+        (await createBlockchainAttestation({
+          userId: ctx.userId,
+          walletAddress: input.walletAddress,
+          networkId: input.networkId,
+          chainId: network.chainId,
+        }));
+
+      if (existing) {
         await updateBlockchainAttestationWallet(
           attestation.id,
           input.walletAddress,
           network.chainId
         );
-        // Reset status if failed
-        if (attestation.status === "failed") {
+        if (
+          attestation.status === "failed" ||
+          attestation.status === "revoked"
+        ) {
           await resetBlockchainAttestationForRetry(attestation.id);
         }
-      } else {
-        attestation = await createBlockchainAttestation({
-          userId: ctx.userId,
-          walletAddress: input.walletAddress,
-          networkId: input.networkId,
-          chainId: network.chainId,
-        });
       }
 
-      // Extract identity data for attestation
       const birthYearOffset = input.birthYearOffset;
       if (
         !Number.isInteger(birthYearOffset) ||
@@ -303,14 +287,13 @@ export const attestationRouter = router({
         birthYearOffset > 255
       ) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
+          code: "BAD_REQUEST",
           message: "Invalid birth year offset in identity proof",
         });
       }
-      const countryCode = countryCodeToNumeric(draft?.issuerCountry || "");
+      const countryCode = countryCodeToNumeric(issuerCountry || "");
       const complianceLevel = getComplianceLevel(verificationStatus);
 
-      // Submit attestation via provider
       try {
         const result = await provider.submitAttestation({
           userAddress: input.walletAddress,
@@ -328,8 +311,8 @@ export const attestationRouter = router({
             result.error || "Unknown error"
           );
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: result.error || "Attestation failed",
+            code: "BAD_REQUEST",
+            message: result.error || "Attestation transaction failed",
           });
         }
 
@@ -360,15 +343,12 @@ export const attestationRouter = router({
         await updateBlockchainAttestationFailed(attestation.id, message);
 
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
+          code: "BAD_REQUEST",
           message: `Attestation failed: ${message}`,
         });
       }
     }),
 
-  /**
-   * Refresh pending attestation status by checking transaction confirmation.
-   */
   refresh: protectedProcedure
     .input(z.object({ networkId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -392,7 +372,6 @@ export const attestationRouter = router({
         return { status: attestation.status };
       }
 
-      // Check transaction status
       try {
         const provider = createProvider(input.networkId);
         const txStatus = await provider.checkTransaction(attestation.txHash);
@@ -407,44 +386,26 @@ export const attestationRouter = router({
 
         return { status: "submitted", pending: true };
       } catch {
-        // Transaction check failed, might still be pending
         return { status: "submitted", pending: true };
       }
     }),
-
-  /**
-   * Retry a failed attestation.
-   */
-  retry: protectedProcedure
-    .input(z.object({ networkId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const attestation = await getBlockchainAttestationByUserAndNetwork(
-        ctx.userId,
-        input.networkId
-      );
-
-      if (!attestation) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "No attestation found for this network",
-        });
-      }
-
-      if (attestation.status !== "failed") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Can only retry failed attestations",
-        });
-      }
-
-      // Reset and submit again
-      await resetBlockchainAttestationForRetry(attestation.id);
-
-      // Re-use submit logic by calling the mutation with same wallet
-      // For simplicity, just return and let client call submit again
-      return {
-        reset: true,
-        message: "Attestation reset. Call submit to retry.",
-      };
-    }),
 });
+
+async function waitForConfirmation(
+  provider: ReturnType<typeof createProvider>,
+  txHash: string,
+  maxAttempts = 30,
+  intervalMs = 2000
+): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const status = await provider.checkTransaction(txHash);
+    if (status.confirmed) {
+      return;
+    }
+    if (status.failed) {
+      throw new Error(`Transaction reverted: ${txHash}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Transaction not confirmed after ${maxAttempts} attempts`);
+}

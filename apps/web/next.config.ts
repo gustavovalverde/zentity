@@ -87,15 +87,27 @@ const nextConfig: NextConfig = {
     ];
 
     // External domains required by @zkpassport/sdk (hardcoded in minified bundle).
-    // URLs are baked into @zkpassport/{utils,registry,sdk} — CSP allowlist is the only option.
     const zkPassportDomains = [
-      "https://cdn.zkpassport.id", // sanctions tree
-      "https://certificates.zkpassport.id", // CSCA certificate registry
-      "https://circuits.zkpassport.id", // ZK circuit artifacts + hashes
-      "https://circuits2.zkpassport.id", // circuit fallback CDN
-      "https://ipfs.zkpassport.id", // IPFS-backed certificate data
-      "https://*.g.alchemy.com", // Ethereum RPC (registry contract reads)
-      "https://ethereum-sepolia-rpc.publicnode.com", // fallback Sepolia RPC
+      "https://cdn.zkpassport.id",
+      "https://certificates.zkpassport.id",
+      "https://circuits.zkpassport.id",
+      "https://circuits2.zkpassport.id",
+      "https://ipfs.zkpassport.id",
+      "https://*.g.alchemy.com",
+      "https://ethereum-sepolia-rpc.publicnode.com",
+    ].join(" ");
+
+    // Web3 domains: Zama fhEVM relayer/KMS + WalletConnect / Reown AppKit + Coinbase
+    const web3Domains = [
+      "https://relayer.testnet.zama.org",
+      "https://relayer.mainnet.zama.org",
+      "https://*.s3.eu-west-1.amazonaws.com",
+      "https://rpc.walletconnect.org",
+      "https://pulse.walletconnect.org",
+      "https://api.web3modal.org",
+      "https://secure.walletconnect.org",
+      "https://*.walletconnect.com",
+      "https://cca-lite.coinbase.com",
     ].join(" ");
 
     // CSP: strict in production; permissive in dev for HMR/fast-refresh
@@ -108,7 +120,7 @@ const nextConfig: NextConfig = {
             "style-src 'self' 'unsafe-inline'",
             "font-src 'self' data:",
             // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
-            `connect-src 'self' ws: wss: data: ${zkPassportDomains}`,
+            `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains}`,
             // data:/blob: for document scans and selfie processing
             "img-src 'self' data: blob:",
             // blob: for WASM thread workers
@@ -119,7 +131,7 @@ const nextConfig: NextConfig = {
           ].join("; ")
         : [
             "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
-            `connect-src 'self' ws: wss: data: ${zkPassportDomains}`,
+            `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains}`,
             "worker-src 'self' blob:",
           ].join("; ");
 

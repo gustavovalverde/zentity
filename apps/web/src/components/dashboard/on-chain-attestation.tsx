@@ -52,16 +52,19 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { calculateBirthYearOffsetFromYear } from "@/lib/identity/verification/birth-year";
+import {
+  calculateBirthYearOffsetFromYear,
+  parseBirthYearFromDob,
+} from "@/lib/identity/verification/birth-year";
 import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";
-import { getAttestationError } from "@/lib/utils/error-messages";
+import { getUserFriendlyError } from "@/lib/utils/error-messages";
 
 interface NetworkStatus {
   attestation: {
     id: string;
-    status: "pending" | "submitted" | "confirmed" | "failed";
+    status: "pending" | "submitted" | "confirmed" | "failed" | "revoked";
     txHash: string | null;
     blockNumber: number | null;
     confirmedAt: string | null;
@@ -221,38 +224,45 @@ export function OnChainAttestation({
     }
   }, [networks, selectedNetwork]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!(selectedNetwork && address)) {
-      return;
-    }
+  const handleSubmit = useCallback(
+    async (forceUpdate = false) => {
+      if (!(selectedNetwork && address)) {
+        return;
+      }
 
-    setClientError(null);
-    let birthYearOffset: number | undefined;
-    try {
-      const profile = await getStoredProfile();
-      birthYearOffset = calculateBirthYearOffsetFromYear(profile?.birthYear);
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to unlock your profile. Please try again.";
-      setClientError(message);
-      return;
-    }
+      setClientError(null);
+      let birthYearOffset: number | undefined;
+      try {
+        const profile = await getStoredProfile();
+        const birthYear =
+          profile?.birthYear ??
+          parseBirthYearFromDob(profile?.dateOfBirth ?? undefined);
+        birthYearOffset = calculateBirthYearOffsetFromYear(birthYear);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to unlock your profile. Please try again.";
+        setClientError(message);
+        return;
+      }
 
-    if (birthYearOffset === undefined) {
-      setClientError(
-        "Unlock your profile to continue. We need your birth year locally to attest on-chain."
-      );
-      return;
-    }
+      if (birthYearOffset === undefined) {
+        setClientError(
+          "Unlock your profile to continue. We need your birth year locally to attest on-chain."
+        );
+        return;
+      }
 
-    await submitMutation.mutateAsync({
-      networkId: selectedNetwork,
-      walletAddress: address,
-      birthYearOffset,
-    });
-  }, [selectedNetwork, address, submitMutation]);
+      await submitMutation.mutateAsync({
+        networkId: selectedNetwork,
+        walletAddress: address,
+        birthYearOffset,
+        forceUpdate,
+      });
+    },
+    [selectedNetwork, address, submitMutation]
+  );
 
   const handleRefresh = useCallback(async () => {
     if (!selectedNetwork) {
@@ -378,13 +388,14 @@ const STATUS_VARIANT: Record<
   submitted: "info",
   confirmed: "success",
   failed: "destructive",
+  revoked: "warning",
 };
 
 // Network type from tRPC may have slightly different status typing
 interface ApiNetworkStatus {
   attestation: {
     id: string;
-    status: "pending" | "submitted" | "confirmed" | "failed" | null;
+    status: "pending" | "submitted" | "confirmed" | "failed" | "revoked" | null;
     txHash: string | null;
     blockNumber: number | null;
     confirmedAt: string | null;
@@ -418,7 +429,7 @@ interface AttestationContentBodyProps {
   networksLoading: boolean;
   onNetworkSelect: (networkId: string) => void;
   onRefresh: () => void;
-  onSubmit: () => void;
+  onSubmit: (forceUpdate?: boolean) => void;
   selectedNetwork: string | null;
   selectedNetworkData: NetworkStatus | undefined;
   showComplianceAccess: boolean;
@@ -666,13 +677,14 @@ const NetworkActions = memo(function NetworkActions({
   network: NetworkStatus;
   walletAddress: string;
   attestedWalletAddress?: string;
-  onSubmit: () => void;
+  onSubmit: (forceUpdate?: boolean) => void;
   onRefresh: () => void;
   isSubmitting: boolean;
   isRefreshing: boolean;
   error?: string;
 }>) {
   const { disconnect } = useDisconnect();
+  const [confirmingUpdate, setConfirmingUpdate] = useState(false);
   const attestation = network.attestation;
 
   // Already confirmed
@@ -743,20 +755,54 @@ const NetworkActions = memo(function NetworkActions({
           </Alert>
         ) : null}
 
+        {confirmingUpdate ? (
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              This will revoke your on-chain attestation and re-submit.
+              Compliance access grants will be reset.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <div className="flex gap-2">
-          <Button
-            disabled={isSubmitting}
-            onClick={onSubmit}
-            size="sm"
-            variant="outline"
-          >
-            {isSubmitting ? (
-              <Spinner className="mr-2" />
-            ) : (
+          {confirmingUpdate ? (
+            <>
+              <Button
+                disabled={isSubmitting}
+                onClick={() => {
+                  setConfirmingUpdate(false);
+                  onSubmit(true);
+                }}
+                size="sm"
+                variant="destructive"
+              >
+                {isSubmitting ? (
+                  <Spinner className="mr-2" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Confirm Revoke &amp; Update
+              </Button>
+              <Button
+                onClick={() => setConfirmingUpdate(false)}
+                size="sm"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button
+              disabled={isSubmitting}
+              onClick={() => setConfirmingUpdate(true)}
+              size="sm"
+              variant="outline"
+            >
               <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            Update Attestation
-          </Button>
+              Update Attestation
+            </Button>
+          )}
           {attestation.explorerUrl ? (
             <Button asChild size="sm" variant="outline">
               <a
@@ -831,7 +877,7 @@ const NetworkActions = memo(function NetworkActions({
           <AlertTitle>Attestation Failed</AlertTitle>
           {attestation.errorMessage ? (
             <AlertDescription>
-              {getAttestationError(attestation.errorMessage)}
+              {getUserFriendlyError(attestation.errorMessage)}
             </AlertDescription>
           ) : null}
         </Alert>
@@ -841,7 +887,7 @@ const NetworkActions = memo(function NetworkActions({
             <span className="break-all">{attestation.txHash}</span>
           </div>
         ) : null}
-        <Button disabled={isSubmitting} onClick={onSubmit} size="sm">
+        <Button disabled={isSubmitting} onClick={() => onSubmit()} size="sm">
           {isSubmitting ? (
             <Spinner className="mr-2" />
           ) : (
@@ -880,11 +926,15 @@ const NetworkActions = memo(function NetworkActions({
       {error ? (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{getAttestationError(error)}</AlertDescription>
+          <AlertDescription>{getUserFriendlyError(error)}</AlertDescription>
         </Alert>
       ) : null}
 
-      <Button className="w-full" disabled={isSubmitting} onClick={onSubmit}>
+      <Button
+        className="w-full"
+        disabled={isSubmitting}
+        onClick={() => onSubmit()}
+      >
         {isSubmitting ? (
           <Spinner aria-hidden="true" className="mr-2" />
         ) : (

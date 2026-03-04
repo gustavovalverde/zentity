@@ -58,15 +58,32 @@ export function categorizeError(error: unknown): AttestationErrorCode {
     return "NETWORK";
   }
 
-  if (
-    findViemError(
-      error,
-      (err) =>
-        err instanceof ExecutionRevertedError ||
-        err instanceof ContractFunctionRevertedError ||
-        err instanceof InsufficientFundsError
-    )
-  ) {
+  // Check for specific revert errors before generic CONTRACT
+  const revertError = findViemError(
+    error,
+    (err) => err instanceof ContractFunctionRevertedError
+  );
+  if (revertError && revertError instanceof ContractFunctionRevertedError) {
+    const errorName =
+      (revertError.data as { errorName?: string })?.errorName?.toLowerCase() ??
+      "";
+    if (errorName.includes("alreadyattested")) {
+      return "ALREADY_ATTESTED";
+    }
+    if (errorName.includes("notattested")) {
+      return "NOT_ATTESTED";
+    }
+    if (errorName.includes("onlyregistrar")) {
+      return "ONLY_REGISTRAR";
+    }
+    return "CONTRACT";
+  }
+
+  if (findViemError(error, (err) => err instanceof InsufficientFundsError)) {
+    return "INSUFFICIENT_FUNDS";
+  }
+
+  if (findViemError(error, (err) => err instanceof ExecutionRevertedError)) {
     return "CONTRACT";
   }
 

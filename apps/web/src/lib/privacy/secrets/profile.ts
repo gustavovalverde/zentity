@@ -9,6 +9,8 @@
 
 import type { EnrollmentCredential, EnvelopeFormat } from "./types";
 
+import { parseBirthYearFromDob } from "@/lib/identity/verification/birth-year";
+
 import { SECRET_TYPES } from "./types";
 
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
@@ -184,7 +186,6 @@ export async function storeProfileSecret(params: {
     extractedFirstName?: string | null;
     extractedLastName?: string | null;
     extractedDOB?: string | null;
-    extractedBirthYear?: number | null;
     extractedAddress?: string | null;
     extractedAddressCountryCode?: string | null;
     extractedExpirationDate?: number | null;
@@ -214,7 +215,9 @@ export async function storeProfileSecret(params: {
     firstName: params.extractedData.extractedFirstName ?? null,
     lastName: params.extractedData.extractedLastName ?? null,
     dateOfBirth: params.extractedData.extractedDOB ?? null,
-    birthYear: params.extractedData.extractedBirthYear ?? null,
+    birthYear:
+      parseBirthYearFromDob(params.extractedData.extractedDOB ?? undefined) ??
+      null,
     residentialAddress: params.extractedData.extractedAddress ?? null,
     addressCountryCode:
       params.extractedData.extractedAddressCountryCode ?? null,

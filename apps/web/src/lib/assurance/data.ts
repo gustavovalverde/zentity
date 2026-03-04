@@ -22,6 +22,7 @@ import {
   getIdentityBundleByUserId,
   getSelectedIdentityDocumentByUserId,
 } from "@/lib/db/queries/identity";
+import { hasPasskeyCredentials } from "@/lib/db/queries/passkey";
 import { hasVerifiedChipVerification } from "@/lib/db/queries/passport-chip";
 
 import {
@@ -119,7 +120,7 @@ export const getAssuranceState = cache(async function getAssuranceState(
 ): Promise<AssuranceState> {
   // Build auth state from session
   const hasSession = !!session;
-  const lastLoginMethod =
+  const storedLoginMethod =
     (session?.session as { lastLoginMethod?: string } | undefined)
       ?.lastLoginMethod ?? null;
 
@@ -130,13 +131,19 @@ export const getAssuranceState = cache(async function getAssuranceState(
     fheAttributeTypes,
     hasAttestation,
     chipVerified,
+    hasPasskeys,
   ] = await Promise.all([
     hasSecuredFheKeys(userId),
     getSelectedIdentityDocumentByUserId(userId),
     getEncryptedAttributeTypesByUserId(userId),
     hasOnChainAttestation(userId),
     hasVerifiedChipVerification(userId),
+    // Fallback: if lastLoginMethod wasn't recorded, check if user has passkeys
+    storedLoginMethod ? Promise.resolve(false) : hasPasskeyCredentials(userId),
   ]);
+
+  // Use stored method, or infer "passkey" if user has passkey credentials
+  const lastLoginMethod = storedLoginMethod ?? (hasPasskeys ? "passkey" : null);
 
   const documentId = selectedDocument?.id ?? null;
   const documentVerified = selectedDocument?.status === "verified";

@@ -186,12 +186,7 @@ export async function resetBlockchainAttestationForRetry(
       errorMessage: null,
       updatedAt: sql`datetime('now')`,
     })
-    .where(
-      and(
-        eq(blockchainAttestations.id, id),
-        eq(blockchainAttestations.status, "failed")
-      )
-    )
+    .where(eq(blockchainAttestations.id, id))
     .run();
 }
 
@@ -205,6 +200,20 @@ export async function updateBlockchainAttestationWallet(
     .set({
       walletAddress,
       chainId,
+      updatedAt: sql`datetime('now')`,
+    })
+    .where(eq(blockchainAttestations.id, id))
+    .run();
+}
+
+export async function updateBlockchainAttestationRevoked(
+  id: string
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
+    .set({
+      status: "revoked",
+      revokedAt: sql`datetime('now')`,
       updatedAt: sql`datetime('now')`,
     })
     .where(eq(blockchainAttestations.id, id))

@@ -31,9 +31,13 @@ export interface AttestationParams {
  * Error categories for better frontend handling.
  */
 export type AttestationErrorCode =
-  | "NETWORK"
-  | "ENCRYPTION"
+  | "ALREADY_ATTESTED"
   | "CONTRACT"
+  | "ENCRYPTION"
+  | "INSUFFICIENT_FUNDS"
+  | "NETWORK"
+  | "NOT_ATTESTED"
+  | "ONLY_REGISTRAR"
   | "UNKNOWN";
 
 /**
@@ -54,13 +58,10 @@ export interface AttestationResult {
  * Current attestation status for a user on a network.
  */
 export interface AttestationStatus {
-  /** Timestamp of attestation */
+  attestationId?: number;
   attestedAt?: string;
-  /** Block number where attestation was confirmed */
   blockNumber?: number;
-  /** Whether user has a confirmed attestation */
   isAttested: boolean;
-  /** Transaction hash of the attestation */
   txHash?: string;
 }
 
@@ -87,38 +88,17 @@ export interface TransactionStatus {
  * - Checking attestation status
  */
 export interface IAttestationProvider {
-  /**
-   * Check if a transaction has been confirmed.
-   *
-   * @param txHash - Transaction hash to check
-   * @returns Transaction status
-   */
   checkTransaction(txHash: string): Promise<TransactionStatus>;
 
-  /** Network configuration */
   readonly config: NetworkConfig;
 
-  /**
-   * Check if a user is attested on this network.
-   *
-   * @param userAddress - User's wallet address
-   * @returns Current attestation status
-   */
   getAttestationStatus(userAddress: string): Promise<AttestationStatus>;
-  /** Network ID this provider handles */
+
   readonly networkId: string;
 
-  /** Human-readable network name */
   readonly networkName: string;
 
-  /**
-   * Submit an attestation for a user.
-   *
-   * For fhEVM networks: Creates encrypted inputs using the selected provider SDK
-   * For EVM networks: Submits plain values
-   *
-   * @param params - Attestation parameters
-   * @returns Result with transaction hash or error
-   */
+  revokeAttestation(userAddress: string): Promise<AttestationResult>;
+
   submitAttestation(params: AttestationParams): Promise<AttestationResult>;
 }

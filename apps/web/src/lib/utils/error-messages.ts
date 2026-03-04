@@ -77,7 +77,15 @@ export function getUserFriendlyError(error: unknown): string {
     return "Transaction conflict. Please try again in a moment.";
   }
 
-  // Contract-specific errors
+  // Contract-specific errors (IdentityRegistry)
+  if (lower.includes("alreadyattested")) {
+    return "Identity already attested on-chain. Revoke first to update.";
+  }
+
+  if (lower.includes("onlyregistrar")) {
+    return "Only authorized registrars can perform this action.";
+  }
+
   if (lower.includes("accessprohibited")) {
     return "Compliance access not granted. Please grant access and try again.";
   }
@@ -108,22 +116,6 @@ export function getUserFriendlyError(error: unknown): string {
   if (reasonMatch) {
     return reasonMatch[1];
   }
-  return "Transaction failed. Please try again.";
-}
 
-/**
- * Get user-friendly error for attestation operations.
- * Includes additional attestation-specific error mappings.
- *
- * @param error - The error object or message
- * @returns A user-friendly error message
- */
-export function getAttestationError(error: unknown): string {
-  const msg = getErrorMessage(error);
-  // Extract the reason from viem/tRPC errors
-  const reasonMatch = ERROR_REASON_PATTERN.exec(msg);
-  if (reasonMatch) {
-    return reasonMatch[1];
-  }
-  return "Attestation failed. Please try again.";
+  return msg;
 }

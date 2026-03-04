@@ -176,6 +176,9 @@ const parseGenericOAuthConfig = () => {
 
 const resolveLastLoginMethod = (ctx: { path?: string }): string | null => {
   const path = ctx.path ?? "";
+  if (path.includes("/passkey/")) {
+    return "passkey";
+  }
   if (
     path.startsWith("/sign-in/magic-link") ||
     path.startsWith("/magic-link/verify")

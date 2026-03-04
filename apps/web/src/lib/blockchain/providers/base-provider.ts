@@ -8,6 +8,7 @@ import "server-only";
 
 import type { NetworkConfig } from "../networks";
 import type {
+  AttestationResult,
   AttestationStatus,
   IAttestationProvider,
   TransactionStatus,
@@ -126,28 +127,53 @@ export abstract class BaseProvider implements Partial<IAttestationProvider> {
     }
   }
 
-  /**
-   * Check if user is attested on-chain.
-   * This queries the IdentityRegistry.isAttested() view function.
-   */
   async getAttestationStatus(userAddress: string): Promise<AttestationStatus> {
     try {
       const client = this.getWalletClient();
       const contractAddress = this.getContractAddress();
+      const addr = userAddress as `0x${string}`;
 
-      // Call isAttested view function
-      const isAttested = await client.readContract({
-        address: contractAddress,
-        abi: IdentityRegistryABI,
-        functionName: "isAttested",
-        args: [userAddress as `0x${string}`],
-      });
+      const [isAttested, attestationId, timestamp] = await Promise.all([
+        client.readContract({
+          address: contractAddress,
+          abi: IdentityRegistryABI,
+          functionName: "isAttested",
+          args: [addr],
+        }),
+        client.readContract({
+          address: contractAddress,
+          abi: IdentityRegistryABI,
+          functionName: "currentAttestationId",
+          args: [addr],
+        }),
+        client.readContract({
+          address: contractAddress,
+          abi: IdentityRegistryABI,
+          functionName: "attestationTimestamp",
+          args: [addr],
+        }),
+      ]);
+
+      const ts = Number(timestamp as bigint);
 
       return {
         isAttested: Boolean(isAttested),
+        attestationId: Number(attestationId as bigint),
+        attestedAt: ts > 0 ? new Date(ts * 1000).toISOString() : undefined,
       };
     } catch {
       return { isAttested: false };
     }
+  }
+
+  async revokeAttestation(userAddress: string): Promise<AttestationResult> {
+    const client = this.getWalletClient();
+    const txHash = await client.writeContract({
+      address: this.getContractAddress(),
+      abi: IdentityRegistryABI,
+      functionName: "revokeIdentity",
+      args: [userAddress as `0x${string}`],
+    });
+    return { status: "submitted", txHash };
   }
 }

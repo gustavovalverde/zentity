@@ -102,7 +102,7 @@
     "@vladmandic/human-models": "3.0.4",
     "@wagmi/core": "3.4.0",
     "@zama-fhe/relayer-sdk": "0.4.0",
-    "@zentity/fhevm-contracts": "0.2.1",
+    "@zentity/fhevm-contracts": "0.3.0",
     "@zkpassport/registry": "^0.13.0",
     "@zkpassport/sdk": "^0.12.5",
     "@zkpassport/utils": "^0.34.0",

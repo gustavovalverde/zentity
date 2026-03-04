@@ -61,9 +61,14 @@ vi.mock("@/lib/db/queries/attestation", () => ({
     mockUpdateBlockchainAttestationConfirmed(...args),
   updateBlockchainAttestationWallet: (...args: unknown[]) =>
     mockUpdateBlockchainAttestationWallet(...args),
+  updateBlockchainAttestationRevoked: vi.fn(),
   upsertAttestationEvidence: vi.fn(),
   getAttestationEvidenceByUserAndDocument: vi.fn(),
   deleteBlockchainAttestationsByUserId: vi.fn(),
+}));
+
+vi.mock("@/lib/db/queries/passport-chip", () => ({
+  getPassportChipVerificationByUserId: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/assurance/data", () => ({
