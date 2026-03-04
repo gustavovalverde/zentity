@@ -6,7 +6,7 @@ import {
   createZkProofSession,
   getZkProofSessionById,
 } from "@/lib/db/queries/crypto";
-import { getSelectedIdentityDocumentByUserId } from "@/lib/db/queries/identity";
+import { getSelectedVerification } from "@/lib/db/queries/identity";
 import {
   createChallenge,
   getActiveChallengeCount,
@@ -26,16 +26,15 @@ export const circuitTypeSchema = z.enum([
 const PROOF_SESSION_TTL_MS = 15 * 60 * 1000;
 
 export const createProofSessionProcedure = protectedProcedure
-  .input(z.object({ documentId: z.string().optional() }).optional())
+  .input(z.object({ verificationId: z.string().optional() }).optional())
   .mutation(async ({ ctx, input }) => {
-    const selectedDocument = await getSelectedIdentityDocumentByUserId(
-      ctx.userId
-    );
-    const documentId = input?.documentId ?? selectedDocument?.id ?? null;
-    if (!documentId) {
+    const selectedVerification = await getSelectedVerification(ctx.userId);
+    const verificationId =
+      input?.verificationId ?? selectedVerification?.id ?? null;
+    if (!verificationId) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: "Missing document context for proof session",
+        message: "Missing verification context for proof session",
       });
     }
 
@@ -47,7 +46,7 @@ export const createProofSessionProcedure = protectedProcedure
     await createZkProofSession({
       id: proofSessionId,
       userId: ctx.userId,
-      documentId,
+      verificationId,
       msgSender: ctx.userId,
       audience,
       policyVersion: POLICY_VERSION,
@@ -57,7 +56,7 @@ export const createProofSessionProcedure = protectedProcedure
 
     return {
       proofSessionId,
-      documentId,
+      verificationId,
       expiresAt: new Date(expiresAt).toISOString(),
       policyVersion: POLICY_VERSION,
     };

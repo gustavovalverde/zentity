@@ -154,7 +154,7 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
   // Delete the user - cascades to:
   //    - sessions, accounts, passkeys (auth)
   //    - zkProofs, encryptedAttributes, signedClaims, encryptedSecrets, secretWrappers (crypto)
-  //    - identityBundles, identityDocuments, identityVerificationJobs (identity)
+  //    - identityBundles, identityVerifications, identityVerificationJobs (identity)
   //    - attestationEvidence, attestationState (attestation)
   //    - recoveryConfigs, recoveryRequests, guardianRelationships, pendingGuardianInvites (recovery)
   await db.delete(users).where(eq(users.id, userId)).run();

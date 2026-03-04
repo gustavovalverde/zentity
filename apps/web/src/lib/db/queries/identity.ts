@@ -2,13 +2,14 @@ import type {
   FheStatus,
   IdentityBundle,
   IdentityBundleStatus,
-  IdentityDocument,
   IdentityJobStatus,
+  IdentityVerification,
   IdentityVerificationDraft,
   IdentityVerificationJob,
+  NewIdentityVerification,
 } from "../schema/identity";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 // React.cache() is per-request memoization - NOT persistent across requests.
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
@@ -28,20 +29,34 @@ import {
 } from "../schema/crypto";
 import {
   identityBundles,
-  identityDocuments,
   identityVerificationDrafts,
   identityVerificationJobs,
-  passportChipVerifications,
+  identityVerifications,
 } from "../schema/identity";
-import { getSignedClaimTypesByUserAndDocument } from "./crypto";
+import { getSignedClaimTypesByUserAndVerification } from "./crypto";
+
+export function isChipVerified(v: IdentityVerification | null): boolean {
+  return v?.method === "nfc_chip" && v.status === "verified";
+}
+
+export async function getVerificationById(
+  id: string
+): Promise<IdentityVerification | null> {
+  const row = await db
+    .select()
+    .from(identityVerifications)
+    .where(eq(identityVerifications.id, id))
+    .get();
+  return row ?? null;
+}
 
 export async function documentHashExists(
   documentHash: string
 ): Promise<boolean> {
   const row = await db
-    .select({ id: identityDocuments.id })
-    .from(identityDocuments)
-    .where(eq(identityDocuments.documentHash, documentHash))
+    .select({ id: identityVerifications.id })
+    .from(identityVerifications)
+    .where(eq(identityVerifications.documentHash, documentHash))
     .get();
 
   return !!row;
@@ -81,8 +96,8 @@ export async function deleteIdentityData(userId: string): Promise<void> {
       .where(eq(identityVerificationDrafts.userId, userId))
       .run();
     await tx
-      .delete(identityDocuments)
-      .where(eq(identityDocuments.userId, userId))
+      .delete(identityVerifications)
+      .where(eq(identityVerifications.userId, userId))
       .run();
     await tx
       .delete(identityBundles)
@@ -106,12 +121,29 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     identityBindingProof: boolean;
   };
 }> {
-  const selectedDocument = await getSelectedIdentityDocumentByUserId(userId);
-  const documentId = selectedDocument?.id ?? null;
+  const selectedVerification = await getSelectedVerification(userId);
+  const verificationId = selectedVerification?.id ?? null;
 
-  // Parallelize queries that don't depend on each other
-  const [sessionProofRows, signedClaimTypes, chipRow] = await Promise.all([
-    documentId
+  // NFC chip verification — derive checks directly from the verification record
+  if (selectedVerification && isChipVerified(selectedVerification)) {
+    return {
+      verified: true,
+      level: "chip" as const,
+      checks: {
+        document: true,
+        liveness: true,
+        ageProof: selectedVerification.ageVerified === true,
+        docValidityProof: true,
+        nationalityProof: Boolean(selectedVerification.nationalityCommitment),
+        faceMatchProof: selectedVerification.faceMatchPassed === true,
+        identityBindingProof: Boolean(selectedVerification.uniqueIdentifier),
+      },
+    };
+  }
+
+  // OCR path — check proofs and signed claims
+  const [sessionProofRows, signedClaimTypes] = await Promise.all([
+    verificationId
       ? db
           .select({
             proofSessionId: zkProofs.proofSessionId,
@@ -122,7 +154,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
           .where(
             and(
               eq(zkProofs.userId, userId),
-              eq(zkProofs.documentId, documentId),
+              eq(zkProofs.verificationId, verificationId),
               eq(zkProofs.verified, true),
               eq(zkProofs.policyVersion, POLICY_VERSION),
               sql`${zkProofs.proofSessionId} is not null`
@@ -130,26 +162,9 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
           )
           .all()
       : Promise.resolve([]),
-    documentId
-      ? getSignedClaimTypesByUserAndDocument(userId, documentId)
+    verificationId
+      ? getSignedClaimTypesByUserAndVerification(userId, verificationId)
       : Promise.resolve([]),
-    db
-      .select({
-        id: passportChipVerifications.id,
-        ageVerified: passportChipVerifications.ageVerified,
-        sanctionsCleared: passportChipVerifications.sanctionsCleared,
-        faceMatchPassed: passportChipVerifications.faceMatchPassed,
-        nationalityCommitment: passportChipVerifications.nationalityCommitment,
-        uniqueIdentifier: passportChipVerifications.uniqueIdentifier,
-      })
-      .from(passportChipVerifications)
-      .where(
-        and(
-          eq(passportChipVerifications.userId, userId),
-          eq(passportChipVerifications.status, "verified")
-        )
-      )
-      .get(),
   ]);
 
   const requiredProofs = [
@@ -199,14 +214,12 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     }
   }
 
-  // Core verification checks required for full verification.
   const coreChecks = {
-    document: selectedDocument?.status === "verified",
+    document: selectedVerification?.status === "verified",
     liveness: signedClaimTypes.includes("liveness_score"),
     ageProof: selectedSessionProofTypes.has("age_verification"),
     docValidityProof: selectedSessionProofTypes.has("doc_validity"),
     nationalityProof: selectedSessionProofTypes.has("nationality_membership"),
-    // Accept either ZK proof or signed claim for face match.
     faceMatchProof:
       selectedSessionProofTypes.has("face_match") ||
       signedClaimTypes.includes("face_match_score"),
@@ -214,29 +227,8 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   };
 
   const checks = coreChecks;
-
   const passedChecks = Object.values(coreChecks).filter(Boolean).length;
   const totalChecks = Object.values(coreChecks).length;
-
-  if (chipRow) {
-    return {
-      verified: true,
-      level: "chip" as const,
-      checks: {
-        // NFC chip verification = document authenticity (SOD signature)
-        document: true,
-        // NFC challenge-response = physical possession (implicit liveness)
-        liveness: true,
-        ageProof: chipRow.ageVerified === true,
-        // NFC SOD signature chain proves document validity
-        docValidityProof: true,
-        nationalityProof: Boolean(chipRow.nationalityCommitment),
-        faceMatchProof: chipRow.faceMatchPassed === true,
-        // Nullifier = cryptographic identity binding
-        identityBindingProof: Boolean(chipRow.uniqueIdentifier),
-      },
-    };
-  }
 
   let level: "none" | "basic" | "full" | "chip" = "none";
   if (passedChecks === totalChecks) {
@@ -278,51 +270,61 @@ export const hasCompletedSignUp = cache(async function hasCompletedSignUp(
   return bundle !== null;
 });
 
-export const getLatestIdentityDocumentByUserId = cache(
-  async function getLatestIdentityDocumentByUserId(
-    userId: string
-  ): Promise<IdentityDocument | null> {
-    const row = await db
-      .select()
-      .from(identityDocuments)
-      .where(eq(identityDocuments.userId, userId))
-      .orderBy(
-        sql`CASE WHEN ${identityDocuments.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
-        desc(identityDocuments.verifiedAt),
-        desc(identityDocuments.createdAt)
-      )
-      .limit(1)
-      .get();
-
-    return row ?? null;
-  }
-);
-
-export async function getIdentityDocumentsByUserId(
+export const getLatestVerification = cache(async function getLatestVerification(
   userId: string
-): Promise<IdentityDocument[]> {
+): Promise<IdentityVerification | null> {
+  const row = await db
+    .select()
+    .from(identityVerifications)
+    .where(eq(identityVerifications.userId, userId))
+    .orderBy(
+      sql`CASE WHEN ${identityVerifications.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
+      desc(identityVerifications.verifiedAt),
+      desc(identityVerifications.createdAt)
+    )
+    .limit(1)
+    .get();
+
+  return row ?? null;
+});
+
+export async function getVerificationsByUserId(
+  userId: string
+): Promise<IdentityVerification[]> {
   return await db
     .select()
-    .from(identityDocuments)
-    .where(eq(identityDocuments.userId, userId))
+    .from(identityVerifications)
+    .where(eq(identityVerifications.userId, userId))
     .orderBy(
-      sql`CASE WHEN ${identityDocuments.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
-      desc(identityDocuments.verifiedAt),
-      desc(identityDocuments.createdAt)
+      sql`CASE WHEN ${identityVerifications.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
+      desc(identityVerifications.verifiedAt),
+      desc(identityVerifications.createdAt)
     )
     .all();
 }
 
-export const getSelectedIdentityDocumentByUserId = cache(
-  async function getSelectedIdentityDocumentByUserId(
+export const getSelectedVerification = cache(
+  async function getSelectedVerification(
     userId: string
-  ): Promise<IdentityDocument | null> {
-    // Parallelize all three independent queries
-    const [documents, proofRows, claimRows] = await Promise.all([
-      getIdentityDocumentsByUserId(userId),
+  ): Promise<IdentityVerification | null> {
+    const verifications = await getVerificationsByUserId(userId);
+
+    if (verifications.length === 0) {
+      return null;
+    }
+
+    // NFC chip verifications are always "selected" if verified — no proof/claim check needed
+    for (const v of verifications) {
+      if (isChipVerified(v)) {
+        return v;
+      }
+    }
+
+    // OCR path — need proof and claim data to rank verifications
+    const [proofRows, claimRows] = await Promise.all([
       db
         .select({
-          documentId: zkProofs.documentId,
+          verificationId: zkProofs.verificationId,
           proofSessionId: zkProofs.proofSessionId,
           proofType: zkProofs.proofType,
           policyVersion: zkProofs.policyVersion,
@@ -333,7 +335,7 @@ export const getSelectedIdentityDocumentByUserId = cache(
         .all(),
       db
         .select({
-          documentId: signedClaims.documentId,
+          verificationId: signedClaims.verificationId,
           claimType: signedClaims.claimType,
         })
         .from(signedClaims)
@@ -341,18 +343,14 @@ export const getSelectedIdentityDocumentByUserId = cache(
         .all(),
     ]);
 
-    if (documents.length === 0) {
-      return null;
-    }
-
-    const proofTypesByDocumentSession = new Map<
+    const proofTypesByVerificationSession = new Map<
       string,
       Map<string, Set<string>>
     >();
     for (const row of proofRows) {
       if (
         !(
-          row.documentId &&
+          row.verificationId &&
           row.proofSessionId &&
           row.verified &&
           row.policyVersion === POLICY_VERSION
@@ -360,27 +358,27 @@ export const getSelectedIdentityDocumentByUserId = cache(
       ) {
         continue;
       }
-      if (!proofTypesByDocumentSession.has(row.documentId)) {
-        proofTypesByDocumentSession.set(row.documentId, new Map());
+      if (!proofTypesByVerificationSession.has(row.verificationId)) {
+        proofTypesByVerificationSession.set(row.verificationId, new Map());
       }
       const sessionProofs =
-        proofTypesByDocumentSession.get(row.documentId) ?? new Map();
+        proofTypesByVerificationSession.get(row.verificationId) ?? new Map();
       if (!sessionProofs.has(row.proofSessionId)) {
         sessionProofs.set(row.proofSessionId, new Set());
       }
       sessionProofs.get(row.proofSessionId)?.add(row.proofType);
-      proofTypesByDocumentSession.set(row.documentId, sessionProofs);
+      proofTypesByVerificationSession.set(row.verificationId, sessionProofs);
     }
 
-    const claimTypesByDocument = new Map<string, Set<string>>();
+    const claimTypesByVerification = new Map<string, Set<string>>();
     for (const row of claimRows) {
-      if (!row.documentId) {
+      if (!row.verificationId) {
         continue;
       }
-      if (!claimTypesByDocument.has(row.documentId)) {
-        claimTypesByDocument.set(row.documentId, new Set());
+      if (!claimTypesByVerification.has(row.verificationId)) {
+        claimTypesByVerification.set(row.verificationId, new Set());
       }
-      claimTypesByDocument.get(row.documentId)?.add(row.claimType);
+      claimTypesByVerification.get(row.verificationId)?.add(row.claimType);
     }
 
     const requiredProofs = [
@@ -395,30 +393,30 @@ export const getSelectedIdentityDocumentByUserId = cache(
     const hasAll = (set: Set<string> | undefined, required: string[]) =>
       required.every((item) => set?.has(item));
 
-    for (const doc of documents) {
-      if (doc.status !== "verified") {
+    for (const v of verifications) {
+      if (v.status !== "verified") {
         continue;
       }
-      const proofSessions = proofTypesByDocumentSession.get(doc.id);
+      const proofSessions = proofTypesByVerificationSession.get(v.id);
       const hasCompleteProofSession = Boolean(
         proofSessions &&
           [...proofSessions.values()].some((proofs) =>
             hasAll(proofs, requiredProofs)
           )
       );
-      const claims = claimTypesByDocument.get(doc.id);
+      const claims = claimTypesByVerification.get(v.id);
       if (hasCompleteProofSession && hasAll(claims, requiredClaims)) {
-        return doc;
+        return v;
       }
     }
 
-    for (const doc of documents) {
-      if (doc.status === "verified") {
-        return doc;
+    for (const v of verifications) {
+      if (v.status === "verified") {
+        return v;
       }
     }
 
-    return documents[0] ?? null;
+    return verifications[0] ?? null;
   }
 );
 
@@ -449,31 +447,18 @@ export async function getLatestIdentityDraftByUserId(
   return row ?? null;
 }
 
-export async function getLatestIdentityDraftByUserAndDocument(
-  userId: string,
-  documentId: string
-): Promise<IdentityVerificationDraft | null> {
-  const row = await db
-    .select()
-    .from(identityVerificationDrafts)
-    .where(
-      and(
-        eq(identityVerificationDrafts.userId, userId),
-        eq(identityVerificationDrafts.documentId, documentId)
-      )
-    )
-    .orderBy(desc(identityVerificationDrafts.updatedAt))
-    .limit(1)
-    .get();
-
-  return row ?? null;
+export async function deleteIdentityDraft(draftId: string): Promise<void> {
+  await db
+    .delete(identityVerificationDrafts)
+    .where(eq(identityVerificationDrafts.id, draftId))
+    .run();
 }
 
 export async function upsertIdentityDraft(
   data: Partial<IdentityVerificationDraft> & {
     id: string;
     userId: string;
-    documentId: string;
+    verificationId: string;
   }
 ): Promise<IdentityVerificationDraft> {
   const now = new Date().toISOString();
@@ -482,19 +467,14 @@ export async function upsertIdentityDraft(
     .values({
       id: data.id,
       userId: data.userId,
-      documentId: data.documentId,
+      verificationId: data.verificationId,
       documentProcessed: data.documentProcessed ?? false,
       isDocumentValid: data.isDocumentValid ?? false,
       isDuplicateDocument: data.isDuplicateDocument ?? false,
-      documentType: data.documentType ?? null,
-      issuerCountry: data.issuerCountry ?? null,
-      documentHash: data.documentHash ?? null,
       documentHashField: data.documentHashField ?? null,
-      nameCommitment: data.nameCommitment ?? null,
       ageClaimHash: data.ageClaimHash ?? null,
       docValidityClaimHash: data.docValidityClaimHash ?? null,
       nationalityClaimHash: data.nationalityClaimHash ?? null,
-      confidenceScore: data.confidenceScore ?? null,
       ocrIssues: data.ocrIssues ?? null,
       antispoofScore: data.antispoofScore ?? null,
       liveScore: data.liveScore ?? null,
@@ -508,19 +488,14 @@ export async function upsertIdentityDraft(
       target: identityVerificationDrafts.id,
       set: {
         userId: data.userId,
-        documentId: data.documentId,
+        verificationId: data.verificationId,
         documentProcessed: data.documentProcessed ?? false,
         isDocumentValid: data.isDocumentValid ?? false,
         isDuplicateDocument: data.isDuplicateDocument ?? false,
-        documentType: data.documentType ?? null,
-        issuerCountry: data.issuerCountry ?? null,
-        documentHash: data.documentHash ?? null,
         documentHashField: data.documentHashField ?? null,
-        nameCommitment: data.nameCommitment ?? null,
         ageClaimHash: data.ageClaimHash ?? null,
         docValidityClaimHash: data.docValidityClaimHash ?? null,
         nationalityClaimHash: data.nationalityClaimHash ?? null,
-        confidenceScore: data.confidenceScore ?? null,
         ocrIssues: data.ocrIssues ?? null,
         antispoofScore: data.antispoofScore ?? null,
         liveScore: data.liveScore ?? null,
@@ -583,6 +558,7 @@ export async function getLatestIdentityVerificationJobForDraft(
 export async function createIdentityVerificationJob(args: {
   id: string;
   draftId: string;
+  verificationId?: string | null;
   userId: string;
   fheKeyId?: string | null;
 }): Promise<void> {
@@ -591,6 +567,7 @@ export async function createIdentityVerificationJob(args: {
     .values({
       id: args.id,
       draftId: args.draftId,
+      verificationId: args.verificationId ?? null,
       userId: args.userId,
       status: "queued",
       fheKeyId: args.fheKeyId ?? null,
@@ -637,7 +614,6 @@ export async function upsertIdentityBundle(data: {
   fheKeyId?: string | null;
   fheStatus?: FheStatus | null;
   fheError?: string | null;
-  chipVerificationId?: string | null;
 }): Promise<void> {
   const insertValues: typeof identityBundles.$inferInsert = {
     userId: data.userId,
@@ -649,11 +625,8 @@ export async function upsertIdentityBundle(data: {
     fheKeyId: data.fheKeyId ?? null,
     fheStatus: data.fheStatus ?? null,
     fheError: data.fheError ?? null,
-    chipVerificationId: data.chipVerificationId ?? null,
   };
 
-  // Treat this function as a partial upsert: undefined means "leave unchanged"
-  // on update, while null means "explicitly clear".
   const updateSet: Record<string, unknown> = {
     updatedAt: sql`datetime('now')`,
   };
@@ -681,9 +654,6 @@ export async function upsertIdentityBundle(data: {
   }
   if (data.fheError !== undefined) {
     updateSet.fheError = data.fheError;
-  }
-  if (data.chipVerificationId !== undefined) {
-    updateSet.chipVerificationId = data.chipVerificationId;
   }
 
   await db
@@ -751,36 +721,52 @@ export async function updateIdentityBundleStatus(args: {
     .run();
 }
 
-export async function createIdentityDocument(
-  data: Omit<IdentityDocument, "createdAt" | "updatedAt">
+export async function createVerification(
+  data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">
 ): Promise<void> {
   await db
-    .insert(identityDocuments)
+    .insert(identityVerifications)
     .values({
       ...data,
     })
     .run();
 }
 
-export async function upsertIdentityDocument(
-  data: Omit<IdentityDocument, "createdAt" | "updatedAt">
+export async function upsertVerification(
+  data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">
 ): Promise<void> {
+  const { id: _id, ...updateFields } = data;
   await db
-    .insert(identityDocuments)
-    .values({
-      ...data,
-    })
+    .insert(identityVerifications)
+    .values(data)
     .onConflictDoUpdate({
-      target: identityDocuments.id,
+      target: identityVerifications.id,
       set: {
-        userId: data.userId,
-        documentHash: data.documentHash,
-        nameCommitment: data.nameCommitment,
-        verifiedAt: data.verifiedAt,
-        confidenceScore: data.confidenceScore,
-        status: data.status,
+        ...updateFields,
         updatedAt: sql`datetime('now')`,
       },
     })
     .run();
+}
+
+/**
+ * Check if a nullifier is already used by a different user.
+ * Same passport cannot register on multiple accounts.
+ */
+export async function isNullifierUsedByOtherUser(
+  uniqueIdentifier: string,
+  userId: string
+): Promise<boolean> {
+  const row = await db
+    .select({ id: identityVerifications.id })
+    .from(identityVerifications)
+    .where(
+      and(
+        eq(identityVerifications.uniqueIdentifier, uniqueIdentifier),
+        eq(identityVerifications.status, "verified"),
+        ne(identityVerifications.userId, userId)
+      )
+    )
+    .get();
+  return !!row;
 }

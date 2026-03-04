@@ -1,6 +1,6 @@
 import {
   getIdentityBundleByUserId,
-  getLatestIdentityDocumentByUserId,
+  getLatestVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
 
@@ -62,10 +62,10 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
 export async function buildProofClaims(
   userId: string
 ): Promise<Record<string, unknown>> {
-  const [status, bundle, document] = await Promise.all([
+  const [status, bundle, latestVerification] = await Promise.all([
     getVerificationStatus(userId),
     getIdentityBundleByUserId(userId),
-    getLatestIdentityDocumentByUserId(userId),
+    getLatestVerification(userId),
   ]);
 
   const claims: VerificationClaims = mapVerificationClaims(status);
@@ -75,7 +75,8 @@ export async function buildProofClaims(
   if (bundle?.issuerId) {
     claims.issuer_id = bundle.issuerId;
   }
-  const verificationTime = document?.verifiedAt ?? bundle?.updatedAt ?? null;
+  const verificationTime =
+    latestVerification?.verifiedAt ?? bundle?.updatedAt ?? null;
   if (verificationTime) {
     claims.verification_time = verificationTime;
   }
@@ -90,10 +91,10 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
   verification: Record<string, unknown>;
   claims: Record<string, unknown>;
 } | null> {
-  const [status, bundle, document] = await Promise.all([
+  const [status, bundle, latestVerification] = await Promise.all([
     getVerificationStatus(userId),
     getIdentityBundleByUserId(userId),
-    getLatestIdentityDocumentByUserId(userId),
+    getLatestVerification(userId),
   ]);
 
   if (!status.verified) {
@@ -104,7 +105,8 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
     trust_framework: "zentity",
     assurance_level: status.level,
   };
-  const verificationTime = document?.verifiedAt ?? bundle?.updatedAt ?? null;
+  const verificationTime =
+    latestVerification?.verifiedAt ?? bundle?.updatedAt ?? null;
   if (verificationTime) {
     verification.time = verificationTime;
   }

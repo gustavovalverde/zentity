@@ -14,16 +14,16 @@ import { cache } from "react";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import {
   getEncryptedAttributeTypesByUserId,
-  getLatestSignedClaimByUserTypeAndDocument,
-  getSignedClaimTypesByUserAndDocument,
-  getZkProofTypesByUserAndDocument,
+  getLatestSignedClaimByUserTypeAndVerification,
+  getSignedClaimTypesByUserAndVerification,
+  getZkProofTypesByUserAndVerification,
 } from "@/lib/db/queries/crypto";
 import {
   getIdentityBundleByUserId,
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
+  isChipVerified,
 } from "@/lib/db/queries/identity";
 import { hasPasskeyCredentials } from "@/lib/db/queries/passkey";
-import { hasVerifiedChipVerification } from "@/lib/db/queries/passport-chip";
 
 import {
   areZkProofsComplete,
@@ -75,16 +75,16 @@ interface OcrClaimData {
  */
 async function hasValidClaimHashes(
   userId: string,
-  documentId: string | null
+  verificationId: string | null
 ): Promise<boolean> {
-  if (!documentId) {
-    return true; // No document = no missing hashes
+  if (!verificationId) {
+    return true; // No verification = no missing hashes
   }
 
-  const ocrClaim = await getLatestSignedClaimByUserTypeAndDocument(
+  const ocrClaim = await getLatestSignedClaimByUserTypeAndVerification(
     userId,
     "ocr_result",
-    documentId
+    verificationId
   );
 
   if (!ocrClaim) {
@@ -108,7 +108,7 @@ async function hasValidClaimHashes(
  * Gathers data from multiple tables:
  * - Session: auth state, login method
  * - identity_bundles: FHE key status
- * - identity_documents: document verification status
+ * - identity_verifications: document verification status
  * - signed_claims: liveness and face match claims
  * - zk_proofs: proof completion
  * - encrypted_attributes: FHE encryption status
@@ -127,17 +127,15 @@ export const getAssuranceState = cache(async function getAssuranceState(
   // Gather primary data in parallel
   const [
     hasSecuredKeys,
-    selectedDocument,
+    verification,
     fheAttributeTypes,
     hasAttestation,
-    chipVerified,
     hasPasskeys,
   ] = await Promise.all([
     hasSecuredFheKeys(userId),
-    getSelectedIdentityDocumentByUserId(userId),
+    getSelectedVerification(userId),
     getEncryptedAttributeTypesByUserId(userId),
     hasOnChainAttestation(userId),
-    hasVerifiedChipVerification(userId),
     // Fallback: if lastLoginMethod wasn't recorded, check if user has passkeys
     storedLoginMethod ? Promise.resolve(false) : hasPasskeyCredentials(userId),
   ]);
@@ -145,15 +143,16 @@ export const getAssuranceState = cache(async function getAssuranceState(
   // Use stored method, or infer "passkey" if user has passkey credentials
   const lastLoginMethod = storedLoginMethod ?? (hasPasskeys ? "passkey" : null);
 
-  const documentId = selectedDocument?.id ?? null;
-  const documentVerified = selectedDocument?.status === "verified";
+  const verificationId = verification?.id ?? null;
+  const documentVerified = verification?.status === "verified";
+  const chipVerified = isChipVerified(verification);
 
-  // Get proof types and check claim hashes if we have a document
-  const [zkProofTypes, signedClaimTypes, claimHashesValid] = documentId
+  // Get proof types and check claim hashes if we have a verification
+  const [zkProofTypes, signedClaimTypes, claimHashesValid] = verificationId
     ? await Promise.all([
-        getZkProofTypesByUserAndDocument(userId, documentId),
-        getSignedClaimTypesByUserAndDocument(userId, documentId),
-        hasValidClaimHashes(userId, documentId),
+        getZkProofTypesByUserAndVerification(userId, verificationId),
+        getSignedClaimTypesByUserAndVerification(userId, verificationId),
+        hasValidClaimHashes(userId, verificationId),
       ])
     : [[], [], true];
 

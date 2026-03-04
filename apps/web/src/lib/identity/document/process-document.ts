@@ -49,7 +49,6 @@ export interface DocumentProcessingResult {
   claimHashes: ComputedClaimHashes;
   documentHash: string | null;
   documentHashField: string | null;
-  documentId: string;
   documentProcessed: boolean;
   draftId: string;
   isDocumentValid: boolean;
@@ -58,14 +57,15 @@ export interface DocumentProcessingResult {
   issues: string[];
   ocrResult: OcrProcessResult | null;
   parsedDates: ParsedDateValues;
+  verificationId: string;
 }
 
 /**
  * Input parameters for document processing.
  */
 export interface ProcessDocumentParams {
-  existingDocumentId?: string | null;
   existingDraftId?: string | null;
+  existingVerificationId?: string | null;
   flowId?: string;
   image: string;
   requestId: string;
@@ -246,7 +246,7 @@ async function computeClaimHashes(
  *
  * Callers are responsible for:
  * - Draft lookup (by session ID or user ID)
- * - Database persistence (upsertIdentityDraft, createIdentityDocument)
+ * - Database persistence (upsertIdentityDraft, createVerification)
  * - Session/progress updates
  */
 export async function processDocumentWithOcr(
@@ -254,7 +254,7 @@ export async function processDocumentWithOcr(
 ): Promise<DocumentProcessingResult> {
   const issues: string[] = [];
   const draftId = params.existingDraftId ?? uuidv4();
-  const documentId = params.existingDocumentId ?? uuidv4();
+  const verificationId = params.existingVerificationId ?? uuidv4();
 
   // Call OCR service
   const ocrResult = await processDocumentOcr({
@@ -340,7 +340,7 @@ export async function processDocumentWithOcr(
   return {
     ocrResult,
     draftId,
-    documentId,
+    verificationId,
     documentProcessed,
     documentHash,
     documentHashField,

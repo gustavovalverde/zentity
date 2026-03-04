@@ -9,7 +9,7 @@ import {
   hashToFieldHexFromString,
 } from "@/lib/privacy/zk/hash-to-field";
 
-const mockGetSelectedIdentityDocumentByUserId = vi.fn();
+const mockGetSelectedVerification = vi.fn();
 const mockVerifyNoirProof = vi.fn();
 const mockConsumeChallenge = vi.fn();
 const mockCreateChallenge = vi.fn();
@@ -26,8 +26,8 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/db/queries/identity")>();
   return {
     ...actual,
-    getSelectedIdentityDocumentByUserId: (...args: unknown[]) =>
-      mockGetSelectedIdentityDocumentByUserId(...args),
+    getSelectedVerification: (...args: unknown[]) =>
+      mockGetSelectedVerification(...args),
   };
 });
 
@@ -59,9 +59,9 @@ vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
     ...actual,
     getZkProofSessionById: (...args: unknown[]) =>
       mockGetZkProofSessionById(...args),
-    getZkProofTypesByUserDocumentAndSession: (...args: unknown[]) =>
+    getZkProofTypesByUserVerificationAndSession: (...args: unknown[]) =>
       mockGetZkProofTypesByUserDocumentAndSession(...args),
-    getProofHashesByUserDocumentAndSession: (...args: unknown[]) =>
+    getProofHashesByUserVerificationAndSession: (...args: unknown[]) =>
       mockGetProofHashesByUserDocumentAndSession(...args),
     closeZkProofSession: (...args: unknown[]) =>
       mockCloseZkProofSession(...args),
@@ -171,8 +171,8 @@ describe("proof router replay and context binding", () => {
     };
 
     vi.clearAllMocks();
-    mockGetSelectedIdentityDocumentByUserId.mockResolvedValue({
-      id: "doc-1",
+    mockGetSelectedVerification.mockResolvedValue({
+      id: "ver-1",
       status: "verified",
     });
     mockVerifyNoirProof.mockResolvedValue({
@@ -189,7 +189,7 @@ describe("proof router replay and context binding", () => {
     mockGetZkProofSessionById.mockResolvedValue({
       id: proofSessionId,
       userId: "user-123",
-      documentId: "doc-1",
+      verificationId: "ver-1",
       msgSender: "user-123",
       audience: "http://localhost",
       policyVersion: POLICY_VERSION,
@@ -278,7 +278,7 @@ describe("proof router replay and context binding", () => {
     mockGetZkProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-456",
-      documentId: "doc-1",
+      verificationId: "ver-1",
       msgSender: "user-456",
       audience: "http://localhost",
       policyVersion: POLICY_VERSION,
@@ -364,7 +364,7 @@ describe("proof router replay and context binding", () => {
     mockGetZkProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-123",
-      documentId: "doc-1",
+      verificationId: "ver-1",
       msgSender: "user-123",
       audience: browserAudience,
       policyVersion: POLICY_VERSION,
@@ -405,7 +405,7 @@ describe("proof router replay and context binding", () => {
     mockGetZkProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-123",
-      documentId: "doc-1",
+      verificationId: "ver-1",
       msgSender: "user-123",
       audience: browserAudience,
       policyVersion: POLICY_VERSION,
@@ -439,7 +439,7 @@ describe("proof router replay and context binding", () => {
     mockGetZkProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-123",
-      documentId: "doc-1",
+      verificationId: "ver-1",
       msgSender: "user-123",
       audience: "https://verify.example.com",
       policyVersion: POLICY_VERSION,
@@ -488,7 +488,7 @@ describe("proof router replay and context binding", () => {
           "1",
         ],
         proofSessionId,
-        documentId: "doc-1",
+        verificationId: "ver-1",
       })
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
@@ -517,7 +517,7 @@ describe("proof router replay and context binding", () => {
         ],
         generationTimeMs: 10,
         proofSessionId,
-        documentId: "doc-1",
+        verificationId: "ver-1",
       })
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
@@ -539,7 +539,7 @@ describe("proof router replay and context binding", () => {
         publicSignals: [getTodayDobDays().toString(), "6570", "1", "1", "1"],
         generationTimeMs: 10,
         proofSessionId,
-        documentId: "doc-1",
+        verificationId: "ver-1",
       })
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
@@ -566,7 +566,7 @@ describe("proof router replay and context binding", () => {
         publicSignals: Array.from({ length: minPublicInputs - 1 }, () => "1"),
         generationTimeMs: 10,
         proofSessionId,
-        documentId: "doc-1",
+        verificationId: "ver-1",
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });

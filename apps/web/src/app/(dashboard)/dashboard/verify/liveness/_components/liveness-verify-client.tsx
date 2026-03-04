@@ -75,8 +75,8 @@ export function LivenessVerifyClient({
   const [bindingAuthMode, setBindingAuthMode] = useState<"opaque" | "wallet">(
     "opaque"
   );
-  // Ref to hold the documentId while dialog is open (avoids stale closure)
-  const pendingDocumentIdRef = useRef<string | null>(null);
+  // Ref to hold the verificationId while dialog is open (avoids stale closure)
+  const pendingVerificationIdRef = useRef<string | null>(null);
 
   const userId = session?.user?.id;
   const draftId = store.draftId;
@@ -85,7 +85,7 @@ export function LivenessVerifyClient({
    * Execute proof generation with a resolved binding context.
    */
   const runProofGeneration = useCallback(
-    async (documentId: string, bindingContext: BindingContext) => {
+    async (verificationId: string, bindingContext: BindingContext) => {
       // Store profile secret before generating proofs (fire-and-forget)
       const cached = getCachedBindingMaterial();
       if (cached && userId) {
@@ -130,7 +130,7 @@ export function LivenessVerifyClient({
 
       const storeState = getStoreState();
       await generateAllProofs({
-        documentId,
+        verificationId,
         profilePayload: null,
         extractedDOB: storeState.extractedDOB,
         extractedExpirationDate: storeState.extractedExpirationDate,
@@ -156,12 +156,12 @@ export function LivenessVerifyClient({
    * Called directly from handleContinue or resumed after re-auth dialog.
    */
   const generateProofsWithBinding = useCallback(
-    async (documentId: string) => {
+    async (verificationId: string) => {
       if (!userId) {
         throw new Error("Session expired. Please sign in again.");
       }
 
-      const bindingResult = await getBindingContext(userId, documentId);
+      const bindingResult = await getBindingContext(userId, verificationId);
 
       if (!bindingResult.success) {
         if (
@@ -170,7 +170,7 @@ export function LivenessVerifyClient({
           bindingResult.authMode !== "passkey"
         ) {
           // Pause: show re-auth dialog, resume on success
-          pendingDocumentIdRef.current = documentId;
+          pendingVerificationIdRef.current = verificationId;
           setBindingAuthMode(bindingResult.authMode);
           setBindingAuthOpen(true);
           return;
@@ -179,7 +179,7 @@ export function LivenessVerifyClient({
         throw new Error(bindingResult.message);
       }
 
-      await runProofGeneration(documentId, bindingResult.context);
+      await runProofGeneration(verificationId, bindingResult.context);
     },
     [userId, runProofGeneration]
   );
@@ -190,24 +190,24 @@ export function LivenessVerifyClient({
    */
   const handleBindingAuthSuccess = useCallback(async () => {
     setBindingAuthOpen(false);
-    const documentId = pendingDocumentIdRef.current;
-    if (!(documentId && userId)) {
+    const verificationId = pendingVerificationIdRef.current;
+    if (!(verificationId && userId)) {
       return;
     }
 
     try {
-      const bindingResult = await getBindingContext(userId, documentId);
+      const bindingResult = await getBindingContext(userId, verificationId);
       if (!bindingResult.success) {
         throw new Error(bindingResult.message);
       }
-      await runProofGeneration(documentId, bindingResult.context);
+      await runProofGeneration(verificationId, bindingResult.context);
     } catch (error) {
       toast.error("Proof generation failed", {
         description:
           error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
-      pendingDocumentIdRef.current = null;
+      pendingVerificationIdRef.current = null;
       setIsSubmitting(false);
     }
   }, [userId, runProofGeneration]);
@@ -325,11 +325,11 @@ export function LivenessVerifyClient({
       const { jobId } = await trpc.identity.finalize.mutate({ draftId });
 
       // Step 3: Poll for job completion
-      let documentId: string | null = null;
+      let verificationId: string | null = null;
       for (let attempts = 0; attempts < 30; attempts++) {
         const jobStatus = await trpc.identity.finalizeStatus.query({ jobId });
         if (jobStatus.status === "complete") {
-          documentId = jobStatus.result?.documentId ?? null;
+          verificationId = jobStatus.result?.verificationId ?? null;
           break;
         }
         if (jobStatus.status === "error") {
@@ -338,19 +338,19 @@ export function LivenessVerifyClient({
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
-      if (!documentId) {
+      if (!verificationId) {
         throw new Error("Finalization timed out");
       }
 
-      getStoreState().set({ documentId });
+      getStoreState().set({ verificationId });
 
       // Step 4: Get binding context and generate proofs
       // If cache is expired, this opens the re-auth dialog and returns early.
       // The dialog's onSuccess callback resumes proof generation.
-      await generateProofsWithBinding(documentId);
+      await generateProofsWithBinding(verificationId);
 
       // If we reach here without the dialog opening, proofs are done
-      if (!pendingDocumentIdRef.current) {
+      if (!pendingVerificationIdRef.current) {
         setIsSubmitting(false);
       }
       // Otherwise isSubmitting stays true until dialog flow completes

@@ -29,14 +29,13 @@ import {
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
-  getSignedClaimTypesByUserAndDocument,
-  getZkProofTypesByUserAndDocument,
+  getSignedClaimTypesByUserAndVerification,
+  getZkProofTypesByUserAndVerification,
 } from "@/lib/db/queries/crypto";
 import {
   getIdentityBundleByUserId,
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
 } from "@/lib/db/queries/identity";
-import { getPassportChipVerificationByUserId } from "@/lib/db/queries/passport-chip";
 
 interface IdentityCardProps {
   assuranceState: AssuranceState | null;
@@ -139,7 +138,7 @@ export async function IdentityCard({
 
   // Tier 3: Chip Verified display
   if (tier === 3 && userId) {
-    const chipVerification = await getPassportChipVerificationByUserId(userId);
+    const verification = await getSelectedVerification(userId);
 
     return (
       <Card>
@@ -165,7 +164,7 @@ export async function IdentityCard({
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              {chipVerification?.ageVerified && (
+              {verification?.ageVerified && (
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
                     <CheckCircle className="h-5 w-5" />
@@ -178,7 +177,7 @@ export async function IdentityCard({
                   </div>
                 </div>
               )}
-              {chipVerification?.sanctionsCleared && (
+              {verification?.sanctionsCleared && (
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
                     <Shield className="h-5 w-5" />
@@ -189,7 +188,7 @@ export async function IdentityCard({
                   </div>
                 </div>
               )}
-              {chipVerification?.verifiedAt && (
+              {verification?.verifiedAt && (
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
                     <Calendar className="h-5 w-5" />
@@ -197,9 +196,7 @@ export async function IdentityCard({
                   <div>
                     <p className="text-muted-foreground text-xs">Verified On</p>
                     <p className="font-medium">
-                      {new Date(
-                        chipVerification.verifiedAt
-                      ).toLocaleDateString()}
+                      {new Date(verification.verifiedAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
@@ -214,14 +211,14 @@ export async function IdentityCard({
   // Tier 2: Fetch identity data for fully verified display
   const [
     identityBundle,
-    latestDocument,
+    verification,
     encryptedAttributes,
     dobDaysCipher,
     birthYearOffsetCipher,
   ] = userId
     ? await Promise.all([
         getIdentityBundleByUserId(userId),
-        getSelectedIdentityDocumentByUserId(userId),
+        getSelectedVerification(userId),
         getEncryptedAttributeTypesByUserId(userId),
         // Check for dob_days first (new format), then fall back to birth_year_offset (legacy)
         getLatestEncryptedAttributeByUserAndType(userId, "dob_days"),
@@ -232,12 +229,12 @@ export async function IdentityCard({
   // Use whichever FHE ciphertext format exists (prefer new format)
   const birthYearCipher = dobDaysCipher ?? birthYearOffsetCipher;
 
-  const selectedDocumentId = latestDocument?.id ?? null;
+  const verificationId = verification?.id ?? null;
   const [zkProofTypes, signedClaimTypes] =
-    userId && selectedDocumentId
+    userId && verificationId
       ? await Promise.all([
-          getZkProofTypesByUserAndDocument(userId, selectedDocumentId),
-          getSignedClaimTypesByUserAndDocument(userId, selectedDocumentId),
+          getZkProofTypesByUserAndVerification(userId, verificationId),
+          getSignedClaimTypesByUserAndVerification(userId, verificationId),
         ])
       : [[], []];
 
@@ -286,7 +283,7 @@ export async function IdentityCard({
             <IdentitySummary
               hasAgeProof={hasAgeProof}
               isVerified={identityBundle?.status === "verified"}
-              latestDocument={latestDocument}
+              verification={verification}
             />
           </div>
         </CardContent>
@@ -296,10 +293,10 @@ export async function IdentityCard({
       <TransparencySection
         birthYearOffsetCiphertextBytes={birthYearCiphertextBytes}
         birthYearOffsetCiphertextHash={birthYearCiphertextHash}
-        documentHash={latestDocument?.documentHash ?? undefined}
+        documentHash={verification?.documentHash ?? undefined}
         encryptedAttributes={encryptedAttributes}
         hasAgeProof={hasAgeProof}
-        nameCommitment={latestDocument?.nameCommitment ?? undefined}
+        nameCommitment={verification?.nameCommitment ?? undefined}
         proofTypes={proofTypes}
         signedClaimTypes={signedClaimTypes}
       />
@@ -311,17 +308,15 @@ export async function IdentityCard({
  * Identity Summary - Displays verified document metadata
  */
 function IdentitySummary({
-  latestDocument,
+  verification,
   isVerified,
   hasAgeProof,
 }: {
-  latestDocument: Awaited<
-    ReturnType<typeof getSelectedIdentityDocumentByUserId>
-  >;
+  verification: Awaited<ReturnType<typeof getSelectedVerification>>;
   isVerified: boolean;
   hasAgeProof: boolean;
 }) {
-  if (!latestDocument) {
+  if (!verification) {
     return null;
   }
 
@@ -344,7 +339,7 @@ function IdentitySummary({
           </div>
         )}
 
-        {latestDocument?.verifiedAt && (
+        {verification.verifiedAt && (
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
               <Calendar className="h-5 w-5" />
@@ -352,7 +347,7 @@ function IdentitySummary({
             <div>
               <p className="text-muted-foreground text-xs">Verified On</p>
               <p className="font-medium">
-                {new Date(latestDocument.verifiedAt).toLocaleDateString()}
+                {new Date(verification.verifiedAt).toLocaleDateString()}
               </p>
             </div>
           </div>

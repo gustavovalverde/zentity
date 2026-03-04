@@ -12,9 +12,7 @@ import {
 } from "@/lib/db/queries/crypto";
 import {
   getIdentityBundleByUserId,
-  getLatestIdentityDraftByUserAndDocument,
-  getLatestIdentityDraftByUserId,
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
   getVerificationStatus,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
@@ -98,14 +96,7 @@ async function runFheEncryption(
 
       span.setAttribute("fhe.key_id_hash", hashIdentifier(keyId));
 
-      const selectedDocument =
-        await getSelectedIdentityDocumentByUserId(userId);
-      const draft = selectedDocument
-        ? await getLatestIdentityDraftByUserAndDocument(
-            userId,
-            selectedDocument.id
-          )
-        : await getLatestIdentityDraftByUserId(userId);
+      const verification = await getSelectedVerification(userId);
 
       // dobDays is never persisted to DB (privacy). Resolve from context first,
       // then fall back to transient cache (survives across FHE retry attempts).
@@ -114,7 +105,7 @@ async function runFheEncryption(
           ? context.dobDays
           : (transientDobDays.get(userId) ?? null);
       const livenessScore =
-        draft?.antispoofScore ?? context?.livenessScore ?? undefined;
+        verification?.livenessScore ?? context?.livenessScore ?? undefined;
 
       const verificationStatus = await getVerificationStatus(userId);
       const complianceLevel = verificationStatus.verified

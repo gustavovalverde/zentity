@@ -6,9 +6,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockVerify = vi.fn();
 const mockGetIdentityBundleByUserId = vi.fn();
-const mockUpsertIdentityBundle = vi.fn();
-const mockCreatePassportChipVerification = vi.fn();
-const mockHasVerifiedChipVerification = vi.fn();
+const mockCreateVerification = vi.fn();
+const mockGetSelectedVerification = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
 
@@ -22,21 +21,22 @@ vi.mock("@zkpassport/sdk", () => ({
   },
 }));
 
-vi.mock("@/lib/db/queries/identity", () => ({
-  getIdentityBundleByUserId: (...args: unknown[]) =>
-    mockGetIdentityBundleByUserId(...args),
-  upsertIdentityBundle: (...args: unknown[]) =>
-    mockUpsertIdentityBundle(...args),
-}));
+// identity mock is above (merged all identity-related mocks together)
 
-vi.mock("@/lib/db/queries/passport-chip", () => ({
-  createPassportChipVerification: (...args: unknown[]) =>
-    mockCreatePassportChipVerification(...args),
-  hasVerifiedChipVerification: (...args: unknown[]) =>
-    mockHasVerifiedChipVerification(...args),
-  isNullifierUsedByOtherUser: (...args: unknown[]) =>
-    mockIsNullifierUsedByOtherUser(...args),
-}));
+vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/queries/identity")>();
+  return {
+    ...actual,
+    getIdentityBundleByUserId: (...args: unknown[]) =>
+      mockGetIdentityBundleByUserId(...args),
+    createVerification: (...args: unknown[]) => mockCreateVerification(...args),
+    getSelectedVerification: (...args: unknown[]) =>
+      mockGetSelectedVerification(...args),
+    isNullifierUsedByOtherUser: (...args: unknown[]) =>
+      mockIsNullifierUsedByOtherUser(...args),
+  };
+});
 
 vi.mock("@/lib/privacy/fhe/encryption", () => ({
   scheduleFheEncryption: (...args: unknown[]) =>
@@ -130,10 +130,9 @@ describe("passportChip.submitResult", () => {
       uniqueIdentifier: verifiedNullifier,
     });
     mockGetIdentityBundleByUserId.mockResolvedValue(bundleWithFhe);
-    mockHasVerifiedChipVerification.mockResolvedValue(false);
+    mockGetSelectedVerification.mockResolvedValue(null);
     mockIsNullifierUsedByOtherUser.mockResolvedValue(false);
-    mockCreatePassportChipVerification.mockImplementation((data) => data);
-    mockUpsertIdentityBundle.mockResolvedValue(undefined);
+    mockCreateVerification.mockImplementation((data) => data);
     mockScheduleFheEncryption.mockReturnValue(undefined);
   });
 
@@ -155,7 +154,7 @@ describe("passportChip.submitResult", () => {
       message: "Proof verification failed",
     });
 
-    expect(mockCreatePassportChipVerification).not.toHaveBeenCalled();
+    expect(mockCreateVerification).not.toHaveBeenCalled();
   });
 
   it("rejects when verified but nullifier is missing", async () => {
@@ -242,7 +241,10 @@ describe("passportChip.submitResult", () => {
   });
 
   it("rejects when passport chip already verified", async () => {
-    mockHasVerifiedChipVerification.mockResolvedValue(true);
+    mockGetSelectedVerification.mockResolvedValue({
+      method: "nfc_chip",
+      status: "verified",
+    });
 
     const caller = await createCaller(authedSession);
     await expect(caller.submitResult(validInput())).rejects.toMatchObject({
@@ -270,7 +272,7 @@ describe("passportChip.submitResult", () => {
       verifiedNullifier,
       authedSession.user.id
     );
-    expect(mockCreatePassportChipVerification).toHaveBeenCalledWith(
+    expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({ uniqueIdentifier: verifiedNullifier })
     );
   });
@@ -284,36 +286,39 @@ describe("passportChip.submitResult", () => {
     expect(result.chipVerified).toBe(true);
     expect(result.verificationId).toBeDefined();
 
-    expect(mockCreatePassportChipVerification).toHaveBeenCalledWith(
+    expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-123",
         uniqueIdentifier: verifiedNullifier,
-        requestId: "req-001",
+        method: "nfc_chip",
         status: "verified",
         ageVerified: true,
         sanctionsCleared: true,
-        faceMatchAvailable: true,
         faceMatchPassed: true,
         documentType: "passport",
-        issuingCountry: "USA",
+        issuerCountry: "USA",
+        livenessScore: 1.0,
+        livenessPassed: true,
       })
     );
 
     // Commitments are SHA-256 hashes, not raw PII
-    const call = mockCreatePassportChipVerification.mock.calls[0][0];
+    const call = mockCreateVerification.mock.calls[0][0];
     expect(call.nameCommitment).toMatch(SHA256_HEX_RE);
     expect(call.dobCommitment).toMatch(SHA256_HEX_RE);
     expect(call.nationalityCommitment).toMatch(SHA256_HEX_RE);
   });
 
-  it("links verification to identity bundle", async () => {
+  it("creates verification linked to user", async () => {
     const caller = await createCaller(authedSession);
     await caller.submitResult(validInput());
 
-    expect(mockUpsertIdentityBundle).toHaveBeenCalledWith({
-      userId: "user-123",
-      chipVerificationId: expect.any(String),
-    });
+    expect(mockCreateVerification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-123",
+        method: "nfc_chip",
+      })
+    );
   });
 
   it("schedules FHE encryption with synthetic liveness", async () => {
@@ -350,7 +355,7 @@ describe("passportChip.submitResult", () => {
 
   // --- Face match derivation ---
 
-  it("derives faceMatchAvailable=false when facematch is absent", async () => {
+  it("derives faceMatchPassed=null when facematch is absent", async () => {
     const resultWithoutFace = { ...mockQueryResult, facematch: undefined };
 
     const caller = await createCaller(authedSession);
@@ -359,9 +364,8 @@ describe("passportChip.submitResult", () => {
       result: resultWithoutFace as Record<string, unknown>,
     });
 
-    expect(mockCreatePassportChipVerification).toHaveBeenCalledWith(
+    expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({
-        faceMatchAvailable: false,
         faceMatchPassed: null,
       })
     );
@@ -379,9 +383,8 @@ describe("passportChip.submitResult", () => {
       result: resultFailedFace as Record<string, unknown>,
     });
 
-    expect(mockCreatePassportChipVerification).toHaveBeenCalledWith(
+    expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({
-        faceMatchAvailable: true,
         faceMatchPassed: false,
       })
     );
@@ -410,7 +413,7 @@ describe("passportChip.submitResult", () => {
       issuingCountry: null,
     });
 
-    expect(mockCreatePassportChipVerification).toHaveBeenCalledWith(
+    expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({
         sanctionsCleared: false,
         nameCommitment: null,

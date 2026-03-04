@@ -16,7 +16,7 @@ import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestati
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
 import {
   deleteIdentityData,
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
 import { passkeys } from "@/lib/db/schema/auth";
@@ -44,22 +44,23 @@ export const accountRouter = router({
   getData: protectedProcedure.query(async ({ ctx }) => {
     const { userId, session } = ctx;
 
-    const [verification, document, createdAt, hasPassword] = await Promise.all([
-      getVerificationStatus(userId),
-      getSelectedIdentityDocumentByUserId(userId),
-      getUserCreatedAt(userId),
-      userHasPassword(userId),
-    ]);
+    const [verificationStatus, selectedVerification, createdAt, hasPassword] =
+      await Promise.all([
+        getVerificationStatus(userId),
+        getSelectedVerification(userId),
+        getUserCreatedAt(userId),
+        userHasPassword(userId),
+      ]);
 
     return {
       email: session.user.email,
       createdAt,
       hasPassword,
       verification: {
-        level: verification.level,
-        checks: verification.checks,
+        level: verificationStatus.level,
+        checks: verificationStatus.checks,
       },
-      documentVerified: document?.status === "verified",
+      documentVerified: selectedVerification?.status === "verified",
     };
   }),
 

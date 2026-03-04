@@ -15,7 +15,6 @@ import { create } from "zustand";
  */
 interface VerificationStore {
   bestSelfieFrame: string | null;
-  documentId: string | null;
   documentResult: DocumentResult | null;
   // Draft and document references (from server)
   draftId: string | null;
@@ -41,11 +40,12 @@ interface VerificationStore {
   // Actions
   set: (data: Partial<Omit<VerificationStore, "set" | "reset">>) => void;
   userSalt: string | null;
+  verificationId: string | null;
 }
 
 const initialState: Omit<VerificationStore, "set" | "reset"> = {
   draftId: null,
-  documentId: null,
+  verificationId: null,
   idDocument: null,
   idDocumentBase64: null,
   documentResult: null,

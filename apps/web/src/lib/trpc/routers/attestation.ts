@@ -35,11 +35,9 @@ import {
   updateBlockchainAttestationWallet,
 } from "@/lib/db/queries/attestation";
 import {
-  getLatestIdentityDraftByUserAndDocument,
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
-import { getPassportChipVerificationByUserId } from "@/lib/db/queries/passport-chip";
 import {
   countryCodeToNumeric,
   getComplianceLevel,
@@ -126,31 +124,20 @@ export const attestationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const [verificationStatus, identityDocument, chipVerification] =
-        await Promise.all([
-          getVerificationStatus(ctx.userId),
-          getSelectedIdentityDocumentByUserId(ctx.userId),
-          getPassportChipVerificationByUserId(ctx.userId),
-        ]);
+      const [verificationStatus, verification] = await Promise.all([
+        getVerificationStatus(ctx.userId),
+        getSelectedVerification(ctx.userId),
+      ]);
 
-      // Resolve issuing country from whichever verification path was used
-      let issuerCountry: string | undefined;
-
-      if (identityDocument) {
-        const draft = await getLatestIdentityDraftByUserAndDocument(
-          ctx.userId,
-          identityDocument.id
-        );
-        issuerCountry = draft?.issuerCountry || undefined;
-      } else if (chipVerification) {
-        issuerCountry = chipVerification.issuingCountry || undefined;
-      } else {
+      if (!verification) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message:
             "No identity verification found. Complete OCR or NFC verification first.",
         });
       }
+
+      const issuerCountry = verification.issuerCountry || undefined;
 
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {

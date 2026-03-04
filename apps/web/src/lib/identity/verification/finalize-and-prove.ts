@@ -40,7 +40,7 @@ export interface BindingContext {
  * authentication credential, preventing replay attacks.
  */
 export async function generateAllProofs(params: {
-  documentId: string;
+  verificationId: string;
   profilePayload: ProfileSecretPayload | null;
   extractedDOB: string | null;
   extractedExpirationDate: string | null;
@@ -49,7 +49,7 @@ export async function generateAllProofs(params: {
   bindingContext: BindingContext;
 }): Promise<void> {
   const {
-    documentId,
+    verificationId,
     profilePayload,
     extractedDOB,
     extractedExpirationDate,
@@ -58,7 +58,7 @@ export async function generateAllProofs(params: {
     bindingContext,
   } = params;
 
-  const claims = await getSignedClaims(documentId);
+  const claims = await getSignedClaims(verificationId);
   if (!(claims.ocr && claims.faceMatch)) {
     throw new Error("Signed claims unavailable for proof generation");
   }
@@ -160,7 +160,7 @@ export async function generateAllProofs(params: {
     faceClaim.documentHashField || documentHashField;
 
   // Fetch all proof challenges in parallel
-  const proofSession = await createProofSession(documentId);
+  const proofSession = await createProofSession(verificationId);
   const [
     ageChallenge,
     docChallenge,
@@ -249,7 +249,7 @@ export async function generateAllProofs(params: {
         publicSignals: proof.publicSignals,
         generationTimeMs: proof.generationTimeMs,
         proofSessionId: proofSession.proofSessionId,
-        documentId,
+        verificationId,
       });
     }
   } finally {

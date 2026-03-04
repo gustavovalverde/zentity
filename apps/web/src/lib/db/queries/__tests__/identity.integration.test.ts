@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
-  getAttestationEvidenceByUserAndDocument,
+  getAttestationEvidenceByUserAndVerification,
   upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import {
@@ -20,12 +20,12 @@ import {
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
 import {
-  createIdentityDocument,
+  createVerification,
   deleteIdentityData,
   documentHashExists,
   getIdentityBundleByUserId,
-  getIdentityDocumentsByUserId,
-  getLatestIdentityDocumentByUserId,
+  getLatestVerification,
+  getVerificationsByUserId,
   updateIdentityBundleStatus,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
@@ -71,9 +71,10 @@ describe("identity queries", () => {
     const olderDoc = crypto.randomUUID();
     const newerDoc = crypto.randomUUID();
 
-    await createIdentityDocument({
+    await createVerification({
       id: olderDoc,
       userId,
+      method: "ocr",
       documentHash: "hash-old",
       nameCommitment: "commit-old",
       verifiedAt: "2024-01-01T00:00:00Z",
@@ -81,9 +82,10 @@ describe("identity queries", () => {
       status: "verified",
     });
 
-    await createIdentityDocument({
+    await createVerification({
       id: newerDoc,
       userId,
+      method: "ocr",
       documentHash: "hash-new",
       nameCommitment: "commit-new",
       verifiedAt: "2025-01-01T00:00:00Z",
@@ -91,20 +93,21 @@ describe("identity queries", () => {
       status: "verified",
     });
 
-    const latest = await getLatestIdentityDocumentByUserId(userId);
+    const latest = await getLatestVerification(userId);
     expect(latest?.id).toBe(newerDoc);
     await expect(documentHashExists("hash-new")).resolves.toBe(true);
   });
 
   it("deletes all identity data for a user", async () => {
     const userId = await createTestUser();
-    const documentId = crypto.randomUUID();
+    const verificationId = crypto.randomUUID();
 
     await upsertIdentityBundle({ userId });
 
-    await createIdentityDocument({
-      id: documentId,
+    await createVerification({
+      id: verificationId,
       userId,
+      method: "ocr",
       documentHash: "hash-delete",
       nameCommitment: "commit-delete",
       verifiedAt: "2025-01-01T00:00:00Z",
@@ -116,7 +119,7 @@ describe("identity queries", () => {
     await createZkProofSession({
       id: proofSessionId,
       userId,
-      documentId,
+      verificationId,
       msgSender: userId,
       audience: "http://localhost:3000",
       policyVersion: POLICY_VERSION,
@@ -127,7 +130,7 @@ describe("identity queries", () => {
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
-      documentId,
+      verificationId,
       proofSessionId,
       proofType: "age_verification",
       proofHash: "proof-hash",
@@ -138,7 +141,7 @@ describe("identity queries", () => {
     await insertSignedClaim({
       id: crypto.randomUUID(),
       userId,
-      documentId,
+      verificationId,
       claimType: "ocr_result",
       claimPayload: "{}",
       signature: "sig",
@@ -157,7 +160,7 @@ describe("identity queries", () => {
 
     await upsertAttestationEvidence({
       userId,
-      documentId,
+      verificationId,
       policyVersion: "policy-v1",
       policyHash: "policy-hash",
       proofSetHash: "proof-set",
@@ -186,13 +189,13 @@ describe("identity queries", () => {
     await deleteIdentityData(userId);
 
     await expect(getIdentityBundleByUserId(userId)).resolves.toBeNull();
-    await expect(getIdentityDocumentsByUserId(userId)).resolves.toHaveLength(0);
+    await expect(getVerificationsByUserId(userId)).resolves.toHaveLength(0);
     await expect(getZkProofsByUserId(userId)).resolves.toHaveLength(0);
     await expect(getEncryptedAttributeTypesByUserId(userId)).resolves.toEqual(
       []
     );
     await expect(
-      getAttestationEvidenceByUserAndDocument(userId, documentId)
+      getAttestationEvidenceByUserAndVerification(userId, verificationId)
     ).resolves.toBeNull();
     await expect(
       getEncryptedSecretByUserAndType(userId, "fhe_keys")

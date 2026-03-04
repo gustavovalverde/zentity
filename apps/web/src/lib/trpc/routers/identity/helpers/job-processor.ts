@@ -12,13 +12,15 @@ import { ISSUER_ID, POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
+  deleteIdentityDraft,
   getIdentityBundleByUserId,
   getIdentityDraftById,
   getIdentityVerificationJobById,
+  getVerificationById,
   updateIdentityDraft,
   updateIdentityVerificationJobStatus,
   upsertIdentityBundle,
-  upsertIdentityDocument,
+  upsertVerification,
 } from "@/lib/db/queries/identity";
 import { identityVerificationJobs } from "@/lib/db/schema/identity";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
@@ -33,7 +35,6 @@ import { invalidateVerificationCache } from "./verification-cache";
 export type FheStatus = "pending" | "complete" | "error";
 
 export interface VerifyIdentityResponse {
-  documentId?: string | null;
   error?: string;
   fheErrors?: Array<{
     operation: string;
@@ -71,6 +72,7 @@ export interface VerifyIdentityResponse {
     documentNumber?: string;
     dateOfBirth?: string;
   };
+  verificationId?: string | null;
   verified: boolean;
 }
 
@@ -141,6 +143,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           return;
         }
 
+        const verificationId = draft.verificationId;
         const documentProcessed = Boolean(draft.documentProcessed);
         const isDocumentValid = Boolean(draft.isDocumentValid);
         const isDuplicateDocument = Boolean(draft.isDuplicateDocument);
@@ -169,8 +172,12 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           issues.push("face_match_failed");
         }
 
-        const documentHash = draft.documentHash ?? null;
+        // Resolve documentHash and documentHashField from the verification record
         let documentHashField = draft.documentHashField ?? null;
+        const verificationRecord = await getVerificationById(verificationId);
+
+        const documentHash = verificationRecord?.documentHash ?? null;
+
         if (!documentHashField && documentHash) {
           try {
             documentHashField = await getDocumentHashField(documentHash);
@@ -202,9 +209,9 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               documentHash,
               documentHashField,
               data: {
-                documentType: draft.documentType ?? null,
-                issuerCountry: draft.issuerCountry ?? null,
-                confidence: draft.confidenceScore ?? null,
+                documentType: verificationRecord?.documentType ?? null,
+                issuerCountry: verificationRecord?.issuerCountry ?? null,
+                confidence: verificationRecord?.confidenceScore ?? null,
                 claimHashes,
               },
             };
@@ -213,7 +220,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             await insertSignedClaim({
               id: uuidv4(),
               userId: job.userId,
-              documentId: draft.documentId,
+              verificationId,
               claimType: ocrClaimPayload.type,
               claimPayload: JSON.stringify(ocrClaimPayload),
               signature: ocrSignature,
@@ -260,7 +267,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             await insertSignedClaim({
               id: uuidv4(),
               userId: job.userId,
-              documentId: draft.documentId,
+              verificationId,
               claimType: livenessClaimPayload.type,
               claimPayload: JSON.stringify(livenessClaimPayload),
               signature: livenessSignature,
@@ -314,7 +321,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             await insertSignedClaim({
               id: uuidv4(),
               userId: job.userId,
-              documentId: draft.documentId,
+              verificationId,
               claimType: faceMatchClaimPayload.type,
               claimPayload: JSON.stringify(faceMatchClaimPayload),
               signature: faceMatchSignature,
@@ -377,18 +384,19 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         invalidateVerificationCache(job.userId);
 
-        if (documentProcessed && draft.documentId) {
+        // Promote draft data to verification record
+        if (documentProcessed && verificationId) {
           try {
-            await upsertIdentityDocument({
-              id: draft.documentId,
+            await upsertVerification({
+              id: verificationId,
               userId: job.userId,
-              documentHash: isDuplicateDocument
-                ? null
-                : (draft.documentHash ?? null),
-              nameCommitment: draft.nameCommitment ?? null,
-              verifiedAt: verified ? new Date().toISOString() : null,
-              confidenceScore: draft.confidenceScore ?? null,
+              method: "ocr",
               status: verified ? "verified" : "failed",
+              documentHash: isDuplicateDocument ? null : (documentHash ?? null),
+              livenessScore: draft.antispoofScore ?? null,
+              livenessPassed,
+              faceMatchPassed,
+              verifiedAt: verified ? new Date().toISOString() : null,
             });
           } catch (error) {
             logger.error(
@@ -396,22 +404,34 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
                 error: String(error),
                 jobId,
                 userId: job.userId,
-                documentId: draft.documentId,
+                verificationId,
               },
-              "Failed to upsert identity document in finalize job"
+              "Failed to upsert verification in finalize job"
             );
-            issues.push("failed_to_upsert_identity_document");
+            issues.push("failed_to_upsert_verification");
+          }
+        }
+
+        // Delete draft after successful promotion
+        if (verified) {
+          try {
+            await deleteIdentityDraft(draft.id);
+          } catch (error) {
+            logger.warn(
+              { error: String(error), draftId: draft.id },
+              "Failed to delete draft after finalization"
+            );
           }
         }
 
         const resultPayload = {
           success: true,
           verified,
-          documentId: draft.documentId,
+          verificationId,
           results: {
             documentProcessed,
-            documentType: draft.documentType ?? undefined,
-            documentOrigin: draft.issuerCountry ?? undefined,
+            documentType: verificationRecord?.documentType ?? undefined,
+            documentOrigin: verificationRecord?.issuerCountry ?? undefined,
             isDocumentValid,
             livenessPassed,
             faceMatched: faceMatchPassed,

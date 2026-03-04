@@ -6,7 +6,7 @@ import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import {
   getIdentityBundleByUserId,
-  getLatestIdentityDocumentByUserId,
+  getLatestVerification,
 } from "@/lib/db/queries/identity";
 
 import { DocumentUploadClient } from "./_components/document-upload-client";
@@ -25,10 +25,10 @@ export default async function DocumentVerifyPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, bundle, latestDocument] = await Promise.all([
+  const [assuranceState, bundle, latestVerification] = await Promise.all([
     getAssuranceState(userId, session),
     getIdentityBundleByUserId(userId),
-    getLatestIdentityDocumentByUserId(userId),
+    getLatestVerification(userId),
   ]);
 
   const hasEnrollment = Boolean(bundle?.fheKeyId);
@@ -45,7 +45,7 @@ export default async function DocumentVerifyPage() {
   const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
   const needsDocumentReprocessing =
     assuranceState.details.needsDocumentReprocessing;
-  const hasActiveVerification = latestDocument?.status === "pending";
+  const hasActiveVerification = latestVerification?.status === "pending";
 
   if (
     assuranceState.details.documentVerified &&

@@ -81,6 +81,7 @@ export const finalizeProcedure = protectedProcedure
     await createIdentityVerificationJob({
       id: jobId,
       draftId: input.draftId,
+      verificationId: draft.verificationId,
       userId,
       fheKeyId: bundle.fheKeyId,
     });

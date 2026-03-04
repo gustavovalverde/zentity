@@ -22,7 +22,7 @@ const mockGetLatestIdentityDocumentByUserId = vi.fn();
 vi.doMock("@/lib/db/queries/identity", () => ({
   getVerificationStatus: mockGetVerificationStatus,
   getIdentityBundleByUserId: mockGetIdentityBundleByUserId,
-  getLatestIdentityDocumentByUserId: mockGetLatestIdentityDocumentByUserId,
+  getLatestVerification: mockGetLatestIdentityDocumentByUserId,
 }));
 
 const { buildProofClaims } = await import("../claims");

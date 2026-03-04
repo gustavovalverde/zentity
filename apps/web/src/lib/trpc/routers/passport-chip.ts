@@ -10,14 +10,12 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import {
+  createVerification,
   getIdentityBundleByUserId,
-  upsertIdentityBundle,
-} from "@/lib/db/queries/identity";
-import {
-  createPassportChipVerification,
-  hasVerifiedChipVerification,
+  getSelectedVerification,
+  isChipVerified,
   isNullifierUsedByOtherUser,
-} from "@/lib/db/queries/passport-chip";
+} from "@/lib/db/queries/identity";
 import { dobToDaysSince1900 } from "@/lib/identity/verification/birth-year";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
@@ -97,9 +95,9 @@ export const passportChipRouter = router({
         });
       }
 
-      const [bundle, alreadyVerified, nullifierUsed] = await Promise.all([
+      const [bundle, existingVerification, nullifierUsed] = await Promise.all([
         getIdentityBundleByUserId(userId),
-        hasVerifiedChipVerification(userId),
+        getSelectedVerification(userId),
         isNullifierUsedByOtherUser(uniqueIdentifier, userId),
       ]);
 
@@ -109,7 +107,7 @@ export const passportChipRouter = router({
           message: "FHE enrollment required before passport verification",
         });
       }
-      if (alreadyVerified) {
+      if (isChipVerified(existingVerification)) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Passport chip already verified",
@@ -137,33 +135,27 @@ export const passportChipRouter = router({
       const ageVerified = result.age?.gte?.result === true;
       const sanctionsCleared = result.sanctions?.passed === true;
       const faceMatchPassed = result.facematch?.passed ?? null;
-      const faceMatchAvailable = faceMatchPassed !== null;
 
       const verificationId = crypto.randomUUID();
       const now = new Date().toISOString();
 
-      const verification = await createPassportChipVerification({
+      await createVerification({
         id: verificationId,
         userId,
-        uniqueIdentifier,
-        requestId: input.requestId,
+        method: "nfc_chip",
         status: "verified",
-        ageVerified,
-        sanctionsCleared,
-        faceMatchAvailable,
-        faceMatchPassed,
+        documentType: documentType ?? null,
+        issuerCountry: issuingCountry ?? null,
         nameCommitment,
         dobCommitment,
         nationalityCommitment,
-        documentType: documentType ?? null,
-        issuingCountry: issuingCountry ?? null,
+        livenessScore: 1.0,
+        livenessPassed: true,
+        faceMatchPassed,
+        ageVerified,
+        sanctionsCleared,
+        uniqueIdentifier,
         verifiedAt: now,
-      });
-
-      // Link to identity bundle
-      await upsertIdentityBundle({
-        userId,
-        chipVerificationId: verification.id,
       });
 
       // Convert DOB to dobDays for FHE encryption
@@ -181,7 +173,7 @@ export const passportChipRouter = router({
       });
 
       return {
-        verificationId: verification.id,
+        verificationId,
         chipVerified: true,
         // Disclosed PII for client-side vault storage.
         // These are transient — only returned once, never stored in plaintext.

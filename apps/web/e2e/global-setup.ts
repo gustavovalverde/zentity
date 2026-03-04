@@ -226,7 +226,7 @@ async function seedVerifiedIdentity(
   }
 
   const now = new Date().toISOString();
-  const documentId = randomUUID();
+  const verificationId = randomUUID();
   const bundleId = userId;
   const docHash = `doc_${randomUUID().replaceAll("-", "")}`;
   const nameCommitment = `name_${randomUUID().replaceAll("-", "")}`;
@@ -250,10 +250,11 @@ async function seedVerifiedIdentity(
     );
   `;
 
-  const identityDocumentSql = `
-    INSERT OR REPLACE INTO identity_documents (
+  const identityVerificationSql = `
+    INSERT OR REPLACE INTO identity_verifications (
       id,
       user_id,
+      method,
       document_type,
       issuer_country,
       document_hash,
@@ -264,8 +265,9 @@ async function seedVerifiedIdentity(
       created_at,
       updated_at
     ) VALUES (
-      '${documentId}',
+      '${verificationId}',
       '${userId}',
+      'ocr',
       'passport',
       'USA',
       '${docHash}',
@@ -282,7 +284,7 @@ async function seedVerifiedIdentity(
     INSERT OR REPLACE INTO signed_claims (
       id,
       user_id,
-      document_id,
+      verification_id,
       claim_type,
       claim_payload,
       signature,
@@ -292,7 +294,7 @@ async function seedVerifiedIdentity(
       (
         '${randomUUID()}',
         '${userId}',
-        '${documentId}',
+        '${verificationId}',
         'liveness_score',
         '{"type":"liveness_score","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"passed":true,"antispoofScore":0.98,"liveScore":0.97}}',
         'e2e-signature',
@@ -302,7 +304,7 @@ async function seedVerifiedIdentity(
       (
         '${randomUUID()}',
         '${userId}',
-        '${documentId}',
+        '${verificationId}',
         'face_match_score',
         '{"type":"face_match_score","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"passed":true,"confidence":0.93}}',
         'e2e-signature',
@@ -315,7 +317,7 @@ async function seedVerifiedIdentity(
     INSERT OR REPLACE INTO zk_proofs (
       id,
       user_id,
-      document_id,
+      verification_id,
       proof_type,
       proof_hash,
       proof_payload,
@@ -334,7 +336,7 @@ async function seedVerifiedIdentity(
       (
         '${randomUUID()}',
         '${userId}',
-        '${documentId}',
+        '${verificationId}',
         'age_verification',
         'proof_${randomUUID().replaceAll("-", "")}',
         'mock-proof',
@@ -353,7 +355,7 @@ async function seedVerifiedIdentity(
       (
         '${randomUUID()}',
         '${userId}',
-        '${documentId}',
+        '${verificationId}',
         'face_match',
         'proof_${randomUUID().replaceAll("-", "")}',
         'mock-proof',
@@ -394,7 +396,7 @@ async function seedVerifiedIdentity(
   `;
 
   await runSql(dbUrl, identityBundleSql);
-  await runSql(dbUrl, identityDocumentSql);
+  await runSql(dbUrl, identityVerificationSql);
   await runSql(dbUrl, signedClaimsSql);
   await runSql(dbUrl, zkProofSql);
   await runSql(dbUrl, encryptedAttributesSql);

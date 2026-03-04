@@ -11,17 +11,17 @@ import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   closeZkProofSession,
   getAllVerifiedProofsFull,
-  getLatestSignedClaimByUserTypeAndDocument,
-  getProofHashesByUserDocumentAndSession,
+  getLatestSignedClaimByUserTypeAndVerification,
+  getProofHashesByUserVerificationAndSession,
   getUserAgeProof,
   getUserAgeProofFull,
   getUserBaseCommitments,
   getZkProofSessionById,
-  getZkProofTypesByUserDocumentAndSession,
+  getZkProofTypesByUserVerificationAndSession,
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
   getVerificationStatus,
   updateIdentityBundleStatus,
 } from "@/lib/db/queries/identity";
@@ -79,7 +79,7 @@ type ProofVerificationResult = NoirVerificationResult & { reason?: string };
 
 async function requireActiveProofSession(args: {
   audience: string;
-  documentId?: string | null;
+  verificationId?: string | null;
   proofSessionId: string;
   userId: string;
 }) {
@@ -101,13 +101,13 @@ async function requireActiveProofSession(args: {
     });
   }
   if (
-    args.documentId !== undefined &&
-    args.documentId !== null &&
-    proofSession.documentId !== args.documentId
+    args.verificationId !== undefined &&
+    args.verificationId !== null &&
+    proofSession.verificationId !== args.verificationId
   ) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message: "Proof session does not match user/document context",
+      message: "Proof session does not match user/verification context",
     });
   }
   if (proofSession.policyVersion !== POLICY_VERSION) {
@@ -157,7 +157,7 @@ async function verifyProofInternal(args: {
   circuitType: z.infer<typeof circuitTypeSchema>;
   proof: string;
   publicInputs: string[];
-  documentId: string | null;
+  verificationId: string | null;
   msgSender: string;
   audience: string;
 }): Promise<{ result: ProofVerificationResult; nonceHex: string }> {
@@ -325,7 +325,7 @@ async function verifyProofInternal(args: {
     const ocrClaim = await getVerifiedClaim(
       args.userId,
       "ocr_result",
-      args.documentId
+      args.verificationId
     );
     assertPolicyVersion(ocrClaim, "ocr_result");
     const claimData = ocrClaim.data as OcrClaimData;
@@ -357,7 +357,7 @@ async function verifyProofInternal(args: {
     const ocrClaim = await getVerifiedClaim(
       args.userId,
       "ocr_result",
-      args.documentId
+      args.verificationId
     );
     assertPolicyVersion(ocrClaim, "ocr_result");
     const claimData = ocrClaim.data as OcrClaimData;
@@ -380,7 +380,7 @@ async function verifyProofInternal(args: {
     const ocrClaim = await getVerifiedClaim(
       args.userId,
       "ocr_result",
-      args.documentId
+      args.verificationId
     );
     assertPolicyVersion(ocrClaim, "ocr_result");
     const claimData = ocrClaim.data as OcrClaimData;
@@ -419,7 +419,7 @@ async function verifyProofInternal(args: {
     const faceClaim = await getVerifiedClaim(
       args.userId,
       "face_match_score",
-      args.documentId
+      args.verificationId
     );
     assertPolicyVersion(faceClaim, "face_match_score");
     const claimData = faceClaim.data as FaceMatchClaimData;
@@ -544,7 +544,7 @@ export const verifyProofProcedure = protectedProcedure
       publicInputs: z.array(z.string()),
       circuitType: circuitTypeSchema,
       proofSessionId: z.string().uuid(),
-      documentId: z.string().optional(),
+      verificationId: z.string().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -553,15 +553,15 @@ export const verifyProofProcedure = protectedProcedure
       proofSessionId: input.proofSessionId,
       userId: ctx.userId,
       audience: currentAudience,
-      documentId: input.documentId,
+      verificationId: input.verificationId,
     });
-    const documentId = input.documentId ?? proofSession.documentId;
+    const verificationId = input.verificationId ?? proofSession.verificationId;
     const { result, nonceHex } = await verifyProofInternal({
       userId: ctx.userId,
       circuitType: input.circuitType,
       proof: input.proof,
       publicInputs: input.publicInputs,
-      documentId,
+      verificationId,
       msgSender: ctx.userId,
       audience: currentAudience,
     });
@@ -606,15 +606,14 @@ export const getAllProofsProcedure = protectedProcedure.query(
  * Fetch latest signed claims for proof generation (OCR + face match + liveness).
  */
 export const getSignedClaimsProcedure = protectedProcedure
-  .input(z.object({ documentId: z.string().optional() }).optional())
+  .input(z.object({ verificationId: z.string().optional() }).optional())
   .query(async ({ ctx, input }) => {
-    const selectedDocument = await getSelectedIdentityDocumentByUserId(
-      ctx.userId
-    );
-    const documentId = input?.documentId ?? selectedDocument?.id ?? null;
-    if (!documentId) {
+    const selectedVerification = await getSelectedVerification(ctx.userId);
+    const verificationId =
+      input?.verificationId ?? selectedVerification?.id ?? null;
+    if (!verificationId) {
       return {
-        documentId: null,
+        verificationId: null,
         ocr: null,
         faceMatch: null,
         liveness: null,
@@ -623,20 +622,20 @@ export const getSignedClaimsProcedure = protectedProcedure
 
     // Parallelize independent DB queries
     const [ocr, faceMatch, liveness] = await Promise.all([
-      getLatestSignedClaimByUserTypeAndDocument(
+      getLatestSignedClaimByUserTypeAndVerification(
         ctx.userId,
         "ocr_result",
-        documentId
+        verificationId
       ),
-      getLatestSignedClaimByUserTypeAndDocument(
+      getLatestSignedClaimByUserTypeAndVerification(
         ctx.userId,
         "face_match_score",
-        documentId
+        verificationId
       ),
-      getLatestSignedClaimByUserTypeAndDocument(
+      getLatestSignedClaimByUserTypeAndVerification(
         ctx.userId,
         "liveness_score",
-        documentId
+        verificationId
       ),
     ]);
 
@@ -663,7 +662,7 @@ export const getSignedClaimsProcedure = protectedProcedure
       ]);
 
     return {
-      documentId,
+      verificationId,
       ocr: verifiedOcr,
       faceMatch: verifiedFaceMatch,
       liveness: verifiedLiveness,
@@ -689,18 +688,17 @@ export const storeProofProcedure = protectedProcedure
       publicSignals: z.array(z.string()),
       proofSessionId: z.string().uuid(),
       generationTimeMs: z.number().optional(),
-      documentId: z.string().optional(),
+      verificationId: z.string().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const selectedDocument = await getSelectedIdentityDocumentByUserId(
-      ctx.userId
-    );
-    const documentId = input.documentId ?? selectedDocument?.id ?? null;
-    if (!documentId) {
+    const selectedVerification = await getSelectedVerification(ctx.userId);
+    const verificationId =
+      input.verificationId ?? selectedVerification?.id ?? null;
+    if (!verificationId) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: "Missing document context for proof storage",
+        message: "Missing verification context for proof storage",
       });
     }
 
@@ -709,15 +707,16 @@ export const storeProofProcedure = protectedProcedure
       proofSessionId: input.proofSessionId,
       userId: ctx.userId,
       audience: currentAudience,
-      documentId,
+      verificationId,
     });
 
     if (input.circuitType !== "identity_binding") {
-      const sessionProofTypes = await getZkProofTypesByUserDocumentAndSession(
-        ctx.userId,
-        documentId,
-        input.proofSessionId
-      );
+      const sessionProofTypes =
+        await getZkProofTypesByUserVerificationAndSession(
+          ctx.userId,
+          verificationId,
+          input.proofSessionId
+        );
       if (!sessionProofTypes.includes("identity_binding")) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -732,7 +731,7 @@ export const storeProofProcedure = protectedProcedure
       circuitType: input.circuitType,
       proof: input.proof,
       publicInputs: input.publicSignals,
-      documentId,
+      verificationId,
       msgSender: ctx.userId,
       audience: resolveAudience(ctx.req),
     });
@@ -771,7 +770,7 @@ export const storeProofProcedure = protectedProcedure
         insertZkProofRecord({
           id: proofId,
           userId: ctx.userId,
-          documentId,
+          verificationId,
           proofSessionId: input.proofSessionId,
           proofType: input.circuitType,
           proofHash,
@@ -791,9 +790,9 @@ export const storeProofProcedure = protectedProcedure
         })
     );
 
-    const proofHashes = await getProofHashesByUserDocumentAndSession(
+    const proofHashes = await getProofHashesByUserVerificationAndSession(
       ctx.userId,
-      documentId,
+      verificationId,
       input.proofSessionId
     );
     const proofSetHash = computeProofSetHash({
@@ -803,16 +802,16 @@ export const storeProofProcedure = protectedProcedure
     await withSpan("db.upsert_attestation_evidence", {}, () =>
       upsertAttestationEvidence({
         userId: ctx.userId,
-        documentId,
+        verificationId,
         policyVersion: POLICY_VERSION,
         policyHash: POLICY_HASH,
         proofSetHash,
       })
     );
 
-    const sessionProofTypes = await getZkProofTypesByUserDocumentAndSession(
+    const sessionProofTypes = await getZkProofTypesByUserVerificationAndSession(
       ctx.userId,
-      documentId,
+      verificationId,
       input.proofSessionId
     );
     const sessionComplete = REQUIRED_SESSION_PROOFS.every((proofType) =>

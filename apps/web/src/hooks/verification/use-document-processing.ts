@@ -204,7 +204,7 @@ export function useDocumentProcessing(
         storeSet({
           documentResult: result,
           draftId: response.draftId,
-          documentId: response.documentId ?? null,
+          verificationId: response.verificationId ?? null,
         });
 
         const hasExpiredDocument =

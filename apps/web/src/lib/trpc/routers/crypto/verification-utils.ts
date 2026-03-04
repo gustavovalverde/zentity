@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { getLatestSignedClaimByUserTypeAndDocument } from "@/lib/db/queries/crypto";
+import { getLatestSignedClaimByUserTypeAndVerification } from "@/lib/db/queries/crypto";
 import { verifyAttestationClaim } from "@/lib/privacy/zk/claims";
 
 export function parseFieldToBigInt(value: string): bigint {
@@ -20,24 +20,24 @@ export function parseFieldToBigInt(value: string): bigint {
 export async function getVerifiedClaim(
   userId: string,
   claimType: "ocr_result" | "face_match_score" | "liveness_score",
-  documentId: string | null
+  verificationId: string | null
 ) {
-  if (!documentId) {
+  if (!verificationId) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message: "Missing document context for signed claim verification",
+      message: "Missing verification context for signed claim verification",
     });
   }
 
-  const signedClaim = await getLatestSignedClaimByUserTypeAndDocument(
+  const signedClaim = await getLatestSignedClaimByUserTypeAndVerification(
     userId,
     claimType,
-    documentId
+    verificationId
   );
   if (!signedClaim) {
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message: `Missing signed ${claimType} claim for document`,
+      message: `Missing signed ${claimType} claim for verification`,
     });
   }
 

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
-  getAttestationEvidenceByUserAndDocument,
+  getAttestationEvidenceByUserAndVerification,
   upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import {
@@ -20,9 +20,9 @@ import {
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
-  createIdentityDocument,
+  createVerification,
   documentHashExists,
-  getSelectedIdentityDocumentByUserId,
+  getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
@@ -52,9 +52,10 @@ describe("Database Module", () => {
   describe("documentHashExists", () => {
     it("returns true for existing hash", async () => {
       const userId = await createTestUser();
-      await createIdentityDocument({
+      await createVerification({
         id: crypto.randomUUID(),
         userId,
+        method: "ocr",
         documentHash: "existing-hash",
         nameCommitment: "name-commit",
         verifiedAt: "2025-01-01T00:00:00Z",
@@ -75,14 +76,14 @@ describe("ZK proofs and encrypted attributes", () => {
 
   it("persists zk proof records", async () => {
     const userId = await createTestUser();
-    const documentId = crypto.randomUUID();
+    const verificationId = crypto.randomUUID();
     const proofSessionId = crypto.randomUUID();
     const now = Date.now();
 
     await createZkProofSession({
       id: proofSessionId,
       userId,
-      documentId,
+      verificationId,
       msgSender: userId,
       audience: "http://localhost:3000",
       policyVersion: POLICY_VERSION,
@@ -93,7 +94,7 @@ describe("ZK proofs and encrypted attributes", () => {
     await insertZkProofRecord({
       id: crypto.randomUUID(),
       userId,
-      documentId,
+      verificationId,
       proofSessionId,
       proofType: "age_verification",
       proofHash: "proof-hash",
@@ -144,9 +145,10 @@ describe("Document selection", () => {
     const docFull = crypto.randomUUID();
     const docIncomplete = crypto.randomUUID();
 
-    await createIdentityDocument({
+    await createVerification({
       id: docFull,
       userId,
+      method: "ocr",
       documentHash: "hash-full",
       nameCommitment: "name-full",
       verifiedAt: "2024-01-01T00:00:00Z",
@@ -154,9 +156,10 @@ describe("Document selection", () => {
       status: "verified",
     });
 
-    await createIdentityDocument({
+    await createVerification({
       id: docIncomplete,
       userId,
+      method: "ocr",
       documentHash: "hash-incomplete",
       nameCommitment: "name-incomplete",
       verifiedAt: "2025-01-01T00:00:00Z",
@@ -173,7 +176,7 @@ describe("Document selection", () => {
       await insertSignedClaim({
         id: crypto.randomUUID(),
         userId,
-        documentId: docFull,
+        verificationId: docFull,
         claimType,
         claimPayload: "{}",
         signature: "sig",
@@ -186,7 +189,7 @@ describe("Document selection", () => {
     await createZkProofSession({
       id: proofSessionId,
       userId,
-      documentId: docFull,
+      verificationId: docFull,
       msgSender: userId,
       audience: "http://localhost:3000",
       policyVersion: POLICY_VERSION,
@@ -204,7 +207,7 @@ describe("Document selection", () => {
       await insertZkProofRecord({
         id: crypto.randomUUID(),
         userId,
-        documentId: docFull,
+        verificationId: docFull,
         proofSessionId,
         proofType,
         proofHash: `hash-${proofType}`,
@@ -213,7 +216,7 @@ describe("Document selection", () => {
       });
     }
 
-    const selected = await getSelectedIdentityDocumentByUserId(userId);
+    const selected = await getSelectedVerification(userId);
     expect(selected?.id).toBe(docFull);
   });
 });
@@ -225,19 +228,19 @@ describe("Attestation evidence", () => {
 
   it("persists evidence pack metadata", async () => {
     const userId = await createTestUser();
-    const documentId = crypto.randomUUID();
+    const verificationId = crypto.randomUUID();
 
     await upsertAttestationEvidence({
       userId,
-      documentId,
+      verificationId,
       policyVersion: "policy-v1",
       policyHash: "policy-hash",
       proofSetHash: "proof-set-hash",
     });
 
-    const evidence = await getAttestationEvidenceByUserAndDocument(
+    const evidence = await getAttestationEvidenceByUserAndVerification(
       userId,
-      documentId
+      verificationId
     );
     expect(evidence?.policyVersion).toBe("policy-v1");
     expect(evidence?.policyHash).toBe("policy-hash");

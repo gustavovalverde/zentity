@@ -17,14 +17,17 @@ export const identityBundleStatusEnum = [
 
 export type IdentityBundleStatus = (typeof identityBundleStatusEnum)[number];
 
-export const identityDocumentStatusEnum = [
+export const verificationStatusEnum = [
   "pending",
   "verified",
   "failed",
 ] as const;
 
-export type IdentityDocumentStatus =
-  (typeof identityDocumentStatusEnum)[number];
+export type VerificationStatus = (typeof verificationStatusEnum)[number];
+
+export const verificationMethodEnum = ["ocr", "nfc_chip"] as const;
+
+export type VerificationMethod = (typeof verificationMethodEnum)[number];
 
 export const fheStatusEnum = ["pending", "complete", "error"] as const;
 
@@ -52,16 +55,6 @@ export const riskLevelEnum = ["low", "medium", "high", "critical"] as const;
 
 export type RiskLevel = (typeof riskLevelEnum)[number];
 
-export const chipVerificationStatusEnum = [
-  "pending",
-  "verified",
-  "failed",
-  "expired",
-] as const;
-
-export type ChipVerificationStatus =
-  (typeof chipVerificationStatusEnum)[number];
-
 export const identityBundles = sqliteTable(
   "identity_bundles",
   {
@@ -80,8 +73,6 @@ export const identityBundles = sqliteTable(
       enum: fheStatusEnum,
     }),
     fheError: text("fhe_error"),
-
-    chipVerificationId: text("chip_verification_id"),
 
     // Compliance commitments (SHA256 hashes - never store plaintext)
     dobCommitment: text("dob_commitment"),
@@ -118,28 +109,45 @@ export const identityBundles = sqliteTable(
   (table) => [index("idx_identity_bundles_status").on(table.status)]
 );
 
-export const identityDocuments = sqliteTable(
-  "identity_documents",
+/**
+ * Unified identity verification table — replaces identity_documents + passport_chip_verifications.
+ * The `method` column discriminates between OCR and NFC verification paths.
+ */
+export const identityVerifications = sqliteTable(
+  "identity_verifications",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentHash: text("document_hash").unique(),
-    nameCommitment: text("name_commitment"),
-    verifiedAt: text("verified_at"),
-    confidenceScore: real("confidence_score"),
-    status: text("status", {
-      enum: identityDocumentStatusEnum,
-    })
+    method: text("method", { enum: verificationMethodEnum }).notNull(),
+    status: text("status", { enum: verificationStatusEnum })
       .notNull()
       .default("pending"),
+    documentType: text("document_type"),
+    issuerCountry: text("issuer_country"),
+    documentHash: text("document_hash").unique(),
+    nameCommitment: text("name_commitment"),
+    dobCommitment: text("dob_commitment"),
+    nationalityCommitment: text("nationality_commitment"),
+    addressCommitment: text("address_commitment"),
+    addressCountryCode: integer("address_country_code"),
+    confidenceScore: real("confidence_score"),
+    livenessScore: real("liveness_score"),
+    livenessPassed: integer("liveness_passed", { mode: "boolean" }),
+    faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
+    ageVerified: integer("age_verified", { mode: "boolean" }),
+    sanctionsCleared: integer("sanctions_cleared", { mode: "boolean" }),
+    // ZKPassport nullifier (NFC only)
+    uniqueIdentifier: text("unique_identifier"),
+    verifiedAt: text("verified_at"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
-    index("idx_identity_documents_user_id").on(table.userId),
-    index("idx_identity_documents_doc_hash").on(table.documentHash),
+    index("idx_identity_verifications_user_id").on(table.userId),
+    index("idx_identity_verifications_doc_hash").on(table.documentHash),
+    index("idx_identity_verifications_nullifier").on(table.uniqueIdentifier),
   ]
 );
 
@@ -150,7 +158,7 @@ export const identityVerificationDrafts = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentId: text("document_id").notNull(),
+    verificationId: text("verification_id").notNull(),
     documentProcessed: integer("document_processed", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -162,15 +170,10 @@ export const identityVerificationDrafts = sqliteTable(
     })
       .notNull()
       .default(false),
-    documentType: text("document_type"),
-    issuerCountry: text("issuer_country"),
-    documentHash: text("document_hash"),
     documentHashField: text("document_hash_field"),
-    nameCommitment: text("name_commitment"),
     ageClaimHash: text("age_claim_hash"),
     docValidityClaimHash: text("doc_validity_claim_hash"),
     nationalityClaimHash: text("nationality_claim_hash"),
-    confidenceScore: real("confidence_score"),
     ocrIssues: text("ocr_issues"),
     antispoofScore: real("antispoof_score"),
     liveScore: real("live_score"),
@@ -179,23 +182,14 @@ export const identityVerificationDrafts = sqliteTable(
     faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
 
     // SHA-256 of the baseline frame captured during liveness completion.
-    // Used to bind the selfie sent to faceMatch to the verified liveness session.
     verifiedSelfieHash: text("verified_selfie_hash"),
-
-    // DOB commitment (SHA256 hash - never store plaintext DOB)
-    // Raw DOB is only processed transiently during OCR → FHE encryption
-    dobCommitment: text("dob_commitment"),
-
-    // Address (collected for CIP compliance)
-    addressCommitment: text("address_commitment"),
-    addressCountryCode: integer("address_country_code"),
 
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
     index("idx_identity_drafts_user").on(table.userId),
-    index("idx_identity_drafts_document").on(table.documentId),
+    index("idx_identity_drafts_verification").on(table.verificationId),
   ]
 );
 
@@ -204,6 +198,7 @@ export const identityVerificationJobs = sqliteTable(
   {
     id: text("id").primaryKey(),
     draftId: text("draft_id").notNull(),
+    verificationId: text("verification_id"),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -226,49 +221,11 @@ export const identityVerificationJobs = sqliteTable(
   ]
 );
 
-export const passportChipVerifications = sqliteTable(
-  "passport_chip_verifications",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    uniqueIdentifier: text("unique_identifier"),
-    requestId: text("request_id"),
-    status: text("status", {
-      enum: chipVerificationStatusEnum,
-    })
-      .notNull()
-      .default("pending"),
-    ageVerified: integer("age_verified", { mode: "boolean" }),
-    sanctionsCleared: integer("sanctions_cleared", { mode: "boolean" }),
-    faceMatchAvailable: integer("face_match_available", { mode: "boolean" }),
-    faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
-    nameCommitment: text("name_commitment"),
-    dobCommitment: text("dob_commitment"),
-    nationalityCommitment: text("nationality_commitment"),
-    documentType: text("document_type"),
-    issuingCountry: text("issuing_country"),
-    verifiedAt: text("verified_at"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
-  },
-  (table) => [
-    index("idx_chip_verifications_user").on(table.userId),
-    index("idx_chip_verifications_nullifier").on(table.uniqueIdentifier),
-  ]
-);
-
-export type PassportChipVerification =
-  typeof passportChipVerifications.$inferSelect;
-export type NewPassportChipVerification =
-  typeof passportChipVerifications.$inferInsert;
-
 export type IdentityBundle = typeof identityBundles.$inferSelect;
 export type NewIdentityBundle = typeof identityBundles.$inferInsert;
 
-export type IdentityDocument = typeof identityDocuments.$inferSelect;
-export type NewIdentityDocument = typeof identityDocuments.$inferInsert;
+export type IdentityVerification = typeof identityVerifications.$inferSelect;
+export type NewIdentityVerification = typeof identityVerifications.$inferInsert;
 
 export type IdentityVerificationDraft =
   typeof identityVerificationDrafts.$inferSelect;

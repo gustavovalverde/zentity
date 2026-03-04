@@ -31,7 +31,6 @@ export interface ZkProofInsert {
   bbVersion?: string | null;
   circuitHash?: string | null;
   circuitType?: string | null;
-  documentId?: string | null;
   generationTimeMs?: number | null;
   id: string;
   isOver18?: boolean | null;
@@ -44,6 +43,7 @@ export interface ZkProofInsert {
   proofType: string;
   publicInputs?: string | null;
   userId: string;
+  verificationId?: string | null;
   verificationKeyHash?: string | null;
   verificationKeyPoseidonHash?: string | null;
   verified?: boolean;
@@ -52,12 +52,12 @@ export interface ZkProofInsert {
 export interface ZkProofSessionInsert {
   audience: string;
   createdAt: number;
-  documentId: string;
   expiresAt: number;
   id: string;
   msgSender: string;
   policyVersion: string;
   userId: string;
+  verificationId: string;
 }
 
 export type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
@@ -457,15 +457,15 @@ export async function deleteEncryptedSecretByUserAndType(
 export async function getLatestZkProofPayloadByUserAndType(
   userId: string,
   proofType: string,
-  documentId?: string
+  verificationId?: string
 ): Promise<{ proof: string; publicSignals: string[] } | null> {
   const baseConditions = [
     eq(zkProofs.userId, userId),
     eq(zkProofs.proofType, proofType),
   ];
 
-  if (documentId) {
-    baseConditions.push(eq(zkProofs.documentId, documentId));
+  if (verificationId) {
+    baseConditions.push(eq(zkProofs.verificationId, verificationId));
   }
 
   const row = await db
@@ -586,7 +586,7 @@ export async function createZkProofSession(
     .values({
       id: data.id,
       userId: data.userId,
-      documentId: data.documentId,
+      verificationId: data.verificationId,
       msgSender: data.msgSender,
       audience: data.audience,
       policyVersion: data.policyVersion,
@@ -619,9 +619,9 @@ export async function closeZkProofSession(id: string): Promise<void> {
     .run();
 }
 
-export async function getZkProofTypesByUserAndDocument(
+export async function getZkProofTypesByUserAndVerification(
   userId: string,
-  documentId: string
+  verificationId: string
 ): Promise<string[]> {
   const rows = await db
     .select({ proofType: zkProofs.proofType })
@@ -629,7 +629,7 @@ export async function getZkProofTypesByUserAndDocument(
     .where(
       and(
         eq(zkProofs.userId, userId),
-        eq(zkProofs.documentId, documentId),
+        eq(zkProofs.verificationId, verificationId),
         eq(zkProofs.verified, true)
       )
     )
@@ -640,9 +640,9 @@ export async function getZkProofTypesByUserAndDocument(
   return rows.map((row) => row.proofType);
 }
 
-export async function getZkProofTypesByUserDocumentAndSession(
+export async function getZkProofTypesByUserVerificationAndSession(
   userId: string,
-  documentId: string,
+  verificationId: string,
   proofSessionId: string
 ): Promise<string[]> {
   const rows = await db
@@ -651,7 +651,7 @@ export async function getZkProofTypesByUserDocumentAndSession(
     .where(
       and(
         eq(zkProofs.userId, userId),
-        eq(zkProofs.documentId, documentId),
+        eq(zkProofs.verificationId, verificationId),
         eq(zkProofs.proofSessionId, proofSessionId),
         eq(zkProofs.verified, true)
       )
@@ -740,9 +740,9 @@ export async function listEncryptedSecretsByUserId(
   }));
 }
 
-export async function getSignedClaimTypesByUserAndDocument(
+export async function getSignedClaimTypesByUserAndVerification(
   userId: string,
-  documentId: string
+  verificationId: string
 ): Promise<string[]> {
   const rows = await db
     .select({ claimType: signedClaims.claimType })
@@ -750,7 +750,7 @@ export async function getSignedClaimTypesByUserAndDocument(
     .where(
       and(
         eq(signedClaims.userId, userId),
-        eq(signedClaims.documentId, documentId)
+        eq(signedClaims.verificationId, verificationId)
       )
     )
     .groupBy(signedClaims.claimType)
@@ -760,9 +760,9 @@ export async function getSignedClaimTypesByUserAndDocument(
   return rows.map((row) => row.claimType);
 }
 
-export async function getProofHashesByUserAndDocument(
+export async function getProofHashesByUserAndVerification(
   userId: string,
-  documentId: string
+  verificationId: string
 ): Promise<string[]> {
   const rows = await db
     .select({ proofHash: zkProofs.proofHash })
@@ -770,7 +770,7 @@ export async function getProofHashesByUserAndDocument(
     .where(
       and(
         eq(zkProofs.userId, userId),
-        eq(zkProofs.documentId, documentId),
+        eq(zkProofs.verificationId, verificationId),
         eq(zkProofs.verified, true)
       )
     )
@@ -780,9 +780,9 @@ export async function getProofHashesByUserAndDocument(
   return rows.map((row) => row.proofHash);
 }
 
-export async function getProofHashesByUserDocumentAndSession(
+export async function getProofHashesByUserVerificationAndSession(
   userId: string,
-  documentId: string,
+  verificationId: string,
   proofSessionId: string
 ): Promise<string[]> {
   const rows = await db
@@ -791,7 +791,7 @@ export async function getProofHashesByUserDocumentAndSession(
     .where(
       and(
         eq(zkProofs.userId, userId),
-        eq(zkProofs.documentId, documentId),
+        eq(zkProofs.verificationId, verificationId),
         eq(zkProofs.proofSessionId, proofSessionId),
         eq(zkProofs.verified, true)
       )
@@ -808,7 +808,7 @@ export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
     .values({
       id: data.id,
       userId: data.userId,
-      documentId: data.documentId ?? null,
+      verificationId: data.verificationId ?? null,
       proofSessionId: data.proofSessionId,
       proofType: data.proofType,
       proofHash: data.proofHash,
@@ -856,7 +856,7 @@ export async function insertSignedClaim(
     .values({
       id: data.id,
       userId: data.userId,
-      documentId: data.documentId ?? null,
+      verificationId: data.verificationId ?? null,
       claimType: data.claimType,
       claimPayload: data.claimPayload,
       signature: data.signature,
@@ -875,10 +875,10 @@ export async function getUserBaseCommitments(
   return rows.map((r) => r.baseCommitment).filter(Boolean) as string[];
 }
 
-export async function getLatestSignedClaimByUserTypeAndDocument(
+export async function getLatestSignedClaimByUserTypeAndVerification(
   userId: string,
   claimType: string,
-  documentId: string
+  verificationId: string
 ): Promise<SignedClaimRecord | null> {
   const row = await db
     .select()
@@ -887,7 +887,7 @@ export async function getLatestSignedClaimByUserTypeAndDocument(
       and(
         eq(signedClaims.userId, userId),
         eq(signedClaims.claimType, claimType),
-        eq(signedClaims.documentId, documentId)
+        eq(signedClaims.verificationId, verificationId)
       )
     )
     .orderBy(desc(signedClaims.issuedAt))

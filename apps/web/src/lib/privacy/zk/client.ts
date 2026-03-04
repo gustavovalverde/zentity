@@ -78,10 +78,10 @@ interface ChallengeResponse {
 }
 
 interface ProofSessionResponse {
-  documentId: string;
   expiresAt: string;
   policyVersion: string;
   proofSessionId: string;
+  verificationId: string;
 }
 
 /**
@@ -368,10 +368,10 @@ export async function generateBaseCommitment(
 }
 
 export async function getSignedClaims(
-  documentId?: string | null
+  verificationId?: string | null
 ): Promise<CryptoOutputs["getSignedClaims"]> {
-  return documentId
-    ? await trpc.crypto.getSignedClaims.query({ documentId })
+  return verificationId
+    ? await trpc.crypto.getSignedClaims.query({ verificationId })
     : await trpc.crypto.getSignedClaims.query();
 }
 
@@ -413,11 +413,11 @@ export async function getProofChallenge(
 }
 
 export async function createProofSession(
-  documentId?: string | null
+  verificationId?: string | null
 ): Promise<ProofSessionResponse> {
   try {
-    return documentId
-      ? await trpc.crypto.createProofSession.mutate({ documentId })
+    return verificationId
+      ? await trpc.crypto.createProofSession.mutate({ verificationId })
       : await trpc.crypto.createProofSession.mutate();
   } catch (error) {
     throw new Error(
@@ -440,8 +440,6 @@ export async function createProofSession(
 interface StoreProofOptions {
   /** The type of circuit used to generate the proof */
   circuitType: ClientProofType;
-  /** Optional document ID to bind proof storage to a specific document */
-  documentId?: string | null;
   /** Time to generate the ZK proof */
   generationTimeMs: number;
   /** Base64 encoded UltraHonk ZK proof */
@@ -450,6 +448,8 @@ interface StoreProofOptions {
   proofSessionId: string;
   /** The public signals from the proof */
   publicSignals: string[];
+  /** Optional verification ID to bind proof storage to a specific verification */
+  verificationId?: string | null;
 }
 
 export async function storeProof(options: StoreProofOptions): Promise<{
@@ -463,7 +463,7 @@ export async function storeProof(options: StoreProofOptions): Promise<{
     proof,
     publicSignals,
     generationTimeMs,
-    documentId,
+    verificationId,
     proofSessionId,
   } = options;
   try {
@@ -473,7 +473,7 @@ export async function storeProof(options: StoreProofOptions): Promise<{
       publicSignals,
       generationTimeMs,
       proofSessionId,
-      ...(documentId ? { documentId } : {}),
+      ...(verificationId ? { verificationId } : {}),
     });
   } catch (error) {
     throw new Error(

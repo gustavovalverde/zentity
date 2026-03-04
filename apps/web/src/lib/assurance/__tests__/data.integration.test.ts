@@ -20,7 +20,7 @@ import {
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
-  createIdentityDocument,
+  createVerification,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
@@ -31,9 +31,10 @@ import { getAssuranceState, getUnauthenticatedAssuranceState } from "../data";
  * Helper to create a verified identity document with all required fields
  */
 async function createVerifiedDocument(docId: string, userId: string) {
-  await createIdentityDocument({
+  await createVerification({
     id: docId,
     userId,
+    method: "ocr",
     documentHash: crypto.randomBytes(32).toString("hex"),
     nameCommitment: crypto.randomBytes(32).toString("hex"),
     status: "verified",
@@ -53,13 +54,13 @@ async function createBundleWithKeys(userId: string) {
   });
 }
 
-async function createProofSession(userId: string, documentId: string) {
+async function createProofSession(userId: string, verificationId: string) {
   const sessionId = crypto.randomUUID();
   const now = Date.now();
   await createZkProofSession({
     id: sessionId,
     userId,
-    documentId,
+    verificationId,
     msgSender: userId,
     audience: "http://localhost:3000",
     policyVersion: POLICY_VERSION,
@@ -150,7 +151,7 @@ describe("assurance data layer", () => {
       await insertSignedClaim({
         id: crypto.randomUUID(),
         userId,
-        documentId: docId,
+        verificationId: docId,
         claimType: "liveness_score",
         claimPayload: JSON.stringify({ score: 0.95 }),
         signature: crypto.randomBytes(64).toString("hex"),
@@ -174,7 +175,7 @@ describe("assurance data layer", () => {
       await insertSignedClaim({
         id: crypto.randomUUID(),
         userId,
-        documentId: docId,
+        verificationId: docId,
         claimType: "face_match_score",
         claimPayload: JSON.stringify({ score: 0.95 }),
         signature: crypto.randomBytes(64).toString("hex"),
@@ -206,7 +207,7 @@ describe("assurance data layer", () => {
         await insertZkProofRecord({
           id: crypto.randomUUID(),
           userId,
-          documentId: docId,
+          verificationId: docId,
           proofSessionId,
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),
@@ -290,7 +291,7 @@ describe("assurance data layer", () => {
         await insertSignedClaim({
           id: crypto.randomUUID(),
           userId,
-          documentId: docId,
+          verificationId: docId,
           claimType,
           claimPayload: JSON.stringify({ score: 0.95 }),
           signature: crypto.randomBytes(64).toString("hex"),
@@ -325,7 +326,7 @@ describe("assurance data layer", () => {
         await insertSignedClaim({
           id: crypto.randomUUID(),
           userId,
-          documentId: docId,
+          verificationId: docId,
           claimType,
           claimPayload: JSON.stringify({ data: "test" }),
           signature: crypto.randomBytes(64).toString("hex"),
@@ -345,7 +346,7 @@ describe("assurance data layer", () => {
         await insertZkProofRecord({
           id: crypto.randomUUID(),
           userId,
-          documentId: docId,
+          verificationId: docId,
           proofSessionId,
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),

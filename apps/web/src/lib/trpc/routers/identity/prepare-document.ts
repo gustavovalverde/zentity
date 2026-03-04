@@ -1,9 +1,9 @@
 import z from "zod";
 
 import {
-  createIdentityDocument,
-  getLatestIdentityDocumentByUserId,
+  createVerification,
   getLatestIdentityDraftByUserId,
+  getLatestVerification,
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
 import { processDocumentWithOcr } from "@/lib/identity/document/process-document";
@@ -33,11 +33,11 @@ export const prepareDocumentProcedure = protectedProcedure
     // Look up existing draft for this user
     const existingDraft = await getLatestIdentityDraftByUserId(userId);
 
-    // When re-verifying (user already has a verified document), create fresh
-    // draft + document IDs. Reusing old IDs causes the INSERT to fail silently
-    // (document already exists) leaving stale claims/proofs attached to it.
-    const existingDoc = await getLatestIdentityDocumentByUserId(userId);
-    const isReverification = existingDoc?.status === "verified";
+    // When re-verifying (user already has a verified verification), create fresh
+    // draft + verification IDs. Reusing old IDs causes the INSERT to fail silently
+    // (verification already exists) leaving stale claims/proofs attached to it.
+    const existingVerification = await getLatestVerification(userId);
+    const isReverification = existingVerification?.status === "verified";
 
     // Process document using shared logic
     const result = await processDocumentWithOcr({
@@ -45,9 +45,9 @@ export const prepareDocumentProcedure = protectedProcedure
       requestId: ctx.requestId,
       flowId: ctx.flowId ?? undefined,
       existingDraftId: isReverification ? undefined : existingDraft?.id,
-      existingDocumentId: isReverification
+      existingVerificationId: isReverification
         ? undefined
-        : existingDraft?.documentId,
+        : existingDraft?.verificationId,
     });
 
     ctx.span?.setAttribute(
@@ -61,30 +61,48 @@ export const prepareDocumentProcedure = protectedProcedure
     );
     ctx.span?.setAttribute("dashboard.issues_count", result.issues.length);
 
+    // Create verification record with "pending" status first (draft references it)
+    if (result.isDocumentValid && result.ocrResult?.commitments) {
+      try {
+        await createVerification({
+          id: result.verificationId,
+          userId,
+          method: "ocr",
+          status: "pending",
+          documentType: result.ocrResult.documentType ?? null,
+          issuerCountry: result.issuerCountry ?? null,
+          documentHash: result.ocrResult.commitments.documentHash ?? null,
+          nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
+          confidenceScore: result.ocrResult.confidence ?? null,
+        });
+      } catch (error) {
+        logger.debug(
+          {
+            error: String(error),
+            userId,
+            verificationId: result.verificationId,
+          },
+          "Verification record already exists or failed to create"
+        );
+      }
+    }
+
     // Persist draft with user reference
-    // Note: dobDays is NOT persisted - it's only processed transiently.
-    // Client receives DOB in extractedData for ZK proof generation.
     await upsertIdentityDraft({
       id: result.draftId,
       userId,
-      documentId: result.documentId,
+      verificationId: result.verificationId,
       documentProcessed: result.documentProcessed,
       isDocumentValid: result.isDocumentValid,
       isDuplicateDocument: result.isDuplicateDocument,
-      documentType: result.ocrResult?.documentType ?? null,
-      issuerCountry: result.issuerCountry,
-      documentHash: result.documentHash,
       documentHashField: result.documentHashField,
-      nameCommitment: result.ocrResult?.commitments?.nameCommitment ?? null,
       ageClaimHash: result.claimHashes.ageClaimHash,
       docValidityClaimHash: result.claimHashes.docValidityClaimHash,
       nationalityClaimHash: result.claimHashes.nationalityClaimHash,
-      confidenceScore: result.ocrResult?.confidence ?? null,
       ocrIssues: result.issues.length ? JSON.stringify(result.issues) : null,
     });
 
     // Schedule FHE encryption with transient dobDays (never persisted to DB)
-    // This must happen during document processing while dobDays is in memory
     if (result.parsedDates.dobDays !== null) {
       scheduleFheEncryption({
         userId,
@@ -95,32 +113,10 @@ export const prepareDocumentProcedure = protectedProcedure
       });
     }
 
-    // Create identity_documents record with "pending" status for navigation
-    // This allows the user to proceed to liveness verification
-    if (result.isDocumentValid && result.ocrResult?.commitments) {
-      try {
-        await createIdentityDocument({
-          id: result.documentId,
-          userId,
-          documentHash: result.ocrResult.commitments.documentHash ?? null,
-          nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
-          verifiedAt: null,
-          confidenceScore: result.ocrResult.confidence ?? null,
-          status: "pending",
-        });
-      } catch (error) {
-        // Document might already exist from a previous attempt
-        logger.debug(
-          { error: String(error), userId, documentId: result.documentId },
-          "Identity document already exists or failed to create"
-        );
-      }
-    }
-
     return {
       success: true,
       draftId: result.draftId,
-      documentId: result.documentId,
+      verificationId: result.verificationId,
       documentProcessed: result.documentProcessed,
       isDocumentValid: result.isDocumentValid,
       isDuplicateDocument: result.isDuplicateDocument,

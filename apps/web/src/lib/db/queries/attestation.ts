@@ -13,7 +13,7 @@ import {
 
 export async function upsertAttestationEvidence(args: {
   userId: string;
-  documentId: string;
+  verificationId: string;
   policyVersion: string | null;
   policyHash: string | null;
   proofSetHash: string | null;
@@ -21,15 +21,15 @@ export async function upsertAttestationEvidence(args: {
   await db
     .insert(attestationEvidence)
     .values({
-      id: args.documentId,
+      id: args.verificationId,
       userId: args.userId,
-      documentId: args.documentId,
+      verificationId: args.verificationId,
       policyVersion: args.policyVersion,
       policyHash: args.policyHash,
       proofSetHash: args.proofSetHash,
     })
     .onConflictDoUpdate({
-      target: [attestationEvidence.userId, attestationEvidence.documentId],
+      target: [attestationEvidence.userId, attestationEvidence.verificationId],
       set: {
         policyVersion: args.policyVersion,
         policyHash: args.policyHash,
@@ -40,9 +40,9 @@ export async function upsertAttestationEvidence(args: {
     .run();
 }
 
-export async function getAttestationEvidenceByUserAndDocument(
+export async function getAttestationEvidenceByUserAndVerification(
   userId: string,
-  documentId: string
+  verificationId: string
 ): Promise<AttestationEvidenceRecord | null> {
   const row = await db
     .select()
@@ -50,7 +50,7 @@ export async function getAttestationEvidenceByUserAndDocument(
     .where(
       and(
         eq(attestationEvidence.userId, userId),
-        eq(attestationEvidence.documentId, documentId)
+        eq(attestationEvidence.verificationId, verificationId)
       )
     )
     .limit(1)

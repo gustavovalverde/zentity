@@ -16,7 +16,7 @@ export const attestationEvidence = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentId: text("document_id").notNull(),
+    verificationId: text("verification_id").notNull(),
     policyVersion: text("policy_version"),
     policyHash: text("policy_hash"),
     proofSetHash: text("proof_set_hash"),
@@ -29,10 +29,10 @@ export const attestationEvidence = sqliteTable(
   },
   (table) => [
     index("idx_attestation_evidence_user_id").on(table.userId),
-    index("idx_attestation_evidence_document_id").on(table.documentId),
-    uniqueIndex("attestation_evidence_user_document_unique").on(
+    index("idx_attestation_evidence_verification_id").on(table.verificationId),
+    uniqueIndex("attestation_evidence_user_verification_unique").on(
       table.userId,
-      table.documentId
+      table.verificationId
     ),
   ]
 );

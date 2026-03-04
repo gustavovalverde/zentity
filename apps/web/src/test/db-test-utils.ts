@@ -23,9 +23,9 @@ import {
 } from "@/lib/db/schema/crypto";
 import {
   identityBundles,
-  identityDocuments,
   identityVerificationDrafts,
   identityVerificationJobs,
+  identityVerifications,
 } from "@/lib/db/schema/identity";
 import { jwks } from "@/lib/db/schema/jwks";
 import {
@@ -60,7 +60,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(zkProofs).run();
     await tx.delete(identityVerificationJobs).run();
     await tx.delete(identityVerificationDrafts).run();
-    await tx.delete(identityDocuments).run();
+    await tx.delete(identityVerifications).run();
     await tx.delete(identityBundles).run();
     await tx.delete(jwks).run();
     await tx.delete(oidc4vciIssuedCredentials).run();

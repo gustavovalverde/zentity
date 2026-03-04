@@ -17,7 +17,7 @@ export const zkProofSessions = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentId: text("document_id").notNull(),
+    verificationId: text("verification_id").notNull(),
     msgSender: text("msg_sender").notNull(),
     audience: text("audience").notNull(),
     policyVersion: text("policy_version").notNull(),
@@ -27,7 +27,7 @@ export const zkProofSessions = sqliteTable(
   },
   (table) => [
     index("idx_zk_proof_sessions_user_id").on(table.userId),
-    index("idx_zk_proof_sessions_document_id").on(table.documentId),
+    index("idx_zk_proof_sessions_verification_id").on(table.verificationId),
     index("idx_zk_proof_sessions_expires_at").on(table.expiresAt),
   ]
 );
@@ -39,7 +39,7 @@ export const zkProofs = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentId: text("document_id"),
+    verificationId: text("verification_id"),
     proofSessionId: text("proof_session_id").references(
       () => zkProofSessions.id,
       {
@@ -67,7 +67,7 @@ export const zkProofs = sqliteTable(
     index("idx_zk_proofs_user_id").on(table.userId),
     index("idx_zk_proofs_session_id").on(table.proofSessionId),
     index("idx_zk_proofs_type").on(table.proofType),
-    index("idx_zk_proofs_document_id").on(table.documentId),
+    index("idx_zk_proofs_verification_id").on(table.verificationId),
     index("idx_zk_proofs_hash").on(table.proofHash),
   ]
 );
@@ -100,7 +100,7 @@ export const signedClaims = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    documentId: text("document_id"),
+    verificationId: text("verification_id"),
     claimType: text("claim_type").notNull(),
     claimPayload: text("claim_payload").notNull(),
     signature: text("signature").notNull(),

@@ -13,7 +13,7 @@ const mockCanCreateProvider = vi.fn();
 const mockCreateProvider = vi.fn();
 const mockGetExplorerTxUrl = vi.fn();
 const mockGetVerificationStatus = vi.fn();
-const mockGetSelectedIdentityDocumentByUserId = vi.fn();
+const mockGetSelectedVerification = vi.fn();
 const mockGetBlockchainAttestationsByUserId = vi.fn();
 const mockGetBlockchainAttestationByUserAndNetwork = vi.fn();
 const mockCreateBlockchainAttestation = vi.fn();
@@ -39,9 +39,8 @@ vi.mock("@/lib/blockchain/providers/factory", () => ({
 vi.mock("@/lib/db/queries/identity", () => ({
   getVerificationStatus: (...args: unknown[]) =>
     mockGetVerificationStatus(...args),
-  getSelectedIdentityDocumentByUserId: (...args: unknown[]) =>
-    mockGetSelectedIdentityDocumentByUserId(...args),
-  getLatestIdentityDraftByUserAndDocument: vi.fn(),
+  getSelectedVerification: (...args: unknown[]) =>
+    mockGetSelectedVerification(...args),
 }));
 
 vi.mock("@/lib/db/queries/attestation", () => ({
@@ -63,12 +62,8 @@ vi.mock("@/lib/db/queries/attestation", () => ({
     mockUpdateBlockchainAttestationWallet(...args),
   updateBlockchainAttestationRevoked: vi.fn(),
   upsertAttestationEvidence: vi.fn(),
-  getAttestationEvidenceByUserAndDocument: vi.fn(),
+  getAttestationEvidenceByUserAndVerification: vi.fn(),
   deleteBlockchainAttestationsByUserId: vi.fn(),
-}));
-
-vi.mock("@/lib/db/queries/passport-chip", () => ({
-  getPassportChipVerificationByUserId: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/assurance/data", () => ({
@@ -196,7 +191,7 @@ describe("attestation router", () => {
         identityBindingProof: true,
       },
     });
-    mockGetSelectedIdentityDocumentByUserId.mockReturnValue({
+    mockGetSelectedVerification.mockReturnValue({
       id: "doc-1",
       status: "verified",
     });

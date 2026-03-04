@@ -4,8 +4,11 @@ import { redirect } from "next/navigation";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
-import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
-import { hasVerifiedChipVerification } from "@/lib/db/queries/passport-chip";
+import {
+  getIdentityBundleByUserId,
+  getSelectedVerification,
+  isChipVerified,
+} from "@/lib/db/queries/identity";
 
 import { ZkPassportFlow } from "./_components/zkpassport-flow";
 
@@ -17,15 +20,16 @@ export default async function PassportChipPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, bundle, alreadyVerified, wallet] = await Promise.all([
+  const [assuranceState, bundle, verification, wallet] = await Promise.all([
     getAssuranceState(userId, session),
     getIdentityBundleByUserId(userId),
-    hasVerifiedChipVerification(userId),
+    getSelectedVerification(userId),
     getPrimaryWalletAddress(userId),
   ]);
 
   // Already chip-verified → dashboard
-  if (alreadyVerified || assuranceState.tier >= 3) {
+  const alreadyChipVerified = isChipVerified(verification);
+  if (alreadyChipVerified || assuranceState.tier >= 3) {
     redirect("/dashboard");
   }
 

@@ -169,7 +169,7 @@ export async function acquirePasskeyMaterial(
  */
 export async function getBindingContext(
   userId: string,
-  documentId: string,
+  verificationId: string,
   options: { promptPasskey?: boolean } = {}
 ): Promise<BindingContextResult> {
   const { promptPasskey = true } = options;
@@ -184,7 +184,7 @@ export async function getBindingContext(
       };
     }
 
-    const claims = await trpc.crypto.getSignedClaims.query({ documentId });
+    const claims = await trpc.crypto.getSignedClaims.query({ verificationId });
     const documentHash = claims.ocr?.documentHashField;
     if (!documentHash) {
       return {

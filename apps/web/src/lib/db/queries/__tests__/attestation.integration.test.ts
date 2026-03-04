@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   createBlockchainAttestation,
   deleteBlockchainAttestationsByUserId,
-  getAttestationEvidenceByUserAndDocument,
+  getAttestationEvidenceByUserAndVerification,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
   resetBlockchainAttestationForRetry,
@@ -24,34 +24,34 @@ describe("attestation queries", () => {
 
   it("upserts attestation evidence", async () => {
     const userId = await createTestUser();
-    const documentId = crypto.randomUUID();
+    const verificationId = crypto.randomUUID();
 
     await upsertAttestationEvidence({
       userId,
-      documentId,
+      verificationId,
       policyVersion: "policy-v1",
       policyHash: "hash-1",
       proofSetHash: "proof-1",
     });
 
-    const evidence = await getAttestationEvidenceByUserAndDocument(
+    const evidence = await getAttestationEvidenceByUserAndVerification(
       userId,
-      documentId
+      verificationId
     );
     expect(evidence?.policyVersion).toBe("policy-v1");
     expect(evidence?.proofSetHash).toBe("proof-1");
 
     await upsertAttestationEvidence({
       userId,
-      documentId,
+      verificationId,
       policyVersion: "policy-v2",
       policyHash: "hash-2",
       proofSetHash: "proof-2",
     });
 
-    const updated = await getAttestationEvidenceByUserAndDocument(
+    const updated = await getAttestationEvidenceByUserAndVerification(
       userId,
-      documentId
+      verificationId
     );
     expect(updated?.policyVersion).toBe("policy-v2");
     expect(updated?.policyHash).toBe("hash-2");
