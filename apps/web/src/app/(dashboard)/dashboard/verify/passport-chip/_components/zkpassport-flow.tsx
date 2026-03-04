@@ -49,6 +49,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [proofsGenerated, setProofsGenerated] = useState(0);
   const [proofsTotal, setProofsTotal] = useState(0);
+  const proofsRef = useRef<ProofResult[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const fhePollRef = useRef<ReturnType<typeof setTimeout>>(null);
   const startedRef = useRef(false);
@@ -263,6 +264,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     setErrorMessage(null);
     setProofsGenerated(0);
     setProofsTotal(0);
+    proofsRef.current = [];
 
     try {
       const { ZKPassport } = await import("@zkpassport/sdk");
@@ -282,7 +284,6 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
         devMode: isDevMode,
       });
 
-      let faceMatchAvailable = true;
       let builder = qb
         .gte("age", 18)
         .disclose("birthdate")
@@ -295,7 +296,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       try {
         builder = builder.facematch("strict");
       } catch {
-        faceMatchAvailable = false;
+        // Face match not available for this document — continue without it
       }
 
       const request = builder.done();
@@ -315,6 +316,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       });
 
       request.onProofGenerated((proof: ProofResult) => {
+        proofsRef.current.push(proof);
         setProofsGenerated((prev) => prev + 1);
         if (proof.total) {
           setProofsTotal(proof.total);
@@ -339,24 +341,12 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
             return;
           }
 
-          if (!response.uniqueIdentifier) {
-            setErrorMessage("Missing unique identifier from verification.");
-            setStage("error");
-            return;
-          }
-
           setStage("verifying");
-
-          const faceMatchPassed = response.result.facematch?.passed ?? null;
-          const actualFaceMatchAvailable =
-            faceMatchAvailable && faceMatchPassed !== null;
 
           submitResult.mutate({
             requestId: request.requestId,
-            uniqueIdentifier: response.uniqueIdentifier,
+            proofs: proofsRef.current as Record<string, unknown>[],
             result: response.result as unknown as Record<string, unknown>,
-            faceMatchAvailable: actualFaceMatchAvailable,
-            faceMatchPassed,
           });
         }
       );
@@ -372,13 +362,6 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       request.onError((error: string) => {
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
-        }
-        if (
-          error.toLowerCase().includes("facematch") ||
-          error.toLowerCase().includes("face match")
-        ) {
-          faceMatchAvailable = false;
-          return;
         }
         setErrorMessage(error);
         setStage("error");

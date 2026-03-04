@@ -5,8 +5,10 @@ import type { QueryResult } from "@zkpassport/sdk";
 import crypto from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
+import { ZKPassport } from "@zkpassport/sdk";
 import { z } from "zod";
 
+import { env } from "@/env";
 import {
   getIdentityBundleByUserId,
   upsertIdentityBundle,
@@ -20,6 +22,15 @@ import { dobToDaysSince1900 } from "@/lib/identity/verification/birth-year";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
 import { protectedProcedure, router } from "../server";
+
+let zkPassportInstance: ZKPassport | null = null;
+
+function getZkPassport(): ZKPassport {
+  zkPassportInstance ??= new ZKPassport(
+    new URL(env.NEXT_PUBLIC_APP_URL).hostname
+  );
+  return zkPassportInstance;
+}
 
 function sha256(data: string): string {
   return crypto.createHash("sha256").update(data).digest("hex");
@@ -52,19 +63,44 @@ export const passportChipRouter = router({
     .input(
       z.object({
         requestId: z.string(),
-        uniqueIdentifier: z.string(),
+        proofs: z.array(z.record(z.string(), z.unknown())),
         result: z.record(z.string(), z.unknown()),
-        faceMatchAvailable: z.boolean(),
-        faceMatchPassed: z.boolean().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.userId;
 
+      // Verify proofs server-side — this is the trust boundary
+      const zkpassport = getZkPassport();
+      const devMode =
+        env.NEXT_PUBLIC_APP_ENV === "development" ||
+        env.NEXT_PUBLIC_APP_ENV === "test";
+
+      const verifyResult = await zkpassport.verify({
+        proofs: input.proofs as Parameters<ZKPassport["verify"]>[0]["proofs"],
+        queryResult: input.result as QueryResult,
+        devMode,
+      });
+
+      if (!verifyResult.verified) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Proof verification failed",
+        });
+      }
+
+      const uniqueIdentifier = verifyResult.uniqueIdentifier;
+      if (!uniqueIdentifier) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No nullifier in verified proofs",
+        });
+      }
+
       const [bundle, alreadyVerified, nullifierUsed] = await Promise.all([
         getIdentityBundleByUserId(userId),
         hasVerifiedChipVerification(userId),
-        isNullifierUsedByOtherUser(input.uniqueIdentifier, userId),
+        isNullifierUsedByOtherUser(uniqueIdentifier, userId),
       ]);
 
       if (!bundle?.fheKeyId) {
@@ -86,22 +122,22 @@ export const passportChipRouter = router({
         });
       }
 
+      // Extract from the verified QueryResult — trusted because proofs passed
       const result = input.result as QueryResult;
-
-      // Extract all disclosed fields
       const birthdate = extractBirthdate(result);
       const nationality = extractString(result.nationality);
       const fullname = extractString(result.fullname);
       const documentType = extractString(result.document_type);
       const issuingCountry = extractString(result.issuing_country);
 
-      // Compute commitments (hashes — never store raw PII)
       const nameCommitment = fullname ? sha256(fullname) : null;
       const dobCommitment = birthdate ? sha256(birthdate) : null;
       const nationalityCommitment = nationality ? sha256(nationality) : null;
 
       const ageVerified = result.age?.gte?.result === true;
       const sanctionsCleared = result.sanctions?.passed === true;
+      const faceMatchPassed = result.facematch?.passed ?? null;
+      const faceMatchAvailable = faceMatchPassed !== null;
 
       const verificationId = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -109,13 +145,13 @@ export const passportChipRouter = router({
       const verification = await createPassportChipVerification({
         id: verificationId,
         userId,
-        uniqueIdentifier: input.uniqueIdentifier,
+        uniqueIdentifier,
         requestId: input.requestId,
         status: "verified",
         ageVerified,
         sanctionsCleared,
-        faceMatchAvailable: input.faceMatchAvailable,
-        faceMatchPassed: input.faceMatchPassed,
+        faceMatchAvailable,
+        faceMatchPassed,
         nameCommitment,
         dobCommitment,
         nationalityCommitment,
