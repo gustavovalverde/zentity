@@ -798,9 +798,12 @@ export function OAuthConsentClient({
         );
       }
 
-      const redirectUri =
-        (response.data as { uri?: string; redirect_uri?: string }).uri ||
-        (response.data as { uri?: string; redirect_uri?: string }).redirect_uri;
+      const data = response.data as {
+        url?: string;
+        uri?: string;
+        redirect_uri?: string;
+      };
+      const redirectUri = data.url || data.uri || data.redirect_uri;
 
       if (!redirectUri) {
         throw new Error("Missing redirect URL from consent response.");
