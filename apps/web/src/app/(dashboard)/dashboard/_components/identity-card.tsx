@@ -80,14 +80,15 @@ export async function IdentityCard({
                     Verification Incomplete
                   </p>
                   <p className="text-muted-foreground text-sm">
-                    Identity checks passed, but ZK proofs need to be generated.
+                    Identity checks passed, but verification proofs still need
+                    to be generated.
                   </p>
                 </div>
               </div>
               <p className="text-muted-foreground text-sm">
-                To complete verification, please re-upload your document. ZK
-                proofs are generated during verification and require your
-                document data, which is not stored for privacy reasons.
+                To complete verification, please re-upload your document. Proofs
+                are generated during the process and require your document data,
+                which we don&apos;t store.
               </p>
               <Button asChild className="w-full">
                 <Link href="/dashboard/verify/document">
@@ -118,8 +119,8 @@ export async function IdentityCard({
               </EmptyMedia>
               <EmptyTitle>Ready to Verify</EmptyTitle>
               <EmptyDescription>
-                Complete verification to unlock privacy-preserving identity
-                proofs.
+                Verify your identity to unlock credentials and on-chain
+                attestation.
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
@@ -157,8 +158,8 @@ export async function IdentityCard({
               <div>
                 <p className="font-medium text-info">Chip Verified</p>
                 <p className="text-muted-foreground text-sm">
-                  Passport NFC chip cryptographically verified — highest
-                  assurance level
+                  Your passport chip has been cryptographically verified, the
+                  highest level of assurance
                 </p>
               </div>
             </div>
@@ -276,7 +277,7 @@ export async function IdentityCard({
                 <p className="text-muted-foreground text-sm">
                   {assuranceState?.authStrength === "strong"
                     ? "Ready for on-chain attestation"
-                    : "Identity verified — add a passkey to enable on-chain attestation"}
+                    : "Identity verified. Add a passkey to enable on-chain attestation."}
                 </p>
               </div>
             </div>

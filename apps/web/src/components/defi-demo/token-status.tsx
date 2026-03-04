@@ -54,7 +54,7 @@ export function TokenStatus({
             <CardTitle className="text-lg">Token Info</CardTitle>
           </div>
         </div>
-        <CardDescription>CompliantERC20 contract details</CardDescription>
+        <CardDescription>Compliance token contract details</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {tokenInfo ? (

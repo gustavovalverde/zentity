@@ -511,7 +511,7 @@ const AttestationContentBody = memo(function AttestationContentBody({
         <Alert variant="warning">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Wallet Changed</strong> - Attestation will be linked to:{" "}
+            <strong>Wallet Changed.</strong> Attestation will be linked to:{" "}
             <code className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-xs">
               {address?.slice(0, 6)}…{address?.slice(-4)}
             </code>
@@ -552,7 +552,7 @@ const AttestationContentBody = memo(function AttestationContentBody({
         <Alert variant="warning">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Re-attestation Required</strong> - The identity contracts
+            <strong>Re-attestation Required.</strong> The identity contracts
             have been updated. Click &quot;Update Attestation&quot; above to
             re-register your identity on-chain before granting compliance
             access.
@@ -588,9 +588,9 @@ const AttestationContentBody = memo(function AttestationContentBody({
         <Alert variant="info">
           <Lock className="h-4 w-4" />
           <AlertDescription className="text-xs">
-            <strong>Encrypted Attestation</strong> - Your identity data will be
-            encrypted using Fully Homomorphic Encryption (FHE) before being
-            stored on-chain. Only authorized smart contracts can verify claims.
+            <strong>Encrypted Attestation.</strong> Your identity data is
+            encrypted before being stored on-chain. Only authorized smart
+            contracts can verify your claims; the data itself is never exposed.
           </AlertDescription>
         </Alert>
       )}

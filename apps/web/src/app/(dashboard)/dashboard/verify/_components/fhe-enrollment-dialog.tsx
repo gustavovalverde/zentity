@@ -68,13 +68,13 @@ type EnrollmentStage =
 
 const STAGE_LABELS: Record<EnrollmentStage, string> = {
   idle: "",
-  checking: "Checking existing keys...",
+  checking: "Checking for existing keys...",
   unlocking: "Confirming your identity...",
-  generating: "Generating encryption keys...",
-  encrypting: "Encrypting keys on-device...",
-  uploading: "Uploading encrypted keys...",
-  registering: "Registering with FHE service...",
-  finalizing: "Finalizing enrollment...",
+  generating: "Generating encryption keys (this may take up to a minute)...",
+  encrypting: "Encrypting keys on your device...",
+  uploading: "Storing encrypted keys...",
+  registering: "Registering keys with the encryption service...",
+  finalizing: "Finishing setup...",
   done: "Ready!",
 };
 
@@ -699,7 +699,7 @@ export function FheEnrollmentDialog({
           <DialogDescription>
             {isRunning
               ? stageLabel
-              : "Choose how to protect your personal encryption keys. This is a one-time setup required before verification."}
+              : "Before verification, we need to generate your personal encryption keys. This is a one-time setup that can take up to a minute depending on your device."}
           </DialogDescription>
         </DialogHeader>
 

@@ -300,9 +300,9 @@ export default async function VerifyPage() {
                   </span>
                 </div>
                 <p className="text-muted-foreground text-sm">
-                  Your ZK proofs have been generated. FHE encryption is being
-                  finalized in the background. This page will update
-                  automatically.
+                  Your verification proofs have been created. We&apos;re
+                  encrypting the remaining data in the background. This page
+                  will update automatically when complete.
                 </p>
               </div>
             )}
@@ -312,14 +312,14 @@ export default async function VerifyPage() {
               <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-5 w-5" />
                 <span className="text-sm">
-                  Identity verified, but ZK proofs were not generated.
+                  Identity checks passed, but verification proofs could not be
+                  generated.
                 </span>
               </div>
               <p className="text-muted-foreground text-sm">
-                To reach Verified tier, you need to complete verification again.
-                ZK proofs are generated during the verification process and
-                require your document data, which is not stored for privacy
-                reasons.
+                To reach Verified tier, you&apos;ll need to re-upload your
+                document. Proofs are generated during verification and require
+                your document data, which we don&apos;t store.
               </p>
               <Button asChild className="w-full">
                 <Link href="/dashboard/verify/document">
@@ -351,9 +351,10 @@ function PrivacyCard({ showChipInfo }: Readonly<{ showChipInfo?: boolean }>) {
               </strong>
             </p>
             <p>
-              Your data is processed securely and never stored in plaintext.
-              Only cryptographic commitments and zero-knowledge proofs are
-              persisted. Raw images are processed in memory and discarded.
+              Your personal data is never stored in readable form. We only keep
+              encrypted proofs of your verified attributes (e.g., &quot;over
+              18&quot;). Raw images are processed in memory and immediately
+              discarded.
             </p>
             {showChipInfo && (
               <p>

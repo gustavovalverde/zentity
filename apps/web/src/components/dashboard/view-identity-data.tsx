@@ -449,13 +449,13 @@ export function ViewIdentityData() {
               {fhevmStatus === "loading" && (
                 <span className="flex items-center gap-2">
                   <Spinner className="size-3" />
-                  Initializing FHEVM SDK…
+                  Initializing decryption…
                 </span>
               )}
               {fhevmStatus === "error" && (
                 <div className="flex items-center justify-between gap-2">
                   <span>
-                    SDK initialization failed.{" "}
+                    Decryption setup failed.{" "}
                     {fhevmError?.message || "Please try again."}
                   </span>
                   <Button onClick={refreshFhevm} size="sm" variant="outline">
@@ -466,7 +466,7 @@ export function ViewIdentityData() {
               )}
               {fhevmStatus !== "loading" &&
                 fhevmStatus !== "error" &&
-                "FHEVM SDK not ready. Connect your wallet to enable decryption."}
+                "Connect your wallet to enable decryption."}
             </AlertDescription>
           </Alert>
         )}

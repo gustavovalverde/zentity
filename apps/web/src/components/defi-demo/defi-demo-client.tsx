@@ -200,7 +200,7 @@ export function DefiDemoClient({
             </AlertDescription>
           </Alert>
           <Button asChild variant="outline">
-            <a href="/dashboard">
+            <a href="/dashboard/attestation">
               Attest On-Chain
               <ArrowRight className="ml-2 h-4 w-4" />
             </a>
@@ -270,7 +270,7 @@ export function DefiDemoClient({
             </AlertDescription>
           </Alert>
           <Button asChild variant="outline">
-            <a href="/dashboard">
+            <a href="/dashboard/attestation">
               Attest On-Chain
               <ArrowRight className="ml-2 h-4 w-4" />
             </a>

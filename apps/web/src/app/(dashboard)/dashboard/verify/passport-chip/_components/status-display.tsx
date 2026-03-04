@@ -58,8 +58,8 @@ export function StatusDisplay({
         <Loader2 className="h-4 w-4 animate-spin" />
         <AlertTitle>Phone connected</AlertTitle>
         <AlertDescription>
-          Reading your document&apos;s NFC chip. Hold your document against the
-          back of your phone.
+          Reading your document&apos;s NFC chip. Hold your document flat against
+          the back of your phone and keep it still until the scan completes.
         </AlertDescription>
       </Alert>
     );
@@ -100,9 +100,8 @@ export function StatusDisplay({
         <Scan className="h-4 w-4 animate-pulse" />
         <AlertTitle>Document verified. Finalizing encryption...</AlertTitle>
         <AlertDescription>
-          Your document has been cryptographically verified. FHE encryption is
-          being finalized in the background. This page will update
-          automatically.
+          Your document has been cryptographically verified. Encryption is being
+          finalized in the background. This page will update automatically.
         </AlertDescription>
       </Alert>
     );
@@ -118,7 +117,7 @@ export function StatusDisplay({
           </CardTitle>
           <CardDescription>
             Your document&apos;s NFC chip has been cryptographically verified.
-            You&apos;ve reached the Chip Verified tier — the highest level of
+            You&apos;ve reached the Chip Verified tier, the highest level of
             identity assurance.
           </CardDescription>
         </CardHeader>

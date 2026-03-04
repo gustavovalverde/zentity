@@ -246,8 +246,8 @@ export function CredentialsContent() {
             Zentity Identity Credential
           </CardTitle>
           <CardDescription>
-            Issue a verifiable credential containing your verified identity
-            claims
+            Issue a portable credential you can present to third-party services
+            while choosing exactly what to share
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -276,8 +276,9 @@ export function CredentialsContent() {
             <Wallet className="h-4 w-4" />
             <AlertDescription>
               <strong>How it works:</strong> Click &quot;Get Credential&quot; to
-              generate a QR code. Scan it with any OIDC4VCI-compliant wallet to
-              receive your SD-JWT credential with selective disclosure support.
+              generate a QR code. Scan it with a compatible identity wallet to
+              receive your credential. You choose which claims to reveal each
+              time you present it.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -309,7 +310,7 @@ export function CredentialsContent() {
               Scan with Your Wallet
             </DialogTitle>
             <DialogDescription>
-              Scan this QR code with any OIDC4VCI-compliant wallet to receive
+              Scan this QR code with a compatible identity wallet to receive
               your credential.
             </DialogDescription>
           </DialogHeader>
@@ -356,8 +357,8 @@ export function CredentialsContent() {
 
           <div className="rounded-lg bg-muted p-3">
             <p className="text-muted-foreground text-xs">
-              <strong>Compatible wallets:</strong> Any wallet supporting the
-              OpenID for Verifiable Credential Issuance (OID4VCI) standard.
+              <strong>Compatible wallets:</strong> Any wallet that supports the
+              OID4VCI standard (OpenID for Verifiable Credential Issuance).
             </p>
           </div>
         </DialogContent>

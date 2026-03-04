@@ -68,7 +68,7 @@ export function IdentityActionsCard({
           <ActionCard
             actionHref="/dashboard/credentials"
             actionLabel="Get Credentials"
-            description="Export your verified claims to any compatible identity wallet."
+            description="Issue a portable credential you can present to third-party services."
             icon={FileCheck2}
             locked={tier < 2}
             requiredTier={2}
@@ -81,7 +81,7 @@ export function IdentityActionsCard({
               actionHref="/dashboard/attestation"
               actionLabel="Go On-Chain"
               badge="Web3"
-              description="Register your identity on-chain for DeFi and Web3 access with encrypted data."
+              description="Publish encrypted identity proofs on-chain for DeFi and Web3 compliance."
               icon={LinkIcon}
               locked={!canAttest}
               passkeyAction={attestationPasskeyAction}

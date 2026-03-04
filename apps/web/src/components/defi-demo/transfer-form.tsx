@@ -194,7 +194,7 @@ export function TransferForm({
         </div>
         <CardDescription className="flex items-center gap-1">
           <Lock className="h-3 w-3" />
-          FHE-encrypted compliant transfer
+          Encrypted compliant transfer
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -246,7 +246,7 @@ export function TransferForm({
               <Alert>
                 <Lock className="h-4 w-4" />
                 <AlertDescription>
-                  Initializing FHE encryption… Please wait.
+                  Initializing encryption… Please wait.
                 </AlertDescription>
               </Alert>
             );
@@ -261,7 +261,7 @@ export function TransferForm({
                     <p className="font-medium">Transfer submitted!</p>
                     <p className="mt-1 text-xs">
                       {isConfirmed
-                        ? "Transaction confirmed. Note: If recipient is not attested, 0 tokens were transferred (silent failure)."
+                        ? "Transaction confirmed. If the recipient has not completed identity verification on-chain, the transfer amount will be 0 (silent failure)."
                         : "Transaction sent. Waiting for confirmation…"}
                     </p>
                     <a
@@ -326,7 +326,8 @@ export function TransferForm({
                   ) : (
                     <span className="flex items-center gap-1 text-warning">
                       <AlertTriangle className="h-3 w-3" />
-                      Recipient not attested - transfer will be 0
+                      Recipient not verified on-chain. Transfer amount will be
+                      zero.
                     </span>
                   )}
                 </div>
@@ -364,9 +365,9 @@ export function TransferForm({
                 <Alert variant="warning">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription className="text-xs">
-                    <strong>Warning:</strong> Recipient is not attested on this
-                    network. Due to compliance checks, 0 tokens will be
-                    transferred (the contract uses silent failure).
+                    <strong>Warning:</strong> The recipient has not verified
+                    their identity on this network. The compliance contract will
+                    process the transaction but transfer zero tokens.
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -392,7 +393,7 @@ export function TransferForm({
               </Button>
 
               <p className="text-center text-muted-foreground text-xs">
-                Amount is encrypted using FHE before submission
+                Transfer amount is encrypted before submission
               </p>
             </form>
           );

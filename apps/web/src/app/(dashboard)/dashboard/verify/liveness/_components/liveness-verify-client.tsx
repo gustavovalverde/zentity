@@ -392,9 +392,9 @@ export function LivenessVerifyClient({
         </CardHeader>
         <CardContent>
           <CardDescription>
-            Your selfie is used for face matching with your ID and is never
-            stored. A cryptographic hash of the verification frame is recorded
-            for integrity. Gesture challenges confirm you&apos;re a real person.
+            Your selfie is used only for face matching with your ID and is never
+            stored. Only a tamper-proof fingerprint of the verification frame is
+            kept. Gesture challenges confirm you&apos;re a real person.
           </CardDescription>
         </CardContent>
       </Card>

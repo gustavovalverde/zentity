@@ -147,12 +147,13 @@ export function MintForm({
           <p className="text-muted-foreground text-xs">
             {isSupplyExhausted ? (
               <span className="text-destructive">
-                Supply cap reached. Contract uses euint64 (~18.4 max tokens).
+                Supply cap reached. No more tokens can be minted (~18.4 max
+                tokens.
               </span>
             ) : (
               <>
-                {remainingTokens.toFixed(2)} tokens remaining (of ~18.4 max).
-                Rate limited to 3 requests/hour.
+                {remainingTokens.toFixed(2)} tokens remaining. Rate limited to 3
+                requests per hour.
               </>
             )}
           </p>

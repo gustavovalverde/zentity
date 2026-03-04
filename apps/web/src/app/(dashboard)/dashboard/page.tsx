@@ -43,7 +43,7 @@ export default async function DashboardPage() {
           <ProfileGreetingName fallback={session?.user?.name || "User"} />
         </h1>
         <p className="text-muted-foreground text-sm">
-          Your privacy-preserving identity dashboard
+          Manage your verified identity and credentials
         </p>
       </div>
 

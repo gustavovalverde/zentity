@@ -405,9 +405,9 @@ export function DocumentUploadClient({
         </CardHeader>
         <CardContent>
           <CardDescription>
-            Your ID is processed by our private OCR service. Only cryptographic
-            commitments and encrypted data are stored—never your raw document
-            image.
+            Your ID is processed privately on our servers. We extract the
+            necessary data, then discard the image. Only encrypted proofs of
+            your verified attributes are stored.
           </CardDescription>
         </CardContent>
       </Card>
