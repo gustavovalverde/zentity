@@ -72,7 +72,6 @@ export const CLAIM_LABELS: Record<string, string> = {
   nationality_proof_verified: "Nationality Verified",
   face_match_verified: "Face Match Verified",
   policy_version: "Policy Version",
-  issuer_id: "Issuer ID",
   verification_time: "Verification Time",
   attestation_expires_at: "Attestation Expiry",
 };

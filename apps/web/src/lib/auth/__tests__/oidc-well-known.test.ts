@@ -35,7 +35,7 @@ describe("oidc well-known metadata", () => {
     expect(body.credential_configurations_supported).toBeDefined();
     expect(
       Object.keys(body.credential_configurations_supported || {})
-    ).toContain("zentity_identity");
+    ).toContain("identity_verification");
   });
 
   it("keeps OpenID config issuer aligned with auth base path", async () => {

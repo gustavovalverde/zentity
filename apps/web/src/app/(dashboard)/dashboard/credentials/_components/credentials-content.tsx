@@ -61,7 +61,6 @@ const CLAIM_LABELS: Record<string, string> = {
 
 const METADATA_CLAIMS = new Set([
   "policy_version",
-  "issuer_id",
   "verification_time",
   "attestation_expires_at",
 ]);

@@ -19,8 +19,7 @@ import { getVerificationStatus } from "@/lib/db/queries/identity";
 
 import { protectedProcedure, router } from "../server";
 
-/** Default credential configuration for Zentity identity credentials */
-const DEFAULT_CREDENTIAL_CONFIG_ID = "zentity_identity";
+const DEFAULT_CREDENTIAL_CONFIG_ID = "identity_verification";
 
 /** Wallet client ID for dashboard-initiated issuance (must match OIDC4VCI plugin's defaultWalletClientId) */
 const WALLET_CLIENT_ID = "zentity-wallet";

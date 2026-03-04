@@ -15,7 +15,6 @@ export const PROOF_DISCLOSURE_KEYS = [
   "face_match_verified",
   "identity_binding_verified",
   "policy_version",
-  "issuer_id",
   "verification_time",
   "attestation_expires_at",
   "chip_verified",
@@ -33,7 +32,6 @@ interface VerificationClaims extends Record<string, unknown> {
   document_verified: boolean;
   face_match_verified: boolean;
   identity_binding_verified: boolean;
-  issuer_id?: string;
   liveness_verified: boolean;
   nationality_proof_verified: boolean;
   policy_version?: string;
@@ -72,9 +70,6 @@ export async function buildProofClaims(
   if (bundle?.policyVersion) {
     claims.policy_version = bundle.policyVersion;
   }
-  if (bundle?.issuerId) {
-    claims.issuer_id = bundle.issuerId;
-  }
   const verificationTime =
     latestVerification?.verifiedAt ?? bundle?.updatedAt ?? null;
   if (verificationTime) {
@@ -102,7 +97,7 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
   }
 
   const verification: Record<string, unknown> = {
-    trust_framework: "zentity",
+    trust_framework: "eidas",
     assurance_level: status.level,
   };
   const verificationTime =
@@ -112,9 +107,6 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
   }
   if (bundle?.policyVersion) {
     verification.policy_version = bundle.policyVersion;
-  }
-  if (bundle?.issuerId) {
-    verification.issuer_id = bundle.issuerId;
   }
   if (bundle?.attestationExpiresAt) {
     verification.attestation_expires_at = bundle.attestationExpiresAt;

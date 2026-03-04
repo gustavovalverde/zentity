@@ -166,7 +166,7 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
     expect(result).toHaveProperty("nationality_proof_verified");
     expect(result).toHaveProperty("identity_binding_verified");
     expect(result).toHaveProperty("policy_version");
-    expect(result).toHaveProperty("issuer_id");
+    expect(result).not.toHaveProperty("issuer_id");
     expect(result).toHaveProperty("verification_time");
     expect(result).toHaveProperty("attestation_expires_at");
   });

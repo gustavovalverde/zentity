@@ -135,7 +135,7 @@ export async function POST(request: Request) {
 
     // 4. Request credential
     const configId =
-      offer.credential_configuration_ids[0] || "zentity_identity";
+      offer.credential_configuration_ids[0] || "identity_verification";
     const credRes = await fetch(
       `${offer.credential_issuer}/oidc4vci/credential`,
       {

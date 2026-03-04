@@ -128,7 +128,7 @@ describe("HAIP — discovery metadata", () => {
 });
 
 describe("HAIP — credential issuer metadata", () => {
-  it("credential issuer includes zentity_identity configuration", async () => {
+  it("credential issuer includes identity_verification configuration", async () => {
     if (!auth.publicHandler) {
       throw new Error("publicHandler is not configured");
     }
@@ -143,8 +143,8 @@ describe("HAIP — credential issuer metadata", () => {
     >;
 
     expect(configs).toBeDefined();
-    expect(configs.zentity_identity).toBeDefined();
-    expect(configs.zentity_identity.format).toBe("dc+sd-jwt");
+    expect(configs.identity_verification).toBeDefined();
+    expect(configs.identity_verification.format).toBe("dc+sd-jwt");
   });
 });
 

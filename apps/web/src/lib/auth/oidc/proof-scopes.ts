@@ -42,7 +42,6 @@ const PROOF_SCOPE_CLAIMS: Record<ProofScope, ProofClaimKey[]> = {
   "proof:nationality": ["nationality_proof_verified"],
   "proof:compliance": [
     "policy_version",
-    "issuer_id",
     "verification_time",
     "attestation_expires_at",
   ],

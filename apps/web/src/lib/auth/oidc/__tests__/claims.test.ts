@@ -56,10 +56,10 @@ describe("oidc claim mapping", () => {
       face_match_verified: true,
       identity_binding_verified: true,
       policy_version: "policy-1",
-      issuer_id: "issuer-1",
       verification_time: "2026-01-02T00:00:00.000Z",
       attestation_expires_at: "2030-01-01T00:00:00.000Z",
     });
+    expect(claims).not.toHaveProperty("issuer_id");
   });
 
   it("returns verified_claims for OIDC4IDA when verified", async () => {
@@ -67,10 +67,9 @@ describe("oidc claim mapping", () => {
 
     expect(verifiedClaims).toMatchObject({
       verification: {
-        trust_framework: "zentity",
+        trust_framework: "eidas",
         assurance_level: "full",
         policy_version: "policy-1",
-        issuer_id: "issuer-1",
         attestation_expires_at: "2030-01-01T00:00:00.000Z",
       },
       claims: {
@@ -133,7 +132,7 @@ describe("oidc claim mapping", () => {
 
     expect(verifiedClaims).toMatchObject({
       verification: {
-        trust_framework: "zentity",
+        trust_framework: "eidas",
         assurance_level: "chip",
       },
       claims: {

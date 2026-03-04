@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   if (configs) {
     for (const config of Object.values(configs)) {
       if (!config.scope) {
-        config.scope = "zentity_identity";
+        config.scope = "identity_verification";
       }
     }
   }

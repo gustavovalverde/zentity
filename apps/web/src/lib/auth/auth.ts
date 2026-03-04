@@ -229,14 +229,13 @@ const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const identityClaimKeys = Array.from(
   new Set(Object.values(IDENTITY_SCOPE_CLAIMS).flat())
 );
-const publicClientScopes = [
+const defaultClientScopes = [
   "openid",
-  "profile",
-  "email",
   "proof:identity",
   ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
+const allowedClientScopes = [...defaultClientScopes, "email", "profile"];
 const oidcStandardClaims = [
   "sub",
   "name",
@@ -262,25 +261,23 @@ const isOidcE2e = env.E2E_OIDC_ONLY === true;
 const oidc4vciCredentialConfigurations: Oidc4vciOptions["credentialConfigurations"] =
   [
     {
-      id: "zentity_identity",
-      // Using HTTP URL format for VCT to support wallet interoperability (e.g., walt.id)
-      // Some wallets expect to resolve VCT URLs to fetch type metadata
-      vct: `${authIssuer}/vct/zentity_identity`,
+      id: "identity_verification",
+      vct: "urn:credential:identity-verification:v1",
       format: "dc+sd-jwt",
       sdJwt: {
         disclosures: [...PROOF_DISCLOSURE_KEYS],
-        decoyCount: 0,
+        decoyCount: 3,
       },
     },
     ...(isOidcE2e
       ? [
           {
-            id: "zentity_identity_deferred",
-            vct: `${authIssuer}/vct/zentity_identity:deferred`,
+            id: "identity_verification_deferred",
+            vct: "urn:credential:identity-verification:v1:deferred",
             format: "dc+sd-jwt" as const,
             sdJwt: {
               disclosures: [...PROOF_DISCLOSURE_KEYS],
-              decoyCount: 0,
+              decoyCount: 3,
             },
           },
         ]
@@ -293,7 +290,7 @@ const oidc4vciDeferredIssuance = isOidcE2e
         credentialConfigurationId,
       }: {
         credentialConfigurationId: string;
-      }) => credentialConfigurationId === "zentity_identity_deferred",
+      }) => credentialConfigurationId === "identity_verification_deferred",
       intervalSeconds: 5,
       transactionExpiresInSeconds: 600,
     }
@@ -630,7 +627,7 @@ export const auth = betterAuth({
         "identity.document", // document_number, document_type, issuing_country
         "identity.nationality", // nationality, nationalities
         // HAIP §4.1: credential configuration scope for OID4VCI
-        "zentity_identity",
+        "identity_verification",
       ],
       grantTypes: [
         "authorization_code",
@@ -644,8 +641,8 @@ export const auth = betterAuth({
       allowDynamicClientRegistration: true,
       // Allow public clients (no client_secret) - required for mobile/browser wallets
       allowUnauthenticatedClientRegistration: true,
-      clientRegistrationDefaultScopes: publicClientScopes,
-      clientRegistrationAllowedScopes: publicClientScopes,
+      clientRegistrationDefaultScopes: defaultClientScopes,
+      clientRegistrationAllowedScopes: allowedClientScopes,
       clientReference: ({ session }) =>
         typeof session?.activeOrganizationId === "string"
           ? session.activeOrganizationId
