@@ -399,6 +399,7 @@ export function DefiDemoClient({
             <div className="grid gap-6 md:grid-cols-2">
               <div ref={mintFormRef}>
                 <MintForm
+                  explorerUrl={selectedNetworkData.explorerUrl}
                   networkId={resolvedNetworkId}
                   walletAddress={address}
                 />
@@ -408,12 +409,14 @@ export function DefiDemoClient({
                 contractAddress={
                   selectedNetworkData.contractAddress as `0x${string}`
                 }
+                explorerUrl={selectedNetworkData.explorerUrl}
                 networkId={resolvedNetworkId}
               />
             </div>
 
             {/* Transaction History */}
             <TxHistory
+              explorerUrl={selectedNetworkData.explorerUrl}
               networkId={resolvedNetworkId}
               onMintClick={handleMintClick}
               walletAddress={address}

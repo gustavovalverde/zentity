@@ -30,11 +30,13 @@ import { trpcReact } from "@/lib/trpc/client";
 import { parseTokenAmount } from "@/lib/utils/token";
 
 interface MintFormProps {
+  explorerUrl: string | null;
   networkId: string;
   walletAddress: string;
 }
 
 export function MintForm({
+  explorerUrl,
   networkId,
   walletAddress,
 }: Readonly<MintFormProps>) {
@@ -164,10 +166,10 @@ export function MintForm({
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
               <p className="font-medium">Tokens minted successfully!</p>
-              {mintMutation.data.txHash ? (
+              {mintMutation.data.txHash && explorerUrl ? (
                 <a
                   className="mt-1 flex items-center gap-1 text-xs hover:underline"
-                  href={`https://sepolia.etherscan.io/tx/${mintMutation.data.txHash}`}
+                  href={`${explorerUrl}/tx/${mintMutation.data.txHash}`}
                   rel="noopener noreferrer"
                   target="_blank"
                 >

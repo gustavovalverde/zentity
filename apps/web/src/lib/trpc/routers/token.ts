@@ -569,6 +569,7 @@ export const tokenRouter = router({
         contractAddress: n.contracts.compliantERC20,
         complianceRules: n.contracts.complianceRules ?? null,
         identityRegistry: n.contracts.identityRegistry ?? null,
+        explorerUrl: n.explorer ?? null,
       }));
   }),
 });

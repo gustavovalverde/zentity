@@ -49,12 +49,14 @@ import { parseTokenAmount } from "@/lib/utils/token";
 interface TransferFormProps {
   accessGranted?: boolean;
   contractAddress: `0x${string}`;
+  explorerUrl: string | null;
   networkId: string;
 }
 
 export function TransferForm({
   networkId,
   contractAddress,
+  explorerUrl,
   accessGranted = true,
 }: Readonly<TransferFormProps>) {
   const [recipient, setRecipient] = useState("");
@@ -264,15 +266,17 @@ export function TransferForm({
                         ? "Transaction confirmed. If the recipient has not completed identity verification on-chain, the transfer amount will be 0 (silent failure)."
                         : "Transaction sent. Waiting for confirmation…"}
                     </p>
-                    <a
-                      className="mt-2 flex items-center gap-1 text-xs hover:underline"
-                      href={`https://sepolia.etherscan.io/tx/${txHash}`}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      View transaction
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    {explorerUrl ? (
+                      <a
+                        className="mt-2 flex items-center gap-1 text-xs hover:underline"
+                        href={`${explorerUrl}/tx/${txHash}`}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        View transaction
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : null}
                   </AlertDescription>
                 </Alert>
                 <Button

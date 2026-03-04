@@ -34,6 +34,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
 interface TxHistoryProps {
+  explorerUrl: string | null;
   networkId: string;
   onMintClick?: () => void;
   walletAddress: string;
@@ -80,6 +81,7 @@ function TxHistoryContent({
   isLoading,
   error,
   data,
+  explorerUrl,
   getTypeIcon,
   getTypeLabel,
   formatAddress,
@@ -88,6 +90,7 @@ function TxHistoryContent({
   isLoading: boolean;
   error: unknown;
   data: TxHistoryData | undefined;
+  explorerUrl: string | null;
   getTypeIcon: (type: string) => React.ReactNode;
   getTypeLabel: (type: string) => string;
   formatAddress: (address: string) => string;
@@ -156,16 +159,18 @@ function TxHistoryContent({
               </p>
             </div>
           </div>
-          <a
-            aria-label="View transaction on Etherscan"
-            className="text-muted-foreground transition-colors hover:text-foreground"
-            href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
-            rel="noopener noreferrer"
-            target="_blank"
-            title="View on Explorer"
-          >
-            <ExternalLink className="h-4 w-4" />
-          </a>
+          {explorerUrl ? (
+            <a
+              aria-label="View transaction on explorer"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+              href={`${explorerUrl}/tx/${tx.txHash}`}
+              rel="noopener noreferrer"
+              target="_blank"
+              title="View on Explorer"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          ) : null}
         </div>
       ))}
 
@@ -179,6 +184,7 @@ function TxHistoryContent({
 }
 
 export function TxHistory({
+  explorerUrl,
   networkId,
   walletAddress,
   onMintClick,
@@ -235,6 +241,7 @@ export function TxHistory({
         <TxHistoryContent
           data={data}
           error={error}
+          explorerUrl={explorerUrl}
           formatAddress={formatAddress}
           getTypeIcon={getTypeIcon}
           getTypeLabel={getTypeLabel}
