@@ -86,6 +86,18 @@ const nextConfig: NextConfig = {
       { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
     ];
 
+    // External domains required by @zkpassport/sdk (hardcoded in minified bundle).
+    // URLs are baked into @zkpassport/{utils,registry,sdk} — CSP allowlist is the only option.
+    const zkPassportDomains = [
+      "https://cdn.zkpassport.id", // sanctions tree
+      "https://certificates.zkpassport.id", // CSCA certificate registry
+      "https://circuits.zkpassport.id", // ZK circuit artifacts + hashes
+      "https://circuits2.zkpassport.id", // circuit fallback CDN
+      "https://ipfs.zkpassport.id", // IPFS-backed certificate data
+      "https://*.g.alchemy.com", // Ethereum RPC (registry contract reads)
+      "https://ethereum-sepolia-rpc.publicnode.com", // fallback Sepolia RPC
+    ].join(" ");
+
     // CSP: strict in production; permissive in dev for HMR/fast-refresh
     const cspValue =
       process.env.NODE_ENV === "production"
@@ -94,8 +106,9 @@ const nextConfig: NextConfig = {
             // 'unsafe-inline' required for Next.js hydration scripts; 'wasm-unsafe-eval' for ZK/FHE WASM
             "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
-            // ws:/wss: for Socket.io liveness sessions
-            "connect-src 'self' ws: wss:",
+            "font-src 'self' data:",
+            // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
+            `connect-src 'self' ws: wss: data: ${zkPassportDomains}`,
             // data:/blob: for document scans and selfie processing
             "img-src 'self' data: blob:",
             // blob: for WASM thread workers
@@ -104,8 +117,11 @@ const nextConfig: NextConfig = {
             "object-src 'none'",
             "base-uri 'none'",
           ].join("; ")
-        : "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'; " +
-          "worker-src 'self' blob:;";
+        : [
+            "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
+            `connect-src 'self' ws: wss: data: ${zkPassportDomains}`,
+            "worker-src 'self' blob:",
+          ].join("; ");
 
     securityHeaders.push({ key: "Content-Security-Policy", value: cspValue });
 
