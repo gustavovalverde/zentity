@@ -121,8 +121,8 @@ const nextConfig: NextConfig = {
             "font-src 'self' data:",
             // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
             `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains}`,
-            // data:/blob: for document scans and selfie processing
-            "img-src 'self' data: blob:",
+            // data:/blob: for document scans and selfie processing; react-circle-flags CDN for country flags
+            "img-src 'self' data: blob: https://react-circle-flags.pages.dev",
             // blob: for WASM thread workers
             "worker-src 'self' blob:",
             "frame-ancestors 'none'",
