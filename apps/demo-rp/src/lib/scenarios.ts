@@ -71,7 +71,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     };
   })(),
   wine: (() => {
-    const signInScopes = ["openid", "email", "proof:age"];
+    const signInScopes = ["openid", "proof:age"];
     const stepUpScopes = ["identity.name", "identity.address"];
     return {
       id: "wine",
@@ -88,10 +88,10 @@ export const SCENARIOS: Record<string, Scenario> = {
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
       notShared: [
+        "Your name or email",
         "Your exact date of birth",
         "Your document details",
         "Your nationality",
-        "Your passport number",
       ],
     };
   })(),

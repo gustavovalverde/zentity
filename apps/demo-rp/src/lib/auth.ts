@@ -1,7 +1,7 @@
 import "server-only";
 
-import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
@@ -56,31 +56,37 @@ async function fetchUserInfo(tokens: {
   accessToken?: string;
   idToken?: string;
 }) {
-  if (!tokens.accessToken) {
-    throw new Error("No access token received from Zentity");
+  let body: Record<string, unknown> = {};
+
+  // Try userinfo endpoint (may fail for privacy-preserving proof-only flows
+  // where the access token record is ephemeral)
+  if (tokens.accessToken) {
+    const response = await fetch(zentityUserInfoUrl(), {
+      headers: { Authorization: `Bearer ${tokens.accessToken}` },
+    });
+    if (response.ok) {
+      body = (await response.json()) as Record<string, unknown>;
+    }
   }
-  const response = await fetch(zentityUserInfoUrl(), {
-    headers: { Authorization: `Bearer ${tokens.accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Zentity userinfo (${response.status})`);
+
+  // Merge id_token claims (always available, contains proof claims)
+  if (tokens.idToken) {
+    const idTokenClaims = await verifyIdToken(tokens.idToken);
+    Object.assign(body, idTokenClaims);
   }
-  const body = (await response.json()) as Record<string, unknown>;
+
   const id =
     (typeof body.sub === "string" && body.sub) ||
     (typeof body.id === "string" && body.id);
   if (!id) {
-    throw new Error("Zentity userinfo response missing sub/id");
+    throw new Error("Zentity response missing sub/id");
   }
+
   const profile: Record<string, unknown> = {
     ...body,
     id,
     emailVerified: Boolean(body.email_verified),
   };
-  if (tokens.idToken) {
-    const idTokenClaims = await verifyIdToken(tokens.idToken);
-    Object.assign(profile, idTokenClaims);
-  }
   stripProviderFields(profile);
   return { id, profile };
 }
@@ -204,7 +210,7 @@ function makeProviderConfig(
 const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   bank: ["openid", "email", "proof:verification"],
   exchange: ["openid", "email", "proof:verification"],
-  wine: ["openid", "email", "proof:age"],
+  wine: ["openid", "proof:age"],
   aid: ["openid", "email", "proof:verification"],
   veripass: ["openid", "email", "proof:verification"],
 };

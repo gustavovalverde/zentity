@@ -114,12 +114,21 @@ export function WineOrderConfirmation({
       </Card>
 
       <Card className="border-dashed bg-muted/20">
-        <CardContent className="pt-6 text-center text-muted-foreground text-sm">
+        <CardContent className="space-y-3 pt-6 text-center text-muted-foreground text-sm">
+          <p className="font-medium text-foreground text-xs uppercase tracking-wider">
+            Double Anonymity
+          </p>
           <p>
             Your birthdate was never shared &mdash; only a yes/no proof that
-            you&apos;re 21+. Your delivery details were selectively disclosed
-            via Zentity and are not stored by Vino Delivery.
+            you&apos;re 21+. Delivery details were selectively disclosed and are
+            not stored by Vino Delivery.
           </p>
+          <div className="flex flex-col gap-1 text-xs">
+            <span>Vino Delivery never learned your real identity</span>
+            <span>
+              The verification provider never learned which site you visited
+            </span>
+          </div>
         </CardContent>
       </Card>
 

@@ -84,7 +84,8 @@ export function WineAgeGate({
             </h1>
             <p className="mx-auto max-w-sm font-sans text-lg text-muted-foreground leading-relaxed">
               You must be 21 or older to browse and purchase alcohol. Verify
-              your age through Zentity — your exact birthdate is never shared.
+              your age privately — your birthdate is never shared, and neither
+              party learns more than necessary.
             </p>
           </div>
 
@@ -102,11 +103,18 @@ export function WineAgeGate({
               size="lg"
             >
               <HugeiconsIcon icon={ShieldKeyIcon} size={20} />
-              Verify Age with Zentity
+              Verify Age Anonymously
             </Button>
-            <p className="text-muted-foreground text-xs uppercase tracking-widest">
-              Only a yes/no proof is shared — never your birthdate
-            </p>
+            <div className="mx-auto max-w-xs space-y-2 pt-2">
+              <p className="font-sans text-muted-foreground text-xs leading-relaxed">
+                This site receives only a yes/no age proof. No name, email, or
+                birthdate is shared. The verification provider cannot see which
+                site you are visiting.
+              </p>
+              <p className="font-sans text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+                ARCOM double-anonymity compliant
+              </p>
+            </div>
           </div>
         </div>
       </div>
