@@ -43,6 +43,7 @@ export const oauthClients = sqliteTable(
     responseTypes: text("response_types", { mode: "json" }),
     public: integer("public", { mode: "boolean" }),
     type: text("type"),
+    subjectType: text("subject_type"),
     referenceId: text("reference_id"),
     metadata: text("metadata", { mode: "json" }),
   },

@@ -34,6 +34,7 @@ export function enrichDiscoveryMetadata(
   const issuer = metadata.issuer as string | undefined;
   return {
     ...metadata,
+    subject_types_supported: ["public", "pairwise"],
     id_token_signing_alg_values_supported: [...ID_TOKEN_SIGNING_ALGS],
     // HAIP §5.1: PAR and DPoP metadata
     ...(issuer

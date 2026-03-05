@@ -140,7 +140,9 @@ export function ConnectedAppsCard({
               </EmptyMedia>
               <EmptyTitle>No connected apps</EmptyTitle>
               <EmptyDescription>
-                When you authorize apps via Zentity, they'll appear here.
+                Proof-only authorizations are per-session and not stored
+                (privacy by design). Only services you share personal
+                information with appear here and can be revoked.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>

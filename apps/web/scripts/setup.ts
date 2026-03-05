@@ -97,7 +97,14 @@ console.log(".env written with generated secrets.");
 console.log("\nPushing database schema...");
 try {
   execSync("pnpm db:push:dev", { cwd: ROOT, stdio: "inherit" });
-  console.log("Database schema pushed.\n");
+  console.log("Database schema pushed.");
+
+  // Default all clients without a subject_type to pairwise (ARCOM double anonymity)
+  execFileSync("sqlite3", [
+    resolve(ROOT, ".data/dev.db"),
+    "UPDATE oauth_client SET subject_type = 'pairwise' WHERE subject_type IS NULL;",
+  ]);
+  console.log("Backfilled oauth_client.subject_type to pairwise.\n");
 } catch {
   console.warn(
     "Database push failed — you can run `pnpm db:push:dev` manually.\n"

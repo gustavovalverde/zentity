@@ -17,8 +17,6 @@ const ApproveSchema = z.object({
 // Keep in sync with oauthProvider({ scopes: [...] }) in `apps/web/src/lib/auth/auth.ts`.
 const ALLOWED_OAUTH_SCOPES = new Set([
   "openid",
-  "profile",
-  "email",
   "offline_access",
   "proof:identity",
   "proof:verification",
@@ -27,9 +25,10 @@ const ALLOWED_OAUTH_SCOPES = new Set([
   "proof:liveness",
   "proof:nationality",
   "proof:compliance",
+  "proof:chip",
   "compliance:key:read",
   "compliance:key:write",
-  "identity",
+  "identity_verification",
   "identity.name",
   "identity.dob",
   "identity.address",

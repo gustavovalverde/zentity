@@ -14,6 +14,7 @@ import { afterAll, afterEach, vi } from "vitest";
 process.env.TURSO_DATABASE_URL ||= "file:./.data/test.db";
 process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
 process.env.OPAQUE_SERVER_SETUP ||= "test-opaque-server-setup-placeholder";
+process.env.PAIRWISE_SECRET ||= "test-pairwise-secret-minimum-32-chars";
 
 // Disable logging in tests unless explicitly enabled
 process.env.DRIZZLE_LOG ||= "false";

@@ -77,7 +77,7 @@ export const env = createEnv({
     GENERIC_OAUTH_PROVIDERS: z.string().optional(),
 
     // Identity & auth
-    PAIRWISE_SECRET: z.string().min(32).optional(),
+    PAIRWISE_SECRET: z.string().min(32),
     TRUSTED_ORIGINS: z.string().optional(),
     OIDC4VP_JWKS_URL: z.string().optional(),
 

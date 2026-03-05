@@ -30,6 +30,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
+import { and, eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
@@ -235,7 +236,7 @@ const defaultClientScopes = [
   ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
-const allowedClientScopes = [...defaultClientScopes, "email", "profile"];
+const allowedClientScopes = [...defaultClientScopes];
 const oidcStandardClaims = [
   "sub",
   "name",
@@ -481,6 +482,15 @@ export const auth = betterAuth({
   account: {
     encryptOAuthTokens: true,
   },
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => ({
+          data: { ...session, ipAddress: null, userAgent: null },
+        }),
+      },
+    },
+  },
   socialProviders: {
     google: {
       clientId: env.GOOGLE_CLIENT_ID ?? "",
@@ -509,10 +519,38 @@ export const auth = betterAuth({
     },
   },
   hooks: {
-    // biome-ignore lint/suspicious/useAwait: createAuthMiddleware requires async signature
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/register") {
-        return validateDcrRegistration(ctx.body);
+        validateDcrRegistration(ctx.body);
+        if (ctx.body && !ctx.body.subject_type) {
+          ctx.body.subject_type = "pairwise";
+        }
+        return;
+      }
+
+      // Pairwise privacy guard: strip `resource` from token requests for
+      // pairwise clients. Without `resource`, the plugin issues an opaque
+      // access token instead of a JWT — preventing user.id leakage in the
+      // AT `sub` claim. JWT ATs need user.id for AS-internal lookups
+      // (userinfo, introspection), so pairwise sub can't be used there.
+      // Opaque ATs are fine: the RP uses them as bearer tokens, and
+      // userinfo/introspection resolve pairwise sub at the presentation layer.
+      if (ctx.path === "/oauth2/token" && ctx.body?.resource) {
+        const clientId =
+          typeof ctx.body.client_id === "string"
+            ? ctx.body.client_id
+            : undefined;
+        if (clientId) {
+          const client = await db
+            .select({ subjectType: oauthClients.subjectType })
+            .from(oauthClients)
+            .where(eq(oauthClients.clientId, clientId))
+            .limit(1)
+            .get();
+          if (client?.subjectType === "pairwise") {
+            ctx.body.resource = undefined;
+          }
+        }
       }
 
       // Server-side enforcement: strip identity.* scopes from consent to
@@ -529,24 +567,112 @@ export const auth = betterAuth({
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/two-factor/disable") {
-        return;
+      const sessionCtx = ctx.context as {
+        session?: { user?: { id?: string } };
+      };
+
+      // Pairwise consent cleanup: delete consent records for pairwise clients
+      // that only received proof scopes (no identity.* PII was shared).
+      if (ctx.path === "/oauth2/consent") {
+        const userId = sessionCtx.session?.user?.id;
+        const oauthQuery =
+          typeof ctx.body?.oauth_query === "string"
+            ? ctx.body.oauth_query
+            : undefined;
+        if (userId && oauthQuery) {
+          const params = new URLSearchParams(oauthQuery);
+          const clientId = params.get("client_id");
+          const originalScopes = (params.get("scope") ?? "").split(" ");
+          const hasIdentityScopes = originalScopes.some((s) =>
+            isIdentityScope(s)
+          );
+
+          if (clientId && !hasIdentityScopes) {
+            const client = await db
+              .select({ subjectType: oauthClients.subjectType })
+              .from(oauthClients)
+              .where(eq(oauthClients.clientId, clientId))
+              .limit(1)
+              .get();
+
+            if (client?.subjectType === "pairwise") {
+              await db
+                .delete(oauthConsents)
+                .where(
+                  and(
+                    eq(oauthConsents.userId, userId),
+                    eq(oauthConsents.clientId, clientId)
+                  )
+                )
+                .run();
+            }
+          }
+        }
       }
-      const userId = (ctx.context as { session?: { user?: { id?: string } } })
-        .session?.user?.id;
-      if (!userId) {
-        return;
+
+      // Pairwise token cleanup: delete access token DB records for pairwise
+      // clients with proof-only flows. JWT tokens are self-contained so the
+      // RP can still validate them until expiry.
+      if (ctx.path === "/oauth2/token") {
+        const clientId =
+          typeof ctx.body?.client_id === "string"
+            ? ctx.body.client_id
+            : undefined;
+        if (clientId) {
+          const client = await db
+            .select({ subjectType: oauthClients.subjectType })
+            .from(oauthClients)
+            .where(eq(oauthClients.clientId, clientId))
+            .limit(1)
+            .get();
+
+          if (client?.subjectType === "pairwise") {
+            // Check if the token was issued with any identity scopes
+            const latestToken = await db
+              .select({
+                id: oauthAccessTokens.id,
+                scopes: oauthAccessTokens.scopes,
+              })
+              .from(oauthAccessTokens)
+              .where(eq(oauthAccessTokens.clientId, clientId))
+              .limit(1)
+              .get();
+
+            if (latestToken) {
+              const tokenScopes = Array.isArray(latestToken.scopes)
+                ? (latestToken.scopes as string[])
+                : [];
+              const hasIdentityScopes = tokenScopes.some((s) =>
+                isIdentityScope(s)
+              );
+              if (!hasIdentityScopes) {
+                await db
+                  .delete(oauthAccessTokens)
+                  .where(eq(oauthAccessTokens.id, latestToken.id))
+                  .run();
+              }
+            }
+          }
+        }
       }
-      const config = await getRecoveryConfigByUserId(userId);
-      if (!config) {
-        return;
-      }
-      const guardian = await getRecoveryGuardianByType({
-        recoveryConfigId: config.id,
-        guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
-      });
-      if (guardian) {
-        await deleteRecoveryGuardian(guardian.id);
+
+      // Guardian cleanup when 2FA is disabled
+      if (ctx.path === "/two-factor/disable") {
+        const userId = sessionCtx.session?.user?.id;
+        if (!userId) {
+          return;
+        }
+        const config = await getRecoveryConfigByUserId(userId);
+        if (!config) {
+          return;
+        }
+        const guardian = await getRecoveryGuardianByType({
+          recoveryConfigId: config.id,
+          guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+        });
+        if (guardian) {
+          await deleteRecoveryGuardian(guardian.id);
+        }
       }
     }),
   },
@@ -607,12 +733,10 @@ export const auth = betterAuth({
       clientAuthStrategies: {
         [WALLET_ATTESTATION_TYPE]: createWalletAttestationStrategy() as never,
       },
-      ...(env.PAIRWISE_SECRET ? { pairwiseSecret: env.PAIRWISE_SECRET } : {}),
+      pairwiseSecret: env.PAIRWISE_SECRET,
       scopes: [
         // Standard OIDC scopes
         "openid",
-        "profile",
-        "email",
         "offline_access",
         // Proof scopes — verification status flags (no PII, derived booleans only)
         "proof:identity", // Umbrella: all verification claims
