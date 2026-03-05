@@ -207,10 +207,10 @@ export function AidDashboard({
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              "Your biometric data is never stored on our servers",
-              "Identity verified without exposing sensitive documents",
-              "Only your name and nationality are shared — nothing else",
-              "All verification is cryptographically proven, not trusted",
+              "Identity verified without document uploads or central storage",
+              "Only name and nationality shared; no biometrics retained",
+              "Consent-free legal basis (GDPR Art. 9): data minimization is structurally enforced",
+              "Cryptographic proofs replace trust-based verification",
             ].map((point) => (
               <div className="flex items-start gap-2" key={point}>
                 <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />

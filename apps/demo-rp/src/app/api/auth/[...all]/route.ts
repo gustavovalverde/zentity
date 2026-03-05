@@ -15,10 +15,10 @@ async function handle(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+export function GET(request: Request) {
   return handle(request);
 }
 
-export async function POST(request: Request) {
+export function POST(request: Request) {
   return handle(request);
 }

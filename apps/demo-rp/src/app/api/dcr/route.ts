@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  isValidProviderId,
-  readDcrClientId,
-  saveDcrClientId,
-} from "@/lib/dcr";
+import { isValidProviderId, readDcrClientId, saveDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 
 export async function GET(request: Request) {

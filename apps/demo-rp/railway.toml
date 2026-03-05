@@ -14,6 +14,7 @@ builder = "DOCKERFILE"
 
 [build.args]
 NEXT_PUBLIC_APP_URL = "https://demo.zentity.xyz"
+NEXT_PUBLIC_ZENTITY_URL = "https://app.zentity.xyz"
 
 [deploy]
 healthcheckPath = "/api/health"

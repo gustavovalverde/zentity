@@ -84,8 +84,10 @@ export default function AidPage() {
                 Aid Distribution Portal
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                Securely verify your identity to access humanitarian assistance.
-                We protect your privacy by minimizing data collection.
+                Verify your identity to access humanitarian assistance.
+                Centralized databases endanger vulnerable populations, so only
+                your name and nationality are shared. No biometrics are
+                retained.
               </p>
             </div>
 
@@ -110,19 +112,19 @@ export default function AidPage() {
                 {[
                   {
                     icon: SecurityCheckIcon,
-                    text: "Your biometric data is never stored",
+                    text: "No biometric data retained",
                   },
                   {
                     icon: SecurityLockIcon,
-                    text: "Only name & nationality shared",
+                    text: "Only name and nationality shared",
                   },
                   {
                     icon: Shield01Icon,
-                    text: "Cryptographic proofs, not trust",
+                    text: "GDPR Art. 9 compliant",
                   },
                   {
                     icon: Globe02Icon,
-                    text: "Works across borders",
+                    text: "No centralized identity database",
                   },
                 ].map((item) => (
                   <div

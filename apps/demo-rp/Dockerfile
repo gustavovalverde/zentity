@@ -25,6 +25,7 @@ RUN --mount=type=cache,id=demo-rp-pnpm-store,target=/pnpm/store \
 FROM deps AS builder
 
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3102
+ARG NEXT_PUBLIC_ZENTITY_URL=http://localhost:3000
 
 COPY --link . .
 

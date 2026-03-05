@@ -241,13 +241,15 @@ function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
     plugins: [
       nextCookies(),
       genericOAuth({
-        config: registeredProviders.map((id) =>
-          makeProviderConfig(
-            `zentity-${id}`,
-            clientIds[id]!,
-            PROVIDER_SCOPES[id]
-          )
-        ),
+        config: registeredProviders.flatMap((id) => {
+          const clientId = clientIds[id];
+          if (!clientId) {
+            return [];
+          }
+          return [
+            makeProviderConfig(`zentity-${id}`, clientId, PROVIDER_SCOPES[id]),
+          ];
+        }),
       }),
     ],
   });

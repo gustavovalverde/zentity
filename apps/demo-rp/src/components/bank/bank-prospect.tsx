@@ -23,8 +23,10 @@ export function BankProspect({ onApply }: BankProspectProps) {
               Complete verification to activate your account
             </p>
             <p className="mt-1 text-muted-foreground text-sm">
-              Apply for any product below to start identity verification via
-              Zentity. Your documents never leave your control.
+              EU anti-money laundering rules (AMLD6) require identity
+              verification before account opening. Zentity satisfies this
+              through cryptographic proofs. Your documents are never uploaded,
+              stored, or shared with Velocity Bank.
             </p>
           </div>
         </div>

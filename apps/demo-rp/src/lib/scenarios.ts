@@ -1,4 +1,11 @@
+export interface ComplianceBadge {
+  detail: string;
+  label: string;
+  variant: "regulation" | "mechanism";
+}
+
 export interface Scenario {
+  compliance: ComplianceBadge[];
   dcr: { clientName: string; defaultScopes: string };
   description: string;
   id: string;
@@ -27,7 +34,8 @@ export const SCENARIOS: Record<string, Scenario> = {
       id: "bank",
       name: "Velocity Bank",
       tagline: "Modern digital banking",
-      description: "Open a current account with verified identity.",
+      description:
+        "EU anti-money laundering rules require tiered identity verification for account opening. Zentity satisfies CDD obligations through cryptographic proofs and selective name disclosure, without storing documents.",
       providerId: "zentity-bank",
       signInScopes,
       stepUpScopes,
@@ -37,6 +45,26 @@ export const SCENARIOS: Record<string, Scenario> = {
         clientName: "Velocity Bank",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
+      compliance: [
+        {
+          label: "AMLD6",
+          detail:
+            "EU anti-money laundering directive requires tiered identity verification (Customer Due Diligence) for account opening and ongoing monitoring.",
+          variant: "regulation",
+        },
+        {
+          label: "PSD2 SCA",
+          detail:
+            "Strong Customer Authentication requires two independent factors. Passkey authentication satisfies possession and inherence.",
+          variant: "regulation",
+        },
+        {
+          label: "Step-Up Auth",
+          detail:
+            "Basic verification at sign-in, enhanced identity disclosure for high-value actions.",
+          variant: "mechanism",
+        },
+      ],
       notShared: [
         "Your passport image",
         "Your exact date of birth",
@@ -52,7 +80,8 @@ export const SCENARIOS: Record<string, Scenario> = {
       id: "exchange",
       name: "Nova Exchange",
       tagline: "Trade crypto globally",
-      description: "Complete KYC for trading without document storage.",
+      description:
+        "MiCA requires crypto exchanges to verify customer identity and nationality for sanctions compliance. Zentity proves nationality through zero-knowledge proofs, with no document upload or retention.",
       providerId: "zentity-exchange",
       signInScopes,
       stepUpScopes,
@@ -62,6 +91,38 @@ export const SCENARIOS: Record<string, Scenario> = {
         clientName: "Nova Exchange",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
+      compliance: [
+        {
+          label: "MiCA",
+          detail:
+            "EU crypto-asset regulation (2023/1114) requires identity verification for all trading accounts, with full CDD above EUR 1,000. Grandfathering ends July 2026.",
+          variant: "regulation",
+        },
+        {
+          label: "Travel Rule",
+          detail:
+            "Transfer of Funds Regulation (EU 2023/1113) requires originator and beneficiary identification for crypto transfers.",
+          variant: "regulation",
+        },
+        {
+          label: "DAC8",
+          detail:
+            "EU crypto tax reporting directive (2023/2226) requires CASPs to verify customer identity and report transactions to tax authorities. Full effect since January 2026.",
+          variant: "regulation",
+        },
+        {
+          label: "GENIUS Act",
+          detail:
+            "US stablecoin law (signed July 2025) mandates Treasury to evaluate digital identity verification mechanisms for AML compliance, with privacy risk as an explicit criterion.",
+          variant: "regulation",
+        },
+        {
+          label: "Zero-Knowledge Proofs",
+          detail:
+            "Nationality proven cryptographically without revealing the underlying document.",
+          variant: "mechanism",
+        },
+      ],
       notShared: [
         "Your passport image",
         "Your full address",
@@ -77,7 +138,8 @@ export const SCENARIOS: Record<string, Scenario> = {
       id: "wine",
       name: "Vino Delivery",
       tagline: "Fine wine at your door",
-      description: "Prove you're 21+ without revealing your birthdate.",
+      description:
+        "French law requires age verification with double anonymity: the site learns only a yes/no age result, and the verification provider never learns which site was visited.",
       providerId: "zentity-wine",
       signInScopes,
       stepUpScopes,
@@ -87,6 +149,26 @@ export const SCENARIOS: Record<string, Scenario> = {
         clientName: "Vino Delivery",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
+      compliance: [
+        {
+          label: "ARCOM",
+          detail:
+            "French regulatory standard mandates double anonymity: the site cannot identify the user, and the provider cannot identify the site. Mandatory since April 2025.",
+          variant: "regulation",
+        },
+        {
+          label: "Loi SREN",
+          detail:
+            "French law (No. 2024-449) empowers ARCOM to enforce age verification standards on restricted-goods platforms. Penalties up to 4% of worldwide turnover.",
+          variant: "regulation",
+        },
+        {
+          label: "Pairwise Pseudonymity",
+          detail:
+            "Each session uses a unique, unlinkable identifier. No cross-session correlation is possible.",
+          variant: "mechanism",
+        },
+      ],
       notShared: [
         "Your name or email",
         "Your exact date of birth",
@@ -103,7 +185,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       name: "Relief Global",
       tagline: "Emergency Aid Distribution",
       description:
-        "Verify identity to receive aid without exposing sensitive data.",
+        "Humanitarian aid requires identity verification to prevent duplicate claims, but centralized databases endanger vulnerable populations. Zentity proves eligibility with minimal disclosure and zero data retention.",
       providerId: "zentity-aid",
       signInScopes,
       stepUpScopes,
@@ -113,6 +195,20 @@ export const SCENARIOS: Record<string, Scenario> = {
         clientName: "Relief Global",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
+      compliance: [
+        {
+          label: "GDPR Art. 9",
+          detail:
+            "Processing identity data of vulnerable populations requires a vital-interests legal basis, not consent, making data minimization structurally mandatory.",
+          variant: "regulation",
+        },
+        {
+          label: "Data Minimization",
+          detail:
+            "Only name and nationality shared. No biometrics retained, no centralized identity database created.",
+          variant: "mechanism",
+        },
+      ],
       notShared: [
         "Your biometric data",
         "Your full address history",
@@ -129,7 +225,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       name: "VeriPass",
       tagline: "Digital Credential Wallet",
       description:
-        "Receive a portable credential, then selectively present claims to verifiers.",
+        "eIDAS 2.0 mandates that users control exactly which attributes they share. Receive one verifiable credential, then selectively disclose different claims to different verifiers.",
       providerId: "zentity-veripass",
       signInScopes,
       stepUpScopes,
@@ -138,6 +234,32 @@ export const SCENARIOS: Record<string, Scenario> = {
         clientName: "VeriPass Wallet",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
+      compliance: [
+        {
+          label: "eIDAS 2.0",
+          detail:
+            "EU digital identity regulation (2024/1183) mandates selective attribute disclosure and non-traceability for wallet-based credentials. EUDI Wallets required by December 2026.",
+          variant: "regulation",
+        },
+        {
+          label: "NIST 800-63-4",
+          detail:
+            "US federal digital identity guidelines now support a digital evidence pathway for verifiable credentials and mDLs, with privacy-enhancing techniques recognized as fundamental.",
+          variant: "regulation",
+        },
+        {
+          label: "SD-JWT VC",
+          detail:
+            "Selective Disclosure JWT Verifiable Credentials allow the holder to reveal only chosen claims per presentation.",
+          variant: "mechanism",
+        },
+        {
+          label: "OID4VCI",
+          detail:
+            "OpenID for Verifiable Credential Issuance protocol for receiving credentials from a trusted issuer.",
+          variant: "mechanism",
+        },
+      ],
       notShared: [
         "Your raw biometric data",
         "Your document images",

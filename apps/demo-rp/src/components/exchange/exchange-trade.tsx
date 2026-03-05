@@ -30,9 +30,10 @@ export function ExchangeTrade({ isVerified, onStepUp }: ExchangeTradeProps) {
             </div>
             <h3 className="font-semibold text-lg">Limited Access</h3>
             <p className="mt-2 text-muted-foreground text-sm">
-              To trade on Nova Exchange, we need to verify your nationality for
-              regulatory compliance. This is done through Zentity &mdash; your
-              documents are never stored.
+              MiCA requires crypto-asset service providers to verify customer
+              nationality for sanctions compliance. Zentity proves nationality
+              through a zero-knowledge proof. No passport image or document
+              number is shared.
             </p>
             <div className="mt-4">
               <Badge className="font-mono text-xs" variant="outline">

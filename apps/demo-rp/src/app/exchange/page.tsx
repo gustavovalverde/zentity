@@ -126,8 +126,8 @@ export default function ExchangePage() {
                 </span>
               </div>
               <p className="text-muted-foreground text-xs">
-                Connect with Zentity to start trading crypto with
-                privacy-preserving KYC.
+                MiCA requires identity verification for all trading accounts.
+                Connect with Zentity for privacy-preserving KYC.
               </p>
               <DcrRegistration
                 clientName={scenario.dcr.clientName}
