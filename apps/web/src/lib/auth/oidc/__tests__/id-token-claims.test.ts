@@ -2,7 +2,7 @@
  * Tests for the customIdTokenClaims logic in auth.ts.
  *
  * Validates that proof claims are merged into id_tokens when proof scopes
- * are present in the ephemeral entry, matching what demo-RPs expect.
+ * are present in the granted scopes, matching what demo-RPs expect.
  *
  * This tests the composite behavior of:
  * - consumeEphemeralClaimsByUser (identity PII from vault unlock)
@@ -34,35 +34,33 @@ const { filterIdentityByScopes } = await import("../identity-scopes");
 /**
  * Reproduces the customIdTokenClaims logic from auth.ts.
  * Kept in sync so that if the real logic changes, this test breaks.
+ *
+ * @param grantedScopes - The scopes from better-auth's token context
+ * @param ephemeral - Ephemeral claims from vault unlock (null for proof-only flows)
  */
 async function simulateCustomIdTokenClaims(
   userId: string,
+  grantedScopes: string[],
   ephemeral: {
     claims: Record<string, unknown>;
     scopes: string[];
   } | null
 ): Promise<Record<string, unknown>> {
-  if (!ephemeral) {
-    return {};
-  }
+  // Identity claims require ephemeral staging (vault unlock)
+  const identityClaims = ephemeral
+    ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
+    : {};
 
-  const identityClaims = filterIdentityByScopes(
-    ephemeral.claims,
-    ephemeral.scopes
-  );
-
+  // Proof claims use the granted scopes directly
   const hasProofScopes =
-    ephemeral.scopes.includes("proof:identity") ||
-    extractProofScopes(ephemeral.scopes).length > 0;
+    grantedScopes.includes("proof:identity") ||
+    extractProofScopes(grantedScopes).length > 0;
   if (!hasProofScopes) {
     return identityClaims;
   }
 
   const allProofClaims = await buildProofClaims(userId);
-  const proofClaims = filterProofClaimsByScopes(
-    allProofClaims,
-    ephemeral.scopes
-  );
+  const proofClaims = filterProofClaimsByScopes(allProofClaims, grantedScopes);
   return { ...identityClaims, ...proofClaims };
 }
 
@@ -96,16 +94,35 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
     setVerifiedUser();
   });
 
-  it("returns empty when no ephemeral entry", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", null);
+  it("returns empty when no ephemeral entry and no proof scopes", async () => {
+    const result = await simulateCustomIdTokenClaims(
+      "user-1",
+      ["openid"],
+      null
+    );
     expect(result).toEqual({});
   });
 
+  it("returns proof claims even without ephemeral entry (proof-only flow)", async () => {
+    const result = await simulateCustomIdTokenClaims(
+      "user-1",
+      ["openid", "proof:age"],
+      null
+    );
+
+    expect(result).toHaveProperty("age_proof_verified", true);
+    expect(Object.keys(result)).toHaveLength(1);
+  });
+
   it("returns only identity claims when no proof scopes", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", {
-      claims: { given_name: "Jane", family_name: "Doe" },
-      scopes: ["openid", "email", "identity.name"],
-    });
+    const result = await simulateCustomIdTokenClaims(
+      "user-1",
+      ["openid", "email", "identity.name"],
+      {
+        claims: { given_name: "Jane", family_name: "Doe" },
+        scopes: ["openid", "email", "identity.name"],
+      }
+    );
 
     expect(result).toEqual({ given_name: "Jane", family_name: "Doe" });
     expect(result).not.toHaveProperty("verified");
@@ -113,10 +130,14 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
   });
 
   it("merges proof claims when proof:verification scope is present (bank scenario)", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", {
-      claims: {},
-      scopes: ["openid", "email", "proof:verification"],
-    });
+    const result = await simulateCustomIdTokenClaims(
+      "user-1",
+      ["openid", "email", "proof:verification"],
+      {
+        claims: {},
+        scopes: ["openid", "email", "proof:verification"],
+      }
+    );
 
     expect(result).toHaveProperty("verification_level", "full");
     expect(result).toHaveProperty("verified", true);
@@ -127,19 +148,21 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
   });
 
   it("merges proof claims when proof:age scope is present (wine scenario)", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", {
-      claims: {},
-      scopes: ["openid", "email", "proof:age"],
-    });
+    const result = await simulateCustomIdTokenClaims(
+      "user-1",
+      ["openid", "proof:age"],
+      null
+    );
 
     expect(result).toHaveProperty("age_proof_verified", true);
     expect(Object.keys(result)).toHaveLength(1);
   });
 
   it("merges both identity and proof claims (bank step-up with proof)", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", {
+    const scopes = ["openid", "email", "identity.name", "proof:verification"];
+    const result = await simulateCustomIdTokenClaims("user-1", scopes, {
       claims: { given_name: "Jane", family_name: "Doe" },
-      scopes: ["openid", "email", "identity.name", "proof:verification"],
+      scopes,
     });
 
     // Identity claims
@@ -152,10 +175,11 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
   });
 
   it("proof:identity umbrella scope returns all proof claims", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", {
-      claims: {},
-      scopes: ["openid", "proof:identity"],
-    });
+    const result = await simulateCustomIdTokenClaims(
+      "user-1",
+      ["openid", "proof:identity"],
+      null
+    );
 
     expect(result).toHaveProperty("verification_level");
     expect(result).toHaveProperty("verified");
@@ -188,9 +212,10 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
     mockGetIdentityBundleByUserId.mockResolvedValueOnce(null);
     mockGetLatestIdentityDocumentByUserId.mockResolvedValueOnce(null);
 
-    const result = await simulateCustomIdTokenClaims("user-2", {
+    const scopes = ["openid", "identity.name", "proof:verification"];
+    const result = await simulateCustomIdTokenClaims("user-2", scopes, {
       claims: { given_name: "Bob" },
-      scopes: ["openid", "identity.name", "proof:verification"],
+      scopes,
     });
 
     // Identity claims still present
@@ -201,19 +226,20 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
   });
 
   it("wine scenario full flow: proof:age + identity.name + identity.address", async () => {
-    const result = await simulateCustomIdTokenClaims("user-1", {
+    const scopes = [
+      "openid",
+      "email",
+      "proof:age",
+      "identity.name",
+      "identity.address",
+    ];
+    const result = await simulateCustomIdTokenClaims("user-1", scopes, {
       claims: {
         given_name: "Alice",
         family_name: "Smith",
         address: { formatted: "123 Main St" },
       },
-      scopes: [
-        "openid",
-        "email",
-        "proof:age",
-        "identity.name",
-        "identity.address",
-      ],
+      scopes,
     });
 
     // Identity from vault unlock

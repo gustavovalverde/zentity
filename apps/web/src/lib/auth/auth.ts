@@ -776,20 +776,19 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customIdTokenClaims: async ({ user }) => {
+      customIdTokenClaims: async ({ user, scopes }) => {
+        const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
+
+        // Identity claims require ephemeral staging (vault unlock)
         const ephemeral = consumeEphemeralClaimsByUser(user.id);
-        if (!ephemeral) {
-          return {};
-        }
+        const identityClaims = ephemeral
+          ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
+          : {};
 
-        const identityClaims = filterIdentityByScopes(
-          ephemeral.claims,
-          ephemeral.scopes
-        );
-
+        // Proof claims use the granted scopes directly — no vault unlock needed
         const hasProofScopes =
-          ephemeral.scopes.includes("proof:identity") ||
-          extractProofScopes(ephemeral.scopes).length > 0;
+          scopeList.includes("proof:identity") ||
+          extractProofScopes(scopeList).length > 0;
         if (!hasProofScopes) {
           return identityClaims;
         }
@@ -797,7 +796,7 @@ export const auth = betterAuth({
         const allProofClaims = await buildProofClaims(user.id);
         const proofClaims = filterProofClaimsByScopes(
           allProofClaims,
-          ephemeral.scopes
+          scopeList
         );
         return { ...identityClaims, ...proofClaims };
       },
