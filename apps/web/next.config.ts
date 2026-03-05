@@ -118,7 +118,7 @@ const nextConfig: NextConfig = {
             // 'unsafe-inline' required for Next.js hydration scripts; 'wasm-unsafe-eval' for ZK/FHE WASM
             "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
-            "font-src 'self' data:",
+            "font-src 'self' data: https://fonts.reown.com",
             // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
             `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains}`,
             // data:/blob: for document scans and selfie processing; react-circle-flags CDN for country flags
