@@ -296,8 +296,9 @@ const scenarios: ScenarioItem[] = [
     description: (
       <>
         Biometric verification and NGO-signed attestations establish{" "}
-        <strong>identity without government documents</strong>. Threshold key
-        recovery ensures the person retains control even after losing a device.
+        <strong>identity without government documents</strong>. FROST threshold
+        key recovery ensures the person retains control even after losing a
+        device.
       </>
     ),
     signal: "1 billion people globally lack government-recognized ID",
@@ -401,7 +402,7 @@ const resilienceCards: Array<{
     color: "red",
     title: "Erasure by Deletion",
     description:
-      "Deleting the user's credential orphans all encrypted data. No administrator backdoor, no recovery key held by the platform. GDPR right to erasure as an architectural property.",
+      "Deleting the user's credential orphans all encrypted data. No administrator backdoor — recovery uses FROST threshold guardian signatures (no single key). GDPR right to erasure as an architectural property.",
   },
 ];
 

@@ -64,6 +64,8 @@ const standards = [
   "OIDC4VCI / OIDC4VP / OIDC4IDA profile",
   "RFC 9126 Pushed Authorization Requests (PAR)",
   "RFC 9449 DPoP (Demonstration of Proof-of-Possession)",
+  "JARM (JWT Secured Authorization Response Mode)",
+  "HAIP (High Assurance Interoperability Profile)",
   "Post-quantum migration alignment (FIPS 203/204)",
 ];
 

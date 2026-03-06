@@ -85,7 +85,7 @@ export function WineHeader({
               className="border-success/30 bg-success/5 px-3 py-1 font-sans text-success tracking-wide"
               variant="outline"
             >
-              Verified 21+
+              Verified 18+
             </Badge>
           )}
           {isSignedIn && (

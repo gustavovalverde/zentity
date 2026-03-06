@@ -28,7 +28,7 @@ function LandingPage() {
   useDocumentHead({
     title: "Zentity - Privacy-First Identity Verification",
     description:
-      "Privacy-first identity verification using passkeys, zero-knowledge proofs, and standards-based OAuth/OIDC integrations.",
+      "Privacy-first identity verification using zero-knowledge proofs, fully homomorphic encryption, post-quantum cryptography, and standards-based OAuth/OIDC integrations.",
   });
 
   return (

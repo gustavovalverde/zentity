@@ -158,7 +158,8 @@ const VAULT_ERRORS: Record<
   },
   browser_unsupported: {
     title: "Your browser doesn't support secure vault unlock.",
-    remedy: "Try Chrome or Edge, which support passkey-based vault access.",
+    remedy:
+      "Try Chrome, Edge, or Safari, which support passkey-based vault access.",
   },
   cancelled: {
     title: "Passkey prompt was dismissed.",
@@ -166,7 +167,7 @@ const VAULT_ERRORS: Record<
   },
   session_expired: {
     title: "Your session key has expired.",
-    remedy: "Sign in again with your password to unlock your vault.",
+    remedy: "Sign in again to unlock your vault.",
   },
   wallet_needed: {
     title: "Wallet signature needed to unlock your vault.",

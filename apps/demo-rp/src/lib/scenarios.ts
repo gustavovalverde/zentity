@@ -170,7 +170,7 @@ export const SCENARIOS: Record<string, Scenario> = {
         },
       ],
       notShared: [
-        "Your name or email",
+        "Your email address",
         "Your exact date of birth",
         "Your document details",
         "Your nationality",

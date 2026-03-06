@@ -112,7 +112,7 @@ export function CredentialChoice({
           <p className="mt-auto text-muted-foreground text-sm">
             {processingType === "passkey"
               ? "Creating passkey…"
-              : "Use fingerprint or face"}
+              : "Use fingerprint, face, or security key"}
           </p>
           {!prfSupported && (
             <p className="text-destructive text-xs">

@@ -46,7 +46,7 @@ export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
           <CardTitle>Open ZKPassport</CardTitle>
           <CardDescription>
             Tap the button below to open the ZKPassport app and scan your
-            passport.
+            document.
           </CardDescription>
         </CardHeader>
         <CardContent>

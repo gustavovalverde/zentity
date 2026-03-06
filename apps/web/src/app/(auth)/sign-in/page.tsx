@@ -182,8 +182,9 @@ export default function SignInPage() {
             <Alert>
               <TriangleAlert className="h-4 w-4" />
               <AlertDescription className="ml-2 text-xs">
-                Your device supports passkeys but some advanced encryption
-                features may be limited.
+                Your browser supports passkeys but not the PRF extension needed
+                for vault encryption. Identity verification requires a password
+                or a PRF-compatible browser (Chrome, Edge).
               </AlertDescription>
             </Alert>
           )}

@@ -72,7 +72,7 @@ export default function BankPage() {
             </div>
             <div>
               <span className="font-medium font-serif text-2xl tracking-wide">
-                VELOCITY
+                Velocity Bank
               </span>
               <span className="block text-[10px] uppercase tracking-[0.3em] opacity-70">
                 Private Client
@@ -132,7 +132,7 @@ export default function BankPage() {
         </div>
 
         <footer className="border-white/5 border-t py-8 text-center text-white/20 text-xs uppercase tracking-widest">
-          Velocity Private Bank &bull; Zurich &bull; London &bull; New York
+          Velocity Bank &bull; Zurich &bull; London &bull; New York
         </footer>
       </div>
     );

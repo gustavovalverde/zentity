@@ -209,6 +209,29 @@ export function TechnicalDeepDive() {
                         </div>
                       </div>
 
+                      {/* Mobile/NFC Path */}
+                      {/* biome-ignore lint/a11y/useSemanticElements: Diagram element, not a form fieldset */}
+                      <div
+                        role="group"
+                        className="z-10 rounded-lg border border-border bg-background p-4 shadow-sm"
+                        aria-label="Mobile NFC chip verification via ZKPassport"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-mono font-semibold text-foreground text-sm">
+                            Mobile / NFC Chip
+                          </div>
+                          <IconFingerprint
+                            className={cn(
+                              "size-4",
+                              colorStyles.emerald.iconText,
+                            )}
+                          />
+                        </div>
+                        <div className="mt-1 text-muted-foreground/70 text-xs">
+                          ZKPassport deep-link for chip verification
+                        </div>
+                      </div>
+
                       {/* Client → Gateway Connection */}
                       <div className="flex flex-col items-center">
                         <div className="h-2 w-px border-muted-foreground/40 border-l border-dashed" />
@@ -444,9 +467,9 @@ export function TechnicalDeepDive() {
                             </h4>
                           </div>
                           <p className="landing-body">
-                            Strong password authentication where the server
-                            never learns your password—only you can unlock your
-                            data.
+                            Strong password authentication (OPAQUE protocol)
+                            where the server never learns your password—only you
+                            can unlock your data.
                           </p>
                         </div>
 
@@ -484,7 +507,10 @@ export function TechnicalDeepDive() {
                             All three credentials follow the same custody flow,
                             with different UX and security tradeoffs. Profile
                             data is encrypted client-side, while disclosure
-                            requires explicit user unlock.
+                            requires explicit user unlock. If a credential is
+                            lost, FROST threshold guardian signatures enable
+                            recovery without any single party holding a complete
+                            key.
                           </p>
                         </div>
                       </div>
@@ -617,8 +643,8 @@ export function TechnicalDeepDive() {
                             <code className="rounded bg-muted px-1 text-xs">
                               selective disclosure
                             </code>{" "}
-                            format. Contains 12 claim types, including
-                            cryptographically derived attributes.
+                            format. Contains a comprehensive set of claim types,
+                            including cryptographically derived attributes.
                           </p>
                         </div>
 
@@ -924,7 +950,7 @@ export function TechnicalDeepDive() {
                           )}
                         >
                           <IconCircleCheck className="size-3" />
-                          Only you see the answer
+                          Server computed without decrypting
                         </div>
                       </div>
                     </div>
@@ -1015,6 +1041,43 @@ export function TechnicalDeepDive() {
                           <p className="landing-body">
                             Prove face similarity exceeds a threshold without
                             storing biometric templates.
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconFileCode
+                              className={cn(
+                                "size-5",
+                                colorStyles.orange.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Address Jurisdiction
+                            </h4>
+                          </div>
+                          <p className="landing-body">
+                            Prove residential address is in a jurisdiction via
+                            Merkle proof without revealing the full address.
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-muted/30 p-4">
+                          <div className="mb-2 flex items-center gap-3">
+                            <IconLink
+                              className={cn(
+                                "size-5",
+                                colorStyles.pink.iconText,
+                              )}
+                            />
+                            <h4 className="font-semibold text-foreground">
+                              Identity Binding
+                            </h4>
+                          </div>
+                          <p className="landing-body">
+                            Bind all proofs to the user&apos;s credential for
+                            replay protection across passkey, password, and
+                            wallet auth.
                           </p>
                         </div>
                       </div>
@@ -1194,7 +1257,10 @@ export function TechnicalDeepDive() {
                       </div>
                       <p className="landing-body mt-2">
                         Critical privacy boundaries are enforced by cryptography
-                        and scope-based consent controls.
+                        and scope-based consent controls. Verifiable credentials
+                        can be presented to external verifiers via OID4VP, with
+                        DCQL queries and holder binding ensuring only the
+                        requested claims are disclosed.
                       </p>
                     </div>
                   </div>

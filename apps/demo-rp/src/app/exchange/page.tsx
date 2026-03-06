@@ -9,6 +9,7 @@ import { ExchangeMarkets } from "@/components/exchange/exchange-markets";
 import { ExchangePortfolio } from "@/components/exchange/exchange-portfolio";
 import { ExchangeTrade } from "@/components/exchange/exchange-trade";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
+import { MARKET_DATA } from "@/data/exchange";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { getScenario } from "@/lib/scenarios";
 
@@ -143,18 +144,25 @@ export default function ExchangePage() {
               Market Ticker
             </h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded bg-background/50 p-2">
-                <span className="font-bold">BTC/USD</span>
-                <span className="text-success">$64,231.40</span>
-              </div>
-              <div className="flex items-center justify-between rounded bg-background/50 p-2">
-                <span className="font-bold">ETH/USD</span>
-                <span className="text-destructive">$3,412.10</span>
-              </div>
-              <div className="flex items-center justify-between rounded bg-background/50 p-2">
-                <span className="font-bold">SOL/USD</span>
-                <span className="text-success">$148.50</span>
-              </div>
+              {MARKET_DATA.slice(0, 3).map((asset) => (
+                <div
+                  className="flex items-center justify-between rounded bg-background/50 p-2"
+                  key={asset.symbol}
+                >
+                  <span className="font-bold">{asset.symbol}/USD</span>
+                  <span
+                    className={
+                      asset.change24h >= 0 ? "text-success" : "text-destructive"
+                    }
+                  >
+                    $
+                    {asset.price.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 

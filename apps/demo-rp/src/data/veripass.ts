@@ -123,4 +123,7 @@ export const CLAIM_LABELS: Record<string, string> = {
   policy_version: "Policy Version",
   verification_time: "Verification Time",
   attestation_expires_at: "Attestation Expiry",
+  chip_verified: "Chip Verified",
+  chip_verification_method: "Chip Verification Method",
+  identity_binding_verified: "Identity Binding Verified",
 };

@@ -120,7 +120,7 @@ export function WineOrderConfirmation({
           </p>
           <p>
             Your birthdate was never shared &mdash; only a yes/no proof that
-            you&apos;re 21+. Delivery details were selectively disclosed and are
+            you&apos;re 18+. Delivery details were selectively disclosed and are
             not stored by Vino Delivery.
           </p>
           <div className="flex flex-col gap-1 text-xs">

@@ -116,8 +116,8 @@ export default async function VerifyPage() {
           <div>
             <h1 className="font-bold text-2xl">Verify Your Identity</h1>
             <p className="text-muted-foreground">
-              Verify your passport, national ID, or residence permit to unlock
-              features
+              Scan your document or use your document&apos;s NFC chip to verify
+              and unlock features
             </p>
           </div>
           <TierBadge size="md" tier={assuranceState.tier} />
@@ -351,10 +351,12 @@ function PrivacyCard({ showChipInfo }: Readonly<{ showChipInfo?: boolean }>) {
               </strong>
             </p>
             <p>
-              Your personal data is never stored in readable form. We only keep
-              encrypted proofs of your verified attributes (e.g., &quot;over
-              18&quot;). Raw images are processed in memory and immediately
-              discarded.
+              Your personal data is never stored in readable form.
+              Zero-knowledge proofs are generated locally in your browser, and
+              sensitive attributes are encrypted with fully homomorphic
+              encryption (FHE). We only keep encrypted proofs of your verified
+              attributes (e.g., &quot;over 18&quot;). Raw images are processed
+              in memory and immediately discarded.
             </p>
             {showChipInfo && (
               <p>

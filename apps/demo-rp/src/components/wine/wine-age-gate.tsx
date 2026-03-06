@@ -75,7 +75,7 @@ export function WineAgeGate({
         <div className="relative z-10 w-full max-w-md space-y-10 text-center">
           <div className="space-y-6">
             <div className="mx-auto flex size-20 items-center justify-center rounded-full border border-primary/20 bg-primary/5">
-              <span className="font-bold text-4xl text-primary">21+</span>
+              <span className="font-bold text-4xl text-primary">18+</span>
             </div>
             <h1 className="font-medium text-4xl leading-tight md:text-5xl">
               Age Verification
@@ -83,7 +83,7 @@ export function WineAgeGate({
               <span className="text-primary italic">Required</span>
             </h1>
             <p className="mx-auto max-w-sm font-sans text-lg text-muted-foreground leading-relaxed">
-              You must be 21 or older to browse and purchase alcohol. Verify
+              You must be 18 or older to browse and purchase alcohol. Verify
               your age privately — your birthdate is never shared, and neither
               party learns more than necessary.
             </p>
