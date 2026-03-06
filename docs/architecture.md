@@ -58,7 +58,13 @@ flowchart LR
     SIGNER --> SIGNERS
   end
 
+  subgraph Mobile["Mobile Device"]
+    ZKP["ZKPassport App\nNFC + ZK Proofs"]
+  end
+
   UI -->|"doc + selfie"| API
+  Mobile -->|"NFC proofs"| API
+  API -->|"zkpassport.verify()"| API
   API -->|"image"| OCR
   OCR -->|"extracted fields"| API
 
@@ -129,6 +135,17 @@ Zentity supports two usage modes that share the same core cryptography but diffe
 - The relying party receives **PII + proofs + evidence pack** as required by regulation.
 - Zentity retains **cryptographic artifacts only**, not plaintext PII.
 
+**ARCOM double anonymity** (pairwise flows)
+
+For DCR clients, Zentity defaults to pairwise subject identifiers (`subject_type: "pairwise"`), preventing cross-RP user correlation. In proof-only flows, additional ARCOM measures apply:
+
+- Consent records deleted after authorization code issuance (transient linkage)
+- Access token DB records deleted after JWT issuance
+- Session IP/UA metadata scrubbed
+- Opaque access tokens forced for pairwise clients (no JWT `sub` leakage)
+
+See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
+
 ---
 
 ## Data Flows
@@ -171,7 +188,7 @@ sequenceDiagram
   API->>DB: Update identity bundle with fheKeyId
   API-->>UI: Enrollment complete
 
-  Note over User,OCR: Phase 2 — Identity verification
+  Note over User,OCR: Phase 2 — Identity verification (OCR path)
   User->>UI: Upload ID + selfie
   UI->>API: Submit document + liveness
   API->>OCR: OCR + parse (transient)
@@ -180,6 +197,16 @@ sequenceDiagram
   UI->>UI: Generate ZK proofs (client-side)
   UI->>API: Store proofs
   API-->>UI: Verification complete (Tier progression)
+
+  Note over User,FHE: Phase 2 (alt) — NFC chip verification
+  User->>UI: Select NFC chip method (ZKPassport)
+  UI->>UI: Deep-link to ZKPassport mobile app
+  Note right of UI: ZKPassport reads NFC chip, generates proofs on device
+  UI->>API: passportChip.submitResult (proofs + nullifier)
+  API->>API: zkpassport.verify() — server-side proof verification
+  API->>DB: Store identity_verifications (method: nfc_chip)
+  API->>FHE: Schedule FHE encryption (synthetic liveness 1.0)
+  API-->>UI: Verification complete
 ```
 
 **Password (OPAQUE) flow**
@@ -235,7 +262,7 @@ sequenceDiagram
   API-->>RP: Scope-filtered proof claims (non-PII flags)
 ```
 
-When DPoP is used, the token endpoint validates the DPoP proof and returns a server-managed `DPoP-Nonce` for replay prevention.
+When DPoP is used, the token endpoint validates the DPoP proof and returns a server-managed `DPoP-Nonce` for replay prevention. The `DpopNonceStore` enforces single-use nonces with a configurable TTL (`DPOP_NONCE_TTL_SECONDS`, default 30s). PAR is mandatory (`requirePar: true`) — all authorization requests must first be pushed to the PAR endpoint.
 
 ---
 

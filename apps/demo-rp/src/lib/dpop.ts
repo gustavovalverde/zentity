@@ -1,12 +1,21 @@
 import "server-only";
 
-import {
-  calculateJwkThumbprint,
-  exportJWK,
-  generateKeyPair,
-  type JWK,
-  SignJWT,
-} from "jose";
+import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
+
+const BASE64_PLUS = /\+/g;
+const BASE64_SLASH = /\//g;
+const BASE64_PAD = /=+$/;
+
+async function hashAccessToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token)
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(BASE64_PLUS, "-")
+    .replace(BASE64_SLASH, "_")
+    .replace(BASE64_PAD, "");
+}
 
 interface DpopClient {
   proofFor(
@@ -40,9 +49,7 @@ export async function createDpopClient(): Promise<DpopClient> {
       htu: url,
       jti: crypto.randomUUID(),
       iat: Math.floor(Date.now() / 1000),
-      ...(accessToken
-        ? { ath: await calculateJwkThumbprint(publicJwk, "sha256") }
-        : {}),
+      ...(accessToken ? { ath: await hashAccessToken(accessToken) } : {}),
       ...(nonce ? { nonce } : {}),
     })
       .setProtectedHeader({

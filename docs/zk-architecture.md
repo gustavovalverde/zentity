@@ -34,8 +34,9 @@ Zentity generates proofs **client‑side** so private inputs stay in the browser
 | `age_verification` | Prove age >= threshold | DOB (days since 1900) + document hash | Current days, min age days, nonce, claim hash |
 | `doc_validity` | Prove document not expired | Expiry date + document hash | Current date, nonce, claim hash |
 | `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
+| `address_jurisdiction` | Prove address in jurisdiction | Address + Merkle path | Merkle root, nonce, claim hash |
 | `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
-| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, binding commitment, is_bound |
+| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, base_commitment, binding_commitment, is_bound |
 
 **Importance:** The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
 
@@ -85,6 +86,8 @@ Binding requires the user's raw credential material (PRF output, OPAQUE export k
 2. **Consumed at proof generation** — The binding context resolver reads the cache to derive the binding secret via HKDF.
 3. **Cleared after proof storage** — The cache is cleared after all proofs are stored, regardless of success or failure.
 4. **TTL safety net** — If cleanup doesn't run (e.g., tab crash), the cache auto-expires.
+
+For the ZKPassport NFC flow, credential material is still required for identity binding but the WebAuthn prompt can be suppressed via the `promptPasskey` option when the cache is warm.
 
 If the cache is expired when proofs are generated (user was idle, page refreshed, TTL fired), the behavior depends on auth mode:
 
@@ -182,6 +185,40 @@ For values that are already field elements (e.g., previously normalized
 - **Any 32-byte cryptographic output**
 
 See `src/lib/privacy/zk/noir-prover.worker.ts` for implementation and `src/lib/blockchain/attestation/claim-hash.ts` for server-side reduction.
+
+## ZKPassport NFC Chip Verification
+
+ZKPassport provides an alternative trust model where proofs are generated on the user's mobile device by the ZKPassport app, not in the browser Web Worker.
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Mobile Device                                 │
+│  ┌─────────────┐    ┌─────────────────┐    ┌──────────────────────┐ │
+│  │ NFC Chip    │───▶│  ZKPassport App │───▶│    ZK Proofs         │ │
+│  │ (passport)  │    │  (own circuits) │    │  (proof + nullifier) │ │
+│  └─────────────┘    └─────────────────┘    └──────────┬───────────┘ │
+└───────────────────────────────────────────────────────│─────────────┘
+                                                        │
+                                                        ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                              Server                                  │
+│  ┌──────────────────────────┐    ┌───────────────────────────────┐  │
+│  │   zkpassport.verify()    │───▶│   Store: identity_verifications│  │
+│  │ (NOT UltraHonkVerifier)  │    │   method: "nfc_chip"           │  │
+│  └──────────────────────────┘    └───────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Key differences from browser-based Noir proving:
+
+- **Proof generation**: ZKPassport's own circuit infrastructure on mobile, not Noir/Barretenberg in a Web Worker
+- **Verification**: Server-side via `zkpassport.verify()`, not `UltraHonkVerifierBackend`
+- **Liveness**: Synthetic score (1.0) — physical chip challenge-response proves possession
+- **Nullifier**: `uniqueIdentifier` prevents the same passport from being registered across multiple accounts
+- **Country/document pre-check**: `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support before showing the option
+- **Dev mode**: `devMode` flag relaxes proof verification in `development`/`test` environments; production enforces strict verification
+
+The unified `identity_verifications` table stores results from both paths via the `method` discriminator (`"ocr"` | `"nfc_chip"`). FHE encryption is scheduled identically after either path completes.
 
 ## Implementation Notes
 

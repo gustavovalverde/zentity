@@ -97,7 +97,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | Data | ZK | FHE | Commit | Vault | Notes |
 |---|---|---|---|---|---|
 | Nationality | ✅ | — | — | ✅ | Proven once via ZK (nationality membership proof). Stored in profile vault for OAuth disclosure. |
-| Address country code | ◐ | ✅ | — | — | **NEW**: Country code from residential address. |
+| Address country code | ◐ | — | — | — | Country code from residential address. Stored as plaintext integer on `identity_bundles` and `identity_verifications`. |
 | Address commitment | — | — | ✅ | — | **NEW**: SHA256(address + salt) for audit. |
 
 ### Screening & Risk (Server-Side)
@@ -107,7 +107,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | PEP screening result | — | — | Signed claim | — | **NEW**: Boolean result + attestation. |
 | Sanctions screening result | — | — | Signed claim | — | **NEW**: Boolean result + attestation. |
 | Risk level | — | — | Server-derived | — | **NEW**: low/medium/high/critical. |
-| Risk score | — | ✅ | — | — | **NEW**: Numeric score (0-100). |
+| Risk score | — | — | — | — | Numeric score (0-100). Stored as plaintext integer on `identity_bundles`. |
 
 ### Identity & Vault
 
@@ -119,11 +119,17 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
 | FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
 
-**Document metadata** (`documentType`, `issuerCountry`) is **not stored** in the permanent `identity_documents` table. It exists in:
+**Document metadata** (`documentType`, `issuerCountry`) is stored directly on `identity_verifications` for operational use. Full PII lives only in the profile vault. It also exists in:
 
 - **Profile vault** — credential-encrypted, for OAuth identity claims (`identity.document` scope)
 - **Signed OCR claims** — integrity-protected attestation (`ocr_result` signed claim)
-- **Transient drafts** — used during verification finalization, then discarded on re-verification
+
+### NFC Chip Claims
+
+| Data / Claim | ZK | FHE | Commit | Vault | Notes |
+|---|---|---|---|---|---|
+| Chip verified | — | — | — | — | Boolean flag from ZKPassport proof verification (`proof:chip` scope). |
+| Chip verification method | — | — | — | — | `"nfc_chip"` — discriminator on `identity_verifications.method`. |
 
 ### Auth & System
 
@@ -154,7 +160,7 @@ This system intentionally splits data across **server storage** and **client‑o
 
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
-| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), PAR request objects (`haip_pushed_requests`), OID4VP session state (`haip_vp_sessions`), status fields | Server readable | Required for basic UX, auth, and workflow state |
+| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), PAR request objects (`haip_pushed_request`), OID4VP session state (`haip_vp_session`), status fields | Server readable | Required for basic UX, auth, and workflow state |
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑, OPAQUE‑, or wallet‑derived keys) | User‑controlled privacy + encrypted computation |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
@@ -182,6 +188,8 @@ The vault is **not** a separate storage system. It is a **server‑stored encryp
 7. **DPoP token binding** - access tokens bound to client's ephemeral key pair, preventing replay of stolen tokens.
 8. **PAR prevents parameter leakage** - authorization parameters submitted server-side, not in browser URLs.
 9. **JARM encrypted VP responses** - presentation responses encrypted to verifier's key, visible only to intended recipient.
+10. **Pairwise subject identifiers** - DCR clients default to `subject_type: "pairwise"`, preventing cross-RP user correlation.
+11. **Transient OAuth linkage (ARCOM)** - consent records deleted after code issuance for pairwise proof-only flows; access token DB records deleted after JWT issuance; session IP/UA metadata scrubbed. See [ADR-0001](adr/0001-arcom-double-anonymity.md).
 
 ## Attestation Schema
 
@@ -203,12 +211,12 @@ erDiagram
 
   %% ── Identity verification ──
   USERS ||--|| IDENTITY_BUNDLES : owns
-  USERS ||--o{ IDENTITY_DOCUMENTS : submits
+  USERS ||--o{ IDENTITY_VERIFICATIONS : submits
   USERS ||--o{ ENCRYPTED_ATTRIBUTES : stores
-  IDENTITY_DOCUMENTS ||--o{ ZK_PROOFS : proves
-  IDENTITY_DOCUMENTS ||--o{ SIGNED_CLAIMS : attests
-  IDENTITY_DOCUMENTS ||--o{ ATTESTATION_EVIDENCE : evidences
-  IDENTITY_DOCUMENTS ||--o{ IDENTITY_VERIFICATION_DRAFTS : drafts
+  IDENTITY_VERIFICATIONS ||--o{ ZK_PROOFS : proves
+  IDENTITY_VERIFICATIONS ||--o{ SIGNED_CLAIMS : attests
+  IDENTITY_VERIFICATIONS ||--o{ ATTESTATION_EVIDENCE : evidences
+  IDENTITY_VERIFICATIONS ||--o{ IDENTITY_VERIFICATION_DRAFTS : drafts
   USERS ||--o{ IDENTITY_VERIFICATION_DRAFTS : owns
   IDENTITY_VERIFICATION_DRAFTS ||--o{ IDENTITY_VERIFICATION_JOBS : spawns
 
@@ -229,7 +237,8 @@ erDiagram
   USERS ||--o{ OAUTH_IDENTITY_DATA : consents_to
 
   %% ── HAIP compliance ──
-  OAUTH_CLIENT ||--o{ HAIP_PUSHED_REQUESTS : par_requests
+  OAUTH_CLIENT ||--o{ HAIP_PUSHED_REQUEST : par_requests
+  HAIP_VP_SESSION ||--|| OAUTH_CLIENT : belongs_to
 
   %% ── Web3 & credentials ──
   USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : attests
@@ -273,17 +282,46 @@ erDiagram
 
   IDENTITY_BUNDLES {
     text user_id PK "One per user"
+    text wallet_address "Optional wallet association"
     text status "pending | verified"
-    text fheKeyId "FHE service key reference"
+    text fhe_key_id "FHE service key reference"
+    text fhe_status "pending | encrypting | complete | error"
+    text dob_commitment "SHA256(dob + salt)"
+    text address_commitment "SHA256(address + salt)"
+    integer address_country_code "Plaintext country code"
+    text pep_screening_result "Boolean result"
+    text sanctions_screening_result "Boolean result"
+    text risk_level "low | medium | high | critical"
+    integer risk_score "0-100 (plaintext)"
+    integer last_verified_at
+    integer next_verification_due
+    integer verification_count
   }
-  IDENTITY_DOCUMENTS {
+  IDENTITY_VERIFICATIONS {
     text id PK
     text user_id FK
+    text method "ocr | nfc_chip"
+    text status "pending | verified | failed"
+    text document_type "passport | id_card | etc."
+    text issuer_country "ISO alpha-3"
     text document_hash "SHA-256 of document"
+    text name_commitment "SHA256(name + salt)"
+    text dob_commitment "SHA256(dob + salt)"
+    text nationality_commitment "SHA256(nationality + salt)"
+    text address_commitment "SHA256(address + salt)"
+    integer address_country_code "Plaintext country code"
+    real confidence_score "OCR confidence"
+    real liveness_score "1.0 for NFC chip"
+    integer liveness_passed "Boolean"
+    integer face_match_passed "Boolean"
+    integer age_verified "Boolean"
+    integer sanctions_cleared "Boolean"
+    text unique_identifier "ZKPassport nullifier (NFC only)"
+    integer verified_at
   }
   IDENTITY_VERIFICATION_DRAFTS {
     text id PK
-    text document_id FK
+    text verification_id FK
   }
   IDENTITY_VERIFICATION_JOBS {
     text id PK
@@ -292,15 +330,15 @@ erDiagram
 
   ZK_PROOFS {
     text id PK
-    text document_id FK "age, doc_validity, etc."
+    text verification_id FK "age, doc_validity, etc."
   }
   SIGNED_CLAIMS {
     text id PK
-    text document_id FK "liveness, face_match, ocr"
+    text verification_id FK "liveness, face_match, ocr"
   }
   ATTESTATION_EVIDENCE {
     text id PK
-    text document_id FK "policy_hash + proof_set_hash"
+    text verification_id FK "policy_hash + proof_set_hash"
   }
 
   ENCRYPTED_ATTRIBUTES {
@@ -375,14 +413,14 @@ erDiagram
     text crv "Ed25519 | P-256 | null"
   }
 
-  HAIP_PUSHED_REQUESTS {
+  HAIP_PUSHED_REQUEST {
     text id PK
     text request_id UK
     text client_id FK
     text request_params
     integer expires_at
   }
-  HAIP_VP_SESSIONS {
+  HAIP_VP_SESSION {
     text id PK
     text session_id UK
     text nonce UK
@@ -426,9 +464,9 @@ This enables auditors and relying parties to validate **exactly which proofs** a
 
 ## Multi-Document Model
 
-- Users can register **multiple documents** (passport, ID, license).
-- Every proof and evidence pack is **document-scoped** (`document_id`).
-- The **bundle status** is derived from the selected/most trusted document.
+- Users can register **multiple documents** (passport, ID, license) via OCR or NFC chip.
+- Every proof and evidence pack is **verification-scoped** (`verification_id`).
+- The **bundle status** is derived from the selected/most trusted verification.
 
 This supports upgrades and re-verification without overwriting previous evidence.
 
@@ -436,7 +474,7 @@ This supports upgrades and re-verification without overwriting previous evidence
 
 ## Web3 Attestation Schema
 
-Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **date of birth (dobDays)**, **compliance level**, and optional flags.
+Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **birth year offset** (`birthYearOffset`, u8 0–255), **compliance level**, and optional flags.
 Public metadata includes **proofSetHash**, **policyHash**, **issuerId**, and timestamps for auditability.
 
 The encrypted attributes allow compliance checks **under encryption**. The public metadata enables audits without revealing PII. See [Web3 Architecture](web3-architecture.md) for the implementation details.

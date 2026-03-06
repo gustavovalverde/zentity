@@ -247,12 +247,24 @@ FHE key enrollment is **not** part of sign-up — it happens as a verification p
 
 **Verification Flow** (from `/dashboard/verify/*`):
 
+Users choose a verification method via `VerificationMethodCards` (OCR or NFC chip, gated by `NEXT_PUBLIC_ZKPASSPORT_ENABLED`). Both paths converge at the same `identity_verifications` table (unified schema with `method` discriminator: `"ocr"` | `"nfc_chip"`).
+
+**OCR path:**
+
 1. **Document OCR** → `trpc.identity.prepareDocument` extracts data, generates commitments
 2. **Liveness + Face Match** → `trpc.liveness.*` runs multi-gesture challenges, server verifies
 3. **Profile Secret** → Extracted PII is encrypted with the user's credential (passkey/password/wallet) and stored as a `PROFILE` secret. This is the only persistent copy of the user's PII and is only decryptable by the user.
 4. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
 5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
 6. User reaches **Tier 2/3** depending on proof completeness
+
+**NFC chip path (ZKPassport):**
+
+1. **Country/document pre-check** → `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support
+2. **ZKPassport deep-link** → Opens ZKPassport mobile app for NFC chip reading + proof generation
+3. **Server verification** → `trpc.passportChip.submitResult` verifies proofs server-side via `zkpassport.verify()`
+4. **Nullifier check** → `uniqueIdentifier` prevents duplicate passport registrations across accounts
+5. **FHE Encryption** → Same as OCR path; synthetic liveness score (1.0) from physical chip possession
 
 **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
 
@@ -291,6 +303,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `credentials` | WebAuthn credential management |
 | `token` | Session/token operations |
 | `recovery` | FROST guardian-based key recovery flow |
+| `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
 | `app` | Application-level operations |
 
 **Client usage:**
@@ -350,4 +363,13 @@ OPAQUE_SERVER_SETUP=<generated-by-setup>
 # Services (defaults work for local dev)
 FHE_SERVICE_URL=http://localhost:5001
 OCR_SERVICE_URL=http://localhost:5004
+
+# Privacy & compliance (required in production)
+PAIRWISE_SECRET=<min-32-char-string>    # Required (z.string().min(32)), pairwise subject identifiers
+
+# Feature flags
+NEXT_PUBLIC_ZKPASSPORT_ENABLED=false     # Enable NFC chip verification via ZKPassport
+
+# Optional overrides
+OIDC4VP_JWKS_URL=                        # Override JWKS endpoint for VP token verification
 ```

@@ -38,13 +38,21 @@ cd apps/demo-rp && pnpm exec tsx scripts/generate-dev-certs.ts
 
 This creates x509 certificates in `.data/certs/` for the OID4VP `x509_hash` client_id scheme.
 
-### 3. Start Demo RP
+### 3. Initialize Database
+
+```bash
+cd apps/demo-rp && pnpm setup  # creates .data/ + runs db:push
+```
+
+### 4. Start Demo RP
 
 ```bash
 cd apps/demo-rp && pnpm dev  # port 3102
 ```
 
-### 4. Try It Out
+**Prerequisites:** Node.js 24+, pnpm 10+, `openssl` (for certificate generation)
+
+### 5. Try It Out
 
 Each scenario page shows a DCR registration step, then sign-in, then step-up.
 
@@ -100,6 +108,7 @@ Each scenario page shows a DCR registration step, then sign-in, then step-up.
 | `VERIFIER_CA_PEM` | — | Base64 CA certificate PEM (production) |
 | `VERIFIER_LEAF_KEY_PEM` | — | Base64 leaf private key PEM (production) |
 | `ZENTITY_JWKS_URL` | — | Override JWKS endpoint for VP token verification |
+| `DATABASE_AUTH_TOKEN` | — | Turso auth token (for remote database) |
 
 ## Architecture
 
@@ -108,6 +117,21 @@ Each scenario page shows a DCR registration step, then sign-in, then step-up.
 - **shadcn/ui** for components
 - **SQLite** (via better-sqlite3) for session storage
 - **All-DCR**: Every scenario self-registers via RFC 7591, stored in `.data/dcr-{providerId}.json`
+
+### OID4VCI Issuance Flow
+
+The VeriPass wallet can receive credentials from Zentity via the `/api/veripass/issue` endpoint:
+
+1. Pre-authorized code grant — wallet exchanges code for DPoP-bound access token
+2. Holder key generation — ephemeral Ed25519 keypair created client-side
+3. Proof JWT — signed with holder key, bound to DPoP nonce
+4. Credential storage — SD-JWT VC stored in `localStorage` (not DB, not session)
+
+### Limitations
+
+- **In-memory JAR cache**: VP session JAR JWTs are cached in-memory (single-use). This won't work in multi-instance deployments.
+- **Same-device session binding**: `/vp/complete` validates the session cookie matches the VP session creator — cross-device flows are not supported.
+- **Experimental: Digital Credentials API**: `dc-api.ts` contains an experimental W3C Digital Credentials API integration path (Chrome 128+ behind flag).
 
 ## OAuth Flow
 

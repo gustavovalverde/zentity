@@ -138,7 +138,9 @@ Zentity uses a multi-algorithm signing architecture for JWTs:
 ```json
 {
   "jwks_uri": "https://app.zentity.xyz/api/auth/pq-jwks",
-  "id_token_signing_alg_values_supported": ["RS256", "EdDSA", "ML-DSA-65"]
+  "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
+  "subject_types_supported": ["public", "pairwise"],
+  "dpop_signing_alg_values_supported": ["ES256"]
 }
 ```
 
@@ -171,12 +173,13 @@ Zentity uses two scope families to control what data RPs receive via userinfo. B
 | Scope | Claims returned |
 |-------|----------------|
 | `proof:identity` | All verification claims (umbrella) |
-| `proof:verification` | `verification_level`, `verified` |
+| `proof:verification` | `verification_level`, `verified`, `identity_binding_verified` |
 | `proof:age` | `age_proof_verified` |
 | `proof:document` | `document_verified`, `doc_validity_proof_verified` |
 | `proof:liveness` | `liveness_verified`, `face_match_verified` |
 | `proof:nationality` | `nationality_proof_verified` |
-| `proof:compliance` | `policy_version`, `issuer_id`, `verification_time`, `attestation_expires_at` |
+| `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
+| `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `compliance:key:read` | Read RP encryption keys for compliance data |
 | `compliance:key:write` | Register/rotate RP encryption keys |
 
@@ -268,7 +271,7 @@ The `@better-auth/oidc4ida` plugin is active and returns `verified_claims` in id
 
 The `verified_claims` structure includes:
 
-- **`verification`** — `trust_framework: "zentity"`, `assurance_level`, `evidence` (document verification metadata, timestamps)
+- **`verification`** — `trust_framework: "eidas"`, `assurance_level`, `evidence` (document verification metadata, timestamps)
 - **`claims`** — the attested claims: `verified`, `verification_level`, proof statuses, policy metadata
 
 This is a separate path from `proof:*` scopes. The scope-based path uses custom OAuth scopes with opt-in consent (see [ADR-0011](adr/privacy/0011-selective-disclosure-scope-architecture.md) for why scopes are the primary mechanism). OIDC4IDA is available for RPs that specifically implement the `claims` parameter per the spec.
@@ -442,7 +445,7 @@ The `@better-auth/haip` plugin is wired into `auth.ts` and provides DPoP, PAR, w
 
 Sender-constrained tokens via Demonstrating Proof-of-Possession:
 
-- **Token endpoint**: `createDpopTokenBinding({ requireDpop: false })` — permissive mode (opt-in for clients)
+- **Token endpoint**: `createDpopTokenBinding({ requireDpop: false })` — permissive mode (opt-in for clients). Only ES256 is supported (`dpopSigningAlgValues: ["ES256"]`).
 - **Credential endpoint**: `createDpopAccessTokenValidator({ requireDpop: true })` — mandatory for credential issuance
 - **Nonce store**: Server-managed nonces in `dpop-nonce-store.ts`. Single-use nonces with `DPOP_NONCE_TTL_SECONDS` env var (default 30s). Expired nonces swept every 60s.
 
@@ -459,13 +462,13 @@ Pushed Authorization Requests are required (`requirePar: true`). All authorizati
 
 ### JARM (JWT-Secured Authorization Response Mode)
 
-`createJarmHandler` encrypts authorization responses using ECDH-ES with a P-256 key. The key is lazily created on first use and persisted in the `jwks` table.
+`createJarmHandler` encrypts authorization responses using ECDH-ES with a P-256 key. The key is lazily created on first use and persisted in the `jwks` table. Supported encryption algorithms: `A128GCM` and `A256GCM`.
 
 ### x5c certificate chain
 
 X.509 certificate chains for credential JWTs and client identification:
 
-- **Env vars**: `X5C_LEAF_PEM` and `X5C_CA_PEM` (or filesystem at `.data/certs/`)
+- **Env vars**: `X5C_LEAF_PEM` and `X5C_CA_PEM` must contain **base64-encoded PEM** (not raw PEM). The loader decodes them via `Buffer.from(env, "base64")`. Filesystem fallback (`.data/certs/`) reads raw PEM directly.
 - **Headers**: `createX5cHeaders()` adds x5c chain to credential and status list JWTs
 - **Dev certs**: `scripts/generate-dev-certs.ts` generates self-signed leaf + CA certificates
 
@@ -477,6 +480,59 @@ X.509 certificate chains for credential JWTs and client identification:
 - `require_pushed_authorization_requests: true`
 - `dpop_signing_alg_values_supported`
 - `authorization_details_types_supported`
+
+### VP session configuration
+
+- `vpRequestExpiresInSeconds: 300` — VP sessions expire after 5 minutes
+- `OIDC4VP_JWKS_URL` — optional env var to override the JWKS endpoint used for VP token issuer verification
+
+---
+
+## Pairwise Subject Identifiers & Double Anonymity
+
+DCR clients default to `subject_type: "pairwise"` (enforced in the `before` hook). This generates a unique, opaque `sub` per (user, client) pair, preventing cross-RP correlation.
+
+Additional ARCOM double anonymity measures for pairwise proof-only flows:
+
+- **Opaque access tokens**: Forced for pairwise clients — resource stripping prevents JWT access tokens from leaking the `sub` claim
+- **Consent record deletion**: Consent rows are deleted after authorization code issuance for pairwise proof-only flows (transient linkage)
+- **Access token DB record deletion**: Token records are deleted after JWT issuance — no server-side linkage persists
+- **Session metadata scrubbing**: IP address and user-agent are scrubbed from session records for pairwise clients
+
+The `PAIRWISE_SECRET` env var (min 32 chars, required) is the HMAC key for generating pairwise identifiers.
+
+See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
+
+---
+
+## VeriPass OID4VP Verifier (demo-rp)
+
+`apps/demo-rp` includes a reference OID4VP verifier implementation at `/veripass` with 4 scenarios:
+
+| Scenario | Required Claims | Use Case |
+|----------|----------------|----------|
+| Border Control | `given_name`, `family_name`, `nationality` | International travel |
+| Background Check | `given_name`, `family_name`, `verification_level` | Employment screening |
+| Age-Restricted Venue | `age_over_18` | Minimal disclosure |
+| Financial Institution | `given_name`, `family_name`, `nationality`, `verification_level`, `email` | Full KYC |
+
+Key implementation details:
+
+- **Ephemeral ECDH-ES P-256 key** generated per VP session for JARM encryption
+- **In-memory JAR cache** (single-use) — won't survive multi-instance deployments
+- **`client_id_scheme: x509_hash`** — the `client_id` is `x509_hash#<SHA-256-thumbprint>`. Note: `#` must be URL-encoded as `%23` in the `openid4vp://` URI
+- **KB-JWT audience**: The verifier's own `NEXT_PUBLIC_APP_URL` (not Zentity's URL)
+- **Same-device session binding**: `/vp/complete` validates the session cookie matches the VP session creator
+
+See `apps/demo-rp/src/lib/verify.ts` for the full verification chain.
+
+### DCR validation rules
+
+Clients registering via DCR are validated:
+
+- `client_name`: max 100 chars, no HTML tags
+- `logo_uri` / `client_uri`: must be HTTPS (localhost allowed in dev)
+- `redirect_uris`: must be HTTPS in production
 
 ---
 

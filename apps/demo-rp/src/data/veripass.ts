@@ -99,6 +99,7 @@ export const VERIFIER_SCENARIOS: VerifierScenario[] = [
       "family_name",
       "nationality",
       "verification_level",
+      "email",
       "verified",
     ]),
   },
