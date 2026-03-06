@@ -80,6 +80,8 @@ export const env = createEnv({
     PAIRWISE_SECRET: z.string().min(32),
     TRUSTED_ORIGINS: z.string().optional(),
     OIDC4VP_JWKS_URL: z.string().optional(),
+    DPOP_NONCE_TTL_SECONDS: z.coerce.number().default(30),
+    TRUSTED_WALLET_ISSUERS: z.string().optional(),
 
     // Blockchain (server-only secrets/overrides)
     REGISTRAR_PRIVATE_KEY: z.string().optional(),
@@ -170,6 +172,8 @@ export const env = createEnv({
     PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
     OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,
+    DPOP_NONCE_TTL_SECONDS: process.env.DPOP_NONCE_TTL_SECONDS,
+    TRUSTED_WALLET_ISSUERS: process.env.TRUSTED_WALLET_ISSUERS,
     REGISTRAR_PRIVATE_KEY: process.env.REGISTRAR_PRIVATE_KEY,
     FHEVM_REGISTRAR_PRIVATE_KEY: process.env.FHEVM_REGISTRAR_PRIVATE_KEY,
     LOCAL_REGISTRAR_PRIVATE_KEY: process.env.LOCAL_REGISTRAR_PRIVATE_KEY,

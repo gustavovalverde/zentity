@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -54,4 +54,26 @@ export const verification = sqliteTable("verification", {
 export const dcrClient = sqliteTable("dcr_client", {
   providerId: text("providerId").primaryKey(),
   clientId: text("clientId").notNull(),
+});
+
+export const vpSessions = sqliteTable("vp_session", {
+  id: text("id").primaryKey(),
+  nonce: text("nonce").notNull(),
+  state: text("state").notNull(),
+  dcqlQuery: text("dcqlQuery").notNull(),
+  status: text("status", {
+    enum: ["pending", "verified", "expired", "failed"],
+  })
+    .notNull()
+    .default("pending"),
+  result: text("result"),
+  encryptionKey: text("encryptionKey").notNull(),
+  sessionCookie: text("sessionCookie"),
+  scenarioId: text("scenarioId").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date(Date.now() + 5 * 60 * 1000)),
 });

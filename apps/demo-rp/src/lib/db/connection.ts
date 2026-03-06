@@ -5,9 +5,23 @@ import { drizzle } from "drizzle-orm/libsql";
 
 import { env } from "@/lib/env";
 
-import { account, dcrClient, session, user, verification } from "./schema";
+import {
+  account,
+  dcrClient,
+  session,
+  user,
+  verification,
+  vpSessions,
+} from "./schema";
 
-const dbSchema = { account, dcrClient, session, user, verification };
+const dbSchema = {
+  account,
+  dcrClient,
+  session,
+  user,
+  verification,
+  vpSessions,
+};
 
 function createDb() {
   const client = createClient({

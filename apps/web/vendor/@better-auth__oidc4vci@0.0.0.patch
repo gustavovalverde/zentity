@@ -1,0 +1,33 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 832b46c..4add4e7 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -594,7 +594,7 @@ function createCredentialEndpoint(options) {
+ 			const azp = tokenPayload.azp;
+ 			if (verificationValue.clientId && typeof azp === "string" && verificationValue.clientId !== azp) throwOidc4vciCredentialError("unknown_credential_identifier", "credential_identifier is not recognized");
+ 			resolvedCredentialConfigurationId = verificationValue.credentialConfigurationId;
+-			credentialIdentifierVerificationId = verification.id;
++			credentialIdentifierVerificationId = identifier;
+ 			cfg = options.credentialConfigurations.find((c) => c.id === resolvedCredentialConfigurationId) ?? null;
+ 			if (!cfg) throwOidc4vciCredentialError("unknown_credential_configuration", "unsupported credential configuration");
+ 			const authError = verifyCredentialAuthorization({
+@@ -704,8 +704,8 @@ function createCredentialEndpoint(options) {
+ 		if (verificationValue?.type !== VERIFICATION_TYPES.C_NONCE) throwOidc4vciCredentialError("invalid_nonce", "invalid c_nonce");
+ 		if (verificationValue.userId && verificationValue.userId !== subject) throwOidc4vciCredentialError("invalid_nonce", "invalid c_nonce");
+ 		if (verificationValue.clientId && typeof azpForProof === "string" && verificationValue.clientId !== azpForProof) throwOidc4vciCredentialError("invalid_nonce", "invalid c_nonce");
+-		await ctx.context.internalAdapter.deleteVerificationValue(verification.id);
+-		if (credentialIdentifierVerificationId) await ctx.context.internalAdapter.deleteVerificationValue(credentialIdentifierVerificationId);
++		await ctx.context.internalAdapter.deleteVerificationByIdentifier(verification.identifier);
++		if (credentialIdentifierVerificationId) await ctx.context.internalAdapter.deleteVerificationByIdentifier(credentialIdentifierVerificationId);
+ 		const user = await ctx.context.internalAdapter.findUserById(subject);
+ 		if (!user) throw new APIError("BAD_REQUEST", { message: "user not found" });
+ 		const now = Math.floor(Date.now() / 1e3);
+@@ -931,7 +931,7 @@ function createDeferredCredentialEndpoint(options) {
+ 			additionalHeaders,
+ 			credentialSigner: options.credentialSigner
+ 		});
+-		await ctx.context.internalAdapter.deleteVerificationValue(verification.id);
++		await ctx.context.internalAdapter.deleteVerificationByIdentifier(verification.identifier);
+ 		await ctx.context.adapter.create({
+ 			model: "oidc4vciIssuedCredential",
+ 			data: {

@@ -6,13 +6,41 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 
+export interface DcqlCredentialQuery {
+  claims: Array<{ path: string[] }>;
+  format: string;
+  id: string;
+  meta: { vct_values: string[] };
+  trusted_authorities?: Array<{ type: string; value: string }>;
+}
+
+export interface DcqlQuery {
+  credentials: DcqlCredentialQuery[];
+}
+
 export interface VerifierScenario {
+  dcqlQuery: DcqlQuery;
   description: string;
   icon: IconSvgElement;
   id: string;
   name: string;
   optionalClaims: string[];
   requiredClaims: string[];
+}
+
+const VCT = "urn:credential:identity-verification:v1";
+
+function buildDcqlQuery(claimPaths: string[]): DcqlQuery {
+  return {
+    credentials: [
+      {
+        id: "identity_credential",
+        format: "dc+sd-jwt",
+        meta: { vct_values: [VCT] },
+        claims: claimPaths.map((path) => ({ path: [path] })),
+      },
+    ],
+  };
 }
 
 export const VERIFIER_SCENARIOS: VerifierScenario[] = [
@@ -23,6 +51,12 @@ export const VERIFIER_SCENARIOS: VerifierScenario[] = [
     icon: AirplaneTakeOff01Icon,
     requiredClaims: ["given_name", "family_name", "nationality"],
     optionalClaims: ["date_of_birth"],
+    dcqlQuery: buildDcqlQuery([
+      "given_name",
+      "family_name",
+      "nationality",
+      "verified",
+    ]),
   },
   {
     id: "employer",
@@ -31,6 +65,12 @@ export const VERIFIER_SCENARIOS: VerifierScenario[] = [
     icon: Briefcase06Icon,
     requiredClaims: ["given_name", "family_name", "verification_level"],
     optionalClaims: ["email"],
+    dcqlQuery: buildDcqlQuery([
+      "given_name",
+      "family_name",
+      "verification_level",
+      "verified",
+    ]),
   },
   {
     id: "venue",
@@ -39,6 +79,7 @@ export const VERIFIER_SCENARIOS: VerifierScenario[] = [
     icon: PartyIcon,
     requiredClaims: ["age_over_21"],
     optionalClaims: [],
+    dcqlQuery: buildDcqlQuery(["age_over_18"]),
   },
   {
     id: "financial",
@@ -53,6 +94,13 @@ export const VERIFIER_SCENARIOS: VerifierScenario[] = [
       "email",
     ],
     optionalClaims: [],
+    dcqlQuery: buildDcqlQuery([
+      "given_name",
+      "family_name",
+      "nationality",
+      "verification_level",
+      "verified",
+    ]),
   },
 ];
 

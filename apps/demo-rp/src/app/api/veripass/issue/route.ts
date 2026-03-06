@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { getAuth } from "@/lib/auth";
+import { createDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 const TRAILING_PADDING_RE = /=+$/;
@@ -16,10 +17,6 @@ interface CredentialOffer {
   };
 }
 
-/**
- * Parse a credential offer from a raw URI string or JSON.
- * Resolves `credential_offer_uri` references server-side to avoid CORS.
- */
 async function parseOfferUri(raw: string): Promise<CredentialOffer> {
   const trimmed = raw.trim();
 
@@ -49,11 +46,6 @@ async function parseOfferUri(raw: string): Promise<CredentialOffer> {
   throw new Error("Invalid credential offer URI");
 }
 
-/**
- * Server-side OID4VCI credential exchange.
- * Accepts a raw offer URI string, resolves it, exchanges the pre-authorized code
- * for a token, generates a holder key pair, and requests the credential.
- */
 export async function POST(request: Request) {
   const auth = await getAuth();
   const session = await auth.api.getSession({
@@ -87,29 +79,63 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Exchange pre-authorized code for token
+    // Create ephemeral DPoP client for this issuance session
+    const dpop = await createDpopClient();
+
+    const tokenUrl = `${offer.credential_issuer}/oauth2/token`;
+    const credentialUrl = `${offer.credential_issuer}/oidc4vci/credential`;
+
+    // 1. Exchange pre-authorized code for token (with DPoP)
     const tokenBody = new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:pre-authorized_code",
       "pre-authorized_code": grant["pre-authorized_code"],
       client_id: env.OIDC4VCI_WALLET_CLIENT_ID,
     });
 
-    const tokenRes = await fetch(`${offer.credential_issuer}/oauth2/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: tokenBody,
-    });
+    const { response: tokenRes, result: tokenData } = await dpop.withNonceRetry(
+      async (nonce) => {
+        const dpopProof = await dpop.proofFor(
+          "POST",
+          tokenUrl,
+          undefined,
+          nonce
+        );
+        const response = await fetch(tokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            DPoP: dpopProof,
+          },
+          body: tokenBody,
+        });
+        if (
+          !response.ok &&
+          response.status !== 400 &&
+          response.status !== 401
+        ) {
+          const text = await response.text();
+          throw new Error(`Token exchange failed: ${response.status} ${text}`);
+        }
+        const result = response.ok
+          ? ((await response.json()) as {
+              access_token: string;
+              c_nonce: string;
+            })
+          : ({ access_token: "", c_nonce: "" } as {
+              access_token: string;
+              c_nonce: string;
+            });
+        return { response, result };
+      }
+    );
+
     if (!tokenRes.ok) {
-      const text = await tokenRes.text();
+      const text = await tokenRes.text().catch(() => "");
       return NextResponse.json(
         { error: `Token exchange failed: ${tokenRes.status} ${text}` },
         { status: 502 }
       );
     }
-    const tokenData = (await tokenRes.json()) as {
-      access_token: string;
-      c_nonce: string;
-    };
 
     // 2. Generate holder key pair (EdDSA / Ed25519)
     const keyPair = await crypto.subtle.generateKey("Ed25519", true, [
@@ -133,31 +159,55 @@ export async function POST(request: Request) {
       keyPair.privateKey
     );
 
-    // 4. Request credential
+    // 4. Request credential (with DPoP — credential endpoint requires it)
     const configId =
       offer.credential_configuration_ids[0] || "identity_verification";
-    const credRes = await fetch(
-      `${offer.credential_issuer}/oidc4vci/credential`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${tokenData.access_token}`,
-        },
-        body: JSON.stringify({
-          credential_configuration_id: configId,
-          proofs: { jwt: [proofJwt] },
-        }),
+
+    const { response: credRes, result: credRaw } = await dpop.withNonceRetry(
+      async (nonce) => {
+        const dpopProof = await dpop.proofFor(
+          "POST",
+          credentialUrl,
+          tokenData.access_token,
+          nonce
+        );
+        const response = await fetch(credentialUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `DPoP ${tokenData.access_token}`,
+            DPoP: dpopProof,
+          },
+          body: JSON.stringify({
+            credential_configuration_id: configId,
+            proofs: { jwt: [proofJwt] },
+          }),
+        });
+        if (
+          !response.ok &&
+          response.status !== 400 &&
+          response.status !== 401
+        ) {
+          const text = await response.text();
+          throw new Error(
+            `Credential request failed: ${response.status} ${text}`
+          );
+        }
+        const result = response.ok
+          ? ((await response.json()) as Record<string, unknown>)
+          : {};
+        return { response, result };
       }
     );
+
     if (!credRes.ok) {
-      const text = await credRes.text();
+      const text = await credRes.text().catch(() => "");
       return NextResponse.json(
         { error: `Credential request failed: ${credRes.status} ${text}` },
         { status: 502 }
       );
     }
-    const credRaw = (await credRes.json()) as Record<string, unknown>;
+
     const credential =
       typeof credRaw.credential === "string"
         ? credRaw.credential

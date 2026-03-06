@@ -2,7 +2,6 @@ import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
-  createDcqlMatcher,
   createDpopAccessTokenValidator,
   createDpopTokenBinding,
   createJarmHandler,
@@ -33,6 +32,7 @@ import { organization } from "better-auth/plugins/organization";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "@/env";
+import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
   buildOidcVerifiedClaims,
@@ -53,6 +53,7 @@ import {
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/trusted-dcql-matcher";
 import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
@@ -303,6 +304,30 @@ const isDev =
   process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
 
 const x5cChain = loadX5cChain();
+
+// Initialize DPoP nonce store (starts background sweep timer)
+getDpopNonceStore(env.DPOP_NONCE_TTL_SECONDS);
+
+// Wallet attestation with trusted issuers enforcement (HAIP §4.4.1.6)
+const baseWalletStrategy = createWalletAttestationStrategy();
+const trustedWalletIssuers = env.TRUSTED_WALLET_ISSUERS
+  ? env.TRUSTED_WALLET_ISSUERS.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  : null;
+const walletAttestationStrategy = trustedWalletIssuers
+  ? async (...args: Parameters<typeof baseWalletStrategy>) => {
+      const result = await baseWalletStrategy(...args);
+      const issuer = (result as { metadata?: { attestation_issuer?: string } })
+        .metadata?.attestation_issuer;
+      if (issuer && !trustedWalletIssuers.includes(issuer)) {
+        throw new APIError("FORBIDDEN", {
+          error_description: "Untrusted wallet attestation issuer",
+        });
+      }
+      return result;
+    }
+  : baseWalletStrategy;
 
 function isValidHttpsUrl(value: string): boolean {
   try {
@@ -731,7 +756,7 @@ export const auth = betterAuth({
       tokenBinding: createDpopTokenBinding({ requireDpop: false }),
       requestUriResolver: createParResolver(),
       clientAuthStrategies: {
-        [WALLET_ATTESTATION_TYPE]: createWalletAttestationStrategy() as never,
+        [WALLET_ATTESTATION_TYPE]: walletAttestationStrategy as never,
       },
       pairwiseSecret: env.PAIRWISE_SECRET,
       scopes: [
@@ -827,7 +852,7 @@ export const auth = betterAuth({
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
       accessTokenValidator: createDpopAccessTokenValidator({
-        requireDpop: false,
+        requireDpop: true,
       }),
       proofValidators: {
         attestation: createKeyAttestationValidator(),
@@ -844,7 +869,7 @@ export const auth = betterAuth({
     oidc4vp({
       expectedAudience: authIssuer,
       allowedIssuers: [authIssuer],
-      presentationMatcher: createDcqlMatcher(),
+      presentationMatcher: createTrustedDcqlMatcher(),
       responseModeHandlers: {
         "direct_post.jwt": createJarmHandler({
           decryptionKey: getJarmDecryptionKey,

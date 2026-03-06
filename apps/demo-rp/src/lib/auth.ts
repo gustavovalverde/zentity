@@ -212,7 +212,7 @@ const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   exchange: ["openid", "email", "proof:verification"],
   wine: ["openid", "proof:age"],
   aid: ["openid", "email", "proof:verification"],
-  veripass: ["openid", "email", "proof:verification"],
+  veripass: ["openid", "proof:verification"],
 };
 
 function createAuth(clientIds: Partial<Record<ProviderId, string>>) {

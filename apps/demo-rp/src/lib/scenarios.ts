@@ -218,7 +218,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     };
   })(),
   veripass: (() => {
-    const signInScopes = ["openid", "email", "proof:verification"];
+    const signInScopes = ["openid", "proof:verification"];
     const stepUpScopes: string[] = [];
     return {
       id: "veripass",

@@ -206,7 +206,7 @@ index b575af9..de91b69 100644
 +		error: "invalid_grant"
 +	});
 +	if (!verification.expiresAt || verification.expiresAt < /* @__PURE__ */ new Date()) {
-+		await ctx.context.internalAdapter.deleteVerificationValue(verification.id);
++		await ctx.context.internalAdapter.deleteVerificationByIdentifier(verification.identifier);
 +		throw new APIError("UNAUTHORIZED", {
 +			error_description: "pre-authorized code expired",
 +			error: "invalid_grant"
@@ -230,7 +230,7 @@ index b575af9..de91b69 100644
 +			error: "invalid_grant"
 +		});
 +	}
-+	await ctx.context.internalAdapter.deleteVerificationValue(verification.id);
++	await ctx.context.internalAdapter.deleteVerificationByIdentifier(verification.identifier);
 +	return verificationValue;
 +}
 +async function createCNonce(ctx, opts, data) {
@@ -319,7 +319,7 @@ index b575af9..de91b69 100644
 +			credential_identifiers: typed.credential_identifiers ?? [credentialIdentifier]
 +		};
 +	});
-+	return createUserTokens(ctx, opts, client, ["openid"], user, void 0, void 0, void 0, void 0, {
++	return createUserTokens(ctx, opts, client, ["openid"], user, void 0, void 0, void 0, void 0, void 0, {
 +		accessTokenClaims: {
 +			authorization_details: authorizationDetails,
 +			credential_configuration_id: value.credentialConfigurationId,
