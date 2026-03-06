@@ -41,7 +41,8 @@ const frameworks = [
   {
     framework: "eIDAS 2.0 + EUDI wallet direction",
     scope: "EU digital identity interoperability",
-    mapping: "OIDC4VCI, OIDC4VP, and OIDC4IDA compatibility pathways",
+    mapping:
+      "OIDC4VCI, OIDC4VP, and OIDC4IDA compatibility pathways; HAIP wallet attestation alignment",
   },
   {
     framework: "FinCEN CIP + BSA",
@@ -61,6 +62,8 @@ const standards = [
   "RFC 7591 Dynamic Client Registration",
   "SD-JWT Verifiable Credentials",
   "OIDC4VCI / OIDC4VP / OIDC4IDA profile",
+  "RFC 9126 Pushed Authorization Requests (PAR)",
+  "RFC 9449 DPoP (Demonstration of Proof-of-Possession)",
   "Post-quantum migration alignment (FIPS 203/204)",
 ];
 

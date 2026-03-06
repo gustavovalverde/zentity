@@ -1,6 +1,12 @@
 import "server-only";
 
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import type { JWK } from "jose";
+import {
+  calculateJwkThumbprint,
+  createRemoteJWKSet,
+  importJWK,
+  jwtVerify,
+} from "jose";
 
 import { env } from "@/lib/env";
 
@@ -64,39 +70,43 @@ export async function verifyVpToken(
     }
   }
 
-  // 3. Verify KB-JWT if present
+  // 3. Cryptographically verify KB-JWT signature and holder binding
   if (kbJwt) {
-    const cnf = issuerPayload.cnf as { jkt?: string } | undefined;
+    const cnf = issuerPayload.cnf as { jwk?: JWK; jkt?: string } | undefined;
     if (!cnf?.jkt) {
       return { verified: false, claims: disclosedClaims };
     }
 
     try {
-      // KB-JWT is self-signed by the holder — verify against the cnf.jkt thumbprint
-      // For now, verify structure and claims without full JWK resolution
-      const [, kbPayloadB64] = kbJwt.split(".");
-      const kbPayload = JSON.parse(
-        Buffer.from(kbPayloadB64, "base64url").toString("utf8")
-      ) as {
-        aud?: string;
-        iat?: number;
-        nonce?: string;
-      };
+      // Resolve the holder's public key from cnf.jwk or KB-JWT header
+      let holderJwk: JWK;
+      if (cnf.jwk) {
+        holderJwk = cnf.jwk;
+      } else {
+        const [headerB64] = kbJwt.split(".");
+        const header = JSON.parse(
+          Buffer.from(headerB64, "base64url").toString("utf8")
+        ) as { jwk?: JWK };
+        if (!header.jwk) {
+          return { verified: false, claims: disclosedClaims };
+        }
+        holderJwk = header.jwk;
+      }
 
-      // Validate audience
-      if (kbPayload.aud !== expectedAudience) {
+      // Verify JWK thumbprint matches cnf.jkt (holder binding)
+      const thumbprint = await calculateJwkThumbprint(holderJwk);
+      if (thumbprint !== cnf.jkt) {
         return { verified: false, claims: disclosedClaims };
       }
 
-      // Validate nonce
+      // Cryptographically verify KB-JWT signature
+      const holderKey = await importJWK(holderJwk);
+      const { payload: kbPayload } = await jwtVerify(kbJwt, holderKey, {
+        audience: expectedAudience,
+        maxTokenAge: MAX_KB_JWT_AGE_SECONDS,
+      });
+
       if (kbPayload.nonce !== expectedNonce) {
-        return { verified: false, claims: disclosedClaims };
-      }
-
-      // Validate freshness
-      const iat = kbPayload.iat ?? 0;
-      const now = Math.floor(Date.now() / 1000);
-      if (Math.abs(now - iat) > MAX_KB_JWT_AGE_SECONDS) {
         return { verified: false, claims: disclosedClaims };
       }
     } catch {

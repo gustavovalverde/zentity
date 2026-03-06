@@ -27,7 +27,8 @@ Non-goals:
 | FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
 | Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + EIP-712 Wallet | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
-| Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT | Portable credential issuance and presentation with selective disclosure. |
+| Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
+| HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
@@ -75,7 +76,7 @@ flowchart LR
 
 ## Cryptographic Pillars
 
-Zentity combines **passkeys (auth + PRF key custody)**, **OPAQUE passwords**, **wallet signatures (EIP-712)**, **zero-knowledge proofs**, **FHE**, and **commitments** to minimize plaintext data handling. This document focuses on flow and system boundaries. For cryptographic details, see:
+Zentity combines **passkeys (auth + PRF key custody)**, **OPAQUE passwords**, **wallet signatures (EIP-712)**, **zero-knowledge proofs**, **FHE**, **post-quantum cryptography**, **commitments**, and **HAIP-compliant transport security** to minimize plaintext data handling. This document focuses on flow and system boundaries. For cryptographic details, see:
 
 - [Cryptographic Pillars](cryptographic-pillars.md)
 - [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
@@ -208,6 +209,8 @@ Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
 Disclosure uses a two-tier scope system: **Proof scopes** (`proof:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII via id_token only (ephemeral, never persisted). Both support user-controlled selective disclosure at consent time.
 
+Wallets can receive credentials and respond to presentation requests directly via OID4VP, bypassing the OAuth consent UI. The verifier creates a VP session with a DCQL query, signs a JAR JWT with x5c chain, encodes it as an `openid4vp://` QR code URI. The wallet presents an SD-JWT VP with KB-JWT binding, encrypted via JARM.
+
 ```mermaid
 sequenceDiagram
   autonumber
@@ -231,6 +234,8 @@ sequenceDiagram
   RP->>API: GET /oauth2/userinfo
   API-->>RP: Scope-filtered proof claims (non-PII flags)
 ```
+
+When DPoP is used, the token endpoint validates the DPoP proof and returns a server-managed `DPoP-Nonce` for replay prevention.
 
 ---
 
@@ -264,10 +269,9 @@ See [Web3 Architecture](web3-architecture.md).
 
 Zentity issues portable verifiable credentials following OpenID standards:
 
-- **OIDC4VCI**: Credential issuance with pre-authorized code flow
-- **OIDC4VP**: Presentation requests from verifiers
-- **SD-JWT VC**: Selective disclosure format (derived claims only)
-- **Holder binding**: EdDSA proof JWT ties credentials to holder keys
+- **OIDC4VCI**: Pre-authorized code flow with DPoP-bound tokens, immediate and deferred issuance, status list revocation.
+- **OIDC4VP**: DCQL presentation queries with `x509_hash` client_id, JARM encrypted responses, AKI-based trust filtering.
+- **SD-JWT VC**: Selective disclosure with KB-JWT holder binding (`cnf.jkt` thumbprint, signature, freshness).
 
 External wallets can receive and hold credentials; third-party verifiers can request presentations without Zentity involvement.
 

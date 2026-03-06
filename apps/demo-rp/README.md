@@ -12,7 +12,7 @@ This demo shows how Relying Parties can progressively request identity scopes:
 
 No admin pre-approval is required — the user controls data access at the consent page.
 
-## Four Scenarios
+## Five Scenarios
 
 | Scenario | Sign-In Scopes | Step-Up Scopes | Step-Up Action |
 |----------|---------------|----------------|----------------|
@@ -20,6 +20,7 @@ No admin pre-approval is required — the user controls data access at the conse
 | **Nova Exchange** | `openid email proof:verification` | `identity.nationality` | Start Trading |
 | **Vino Delivery** | `openid email proof:age` | `identity.name identity.address` | Complete Purchase |
 | **Relief Global** | `openid email proof:verification` | `identity.name identity.nationality` | Claim Aid |
+| **VeriPass** | Digital credential wallet with OID4VP verifier | eIDAS 2.0, NIST 800-63-4 | SD-JWT VC, DCQL, OID4VP, OID4VCI |
 
 ## Quick Start
 
@@ -29,13 +30,21 @@ No admin pre-approval is required — the user controls data access at the conse
 cd apps/web && pnpm dev  # port 3000
 ```
 
-### 2. Start Demo RP
+### 2. Generate Dev Certificates (for OID4VP)
+
+```bash
+cd apps/demo-rp && pnpm exec tsx scripts/generate-dev-certs.ts
+```
+
+This creates x509 certificates in `.data/certs/` for the OID4VP `x509_hash` client_id scheme.
+
+### 3. Start Demo RP
 
 ```bash
 cd apps/demo-rp && pnpm dev  # port 3102
 ```
 
-### 3. Try It Out
+### 4. Try It Out
 
 Each scenario page shows a DCR registration step, then sign-in, then step-up.
 
@@ -64,19 +73,33 @@ Each scenario page shows a DCR registration step, then sign-in, then step-up.
 2. Register → verify identity → basic claims
 3. Complete verification → consent for identity.name + identity.nationality
 
+**VeriPass (credential wallet + OID4VP):**
+
+1. Navigate to <http://localhost:3102/veripass>
+2. Register with Zentity (DCR) → sign in
+3. Obtain a credential offer from Zentity Dashboard → Credentials → paste the offer URI
+4. Select a verifier scenario → choose which claims to disclose → present credential
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 3102 | Server port |
 | `NEXT_PUBLIC_APP_URL` | <http://localhost:3102> | Public URL |
+| `NEXT_PUBLIC_ZENTITY_URL` | <http://localhost:3000> | Zentity URL (client-side) |
 | `BETTER_AUTH_SECRET` | demo-rp-secret... | Auth secret |
 | `ZENTITY_URL` | <http://localhost:3000> | Zentity server URL |
 | `ZENTITY_BANK_CLIENT_ID` | zentity-demo-bank | Fallback if DCR file absent |
 | `ZENTITY_EXCHANGE_CLIENT_ID` | zentity-demo-exchange | Fallback if DCR file absent |
 | `ZENTITY_WINE_CLIENT_ID` | zentity-demo-wine | Fallback if DCR file absent |
 | `ZENTITY_AID_CLIENT_ID` | zentity-demo-aid | Fallback if DCR file absent |
-| `DATABASE_PATH` | .data/demo-rp.db | Local SQLite path |
+| `DATABASE_URL` | file:./.data/demo-rp.db | SQLite database URL |
+| `OIDC4VCI_WALLET_CLIENT_ID` | zentity-wallet | OID4VCI wallet client ID |
+| `VERIFIER_CERT_PATH` | .data/certs/ | Path to x509 dev certificates |
+| `VERIFIER_LEAF_PEM` | — | Base64 leaf certificate PEM (production) |
+| `VERIFIER_CA_PEM` | — | Base64 CA certificate PEM (production) |
+| `VERIFIER_LEAF_KEY_PEM` | — | Base64 leaf private key PEM (production) |
+| `ZENTITY_JWKS_URL` | — | Override JWKS endpoint for VP token verification |
 
 ## Architecture
 
@@ -111,6 +134,31 @@ Demo RP                              Zentity
   |                                     |
   Display: basic → stepped-up claims
 ```
+
+## OID4VP Verifier (VeriPass)
+
+The `/veripass` page implements a digital credential wallet with an OID4VP verifier. Users receive an SD-JWT VC from Zentity via OID4VCI, then selectively disclose claims to four verifier scenarios:
+
+| Verifier | Required Claims | Use Case |
+|----------|----------------|----------|
+| Border Control | `given_name`, `family_name`, `nationality` | International travel identity check |
+| Background Check | `given_name`, `family_name`, `verification_level` | Employment verification screening |
+| Age-Restricted Venue | `age_over_18` | Minimal disclosure age proof |
+| Financial Institution | `given_name`, `family_name`, `nationality`, `verification_level`, `email` | Full KYC |
+
+**Presentation flow:**
+
+1. User selects a verifier scenario
+2. A DCQL query is built from the scenario's required claims
+3. A VP session is created with a JAR JWT signed using x5c chain (`x509_hash` client_id scheme)
+4. The wallet selects disclosures matching the query and creates a VP token
+5. The verifier receives the `direct_post.jwt` response (JARM with ECDH-ES P-256 encryption)
+6. KB-JWT is verified: holder binding via JWK thumbprint against `cnf.jkt`, audience + nonce + freshness (300s)
+7. Disclosed claims are extracted and displayed
+
+### KB-JWT Verification
+
+`verifyVpToken()` in `src/lib/verify.ts` performs the full SD-JWT verification chain: issuer signature against Zentity JWKS, disclosure decode, `cnf.jkt` thumbprint match, KB-JWT signature, and audience/nonce/freshness enforcement.
 
 ## How Step-Up Works
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 import { VpRequest } from "@/components/shared/vp-request";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ interface VerifierScenariosProps {
 
 export function VerifierScenarios({ onSelect }: VerifierScenariosProps) {
   const vpFlow = useVpFlow();
+  const [selectedScenario, setSelectedScenario] = useState<string>("Verifier");
 
   return (
     <div className="space-y-3">
@@ -24,7 +26,7 @@ export function VerifierScenarios({ onSelect }: VerifierScenariosProps) {
 
       {vpFlow.state !== "idle" ? (
         <div className="space-y-3">
-          <VpRequest flow={vpFlow} scenarioName="Verifier" />
+          <VpRequest flow={vpFlow} scenarioName={selectedScenario} />
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -72,6 +74,7 @@ export function VerifierScenarios({ onSelect }: VerifierScenariosProps) {
                   className="w-full"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setSelectedScenario(scenario.name);
                     vpFlow.createSession(scenario.id);
                   }}
                   size="sm"

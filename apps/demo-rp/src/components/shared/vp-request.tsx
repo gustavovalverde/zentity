@@ -1,5 +1,6 @@
 "use client";
 
+import { QRCodeSVG } from "qrcode.react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,16 +43,9 @@ export function VpRequest({ flow, scenarioName }: VpRequestProps) {
             </p>
           </div>
 
-          {/* QR Code placeholder — encoded authorization URI */}
-          <div className="mx-auto flex size-48 items-center justify-center rounded-lg border-2 border-muted-foreground/20 border-dashed bg-muted/50">
-            <div className="space-y-1 text-center">
-              <div className="font-mono text-muted-foreground text-xs">
-                QR Code
-              </div>
-              <div className="text-[10px] text-muted-foreground/60">
-                Install qrcode.react for rendering
-              </div>
-            </div>
+          {/* QR Code — encoded authorization URI */}
+          <div className="mx-auto flex size-48 items-center justify-center">
+            <QRCodeSVG level="M" size={192} value={flow.authorizationUri} />
           </div>
 
           {/* Deep link */}

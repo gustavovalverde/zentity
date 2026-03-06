@@ -17,7 +17,9 @@ function pemToDer(pem: string): Buffer {
 }
 
 function decodeEnvPem(envValue: string | undefined): string | null {
-  if (!envValue) return null;
+  if (!envValue) {
+    return null;
+  }
   return Buffer.from(envValue, "base64").toString("utf8");
 }
 
@@ -45,7 +47,9 @@ export function loadCertChain(certDir: string): string[] | null {
     decodeEnvPem(process.env.VERIFIER_CA_PEM) ??
     readFileSafe(resolve(certDir, "ca.pem"));
 
-  if (!(leafPem && caPem)) return null;
+  if (!(leafPem && caPem)) {
+    return null;
+  }
   return [pemToBase64Der(leafPem), pemToBase64Der(caPem)];
 }
 
@@ -72,7 +76,9 @@ export function loadLeafKeyPem(certDir: string): string | null {
 }
 
 function readFileSafe(path: string): string | null {
-  if (!existsSync(path)) return null;
+  if (!existsSync(path)) {
+    return null;
+  }
   return readFileSync(path, "utf8");
 }
 

@@ -32,6 +32,8 @@ This document covers integrity controls for both deployment modes:
 4. **Use server-signed claims** when a trusted measurement is required (e.g., liveness score).
 5. **Persist an evidence pack** (`policy_hash` + `proof_set_hash`) for auditability.
 6. **Sign verifiable credentials** with issuer keys; validate holder binding on presentation.
+7. **DPoP nonce replay prevention**: Issue and validate server-managed DPoP nonces (RFC 9449 §4.1): each DPoP proof carries a server-issued nonce; the nonce store enforces single-use and configurable TTL, preventing DPoP proof replay.
+8. **KB-JWT holder binding**: Cryptographically verify KB-JWT holder binding in SD-JWT VP tokens: resolve the holder key from `cnf.jwk` or KB-JWT header, verify JWK thumbprint against `cnf.jkt`, then signature-verify the KB-JWT before accepting disclosed claims.
 
 ## What the Browser Can Do
 
@@ -45,6 +47,7 @@ This document covers integrity controls for both deployment modes:
 - Face match score calculation.
 - Document OCR extraction.
 - Compliance decisions (age, nationality, sanctions).
+- VP token authenticity — browser or wallet-initiated VP tokens must be cryptographically verified server-side (issuer signature, KB-JWT holder binding, nonce, audience).
 
 These must be verified by the backend or by on-chain cryptographic checks.
 
@@ -85,6 +88,18 @@ These must be verified by the backend or by on-chain cryptographic checks.
 
 - Internal services (FHE, OCR) must require authenticated requests in production.
 - Public endpoints must be explicitly audited and limited.
+
+### OID4VP Response Integrity
+
+- VP responses use `response_mode: direct_post.jwt` — the wallet encrypts the response JWE to an ephemeral ECDH-ES P-256 key, preventing interception in transit.
+- `client_id_scheme: x509_hash` enforced: the verifier's `client_id` must equal the SHA-256 thumbprint of the leaf certificate from the x5c chain (`validateX509Hash` in `x509-validation.ts`). Mismatched thumbprints reject the request.
+- KB-JWT signature verification is two-phase: first the issuer signature is verified against Zentity JWKS, then the KB-JWT is verified against the holder public key resolved from `cnf.jkt`.
+
+### Authentication integrity (DPoP-bound tokens)
+
+- DPoP access tokens are bound to an ephemeral ES256 keypair; `dpopAccessTokenValidator` requires a valid DPoP proof on all credential endpoint requests.
+- Server-managed nonce store (`dpop-nonce-store.ts`): single-use nonces with configurable TTL via `DPOP_NONCE_TTL_SECONDS`, sweep interval every 60 s.
+- Nonces are validated and deleted atomically — a replayed nonce is rejected even within the TTL window.
 
 ### Authentication integrity (OPAQUE passwords)
 

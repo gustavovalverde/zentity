@@ -6,6 +6,7 @@ This doc covers all OAuth/OIDC directions in Zentity:
 2. [**Generic OAuth**](#generic-oauth-zentity-as-oauth-client) — Zentity signs in with external OAuth/OIDC providers
 3. [**OIDC4VCI**](#oidc4vci-credential-issuance) — Verifiable credential issuance to wallets
 4. [**OIDC4VP**](#oidc4vp-credential-presentation) — Credential presentation from wallets
+5. [**HAIP Compliance**](#haip-compliance) — DPoP, PAR, wallet attestation, JARM, x5c
 
 ---
 
@@ -66,6 +67,7 @@ sequenceDiagram
 | `POST /api/auth/oauth2/token` | Token exchange |
 | `POST /api/auth/oauth2/introspect` | Token introspection |
 | `POST /api/auth/oauth2/revoke` | Token revocation |
+| `POST /api/auth/oauth2/par` | Pushed Authorization Request (PAR) |
 | `GET /api/auth/oauth2/userinfo` | User claims |
 | `GET /api/auth/oauth2/end-session` | Session logout |
 | `GET /api/auth/pq-jwks` | Combined JWKS (RSA, Ed25519, ML-DSA-65 public keys) |
@@ -364,6 +366,22 @@ Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specificat
 - `zentity_identity` (vct: `urn:zentity:credential:identity`)
 - Format: `dc+sd-jwt` (SD-JWT VC)
 
+### DPoP-bound access tokens
+
+The credential endpoint requires DPoP-bound access tokens (`createDpopAccessTokenValidator({ requireDpop: true })`). Wallets must include a DPoP proof header when requesting credentials.
+
+### Key attestation
+
+`createKeyAttestationValidator()` validates wallet key attestation proofs submitted with credential requests, ensuring the holder key is bound to a trusted wallet.
+
+### Deferred issuance
+
+When verification is pending, the issuer returns a `transaction_id` via the `identity_verification_deferred` configuration. The wallet polls `POST /api/auth/oidc4vci/deferred-credential` until the credential is ready.
+
+### Status list
+
+Status list tokens include x5c headers for certificate-chain verification of revocation status.
+
 ### Derived claims
 
 Credentials contain only derived claims (no raw PII):
@@ -377,26 +395,88 @@ Credentials contain only derived claims (no raw PII):
 
 ## OIDC4VP (Credential Presentation)
 
-Zentity can act as a verifier requesting presentations from wallets.
+Zentity can act as a verifier requesting presentations from wallets using DCQL (Digital Credentials Query Language).
 
 ### Verifier endpoints
 
-- `POST /api/auth/oidc4vp/verify` — Create presentation request
-- `POST /api/auth/oidc4vp/response` — Submit presentation
+- `POST /api/auth/oidc4vp/verify` — Create presentation request (returns `request_uri`)
+- `POST /api/auth/oidc4vp/response` — Submit presentation (wallet posts VP token here)
 
-### Presentation definition
+### DCQL queries
 
-Verifiers specify required claims via Presentation Exchange (PEX) format.
+Verifiers specify required claims via `dcql_query` parameter (replaces Presentation Exchange). The trusted DCQL matcher supports AKI-based `trusted_authorities` pre-filtering to restrict accepted credential issuers.
 
-### Holder binding
+### Response mode
 
-Presentations include a proof JWT demonstrating possession of the holder's private key. The verifier validates:
+Responses use `response_mode: direct_post.jwt` — the wallet posts a JARM-encrypted response (ECDH-ES, P-256) directly to the `/oidc4vp/response` endpoint.
 
-- Issuer signature on the credential
-- Holder binding (`cnf.jkt` thumbprint)
-- Required claims are present
+### Client identification
+
+`client_id_scheme: x509_hash` — the `client_id` is derived from the SHA-256 thumbprint of the leaf certificate in the x5c chain.
+
+### QR code deep-link
+
+```text
+openid4vp://?request_uri=...&client_id=x509_hash#<thumbprint>
+```
+
+### KB-JWT verification
+
+Presentations include a Key Binding JWT (KB-JWT) proving holder possession. The verifier validates in order:
+
+1. Issuer signature on the SD-JWT
+2. Disclosure decode (selective disclosure claims)
+3. `cnf.jkt` thumbprint check (holder key binding)
+4. KB-JWT signature verification
+5. Nonce, audience, and freshness (300s max age)
 
 See [SSI Architecture](ssi-architecture.md) for the complete model.
+
+---
+
+## HAIP Compliance
+
+The `@better-auth/haip` plugin is wired into `auth.ts` and provides DPoP, PAR, wallet attestation, DCQL, and JARM support per the HAIP (High Assurance Interoperability Profile) specification.
+
+### DPoP (RFC 9449)
+
+Sender-constrained tokens via Demonstrating Proof-of-Possession:
+
+- **Token endpoint**: `createDpopTokenBinding({ requireDpop: false })` — permissive mode (opt-in for clients)
+- **Credential endpoint**: `createDpopAccessTokenValidator({ requireDpop: true })` — mandatory for credential issuance
+- **Nonce store**: Server-managed nonces in `dpop-nonce-store.ts`. Single-use nonces with `DPOP_NONCE_TTL_SECONDS` env var (default 30s). Expired nonces swept every 60s.
+
+### PAR (RFC 9126)
+
+Pushed Authorization Requests are required (`requirePar: true`). All authorization requests must first be pushed to the PAR endpoint:
+
+- `POST {issuer}/oauth2/par` — returns `request_uri` (60-second TTL)
+- The `request_uri` is then passed to the authorize endpoint
+
+### Wallet attestation
+
+`createWalletAttestationStrategy()` validates wallet attestation JWTs. Trusted wallet issuers are configured via the `TRUSTED_WALLET_ISSUERS` env var (comma-separated list of issuer URIs).
+
+### JARM (JWT-Secured Authorization Response Mode)
+
+`createJarmHandler` encrypts authorization responses using ECDH-ES with a P-256 key. The key is lazily created on first use and persisted in the `jwks` table.
+
+### x5c certificate chain
+
+X.509 certificate chains for credential JWTs and client identification:
+
+- **Env vars**: `X5C_LEAF_PEM` and `X5C_CA_PEM` (or filesystem at `.data/certs/`)
+- **Headers**: `createX5cHeaders()` adds x5c chain to credential and status list JWTs
+- **Dev certs**: `scripts/generate-dev-certs.ts` generates self-signed leaf + CA certificates
+
+### Discovery metadata
+
+`enrichDiscoveryMetadata()` in `well-known-utils.ts` adds HAIP-required fields to `/.well-known/openid-configuration`:
+
+- `pushed_authorization_request_endpoint` — PAR endpoint URL
+- `require_pushed_authorization_requests: true`
+- `dpop_signing_alg_values_supported`
+- `authorization_details_types_supported`
 
 ---
 

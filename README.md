@@ -105,7 +105,8 @@ Most integrations need only proof scopes.
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
 | Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
 | Auth + key custody | Passkey PRF + OPAQUE + EIP-712 Wallet | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
-| Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT | Standards-based interoperability with external wallets; selective disclosure preserves privacy | [SSI Architecture](docs/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
+| Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT + DCQL + JARM | Standards-based wallet interoperability with selective disclosure and encrypted responses | [SSI Architecture](docs/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
+| HAIP compliance | DPoP, PAR, wallet attestation, DCQL, JARM, x5c | High Assurance Interoperability Profile for regulated wallet integrations (eIDAS 2.0 alignment) | [OAuth Integrations](docs/oauth-integrations.md) |
 | Data integrity | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
 | Document extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
 
@@ -234,8 +235,10 @@ flowchart LR
 - Credential-wrapped FHE key storage (multi-device support; explicit user unlock required)
 - Social recovery with guardian approvals (email + authenticator), backed by FROST signer services
 - OAuth 2.1 provider flow (authorize, consent, token exchange)
-- OIDC4VCI credential issuance (SD-JWT VC format with selective disclosure)
-- OIDC4VP credential presentation (verifier flow with holder binding)
+- HAIP compliance: DPoP with server-managed nonce store, PAR (required), wallet attestation, pairwise subject identifiers
+- OIDC4VCI credential issuance (SD-JWT VC, DPoP-bound tokens, deferred issuance, status list revocation)
+- OIDC4VP credential presentation (DCQL queries, JARM encrypted responses, x509_hash client_id, KB-JWT holder binding)
+- VeriPass demo verifier (4 OID4VP scenarios: border control, background check, age-restricted venue, financial KYC)
 
 ## Scenarios
 
@@ -254,6 +257,7 @@ flowchart LR
 
 - **Zero-knowledge SSO** with pairwise pseudonyms per relying party
 - **SD-JWT credentials** issued via OIDC4VCI with selective disclosure
+- **OID4VP wallet presentation** with DCQL queries, QR code deep links, and JARM-encrypted responses
 
 ## Data handling at a glance
 

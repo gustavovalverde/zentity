@@ -38,7 +38,7 @@ Monorepo with services communicating via REST APIs:
 Additional apps (not core services):
 
 - `apps/landing` — Marketing landing page (deploys to Vercel)
-- `apps/demo-rp` — Demo relying party for OAuth integration testing
+- `apps/demo-rp` — Demo relying party with OAuth scenarios (bank, exchange, wine, aid) and OID4VP verifier (VeriPass)
 
 The frontend handles:
 
@@ -182,6 +182,10 @@ railway up apps/web --path-as-root --service web
 - `INTERNAL_SERVICE_TOKEN`
 - `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 - `FHE_SERVICE_URL`, `OCR_SERVICE_URL`
+- `PAIRWISE_SECRET` (min 32 chars, required for pairwise subject identifiers)
+- `DPOP_NONCE_TTL_SECONDS` (default: 30)
+- `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
+- `X5C_LEAF_PEM`, `X5C_CA_PEM` (or place certs in `.data/certs/`)
 
 ### Manual Setup (without Docker)
 
@@ -239,7 +243,7 @@ The system has two distinct flows: **sign-up** (account creation) and **verifica
 3. **Account completion** → `trpc.signUp.completeAccountCreation` links email/wallet, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data
 4. User lands on dashboard with **Tier 1** (account created, no FHE keys yet)
 
-FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [Verification Preflight](docs/verification-preflight-option-a.md).
+FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [FHE Key Lifecycle](docs/fhe-key-lifecycle.md).
 
 **Verification Flow** (from `/dashboard/verify/*`):
 
@@ -307,7 +311,11 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server via better-au
 
 OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`) with organization-based ownership (via `referenceId` on the client table). REST endpoints at `/api/rp-admin/clients/*` handle CRUD. DCR-registered clients can be adopted by organizations.
 
-- [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP
+**HAIP compliance** (`@better-auth/haip`): DPoP with server-managed nonce store (`DPOP_NONCE_TTL_SECONDS`, default 30s), PAR required (`requirePar: true`), wallet attestation (`TRUSTED_WALLET_ISSUERS`), JARM encrypted VP responses (ECDH-ES P-256), pairwise subject identifiers (`PAIRWISE_SECRET`, required min 32 chars). Discovery metadata enriched via `enrichDiscoveryMetadata()` in `well-known-utils.ts` (NOT via plugin after-hook — Next.js routes call `auth.api.*` directly).
+
+**OID4VP verifier** (`apps/demo-rp`): VeriPass at `/veripass` with 4 scenarios (border, employer, venue, financial). Uses DCQL queries, JAR JWTs with x5c chain, `client_id_scheme: x509_hash`, JARM `direct_post.jwt` response mode. KB-JWT holder binding verified cryptographically in `apps/demo-rp/src/lib/verify.ts`. Dev certs required: `pnpm exec tsx scripts/generate-dev-certs.ts`.
+
+- [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP
 
 ## ZK Circuit Development
 

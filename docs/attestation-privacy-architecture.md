@@ -63,6 +63,9 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
 - OPAQUE authentication keeps raw passwords off the server; clients verify the server's static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
+- **DPoP nonces**: server-issued single-use tokens prevent DPoP proof replay (RFC 9449).
+- **KB-JWT freshness**: verifiers enforce max age on Key Binding JWT timestamps.
+- **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
 
 ---
 
@@ -151,7 +154,7 @@ This system intentionally splits data across **server storage** and **client‑o
 
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
-| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), status fields | Server readable | Required for basic UX, auth, and workflow state |
+| **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), PAR request objects (`haip_pushed_requests`), OID4VP session state (`haip_vp_sessions`), status fields | Server readable | Required for basic UX, auth, and workflow state |
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑, OPAQUE‑, or wallet‑derived keys) | User‑controlled privacy + encrypted computation |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
@@ -176,6 +179,9 @@ The vault is **not** a separate storage system. It is a **server‑stored encryp
 4. **Client-side proving** - private inputs remain in the browser during ZK proof generation.
 5. **User-controlled erasure** - deleting the passkey-sealed profile breaks access to PII and salts.
 6. **No biometric storage** - liveness and face match scores are stored as signed claims, not raw biometrics.
+7. **DPoP token binding** - access tokens bound to client's ephemeral key pair, preventing replay of stolen tokens.
+8. **PAR prevents parameter leakage** - authorization parameters submitted server-side, not in browser URLs.
+9. **JARM encrypted VP responses** - presentation responses encrypted to verifier's key, visible only to intended recipient.
 
 ## Attestation Schema
 
@@ -221,6 +227,9 @@ erDiagram
   USERS ||--o{ OAUTH_REFRESH_TOKEN : authorizes
   USERS ||--o{ OAUTH_CONSENT : grants
   USERS ||--o{ OAUTH_IDENTITY_DATA : consents_to
+
+  %% ── HAIP compliance ──
+  OAUTH_CLIENT ||--o{ HAIP_PUSHED_REQUESTS : par_requests
 
   %% ── Web3 & credentials ──
   USERS ||--o{ BLOCKCHAIN_ATTESTATIONS : attests
@@ -362,8 +371,27 @@ erDiagram
     text id PK "kid — key identifier"
     text public_key "JWK JSON (Ed25519) or custom JSON (ML-DSA-65)"
     text private_key "JWK JSON or raw keying material"
-    text alg "EdDSA | ML-DSA-65"
-    text crv "Ed25519 | null"
+    text alg "EdDSA | ML-DSA-65 | RS256 | ES256 | ECDH-ES"
+    text crv "Ed25519 | P-256 | null"
+  }
+
+  HAIP_PUSHED_REQUESTS {
+    text id PK
+    text request_id UK
+    text client_id FK
+    text request_params
+    integer expires_at
+  }
+  HAIP_VP_SESSIONS {
+    text id PK
+    text session_id UK
+    text nonce UK
+    text state
+    text dcql_query
+    text response_uri
+    text client_id_scheme
+    text response_mode
+    integer expires_at
   }
 ```
 
@@ -448,15 +476,15 @@ Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
 
 ### Credential tables
 
-- `oidc4vci_offers`: Pre-authorized credential offers (short-lived)
-- `oidc4vci_issued_credentials`: Issued credential metadata + status
-- `jwks`: Signing key material — stores both EdDSA (Ed25519) keys for standard JWT signing and ML-DSA-65 keys for post-quantum opt-in. Keys are generated on first use and distinguished by the `alg` column. The combined JWKS endpoint (`/api/auth/pq-jwks`) serves public keys from all rows.
+- `oidc4vci_offers`: Pre-authorized credential offers (short-lived). Supports deferred issuance for credentials requiring asynchronous verification.
+- `oidc4vci_issued_credentials`: Issued credential metadata + status. Includes `statusListId` + `statusListIndex` for revocation tracking via Status List 2021.
+- `jwks`: Signing and encryption key material (EdDSA, ML-DSA-65, RS256, ES256, ECDH-ES). Keys are generated on first use; public keys served via `/api/auth/pq-jwks`.
 
 ### Selective disclosure
 
 SD-JWT format allows users to reveal only specific claims during presentation. The holder controls which disclosure keys are included.
 
-See [SSI Architecture](ssi-architecture.md) for the full credential model.
+Verifiers validate KB-JWT holder binding: issuer signature → disclosure decode → `cnf.jkt` thumbprint match → KB-JWT signature → audience/nonce/freshness check. See [SSI Architecture](ssi-architecture.md) for the full credential model.
 
 ---
 

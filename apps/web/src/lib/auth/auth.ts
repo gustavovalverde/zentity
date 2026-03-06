@@ -55,6 +55,7 @@ import {
 } from "@/lib/auth/oidc/proof-scopes";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/trusted-dcql-matcher";
 import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
+import { validateX509Hash } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
@@ -305,8 +306,54 @@ const isDev =
 
 const x5cChain = loadX5cChain();
 
-// Initialize DPoP nonce store (starts background sweep timer)
-getDpopNonceStore(env.DPOP_NONCE_TTL_SECONDS);
+// DPoP nonce store for server-managed nonce validation (RFC 9449 §4.1)
+const nonceStore = getDpopNonceStore(env.DPOP_NONCE_TTL_SECONDS);
+
+function extractDpopNonce(proofJwt: string): string | undefined {
+  const [, b64] = proofJwt.split(".");
+  const { nonce } = JSON.parse(
+    Buffer.from(b64, "base64url").toString("utf8")
+  ) as { nonce?: string };
+  return typeof nonce === "string" ? nonce : undefined;
+}
+
+// Wrap DPoP token binding with server-managed nonce validation
+const baseDpopBinding = createDpopTokenBinding({ requireDpop: false });
+const dpopTokenBinding: typeof baseDpopBinding = async (input) => {
+  const result = await baseDpopBinding(input);
+  if (!result) {
+    return null;
+  }
+
+  const proof = input.headers.get("DPoP");
+  if (proof) {
+    const nonce = extractDpopNonce(proof);
+    if (nonce && !nonceStore.validate(nonce)) {
+      throw new APIError("BAD_REQUEST", {
+        message: "use_dpop_nonce: Invalid or expired DPoP nonce",
+      });
+    }
+  }
+
+  result.responseHeaders["DPoP-Nonce"] = nonceStore.issue();
+  return result;
+};
+
+// Wrap DPoP access token validator with nonce enforcement
+const baseDpopValidator = createDpopAccessTokenValidator({ requireDpop: true });
+const dpopAccessTokenValidator: typeof baseDpopValidator = async (input) => {
+  await baseDpopValidator(input);
+
+  const proof = input.request.headers.get("DPoP");
+  if (proof) {
+    const nonce = extractDpopNonce(proof);
+    if (nonce && !nonceStore.validate(nonce)) {
+      throw new APIError("BAD_REQUEST", {
+        message: "use_dpop_nonce: Invalid or expired DPoP nonce",
+      });
+    }
+  }
+};
 
 // Wallet attestation with trusted issuers enforcement (HAIP §4.4.1.6)
 const baseWalletStrategy = createWalletAttestationStrategy();
@@ -553,6 +600,32 @@ export const auth = betterAuth({
         return;
       }
 
+      // OID4VP response: validate x509_hash client_id against x5c chain
+      if (ctx.path === "/oidc4vp/response") {
+        const state =
+          typeof ctx.body?.state === "string" ? ctx.body.state : undefined;
+        if (state) {
+          const vpSession = await db
+            .select({
+              clientId: haipVpSessions.clientId,
+              clientIdScheme: haipVpSessions.clientIdScheme,
+            })
+            .from(haipVpSessions)
+            .where(eq(haipVpSessions.state, state))
+            .limit(1)
+            .get();
+
+          if (vpSession?.clientIdScheme === "x509_hash" && vpSession.clientId) {
+            const chain = loadX5cChain();
+            if (!(chain && validateX509Hash(vpSession.clientId, chain))) {
+              throw new APIError("FORBIDDEN", {
+                message: "x509_hash client_id does not match certificate chain",
+              });
+            }
+          }
+        }
+      }
+
       // Pairwise privacy guard: strip `resource` from token requests for
       // pairwise clients. Without `resource`, the plugin issues an opaque
       // access token instead of a JWT — preventing user.id leakage in the
@@ -753,7 +826,7 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
-      tokenBinding: createDpopTokenBinding({ requireDpop: false }),
+      tokenBinding: dpopTokenBinding,
       requestUriResolver: createParResolver(),
       clientAuthStrategies: {
         [WALLET_ATTESTATION_TYPE]: walletAttestationStrategy as never,
@@ -851,9 +924,7 @@ export const auth = betterAuth({
       credentialAudience: oidc4vciCredentialAudience,
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
-      accessTokenValidator: createDpopAccessTokenValidator({
-        requireDpop: true,
-      }),
+      accessTokenValidator: dpopAccessTokenValidator,
       proofValidators: {
         attestation: createKeyAttestationValidator(),
       },
