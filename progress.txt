@@ -2,16 +2,48 @@
 
 ## 1. Push subscription schema + env vars + VAPID setup (PRD §1, §env)
 - Created `push_subscriptions` table with userId FK, unique endpoint, p256dh/auth keys
-- Added VAPID env vars (server: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT; client: NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+- Added VAPID env vars (server + client) to env.ts, .env.example
 - Setup script generates VAPID keys via `web-push generate-vapid-keys --json`
 - Installed `web-push` + `@types/web-push`
 
+## 2. Server-side push sender (PRD §2)
+- `sendWebPush()` in src/lib/push/web-push.ts
+- Dispatches to all user devices, auto-cleans stale 410 subs
+- Fire-and-forget: errors logged, never thrown
+
+## 3. CIBA notification integration (PRD §6)
+- sendNotification fires push + email in parallel via Promise.allSettled
+- Push short-circuits silently when VAPID not configured
+
+## 4. Push subscription API routes (PRD §3)
+- POST /api/push/subscribe — upserts browser push subscription
+- POST /api/push/unsubscribe — removes subscription scoped to user
+
+## 5. Service worker + client manager (PRD §4-5)
+- push-sw.js: Approve/Deny action buttons, requireInteraction, tag dedup
+- client.ts: subscribeToPush(), unsubscribeFromPush(), getPushState()
+
+## 6. CIBA listing banner (PRD §8)
+- PushNotificationBanner component on /dashboard/ciba
+- Shows enable/disable/denied states based on Notification.permission
+
+## 7. PWA manifest (PRD §7)
+- src/app/manifest.ts serving /manifest.webmanifest
+- Enables installability and iOS Web Push
+
+## 8. Unit tests
+- 5 tests for sendWebPush: all devices, 410 cleanup, no subs, no throw, no VAPID
+
 # Decisions made and why
-- Schema follows ciba.ts pattern exactly (defaultId, timestamp_ms, FK cascade)
-- VAPID keys are optional — system gracefully degrades to email-only
-- Both VAPID_PUBLIC_KEY and NEXT_PUBLIC_VAPID_PUBLIC_KEY hold same value (server needs it for web-push lib, client for PushManager.subscribe)
+- Schema follows ciba.ts pattern (defaultId, timestamp_ms, FK cascade)
+- VAPID keys optional — system gracefully degrades to email-only
+- Both VAPID_PUBLIC_KEY and NEXT_PUBLIC_VAPID_PUBLIC_KEY hold same value
+- push-sw.js is a separate file from coi-serviceworker.js (no conflict)
+- Service worker uses fetch with credentials: 'same-origin' for inline approval
+- Banner is a client component embedded in server component page
 
 # Blockers encountered
+- None
 
 # Files changed
 - apps/web/src/lib/db/schema/push.ts (new)
@@ -20,3 +52,14 @@
 - apps/web/.env.example (VAPID placeholders)
 - apps/web/scripts/setup.ts (VAPID key generation)
 - apps/web/package.json (web-push dep)
+- apps/web/src/lib/push/web-push.ts (new — server push sender)
+- apps/web/src/lib/push/client.ts (new — client subscription manager)
+- apps/web/src/lib/auth/auth.ts (CIBA integration)
+- apps/web/src/app/api/push/subscribe/route.ts (new)
+- apps/web/src/app/api/push/unsubscribe/route.ts (new)
+- apps/web/public/push-sw.js (new — service worker)
+- apps/web/src/app/(dashboard)/dashboard/ciba/push-banner.tsx (new)
+- apps/web/src/app/(dashboard)/dashboard/ciba/page.tsx (banner integration)
+- apps/web/src/app/manifest.ts (new — PWA manifest)
+- apps/web/knip.json (ignore push-sw.js)
+- apps/web/src/lib/push/__tests__/web-push.test.ts (new — unit tests)
