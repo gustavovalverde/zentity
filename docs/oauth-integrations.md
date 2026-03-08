@@ -7,6 +7,7 @@ This doc covers all OAuth/OIDC directions in Zentity:
 3. [**OIDC4VCI**](#oidc4vci-credential-issuance) — Verifiable credential issuance to wallets
 4. [**OIDC4VP**](#oidc4vp-credential-presentation) — Credential presentation from wallets
 5. [**HAIP Compliance**](#haip-compliance) — DPoP, PAR, wallet attestation, JARM, x5c
+6. [**CIBA (Backchannel Authorization)**](#ciba-backchannel-authorization) — Agent-initiated async approval
 
 ---
 
@@ -485,6 +486,112 @@ X.509 certificate chains for credential JWTs and client identification:
 
 - `vpRequestExpiresInSeconds: 300` — VP sessions expire after 5 minutes
 - `OIDC4VP_JWKS_URL` — optional env var to override the JWKS endpoint used for VP token issuer verification
+
+---
+
+## CIBA (Backchannel Authorization)
+
+Zentity supports Client-Initiated Backchannel Authentication (CIBA) via the `@better-auth/ciba` plugin (vendor tarball). CIBA enables agents and applications to request user authorization without a browser redirect — the user approves from a separate device or notification.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Agent as Agent / RP
+  participant AS as Zentity AS
+  participant Email as Email / Push
+
+  Agent->>AS: POST /oauth2/bc-authorize (login_hint, scope, binding_message)
+  AS->>Email: Send approval notification
+  AS-->>Agent: { auth_req_id, expires_in, interval }
+  loop Poll every interval seconds
+    Agent->>AS: POST /oauth2/token (grant_type=ciba, auth_req_id)
+    AS-->>Agent: { error: "authorization_pending" }
+  end
+  User->>AS: Approve via /dashboard/ciba/approve
+  Agent->>AS: POST /oauth2/token (grant_type=ciba, auth_req_id)
+  AS-->>Agent: { access_token, id_token }
+```
+
+### Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/auth/oauth2/bc-authorize` | Initiate backchannel auth request |
+| `GET /api/auth/ciba/verify?auth_req_id=...` | Fetch request details (approval page) |
+| `POST /api/auth/ciba/authorize` | Approve a pending request |
+| `POST /api/auth/ciba/reject` | Deny a pending request |
+| `POST /api/auth/oauth2/token` | Poll for tokens (grant_type=`urn:openid:params:grant-type:ciba`) |
+
+### Authorization details (RAR)
+
+CIBA requests support `authorization_details` (RFC 9396) for structured action metadata. The field is stored as JSON text in the `ciba_request` table and flows through to:
+
+- **Approval page** — Rendered as a structured card (purchase-specific display for `type: "purchase"` with item, amount, merchant; key-value fallback for unknown types)
+- **Email notification** — Formatted in both HTML and plain text
+- **CIBA listing page** — One-line summary (e.g., "Purchase: $378.45 USD")
+- **Token response** — Included by the plugin in the token response
+
+### Client registration
+
+CIBA clients register via DCR as public clients (`token_endpoint_auth_method: "none"`). No `redirect_uris` are needed since CIBA does not use redirect flows. The client uses `login_hint` (user's email) to identify the target user.
+
+### Configuration
+
+The plugin is configured in `apps/web/src/lib/auth/auth.ts`:
+
+- `requestLifetime: 300` — Requests expire after 5 minutes
+- `pollingInterval: 5` — Minimum polling interval (seconds)
+- `sendNotification` — Callback that dispatches email notifications
+
+### Discovery metadata
+
+`enrichDiscoveryMetadata()` adds CIBA-specific fields to `/.well-known/openid-configuration`:
+
+- `backchannel_authentication_endpoint`
+- `backchannel_token_delivery_modes_supported: ["poll"]`
+- `backchannel_user_code_parameter_supported: false`
+- `grant_types_supported` includes `urn:openid:params:grant-type:ciba`
+
+### OAuth-provider patch
+
+Three changes to `@better-auth/oauth-provider` enable CIBA grant handling at the token endpoint:
+
+1. CIBA grant type added to the Zod `grant_type` enum
+2. `auth_req_id` field added to the token endpoint body schema (Zod strips unknown fields)
+3. `customGrantTypeHandlers` delegation in the token endpoint's `default` switch case
+
+### Delivery modes
+
+Only **poll mode** is implemented. Ping and push modes are defined in the schema (`delivery_mode`, `client_notification_token`, `client_notification_endpoint`) but not active.
+
+### Demo: Aether AI
+
+The `apps/demo-rp` Aether scenario (`/aether`) demonstrates CIBA with a shopping agent:
+
+1. User signs in, picks a shopping task
+2. Scripted agent chat plays, then triggers CIBA with structured `authorization_details`
+3. User approves from the Zentity dashboard
+4. Agent receives tokens, shows purchase confirmation
+
+### Schema
+
+`apps/web/src/lib/db/schema/ciba.ts` — `ciba_request` table with indexes on `client_id`, `user_id`, and `expires_at`.
+
+### Implementation files
+
+| File | Purpose |
+|------|---------|
+| `apps/web/src/lib/auth/auth.ts` | Plugin registration + `sendNotification` callback |
+| `apps/web/src/lib/db/schema/ciba.ts` | Drizzle table definition |
+| `apps/web/src/lib/email/ciba-mailer.ts` | Email notification formatting + dispatch |
+| `apps/web/src/lib/auth/well-known-utils.ts` | CIBA discovery metadata |
+| `apps/web/src/app/(dashboard)/dashboard/ciba/page.tsx` | Request listing page (server component) |
+| `apps/web/src/app/(dashboard)/dashboard/ciba/approve/page.tsx` | Approval page (client component with countdown) |
+| `apps/web/vendor/@better-auth__oauth-provider@1.5.1-beta.3.patch` | Token endpoint CIBA grant support |
+| `apps/web/vendor/better-auth-ciba-1.0.0.tgz` | CIBA plugin tarball |
 
 ---
 

@@ -3,7 +3,14 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/connection";
 import { dcrClient } from "@/lib/db/schema";
 
-const PROVIDER_IDS = ["bank", "exchange", "wine", "aid", "veripass"] as const;
+const PROVIDER_IDS = [
+  "bank",
+  "exchange",
+  "wine",
+  "aid",
+  "veripass",
+  "aether",
+] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export function isValidProviderId(id: string): id is ProviderId {
@@ -24,16 +31,31 @@ export async function readDcrClientId(
   }
 }
 
+export async function readDcrClient(
+  providerId: ProviderId
+): Promise<{ clientId: string; clientSecret: string | null } | null> {
+  try {
+    const row = await getDb().query.dcrClient.findFirst({
+      where: eq(dcrClient.providerId, providerId),
+      columns: { clientId: true, clientSecret: true },
+    });
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveDcrClientId(
   providerId: ProviderId,
-  clientId: string
+  clientId: string,
+  clientSecret?: string
 ): Promise<void> {
   await getDb()
     .insert(dcrClient)
-    .values({ providerId, clientId })
+    .values({ providerId, clientId, clientSecret: clientSecret ?? null })
     .onConflictDoUpdate({
       target: dcrClient.providerId,
-      set: { clientId },
+      set: { clientId, clientSecret: clientSecret ?? null },
     });
 }
 

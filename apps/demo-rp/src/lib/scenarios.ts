@@ -268,6 +268,51 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
     };
   })(),
+  aether: (() => {
+    const signInScopes = ["openid", "email"];
+    const stepUpScopes: string[] = [];
+    return {
+      id: "aether",
+      name: "Aether AI",
+      tagline: "Personal Shopping Agent",
+      description:
+        "AI agents act on your behalf but need explicit authorization for sensitive actions. CIBA lets the agent request approval via a backchannel — you approve on your own device, and the agent completes the purchase.",
+      providerId: "zentity-aether",
+      signInScopes,
+      stepUpScopes,
+      stepUpClaimKeys: [],
+      dcr: {
+        clientName: "Aether AI",
+        defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
+      },
+      compliance: [
+        {
+          label: "CIBA",
+          detail:
+            "OpenID Client Initiated Backchannel Authentication enables decoupled authorization — the agent requests access, the user approves from a separate device.",
+          variant: "mechanism" as const,
+        },
+        {
+          label: "EU AI Act",
+          detail:
+            "High-risk AI systems must obtain explicit human authorization before executing financial transactions. CIBA provides cryptographic proof of user consent.",
+          variant: "regulation" as const,
+        },
+        {
+          label: "Decoupled Auth",
+          detail:
+            "The agent never handles user credentials. Authorization tokens are scoped and short-lived, issued only after user approval.",
+          variant: "mechanism" as const,
+        },
+      ],
+      notShared: [
+        "Your credentials or passwords",
+        "Your payment details",
+        "Your browsing session",
+        "Any data beyond the approved scopes",
+      ],
+    };
+  })(),
 } as const;
 
 export function getScenario(id: string): Scenario {

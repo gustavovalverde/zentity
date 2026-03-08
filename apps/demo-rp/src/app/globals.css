@@ -296,6 +296,39 @@
   --surface-dark: oklch(0.15 0.05 280);
 }
 
+/* ── Aether AI theme: Cyan/Teal Agent ── */
+[data-theme="aether"] {
+  --background: oklch(0.985 0.005 195);
+  --foreground: oklch(0.15 0.03 195);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.03 195);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.03 195);
+
+  --primary: oklch(0.45 0.15 195); /* Deep Teal */
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary: oklch(0.96 0.02 195);
+  --secondary-foreground: oklch(0.45 0.15 195);
+
+  --muted: oklch(0.96 0.01 195);
+  --muted-foreground: oklch(0.55 0.05 195);
+
+  --accent: oklch(0.6 0.18 180); /* Cyan accent */
+  --accent-foreground: oklch(1 0 0);
+
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.92 0.01 195);
+  --input: oklch(0.92 0.01 195);
+  --ring: oklch(0.45 0.15 195);
+  --success: oklch(0.6 0.15 150);
+  --surface-dark: oklch(0.12 0.04 195);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

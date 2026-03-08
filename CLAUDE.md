@@ -38,7 +38,7 @@ Monorepo with services communicating via REST APIs:
 Additional apps (not core services):
 
 - `apps/landing` — Marketing landing page (deploys to Vercel)
-- `apps/demo-rp` — Demo relying party with OAuth scenarios (bank, exchange, wine, aid) and OID4VP verifier (VeriPass)
+- `apps/demo-rp` — Demo relying party with OAuth scenarios (bank, exchange, wine, aid), OID4VP verifier (VeriPass), and CIBA agent authorization (Aether AI at `/aether`)
 
 The frontend handles:
 
@@ -326,9 +326,11 @@ OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`
 
 **HAIP compliance** (`@better-auth/haip`): DPoP with server-managed nonce store (`DPOP_NONCE_TTL_SECONDS`, default 30s), PAR required (`requirePar: true`), wallet attestation (`TRUSTED_WALLET_ISSUERS`), JARM encrypted VP responses (ECDH-ES P-256), pairwise subject identifiers (`PAIRWISE_SECRET`, required min 32 chars). Discovery metadata enriched via `enrichDiscoveryMetadata()` in `well-known-utils.ts` (NOT via plugin after-hook — Next.js routes call `auth.api.*` directly).
 
+**CIBA** (`@better-auth/ciba`): Backchannel auth for agent authorization. Poll mode only. Endpoints: `POST /oauth2/bc-authorize`, `GET /ciba/verify`, `POST /ciba/authorize`, `POST /ciba/reject`. Grant type `urn:openid:params:grant-type:ciba` handled at the token endpoint via `customGrantTypeHandlers` (requires oauth-provider patch). Supports `authorization_details` (RAR) for structured action metadata. Approval UI at `/dashboard/ciba/approve`, listing at `/dashboard/ciba`. Email notifications via `src/lib/email/ciba-mailer.ts`. Schema: `src/lib/db/schema/ciba.ts`. Demo: Aether AI shopping agent at `apps/demo-rp/src/app/aether/`.
+
 **OID4VP verifier** (`apps/demo-rp`): VeriPass at `/veripass` with 4 scenarios (border, employer, venue, financial). Uses DCQL queries, JAR JWTs with x5c chain, `client_id_scheme: x509_hash`, JARM `direct_post.jwt` response mode. KB-JWT holder binding verified cryptographically in `apps/demo-rp/src/lib/verify.ts`. Dev certs required: `pnpm exec tsx scripts/generate-dev-certs.ts`.
 
-- [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP
+- [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
 
 ## ZK Circuit Development
 

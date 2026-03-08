@@ -54,6 +54,7 @@ export const verification = sqliteTable("verification", {
 export const dcrClient = sqliteTable("dcr_client", {
   providerId: text("providerId").primaryKey(),
   clientId: text("clientId").notNull(),
+  clientSecret: text("clientSecret"),
 });
 
 export const vpSessions = sqliteTable("vp_session", {

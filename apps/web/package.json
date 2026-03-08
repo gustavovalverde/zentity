@@ -50,6 +50,7 @@
   },
   "dependencies": {
     "@aztec/bb.js": "3.0.3",
+    "@better-auth/ciba": "file:vendor/better-auth-ciba-1.0.0.tgz",
     "@better-auth/core": "1.5.1-beta.3",
     "@better-auth/drizzle-adapter": "1.5.1-beta.3",
     "@better-auth/haip": "file:vendor/better-auth-haip-0.0.0.tgz",
@@ -199,6 +200,12 @@
       "esbuild": ">=0.25.0"
     },
     "packageExtensions": {
+      "@better-auth/ciba": {
+        "dependencies": {
+          "@better-auth/core": "*",
+          "@better-auth/oauth-provider": "*"
+        }
+      },
       "@better-auth/haip": {
         "dependencies": {
           "@better-auth/core": "*"

@@ -1,5 +1,6 @@
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
+import { ciba } from "@better-auth/ciba";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopAccessTokenValidator,
@@ -74,6 +75,7 @@ import {
   verifications,
   walletAddresses,
 } from "@/lib/db/schema/auth";
+import { cibaRequests } from "@/lib/db/schema/ciba";
 import { haipPushedRequests, haipVpSessions } from "@/lib/db/schema/haip";
 import { jwks } from "@/lib/db/schema/jwks";
 import {
@@ -92,6 +94,7 @@ import {
   members,
   organizations,
 } from "@/lib/db/schema/organization";
+import { sendCibaNotification } from "@/lib/email/ciba-mailer";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 
 const betterAuthSchema = {
@@ -115,6 +118,7 @@ const betterAuthSchema = {
   oidc4vciIssuedCredential: oidc4vciIssuedCredentials,
   haipPushedRequest: haipPushedRequests,
   haipVpSession: haipVpSessions,
+  cibaRequest: cibaRequests,
 };
 
 // Build trusted origins based on environment
@@ -238,7 +242,7 @@ const defaultClientScopes = [
   ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
-const allowedClientScopes = [...defaultClientScopes];
+const allowedClientScopes = [...defaultClientScopes, "email"];
 const oidcStandardClaims = [
   "sub",
   "name",
@@ -835,6 +839,7 @@ export const auth = betterAuth({
       scopes: [
         // Standard OIDC scopes
         "openid",
+        "email",
         "offline_access",
         // Proof scopes — verification status flags (no PII, derived booleans only)
         "proof:identity", // Umbrella: all verification claims
@@ -856,6 +861,7 @@ export const auth = betterAuth({
         "client_credentials",
         "refresh_token",
         "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+        "urn:openid:params:grant-type:ciba" as "authorization_code",
       ],
       validAudiences: [authIssuer, oidc4vciCredentialAudience, rpApiAudience],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
@@ -975,6 +981,22 @@ export const auth = betterAuth({
       dpopSigningAlgValues: ["ES256"],
       parExpiresInSeconds: 60,
       vpRequestExpiresInSeconds: 300,
+    }),
+    ciba({
+      requestLifetime: 300,
+      pollingInterval: 5,
+      sendNotification: async (data) => {
+        const approvalUrl = `${getAppOrigin()}/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(data.authReqId)}`;
+        await sendCibaNotification({
+          userId: data.userId,
+          authReqId: data.authReqId,
+          clientName: data.clientName,
+          scope: data.scope,
+          bindingMessage: data.bindingMessage,
+          authorizationDetails: data.authorizationDetails,
+          approvalUrl,
+        });
+      },
     }),
   ],
 });

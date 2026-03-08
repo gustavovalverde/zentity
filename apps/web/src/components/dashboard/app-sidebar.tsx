@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  BotMessageSquare,
   Code,
   Coins,
   FileCheck2,
@@ -83,6 +84,11 @@ const developerNavItems: NavItem[] = [
     title: "Applications",
     url: "/dashboard/developer/applications",
     icon: Key,
+  },
+  {
+    title: "Agent Requests",
+    url: "/dashboard/ciba",
+    icon: BotMessageSquare,
   },
   {
     title: "Debug Tools",

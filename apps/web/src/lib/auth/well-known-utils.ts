@@ -38,11 +38,17 @@ export function enrichDiscoveryMetadata(
     id_token_signing_alg_values_supported: [...ID_TOKEN_SIGNING_ALGS],
     // HAIP §5.1: PAR and DPoP metadata
     ...(issuer
-      ? { pushed_authorization_request_endpoint: `${issuer}/oauth2/par` }
+      ? {
+          pushed_authorization_request_endpoint: `${issuer}/oauth2/par`,
+          backchannel_authentication_endpoint: `${issuer}/oauth2/bc-authorize`,
+        }
       : {}),
     require_pushed_authorization_requests: true,
     dpop_signing_alg_values_supported: ["ES256"],
     authorization_details_types_supported: ["openid_credential"],
+    // CIBA metadata (OpenID CIBA Core §4)
+    backchannel_token_delivery_modes_supported: ["poll"],
+    backchannel_user_code_parameter_supported: false,
   };
 }
 

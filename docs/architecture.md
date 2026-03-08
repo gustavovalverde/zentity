@@ -29,6 +29,7 @@ Non-goals:
 | Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + EIP-712 Wallet | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
+| CIBA | @better-auth/ciba (backchannel auth, poll mode) | Agent-initiated async authorization via email/push notification and user approval. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
@@ -263,6 +264,30 @@ sequenceDiagram
 ```
 
 When DPoP is used, the token endpoint validates the DPoP proof and returns a server-managed `DPoP-Nonce` for replay prevention. The `DpopNonceStore` enforces single-use nonces with a configurable TTL (`DPOP_NONCE_TTL_SECONDS`, default 30s). PAR is mandatory (`requirePar: true`) — all authorization requests must first be pushed to the PAR endpoint.
+
+### Agent Authorization (CIBA)
+
+Agents and applications can request user authorization without a browser redirect via CIBA (Client-Initiated Backchannel Authentication). The agent sends a backchannel request with `login_hint` (user's email), `scope`, `binding_message`, and optional `authorization_details` (RFC 9396 RAR). The user receives an email notification and approves from the Zentity dashboard. The agent polls the token endpoint until approval.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Agent as Agent
+  participant AS as Zentity AS
+  participant Notify as Notification
+
+  Agent->>AS: POST /oauth2/bc-authorize
+  AS->>Notify: Email with approval link
+  AS-->>Agent: { auth_req_id }
+  Agent->>AS: POST /oauth2/token (poll)
+  AS-->>Agent: authorization_pending
+  User->>AS: Approve on dashboard
+  Agent->>AS: POST /oauth2/token (poll)
+  AS-->>Agent: { access_token, id_token }
+```
+
+Only poll mode is implemented. See [OAuth Integrations](oauth-integrations.md#ciba-backchannel-authorization) for endpoints and configuration.
 
 ---
 

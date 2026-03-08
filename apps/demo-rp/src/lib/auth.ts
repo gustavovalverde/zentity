@@ -213,6 +213,7 @@ const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   wine: ["openid", "proof:age"],
   aid: ["openid", "email", "proof:verification"],
   veripass: ["openid", "proof:verification"],
+  aether: ["openid", "email"],
 };
 
 function createAuth(clientIds: Partial<Record<ProviderId, string>>) {

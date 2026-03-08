@@ -1,4 +1,5 @@
 import {
+  AiChat02Icon,
   BankIcon,
   FlashIcon,
   Globe02Icon,
@@ -63,6 +64,14 @@ const LANDING_UI: LandingScenario[] = [
     brandFont: "font-bold tracking-tight",
     title: "Selective Disclosure",
   },
+  {
+    id: "aether",
+    icon: AiChat02Icon,
+    brandName: "Aether AI",
+    brandSub: "Personal Shopping Agent",
+    brandFont: "font-bold tracking-tight",
+    title: "Agent Authorization",
+  },
 ];
 
 const SCENARIOS = LANDING_UI.map((ui) => {
@@ -121,10 +130,10 @@ export default function Page() {
           </h1>
 
           <p className="landing-copy mx-auto max-w-2xl text-lg md:text-xl">
-            Five regulatory questions, one cryptographic answer. Each scenario
+            Six real-world scenarios, one cryptographic answer. Each demo
             satisfies a different compliance obligation through the same
-            architecture: zero-knowledge proofs and FHE encryption, with no
-            personal data stored.
+            architecture: zero-knowledge proofs, FHE encryption, and decoupled
+            authorization — with no personal data stored.
           </p>
 
           <div className="flex flex-col justify-center gap-3 pt-4 sm:flex-row">
@@ -266,7 +275,7 @@ export default function Page() {
               <h2 className="landing-section-title">Get started</h2>
               <p className="landing-copy mx-auto mt-3 max-w-xl">
                 Each scenario authenticates through your Zentity account via
-                OAuth. Sign up once, then explore all five demos.
+                OAuth. Sign up once, then explore all six demos.
               </p>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <a
