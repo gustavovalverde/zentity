@@ -95,6 +95,11 @@ export const env = createEnv({
     LOCAL_COMPLIANCE_RULES: z.string().optional(),
     LOCAL_COMPLIANT_ERC20: z.string().optional(),
 
+    // Web Push (VAPID)
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().default("mailto:notifications@zentity.xyz"),
+
     // Email
     MAILPIT_BASE_URL: z.string().optional(),
     MAILPIT_SEND_API_URL: z.string().optional(),
@@ -140,6 +145,9 @@ export const env = createEnv({
       .string()
       .default("https://ethereum-sepolia-rpc.publicnode.com"),
 
+    // Web Push
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
+
     // Noir/ZK client
     NEXT_PUBLIC_NOIR_DEBUG: booleanString.optional(),
     NEXT_PUBLIC_NOIR_WORKERS: z.coerce.number().optional(),
@@ -184,6 +192,9 @@ export const env = createEnv({
     LOCAL_IDENTITY_REGISTRY: process.env.LOCAL_IDENTITY_REGISTRY,
     LOCAL_COMPLIANCE_RULES: process.env.LOCAL_COMPLIANCE_RULES,
     LOCAL_COMPLIANT_ERC20: process.env.LOCAL_COMPLIANT_ERC20,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     MAILPIT_BASE_URL: process.env.MAILPIT_BASE_URL,
     MAILPIT_SEND_API_URL: process.env.MAILPIT_SEND_API_URL,
     MAILPIT_SEND_API_USERNAME: process.env.MAILPIT_SEND_API_USERNAME,
@@ -215,6 +226,7 @@ export const env = createEnv({
     NEXT_PUBLIC_ENABLE_HARDHAT: process.env.NEXT_PUBLIC_ENABLE_HARDHAT,
     NEXT_PUBLIC_PROJECT_ID: process.env.NEXT_PUBLIC_PROJECT_ID,
     NEXT_PUBLIC_FHEVM_RPC_URL: process.env.NEXT_PUBLIC_FHEVM_RPC_URL,
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
     NEXT_PUBLIC_NOIR_DEBUG: process.env.NEXT_PUBLIC_NOIR_DEBUG,
     NEXT_PUBLIC_NOIR_WORKERS: process.env.NEXT_PUBLIC_NOIR_WORKERS,
     NEXT_PUBLIC_ZKPASSPORT_ENABLED: process.env.NEXT_PUBLIC_ZKPASSPORT_ENABLED,

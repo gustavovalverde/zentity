@@ -95,6 +95,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { sendWebPush } from "@/lib/push/web-push";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 
 const betterAuthSchema = {
@@ -987,15 +988,26 @@ export const auth = betterAuth({
       pollingInterval: 5,
       sendNotification: async (data) => {
         const approvalUrl = `${getAppOrigin()}/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(data.authReqId)}`;
-        await sendCibaNotification({
-          userId: data.userId,
-          authReqId: data.authReqId,
-          clientName: data.clientName,
-          scope: data.scope,
-          bindingMessage: data.bindingMessage,
-          authorizationDetails: data.authorizationDetails,
-          approvalUrl,
-        });
+        const clientLabel = data.clientName ?? "An application";
+        await Promise.allSettled([
+          sendWebPush(data.userId, {
+            title: "Authorization Request",
+            body: `${clientLabel}: ${data.bindingMessage ?? data.scope}`,
+            data: {
+              authReqId: data.authReqId,
+              approvalUrl,
+            },
+          }),
+          sendCibaNotification({
+            userId: data.userId,
+            authReqId: data.authReqId,
+            clientName: data.clientName,
+            scope: data.scope,
+            bindingMessage: data.bindingMessage,
+            authorizationDetails: data.authorizationDetails,
+            approvalUrl,
+          }),
+        ]);
       },
     }),
   ],

@@ -28,6 +28,8 @@ import * as oidc4vciSchema from "./schema/oidc4vci";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as organizationSchema from "./schema/organization";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as pushSchema from "./schema/push";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as recoverySchema from "./schema/recovery";
 
 const schema = {
@@ -41,6 +43,7 @@ const schema = {
   ...oidc4idaSchema,
   ...oidc4vciSchema,
   ...organizationSchema,
+  ...pushSchema,
   ...recoverySchema,
 };
 

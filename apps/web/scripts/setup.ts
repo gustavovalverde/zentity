@@ -73,7 +73,18 @@ console.log("  PAIRWISE_SECRET          done");
 console.log("  OPAQUE_SERVER_SETUP      generating...");
 const { serverSetup, publicKey } = generateOpaqueSetup();
 console.log("  OPAQUE_SERVER_SETUP      done");
-console.log("  OPAQUE public key        done\n");
+console.log("  OPAQUE public key        done");
+
+console.log("  VAPID keys               generating...");
+const vapidKeysJson = execSync(
+  "npx --yes web-push generate-vapid-keys --json",
+  { encoding: "utf8" }
+).trim();
+const vapidKeys = JSON.parse(vapidKeysJson) as {
+  publicKey: string;
+  privateKey: string;
+};
+console.log("  VAPID keys               done\n");
 
 let template = readFileSync(EXAMPLE_PATH, "utf8");
 
@@ -84,6 +95,9 @@ const replacements: Record<string, string> = {
   INTERNAL_SERVICE_TOKEN: internalServiceToken,
   BBS_ISSUER_SECRET: bbsIssuerSecret,
   PAIRWISE_SECRET: pairwiseSecret,
+  VAPID_PUBLIC_KEY: vapidKeys.publicKey,
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: vapidKeys.publicKey,
+  VAPID_PRIVATE_KEY: vapidKeys.privateKey,
 };
 
 for (const [key, value] of Object.entries(replacements)) {

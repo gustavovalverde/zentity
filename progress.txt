@@ -1,0 +1,22 @@
+# Tasks completed in this session
+
+## 1. Push subscription schema + env vars + VAPID setup (PRD §1, §env)
+- Created `push_subscriptions` table with userId FK, unique endpoint, p256dh/auth keys
+- Added VAPID env vars (server: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT; client: NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+- Setup script generates VAPID keys via `web-push generate-vapid-keys --json`
+- Installed `web-push` + `@types/web-push`
+
+# Decisions made and why
+- Schema follows ciba.ts pattern exactly (defaultId, timestamp_ms, FK cascade)
+- VAPID keys are optional — system gracefully degrades to email-only
+- Both VAPID_PUBLIC_KEY and NEXT_PUBLIC_VAPID_PUBLIC_KEY hold same value (server needs it for web-push lib, client for PushManager.subscribe)
+
+# Blockers encountered
+
+# Files changed
+- apps/web/src/lib/db/schema/push.ts (new)
+- apps/web/src/lib/db/connection.ts (register push schema)
+- apps/web/src/env.ts (VAPID env vars)
+- apps/web/.env.example (VAPID placeholders)
+- apps/web/scripts/setup.ts (VAPID key generation)
+- apps/web/package.json (web-push dep)
