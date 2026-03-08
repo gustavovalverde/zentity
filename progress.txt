@@ -34,6 +34,12 @@
 ## 8. Unit tests
 - 5 tests for sendWebPush: all devices, 410 cleanup, no subs, no throw, no VAPID
 
+## 9. Next.js PWA best practices alignment
+- SW registration: added scope: '/', updateViaCache: 'none' per Next.js guide
+- SW headers: no-cache, restrictive CSP, correct content-type in next.config.ts
+- getPushState now async, checks actual PushManager subscription (not just permission)
+- Banner distinguishes "subscribed" vs "unsubscribed" (permission granted but no sub)
+
 # Decisions made and why
 - Schema follows ciba.ts pattern (defaultId, timestamp_ms, FK cascade)
 - VAPID keys optional — system gracefully degrades to email-only

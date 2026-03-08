@@ -154,6 +154,24 @@ const nextConfig: NextConfig = {
     ];
 
     return [
+      // Service worker: no-cache ensures users always get the latest version
+      {
+        source: "/push-sw.js",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'self'; script-src 'self'",
+          },
+        ],
+      },
       {
         source: "/:path*.wasm",
         headers: [{ key: "Content-Type", value: "application/wasm" }],

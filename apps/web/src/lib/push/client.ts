@@ -32,7 +32,10 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
     return null;
   }
 
-  const registration = await navigator.serviceWorker.register("/push-sw.js");
+  const registration = await navigator.serviceWorker.register("/push-sw.js", {
+    scope: "/",
+    updateViaCache: "none",
+  });
   await navigator.serviceWorker.ready;
 
   const keyBytes = urlBase64ToUint8Array(vapidKey);
@@ -82,21 +85,37 @@ export async function unsubscribeFromPush(): Promise<void> {
 
 /**
  * Get the current push subscription state without triggering any permissions.
+ *
+ * Checks both browser permission AND actual PushManager subscription,
+ * because permission "granted" doesn't guarantee a subscription exists
+ * (user may have cleared browser data).
  */
-export function getPushState():
-  | "unsupported"
-  | "prompt"
-  | "granted"
-  | "denied" {
+export async function getPushState(): Promise<
+  "unsupported" | "prompt" | "subscribed" | "unsubscribed" | "denied"
+> {
   if (!isPushSupported()) {
     return "unsupported";
   }
   if (!env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
     return "unsupported";
   }
-  return Notification.permission === "default"
-    ? "prompt"
-    : Notification.permission;
+  if (Notification.permission === "denied") {
+    return "denied";
+  }
+  if (Notification.permission === "default") {
+    return "prompt";
+  }
+  // Permission is "granted" — check if an active subscription exists
+  const registration = await navigator.serviceWorker
+    .getRegistration("/push-sw.js")
+    .catch(() => undefined);
+  if (!registration) {
+    return "unsubscribed";
+  }
+  const subscription = await registration.pushManager
+    .getSubscription()
+    .catch(() => null);
+  return subscription ? "subscribed" : "unsubscribed";
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

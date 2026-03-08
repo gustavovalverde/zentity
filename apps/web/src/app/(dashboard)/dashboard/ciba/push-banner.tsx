@@ -11,19 +11,25 @@ import {
   unsubscribeFromPush,
 } from "@/lib/push/client";
 
-type PushState = "unsupported" | "prompt" | "granted" | "denied" | "loading";
+type PushState =
+  | "unsupported"
+  | "prompt"
+  | "subscribed"
+  | "unsubscribed"
+  | "denied"
+  | "loading";
 
 export function PushNotificationBanner() {
   const [state, setState] = useState<PushState>("loading");
 
   useEffect(() => {
-    setState(getPushState());
+    getPushState().then(setState);
   }, []);
 
   const handleEnable = useCallback(async () => {
     setState("loading");
     const sub = await subscribeToPush();
-    setState(sub ? "granted" : getPushState());
+    setState(sub ? "subscribed" : await getPushState());
   }, []);
 
   const handleDisable = useCallback(async () => {
@@ -36,7 +42,7 @@ export function PushNotificationBanner() {
     return null;
   }
 
-  if (state === "granted") {
+  if (state === "subscribed") {
     return (
       <Alert variant="success">
         <BellRing />
@@ -71,6 +77,7 @@ export function PushNotificationBanner() {
     );
   }
 
+  // "prompt" or "unsubscribed" — both show the enable button
   return (
     <Alert variant="info">
       <Bell />
