@@ -15,6 +15,8 @@ import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
+import { PushNotificationBanner } from "./push-banner";
+
 function statusVariant(
   status: string
 ): "default" | "secondary" | "destructive" | "outline" {
@@ -67,6 +69,8 @@ export default async function CibaListPage() {
           authentication (CIBA).
         </p>
       </div>
+
+      <PushNotificationBanner />
 
       {requests.length === 0 ? (
         <Card>

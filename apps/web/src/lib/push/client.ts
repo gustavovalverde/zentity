@@ -1,0 +1,111 @@
+"use client";
+
+import { env } from "@/env";
+
+function isPushSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+/**
+ * Register the push service worker, request permission, subscribe via PushManager,
+ * and send the subscription to the server.
+ *
+ * Returns the PushSubscription on success, or null if unavailable/denied.
+ */
+export async function subscribeToPush(): Promise<PushSubscription | null> {
+  if (!isPushSupported()) {
+    return null;
+  }
+
+  const vapidKey = env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  if (!vapidKey) {
+    return null;
+  }
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    return null;
+  }
+
+  const registration = await navigator.serviceWorker.register("/push-sw.js");
+  await navigator.serviceWorker.ready;
+
+  const keyBytes = urlBase64ToUint8Array(vapidKey);
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: keyBytes.buffer as ArrayBuffer,
+  });
+
+  await fetch("/api/push/subscribe", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(subscription.toJSON()),
+  });
+
+  return subscription;
+}
+
+/**
+ * Unsubscribe from push notifications and remove the server-side subscription.
+ */
+export async function unsubscribeFromPush(): Promise<void> {
+  if (!isPushSupported()) {
+    return;
+  }
+
+  const registration =
+    await navigator.serviceWorker.getRegistration("/push-sw.js");
+  if (!registration) {
+    return;
+  }
+
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    return;
+  }
+
+  await fetch("/api/push/unsubscribe", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint: subscription.endpoint }),
+  });
+
+  await subscription.unsubscribe();
+}
+
+/**
+ * Get the current push subscription state without triggering any permissions.
+ */
+export function getPushState():
+  | "unsupported"
+  | "prompt"
+  | "granted"
+  | "denied" {
+  if (!isPushSupported()) {
+    return "unsupported";
+  }
+  if (!env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+    return "unsupported";
+  }
+  return Notification.permission === "default"
+    ? "prompt"
+    : Notification.permission;
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
