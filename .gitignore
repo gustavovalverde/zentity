@@ -18,6 +18,13 @@ docs/archive/
 docs/internal/
 docs/papers/
 docs/research/
+docs/rfcs/
+docs/plans/
+
+### Ralph ###
+progress.txt
+PROMPT.txt
+
 
 ### Linux ###
 *~
