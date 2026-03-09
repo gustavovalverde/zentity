@@ -41,7 +41,7 @@ self.addEventListener("notificationclick", (event) => {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ authReqId }),
+        body: JSON.stringify({ auth_req_id: authReqId }),
       })
         .then((res) => {
           if (!res.ok) {
