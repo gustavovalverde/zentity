@@ -38,13 +38,11 @@ export default defineConfig({
       "src/**/*.integration.test.tsx",
     ],
 
-    // Use vmThreads pool with explicit memory limit support
     pool: "vmThreads",
     fileParallelism: false,
     maxWorkers: 1,
     isolate: true,
-    // Memory limit for VM pools - recycle worker when exceeded
-    vmMemoryLimit: 0.8, // 80% of available memory
+    vmMemoryLimit: 0.8,
 
     // Timeouts
     testTimeout: 15_000,

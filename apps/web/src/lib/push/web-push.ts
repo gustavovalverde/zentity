@@ -14,6 +14,26 @@ interface PushPayload {
   title: string;
 }
 
+export interface PushTransport {
+  isGoneError(error: unknown): boolean;
+  sendNotification(
+    subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+    payload: string,
+    options: {
+      vapidDetails: { subject: string; publicKey: string; privateKey: string };
+      TTL: number;
+    }
+  ): Promise<unknown>;
+}
+
+const defaultTransport: PushTransport = {
+  sendNotification: (sub, payload, options) =>
+    webpush.sendNotification(sub, payload, options),
+  isGoneError: (error) =>
+    error instanceof webpush.WebPushError &&
+    (error.statusCode === 410 || error.statusCode === 404),
+};
+
 /**
  * Send a Web Push notification to all devices registered by a user.
  *
@@ -23,7 +43,8 @@ interface PushPayload {
  */
 export async function sendWebPush(
   userId: string,
-  payload: PushPayload
+  payload: PushPayload,
+  transport: PushTransport = defaultTransport
 ): Promise<void> {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = env;
   if (!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)) {
@@ -44,7 +65,7 @@ export async function sendWebPush(
   await Promise.all(
     subscriptions.map(async (sub) => {
       try {
-        await webpush.sendNotification(
+        await transport.sendNotification(
           {
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth },
@@ -60,10 +81,7 @@ export async function sendWebPush(
           }
         );
       } catch (error) {
-        const statusCode =
-          error instanceof webpush.WebPushError ? error.statusCode : undefined;
-
-        if (statusCode === 410 || statusCode === 404) {
+        if (transport.isGoneError(error)) {
           await db
             .delete(pushSubscriptions)
             .where(eq(pushSubscriptions.endpoint, sub.endpoint));
@@ -72,7 +90,6 @@ export async function sendWebPush(
 
         logWarn("Push notification delivery failed", {
           endpoint: sub.endpoint.slice(0, 60),
-          statusCode,
         });
       }
     })

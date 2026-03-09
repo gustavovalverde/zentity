@@ -1,35 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-
-const mockSendNotification = vi.fn();
-
-class MockWebPushError extends Error {
-  body: string;
-  endpoint: string;
-  headers: Record<string, string>;
-  statusCode: number;
-  constructor(
-    message: string,
-    statusCode: number,
-    headers: Record<string, string> = {},
-    body = "",
-    endpoint = ""
-  ) {
-    super(message);
-    this.statusCode = statusCode;
-    this.headers = headers;
-    this.body = body;
-    this.endpoint = endpoint;
-  }
-}
-
-vi.mock("web-push", () => ({
-  default: {
-    sendNotification: (...args: unknown[]) => mockSendNotification(...args),
-    WebPushError: MockWebPushError,
-  },
-}));
+vi.mock("web-push", () => ({ default: {} }));
 
 const mockDbSelect = vi.fn();
 const mockDbDelete = vi.fn();
@@ -46,10 +18,25 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
+vi.mock("drizzle-orm", () => ({
+  eq: (col: string, val: string) => ({ col, val }),
+}));
+
+vi.mock("@/lib/db/schema/push", () => ({
+  pushSubscriptions: { userId: "userId", endpoint: "endpoint" },
+}));
+
+let testVapidPublicKey: string | undefined = "test-public-key";
+let testVapidPrivateKey: string | undefined = "test-private-key";
+
 vi.mock("@/env", () => ({
   env: {
-    VAPID_PUBLIC_KEY: "test-public-key",
-    VAPID_PRIVATE_KEY: "test-private-key",
+    get VAPID_PUBLIC_KEY() {
+      return testVapidPublicKey;
+    },
+    get VAPID_PRIVATE_KEY() {
+      return testVapidPrivateKey;
+    },
     VAPID_SUBJECT: "mailto:test@zentity.xyz",
   },
 }));
@@ -59,11 +46,26 @@ vi.mock("@/lib/logging/error-logger", () => ({
   logWarn: vi.fn(),
 }));
 
+import type { PushTransport } from "../web-push";
+
+import { sendWebPush } from "../web-push";
+
+function createMockTransport(): PushTransport & {
+  sendNotification: ReturnType<typeof vi.fn>;
+} {
+  return {
+    sendNotification: vi.fn().mockResolvedValue(undefined),
+    isGoneError: (error: unknown) =>
+      error instanceof Error && error.message === "Gone",
+  };
+}
+
 describe("sendWebPush", () => {
   beforeEach(() => {
-    mockSendNotification.mockReset();
     mockDbSelect.mockReset();
     mockDbDelete.mockReset();
+    testVapidPublicKey = "test-public-key";
+    testVapidPrivateKey = "test-private-key";
   });
 
   it("sends to all user subscriptions", async () => {
@@ -82,23 +84,22 @@ describe("sendWebPush", () => {
       },
     ];
     mockDbSelect.mockResolvedValue(subs);
-    mockSendNotification.mockResolvedValue(undefined);
+    const transport = createMockTransport();
 
-    const { sendWebPush } = await import("../web-push");
-    await sendWebPush("user-1", {
-      title: "Test",
-      body: "Hello",
-    });
+    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
 
-    expect(mockSendNotification).toHaveBeenCalledTimes(2);
-    expect(mockSendNotification).toHaveBeenCalledWith(
-      { endpoint: subs[0].endpoint, keys: { p256dh: "key1", auth: "auth1" } },
+    expect(transport.sendNotification).toHaveBeenCalledTimes(2);
+    expect(transport.sendNotification).toHaveBeenCalledWith(
+      {
+        endpoint: subs[0].endpoint,
+        keys: { p256dh: "key1", auth: "auth1" },
+      },
       expect.any(String),
       expect.objectContaining({ TTL: 300 })
     );
   });
 
-  it("auto-deletes subscriptions on 410 Gone", async () => {
+  it("auto-deletes subscriptions on gone error", async () => {
     mockDbSelect.mockResolvedValue([
       {
         id: "1",
@@ -108,23 +109,22 @@ describe("sendWebPush", () => {
       },
     ]);
 
-    const error = new MockWebPushError("Gone", 410);
-    mockSendNotification.mockRejectedValue(error);
+    const transport = createMockTransport();
+    transport.sendNotification.mockRejectedValue(new Error("Gone"));
     mockDbDelete.mockResolvedValue(undefined);
 
-    const { sendWebPush } = await import("../web-push");
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
 
     expect(mockDbDelete).toHaveBeenCalled();
   });
 
   it("short-circuits when no subscriptions exist", async () => {
     mockDbSelect.mockResolvedValue([]);
+    const transport = createMockTransport();
 
-    const { sendWebPush } = await import("../web-push");
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
+    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
 
-    expect(mockSendNotification).not.toHaveBeenCalled();
+    expect(transport.sendNotification).not.toHaveBeenCalled();
   });
 
   it("does not throw on delivery failures", async () => {
@@ -136,48 +136,22 @@ describe("sendWebPush", () => {
         auth: "a",
       },
     ]);
-    mockSendNotification.mockRejectedValue(new Error("network error"));
+    const transport = createMockTransport();
+    transport.sendNotification.mockRejectedValue(new Error("network error"));
 
-    const { sendWebPush } = await import("../web-push");
     await expect(
-      sendWebPush("user-1", { title: "Test", body: "Hello" })
+      sendWebPush("user-1", { title: "Test", body: "Hello" }, transport)
     ).resolves.toBeUndefined();
   });
-});
 
-describe("sendWebPush without VAPID", () => {
   it("short-circuits when VAPID keys are not configured", async () => {
-    vi.resetModules();
+    testVapidPublicKey = undefined;
+    testVapidPrivateKey = undefined;
+    const transport = createMockTransport();
 
-    vi.doMock("server-only", () => ({}));
-    vi.doMock("web-push", () => ({
-      default: {
-        sendNotification: mockSendNotification,
-        WebPushError: MockWebPushError,
-      },
-    }));
-    vi.doMock("@/lib/db/connection", () => ({
-      db: {
-        select: () => ({ from: () => ({ where: mockDbSelect }) }),
-        delete: () => ({ where: mockDbDelete }),
-      },
-    }));
-    vi.doMock("@/lib/logging/error-logger", () => ({
-      logError: vi.fn(),
-      logWarn: vi.fn(),
-    }));
-    vi.doMock("@/env", () => ({
-      env: {
-        VAPID_PUBLIC_KEY: undefined,
-        VAPID_PRIVATE_KEY: undefined,
-        VAPID_SUBJECT: "mailto:test@zentity.xyz",
-      },
-    }));
+    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
 
-    const { sendWebPush } = await import("../web-push");
-    await sendWebPush("user-1", { title: "Test", body: "Hello" });
-
-    expect(mockSendNotification).not.toHaveBeenCalled();
+    expect(transport.sendNotification).not.toHaveBeenCalled();
     expect(mockDbSelect).not.toHaveBeenCalled();
   });
 });
