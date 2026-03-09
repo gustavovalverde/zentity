@@ -42,11 +42,16 @@
 - CIBA endpoints expect snake_case `auth_req_id` per RFC 9126
 - SW was sending camelCase `authReqId` — would silently fail inline approve
 
-## 10. Next.js PWA best practices alignment
+## 11. Next.js PWA best practices alignment
 - SW registration: added scope: '/', updateViaCache: 'none' per Next.js guide
 - SW headers: no-cache, restrictive CSP, correct content-type in next.config.ts
 - getPushState now async, checks actual PushManager subscription (not just permission)
 - Banner distinguishes "subscribed" vs "unsubscribed" (permission granted but no sub)
+
+## 12. iOS PWA install prompt (Next.js PWA guide §InstallPrompt)
+- Banner shows "Add to Home Screen" instructions for iOS users not in standalone mode
+- Fixed iPad detection: iPadOS 13+ spoofs Mac user agent, detect via maxTouchPoints > 1
+- Removed legacy MSStream IE11 check, removed iPad from user agent regex
 
 # Decisions made and why
 - Schema follows ciba.ts pattern (defaultId, timestamp_ms, FK cascade)

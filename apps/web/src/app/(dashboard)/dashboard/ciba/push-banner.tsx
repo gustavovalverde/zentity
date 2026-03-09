@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BellRing } from "lucide-react";
+import { Bell, BellOff, BellRing, Share } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -19,8 +19,34 @@ type PushState =
   | "denied"
   | "loading";
 
+const IOS_DEVICE_RE = /iPhone|iPod/;
+
+function isIOSDevice(): boolean {
+  // iPhone/iPod still report correctly in the user agent
+  if (IOS_DEVICE_RE.test(navigator.userAgent)) {
+    return true;
+  }
+  // iPadOS 13+ spoofs a Mac user agent — detect via touch support
+  // Real Macs have maxTouchPoints === 0; iPads report > 0
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
+function useIsIOSInstallable(): boolean {
+  const [isIOSInstallable, setIsIOSInstallable] = useState(false);
+
+  useEffect(() => {
+    const isStandalone = window.matchMedia(
+      "(display-mode: standalone)"
+    ).matches;
+    setIsIOSInstallable(isIOSDevice() && !isStandalone);
+  }, []);
+
+  return isIOSInstallable;
+}
+
 export function PushNotificationBanner() {
   const [state, setState] = useState<PushState>("loading");
+  const isIOSInstallable = useIsIOSInstallable();
 
   useEffect(() => {
     getPushState().then(setState);
@@ -38,8 +64,24 @@ export function PushNotificationBanner() {
     setState("prompt");
   }, []);
 
-  if (state === "loading" || state === "unsupported") {
+  if (state === "loading") {
     return null;
+  }
+
+  if (state === "unsupported") {
+    if (!isIOSInstallable) {
+      return null;
+    }
+    return (
+      <Alert variant="info">
+        <Share />
+        <AlertTitle>Install for push notifications</AlertTitle>
+        <AlertDescription>
+          Tap the share button in Safari, then &ldquo;Add to Home Screen&rdquo;
+          to enable instant notifications for agent requests.
+        </AlertDescription>
+      </Alert>
+    );
   }
 
   if (state === "subscribed") {
