@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/dashboard",
     name: "Zentity",
     short_name: "Zentity",
     description: "Privacy-first identity verification",

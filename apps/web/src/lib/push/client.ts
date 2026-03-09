@@ -44,12 +44,17 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
     applicationServerKey: keyBytes.buffer as ArrayBuffer,
   });
 
-  await fetch("/api/push/subscribe", {
+  const res = await fetch("/api/push/subscribe", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(subscription.toJSON()),
   });
+
+  if (!res.ok) {
+    await subscription.unsubscribe();
+    return null;
+  }
 
   return subscription;
 }
@@ -73,14 +78,15 @@ export async function unsubscribeFromPush(): Promise<void> {
     return;
   }
 
+  const { endpoint } = subscription;
+  await subscription.unsubscribe();
+
   await fetch("/api/push/unsubscribe", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint: subscription.endpoint }),
+    body: JSON.stringify({ endpoint }),
   });
-
-  await subscription.unsubscribe();
 }
 
 /**

@@ -12,7 +12,7 @@ self.addEventListener("push", (event) => {
     body,
     icon: "/images/logo/icon-192.png",
     badge: "/images/logo/icon-192.png",
-    tag: authReqId ? `ciba-${authReqId}` : undefined,
+    tag: authReqId ? `ciba-${authReqId}` : "ciba",
     requireInteraction: true,
     vibrate: [100, 50, 100],
     data: { authReqId, approvalUrl },

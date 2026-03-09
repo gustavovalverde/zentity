@@ -6,7 +6,7 @@ import webpush from "web-push";
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/push";
-import { logError, logWarn } from "@/lib/logging/error-logger";
+import { logWarn } from "@/lib/logging/error-logger";
 
 interface PushPayload {
   body: string;
@@ -41,7 +41,7 @@ export async function sendWebPush(
 
   const body = JSON.stringify(payload);
 
-  const results = await Promise.allSettled(
+  await Promise.all(
     subscriptions.map(async (sub) => {
       try {
         await webpush.sendNotification(
@@ -77,12 +77,4 @@ export async function sendWebPush(
       }
     })
   );
-
-  const failures = results.filter((r) => r.status === "rejected");
-  if (failures.length > 0) {
-    logError(
-      new Error(`${failures.length}/${results.length} push sends failed`),
-      { operation: "sendWebPush", userId }
-    );
-  }
 }

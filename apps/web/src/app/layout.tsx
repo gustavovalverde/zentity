@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { Geist, Geist_Mono } from "next/font/google";
 
@@ -17,11 +17,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#09090b",
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(env.NEXT_PUBLIC_APP_URL),
   title: "Zentity - Privacy-First Identity Verification",
   description:
     "Verify identity without exposing personal data using passkeys, zero-knowledge proofs, fully homomorphic encryption, and cryptographic commitments.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Zentity",
+  },
+  icons: {
+    apple: "/images/logo/apple-touch-icon.png",
+  },
   openGraph: {
     type: "website",
     siteName: "Zentity",
