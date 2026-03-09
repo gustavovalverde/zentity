@@ -19,8 +19,8 @@ patchedDependencies:
     hash: ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149
     path: vendor/@better-auth__core@1.5.1-beta.3.patch
   '@better-auth/oauth-provider@1.5.1-beta.3':
-    hash: 2aa2ddde4a1dff4e0438fac8899bc9481c96b35bd544897629c2e3f98909adf8
-    path: vendor/@better-auth__oauth-provider@1.5.1-beta.3.patch
+    hash: ebf2bee047d28d45251dcd11721c86a505db57f7e46c1363694c47be1178012a
+    path: patches/@better-auth__oauth-provider.patch
   '@better-auth/oidc4vci@0.0.0':
     hash: 0f26974bbc0dd9be7586eafdb10879123a59ab4b858ff5340cb03b919ae1b406
     path: vendor/@better-auth__oidc4vci@0.0.0.patch
@@ -43,7 +43,7 @@ importers:
         version: 3.0.3
       '@better-auth/ciba':
         specifier: file:vendor/better-auth-ciba-1.0.0.tgz
-        version: file:vendor/better-auth-ciba-1.0.0.tgz(c3980a83a14976faf8588292eb879d0b)
+        version: file:vendor/better-auth-ciba-1.0.0.tgz(686cea596513c6917dca8347ad245f81)
       '@better-auth/core':
         specifier: 1.5.1-beta.3
         version: 1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1)
@@ -55,7 +55,7 @@ importers:
         version: file:vendor/better-auth-haip-0.0.0.tgz(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))
       '@better-auth/oauth-provider':
         specifier: 1.5.1-beta.3
-        version: 1.5.1-beta.3(patch_hash=2aa2ddde4a1dff4e0438fac8899bc9481c96b35bd544897629c2e3f98909adf8)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))
+        version: 1.5.1-beta.3(patch_hash=ebf2bee047d28d45251dcd11721c86a505db57f7e46c1363694c47be1178012a)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))
       '@better-auth/oidc4ida':
         specifier: file:vendor/better-auth-oidc4ida-0.0.0.tgz
         version: file:vendor/better-auth-oidc4ida-0.0.0.tgz(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))
@@ -481,7 +481,7 @@ packages:
     engines: {node: '>=18'}
 
   '@better-auth/ciba@file:vendor/better-auth-ciba-1.0.0.tgz':
-    resolution: {integrity: sha512-JVgMYH2K1xYAh4ZdnaurXAXiJVrsXhC2M/OaquDt59HgyGAOhw510e2PWoURfUtyzk2uhMz99WNv2vVXBhXyKg==, tarball: file:vendor/better-auth-ciba-1.0.0.tgz}
+    resolution: {integrity: sha512-4FrchvjuE1f9NLUfT7oWlhdZp3+repZKwqEIoFB1phaChpMUT/tNtsp5Bk6e+KoxhR02sRJF+jSbhOeSmRAMAw==, tarball: file:vendor/better-auth-ciba-1.0.0.tgz}
     version: 1.0.0
     peerDependencies:
       '@better-auth/core': 1.5.1-beta.3
@@ -9294,10 +9294,10 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/ciba@file:vendor/better-auth-ciba-1.0.0.tgz(c3980a83a14976faf8588292eb879d0b)':
+  '@better-auth/ciba@file:vendor/better-auth-ciba-1.0.0.tgz(686cea596513c6917dca8347ad245f81)':
     dependencies:
       '@better-auth/core': 1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1)
-      '@better-auth/oauth-provider': 1.5.1-beta.3(patch_hash=2aa2ddde4a1dff4e0438fac8899bc9481c96b35bd544897629c2e3f98909adf8)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))
+      '@better-auth/oauth-provider': 1.5.1-beta.3(patch_hash=ebf2bee047d28d45251dcd11721c86a505db57f7e46c1363694c47be1178012a)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))
       '@better-auth/utils': 0.3.1
       '@better-fetch/fetch': 1.1.21
       better-auth: 1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778)
@@ -9341,7 +9341,7 @@ snapshots:
       '@better-auth/core': 1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1)
       '@better-auth/utils': 0.3.1
 
-  '@better-auth/oauth-provider@1.5.1-beta.3(patch_hash=2aa2ddde4a1dff4e0438fac8899bc9481c96b35bd544897629c2e3f98909adf8)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))':
+  '@better-auth/oauth-provider@1.5.1-beta.3(patch_hash=ebf2bee047d28d45251dcd11721c86a505db57f7e46c1363694c47be1178012a)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))':
     dependencies:
       '@better-auth/core': 1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1)
       '@better-auth/utils': 0.3.1

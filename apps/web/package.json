@@ -187,7 +187,7 @@
   "pnpm": {
     "patchedDependencies": {
       "@better-auth/core@1.5.1-beta.3": "vendor/@better-auth__core@1.5.1-beta.3.patch",
-      "@better-auth/oauth-provider@1.5.1-beta.3": "vendor/@better-auth__oauth-provider@1.5.1-beta.3.patch",
+      "@better-auth/oauth-provider@1.5.1-beta.3": "patches/@better-auth__oauth-provider@1.5.1-beta.3.patch",
       "@better-auth/passkey@1.5.1-beta.3": "vendor/@better-auth__passkey@1.5.1-beta.3.patch",
       "better-auth@1.5.1-beta.3": "patches/better-auth@1.5.1-beta.3.patch",
       "@better-auth/oidc4vci@0.0.0": "vendor/@better-auth__oidc4vci@0.0.0.patch",

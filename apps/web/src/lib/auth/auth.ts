@@ -862,7 +862,7 @@ export const auth = betterAuth({
         "client_credentials",
         "refresh_token",
         "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-        "urn:openid:params:grant-type:ciba" as "authorization_code",
+        "urn:openid:params:grant-type:ciba",
       ],
       validAudiences: [authIssuer, oidc4vciCredentialAudience, rpApiAudience],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
