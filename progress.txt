@@ -1,90 +1,21 @@
 # Tasks completed in this session
 
-## 1. Push subscription schema + env vars + VAPID setup (PRD §1, §env)
-- Created `push_subscriptions` table with userId FK, unique endpoint, p256dh/auth keys
-- Added VAPID env vars (server + client) to env.ts, .env.example
-- Setup script generates VAPID keys via `web-push generate-vapid-keys --json`
-- Installed `web-push` + `@types/web-push`
-
-## 2. Server-side push sender (PRD §2)
-- `sendWebPush()` in src/lib/push/web-push.ts
-- Dispatches to all user devices, auto-cleans stale 410 subs
-- Fire-and-forget: errors logged, never thrown
-
-## 3. CIBA notification integration (PRD §6)
-- sendNotification fires push + email in parallel via Promise.allSettled
-- Push short-circuits silently when VAPID not configured
-
-## 4. Push subscription API routes (PRD §3)
-- POST /api/push/subscribe — upserts browser push subscription
-- POST /api/push/unsubscribe — removes subscription scoped to user
-
-## 5. Service worker + client manager (PRD §4-5)
-- push-sw.js: Approve/Deny action buttons, requireInteraction, tag dedup
-- client.ts: subscribeToPush(), unsubscribeFromPush(), getPushState()
-
-## 6. CIBA listing banner (PRD §8)
-- PushNotificationBanner component on /dashboard/ciba
-- Shows enable/disable/denied states based on Notification.permission
-
-## 7. PWA manifest (PRD §7)
-- src/app/manifest.ts serving /manifest.webmanifest
-- Enables installability and iOS Web Push
-
-## 8. Unit tests
-- 5 tests for sendWebPush: all devices, 410 cleanup, no subs, no throw, no VAPID
-
-## 9. Integration tests for push API routes (PRD §Testing)
-- 7 tests: subscribe 401/store/upsert/400, unsubscribe 401/delete/noop
-- Added pushSubscriptions to resetDatabase() in db-test-utils
-
-## 10. Fix: SW inline approve/deny field name (auth_req_id not authReqId)
-- CIBA endpoints expect snake_case `auth_req_id` per RFC 9126
-- SW was sending camelCase `authReqId` — would silently fail inline approve
-
-## 11. Next.js PWA best practices alignment
-- SW registration: added scope: '/', updateViaCache: 'none' per Next.js guide
-- SW headers: no-cache, restrictive CSP, correct content-type in next.config.ts
-- getPushState now async, checks actual PushManager subscription (not just permission)
-- Banner distinguishes "subscribed" vs "unsubscribed" (permission granted but no sub)
-
-## 12. iOS PWA install prompt (Next.js PWA guide §InstallPrompt)
-- Banner shows "Add to Home Screen" instructions for iOS users not in standalone mode
-- Fixed iPad detection: iPadOS 13+ spoofs Mac user agent, detect via maxTouchPoints > 1
-- Removed legacy MSStream IE11 check, removed iPad from user agent regex
-
-## 13. Eager SW registration for update checks (Next.js PWA guide audit)
-- getPushState now calls register() instead of getRegistration() when permission granted
-- register() is idempotent but triggers SW update check (updateViaCache: 'none')
-- Without this, existing subscribers never picked up push-sw.js updates
-- Added vibrate: [100, 50, 100] to notification options for mobile haptics
+## CIBA token integration tests (PRD: ciba-token-delivery, Testing)
+- 10 integration tests covering full CIBA token flow: pending, approved, rejected, expired, slow_down, replay prevention, client mismatch, act claim, authorization_details forwarding
+- 2 CIBA discovery metadata tests added to oidc-well-known.test.ts: backchannel_authentication_endpoint, CIBA grant type in grant_types_supported
+- Fixed stale node_modules: pnpm install refreshed CIBA tarball with act + authorization_details support
+- Added cibaRequests to resetDatabase() for test isolation
 
 # Decisions made and why
-- Schema follows ciba.ts pattern (defaultId, timestamp_ms, FK cascade)
-- VAPID keys optional — system gracefully degrades to email-only
-- Both VAPID_PUBLIC_KEY and NEXT_PUBLIC_VAPID_PUBLIC_KEY hold same value
-- push-sw.js is a separate file from coi-serviceworker.js (no conflict)
-- Service worker uses fetch with credentials: 'same-origin' for inline approval
-- Banner is a client component embedded in server component page
+- Tests use auth.handler() directly (same as toNextJsHandler) with response envelope unwrapping
+- JWT act/authorization_details tests set resource=authIssuer because access tokens are JWT only when audience is present (opaque otherwise)
+- Integration test (not unit) because it exercises the full plugin dispatch chain: Zod parsing → customGrantTypeHandlers → CIBA grant handler → createUserTokens
 
 # Blockers encountered
-- None
+- node_modules had stale CIBA plugin without act/authorization_details (tarball was updated in commit 2e50411 but pnpm install wasn't re-run)
 
 # Files changed
-- apps/web/src/lib/db/schema/push.ts (new)
-- apps/web/src/lib/db/connection.ts (register push schema)
-- apps/web/src/env.ts (VAPID env vars)
-- apps/web/.env.example (VAPID placeholders)
-- apps/web/scripts/setup.ts (VAPID key generation)
-- apps/web/package.json (web-push dep)
-- apps/web/src/lib/push/web-push.ts (new — server push sender)
-- apps/web/src/lib/push/client.ts (new — client subscription manager)
-- apps/web/src/lib/auth/auth.ts (CIBA integration)
-- apps/web/src/app/api/push/subscribe/route.ts (new)
-- apps/web/src/app/api/push/unsubscribe/route.ts (new)
-- apps/web/public/push-sw.js (new — service worker)
-- apps/web/src/app/(dashboard)/dashboard/ciba/push-banner.tsx (new)
-- apps/web/src/app/(dashboard)/dashboard/ciba/page.tsx (banner integration)
-- apps/web/src/app/manifest.ts (new — PWA manifest)
-- apps/web/knip.json (ignore push-sw.js)
-- apps/web/src/lib/push/__tests__/web-push.test.ts (new — unit tests)
+- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (new)
+- apps/web/src/lib/auth/__tests__/oidc-well-known.test.ts (2 new CIBA tests)
+- apps/web/src/test/db-test-utils.ts (add cibaRequests to resetDatabase)
+- apps/web/pnpm-lock.yaml (refreshed from pnpm install)

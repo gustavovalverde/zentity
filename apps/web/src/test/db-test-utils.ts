@@ -12,6 +12,7 @@ import {
   users,
   verifications,
 } from "@/lib/db/schema/auth";
+import { cibaRequests } from "@/lib/db/schema/ciba";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import {
   encryptedAttributes,
@@ -69,6 +70,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
     await tx.delete(pushSubscriptions).run();
+    await tx.delete(cibaRequests).run();
     // OAuth/compliance tables (delete children before parents)
     await tx.delete(rpEncryptionKeys).run();
     await tx.delete(oauthAccessTokens).run();

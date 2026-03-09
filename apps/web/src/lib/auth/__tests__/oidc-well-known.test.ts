@@ -132,3 +132,30 @@ describe("oidc discovery — HAIP metadata fields", () => {
     expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
   });
 });
+
+describe("oidc discovery — CIBA metadata fields", () => {
+  it("enriched metadata includes backchannel_authentication_endpoint", () => {
+    const enriched = enrichDiscoveryMetadata({
+      issuer: "https://example.com/api/auth",
+    });
+
+    expect(enriched.backchannel_authentication_endpoint).toBe(
+      "https://example.com/api/auth/oauth2/bc-authorize"
+    );
+    expect(enriched.backchannel_token_delivery_modes_supported).toEqual([
+      "poll",
+    ]);
+    expect(enriched.backchannel_user_code_parameter_supported).toBe(false);
+  });
+
+  it("OpenID config includes CIBA grant type in grant_types_supported", async () => {
+    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const resolved = await parseOpenIdConfig(raw);
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
+
+    const grantTypes = enriched.grant_types_supported as string[];
+    expect(grantTypes).toContain("urn:openid:params:grant-type:ciba");
+  });
+});
