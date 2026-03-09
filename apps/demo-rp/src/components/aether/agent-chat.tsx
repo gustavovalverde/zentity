@@ -197,6 +197,7 @@ export function AgentChat({
             pick={
               task.results.find((p) => p.id === task.pick) ?? task.results[0]
             }
+            tokens={tokens}
           />
         )}
         {cibaState === "denied" && (
@@ -379,10 +380,40 @@ function CibaWaiting({ state }: { state: "requesting" | "polling" }) {
   );
 }
 
-function CibaResult({ pick, onReset }: { onReset: () => void; pick: Product }) {
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      return null;
+    }
+    return JSON.parse(atob(parts[1])) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function CibaResult({
+  pick,
+  onReset,
+  tokens,
+}: {
+  onReset: () => void;
+  pick: Product;
+  tokens: Record<string, unknown>;
+}) {
+  const [showDetails, setShowDetails] = useState(false);
   const orderId = `AE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
   const tax = pick.price * 0.0875;
   const total = pick.price + tax;
+
+  const jwtPayload =
+    typeof tokens.access_token === "string"
+      ? decodeJwtPayload(tokens.access_token)
+      : null;
+  const actClaim = jwtPayload?.act as { sub: string } | undefined;
+  const authorizationDetails = tokens.authorization_details as
+    | unknown[]
+    | undefined;
 
   return (
     <div className="fade-in animate-in space-y-3 duration-500">
@@ -432,6 +463,48 @@ function CibaResult({ pick, onReset }: { onReset: () => void; pick: Product }) {
           needed.
         </p>
       </div>
+
+      {(actClaim || authorizationDetails) && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+          <button
+            className="flex w-full items-center justify-between text-left"
+            onClick={() => setShowDetails((prev) => !prev)}
+            type="button"
+          >
+            <span className="font-medium text-white/60 text-xs uppercase tracking-wider">
+              Token Details
+            </span>
+            <span className="text-white/40 text-xs">
+              {showDetails ? "Hide" : "Show"}
+            </span>
+          </button>
+
+          {showDetails && (
+            <div className="mt-3 space-y-3">
+              {actClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    act claim (agent identity)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
+                    {JSON.stringify(actClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {authorizationDetails && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    authorization_details (approved action)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-blue-300/80 text-xs">
+                    {JSON.stringify(authorizationDetails, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <Button
         className="w-full text-white/60"
