@@ -105,9 +105,10 @@ export async function getPushState(): Promise<
   if (Notification.permission === "default") {
     return "prompt";
   }
-  // Permission is "granted" — check if an active subscription exists
+  // Permission is "granted" — register the SW (idempotent) to trigger update
+  // checks per Next.js PWA guide, then check if a subscription exists.
   const registration = await navigator.serviceWorker
-    .getRegistration("/push-sw.js")
+    .register("/push-sw.js", { scope: "/", updateViaCache: "none" })
     .catch(() => undefined);
   if (!registration) {
     return "unsubscribed";

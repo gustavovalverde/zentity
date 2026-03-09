@@ -14,6 +14,7 @@ self.addEventListener("push", (event) => {
     badge: "/images/logo/icon-192.png",
     tag: authReqId ? `ciba-${authReqId}` : undefined,
     requireInteraction: true,
+    vibrate: [100, 50, 100],
     data: { authReqId, approvalUrl },
     actions: [
       { action: "approve", title: "Approve" },

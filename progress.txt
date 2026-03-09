@@ -53,6 +53,12 @@
 - Fixed iPad detection: iPadOS 13+ spoofs Mac user agent, detect via maxTouchPoints > 1
 - Removed legacy MSStream IE11 check, removed iPad from user agent regex
 
+## 13. Eager SW registration for update checks (Next.js PWA guide audit)
+- getPushState now calls register() instead of getRegistration() when permission granted
+- register() is idempotent but triggers SW update check (updateViaCache: 'none')
+- Without this, existing subscribers never picked up push-sw.js updates
+- Added vibrate: [100, 50, 100] to notification options for mobile haptics
+
 # Decisions made and why
 - Schema follows ciba.ts pattern (defaultId, timestamp_ms, FK cascade)
 - VAPID keys optional — system gracefully degrades to email-only
