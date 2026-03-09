@@ -39,6 +39,7 @@ import {
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
 } from "@/lib/db/schema/oidc4vci";
+import { pushSubscriptions } from "@/lib/db/schema/push";
 
 export interface CreateUserInput {
   createdAt?: string;
@@ -67,6 +68,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oidc4vciOffers).run();
     await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
+    await tx.delete(pushSubscriptions).run();
     // OAuth/compliance tables (delete children before parents)
     await tx.delete(rpEncryptionKeys).run();
     await tx.delete(oauthAccessTokens).run();

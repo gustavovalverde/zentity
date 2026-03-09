@@ -34,7 +34,11 @@
 ## 8. Unit tests
 - 5 tests for sendWebPush: all devices, 410 cleanup, no subs, no throw, no VAPID
 
-## 9. Fix: SW inline approve/deny field name (auth_req_id not authReqId)
+## 9. Integration tests for push API routes (PRD §Testing)
+- 7 tests: subscribe 401/store/upsert/400, unsubscribe 401/delete/noop
+- Added pushSubscriptions to resetDatabase() in db-test-utils
+
+## 10. Fix: SW inline approve/deny field name (auth_req_id not authReqId)
 - CIBA endpoints expect snake_case `auth_req_id` per RFC 9126
 - SW was sending camelCase `authReqId` — would silently fail inline approve
 
