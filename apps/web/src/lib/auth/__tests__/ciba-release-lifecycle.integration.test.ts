@@ -256,6 +256,56 @@ describe("CIBA → durable approval → release lifecycle", () => {
     expect(payload.release_handle).toBeUndefined();
   });
 
+  it("authorization_details round-trips through release into id_token", async () => {
+    const pii = { given_name: "Carol" };
+    const authorizationDetails = JSON.stringify([
+      { type: "purchase", amount: { currency: "USD", value: "42.00" } },
+    ]);
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      scope: "openid identity.name",
+      resource: TEST_RESOURCE,
+      authorizationDetails,
+    });
+
+    const sealed = await sealApprovalPii(JSON.stringify(pii));
+    await db
+      .insert(approvals)
+      .values({
+        authReqId,
+        userId,
+        clientId: TEST_CLIENT_ID,
+        approvedScopes: "openid identity.name",
+        encryptedPii: sealed.encryptedPii,
+        encryptionIv: sealed.encryptionIv,
+        releaseHandleHash: sealed.releaseHandleHash,
+        authorizationDetails,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      })
+      .run();
+
+    stageReleaseHandle(authReqId, sealed.releaseHandle, userId);
+
+    const { json: tokenJson, dpopKeyPair } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    const { status, json } = await postRelease(
+      tokenJson.access_token as string,
+      dpopKeyPair
+    );
+    expect(status).toBe(200);
+
+    const idToken = decodeJwt(json.id_token as string);
+    expect(idToken.given_name).toBe("Carol");
+    expect(idToken.authorization_details).toEqual([
+      { type: "purchase", amount: { currency: "USD", value: "42.00" } },
+    ]);
+  });
+
   it("expired approval: release returns 410", async () => {
     const authReqId = await insertCibaRequest({
       userId,

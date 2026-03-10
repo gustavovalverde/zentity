@@ -279,6 +279,42 @@ describe("CIBA token endpoint", () => {
       expect(payload.release_handle).toBe(fakeHandle);
     });
 
+    it("same user with two CIBA requests gets the correct handle on each token", async () => {
+      const authReqId1 = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+        scope: "openid identity.name",
+      });
+      const authReqId2 = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+        scope: "openid identity.name",
+      });
+
+      const handle1 = crypto.randomBytes(32).toString("base64url");
+      const handle2 = crypto.randomBytes(32).toString("base64url");
+      stageReleaseHandle(authReqId1, handle1, userId);
+      stageReleaseHandle(authReqId2, handle2, userId);
+
+      const { json: json1 } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId1,
+        client_id: TEST_CLIENT_ID,
+      });
+      const { json: json2 } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId2,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      const payload1 = decodeJwt(json1.access_token as string);
+      const payload2 = decodeJwt(json2.access_token as string);
+      expect(payload1.release_handle).toBe(handle1);
+      expect(payload2.release_handle).toBe(handle2);
+    });
+
     it("omits release_handle when nothing is staged", async () => {
       const authReqId = await insertCibaRequest({
         userId,

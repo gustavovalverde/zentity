@@ -1,5 +1,16 @@
 # Tasks completed in this session
 
+## Regression Test Backfill (CIBA Notifications Remediation)
+- Covers Phase 2 and Phase 3 acceptance criteria gaps
+- authorization_details round-trip through /api/oauth2/release into id_token (Phase 2)
+- Same user with two pending CIBA requests each gets correct release handle (Phase 3)
+
+### Files changed
+- apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts (+1 test)
+- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (+1 test)
+
+---
+
 ## Phase 4: Demo-rp Ping Flow Hardening (CIBA Notifications Remediation)
 - PRD ref: Finding 7 (demo-rp ping/poll race conditions)
 - In-flight fetch deduplication via inflightRef prevents overlapping token requests
