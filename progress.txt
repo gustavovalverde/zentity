@@ -34,5 +34,13 @@
 - Client `ciba-approve-client.tsx` receives auth context for vault unlock rendering
 - Added `layout.tsx` with `Web3Provider` wrapper (needed for wallet unlock path)
 
+## Phase 2.3: Vault unlock + identity staging on CIBA approval page (Plan §Phase 2, AC 8-10)
+- Extracted shared vault unlock components (`VaultErrorAlert`, `WalletVaultUnlockButton`, `OpaqueVaultUnlockForm`, `classifyVaultError`, `buildIdentityPayload`, `buildScopeKey`) into `src/components/vault-unlock.tsx`
+- Updated OAuth consent page to import from shared module (no behavior change)
+- Wired CIBA approval page with full vault unlock → intent → stage → approve flow
+- Identity scopes in CIBA request trigger vault unlock UI (passkey/OPAQUE/wallet based on `authMode`)
+- Staging calls `/api/ciba/identity/intent` then `/api/ciba/identity/stage` before approval
+- Approve button disabled until vault is unlocked and intent token is valid (when identity scopes present)
+
 # Any blockers or notes for next iteration
-- Next: Phase 2 vault unlock UI + staging logic on CIBA approval page (passkey/OPAQUE/wallet unlock wired to intent/stage endpoints)
+- Next: Phase 2 integration tests for CIBA identity staging flow, then Phase 3 (durable approval)
