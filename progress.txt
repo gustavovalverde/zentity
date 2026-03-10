@@ -126,5 +126,18 @@
 - `apps/web/src/lib/auth/oidc/jwt-signer.ts` — added `resetSigningKeyCache()` export
 - `apps/web/src/lib/auth/__tests__/token-exchange.integration.test.ts` — added 2 new audience tests, 1 id_token scope restriction test, cache reset in beforeEach
 
-# Any blockers or notes for next iteration
-- Next: Phase 5 (Demo-rp Aether Token Exchange)
+## Phase 5: Demo-rp Aether Token Exchange (Plan §Phase 5)
+- Added `token-exchange` action to BFF `/api/ciba` route — proxies RFC 8693 token exchange to Zentity
+- Hook (`use-ciba-flow.ts`): auto-exchanges the CIBA access token after approval, returns `exchangedTokens` alongside `tokens`
+- Extracted `handlePollResult` callback from `pollToken` to stay under biome's cognitive complexity limit (20)
+- `CibaResult` UI updated: shows exchanged token's `act` claim chain, `aud` (merchant API), and `scope` alongside original CIBA token claims
+- Narrative updated: "Narrowed permissions for the merchant API" when exchange succeeds
+- Merchant API audience: `https://merchant.example.com/api` (simulated)
+
+# Files changed (Phase 5)
+- `apps/demo-rp/src/app/api/ciba/route.ts` — added `token-exchange` action
+- `apps/demo-rp/src/hooks/use-ciba-flow.ts` — added `exchangeToken`, `exchangedTokens`, extracted `handlePollResult`
+- `apps/demo-rp/src/components/aether/agent-chat.tsx` — updated `CibaResult` to show exchanged token details
+- `apps/demo-rp/src/app/aether/page.tsx` — passes `exchangedTokens` to `AgentChat`
+
+# All phases complete
