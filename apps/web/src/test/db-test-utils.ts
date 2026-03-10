@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { db } from "@/lib/db/connection";
+import { approvals } from "@/lib/db/schema/approvals";
 import {
   attestationEvidence,
   blockchainAttestations,
@@ -72,6 +73,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(zkChallenges).run();
     await tx.delete(usedIntentJtis).run();
     await tx.delete(pushSubscriptions).run();
+    await tx.delete(approvals).run();
     await tx.delete(cibaRequests).run();
     // OAuth/compliance tables (delete children before parents)
     await tx.delete(rpEncryptionKeys).run();

@@ -8,6 +8,8 @@ import { drizzle } from "drizzle-orm/libsql";
 import { env } from "@/env";
 
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as approvalsSchema from "./schema/approvals";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as attestationSchema from "./schema/attestation";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as authSchema from "./schema/auth";
@@ -33,6 +35,7 @@ import * as pushSchema from "./schema/push";
 import * as recoverySchema from "./schema/recovery";
 
 const schema = {
+  ...approvalsSchema,
   ...attestationSchema,
   ...authSchema,
   ...complianceSchema,
