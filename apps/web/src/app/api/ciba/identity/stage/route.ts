@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth/auth";
-import { storeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import { sealApprovalPii } from "@/lib/auth/oidc/approval-crypto";
+import { stageReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
 import {
   IdentityFieldsSchema,
   normalizeIdentityFields,
@@ -17,6 +18,7 @@ import {
   filterIdentityByScopes,
 } from "@/lib/auth/oidc/identity-scopes";
 import { db } from "@/lib/db/connection";
+import { approvals } from "@/lib/db/schema/approvals";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
 const StageSchema = z.object({
@@ -27,11 +29,12 @@ const StageSchema = z.object({
 });
 
 /**
- * POST /api/ciba/identity/stage — Stage identity claims for a CIBA request.
+ * POST /api/ciba/identity/stage — Seal and store PII for a CIBA request.
  *
- * Parallel to /api/oauth2/identity/stage but uses auth_req_id instead of
- * oauth_query to look up the client context. The staged claims are consumed
- * by customIdTokenClaims when the CIBA grant handler mints tokens.
+ * Encrypts PII with a per-approval AES-GCM key, writes a durable record
+ * to the `approvals` table, and stages the release handle for embedding
+ * in the access token via customAccessTokenClaims. The RP redeems PII
+ * by calling POST /api/oauth2/release with the access token.
  */
 export async function POST(request: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: request.headers });
@@ -144,29 +147,24 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ staged: false });
   }
 
-  const stored = await storeEphemeralClaims(
-    session.user.id,
-    filteredIdentity,
-    scopes,
-    {
-      clientId: cibaRequest.clientId,
-      scopeHash,
-      intentJti: intentPayload.jti,
-    }
-  );
+  const piiJson = JSON.stringify(filteredIdentity);
+  const sealed = await sealApprovalPii(piiJson);
 
-  if (!stored.ok) {
-    if (stored.reason === "intent_reused") {
-      return NextResponse.json(
-        { error: "Identity intent token has already been used" },
-        { status: 409 }
-      );
-    }
-    return NextResponse.json(
-      { error: "An active identity stage already exists for this user" },
-      { status: 409 }
-    );
-  }
+  await db
+    .insert(approvals)
+    .values({
+      authReqId: auth_req_id,
+      userId: session.user.id,
+      clientId: cibaRequest.clientId,
+      approvedScopes: scopes.join(" "),
+      encryptedPii: sealed.encryptedPii,
+      encryptionIv: sealed.encryptionIv,
+      releaseHandleHash: sealed.releaseHandleHash,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    })
+    .run();
+
+  stageReleaseHandle(session.user.id, sealed.releaseHandle);
 
   return NextResponse.json({ staged: true });
 }
