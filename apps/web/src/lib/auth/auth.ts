@@ -55,6 +55,10 @@ import {
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import {
+  TOKEN_EXCHANGE_GRANT_TYPE,
+  tokenExchangePlugin,
+} from "@/lib/auth/oidc/token-exchange";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/trusted-dcql-matcher";
 import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
 import { validateX509Hash } from "@/lib/auth/oidc/x509-validation";
@@ -864,6 +868,8 @@ export const auth = betterAuth({
         "refresh_token",
         "urn:ietf:params:oauth:grant-type:pre-authorized_code",
         "urn:openid:params:grant-type:ciba",
+        TOKEN_EXCHANGE_GRANT_TYPE as typeof TOKEN_EXCHANGE_GRANT_TYPE &
+          "authorization_code",
       ],
       validAudiences: [authIssuer, oidc4vciCredentialAudience, rpApiAudience],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
@@ -1031,6 +1037,7 @@ export const auth = betterAuth({
         ]);
       },
     }),
+    tokenExchangePlugin(),
   ],
 });
 

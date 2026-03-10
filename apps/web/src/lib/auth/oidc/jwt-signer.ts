@@ -20,6 +20,11 @@ interface CachedSigningKey {
 
 const keyCache = new Map<StandardAlg, CachedSigningKey>();
 
+/** Clear the module-level signing key cache (for test isolation). */
+export function resetSigningKeyCache(): void {
+  keyCache.clear();
+}
+
 const KEY_GEN_OPTIONS: Record<
   StandardAlg,
   { alg: string; opts: Record<string, unknown>; crv: string | null }
