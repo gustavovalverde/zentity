@@ -144,6 +144,32 @@ describe("sendWebPush", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("preserves requiresVaultUnlock flag in serialized payload", async () => {
+    mockDbSelect.mockResolvedValue([
+      {
+        id: "1",
+        endpoint: "https://fcm.googleapis.com/push/1",
+        p256dh: "k",
+        auth: "a",
+      },
+    ]);
+    const transport = createMockTransport();
+
+    await sendWebPush(
+      "user-1",
+      {
+        title: "Auth Request",
+        body: "App: buy things",
+        data: { authReqId: "req-1", requiresVaultUnlock: true },
+      },
+      transport
+    );
+
+    const serialized = transport.sendNotification.mock.calls[0][1] as string;
+    const parsed = JSON.parse(serialized);
+    expect(parsed.data.requiresVaultUnlock).toBe(true);
+  });
+
   it("short-circuits when VAPID keys are not configured", async () => {
     testVapidPublicKey = undefined;
     testVapidPrivateKey = undefined;

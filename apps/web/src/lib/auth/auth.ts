@@ -1016,6 +1016,7 @@ export const auth = betterAuth({
       sendNotification: async (data) => {
         const approvalUrl = `${getAppOrigin()}/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(data.authReqId)}`;
         const clientLabel = data.clientName ?? "An application";
+        const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
         await Promise.allSettled([
           sendWebPush(data.userId, {
             title: "Authorization Request",
@@ -1023,6 +1024,7 @@ export const auth = betterAuth({
             data: {
               authReqId: data.authReqId,
               approvalUrl,
+              requiresVaultUnlock,
             },
           }),
           sendCibaNotification({

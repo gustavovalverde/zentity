@@ -119,6 +119,41 @@ describe("POST /api/push/subscribe", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("transfers endpoint ownership when a different user re-subscribes", async () => {
+    const userA = await createTestUser({ email: "user-a@test.com" });
+    const userB = await createTestUser({ email: "user-b@test.com" });
+
+    // User A subscribes
+    mockSession(userA);
+    await subscribe(makeSubscribeRequest(validSubscription));
+
+    const rowsA = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, validSubscription.endpoint));
+    expect(rowsA).toHaveLength(1);
+    expect(rowsA[0].userId).toBe(userA);
+
+    // User B re-subscribes with the same endpoint
+    mockSession(userB);
+    const res = await subscribe(makeSubscribeRequest(validSubscription));
+    expect(res.status).toBe(201);
+
+    const rowsB = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, validSubscription.endpoint));
+    expect(rowsB).toHaveLength(1);
+    expect(rowsB[0].userId).toBe(userB);
+
+    // User A no longer has any subscriptions
+    const rowsForA = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userA));
+    expect(rowsForA).toHaveLength(0);
+  });
 });
 
 describe("POST /api/push/unsubscribe", () => {

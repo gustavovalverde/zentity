@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (existing) {
     await db
       .update(pushSubscriptions)
-      .set({ p256dh: keys.p256dh, auth: keys.auth, userAgent })
+      .set({ userId, p256dh: keys.p256dh, auth: keys.auth, userAgent })
       .where(eq(pushSubscriptions.endpoint, endpoint));
   } else {
     await db.insert(pushSubscriptions).values({

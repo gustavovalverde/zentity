@@ -1,5 +1,24 @@
 # Tasks completed in this session
 
+## Phase 1: Push Notification Safety (CIBA Notifications Remediation)
+- PRD ref: Findings 1, 3 (push ownership transfer, service worker bypass)
+- Subscribe endpoint upserts userId on conflict — transfers ownership when different user resubscribes same browser endpoint
+- Push payload includes requiresVaultUnlock flag derived from identity scopes in CIBA request
+- Service worker suppresses quick-approve action for identity-scoped requests; deny stays
+- Identity-scoped notification clicks always open approval page (never direct API call)
+- Non-identity CIBA requests retain both approve/deny quick actions
+- 1 new integration test: endpoint ownership transfer across two users
+- 1 new unit test: requiresVaultUnlock flag preserved in serialized push payload
+
+### Files changed
+- apps/web/src/app/api/push/subscribe/route.ts (add userId to upsert set)
+- apps/web/src/lib/auth/auth.ts (add requiresVaultUnlock to push payload)
+- apps/web/public/push-sw.js (conditional actions + identity-scoped click routing)
+- apps/web/src/app/api/push/__tests__/push-routes.integration.test.ts (ownership transfer test)
+- apps/web/src/lib/push/__tests__/web-push.test.ts (payload flag test)
+
+---
+
 ## Phase 1: Protected Resource Metadata + Discovery (MCP Compatibility)
 - PRD ref: Phase 1 (User stories 1, 9, 12)
 - RFC 9728 endpoint at /.well-known/oauth-protected-resource

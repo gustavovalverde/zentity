@@ -7,6 +7,14 @@ self.addEventListener("push", (event) => {
   const { title, body, data } = payload;
   const authReqId = data?.authReqId;
   const approvalUrl = data?.approvalUrl ?? "/dashboard/ciba";
+  const requiresVaultUnlock = data?.requiresVaultUnlock === true;
+
+  const actions = requiresVaultUnlock
+    ? [{ action: "deny", title: "Deny" }]
+    : [
+        { action: "approve", title: "Approve" },
+        { action: "deny", title: "Deny" },
+      ];
 
   const options = {
     body,
@@ -15,11 +23,8 @@ self.addEventListener("push", (event) => {
     tag: authReqId ? `ciba-${authReqId}` : "ciba",
     requireInteraction: true,
     vibrate: [100, 50, 100],
-    data: { authReqId, approvalUrl },
-    actions: [
-      { action: "approve", title: "Approve" },
-      { action: "deny", title: "Deny" },
-    ],
+    data: { authReqId, approvalUrl, requiresVaultUnlock },
+    actions,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -28,8 +33,17 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const { authReqId, approvalUrl } = event.notification.data ?? {};
+  const { authReqId, approvalUrl, requiresVaultUnlock } =
+    event.notification.data ?? {};
   const action = event.action;
+
+  // Identity-scoped requests always route to the approval page
+  if (requiresVaultUnlock) {
+    event.waitUntil(
+      self.clients.openWindow(approvalUrl ?? "/dashboard/ciba")
+    );
+    return;
+  }
 
   if (authReqId && (action === "approve" || action === "deny")) {
     const endpoint =
