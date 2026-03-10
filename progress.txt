@@ -1,5 +1,24 @@
 # Tasks completed in this session
 
+## Phase 3: Release Handle Scoping and Atomic Redemption (CIBA Notifications Remediation)
+- PRD ref: Findings 2, 4 (release handle scope collision, non-atomic release)
+- Ephemeral release handle store re-keyed by authReqId with userId reverse index
+- customAccessTokenClaims guarded: only consumes handles when identity scopes present
+- Non-CIBA grants (auth-code, refresh, token-exchange) can no longer steal CIBA handles
+- Release endpoint uses 3-phase atomic claim: approved → claiming → redeemed
+- Rollback to "approved" if decrypt/sign fails mid-request
+- Concurrent callers get exactly one success (SQLite serialized writes)
+
+### Files changed
+- apps/web/src/lib/auth/oidc/ephemeral-release-handles.ts (rewrite: authReqId-keyed store + userId index)
+- apps/web/src/lib/auth/auth.ts (guard customAccessTokenClaims with identity scope check)
+- apps/web/src/app/api/oauth2/release/route.ts (3-phase atomic claim with rollback)
+- apps/web/src/app/api/ciba/identity/stage/route.ts (pass authReqId to stageReleaseHandle)
+- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (updated stageReleaseHandle calls + scope)
+- apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts (updated stageReleaseHandle calls)
+
+---
+
 ## Phase 2: Intent and Approval Context Binding (CIBA Notifications Remediation)
 - PRD ref: Findings 5, 6 (intent tokens not bound to auth_req_id, authorization_details dropped)
 - Intent token payload now includes optional authReqId field

@@ -114,7 +114,7 @@ async function stageApproval(opts: {
     })
     .run();
 
-  stageReleaseHandle(opts.userId, sealed.releaseHandle);
+  stageReleaseHandle(opts.authReqId, sealed.releaseHandle, opts.userId);
 
   return sealed;
 }
@@ -282,7 +282,7 @@ describe("CIBA → durable approval → release lifecycle", () => {
       })
       .run();
 
-    stageReleaseHandle(userId, sealed.releaseHandle);
+    stageReleaseHandle(authReqId, sealed.releaseHandle, userId);
 
     const { json: tokenJson, dpopKeyPair } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,

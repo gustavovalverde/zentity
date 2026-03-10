@@ -263,10 +263,11 @@ describe("CIBA token endpoint", () => {
         userId,
         status: "approved",
         resource: TEST_RESOURCE,
+        scope: "openid identity.name",
       });
 
       const fakeHandle = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(userId, fakeHandle);
+      stageReleaseHandle(authReqId, fakeHandle, userId);
 
       const { json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,

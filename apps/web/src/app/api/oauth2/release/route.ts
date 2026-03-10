@@ -201,6 +201,26 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // Atomic claim: only one concurrent caller succeeds.
+  // SQLite UPDATE is serialized, so exactly one caller transitions
+  // from "approved" to "claiming". If another caller races, the
+  // WHERE clause won't match and result.changes === 0.
+  const claimResult = await db
+    .update(approvals)
+    .set({ status: "claiming" })
+    .where(and(eq(approvals.id, approval.id), eq(approvals.status, "approved")))
+    .run();
+
+  if (claimResult.rowsAffected === 0) {
+    return NextResponse.json(
+      {
+        error: "invalid_grant",
+        error_description: "Release handle already redeemed",
+      },
+      { status: 410 }
+    );
+  }
+
   let piiJson: string;
   try {
     piiJson = await unsealApprovalPii(
@@ -209,6 +229,12 @@ export async function POST(request: Request): Promise<Response> {
       approval.encryptionIv
     );
   } catch {
+    // Rollback: restore "approved" so the user can retry
+    await db
+      .update(approvals)
+      .set({ status: "approved" })
+      .where(eq(approvals.id, approval.id))
+      .run();
     return NextResponse.json(
       { error: "server_error", error_description: "Failed to decrypt PII" },
       { status: 500 }
@@ -235,8 +261,23 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const idToken = await signJwt(idTokenPayload);
+  let idToken: string;
+  try {
+    idToken = await signJwt(idTokenPayload);
+  } catch {
+    // Rollback: restore "approved" so the user can retry
+    await db
+      .update(approvals)
+      .set({ status: "approved" })
+      .where(eq(approvals.id, approval.id))
+      .run();
+    return NextResponse.json(
+      { error: "server_error", error_description: "Failed to sign id_token" },
+      { status: 500 }
+    );
+  }
 
+  // Finalize: mark as redeemed (no rollback past this point)
   await db
     .update(approvals)
     .set({ status: "redeemed", redeemedAt: new Date() })

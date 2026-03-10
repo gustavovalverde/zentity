@@ -176,7 +176,7 @@ export async function POST(request: Request): Promise<Response> {
     })
     .run();
 
-  stageReleaseHandle(session.user.id, sealed.releaseHandle);
+  stageReleaseHandle(auth_req_id, sealed.releaseHandle, session.user.id);
 
   return NextResponse.json({ staged: true });
 }

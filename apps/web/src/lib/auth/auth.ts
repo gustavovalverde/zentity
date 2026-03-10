@@ -888,8 +888,15 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customAccessTokenClaims: ({ user }) => {
+      customAccessTokenClaims: ({ user, scopes }) => {
         if (!user?.id) {
+          return {};
+        }
+        // Only consume staged release handles for grants with identity scopes.
+        // This prevents auth-code, refresh, and token-exchange grants from
+        // stealing a handle staged for a CIBA approval.
+        const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
+        if (!scopeList.some(isIdentityScope)) {
           return {};
         }
         const handle = consumeReleaseHandle(user.id);
