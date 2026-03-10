@@ -56,17 +56,37 @@
 - Zero-knowledge at rest: release handle hash stored for lookup, actual key only in access token
 - Added to DB connection schema and `resetDatabase()` test utility
 
-## Phase 3.2: PII release endpoint + integration tests (Plan §Phase 3, AC 2-9, 11)
-- `POST /api/oauth2/release` endpoint: verifies JWT access token via local JWKS lookup, extracts `release_handle` claim, decrypts PII, mints id_token, marks redeemed
-- Token verification uses jose `jwtVerify` with `getLocalJwks()` (reads `jwks` table directly, fallback to JWKS URL fetch)
-- PII filtering by approved scopes via `filterIdentityByScopes`
-- Status lifecycle enforced: approved → redeemed (410 on second attempt), expired (410 with auto-transition)
-- 8 integration tests: full redemption, one-time use, expired, missing handle, unknown handle, no bearer, authorization_details, scope filtering
-- Tests use dedicated EdDSA key pair inserted into `jwks` table per test (avoids jwt-signer cache coupling)
+## Phase 3.2: PII encryption helpers (Plan §Phase 3, AC 2)
+- `sealApprovalPii` — generates 256-bit release handle, encrypts PII with AES-GCM, returns handle (base64url), hash (hex), ciphertext + IV (base64)
+- `unsealApprovalPii` — decrypts PII using the release handle
+- `hashReleaseHandle` — SHA-256 of handle for DB lookup
+- 10 unit tests covering round-trip, uniqueness, hash matching, wrong key/corrupted ciphertext rejection
 
-# Files changed
+## Phase 3.3: PII release endpoint (Plan §Phase 3, AC 3-9)
+- `POST /api/oauth2/release` — verifies JWT access token via local JWKS lookup, extracts `release_handle` claim, decrypts PII, mints id_token, marks redeemed
+- Status lifecycle: approved → redeemed (410 on replay), expired (410 with auto-transition)
+- PII filtering by approved scopes via `filterIdentityByScopes`
+- 8 integration tests: full redemption, one-time use, expired, missing handle, unknown handle, no bearer, authorization_details, scope filtering
+
+## Phase 3.4: Release handle embedding in access tokens (Plan §Phase 3, AC 10)
+- Ephemeral release handle store (`stageReleaseHandle`/`consumeReleaseHandle`) keyed by userId
+- `customAccessTokenClaims` in oauthProvider config — consumes staged handle and embeds `release_handle` in JWT
+- 2 integration tests in ciba-token.integration.test.ts: handle present when staged, absent when not
+
+## Phase 3.5: Wire CIBA stage endpoint to durable approvals (Plan §Phase 3, AC 11)
+- Replaced `storeEphemeralClaims` with `sealApprovalPii` + DB insert + `stageReleaseHandle` in CIBA identity stage endpoint
+- CIBA flows now use durable approval records instead of ephemeral Map-based staging
+- OAuth consent flows still use ephemeral staging (unchanged)
+
+# Files changed (Phase 3)
+- `apps/web/src/lib/auth/oidc/approval-crypto.ts` — new PII encryption helpers
+- `apps/web/src/lib/auth/oidc/__tests__/approval-crypto.test.ts` — 10 unit tests
 - `apps/web/src/app/api/oauth2/release/route.ts` — new release endpoint
-- `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — new test file (8 tests)
+- `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — 8 integration tests
+- `apps/web/src/lib/auth/oidc/ephemeral-release-handles.ts` — new ephemeral release handle store
+- `apps/web/src/lib/auth/auth.ts` — added customAccessTokenClaims + import
+- `apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts` — 2 new release_handle tests
+- `apps/web/src/app/api/ciba/identity/stage/route.ts` — switched from ephemeral to durable approvals
 
 # Any blockers or notes for next iteration
-- Next: Phase 3 remaining — wire release handle into CIBA grant handler (AC 3: embed in access token), replace ephemeral staging with durable path (AC 14)
+- Next: Phase 3 cleanup — remove now-unused ephemeral identity claims for CIBA (the old path in customIdTokenClaims still runs but is harmless since nothing stages there for CIBA anymore). Consider discovery metadata for the release endpoint. Then proceed to Phase 4 (Token Exchange).
