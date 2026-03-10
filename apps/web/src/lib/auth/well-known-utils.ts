@@ -49,6 +49,9 @@ export function enrichDiscoveryMetadata(
     // CIBA metadata (OpenID CIBA Core §4)
     backchannel_token_delivery_modes_supported: ["poll", "ping"],
     backchannel_user_code_parameter_supported: false,
+    // MCP authorization compatibility (RFC 9728, CIMD)
+    client_id_metadata_document_supported: true,
+    resource_indicators_supported: true,
   };
 }
 

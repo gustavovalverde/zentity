@@ -1,174 +1,19 @@
 # Tasks completed in this session
 
-## Phase 1.1: Enable CIBA ping mode server-side (Plan §Phase 1, AC 1-5)
-- Enabled `deliveryModes: ["poll", "ping"]` in ciba() plugin config
-- Implemented `resolveClientNotificationEndpoint` — reads `backchannel_client_notification_endpoint` from client `metadata` JSON column
-- Updated discovery metadata to advertise `["poll", "ping"]`
-- 8 integration tests: endpoint resolution, fallback-to-poll, request-body override, ping-mode polling, authorization_pending, request creation, poll regression, missing-token fallback
+## Phase 1: Protected Resource Metadata + Discovery (MCP Compatibility)
+- PRD ref: Phase 1 (User stories 1, 9, 12)
+- RFC 9728 endpoint at /.well-known/oauth-protected-resource
+- Discovery metadata enriched with client_id_metadata_document_supported + resource_indicators_supported
+- 7 new tests (5 RFC 9728 route, 2 MCP discovery flags) + 1 pre-existing CIBA test fix (ping mode)
+- All acceptance criteria met
 
 # Key decisions made and reasoning (architectural decisions)
-- `resolveClientNotificationEndpoint` queries `oauthClients.metadata` directly via Drizzle (already imported in auth.ts) rather than going through the better-auth adapter — simpler, no indirection
-- Ping mode stores notification endpoint/token per CIBA request (not per client) — allows per-request endpoint override via `client_notification_uri` in bc-authorize body
+- Route is a simple Next.js handler (no [[...issuer]] catch-all) — RFC 9728 defines single path
+- Scopes built inline importing PROOF_SCOPES/IDENTITY_SCOPES constants — stays in sync without coupling to auth.ts
+- resource_signing_alg_values_supported: ["EdDSA"] — matches access token signing alg
+- Cache-Control: public, max-age=3600 (1hr) — per PRD spec, longer than discovery's 15s since this changes rarely
 
 # Files changed
-- `apps/web/src/lib/auth/auth.ts` — ciba() config: deliveryModes + resolveClientNotificationEndpoint
-- `apps/web/src/lib/auth/well-known-utils.ts` — discovery: ["poll"] → ["poll", "ping"]
-- `apps/web/src/lib/auth/__tests__/ciba-ping.integration.test.ts` — new test file (8 tests)
-
-## Phase 1.2: Demo-rp CIBA ping mode (Plan §Phase 1, AC 6-8)
-- Added `cibaPings` table to demo-rp DB schema (auth_req_id, notification_token, received flag)
-- Created callback endpoint `/api/ciba/callback` — verifies bearer token, marks ping received
-- Updated BFF `/api/ciba` to generate per-request `client_notification_token`, send `client_notification_uri`, store in DB, add `check-ping` action
-- Updated `use-ciba-flow.ts` — ping check runs every 2s alongside regular poll (5s). On ping received, immediately fetches tokens (fast path). Extracted `classifyPollResponse` to reduce cognitive complexity
-
-## Phase 2.1: CIBA identity intent + staging endpoints (Plan §Phase 2, AC 6-7)
-- Extracted `normalizeIdentityFields` + `IdentityFieldsSchema` into shared `identity-fields-schema.ts`
-- Created `/api/ciba/identity/intent` — issues intent tokens bound to `auth_req_id` (not OAuth `sig`)
-- Created `/api/ciba/identity/stage` — stages PII in ephemeral store, consumed by `customIdTokenClaims` during CIBA token minting
-- Both endpoints validate session, CIBA request ownership, scope membership, intent token binding
-- No changes needed to `customIdTokenClaims` — it already calls `consumeEphemeralClaimsByUser` which works for both OAuth and CIBA flows
-
-## Phase 2.2: CIBA approval page server/client split (Plan §Phase 2, AC 8 prep)
-- Converted CIBA approval page from monolithic "use client" to server+client pattern
-- Server `page.tsx` calls `detectAuthMode(userId)` and passes `authMode` + `wallet` as props
-- Client `ciba-approve-client.tsx` receives auth context for vault unlock rendering
-- Added `layout.tsx` with `Web3Provider` wrapper (needed for wallet unlock path)
-
-## Phase 2.3: Vault unlock + identity staging on CIBA approval page (Plan §Phase 2, AC 8-10)
-- Extracted shared vault unlock components (`VaultErrorAlert`, `WalletVaultUnlockButton`, `OpaqueVaultUnlockForm`, `classifyVaultError`, `buildIdentityPayload`, `buildScopeKey`) into `src/components/vault-unlock.tsx`
-- Updated OAuth consent page to import from shared module (no behavior change)
-- Wired CIBA approval page with full vault unlock → intent → stage → approve flow
-- Identity scopes in CIBA request trigger vault unlock UI (passkey/OPAQUE/wallet based on `authMode`)
-- Staging calls `/api/ciba/identity/intent` then `/api/ciba/identity/stage` before approval
-- Approve button disabled until vault is unlocked and intent token is valid (when identity scopes present)
-
-## Phase 2.4: CIBA identity staging integration tests (Plan §Phase 2, AC 9-13)
-- Added 3 integration tests to `ciba-token.integration.test.ts`:
-  - PII claims in id_token when ephemeral claims are staged (identity.name + identity.dob)
-  - No PII when no ephemeral claims are staged (openid-only scope)
-  - Ephemeral claims are single-use (consumed after first token minting)
-- Added `usedIntentJtis` cleanup to `resetDatabase()` test utility
-- Added `resetEphemeralIdentityClaimsStore()` call in test beforeEach
-
-## Phase 3.1: Approvals table schema (Plan §Phase 3, AC 1)
-- Created `approvals` table schema in `src/lib/db/schema/approvals.ts`
-- Columns: id, authReqId, userId, clientId, approvedScopes, authorizationDetails, encryptedPii, encryptionIv, releaseHandleHash (unique), status (approved|redeemed|expired), expiresAt, createdAt, redeemedAt
-- Zero-knowledge at rest: release handle hash stored for lookup, actual key only in access token
-- Added to DB connection schema and `resetDatabase()` test utility
-
-## Phase 3.2: PII encryption helpers (Plan §Phase 3, AC 2)
-- `sealApprovalPii` — generates 256-bit release handle, encrypts PII with AES-GCM, returns handle (base64url), hash (hex), ciphertext + IV (base64)
-- `unsealApprovalPii` — decrypts PII using the release handle
-- `hashReleaseHandle` — SHA-256 of handle for DB lookup
-- 10 unit tests covering round-trip, uniqueness, hash matching, wrong key/corrupted ciphertext rejection
-
-## Phase 3.3: PII release endpoint (Plan §Phase 3, AC 3-9)
-- `POST /api/oauth2/release` — verifies JWT access token via local JWKS lookup, extracts `release_handle` claim, decrypts PII, mints id_token, marks redeemed
-- Status lifecycle: approved → redeemed (410 on replay), expired (410 with auto-transition)
-- PII filtering by approved scopes via `filterIdentityByScopes`
-- 8 integration tests: full redemption, one-time use, expired, missing handle, unknown handle, no bearer, authorization_details, scope filtering
-
-## Phase 3.4: Release handle embedding in access tokens (Plan §Phase 3, AC 10)
-- Ephemeral release handle store (`stageReleaseHandle`/`consumeReleaseHandle`) keyed by userId
-- `customAccessTokenClaims` in oauthProvider config — consumes staged handle and embeds `release_handle` in JWT
-- 2 integration tests in ciba-token.integration.test.ts: handle present when staged, absent when not
-
-## Phase 3.5: Wire CIBA stage endpoint to durable approvals (Plan §Phase 3, AC 11)
-- Replaced `storeEphemeralClaims` with `sealApprovalPii` + DB insert + `stageReleaseHandle` in CIBA identity stage endpoint
-- CIBA flows now use durable approval records instead of ephemeral Map-based staging
-- OAuth consent flows still use ephemeral staging (unchanged)
-
-# Files changed (Phase 3)
-- `apps/web/src/lib/auth/oidc/approval-crypto.ts` — new PII encryption helpers
-- `apps/web/src/lib/auth/oidc/__tests__/approval-crypto.test.ts` — 10 unit tests
-- `apps/web/src/app/api/oauth2/release/route.ts` — new release endpoint
-- `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — 8 integration tests
-- `apps/web/src/lib/auth/oidc/ephemeral-release-handles.ts` — new ephemeral release handle store
-- `apps/web/src/lib/auth/auth.ts` — added customAccessTokenClaims + import
-- `apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts` — 2 new release_handle tests
-- `apps/web/src/app/api/ciba/identity/stage/route.ts` — switched from ephemeral to durable approvals
-
-## Phase 3 cleanup: remove dead CIBA ephemeral staging tests
-- Removed `describe("identity claims via ephemeral staging")` block (3 tests) from ciba-token.integration.test.ts — tested old ephemeral PII staging path that CIBA no longer uses (replaced by durable approvals in Phase 3.5)
-- Removed unused imports: `resetEphemeralIdentityClaimsStore`, `storeEphemeralClaims`, `createScopeHash`
-- Removed `resetEphemeralIdentityClaimsStore()` call from `beforeEach`
-- Kept: ephemeral-identity-claims.ts (still used by OAuth consent flow), ephemeral-release-handles.ts (used by CIBA access token embedding)
-- Discovery metadata for release endpoint: not needed — no standard OIDC field exists, RP knows URL out-of-band
-
-# Files changed
-- `apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts` — removed 3 dead tests + unused imports
-
-## Phase 4.1: Token exchange vendor tarball + handler fixes (Plan §Phase 4, AC 1-2)
-- Updated vendor tarball `better-auth-oauth-provider-1.5.1-beta.3.tgz` to add RFC 8693 fields: `subject_token`, `subject_token_type`, `requested_token_type`, `actor_token`, `actor_token_type`, `audience` to Zod body schema, OpenAPI metadata, and TypeScript declarations
-- Fixed `createTokenExchangeHandler` bugs: (a) `basicToClientCredentials` was called with `ctx.headers` (object) instead of Authorization header string, and properties accessed as camelCase instead of snake_case; (b) scope attenuation was skipped for id_token→access_token exchanges, allowing arbitrary scope escalation; (c) `audience` body parameter was ignored — now uses `resource > audience > issuer` fallback; (d) added `azp` to id_token output
-- Added `resetSigningKeyCache()` export from `jwt-signer.ts` for test isolation (module-level key cache persists across `resetDatabase()` calls)
-- `tokenExchangePlugin()` already wired in auth.ts, grant type already in discovery metadata
-
-## Phase 4.2: Token exchange integration tests (Plan §Phase 4, AC 3-18)
-- 13 integration tests covering all acceptance criteria:
-  - Access→Access with scope attenuation (verify narrower scope, `act` claim)
-  - Access→Access with audience binding via `resource` parameter
-  - Access→Access with audience binding via `audience` parameter
-  - `resource` takes precedence over `audience` for `aud` binding
-  - Default scope inheritance when none requested
-  - Access→ID Token exchange (verify id_token format, claims, `act`)
-  - ID Token→Access Token exchange (verify access token minted for id_token's subject)
-  - Scope broadening rejection on access token subjects
-  - Non-openid scope rejection on id_token subjects
-  - `act` claim nesting across 2 exchanges (chain depth 2)
-  - Missing subject_token rejection
-  - Expired subject token rejection
-  - Unsupported subject_token_type rejection
-
-# Files changed (Phase 4)
-- `apps/web/vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz` — updated tarball with RFC 8693 body fields
-- `apps/web/src/lib/auth/oidc/token-exchange.ts` — fixed client auth, scope attenuation, audience handling
-- `apps/web/src/lib/auth/oidc/jwt-signer.ts` — added `resetSigningKeyCache()` export
-- `apps/web/src/lib/auth/__tests__/token-exchange.integration.test.ts` — added 2 new audience tests, 1 id_token scope restriction test, cache reset in beforeEach
-
-## Phase 5: Demo-rp Aether Token Exchange (Plan §Phase 5)
-- Added `token-exchange` action to BFF `/api/ciba` route — proxies RFC 8693 token exchange to Zentity
-- Hook (`use-ciba-flow.ts`): auto-exchanges the CIBA access token after approval, returns `exchangedTokens` alongside `tokens`
-- Extracted `handlePollResult` callback from `pollToken` to stay under biome's cognitive complexity limit (20)
-- `CibaResult` UI updated: shows exchanged token's `act` claim chain, `aud` (merchant API), and `scope` alongside original CIBA token claims
-- Narrative updated: "Narrowed permissions for the merchant API" when exchange succeeds
-- Merchant API audience: `https://merchant.example.com/api` (simulated)
-
-# Files changed (Phase 5)
-- `apps/demo-rp/src/app/api/ciba/route.ts` — added `token-exchange` action
-- `apps/demo-rp/src/hooks/use-ciba-flow.ts` — added `exchangeToken`, `exchangedTokens`, extracted `handlePollResult`
-- `apps/demo-rp/src/components/aether/agent-chat.tsx` — updated `CibaResult` to show exchanged token details
-- `apps/demo-rp/src/app/aether/page.tsx` — passes `exchangedTokens` to `AgentChat`
-
-## CIBA → release lifecycle integration tests (deferred item #3)
-- Added 4 lifecycle integration tests covering the full CIBA → durable approval → release endpoint flow:
-  - Full lifecycle: stage PII → CIBA token mint (access_token with release_handle) → release endpoint (id_token with PII) → replay rejection (410)
-  - Scope filtering: only approved identity scopes appear in released PII
-  - No identity scopes: access_token has no release_handle
-  - Expired approval: release returns 410
-- These tests verify both state channels work together: ephemeral release handle store → access token JWT, and durable approval record → release endpoint decryption
-- Tests use the auth system's real signing keys (not manually inserted test keys), proving true end-to-end integration
-
-# Files changed
-- `apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts` — new test file (4 tests)
-
-## DPoP sender-constraining on release endpoint (deferred item #1)
-- Added opportunistic DPoP validation to `POST /api/oauth2/release`:
-  - Accepts both `Bearer` and `DPoP` authorization schemes
-  - If access token has `cnf.jkt`, validates DPoP proof via `createDpopAccessTokenValidator` from `@better-auth/haip`
-  - If no `cnf.jkt`, skips DPoP (backwards-compatible with current `requireDpop: false` regime)
-  - Issues `DPoP-Nonce` header in response for future proof replay protection
-- 5 integration tests: valid DPoP proof accepted, missing proof rejected, wrong-key proof rejected, non-bound token skips validation, nonce header present
-
-# Files changed
-- `apps/web/src/app/api/oauth2/release/route.ts` — DPoP validation + dual auth scheme support
-- `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — 5 new DPoP tests
-
-## CIBA ping delivery end-to-end test (deferred item #2)
-- Added ping callback delivery integration test using a mock HTTP server
-- Test flow: bc-authorize (ping mode) → create signed session → approve via plugin /ciba/authorize → mock server receives POST with correct bearer token + auth_req_id
-- `createTestSession` helper creates DB session + signs the cookie using `makeSignature` from `better-auth/crypto` with `BETTER_AUTH_SECRET`
-- Existing 8 CIBA ping tests unchanged
-
-# Files changed
-- `apps/web/src/lib/auth/__tests__/ciba-ping.integration.test.ts` — 1 new test (ping callback delivery)
+- apps/web/src/app/.well-known/oauth-protected-resource/route.ts (NEW)
+- apps/web/src/lib/auth/well-known-utils.ts (enrichDiscoveryMetadata + 2 MCP fields)
+- apps/web/src/lib/auth/__tests__/oidc-well-known.test.ts (7 new tests + CIBA ping fix)

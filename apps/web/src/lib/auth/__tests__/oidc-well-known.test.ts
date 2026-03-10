@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
+import { IDENTITY_SCOPES } from "@/lib/auth/oidc/identity-scopes";
+import { PROOF_SCOPES } from "@/lib/auth/oidc/proof-scopes";
 import {
   buildWellKnownResponse,
   enrichDiscoveryMetadata,
@@ -144,6 +146,7 @@ describe("oidc discovery — CIBA metadata fields", () => {
     );
     expect(enriched.backchannel_token_delivery_modes_supported).toEqual([
       "poll",
+      "ping",
     ]);
     expect(enriched.backchannel_user_code_parameter_supported).toBe(false);
   });
@@ -157,5 +160,112 @@ describe("oidc discovery — CIBA metadata fields", () => {
 
     const grantTypes = enriched.grant_types_supported as string[];
     expect(grantTypes).toContain("urn:openid:params:grant-type:ciba");
+  });
+});
+
+describe("oidc discovery — MCP compatibility metadata", () => {
+  it("enrichDiscoveryMetadata advertises CIMD support", () => {
+    const enriched = enrichDiscoveryMetadata({
+      issuer: "https://example.com/api/auth",
+    });
+
+    expect(enriched.client_id_metadata_document_supported).toBe(true);
+  });
+
+  it("enrichDiscoveryMetadata advertises resource indicator support", () => {
+    const enriched = enrichDiscoveryMetadata({
+      issuer: "https://example.com/api/auth",
+    });
+
+    expect(enriched.resource_indicators_supported).toBe(true);
+  });
+
+  it("OpenID config includes MCP capability flags", async () => {
+    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const resolved = await parseOpenIdConfig(raw);
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
+
+    expect(enriched.client_id_metadata_document_supported).toBe(true);
+    expect(enriched.resource_indicators_supported).toBe(true);
+  });
+
+  it("OAuth AS config includes MCP capability flags", async () => {
+    const raw = unwrapMetadata(await auth.api.getOAuthServerConfig());
+    const resolved = await parseOpenIdConfig(raw);
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
+
+    expect(enriched.client_id_metadata_document_supported).toBe(true);
+    expect(enriched.resource_indicators_supported).toBe(true);
+  });
+});
+
+describe("RFC 9728 — protected resource metadata", () => {
+  it("GET returns RFC 9728 metadata structure", async () => {
+    const { GET } = await import(
+      "@/app/.well-known/oauth-protected-resource/route"
+    );
+    const response = GET();
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(body.resource).toBe("http://localhost:3000");
+    expect(Array.isArray(body.authorization_servers)).toBe(true);
+    expect(body.authorization_servers).toHaveLength(1);
+    expect((body.authorization_servers as string[])[0]).toContain("/api/auth");
+  });
+
+  it("includes scopes_supported with all OAuth scopes", async () => {
+    const { GET } = await import(
+      "@/app/.well-known/oauth-protected-resource/route"
+    );
+    const body = (await GET().json()) as Record<string, unknown>;
+    const scopes = body.scopes_supported as string[];
+
+    expect(scopes).toContain("openid");
+    expect(scopes).toContain("email");
+    expect(scopes).toContain("offline_access");
+    expect(scopes).toContain("proof:identity");
+    for (const ps of PROOF_SCOPES) {
+      expect(scopes).toContain(ps);
+    }
+    for (const is of IDENTITY_SCOPES) {
+      expect(scopes).toContain(is);
+    }
+    expect(scopes).toContain("compliance:key:read");
+    expect(scopes).toContain("compliance:key:write");
+    expect(scopes).toContain("identity_verification");
+  });
+
+  it("advertises DPoP as bearer method", async () => {
+    const { GET } = await import(
+      "@/app/.well-known/oauth-protected-resource/route"
+    );
+    const body = (await GET().json()) as Record<string, unknown>;
+
+    expect(body.bearer_methods_supported).toEqual(["dpop"]);
+  });
+
+  it("advertises EdDSA as resource signing algorithm", async () => {
+    const { GET } = await import(
+      "@/app/.well-known/oauth-protected-resource/route"
+    );
+    const body = (await GET().json()) as Record<string, unknown>;
+
+    expect(body.resource_signing_alg_values_supported).toEqual(["EdDSA"]);
+  });
+
+  it("returns Cache-Control with 1-hour max-age", async () => {
+    const { GET } = await import(
+      "@/app/.well-known/oauth-protected-resource/route"
+    );
+    const response = GET();
+
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    expect(response.headers.get("Content-Type")).toBe("application/json");
   });
 });
