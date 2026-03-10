@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -15,18 +16,23 @@ import {
   extractIdentityScopes,
   filterIdentityByScopes,
 } from "@/lib/auth/oidc/identity-scopes";
-import {
-  parseRequestedScopes,
-  verifySignedOAuthQuery,
-} from "@/lib/auth/oidc/oauth-query";
+import { db } from "@/lib/db/connection";
+import { cibaRequests } from "@/lib/db/schema/ciba";
 
 const StageSchema = z.object({
-  oauth_query: z.string().min(1),
+  auth_req_id: z.string().min(1),
   scopes: z.array(z.string()).min(1),
   identity: IdentityFieldsSchema.optional(),
-  intent_token: z.string().min(1).optional(),
+  intent_token: z.string().min(1),
 });
 
+/**
+ * POST /api/ciba/identity/stage — Stage identity claims for a CIBA request.
+ *
+ * Parallel to /api/oauth2/identity/stage but uses auth_req_id instead of
+ * oauth_query to look up the client context. The staged claims are consumed
+ * by customIdTokenClaims when the CIBA grant handler mints tokens.
+ */
 export async function POST(request: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) {
@@ -51,27 +57,44 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { oauth_query, scopes, identity, intent_token } = parsed.data;
+  const { auth_req_id, scopes, identity, intent_token } = parsed.data;
 
-  let queryParams: URLSearchParams;
-  try {
-    queryParams = await verifySignedOAuthQuery(oauth_query);
-  } catch {
-    return NextResponse.json({ error: "Invalid OAuth query" }, { status: 400 });
+  // Look up the CIBA request for context
+  const cibaRequest = await db
+    .select({
+      clientId: cibaRequests.clientId,
+      userId: cibaRequests.userId,
+      scope: cibaRequests.scope,
+      status: cibaRequests.status,
+    })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, auth_req_id))
+    .get();
+
+  if (!cibaRequest) {
+    return NextResponse.json({ error: "Unknown auth_req_id" }, { status: 404 });
   }
 
-  const clientId = queryParams.get("client_id");
-  if (!clientId) {
-    return NextResponse.json({ error: "Missing client_id" }, { status: 400 });
+  if (cibaRequest.userId !== session.user.id) {
+    return NextResponse.json(
+      { error: "CIBA request does not belong to current user" },
+      { status: 403 }
+    );
   }
 
-  const requestedScopes = parseRequestedScopes(queryParams);
-  const requestedScopeSet = new Set(requestedScopes);
+  if (cibaRequest.status !== "pending") {
+    return NextResponse.json(
+      { error: "CIBA request is no longer pending" },
+      { status: 400 }
+    );
+  }
 
+  // Verify scopes are within the CIBA request
+  const cibaScopes = new Set(cibaRequest.scope.split(" "));
   for (const scope of scopes) {
-    if (!requestedScopeSet.has(scope)) {
+    if (!cibaScopes.has(scope)) {
       return NextResponse.json(
-        { error: `Scope not requested: ${scope}` },
+        { error: `Scope not in CIBA request: ${scope}` },
         { status: 400 }
       );
     }
@@ -82,13 +105,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ staged: false });
   }
 
-  if (!intent_token) {
-    return NextResponse.json(
-      { error: "Missing intent_token for identity scopes" },
-      { status: 400 }
-    );
-  }
-
+  // Verify the intent token
   let intentPayload: Awaited<ReturnType<typeof verifyIdentityIntentToken>>;
   try {
     intentPayload = await verifyIdentityIntentToken(intent_token);
@@ -108,7 +125,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const scopeHash = createScopeHash(scopes);
   if (
-    intentPayload.clientId !== clientId ||
+    intentPayload.clientId !== cibaRequest.clientId ||
     intentPayload.scopeHash !== scopeHash
   ) {
     return NextResponse.json(
@@ -132,11 +149,12 @@ export async function POST(request: Request): Promise<Response> {
     filteredIdentity,
     scopes,
     {
-      clientId,
+      clientId: cibaRequest.clientId,
       scopeHash,
       intentJti: intentPayload.jti,
     }
   );
+
   if (!stored.ok) {
     if (stored.reason === "intent_reused") {
       return NextResponse.json(

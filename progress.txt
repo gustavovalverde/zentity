@@ -21,5 +21,12 @@
 - Updated BFF `/api/ciba` to generate per-request `client_notification_token`, send `client_notification_uri`, store in DB, add `check-ping` action
 - Updated `use-ciba-flow.ts` — ping check runs every 2s alongside regular poll (5s). On ping received, immediately fetches tokens (fast path). Extracted `classifyPollResponse` to reduce cognitive complexity
 
+## Phase 2.1: CIBA identity intent + staging endpoints (Plan §Phase 2, AC 6-7)
+- Extracted `normalizeIdentityFields` + `IdentityFieldsSchema` into shared `identity-fields-schema.ts`
+- Created `/api/ciba/identity/intent` — issues intent tokens bound to `auth_req_id` (not OAuth `sig`)
+- Created `/api/ciba/identity/stage` — stages PII in ephemeral store, consumed by `customIdTokenClaims` during CIBA token minting
+- Both endpoints validate session, CIBA request ownership, scope membership, intent token binding
+- No changes needed to `customIdTokenClaims` — it already calls `consumeEphemeralClaimsByUser` which works for both OAuth and CIBA flows
+
 # Any blockers or notes for next iteration
-- Next: Phase 1 integration tests for ping callback (retry, rejection), or move to Phase 2
+- Next: Phase 2 vault unlock UI on CIBA approval page (convert to server+client, add Web3Provider, passkey/OPAQUE/wallet unlock)
