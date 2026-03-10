@@ -328,7 +328,7 @@ function extractDpopNonce(proofJwt: string): string | undefined {
 }
 
 // Wrap DPoP token binding with server-managed nonce validation
-const baseDpopBinding = createDpopTokenBinding({ requireDpop: false });
+const baseDpopBinding = createDpopTokenBinding({ requireDpop: true });
 const dpopTokenBinding: typeof baseDpopBinding = async (input) => {
   const result = await baseDpopBinding(input);
   if (!result) {
@@ -992,7 +992,7 @@ export const auth = betterAuth({
     }),
     haip({
       requirePar: true,
-      requireDpop: false,
+      requireDpop: true,
       dpopSigningAlgValues: ["ES256"],
       parExpiresInSeconds: 60,
       vpRequestExpiresInSeconds: 300,

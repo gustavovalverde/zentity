@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { decodeJwt } from "jose";
+import { decodeJwt, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { sealApprovalPii } from "@/lib/auth/oidc/approval-crypto";
@@ -14,11 +14,9 @@ import { approvals } from "@/lib/db/schema/approvals";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
-
-import { auth } from "../auth";
+import { type DpopKeyPair, postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
-const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 const RELEASE_URL = "http://localhost:3000/api/oauth2/release";
 const TEST_CLIENT_ID = "lifecycle-test-agent";
 // Resource must be a validAudiences entry so access tokens are JWT (not opaque)
@@ -57,42 +55,32 @@ async function insertCibaRequest(
   return authReqId;
 }
 
-async function postToken(
-  body: Record<string, string>
-): Promise<{ status: number; json: Record<string, unknown> }> {
-  const response = await auth.handler(
-    new Request(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body),
-    })
-  );
-
-  const text = await response.text();
-  let json: Record<string, unknown> = {};
-  if (text) {
-    try {
-      const parsed = JSON.parse(text) as Record<string, unknown>;
-      json =
-        parsed && typeof parsed === "object" && "response" in parsed
-          ? (parsed.response as Record<string, unknown>)
-          : parsed;
-    } catch {
-      json = { raw: text };
-    }
-  }
-
-  return { status: response.status, json };
-}
-
 async function postRelease(
-  accessToken: string
+  accessToken: string,
+  dpopKeyPair: DpopKeyPair
 ): Promise<{ status: number; json: Record<string, unknown> }> {
+  const dpopProof = await new SignJWT({
+    htm: "POST",
+    htu: RELEASE_URL,
+    jti: crypto.randomUUID(),
+    iat: Math.floor(Date.now() / 1000),
+  })
+    .setProtectedHeader({
+      alg: "ES256",
+      typ: "dpop+jwt",
+      jwk: dpopKeyPair.jwk,
+    })
+    .setIssuedAt()
+    .sign(dpopKeyPair.privateKey);
+
   const { POST } = await import("@/app/api/oauth2/release/route");
   const response = await POST(
     new Request(RELEASE_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: {
+        Authorization: `DPoP ${accessToken}`,
+        DPoP: dpopProof,
+      },
     })
   );
   const json = (await response.json()) as Record<string, unknown>;
@@ -165,7 +153,11 @@ describe("CIBA → durable approval → release lifecycle", () => {
     });
 
     // Mint: CIBA token endpoint produces access_token with release_handle
-    const { status: tokenStatus, json: tokenJson } = await postToken({
+    const {
+      status: tokenStatus,
+      json: tokenJson,
+      dpopKeyPair,
+    } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
@@ -178,8 +170,10 @@ describe("CIBA → durable approval → release lifecycle", () => {
     expect(typeof atPayload.release_handle).toBe("string");
 
     // Redeem: release endpoint decrypts PII and returns id_token
-    const { status: releaseStatus, json: releaseJson } =
-      await postRelease(accessToken);
+    const { status: releaseStatus, json: releaseJson } = await postRelease(
+      accessToken,
+      dpopKeyPair
+    );
     expect(releaseStatus).toBe(200);
     expect(releaseJson.id_token).toBeDefined();
 
@@ -191,8 +185,10 @@ describe("CIBA → durable approval → release lifecycle", () => {
     expect(idToken.aud).toBe(TEST_CLIENT_ID);
 
     // One-time use: second redemption fails
-    const { status: replayStatus, json: replayJson } =
-      await postRelease(accessToken);
+    const { status: replayStatus, json: replayJson } = await postRelease(
+      accessToken,
+      dpopKeyPair
+    );
     expect(replayStatus).toBe(410);
     expect(replayJson.error).toBe("invalid_grant");
     expect(replayJson.error_description).toContain("already redeemed");
@@ -220,14 +216,15 @@ describe("CIBA → durable approval → release lifecycle", () => {
       scopes: "openid identity.name",
     });
 
-    const { json: tokenJson } = await postToken({
+    const { json: tokenJson, dpopKeyPair } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
 
     const { status, json } = await postRelease(
-      tokenJson.access_token as string
+      tokenJson.access_token as string,
+      dpopKeyPair
     );
     expect(status).toBe(200);
 
@@ -248,7 +245,7 @@ describe("CIBA → durable approval → release lifecycle", () => {
 
     // No approval staged — openid-only request
 
-    const { status, json } = await postToken({
+    const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
@@ -287,14 +284,15 @@ describe("CIBA → durable approval → release lifecycle", () => {
 
     stageReleaseHandle(userId, sealed.releaseHandle);
 
-    const { json: tokenJson } = await postToken({
+    const { json: tokenJson, dpopKeyPair } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
 
     const { status, json } = await postRelease(
-      tokenJson.access_token as string
+      tokenJson.access_token as string,
+      dpopKeyPair
     );
     expect(status).toBe(410);
     expect(json.error).toBe("invalid_grant");

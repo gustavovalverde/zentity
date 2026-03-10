@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
+import { createDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
@@ -47,6 +48,26 @@ const bodySchema = z.discriminatedUnion("action", [
     scope: z.string().optional(),
   }),
 ]);
+
+async function fetchTokenWithDpop(
+  tokenUrl: string,
+  params: Record<string, string>
+): Promise<{ body: unknown; status: number }> {
+  const dpop = await createDpopClient();
+  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
+    const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
+    const response = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        DPoP: proof,
+      },
+      body: new URLSearchParams(params),
+    });
+    return { response, result: await response.json() };
+  });
+  return { body: result, status: response.status };
+}
 
 export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json());
@@ -116,6 +137,8 @@ export async function POST(request: Request) {
     return NextResponse.json(body);
   }
 
+  const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
+
   if (data.action === "token-exchange") {
     const params: Record<string, string> = {
       grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
@@ -131,28 +154,18 @@ export async function POST(request: Request) {
       params.scope = data.scope;
     }
 
-    const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(params),
-    });
-
-    const body = await res.json();
-    return NextResponse.json(body, { status: res.status });
+    const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
+    return NextResponse.json(body, { status });
   }
 
   // action === "token"
-  const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: CIBA_GRANT_TYPE,
-      client_id: client.clientId,
-      ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
-      auth_req_id: data.authReqId,
-    }),
-  });
+  const params: Record<string, string> = {
+    grant_type: CIBA_GRANT_TYPE,
+    client_id: client.clientId,
+    ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
+    auth_req_id: data.authReqId,
+  };
 
-  const body = await res.json();
-  return NextResponse.json(body, { status: res.status });
+  const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
+  return NextResponse.json(body, { status });
 }

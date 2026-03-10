@@ -11,12 +11,12 @@ import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 import { auth } from "../auth";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
-const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 const TEST_CLIENT_ID = "ping-test-agent";
 const TEST_NOTIFICATION_ENDPOINT = "http://localhost:9999/ciba/callback";
 const TEST_NOTIFICATION_TOKEN = "ciba-ping-bearer-token-abc123";
@@ -43,32 +43,6 @@ async function postBcAuthorize(
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const response = await auth.handler(
     new Request(BC_AUTHORIZE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body),
-    })
-  );
-  const text = await response.text();
-  let json: Record<string, unknown> = {};
-  if (text) {
-    try {
-      const parsed = JSON.parse(text) as Record<string, unknown>;
-      json =
-        parsed && typeof parsed === "object" && "response" in parsed
-          ? (parsed.response as Record<string, unknown>)
-          : parsed;
-    } catch {
-      json = { raw: text };
-    }
-  }
-  return { status: response.status, json };
-}
-
-async function postToken(
-  body: Record<string, string>
-): Promise<{ status: number; json: Record<string, unknown> }> {
-  const response = await auth.handler(
-    new Request(TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(body),
@@ -216,7 +190,7 @@ describe("CIBA ping mode", () => {
         status: "approved",
       });
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
@@ -224,7 +198,7 @@ describe("CIBA ping mode", () => {
 
       expect(status).toBe(200);
       expect(json.access_token).toBeDefined();
-      expect(json.token_type).toBeDefined();
+      expect(json.token_type).toBe("DPoP");
     });
 
     it("returns authorization_pending for pending ping-mode requests", async () => {
@@ -233,7 +207,7 @@ describe("CIBA ping mode", () => {
         status: "pending",
       });
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,
@@ -281,7 +255,7 @@ describe("CIBA ping mode", () => {
         clientNotificationEndpoint: null,
       });
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: authReqId,
         client_id: TEST_CLIENT_ID,

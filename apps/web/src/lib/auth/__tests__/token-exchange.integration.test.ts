@@ -10,10 +10,8 @@ import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
-import { auth } from "../auth";
-
-const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const ID_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
 const TEST_CLIENT_ID = "exchange-test-agent";
@@ -92,34 +90,6 @@ function mintIdToken(
     .sign(testKeyPair.privateKey);
 }
 
-async function postToken(
-  body: Record<string, string>
-): Promise<{ status: number; json: Record<string, unknown> }> {
-  const response = await auth.handler(
-    new Request(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(body),
-    })
-  );
-
-  const text = await response.text();
-  let json: Record<string, unknown> = {};
-  if (text) {
-    try {
-      const parsed = JSON.parse(text) as Record<string, unknown>;
-      json =
-        parsed && typeof parsed === "object" && "response" in parsed
-          ? (parsed.response as Record<string, unknown>)
-          : parsed;
-    } catch {
-      json = { raw: text };
-    }
-  }
-
-  return { status: response.status, json };
-}
-
 describe("Token Exchange (RFC 8693)", () => {
   let userId: string;
 
@@ -137,7 +107,7 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid identity.name identity.dob",
       });
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -147,7 +117,7 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(200);
       expect(json.issued_token_type).toBe(ACCESS_TOKEN_TYPE);
-      expect(json.token_type).toBe("Bearer");
+      expect(json.token_type).toBe("DPoP");
       expect(json.scope).toBe("openid identity.name");
 
       const payload = decodeJwt(json.access_token as string);
@@ -159,7 +129,7 @@ describe("Token Exchange (RFC 8693)", () => {
       const subjectToken = await mintAccessToken(userId);
       const merchantApi = "https://merchant.example.com/api";
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -176,7 +146,7 @@ describe("Token Exchange (RFC 8693)", () => {
       const subjectToken = await mintAccessToken(userId);
       const targetService = "https://target.example.com";
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -192,7 +162,7 @@ describe("Token Exchange (RFC 8693)", () => {
     it("prefers resource over audience for aud binding", async () => {
       const subjectToken = await mintAccessToken(userId);
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -211,7 +181,7 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid identity.name",
       });
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -227,7 +197,7 @@ describe("Token Exchange (RFC 8693)", () => {
     it("returns a valid id_token with act claim", async () => {
       const subjectToken = await mintAccessToken(userId);
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -251,7 +221,7 @@ describe("Token Exchange (RFC 8693)", () => {
     it("mints an access token from a valid id_token", async () => {
       const subjectIdToken = await mintIdToken(userId);
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectIdToken,
@@ -261,7 +231,7 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(200);
       expect(json.issued_token_type).toBe(ACCESS_TOKEN_TYPE);
-      expect(json.token_type).toBe("Bearer");
+      expect(json.token_type).toBe("DPoP");
 
       const payload = decodeJwt(json.access_token as string);
       expect(payload.sub).toBe(userId);
@@ -275,7 +245,7 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid",
       });
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
@@ -290,7 +260,7 @@ describe("Token Exchange (RFC 8693)", () => {
     it("rejects non-openid scopes on id_token subjects", async () => {
       const subjectIdToken = await mintIdToken(userId);
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectIdToken,
@@ -313,7 +283,7 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid identity.name",
       });
 
-      const { json: firstExchange } = await postToken({
+      const { json: firstExchange } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: agentAId,
         subject_token: originalToken,
@@ -328,7 +298,7 @@ describe("Token Exchange (RFC 8693)", () => {
       const agentBId = "agent-b";
       await createTestClient(agentBId);
 
-      const { status, json: secondExchange } = await postToken({
+      const { status, json: secondExchange } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: agentBId,
         subject_token: firstExchange.access_token as string,
@@ -347,7 +317,7 @@ describe("Token Exchange (RFC 8693)", () => {
 
   describe("error cases", () => {
     it("rejects missing subject_token", async () => {
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token_type: ACCESS_TOKEN_TYPE,
@@ -368,7 +338,7 @@ describe("Token Exchange (RFC 8693)", () => {
         .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
         .sign(testKeyPair.privateKey);
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: expired,
@@ -382,7 +352,7 @@ describe("Token Exchange (RFC 8693)", () => {
     it("rejects unsupported subject_token_type", async () => {
       const subjectToken = await mintAccessToken(userId);
 
-      const { status, json } = await postToken({
+      const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,

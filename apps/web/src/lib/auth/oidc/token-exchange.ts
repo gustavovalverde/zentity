@@ -5,7 +5,12 @@ import {
   validateClientCredentials,
 } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth";
-import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
+import {
+  calculateJwkThumbprint,
+  createLocalJWKSet,
+  decodeProtectedHeader,
+  jwtVerify,
+} from "jose";
 
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
@@ -62,6 +67,30 @@ async function verifySubjectToken(
   const jwks = await buildLocalJwks(header.kid);
   const { payload } = await jwtVerify(token, jwks, { issuer: authIssuer });
   return payload as Record<string, unknown>;
+}
+
+/**
+ * Extract the DPoP JWK thumbprint from the request's DPoP proof header.
+ * Returns the thumbprint if a valid DPoP proof is present, undefined otherwise.
+ */
+async function extractDpopThumbprint(
+  request: Request | undefined
+): Promise<string | undefined> {
+  const proof = request?.headers?.get("DPoP");
+  if (!proof) {
+    return undefined;
+  }
+  try {
+    const header = decodeProtectedHeader(proof);
+    if (header.jwk) {
+      return await calculateJwkThumbprint(
+        header.jwk as Record<string, unknown>
+      );
+    }
+  } catch {
+    // DPoP proof parsing failed — let the binding layer handle rejection
+  }
+  return undefined;
 }
 
 /**
@@ -246,7 +275,9 @@ function createTokenExchangeHandler(): (
       );
     }
 
-    // Access Token output
+    // Access Token output — DPoP sender-constraining when proof is present
+    const dpopJkt = await extractDpopThumbprint(ctx.request);
+
     const accessTokenPayload: Record<string, unknown> = {
       iss: authIssuer,
       sub,
@@ -256,6 +287,7 @@ function createTokenExchangeHandler(): (
       iat: now,
       exp,
       act: actClaim,
+      ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
     };
 
     const accessToken = await signJwt(accessTokenPayload);
@@ -263,7 +295,7 @@ function createTokenExchangeHandler(): (
       {
         access_token: accessToken,
         issued_token_type: TOKEN_TYPE_ACCESS_TOKEN,
-        token_type: "Bearer",
+        token_type: dpopJkt ? "DPoP" : "Bearer",
         expires_in: expiresIn,
         scope: targetScopes.join(" "),
       },

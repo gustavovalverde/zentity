@@ -15,6 +15,7 @@ import {
   type ProviderId,
   readDcrClientId,
 } from "@/lib/dcr";
+import { createDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 function zentityUserInfoUrl() {
@@ -164,6 +165,41 @@ function makeProviderConfig(
     scopes,
     pkce: true,
     overrideUserInfo: true,
+    async getToken(data: {
+      code: string;
+      redirectURI: string;
+      codeVerifier?: string;
+    }) {
+      const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
+      const dpop = await createDpopClient();
+      const { result } = await dpop.withNonceRetry(async (nonce) => {
+        const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
+        const params: Record<string, string> = {
+          grant_type: "authorization_code",
+          code: data.code,
+          redirect_uri: data.redirectURI,
+          client_id: clientId,
+        };
+        if (data.codeVerifier) {
+          params.code_verifier = data.codeVerifier;
+        }
+        const response = await fetch(tokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            DPoP: proof,
+          },
+          body: new URLSearchParams(params),
+        });
+        return { response, result: (await response.json()) as Record<string, unknown> };
+      });
+      return {
+        accessToken: result.access_token as string | undefined,
+        idToken: result.id_token as string | undefined,
+        refreshToken: result.refresh_token as string | undefined,
+        tokenType: result.token_type as string | undefined,
+      };
+    },
     async getUserInfo(tokens: { accessToken?: string; idToken?: string }) {
       const { id, profile } = await fetchUserInfo(tokens);
       await syncClaimsToDb(id, providerId, profile);
