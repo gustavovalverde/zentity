@@ -17,6 +17,10 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
  * - action: "token"     → Polls the token endpoint for CIBA grant
  * - action: "check-ping" → Checks if a ping callback has been received
  */
+const TOKEN_EXCHANGE_GRANT_TYPE =
+  "urn:ietf:params:oauth:grant-type:token-exchange";
+const TOKEN_TYPE_ACCESS = "urn:ietf:params:oauth:token-type:access_token";
+
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("authorize"),
@@ -34,6 +38,13 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("check-ping"),
     authReqId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("token-exchange"),
+    providerId: z.string(),
+    accessToken: z.string().min(1),
+    resource: z.string().min(1),
+    scope: z.string().optional(),
   }),
 ]);
 
@@ -103,6 +114,31 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(body);
+  }
+
+  if (data.action === "token-exchange") {
+    const params: Record<string, string> = {
+      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+      client_id: client.clientId,
+      subject_token: data.accessToken,
+      subject_token_type: TOKEN_TYPE_ACCESS,
+      resource: data.resource,
+    };
+    if (client.clientSecret) {
+      params.client_secret = client.clientSecret;
+    }
+    if (data.scope) {
+      params.scope = data.scope;
+    }
+
+    const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(params),
+    });
+
+    const body = await res.json();
+    return NextResponse.json(body, { status: res.status });
   }
 
   // action === "token"

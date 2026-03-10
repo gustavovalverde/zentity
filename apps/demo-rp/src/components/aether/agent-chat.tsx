@@ -28,6 +28,7 @@ interface AgentMessage {
 interface AgentChatProps {
   cibaState: CibaState;
   error: string | null;
+  exchangedTokens: Record<string, unknown> | null;
   onReset: () => void;
   onTriggerCiba: () => void;
   task: ShoppingTask;
@@ -90,6 +91,7 @@ export function AgentChat({
   task,
   cibaState,
   tokens,
+  exchangedTokens,
   error,
   onTriggerCiba,
   onReset,
@@ -193,6 +195,7 @@ export function AgentChat({
         )}
         {cibaState === "approved" && tokens && (
           <CibaResult
+            exchangedTokens={exchangedTokens}
             onReset={handleReset}
             pick={
               task.results.find((p) => p.id === task.pick) ?? task.results[0]
@@ -396,7 +399,9 @@ function CibaResult({
   pick,
   onReset,
   tokens,
+  exchangedTokens,
 }: {
+  exchangedTokens: Record<string, unknown> | null;
   onReset: () => void;
   pick: Product;
   tokens: Record<string, unknown>;
@@ -410,9 +415,17 @@ function CibaResult({
     typeof tokens.access_token === "string"
       ? decodeJwtPayload(tokens.access_token)
       : null;
-  const actClaim = jwtPayload?.act as { sub: string } | undefined;
+  const actClaim = jwtPayload?.act as Record<string, unknown> | undefined;
   const authorizationDetails = tokens.authorization_details as
     | unknown[]
+    | undefined;
+
+  const exchangedPayload =
+    exchangedTokens && typeof exchangedTokens.access_token === "string"
+      ? decodeJwtPayload(exchangedTokens.access_token)
+      : null;
+  const exchangedAct = exchangedPayload?.act as
+    | Record<string, unknown>
     | undefined;
 
   return (
@@ -422,7 +435,9 @@ function CibaResult({
           <span className="font-semibold text-white">
             Authorization received!
           </span>{" "}
-          Completing your purchase now.
+          {exchangedTokens
+            ? "Narrowed permissions for the merchant API. Completing your purchase now."
+            : "Completing your purchase now."}
         </p>
       </div>
 
@@ -461,10 +476,12 @@ function CibaResult({
           The agent never handled your credentials. You approved from your own
           device via CIBA, and the agent received only the scoped tokens it
           needed.
+          {exchangedTokens &&
+            " The token was further narrowed via RFC 8693 Token Exchange before calling the merchant API."}
         </p>
       </div>
 
-      {(actClaim || authorizationDetails) && (
+      {(actClaim || authorizationDetails || exchangedPayload) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           <button
             className="flex w-full items-center justify-between text-left"
@@ -484,10 +501,32 @@ function CibaResult({
               {actClaim && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">
-                    act claim (agent identity)
+                    CIBA token — act claim (agent identity)
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
                     {JSON.stringify(actClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {exchangedPayload && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    Exchanged token — act claim (delegation chain)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
+                    {JSON.stringify(exchangedAct, null, 2)}
+                  </pre>
+                  <p className="mt-1.5 mb-1 text-white/50 text-xs">
+                    Exchanged token — audience
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
+                    {JSON.stringify(exchangedPayload.aud, null, 2)}
+                  </pre>
+                  <p className="mt-1.5 mb-1 text-white/50 text-xs">
+                    Exchanged token — scope
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
+                    {JSON.stringify(exchangedPayload.scope, null, 2)}
                   </pre>
                 </div>
               )}

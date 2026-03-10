@@ -14,6 +14,7 @@ export type CibaState =
 interface CibaFlowState {
   authReqId: string | null;
   error: string | null;
+  exchangedTokens: Record<string, unknown> | null;
   reset: () => void;
   startFlow: (params: {
     loginHint: string;
@@ -65,10 +66,16 @@ function classifyPollResponse(
   };
 }
 
+const MERCHANT_API = "https://merchant.example.com/api";
+
 export function useCibaFlow(providerId: string): CibaFlowState {
   const [state, setState] = useState<CibaState>("idle");
   const [authReqId, setAuthReqId] = useState<string | null>(null);
   const [tokens, setTokens] = useState<Record<string, unknown> | null>(null);
+  const [exchangedTokens, setExchangedTokens] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -90,14 +97,62 @@ export function useCibaFlow(providerId: string): CibaFlowState {
     }
   }, []);
 
+  const exchangeToken = useCallback(
+    async (accessToken: string) => {
+      try {
+        const res = await fetch("/api/ciba", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "token-exchange",
+            providerId,
+            accessToken,
+            resource: MERCHANT_API,
+            scope: "openid",
+          }),
+        });
+        if (res.ok) {
+          const body = (await res.json()) as Record<string, unknown>;
+          setExchangedTokens(body);
+        }
+      } catch {
+        // Non-critical — the CIBA token is still valid
+      }
+    },
+    [providerId]
+  );
+
   const reset = useCallback(() => {
     stopPolling();
     setState("idle");
     setAuthReqId(null);
     setTokens(null);
+    setExchangedTokens(null);
     setError(null);
     intervalRef.current = DEFAULT_POLL_INTERVAL;
   }, [stopPolling]);
+
+  const handlePollResult = useCallback(
+    (result: PollResult, restartPoll: () => void) => {
+      if (result.kind === "tokens") {
+        stopPolling();
+        setTokens(result.tokens);
+        setState("approved");
+        if (typeof result.tokens.access_token === "string") {
+          exchangeToken(result.tokens.access_token);
+        }
+      } else if (result.kind === "slow_down") {
+        restartPoll();
+      } else if (result.kind === "terminal") {
+        stopPolling();
+        setState(result.state);
+        if (result.message) {
+          setError(result.message);
+        }
+      }
+    },
+    [stopPolling, exchangeToken]
+  );
 
   const pollToken = useCallback(
     (reqId: string) => {
@@ -115,12 +170,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
           const body = (await res.json()) as Record<string, unknown>;
           const result = classifyPollResponse(res.status, body);
-
-          if (result.kind === "tokens") {
-            stopPolling();
-            setTokens(result.tokens);
-            setState("approved");
-          } else if (result.kind === "slow_down") {
+          handlePollResult(result, () => {
             if (pollRef.current) {
               clearInterval(pollRef.current);
               intervalRef.current += 5;
@@ -129,24 +179,15 @@ export function useCibaFlow(providerId: string): CibaFlowState {
                 intervalRef.current * 1000
               );
             }
-          } else if (result.kind === "terminal") {
-            stopPolling();
-            setState(result.state);
-            if (result.message) {
-              setError(result.message);
-            }
-          }
-          // "pending" → keep polling
+          });
         } catch {
           // Network error — retry on next interval
         }
       };
 
-      // Start regular polling (fallback)
       fetchTokens();
       pollRef.current = setInterval(fetchTokens, intervalRef.current * 1000);
 
-      // Start ping check (fast path) — checks more frequently
       const checkPing = async () => {
         try {
           const res = await fetch("/api/ciba", {
@@ -168,13 +209,12 @@ export function useCibaFlow(providerId: string): CibaFlowState {
       };
       pingCheckRef.current = setInterval(checkPing, PING_CHECK_INTERVAL * 1000);
 
-      // Client-side expiry fallback
       expireRef.current = setTimeout(() => {
         stopPolling();
         setState("expired");
       }, CLIENT_EXPIRE_MS);
     },
-    [providerId, stopPolling]
+    [providerId, stopPolling, handlePollResult]
   );
 
   const startFlow = useCallback(
@@ -229,5 +269,5 @@ export function useCibaFlow(providerId: string): CibaFlowState {
   // Cleanup on unmount
   useEffect(() => stopPolling, [stopPolling]);
 
-  return { state, authReqId, tokens, error, startFlow, reset };
+  return { state, authReqId, tokens, exchangedTokens, error, startFlow, reset };
 }
