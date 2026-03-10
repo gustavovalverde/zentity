@@ -1,9 +1,13 @@
 import crypto from "node:crypto";
+import { createServer } from "node:http";
 
+import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { db } from "@/lib/db/connection";
+import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
@@ -316,6 +320,125 @@ describe("CIBA ping mode", () => {
         .where(eq(cibaRequests.authReqId, json.auth_req_id as string))
         .get();
       expect(request?.deliveryMode).toBe("poll");
+    });
+  });
+
+  describe("ping callback delivery", () => {
+    let mockServer: ReturnType<typeof createServer>;
+
+    afterEach(() => {
+      mockServer?.close();
+    });
+
+    function startMockServer(): Promise<{
+      port: number;
+      waitForCallback: () => Promise<{
+        authHeader: string | undefined;
+        body: Record<string, unknown>;
+      }>;
+    }> {
+      return new Promise((resolve) => {
+        let callbackResolve: (value: {
+          authHeader: string | undefined;
+          body: Record<string, unknown>;
+        }) => void;
+        const callbackPromise = new Promise<{
+          authHeader: string | undefined;
+          body: Record<string, unknown>;
+        }>((res) => {
+          callbackResolve = res;
+        });
+
+        mockServer = createServer((req, res) => {
+          let data = "";
+          req.on("data", (chunk) => {
+            data += chunk;
+          });
+          req.on("end", () => {
+            callbackResolve({
+              authHeader: req.headers.authorization,
+              body: JSON.parse(data) as Record<string, unknown>,
+            });
+            res.writeHead(204);
+            res.end();
+          });
+        });
+
+        mockServer.listen(0, () => {
+          const addr = mockServer.address();
+          const port =
+            typeof addr === "object" && addr !== null ? addr.port : 0;
+          resolve({ port, waitForCallback: () => callbackPromise });
+        });
+      });
+    }
+
+    async function createTestSession(uid: string): Promise<string> {
+      const sessionToken = crypto.randomUUID();
+      const now = new Date().toISOString();
+      await db
+        .insert(sessions)
+        .values({
+          id: crypto.randomUUID(),
+          token: sessionToken,
+          userId: uid,
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+      // better-auth requires signed cookies (value.signature)
+      const signature = await makeSignature(
+        sessionToken,
+        env.BETTER_AUTH_SECRET
+      );
+      return `${sessionToken}.${signature}`;
+    }
+
+    it("delivers ping callback to notification endpoint after approval", async () => {
+      const { port, waitForCallback } = await startMockServer();
+      const notificationEndpoint = `http://localhost:${port}/ciba/callback`;
+      const notificationToken = "test-ping-bearer-token";
+
+      // Create a bc-authorize request with ping mode
+      const { json: bcJson } = await postBcAuthorize({
+        client_id: TEST_CLIENT_ID,
+        scope: "openid",
+        login_hint: `user-${userId}@example.com`,
+        client_notification_token: notificationToken,
+        client_notification_uri: notificationEndpoint,
+      });
+
+      const authReqId = bcJson.auth_req_id as string;
+
+      // Create a session so we can call the approve endpoint
+      const sessionToken = await createTestSession(userId);
+
+      // Approve the CIBA request through the plugin
+      const approveUrl = "http://localhost:3000/api/auth/ciba/authorize";
+      const approveRes = await auth.handler(
+        new Request(approveUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: `better-auth.session_token=${sessionToken}`,
+          },
+          body: JSON.stringify({ auth_req_id: authReqId }),
+        })
+      );
+
+      expect(approveRes.status).toBe(200);
+
+      // Wait for the ping callback (with a timeout)
+      const callback = await Promise.race([
+        waitForCallback(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Ping callback timeout")), 5000)
+        ),
+      ]);
+
+      expect(callback.authHeader).toBe(`Bearer ${notificationToken}`);
+      expect(callback.body.auth_req_id).toBe(authReqId);
     });
   });
 });

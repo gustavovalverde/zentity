@@ -163,3 +163,12 @@
 # Files changed
 - `apps/web/src/app/api/oauth2/release/route.ts` — DPoP validation + dual auth scheme support
 - `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — 5 new DPoP tests
+
+## CIBA ping delivery end-to-end test (deferred item #2)
+- Added ping callback delivery integration test using a mock HTTP server
+- Test flow: bc-authorize (ping mode) → create signed session → approve via plugin /ciba/authorize → mock server receives POST with correct bearer token + auth_req_id
+- `createTestSession` helper creates DB session + signs the cookie using `makeSignature` from `better-auth/crypto` with `BETTER_AUTH_SECRET`
+- Existing 8 CIBA ping tests unchanged
+
+# Files changed
+- `apps/web/src/lib/auth/__tests__/ciba-ping.integration.test.ts` — 1 new test (ping callback delivery)
