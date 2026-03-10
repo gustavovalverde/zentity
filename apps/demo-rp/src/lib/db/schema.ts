@@ -57,6 +57,15 @@ export const dcrClient = sqliteTable("dcr_client", {
   clientSecret: text("clientSecret"),
 });
 
+export const cibaPings = sqliteTable("ciba_ping", {
+  authReqId: text("auth_req_id").primaryKey(),
+  notificationToken: text("notification_token").notNull(),
+  received: integer("received", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 export const vpSessions = sqliteTable("vp_session", {
   id: text("id").primaryKey(),
   nonce: text("nonce").notNull(),

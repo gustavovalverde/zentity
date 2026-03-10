@@ -7,6 +7,7 @@ import { env } from "@/lib/env";
 
 import {
   account,
+  cibaPings,
   dcrClient,
   session,
   user,
@@ -16,6 +17,7 @@ import {
 
 const dbSchema = {
   account,
+  cibaPings,
   dcrClient,
   session,
   user,

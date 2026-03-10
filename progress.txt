@@ -15,5 +15,11 @@
 - `apps/web/src/lib/auth/well-known-utils.ts` — discovery: ["poll"] → ["poll", "ping"]
 - `apps/web/src/lib/auth/__tests__/ciba-ping.integration.test.ts` — new test file (8 tests)
 
+## Phase 1.2: Demo-rp CIBA ping mode (Plan §Phase 1, AC 6-8)
+- Added `cibaPings` table to demo-rp DB schema (auth_req_id, notification_token, received flag)
+- Created callback endpoint `/api/ciba/callback` — verifies bearer token, marks ping received
+- Updated BFF `/api/ciba` to generate per-request `client_notification_token`, send `client_notification_uri`, store in DB, add `check-ping` action
+- Updated `use-ciba-flow.ts` — ping check runs every 2s alongside regular poll (5s). On ping received, immediately fetches tokens (fast path). Extracted `classifyPollResponse` to reduce cognitive complexity
+
 # Any blockers or notes for next iteration
-- Next: Phase 1 demo-rp side — callback endpoint, DCR registration update, BFF update, use-ciba-flow.ts ping support
+- Next: Phase 1 integration tests for ping callback (retry, rejection), or move to Phase 2

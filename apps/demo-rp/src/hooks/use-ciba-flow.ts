@@ -26,7 +26,44 @@ interface CibaFlowState {
 }
 
 const DEFAULT_POLL_INTERVAL = 5;
+const PING_CHECK_INTERVAL = 2;
 const CLIENT_EXPIRE_MS = 5 * 60 * 1000;
+
+type PollResult =
+  | { kind: "tokens"; tokens: Record<string, unknown> }
+  | { kind: "pending" }
+  | { kind: "slow_down" }
+  | { kind: "terminal"; state: CibaState; message?: string };
+
+function classifyPollResponse(
+  status: number,
+  body: Record<string, unknown>
+): PollResult {
+  if (status >= 200 && status < 300 && body.access_token) {
+    return { kind: "tokens", tokens: body };
+  }
+
+  const errorCode = body.error as string | undefined;
+
+  if (errorCode === "authorization_pending") {
+    return { kind: "pending" };
+  }
+  if (errorCode === "slow_down") {
+    return { kind: "slow_down" };
+  }
+  if (errorCode === "access_denied") {
+    return { kind: "terminal", state: "denied" };
+  }
+  if (errorCode === "expired_token") {
+    return { kind: "terminal", state: "expired" };
+  }
+
+  return {
+    kind: "terminal",
+    state: "error",
+    message: (body.error_description as string) ?? "Token request failed",
+  };
+}
 
 export function useCibaFlow(providerId: string): CibaFlowState {
   const [state, setState] = useState<CibaState>("idle");
@@ -34,6 +71,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
   const [tokens, setTokens] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expireRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef(DEFAULT_POLL_INTERVAL);
 
@@ -41,6 +79,10 @@ export function useCibaFlow(providerId: string): CibaFlowState {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
+    }
+    if (pingCheckRef.current) {
+      clearInterval(pingCheckRef.current);
+      pingCheckRef.current = null;
     }
     if (expireRef.current) {
       clearTimeout(expireRef.current);
@@ -59,7 +101,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
   const pollToken = useCallback(
     (reqId: string) => {
-      const poll = async () => {
+      const fetchTokens = async () => {
         try {
           const res = await fetch("/api/ciba", {
             method: "POST",
@@ -72,51 +114,59 @@ export function useCibaFlow(providerId: string): CibaFlowState {
           });
 
           const body = (await res.json()) as Record<string, unknown>;
+          const result = classifyPollResponse(res.status, body);
 
-          if (res.ok && body.access_token) {
+          if (result.kind === "tokens") {
             stopPolling();
-            setTokens(body);
+            setTokens(result.tokens);
             setState("approved");
-            return;
-          }
-
-          const errorCode = body.error as string | undefined;
-
-          if (errorCode === "authorization_pending") {
-            return; // Keep polling
-          }
-          if (errorCode === "slow_down") {
-            // Increase interval
+          } else if (result.kind === "slow_down") {
+            if (pollRef.current) {
+              clearInterval(pollRef.current);
+              intervalRef.current += 5;
+              pollRef.current = setInterval(
+                fetchTokens,
+                intervalRef.current * 1000
+              );
+            }
+          } else if (result.kind === "terminal") {
             stopPolling();
-            intervalRef.current += 5;
-            pollRef.current = setInterval(poll, intervalRef.current * 1000);
-            return;
+            setState(result.state);
+            if (result.message) {
+              setError(result.message);
+            }
           }
-          if (errorCode === "access_denied") {
-            stopPolling();
-            setState("denied");
-            return;
-          }
-          if (errorCode === "expired_token") {
-            stopPolling();
-            setState("expired");
-            return;
-          }
-
-          // Unknown error
-          stopPolling();
-          setError(
-            (body.error_description as string) ?? "Token request failed"
-          );
-          setState("error");
+          // "pending" → keep polling
         } catch {
           // Network error — retry on next interval
         }
       };
 
-      // Poll immediately, then at interval
-      poll();
-      pollRef.current = setInterval(poll, intervalRef.current * 1000);
+      // Start regular polling (fallback)
+      fetchTokens();
+      pollRef.current = setInterval(fetchTokens, intervalRef.current * 1000);
+
+      // Start ping check (fast path) — checks more frequently
+      const checkPing = async () => {
+        try {
+          const res = await fetch("/api/ciba", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "check-ping", authReqId: reqId }),
+          });
+          const body = (await res.json()) as { received: boolean };
+          if (body.received) {
+            if (pingCheckRef.current) {
+              clearInterval(pingCheckRef.current);
+              pingCheckRef.current = null;
+            }
+            fetchTokens();
+          }
+        } catch {
+          // Ignore — regular polling is the fallback
+        }
+      };
+      pingCheckRef.current = setInterval(checkPing, PING_CHECK_INTERVAL * 1000);
 
       // Client-side expiry fallback
       expireRef.current = setTimeout(() => {

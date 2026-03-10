@@ -1,15 +1,21 @@
+import crypto from "node:crypto";
+
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getDb } from "@/lib/db/connection";
+import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
 import { env } from "@/lib/env";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
 /**
- * POST /api/ciba — Handles two actions:
- * - action: "authorize" → Initiates a CIBA backchannel auth request
+ * POST /api/ciba — Handles three actions:
+ * - action: "authorize" → Initiates a CIBA backchannel auth request (ping mode)
  * - action: "token"     → Polls the token endpoint for CIBA grant
+ * - action: "check-ping" → Checks if a ping callback has been received
  */
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -25,6 +31,10 @@ const bodySchema = z.discriminatedUnion("action", [
     providerId: z.string(),
     authReqId: z.string().min(1),
   }),
+  z.object({
+    action: z.literal("check-ping"),
+    authReqId: z.string().min(1),
+  }),
 ]);
 
 export async function POST(request: Request) {
@@ -38,7 +48,15 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
-  if (!isValidProviderId(data.providerId)) {
+  if (data.action === "check-ping") {
+    const row = await getDb().query.cibaPings.findFirst({
+      where: eq(cibaPings.authReqId, data.authReqId),
+      columns: { received: true },
+    });
+    return NextResponse.json({ received: row?.received ?? false });
+  }
+
+  if (!("providerId" in data && isValidProviderId(data.providerId))) {
     return NextResponse.json({ error: "Invalid providerId" }, { status: 400 });
   }
 
@@ -51,6 +69,10 @@ export async function POST(request: Request) {
   }
 
   if (data.action === "authorize") {
+    // Generate a per-request notification token for ping mode
+    const notificationToken = crypto.randomUUID();
+    const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
+
     const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -61,12 +83,23 @@ export async function POST(request: Request) {
         login_hint: data.loginHint,
         binding_message: data.bindingMessage,
         authorization_details: data.authorizationDetails,
+        client_notification_token: notificationToken,
+        client_notification_uri: callbackUrl,
       }),
     });
 
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     if (!res.ok) {
       return NextResponse.json(body, { status: res.status });
+    }
+
+    // Store the notification token so the callback can verify it
+    const authReqId = body.auth_req_id as string;
+    if (authReqId) {
+      await getDb()
+        .insert(cibaPings)
+        .values({ authReqId, notificationToken })
+        .onConflictDoNothing();
     }
 
     return NextResponse.json(body);
