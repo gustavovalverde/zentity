@@ -56,5 +56,17 @@
 - Zero-knowledge at rest: release handle hash stored for lookup, actual key only in access token
 - Added to DB connection schema and `resetDatabase()` test utility
 
+## Phase 3.2: PII release endpoint + integration tests (Plan §Phase 3, AC 2-9, 11)
+- `POST /api/oauth2/release` endpoint: verifies JWT access token via local JWKS lookup, extracts `release_handle` claim, decrypts PII, mints id_token, marks redeemed
+- Token verification uses jose `jwtVerify` with `getLocalJwks()` (reads `jwks` table directly, fallback to JWKS URL fetch)
+- PII filtering by approved scopes via `filterIdentityByScopes`
+- Status lifecycle enforced: approved → redeemed (410 on second attempt), expired (410 with auto-transition)
+- 8 integration tests: full redemption, one-time use, expired, missing handle, unknown handle, no bearer, authorization_details, scope filtering
+- Tests use dedicated EdDSA key pair inserted into `jwks` table per test (avoids jwt-signer cache coupling)
+
+# Files changed
+- `apps/web/src/app/api/oauth2/release/route.ts` — new release endpoint
+- `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — new test file (8 tests)
+
 # Any blockers or notes for next iteration
-- Next: Phase 3 PII encryption helpers + release endpoint
+- Next: Phase 3 remaining — wire release handle into CIBA grant handler (AC 3: embed in access token), replace ephemeral staging with durable path (AC 14)
