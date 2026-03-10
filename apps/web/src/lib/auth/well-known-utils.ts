@@ -47,7 +47,7 @@ export function enrichDiscoveryMetadata(
     dpop_signing_alg_values_supported: ["ES256"],
     authorization_details_types_supported: ["openid_credential"],
     // CIBA metadata (OpenID CIBA Core §4)
-    backchannel_token_delivery_modes_supported: ["poll"],
+    backchannel_token_delivery_modes_supported: ["poll", "ping"],
     backchannel_user_code_parameter_supported: false,
   };
 }

@@ -984,8 +984,21 @@ export const auth = betterAuth({
       vpRequestExpiresInSeconds: 300,
     }),
     ciba({
+      deliveryModes: ["poll", "ping"],
       requestLifetime: 300,
       pollingInterval: 5,
+      async resolveClientNotificationEndpoint(clientId) {
+        const client = await db
+          .select({ metadata: oauthClients.metadata })
+          .from(oauthClients)
+          .where(eq(oauthClients.clientId, clientId))
+          .get();
+        const meta = client?.metadata as Record<string, unknown> | null;
+        return (
+          (meta?.backchannel_client_notification_endpoint as string) ??
+          undefined
+        );
+      },
       sendNotification: async (data) => {
         const approvalUrl = `${getAppOrigin()}/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(data.authReqId)}`;
         const clientLabel = data.clientName ?? "An application";
