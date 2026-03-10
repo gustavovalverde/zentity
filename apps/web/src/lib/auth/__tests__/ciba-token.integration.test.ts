@@ -7,6 +7,10 @@ import {
   resetEphemeralIdentityClaimsStore,
   storeEphemeralClaims,
 } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import {
+  resetReleaseHandleStore,
+  stageReleaseHandle,
+} from "@/lib/auth/oidc/ephemeral-release-handles";
 import { createScopeHash } from "@/lib/auth/oidc/identity-intent";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -89,6 +93,7 @@ describe("CIBA token endpoint", () => {
   beforeEach(async () => {
     await resetDatabase();
     await resetEphemeralIdentityClaimsStore();
+    resetReleaseHandleStore();
     userId = await createTestUser();
     await createTestClient();
   });
@@ -287,6 +292,45 @@ describe("CIBA token endpoint", () => {
 
     expect(status).toBe(400);
     expect(json.error).toBe("invalid_grant");
+  });
+
+  describe("release handle in access token", () => {
+    it("embeds release_handle when staged before token minting", async () => {
+      const authReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+      });
+
+      const fakeHandle = crypto.randomBytes(32).toString("base64url");
+      stageReleaseHandle(userId, fakeHandle);
+
+      const { json } = await postToken({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.release_handle).toBe(fakeHandle);
+    });
+
+    it("omits release_handle when nothing is staged", async () => {
+      const authReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+      });
+
+      const { json } = await postToken({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.release_handle).toBeUndefined();
+    });
   });
 
   describe("identity claims via ephemeral staging", () => {

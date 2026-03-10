@@ -41,6 +41,7 @@ import {
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
 import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import { consumeReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
 import {
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
@@ -880,6 +881,13 @@ export const auth = betterAuth({
       consentPage: "/oauth/consent",
       advertisedMetadata: {
         claims_supported: advertisedClaims,
+      },
+      customAccessTokenClaims: ({ user }) => {
+        if (!user?.id) {
+          return {};
+        }
+        const handle = consumeReleaseHandle(user.id);
+        return handle ? { release_handle: handle } : {};
       },
       customIdTokenClaims: async ({ user, scopes }) => {
         const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
