@@ -28,5 +28,11 @@
 - Both endpoints validate session, CIBA request ownership, scope membership, intent token binding
 - No changes needed to `customIdTokenClaims` — it already calls `consumeEphemeralClaimsByUser` which works for both OAuth and CIBA flows
 
+## Phase 2.2: CIBA approval page server/client split (Plan §Phase 2, AC 8 prep)
+- Converted CIBA approval page from monolithic "use client" to server+client pattern
+- Server `page.tsx` calls `detectAuthMode(userId)` and passes `authMode` + `wallet` as props
+- Client `ciba-approve-client.tsx` receives auth context for vault unlock rendering
+- Added `layout.tsx` with `Web3Provider` wrapper (needed for wallet unlock path)
+
 # Any blockers or notes for next iteration
-- Next: Phase 2 vault unlock UI on CIBA approval page (convert to server+client, add Web3Provider, passkey/OPAQUE/wallet unlock)
+- Next: Phase 2 vault unlock UI + staging logic on CIBA approval page (passkey/OPAQUE/wallet unlock wired to intent/stage endpoints)
