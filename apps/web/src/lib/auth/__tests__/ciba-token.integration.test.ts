@@ -3,6 +3,11 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  resetEphemeralIdentityClaimsStore,
+  storeEphemeralClaims,
+} from "@/lib/auth/oidc/ephemeral-identity-claims";
+import { createScopeHash } from "@/lib/auth/oidc/identity-intent";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -83,6 +88,7 @@ describe("CIBA token endpoint", () => {
 
   beforeEach(async () => {
     await resetDatabase();
+    await resetEphemeralIdentityClaimsStore();
     userId = await createTestUser();
     await createTestClient();
   });
@@ -281,5 +287,116 @@ describe("CIBA token endpoint", () => {
 
     expect(status).toBe(400);
     expect(json.error).toBe("invalid_grant");
+  });
+
+  describe("identity claims via ephemeral staging", () => {
+    it("includes PII claims in id_token when ephemeral claims are staged", async () => {
+      const identityScopes = ["openid", "identity.name", "identity.dob"];
+      const authReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        scope: identityScopes.join(" "),
+      });
+
+      // Stage PII in the ephemeral store (simulates vault unlock → stage endpoint)
+      const scopeHash = createScopeHash(identityScopes);
+      const stored = await storeEphemeralClaims(
+        userId,
+        {
+          given_name: "Alice",
+          family_name: "Smith",
+          name: "Alice Smith",
+          birthdate: "1990-01-15",
+        },
+        identityScopes,
+        {
+          clientId: TEST_CLIENT_ID,
+          scopeHash,
+          intentJti: crypto.randomUUID(),
+        }
+      );
+      expect(stored.ok).toBe(true);
+
+      const { status, json } = await postToken({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      expect(status).toBe(200);
+      expect(json.id_token).toBeDefined();
+
+      const idToken = decodeJwt(json.id_token as string);
+      expect(idToken.given_name).toBe("Alice");
+      expect(idToken.family_name).toBe("Smith");
+      expect(idToken.name).toBe("Alice Smith");
+      expect(idToken.birthdate).toBe("1990-01-15");
+    });
+
+    it("does not include PII when no ephemeral claims are staged", async () => {
+      const authReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        scope: "openid",
+      });
+
+      const { status, json } = await postToken({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      expect(status).toBe(200);
+      expect(json.id_token).toBeDefined();
+
+      const idToken = decodeJwt(json.id_token as string);
+      expect(idToken.given_name).toBeUndefined();
+      expect(idToken.family_name).toBeUndefined();
+      expect(idToken.birthdate).toBeUndefined();
+    });
+
+    it("ephemeral claims are consumed (single-use)", async () => {
+      const identityScopes = ["openid", "identity.name"];
+      const authReqId1 = await insertCibaRequest({
+        userId,
+        status: "approved",
+        scope: identityScopes.join(" "),
+      });
+
+      const scopeHash = createScopeHash(identityScopes);
+      await storeEphemeralClaims(
+        userId,
+        { given_name: "Bob", name: "Bob" },
+        identityScopes,
+        {
+          clientId: TEST_CLIENT_ID,
+          scopeHash,
+          intentJti: crypto.randomUUID(),
+        }
+      );
+
+      // First token request consumes the claims
+      const { json: json1 } = await postToken({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId1,
+        client_id: TEST_CLIENT_ID,
+      });
+      const idToken1 = decodeJwt(json1.id_token as string);
+      expect(idToken1.given_name).toBe("Bob");
+
+      // Second request (new auth_req_id, same user) gets no PII
+      const authReqId2 = await insertCibaRequest({
+        userId,
+        status: "approved",
+        scope: identityScopes.join(" "),
+      });
+      const { json: json2 } = await postToken({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId2,
+        client_id: TEST_CLIENT_ID,
+      });
+      const idToken2 = decodeJwt(json2.id_token as string);
+      expect(idToken2.given_name).toBeUndefined();
+    });
   });
 });

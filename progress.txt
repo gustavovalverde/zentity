@@ -42,5 +42,13 @@
 - Staging calls `/api/ciba/identity/intent` then `/api/ciba/identity/stage` before approval
 - Approve button disabled until vault is unlocked and intent token is valid (when identity scopes present)
 
+## Phase 2.4: CIBA identity staging integration tests (Plan §Phase 2, AC 9-13)
+- Added 3 integration tests to `ciba-token.integration.test.ts`:
+  - PII claims in id_token when ephemeral claims are staged (identity.name + identity.dob)
+  - No PII when no ephemeral claims are staged (openid-only scope)
+  - Ephemeral claims are single-use (consumed after first token minting)
+- Added `usedIntentJtis` cleanup to `resetDatabase()` test utility
+- Added `resetEphemeralIdentityClaimsStore()` call in test beforeEach
+
 # Any blockers or notes for next iteration
-- Next: Phase 2 integration tests for CIBA identity staging flow, then Phase 3 (durable approval)
+- Next: Phase 3 (durable approval & PII release) or remaining Phase 1 integration tests

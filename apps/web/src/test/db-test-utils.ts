@@ -19,6 +19,7 @@ import {
   encryptedSecrets,
   secretWrappers,
   signedClaims,
+  usedIntentJtis,
   zkChallenges,
   zkProofs,
 } from "@/lib/db/schema/crypto";
@@ -69,6 +70,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oidc4vciOffers).run();
     await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
+    await tx.delete(usedIntentJtis).run();
     await tx.delete(pushSubscriptions).run();
     await tx.delete(cibaRequests).run();
     // OAuth/compliance tables (delete children before parents)
