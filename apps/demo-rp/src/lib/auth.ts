@@ -191,7 +191,10 @@ function makeProviderConfig(
           },
           body: new URLSearchParams(params),
         });
-        return { response, result: (await response.json()) as Record<string, unknown> };
+        return {
+          response,
+          result: (await response.json()) as Record<string, unknown>,
+        };
       });
       return {
         accessToken: result.access_token as string | undefined,

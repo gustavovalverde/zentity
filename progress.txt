@@ -1,5 +1,19 @@
 # Tasks completed in this session
 
+## Phase 4: Demo-rp Ping Flow Hardening (CIBA Notifications Remediation)
+- PRD ref: Finding 7 (demo-rp ping/poll race conditions)
+- In-flight fetch deduplication via inflightRef prevents overlapping token requests
+- Monotonic state guard via terminalRef — once terminal state reached, all subsequent results ignored
+- Ping handler suspends poll interval before triggering fast-path fetch (no dual-path collision)
+- Expiry timeout checks terminalRef before transitioning state
+- Removed unused TERMINAL_STATES constant
+
+### Files changed
+- apps/demo-rp/src/hooks/use-ciba-flow.ts (inflight dedup, monotonic guard, ping suspends poll)
+- apps/demo-rp/src/lib/auth.ts (pre-existing formatting fix)
+
+---
+
 ## Phase 3: Release Handle Scoping and Atomic Redemption (CIBA Notifications Remediation)
 - PRD ref: Findings 2, 4 (release handle scope collision, non-atomic release)
 - Ephemeral release handle store re-keyed by authReqId with userId reverse index

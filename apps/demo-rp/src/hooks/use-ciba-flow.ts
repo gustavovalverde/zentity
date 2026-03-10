@@ -81,6 +81,10 @@ export function useCibaFlow(providerId: string): CibaFlowState {
   const pingCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expireRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef(DEFAULT_POLL_INTERVAL);
+  // Tracks the current in-flight token fetch to prevent overlapping requests
+  const inflightRef = useRef<Promise<void> | null>(null);
+  // Monotonic state guard — once a terminal state is reached, ignore further results
+  const terminalRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -124,6 +128,8 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
   const reset = useCallback(() => {
     stopPolling();
+    terminalRef.current = false;
+    inflightRef.current = null;
     setState("idle");
     setAuthReqId(null);
     setTokens(null);
@@ -134,7 +140,13 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
   const handlePollResult = useCallback(
     (result: PollResult, restartPoll: () => void) => {
+      // Monotonic guard: once terminal, ignore all subsequent results
+      if (terminalRef.current) {
+        return;
+      }
+
       if (result.kind === "tokens") {
+        terminalRef.current = true;
         stopPolling();
         setTokens(result.tokens);
         setState("approved");
@@ -144,6 +156,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
       } else if (result.kind === "slow_down") {
         restartPoll();
       } else if (result.kind === "terminal") {
+        terminalRef.current = true;
         stopPolling();
         setState(result.state);
         if (result.message) {
@@ -156,33 +169,49 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
   const pollToken = useCallback(
     (reqId: string) => {
-      const fetchTokens = async () => {
-        try {
-          const res = await fetch("/api/ciba", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "token",
-              providerId,
-              authReqId: reqId,
-            }),
-          });
-
-          const body = (await res.json()) as Record<string, unknown>;
-          const result = classifyPollResponse(res.status, body);
-          handlePollResult(result, () => {
-            if (pollRef.current) {
-              clearInterval(pollRef.current);
-              intervalRef.current += 5;
-              pollRef.current = setInterval(
-                fetchTokens,
-                intervalRef.current * 1000
-              );
-            }
-          });
-        } catch {
-          // Network error — retry on next interval
+      const fetchTokens = () => {
+        // If a fetch is already in flight, reuse the same promise
+        if (inflightRef.current) {
+          return inflightRef.current;
         }
+        // If we've already reached a terminal state, skip
+        if (terminalRef.current) {
+          return;
+        }
+
+        const promise = (async () => {
+          try {
+            const res = await fetch("/api/ciba", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "token",
+                providerId,
+                authReqId: reqId,
+              }),
+            });
+
+            const body = (await res.json()) as Record<string, unknown>;
+            const result = classifyPollResponse(res.status, body);
+            handlePollResult(result, () => {
+              if (pollRef.current) {
+                clearInterval(pollRef.current);
+                intervalRef.current += 5;
+                pollRef.current = setInterval(
+                  fetchTokens,
+                  intervalRef.current * 1000
+                );
+              }
+            });
+          } catch {
+            // Network error — retry on next interval
+          } finally {
+            inflightRef.current = null;
+          }
+        })();
+
+        inflightRef.current = promise;
+        return promise;
       };
 
       fetchTokens();
@@ -201,6 +230,11 @@ export function useCibaFlow(providerId: string): CibaFlowState {
               clearInterval(pingCheckRef.current);
               pingCheckRef.current = null;
             }
+            // Suspend poll interval before triggering fast-path fetch
+            if (pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
             fetchTokens();
           }
         } catch {
@@ -210,8 +244,11 @@ export function useCibaFlow(providerId: string): CibaFlowState {
       pingCheckRef.current = setInterval(checkPing, PING_CHECK_INTERVAL * 1000);
 
       expireRef.current = setTimeout(() => {
-        stopPolling();
-        setState("expired");
+        if (!terminalRef.current) {
+          stopPolling();
+          terminalRef.current = true;
+          setState("expired");
+        }
       }, CLIENT_EXPIRE_MS);
     },
     [providerId, stopPolling, handlePollResult]
