@@ -39,7 +39,7 @@ function stripProviderFields(obj: Record<string, unknown>) {
 }
 
 const zentityJwks = createRemoteJWKSet(
-  new URL("/api/auth/pq-jwks", env.ZENTITY_URL)
+  new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
 );
 
 async function verifyIdToken(

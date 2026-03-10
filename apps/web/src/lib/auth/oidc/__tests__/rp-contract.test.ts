@@ -5,7 +5,7 @@
  * If any of these tests fail, the demo-rp OAuth integration will break.
  *
  * The demo-rp (apps/demo-rp) relies on:
- * 1. JWKS at /api/auth/pq-jwks serving RS256/ES256/EdDSA/ML-DSA-65 keys
+ * 1. JWKS at /api/auth/oauth2/jwks serving RS256/ES256/EdDSA/ML-DSA-65 keys
  * 2. jose's jwtVerify + createRemoteJWKSet to verify id_tokens
  * 3. Specific proof:* and identity.* scopes mapping to known claim keys
  * 4. RS256 as the default id_token signing algorithm (OIDC spec requirement)
@@ -151,7 +151,7 @@ describe("RP contract — scope alignment", () => {
 
 describe("RP contract — id_token signing", () => {
   /**
-   * Build a JWKS from the DB, exactly as /api/auth/pq-jwks does.
+   * Build a JWKS from the DB, exactly as /api/auth/oauth2/jwks does.
    */
   async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
     const allKeys = await db.select().from(jwks);
@@ -180,7 +180,7 @@ describe("RP contract — id_token signing", () => {
       iss: "http://localhost:3000/api/auth",
     });
 
-    // Mimics demo-rp's: createRemoteJWKSet(pq-jwks) → jwtVerify
+    // Mimics demo-rp's: createRemoteJWKSet(jwks) → jwtVerify
     const jwksKeys = await buildJwksFromDb();
     const localJwks = createLocalJWKSet({ keys: jwksKeys });
     const { payload, protectedHeader } = await jwtVerify(token, localJwks);

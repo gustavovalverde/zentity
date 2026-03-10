@@ -516,7 +516,7 @@ Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
 
 - `oidc4vci_offers`: Pre-authorized credential offers (short-lived). Supports deferred issuance for credentials requiring asynchronous verification.
 - `oidc4vci_issued_credentials`: Issued credential metadata + status. Includes `statusListId` + `statusListIndex` for revocation tracking via Status List 2021.
-- `jwks`: Signing and encryption key material (EdDSA, ML-DSA-65, RS256, ES256, ECDH-ES). Keys are generated on first use; public keys served via `/api/auth/pq-jwks`.
+- `jwks`: Signing and encryption key material (EdDSA, ML-DSA-65, RS256, ES256, ECDH-ES). Keys are generated on first use; public keys served via `/api/auth/oauth2/jwks`.
 
 ### Selective disclosure
 

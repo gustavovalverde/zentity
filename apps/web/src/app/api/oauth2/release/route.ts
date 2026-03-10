@@ -16,7 +16,7 @@ import { approvals } from "@/lib/db/schema/approvals";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 
 const authIssuer = getAuthIssuer();
-const jwksUrl = joinAuthIssuerPath(authIssuer, "pq-jwks");
+const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 
 const validateDpop = createDpopAccessTokenValidator({ requireDpop: false });
 

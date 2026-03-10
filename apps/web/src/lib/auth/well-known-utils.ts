@@ -39,6 +39,7 @@ export function enrichDiscoveryMetadata(
     // HAIP §5.1: PAR and DPoP metadata
     ...(issuer
       ? {
+          jwks_uri: `${issuer}/oauth2/jwks`,
           pushed_authorization_request_endpoint: `${issuer}/oauth2/par`,
           backchannel_authentication_endpoint: `${issuer}/oauth2/bc-authorize`,
         }

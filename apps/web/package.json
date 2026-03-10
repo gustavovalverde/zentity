@@ -46,6 +46,7 @@
     "circuits:profile:gates": "pnpm exec tsx scripts/noir-profile.ts gates",
     "circuits:profile:execution": "pnpm exec tsx scripts/noir-profile.ts execution-opcodes",
     "circuits:check-versions": "pnpm exec tsx scripts/check-noir-versions.ts",
+    "test:ciba-cli": "pnpm exec tsx scripts/ciba-cli-test.ts",
     "prepare": "husky"
   },
   "dependencies": {

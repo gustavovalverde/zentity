@@ -34,7 +34,7 @@ const SUPPORTED_OUTPUT_TYPES = new Set([
 ]);
 
 const authIssuer = getAuthIssuer();
-const jwksUrl = joinAuthIssuerPath(authIssuer, "pq-jwks");
+const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 
 async function buildLocalJwks(kid: string) {
   const rows = await db.select().from(jwksTable).all();

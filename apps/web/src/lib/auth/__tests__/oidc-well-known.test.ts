@@ -58,7 +58,7 @@ describe("oidc well-known metadata", () => {
     );
     const resolved = config instanceof Promise ? await config : config;
 
-    expect(resolved.jwks_uri).toContain("pq-jwks");
+    expect(resolved.jwks_uri).toContain("/oauth2/jwks");
   });
 });
 

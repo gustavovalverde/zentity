@@ -30,7 +30,7 @@ export interface OAuthTokenValidationResult {
 
 const authIssuer = getAuthIssuer();
 const RP_API_AUDIENCE = `${authIssuer}/resource/rp-api`;
-const jwksUrl = joinAuthIssuerPath(authIssuer, "pq-jwks");
+const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 
 /**
  * Extract bearer token from Authorization header.

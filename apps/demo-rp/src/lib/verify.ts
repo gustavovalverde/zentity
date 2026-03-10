@@ -14,7 +14,7 @@ const MAX_KB_JWT_AGE_SECONDS = 300;
 
 // Cached JWKS for Zentity issuer signature verification
 const zentityJwks = createRemoteJWKSet(
-  new URL(env.ZENTITY_JWKS_URL ?? `${env.ZENTITY_URL}/api/auth/pq-jwks`)
+  new URL(env.ZENTITY_JWKS_URL ?? `${env.ZENTITY_URL}/api/auth/oauth2/jwks`)
 );
 
 interface VerifyResult {

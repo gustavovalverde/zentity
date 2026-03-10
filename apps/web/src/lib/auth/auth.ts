@@ -828,7 +828,7 @@ export const auth = betterAuth({
       jwks: {
         disablePrivateKeyEncryption: true,
         keyPairConfig: { alg: "EdDSA" },
-        remoteUrl: joinAuthIssuerPath(authIssuer, "pq-jwks"),
+        remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       },
       jwt: {
         issuer: authIssuer,
@@ -971,7 +971,7 @@ export const auth = betterAuth({
       },
       resolveIssuerJwks: async (issuer: string) => {
         const jwksUrl =
-          env.OIDC4VP_JWKS_URL ?? joinAuthIssuerPath(issuer, "jwks");
+          env.OIDC4VP_JWKS_URL ?? joinAuthIssuerPath(issuer, "oauth2/jwks");
         const response = await fetch(jwksUrl);
         if (!response.ok) {
           throw new Error("Unable to resolve issuer JWKS");

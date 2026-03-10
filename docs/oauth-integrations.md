@@ -1,179 +1,270 @@
 # OAuth Integrations
 
-This doc covers all OAuth/OIDC directions in Zentity:
+Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying parties that need verified identity claims without receiving raw PII. This document covers the protocol surface area, authorization flows, token security, and privacy guarantees.
 
-1. [**OAuth Provider**](#oauth-provider-zentity-as-authorization-server) — Zentity acts as an authorization server for partners
-2. [**Generic OAuth**](#generic-oauth-zentity-as-oauth-client) — Zentity signs in with external OAuth/OIDC providers
-3. [**OIDC4VCI**](#oidc4vci-credential-issuance) — Verifiable credential issuance to wallets
-4. [**OIDC4VP**](#oidc4vp-credential-presentation) — Credential presentation from wallets
-5. [**HAIP Compliance**](#haip-compliance) — DPoP, PAR, wallet attestation, JARM, x5c
-6. [**CIBA (Backchannel Authorization)**](#ciba-backchannel-authorization) — Agent-initiated async approval
+1. [Endpoints](#endpoints)
+2. [Authorization Flows](#authorization-flows)
+3. [Token Security](#token-security)
+4. [Scopes and Selective Disclosure](#scopes-and-selective-disclosure)
+5. [Credential Issuance (OIDC4VCI)](#credential-issuance-oidc4vci)
+6. [Credential Presentation (OIDC4VP)](#credential-presentation-oidc4vp)
+7. [Discovery and Metadata](#discovery-and-metadata)
+8. [Privacy Guarantees](#privacy-guarantees)
 
 ---
 
-## OAuth Provider (Zentity as authorization server)
+## Endpoints
 
-The OAuth Provider plugin (`@better-auth/oauth-provider`) is enabled in `apps/web/src/lib/auth/auth.ts` and exposes endpoints under `/api/auth/oauth2/*` plus discovery at `/api/auth/.well-known/*`.
+### Discovery
 
-Zentity acts as a standards-based OAuth 2.1 / OIDC-compatible authorization server for partners who need **verified claims** (not raw PII). This avoids custom redirect handling, allows partners to integrate with existing OAuth libraries, and keeps verification results minimal.
+| Endpoint | Standard | Purpose |
+| --- | --- | --- |
+| `GET /.well-known/oauth-protected-resource` | RFC 9728 | Protected resource metadata (AS pointers, scopes, bearer methods) |
+| `GET /.well-known/oauth-authorization-server/api/auth` | RFC 8414 | Authorization server metadata |
+| `GET /api/auth/.well-known/openid-configuration` | OIDC Discovery | OpenID Connect discovery |
 
-### Authorization flow
+### Authorization
+
+| Endpoint | Standard | Purpose |
+| --- | --- | --- |
+| `POST /api/auth/oauth2/par` | RFC 9126 | Pushed Authorization Request (required) |
+| `GET /api/auth/oauth2/authorize` | OAuth 2.1 | Authorization request (interactive) |
+| `POST /api/auth/oauth2/bc-authorize` | OIDC CIBA | Backchannel authorization (headless) |
+| `POST /api/auth/oauth2/consent` | OAuth 2.1 | User consent submission |
+
+### Tokens
+
+| Endpoint | Standard | Purpose |
+| --- | --- | --- |
+| `POST /api/auth/oauth2/token` | OAuth 2.1 | Token exchange (all grant types) |
+| `POST /api/auth/oauth2/introspect` | RFC 7662 | Token introspection |
+| `POST /api/auth/oauth2/revoke` | RFC 7009 | Token revocation |
+| `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519, ML-DSA-65) |
+
+### User data
+
+| Endpoint | Standard | Purpose |
+| --- | --- | --- |
+| `GET /api/auth/oauth2/userinfo` | OIDC Core | Scope-filtered verified claims |
+| `GET /api/auth/oauth2/end-session` | OIDC Session | Session logout |
+
+### Client management
+
+| Endpoint | Standard | Purpose |
+| --- | --- | --- |
+| `POST /api/auth/oauth2/register` | RFC 7591 | Dynamic Client Registration |
+| `GET /api/auth/oauth2/get-consents` | — | List user's active consents |
+| `POST /api/auth/oauth2/delete-consent` | — | Revoke a consent grant |
+| `POST /api/auth/oauth2/update-consent` | — | Update consented scopes |
+
+### CIBA lifecycle
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/auth/ciba/verify?auth_req_id=...` | Fetch pending request details (for approval page) |
+| `POST /api/auth/ciba/authorize` | Approve a pending CIBA request |
+| `POST /api/auth/ciba/reject` | Deny a pending CIBA request |
+
+---
+
+## Authorization Flows
+
+Zentity supports two authorization paths. Both require DPoP and produce the same token format.
+
+### Interactive (browser redirect)
+
+For traditional web applications where the user is present at the RP.
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor User
   participant RP as Relying Party
-  participant Auth as Zentity Auth
-  participant Consent as Consent Page
-  participant API as Token + Userinfo
+  participant AS as Zentity AS
 
-  Note over RP,Auth: Authorization request
-  RP->>Auth: GET /oauth2/authorize?client_id=...&scope=...&state=...
-  Auth->>User: Redirect → /sign-in (if not authenticated)
-  User->>Auth: Authenticate (passkey / password / wallet)
-  Auth->>Consent: Redirect → /oauth/consent
+  RP->>AS: POST /oauth2/par (client_id, redirect_uri, scope, state)
+  AS-->>RP: { request_uri }
+  RP->>AS: GET /oauth2/authorize?request_uri=...
+  AS->>User: Redirect to /sign-in (if unauthenticated)
+  User->>AS: Authenticate (passkey / password / wallet)
+  AS->>User: Redirect to /oauth/consent
+  User->>AS: Approve selected scopes
+  AS->>RP: Redirect with authorization code + state
 
-  Note over User,Consent: User consent
-  Consent->>User: Show requested scopes (proof:*, identity.*)
-  User->>Consent: Approve selected scopes
-  Consent->>Auth: POST /oauth2/consent (accept: true)
-  Auth->>RP: Redirect with code + state
-
-  Note over RP,API: Token exchange
-  RP->>API: POST /oauth2/token (code)
-  API-->>RP: access_token + id_token
-  RP->>API: GET /oauth2/userinfo
-  API-->>RP: Scope-filtered claims
+  RP->>AS: POST /oauth2/token (code, DPoP proof)
+  AS-->>RP: { access_token, id_token, token_type: "DPoP" }
+  RP->>AS: GET /oauth2/userinfo (DPoP-bound access token)
+  AS-->>RP: Scope-filtered claims
 ```
 
-**Step by step:**
+**Grant type**: `authorization_code`
 
-1. **Partner redirects the user to Zentity** — `GET /api/auth/oauth2/authorize?client_id=...&redirect_uri=...&scope=openid%20profile%20email&state=...`
-2. **User authenticates** (if not already signed in) — Redirects to `/sign-in`
-3. **User consents** — Redirects to `/oauth/consent`, consent page calls `POST /api/auth/oauth2/consent` with `accept: true`
-4. **Authorization code is returned** — Redirects back to partner with `code` + `state`
-5. **Partner exchanges code for tokens** — `POST /api/auth/oauth2/token`
-6. **Partner retrieves verified claims** — `GET /api/auth/oauth2/userinfo` (requires `openid`)
+PAR is required — all authorization requests must first be pushed to the PAR endpoint, which returns a `request_uri` (60-second TTL) passed to the authorize endpoint.
 
-### Endpoints
+### Headless (CIBA)
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/auth/.well-known/oauth-authorization-server` | Server metadata |
-| `GET /api/auth/.well-known/openid-configuration` | OIDC discovery |
-| `GET /api/auth/oauth2/authorize` | Authorization request |
-| `POST /api/auth/oauth2/consent` | Consent submission |
-| `POST /api/auth/oauth2/continue` | Continue after custom auth |
-| `POST /api/auth/oauth2/token` | Token exchange |
-| `POST /api/auth/oauth2/introspect` | Token introspection |
-| `POST /api/auth/oauth2/revoke` | Token revocation |
-| `POST /api/auth/oauth2/par` | Pushed Authorization Request (PAR) |
-| `GET /api/auth/oauth2/userinfo` | User claims |
-| `GET /api/auth/oauth2/end-session` | Session logout |
-| `GET /api/auth/pq-jwks` | Combined JWKS (RSA, Ed25519, ML-DSA-65 public keys) |
-| `GET /api/auth/oauth2/get-consents` | List all consents for current user |
-| `GET /api/auth/oauth2/get-consent?id=...` | Get a specific consent |
-| `POST /api/auth/oauth2/delete-consent` | Revoke consent (`{ id }`) |
-| `POST /api/auth/oauth2/update-consent` | Update consented scopes (`{ id, update: { scopes } }`) |
+For agents and background services where the user approves from a separate device. This is the path MCP clients take.
 
-### Client management
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Agent as Agent / MCP Client
+  participant RS as Protected Resource
+  participant AS as Zentity AS
+  participant Notify as Push / Email
 
-All OAuth clients register via **RFC 7591 Dynamic Client Registration** at `/api/auth/oauth2/register`. The user controls data access at consent time — organization assignment is for operational management (see [ADR-0003](adr/platform/0003-dcr-open-registration-user-gated-consent.md)).
+  Note over Agent,RS: Discovery
+  Agent->>RS: GET /.well-known/oauth-protected-resource
+  RS-->>Agent: { authorization_servers, bearer_methods: ["dpop"], scopes }
+  Agent->>AS: GET /.well-known/oauth-authorization-server/api/auth
+  AS-->>Agent: { token_endpoint, backchannel_authentication_endpoint, dpop_signing_alg_values_supported }
 
-**Applications UI** — `/dashboard/developer/applications` provides a dashboard for viewing and managing organization-assigned OAuth clients.
+  Note over Agent,AS: Client Registration
+  Agent->>AS: POST /oauth2/register { grant_types: ["ciba"], token_endpoint_auth_method: "none" }
+  AS-->>Agent: { client_id }
 
-**REST API endpoints:**
+  Note over Agent,AS: Backchannel Authorize
+  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message }
+  AS->>Notify: Push notification + email with approval link
+  AS-->>Agent: { auth_req_id, expires_in: 300, interval: 5 }
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/rp-admin/clients/approve` | POST | Assign a DCR-registered client to an org |
-| `/api/rp-admin/clients/unowned` | GET | List clients not assigned to any org |
-| `/api/rp-admin/clients/owned` | GET | List clients assigned to the active org |
+  Note over Agent,AS: DPoP Nonce Acquisition
+  Agent->>Agent: Generate ephemeral ES256 keypair
+  Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id } + DPoP proof
+  AS-->>Agent: 400 { error: "use_dpop_nonce" } + DPoP-Nonce header
 
-All RP admin endpoints require an authenticated session with an active organization where the user has `owner` or `admin` role. See `apps/web/src/lib/auth/rp-admin.ts`.
+  Note over Agent,AS: Token Polling
+  loop Every interval seconds
+    Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id } + DPoP proof (with nonce)
+    AS-->>Agent: 400 { error: "authorization_pending" } + new DPoP-Nonce
+  end
 
-**Organization ownership** — Clients are optionally assigned to organizations via the `referenceId` column on `oauth_client`. This enables team-based management and operational visibility. Unassigned clients function normally — organization ownership is not a security boundary.
+  User->>AS: Approve via dashboard / push notification
+  Agent->>AS: POST /oauth2/token + DPoP proof (with latest nonce)
+  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", act: { sub: client_id } }
 
-**DCR + assignment** — Clients registered via DCR start without an owner. An org admin can later assign these clients via the approve endpoint, linking them to an organization.
+  Note over Agent,RS: Use tokens
+  Agent->>RS: Authorization: DPoP <token> + DPoP proof (with ath)
+```
 
-**Client metadata** — Clients support an optional `metadata` JSON field. Common metadata fields:
+**Grant type**: `urn:openid:params:grant-type:ciba`
+
+CIBA requests support `authorization_details` (RFC 9396) for structured action metadata (e.g., purchase amounts, merchant info). These flow through to the approval UI, email notification, and token response.
+
+The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`.
+
+The `act` claim in the token response identifies the agent acting on behalf of the user, per `draft-oauth-ai-agents-on-behalf-of-user-02`.
+
+### Grant types
+
+| Grant type | Flow |
+| --- | --- |
+| `authorization_code` | Browser redirect (PAR required) |
+| `urn:openid:params:grant-type:ciba` | CIBA poll mode |
+| `urn:ietf:params:oauth:grant-type:pre-authorized_code` | OIDC4VCI credential issuance |
+
+---
+
+## Token Security
+
+### DPoP (RFC 9449)
+
+All token requests require Demonstrating Proof-of-Possession. DPoP binds access tokens to the client's ephemeral keypair, preventing token theft and replay.
+
+**How it works:**
+
+1. The client generates an ephemeral ES256 keypair (once per session)
+2. Each request to the token endpoint includes a `DPoP` header: a JWT signed by the client's private key containing the HTTP method (`htm`), URL (`htu`), and a server-issued nonce
+3. The server binds the access token to the client's public key via `cnf.jkt` (JWK thumbprint)
+4. When using the access token at a resource endpoint, the client includes a DPoP proof with an `ath` claim (SHA-256 hash of the access token)
+
+**Nonce protocol:**
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Server
+
+  Client->>Server: POST /oauth2/token + DPoP proof (no nonce)
+  Server-->>Client: 400 { error: "use_dpop_nonce" } + DPoP-Nonce: nonce_1
+
+  Client->>Server: POST /oauth2/token + DPoP proof (nonce=nonce_1)
+  Server-->>Client: 200 { access_token, token_type: "DPoP" } + DPoP-Nonce: nonce_2
+
+  Note over Client,Server: The nonce rotates on every response.<br/>Always use the latest DPoP-Nonce header value.
+```
+
+**DPoP proof structure:**
 
 ```json
 {
-  "optionalScopes": ["identity.dob", "identity.address"],
-  "id_token_signed_response_alg": "ML-DSA-65"
+  "header": {
+    "alg": "ES256",
+    "typ": "dpop+jwt",
+    "jwk": { "kty": "EC", "crv": "P-256", "x": "...", "y": "..." }
+  },
+  "payload": {
+    "htm": "POST",
+    "htu": "https://app.zentity.xyz/api/auth/oauth2/token",
+    "jti": "unique-per-request",
+    "iat": 1741654800,
+    "nonce": "server-provided-nonce",
+    "ath": "base64url(SHA-256(access_token))"
+  }
 }
 ```
 
-- `optionalScopes`: Scopes that should be selectable but not required at consent
-- `id_token_signed_response_alg`: `"RS256"` (default, OIDC mandatory), `"EdDSA"` (opt-in), or `"ML-DSA-65"` (post-quantum opt-in). Set via DCR or admin API.
+The `ath` claim is only included when presenting the access token at a resource endpoint, not at the token endpoint.
 
-**Direct SQL setup** — OAuth clients are stored in the `oauth_client` table (`apps/web/src/lib/db/schema/oauth-provider.ts`):
+### Token format
 
-```sql
-INSERT INTO oauth_client (client_id, redirect_uris, scopes, created_at)
-VALUES (
-  'partner-client-id',
-  '["https://partner.example.com/callback"]',
-  '["openid","profile","email","proof:identity"]',
-  datetime('now')
-);
-```
+| Token | Format | Signing |
+| --- | --- | --- |
+| Access token | Opaque (random string) | — |
+| ID token | JWT | RS256 (default), ES256, EdDSA, or ML-DSA-65 per client preference |
+| Token type | `"DPoP"` | — |
 
-### JWT signing and JWKS
+Access tokens are opaque by design — they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
 
-Zentity uses a multi-algorithm signing architecture for JWTs:
+### JWT signing algorithms
 
-| Token type | Signing algorithm | When |
-|---|---|---|
-| Access tokens | EdDSA (Ed25519) | Always — compact size for Bearer tokens sent on every API call |
-| ID tokens | RS256 (RSA-2048) | Default — OIDC Discovery 1.0 §3 mandates RS256 support; OIDC Client Registration defaults `id_token_signed_response_alg` to RS256 |
-| ID tokens | EdDSA (Ed25519) | Opt-in per client via DCR metadata |
-| ID tokens | ML-DSA-65 (post-quantum) | Opt-in per client via DCR metadata |
+| Algorithm | Usage | Notes |
+| --- | --- | --- |
+| RS256 | ID tokens (default) | OIDC Discovery 1.0 mandates RS256 support |
+| ES256 | DPoP proofs | Client-side only |
+| EdDSA | Access token JWTs (internal) | Compact 64-byte signatures |
+| ML-DSA-65 | ID tokens (opt-in) | Post-quantum, requires compatible JWT library |
 
-**JWKS endpoint**: `GET /api/auth/pq-jwks` — serves RSA, Ed25519, and ML-DSA-65 public keys.
+Clients opt into non-default signing algorithms via `id_token_signed_response_alg` in DCR metadata. Keys are generated on first use and persisted in the database — standard OIDC provider pattern.
 
-**Discovery metadata** (`/.well-known/openid-configuration`):
+### Client registration
+
+All clients register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). The `subject_type` is forced to `"pairwise"` for all DCR clients.
 
 ```json
 {
-  "jwks_uri": "https://app.zentity.xyz/api/auth/pq-jwks",
-  "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
-  "subject_types_supported": ["public", "pairwise"],
-  "dpop_signing_alg_values_supported": ["ES256"]
+  "client_name": "My Agent",
+  "redirect_uris": ["http://localhost/callback"],
+  "scope": "openid",
+  "token_endpoint_auth_method": "none",
+  "grant_types": ["urn:openid:params:grant-type:ciba"]
 }
 ```
 
-**Opting into EdDSA or ML-DSA-65**: Set `id_token_signed_response_alg` in DCR metadata:
+Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent).
 
-```json
-POST /api/auth/oauth2/register
-{
-  "redirect_uris": ["https://partner.example.com/callback"],
-  "id_token_signed_response_alg": "ML-DSA-65"
-}
-```
+---
 
-**Key lifecycle**: Signing keys (RS256, EdDSA, and ML-DSA-65) are generated on first use and persisted in the `jwks` database table. This is the standard OIDC provider pattern (Auth0, Keycloak, etc.). Keys are not configured via environment variables — the database is the persistent store. The `expiresAt` column exists for future key rotation support.
+## Scopes and Selective Disclosure
 
-**Verifying tokens**: Standard OAuth libraries verify RS256 and EdDSA-signed tokens against the JWKS endpoint without any special configuration. ML-DSA-65 tokens require a post-quantum-capable JWT library.
+### Proof scopes (`proof:*`)
 
-### Configuration
+Non-PII boolean verification flags, delivered via id_token and userinfo.
 
-- Redirect URIs are **defined per client**, not via env allowlists.
-- Login page: `/sign-in`
-- Consent page: `/oauth/consent`
-
-### Scope architecture and selective disclosure
-
-Zentity uses two scope families to control what data RPs receive via userinfo. Both support user-controlled selective disclosure at consent time.
-
-**Proof scopes** (`proof:*`) — non-PII boolean verification flags, delivered via **id_token and userinfo**:
-
-| Scope | Claims returned |
-|-------|----------------|
-| `proof:identity` | All verification claims (umbrella) |
+| Scope | Claims |
+| --- | --- |
+| `proof:identity` | All verification claims (umbrella — expanded at consent) |
 | `proof:verification` | `verification_level`, `verified`, `identity_binding_verified` |
 | `proof:age` | `age_proof_verified` |
 | `proof:document` | `document_verified`, `doc_validity_proof_verified` |
@@ -184,44 +275,23 @@ Zentity uses two scope families to control what data RPs receive via userinfo. B
 | `compliance:key:read` | Read RP encryption keys for compliance data |
 | `compliance:key:write` | Register/rotate RP encryption keys |
 
-**Identity scopes** (`identity.*`) — actual PII, delivered via **id_token only** (the server has no persistent PII). Identity scopes are never persisted in the consent record — they are filtered out before the consent API call, so vault unlock is required each session:
+### Identity scopes (`identity.*`)
 
-| Scope | Claims returned |
-|-------|----------------|
+Actual PII, delivered via id_token only (the server stores no persistent PII).
+
+| Scope | Claims |
+| --- | --- |
 | `identity.name` | `given_name`, `family_name`, `name` |
 | `identity.dob` | `birthdate` |
 | `identity.address` | `address` |
 | `identity.document` | `document_number`, `document_type`, `issuing_country` |
 | `identity.nationality` | `nationality`, `nationalities` |
 
-**Standard OIDC scopes** (`openid`, `profile`, `email`, `offline_access`) are auto-approved.
+Standard OIDC scopes (`openid`, `profile`, `email`, `offline_access`) are auto-approved.
 
-#### Identity PII data flow
+### Consent and selective disclosure
 
-Identity PII (`identity.*` scopes) flows through a three-stage pipeline:
-
-1. **Profile secret creation** — During identity verification (after liveness and face match, before ZK proof generation), extracted PII (name, DOB, document number, nationality, document type, issuing country) is encrypted with the user's credential and stored as a `PROFILE` secret. The credential material (passkey PRF / OPAQUE export key / wallet signature) is cached from the FHE enrollment step that precedes verification. The server stores only opaque encrypted blobs it cannot decrypt.
-
-2. **Consent-time vault unlock** — When the user approves `identity.*` scopes, the consent page requires an explicit vault unlock gesture. The "Unlock vault" button triggers authentication based on the user's credential type, detected server-side from their secret wrappers:
-   - **Passkey** — WebAuthn prompt (automatic browser dialog)
-   - **Password (OPAQUE)** — Inline password field where the user re-enters their password
-   - **Wallet (EIP-712)** — "Sign with Wallet" button requiring a deterministic EIP-712 signature (signed twice and compared, same as FHE enrollment)
-
-   Once unlocked, the consent UI obtains an **identity intent token** from `/api/oauth2/identity/intent` (120s TTL, binds user + client + scope hash with database-backed JTI replay prevention). Then it maps profile fields to OIDC claims and sends them along with the intent token to `/api/oauth2/identity/stage`. The stage endpoint validates the intent token (signature, expiry, scope hash match) and holds the claims ephemerally in memory (5min TTL, consumed on read).
-
-3. **Never-persist consent** — Identity scopes are excluded from consent records through two complementary mechanisms: the server-side `before` hook in `auth.ts` strips any `identity.*` scopes from the consent request body, and the consent UI also filters them out before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted in the consent record. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
-
-4. **id_token delivery** — When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims (keyed by userId, independent of auth code scopes) and includes the claims matching the scopes recorded in the ephemeral store. The claims are then deleted — no persistent PII exists on the server.
-
-The server never stores plaintext PII. The profile secret is the authoritative PII source and is only decryptable by the user.
-
-If the profile vault can't be unlocked at consent time (credential cache expired, user cancels prompt, wallet not connected), the Allow button is disabled until the vault is successfully unlocked. This prevents granting consent for scopes the server can't fulfill — otherwise better-auth would record consent as granted and auto-skip the consent page on future requests, permanently delivering empty tokens to the RP.
-
-#### Selective disclosure at consent
-
-When an RP requests `proof:identity`, the consent page expands it into individual `proof:*` sub-scope checkboxes. All start **unchecked** — the user actively opts in to each claim they want to share. The same applies to `identity.*` scopes.
-
-Example: a wine shop requests `openid email proof:identity`. The user checks only "Verification status" and "Age proof". The access token carries `openid email proof:verification proof:age`, and userinfo returns only those claims.
+When an RP requests `proof:identity`, the consent page expands it into individual sub-scope checkboxes. All start **unchecked** — the user actively opts into each claim.
 
 ```text
 Consent page:
@@ -232,417 +302,160 @@ Consent page:
   [ ] Whether your identity is verified (proof:verification)
   [ ] Whether your age has been proven (proof:age)
   [ ] Whether your document has been verified (proof:document)
-  [ ] Whether liveness and face match were verified (proof:liveness)
-  [ ] Whether your nationality has been proven (proof:nationality)
-  [ ] Compliance metadata (proof:compliance)
+  ...
 ```
 
-This uses standard OAuth scope mechanics — custom scopes (RFC 6749) with scope narrowing at consent (RFC 6749 Section 3.3).
+### Identity PII delivery pipeline
 
-#### Dynamic Client Registration (DCR)
+Identity scopes require a special pipeline because the server stores no plaintext PII. During verification, the user's PII is encrypted with their credential (passkey PRF / OPAQUE export key / wallet signature) and stored as a **profile secret** — an opaque blob the server cannot decrypt.
 
-All OAuth clients register via DCR (RFC 7591) and can request any scope in `publicClientScopes`: `openid`, `profile`, `email`, `proof:*`, `identity.*`. The `proof:identity` umbrella is expanded at consent time, so the user still controls what gets shared. See [ADR-0003](adr/platform/0003-dcr-open-registration-user-gated-consent.md) for the three-layer access control model.
+```mermaid
+sequenceDiagram
+  actor User
+  participant Consent as Consent Page
+  participant Secret as Profile Secret<br/>(credential-encrypted)
+  participant AS as Zentity AS
+  participant RP as Relying Party
 
-#### Userinfo response
-
-When verification data is available and `proof:*` scopes are approved, `/oauth2/userinfo` includes scope-filtered verification claims:
-
-```json
-{
-  "sub": "user-id",
-  "verified": true,
-  "verification_level": "full",
-  "age_proof_verified": true
-}
+  User->>Consent: Approve identity.* scopes
+  Consent->>User: Credential prompt (passkey / password / wallet)
+  User->>Consent: Authenticate
+  Consent->>Secret: Decrypt with credential material
+  Secret-->>Consent: Plaintext PII
+  Consent->>AS: Stage claims (ephemeral, 5min TTL)
+  AS->>RP: Deliver via id_token (consumed on read)
+  Note over AS: Claims deleted after delivery
 ```
 
-Proof claims come from the identity bundle (server-side, always available for verified users). Identity PII claims come from the ephemeral store populated at consent time and delivered via id_token.
+Identity scopes are **never persisted** in consent records. The consent page reappears each session, requiring a fresh credential unlock — the server cannot decrypt the profile secret itself.
 
-#### Disclosure paths
+### Disclosure paths
 
-| Path | Standard | Mechanism |
-|------|----------|-----------|
-| Userinfo + `proof:*`/`identity.*` scopes | OAuth 2.0 custom scopes | Scope-to-claim filtering, opt-in consent |
-| OIDC4IDA `verified_claims` | OpenID for Identity Assurance | `claims` parameter in authorize request |
-| OIDC4VCI SD-JWT VC | W3C SD-JWT VC | Holder-controlled selective disclosure at presentation |
-
-#### OIDC4IDA (Identity Assurance)
-
-The `@better-auth/oidc4ida` plugin is active and returns `verified_claims` in id_token and userinfo when an RP includes the `claims` parameter in the authorize request (per OIDC4IDA Section 7). If the `claims` parameter is absent, the plugin returns early — it does not inject `verified_claims` into every response.
-
-The `verified_claims` structure includes:
-
-- **`verification`** — `trust_framework: "eidas"`, `assurance_level`, `evidence` (document verification metadata, timestamps)
-- **`claims`** — the attested claims: `verified`, `verification_level`, proof statuses, policy metadata
-
-This is a separate path from `proof:*` scopes. The scope-based path uses custom OAuth scopes with opt-in consent (see [ADR-0011](adr/privacy/0011-selective-disclosure-scope-architecture.md) for why scopes are the primary mechanism). OIDC4IDA is available for RPs that specifically implement the `claims` parameter per the spec.
-
-**Implementation:**
-
-- Plugin config: `oidc4ida({ getVerifiedClaims })` in `apps/web/src/lib/auth/auth.ts`
-- Claims builder: `buildOidcVerifiedClaims()` in `apps/web/src/lib/auth/oidc/claims.ts`
-- Schema: `apps/web/src/lib/db/schema/oidc4ida.ts`
-
-#### Consent auto-skip and management
-
-Once a user grants consent, `@better-auth/oauth-provider` stores a row in `oauth_consent` with the consented scopes. On subsequent authorize requests, if the row exists and covers all requested scopes, the consent page is skipped. If the RP requests new scopes not in the original grant, the consent page shows again.
-
-**Identity scope exclusion**: Identity scopes (`identity.*`) are excluded from consent records via two layers: the server-side `before` hook strips them from the consent request body (defense-in-depth), and the consent UI also filters them before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted. This means the consent page always reappears when identity scopes are requested — vault unlock is per-session.
-
-**Forcing re-consent**: RPs can add `prompt=consent` to the authorize URL to force the consent page regardless of prior grants.
-
-#### Implementation
-
-- Scope definitions: `apps/web/src/lib/auth/oidc/proof-scopes.ts`, `apps/web/src/lib/auth/oidc/identity-scopes.ts`
-- Claim filtering: `filterProofClaimsByScopes()`, `filterIdentityByScopes()`
-- Identity intent tokens: `apps/web/src/lib/auth/oidc/identity-intent.ts`
-- OAuth query verification: `apps/web/src/lib/auth/oidc/oauth-query.ts`
-- Ephemeral identity staging: `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts`
-- Intent endpoint: `apps/web/src/app/api/oauth2/identity/intent/route.ts`
-- Stage endpoint: `apps/web/src/app/api/oauth2/identity/stage/route.ts`
-- Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
-- id_token hook: `customIdTokenClaims` in `apps/web/src/lib/auth/auth.ts`
-- Server-side consent scope filtering: `before` hook in `apps/web/src/lib/auth/auth.ts` (strips `identity.*` from `/oauth2/consent` body)
-- Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
+| Path | Standard | Delivery |
+| --- | --- | --- |
+| `proof:*` / `identity.*` scopes | OAuth 2.0 custom scopes | id_token + userinfo (proof only) |
+| `verified_claims` parameter | OIDC for Identity Assurance | id_token + userinfo |
+| SD-JWT VC | OIDC4VCI | Holder-controlled at presentation |
 
 ---
 
-## Generic OAuth (Zentity as OAuth client)
-
-Generic OAuth providers are configured via the `GENERIC_OAUTH_PROVIDERS` env var. The app parses this JSON array in `apps/web/src/lib/auth/auth.ts`.
-
-### Example configuration
-
-```json
-[
-  {
-    "providerId": "partner-oidc",
-    "discoveryUrl": "https://partner.example.com/.well-known/openid-configuration",
-    "clientId": "your-client-id",
-    "clientSecret": "your-client-secret",
-    "scopes": ["openid", "email", "profile"],
-    "pkce": true
-  }
-]
-```
-
-Set it in `.env.local`:
-
-```env
-GENERIC_OAUTH_PROVIDERS='[{"providerId":"partner-oidc","discoveryUrl":"https://partner.example.com/.well-known/openid-configuration","clientId":"...","clientSecret":"...","scopes":["openid","email","profile"],"pkce":true}]'
-```
-
-### Sign in flow
-
-- Start sign-in via Better Auth:
-  - `authClient.signIn.oauth2({ providerId: "partner-oidc" })`
-  - (or `POST /api/auth/sign-in/oauth2` with `{ providerId }`)
-- Better Auth handles the callback at:
-  - `GET /api/auth/oauth2/callback/partner-oidc`
-
-If the user is already signed in, Better Auth can link the provider account via `authClient.oauth2.link` (optional).
-
----
-
-## OIDC4VCI (Credential Issuance)
+## Credential Issuance (OIDC4VCI)
 
 Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specification.
 
-### Issuer metadata
+**Discovery**: `GET /.well-known/openid-credential-issuer`
 
-- `GET /.well-known/openid-credential-issuer`
-- `GET /.well-known/oauth-authorization-server`
+**Credential endpoint**: `POST /api/auth/oidc4vci/credential` (DPoP required)
 
-### Credential endpoint
+**Supported format**: `dc+sd-jwt` (SD-JWT VC), credential type `zentity_identity`
 
-- `POST /api/auth/oidc4vci/credential`
+**Flow:**
 
-### Pre-authorized code flow
-
-1. User completes verification
+1. User completes identity verification
 2. Server creates credential offer with pre-authorized code
 3. Wallet scans QR or follows deep link
-4. Wallet exchanges code for access token
+4. Wallet exchanges code for DPoP-bound access token
 5. Wallet requests credential with holder binding proof
 
-### Supported credential types
+**Deferred issuance**: When verification is pending, the issuer returns a `transaction_id`. The wallet polls `POST /api/auth/oidc4vci/deferred-credential` until ready.
 
-- `zentity_identity` (vct: `urn:zentity:credential:identity`)
-- Format: `dc+sd-jwt` (SD-JWT VC)
-
-### DPoP-bound access tokens
-
-The credential endpoint requires DPoP-bound access tokens (`createDpopAccessTokenValidator({ requireDpop: true })`). Wallets must include a DPoP proof header when requesting credentials.
-
-### Key attestation
-
-`createKeyAttestationValidator()` validates wallet key attestation proofs submitted with credential requests, ensuring the holder key is bound to a trusted wallet.
-
-### Deferred issuance
-
-When verification is pending, the issuer returns a `transaction_id` via the `identity_verification_deferred` configuration. The wallet polls `POST /api/auth/oidc4vci/deferred-credential` until the credential is ready.
-
-### Status list
-
-Status list tokens include x5c headers for certificate-chain verification of revocation status.
-
-### Derived claims
-
-Credentials contain only derived claims (no raw PII):
-
-- `verification_level` (`none` | `basic` | `full`)
-- `verified`, `document_verified`, `liveness_verified`, `face_match_verified`
-- `age_proof_verified`, `doc_validity_proof_verified`, `nationality_proof_verified`
-- `policy_version`, `issuer_id`, `verification_time`
+**Derived claims only** — credentials contain verification flags (e.g., `verified`, `verification_level`, `age_proof_verified`), never raw PII.
 
 ---
 
-## OIDC4VP (Credential Presentation)
+## Credential Presentation (OIDC4VP)
 
 Zentity can act as a verifier requesting presentations from wallets using DCQL (Digital Credentials Query Language).
 
-### Verifier endpoints
+**Request**: `POST /api/auth/oidc4vp/verify` returns a `request_uri`
 
-- `POST /api/auth/oidc4vp/verify` — Create presentation request (returns `request_uri`)
-- `POST /api/auth/oidc4vp/response` — Submit presentation (wallet posts VP token here)
+**Response**: `response_mode: direct_post.jwt` — the wallet posts a JARM-encrypted response (ECDH-ES, P-256) to `/api/auth/oidc4vp/response`
 
-### DCQL queries
+**Client identification**: `client_id_scheme: x509_hash` — the `client_id` is the SHA-256 thumbprint of the leaf certificate in the x5c chain.
 
-Verifiers specify required claims via `dcql_query` parameter (replaces Presentation Exchange). The trusted DCQL matcher supports AKI-based `trusted_authorities` pre-filtering to restrict accepted credential issuers.
-
-### Response mode
-
-Responses use `response_mode: direct_post.jwt` — the wallet posts a JARM-encrypted response (ECDH-ES, P-256) directly to the `/oidc4vp/response` endpoint.
-
-### Client identification
-
-`client_id_scheme: x509_hash` — the `client_id` is derived from the SHA-256 thumbprint of the leaf certificate in the x5c chain.
-
-### QR code deep-link
-
-```text
-openid4vp://?request_uri=...&client_id=x509_hash#<thumbprint>
-```
-
-### KB-JWT verification
-
-Presentations include a Key Binding JWT (KB-JWT) proving holder possession. The verifier validates in order:
-
-1. Issuer signature on the SD-JWT
-2. Disclosure decode (selective disclosure claims)
-3. `cnf.jkt` thumbprint check (holder key binding)
-4. KB-JWT signature verification
-5. Nonce, audience, and freshness (300s max age)
+**KB-JWT verification** order: issuer signature → disclosure decode → `cnf.jkt` match → KB-JWT signature → nonce/audience/freshness.
 
 See [SSI Architecture](ssi-architecture.md) for the complete model.
 
 ---
 
-## HAIP Compliance
+## Discovery and Metadata
 
-The `@better-auth/haip` plugin is wired into `auth.ts` and provides DPoP, PAR, wallet attestation, DCQL, and JARM support per the HAIP (High Assurance Interoperability Profile) specification.
+### Authorization server (RFC 8414)
 
-### DPoP (RFC 9449)
+`GET /.well-known/oauth-authorization-server/api/auth` returns:
 
-Sender-constrained tokens via Demonstrating Proof-of-Possession:
-
-- **Token endpoint**: `createDpopTokenBinding({ requireDpop: false })` — permissive mode (opt-in for clients). Only ES256 is supported (`dpopSigningAlgValues: ["ES256"]`).
-- **Credential endpoint**: `createDpopAccessTokenValidator({ requireDpop: true })` — mandatory for credential issuance
-- **Nonce store**: Server-managed nonces in `dpop-nonce-store.ts`. Single-use nonces with `DPOP_NONCE_TTL_SECONDS` env var (default 30s). Expired nonces swept every 60s.
-
-### PAR (RFC 9126)
-
-Pushed Authorization Requests are required (`requirePar: true`). All authorization requests must first be pushed to the PAR endpoint:
-
-- `POST {issuer}/oauth2/par` — returns `request_uri` (60-second TTL)
-- The `request_uri` is then passed to the authorize endpoint
-
-### Wallet attestation
-
-`createWalletAttestationStrategy()` validates wallet attestation JWTs. Trusted wallet issuers are configured via the `TRUSTED_WALLET_ISSUERS` env var (comma-separated list of issuer URIs).
-
-### JARM (JWT-Secured Authorization Response Mode)
-
-`createJarmHandler` encrypts authorization responses using ECDH-ES with a P-256 key. The key is lazily created on first use and persisted in the `jwks` table. Supported encryption algorithms: `A128GCM` and `A256GCM`.
-
-### x5c certificate chain
-
-X.509 certificate chains for credential JWTs and client identification:
-
-- **Env vars**: `X5C_LEAF_PEM` and `X5C_CA_PEM` must contain **base64-encoded PEM** (not raw PEM). The loader decodes them via `Buffer.from(env, "base64")`. Filesystem fallback (`.data/certs/`) reads raw PEM directly.
-- **Headers**: `createX5cHeaders()` adds x5c chain to credential and status list JWTs
-- **Dev certs**: `scripts/generate-dev-certs.ts` generates self-signed leaf + CA certificates
-
-### Discovery metadata
-
-`enrichDiscoveryMetadata()` in `well-known-utils.ts` adds HAIP-required fields to `/.well-known/openid-configuration`:
-
-- `pushed_authorization_request_endpoint` — PAR endpoint URL
-- `require_pushed_authorization_requests: true`
-- `dpop_signing_alg_values_supported`
-- `authorization_details_types_supported`
-
-### VP session configuration
-
-- `vpRequestExpiresInSeconds: 300` — VP sessions expire after 5 minutes
-- `OIDC4VP_JWKS_URL` — optional env var to override the JWKS endpoint used for VP token issuer verification
-
----
-
-## CIBA (Backchannel Authorization)
-
-Zentity supports Client-Initiated Backchannel Authentication (CIBA) via the `@better-auth/ciba` plugin (vendor tarball). CIBA enables agents and applications to request user authorization without a browser redirect — the user approves from a separate device or notification.
-
-### How it works
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor User
-  participant Agent as Agent / RP
-  participant AS as Zentity AS
-  participant Email as Email / Push
-
-  Agent->>AS: POST /oauth2/bc-authorize (login_hint, scope, binding_message)
-  AS->>Email: Send approval notification
-  AS-->>Agent: { auth_req_id, expires_in, interval }
-  loop Poll every interval seconds
-    Agent->>AS: POST /oauth2/token (grant_type=ciba, auth_req_id)
-    AS-->>Agent: { error: "authorization_pending" }
-  end
-  User->>AS: Approve via /dashboard/ciba/approve
-  Agent->>AS: POST /oauth2/token (grant_type=ciba, auth_req_id)
-  AS-->>Agent: { access_token, id_token }
+```json
+{
+  "issuer": "https://app.zentity.xyz/api/auth",
+  "token_endpoint": "https://app.zentity.xyz/api/auth/oauth2/token",
+  "authorization_endpoint": "https://app.zentity.xyz/api/auth/oauth2/authorize",
+  "jwks_uri": "https://app.zentity.xyz/api/auth/oauth2/jwks",
+  "backchannel_authentication_endpoint": "https://app.zentity.xyz/api/auth/oauth2/bc-authorize",
+  "pushed_authorization_request_endpoint": "https://app.zentity.xyz/api/auth/oauth2/par",
+  "require_pushed_authorization_requests": true,
+  "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],
+  "dpop_signing_alg_values_supported": ["ES256"],
+  "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
+  "subject_types_supported": ["public", "pairwise"],
+  "backchannel_token_delivery_modes_supported": ["poll", "ping"],
+  "client_id_metadata_document_supported": true,
+  "resource_indicators_supported": true
+}
 ```
 
-### Endpoints
+### Protected resource (RFC 9728)
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/auth/oauth2/bc-authorize` | Initiate backchannel auth request |
-| `GET /api/auth/ciba/verify?auth_req_id=...` | Fetch request details (approval page) |
-| `POST /api/auth/ciba/authorize` | Approve a pending request |
-| `POST /api/auth/ciba/reject` | Deny a pending request |
-| `POST /api/auth/oauth2/token` | Poll for tokens (grant_type=`urn:openid:params:grant-type:ciba`) |
+`GET /.well-known/oauth-protected-resource` is the starting point for MCP-compatible clients:
 
-### Authorization details (RAR)
+```json
+{
+  "resource": "https://app.zentity.xyz",
+  "authorization_servers": ["https://app.zentity.xyz/api/auth"],
+  "bearer_methods_supported": ["dpop"],
+  "scopes_supported": ["openid", "email", "proof:identity", "proof:age", "..."],
+  "resource_signing_alg_values_supported": ["EdDSA"]
+}
+```
 
-CIBA requests support `authorization_details` (RFC 9396) for structured action metadata. The field is stored as JSON text in the `ciba_request` table and flows through to:
-
-- **Approval page** — Rendered as a structured card (purchase-specific display for `type: "purchase"` with item, amount, merchant; key-value fallback for unknown types)
-- **Email notification** — Formatted in both HTML and plain text
-- **CIBA listing page** — One-line summary (e.g., "Purchase: $378.45 USD")
-- **Token response** — Included by the plugin in the token response
-
-### Client registration
-
-CIBA clients register via DCR as public clients (`token_endpoint_auth_method: "none"`). No `redirect_uris` are needed since CIBA does not use redirect flows. The client uses `login_hint` (user's email) to identify the target user.
-
-### Configuration
-
-The plugin is configured in `apps/web/src/lib/auth/auth.ts`:
-
-- `requestLifetime: 300` — Requests expire after 5 minutes
-- `pollingInterval: 5` — Minimum polling interval (seconds)
-- `sendNotification` — Callback that dispatches email notifications
-
-### Discovery metadata
-
-`enrichDiscoveryMetadata()` adds CIBA-specific fields to `/.well-known/openid-configuration`:
-
-- `backchannel_authentication_endpoint`
-- `backchannel_token_delivery_modes_supported: ["poll"]`
-- `backchannel_user_code_parameter_supported: false`
-- `grant_types_supported` includes `urn:openid:params:grant-type:ciba`
-
-### OAuth-provider patch
-
-Three changes to `@better-auth/oauth-provider` enable CIBA grant handling at the token endpoint:
-
-1. CIBA grant type added to the Zod `grant_type` enum
-2. `auth_req_id` field added to the token endpoint body schema (Zod strips unknown fields)
-3. `customGrantTypeHandlers` delegation in the token endpoint's `default` switch case
-
-### Delivery modes
-
-Only **poll mode** is implemented. Ping and push modes are defined in the schema (`delivery_mode`, `client_notification_token`, `client_notification_endpoint`) but not active.
-
-### Demo: Aether AI
-
-The `apps/demo-rp` Aether scenario (`/aether`) demonstrates CIBA with a shopping agent:
-
-1. User signs in, picks a shopping task
-2. Scripted agent chat plays, then triggers CIBA with structured `authorization_details`
-3. User approves from the Zentity dashboard
-4. Agent receives tokens, shows purchase confirmation
-
-### Schema
-
-`apps/web/src/lib/db/schema/ciba.ts` — `ciba_request` table with indexes on `client_id`, `user_id`, and `expires_at`.
-
-### Implementation files
-
-| File | Purpose |
-|------|---------|
-| `apps/web/src/lib/auth/auth.ts` | Plugin registration + `sendNotification` callback |
-| `apps/web/src/lib/db/schema/ciba.ts` | Drizzle table definition |
-| `apps/web/src/lib/email/ciba-mailer.ts` | Email notification formatting + dispatch |
-| `apps/web/src/lib/auth/well-known-utils.ts` | CIBA discovery metadata |
-| `apps/web/src/app/(dashboard)/dashboard/ciba/page.tsx` | Request listing page (server component) |
-| `apps/web/src/app/(dashboard)/dashboard/ciba/approve/page.tsx` | Approval page (client component with countdown) |
-| `apps/web/vendor/@better-auth__oauth-provider@1.5.1-beta.3.patch` | Token endpoint CIBA grant support |
-| `apps/web/vendor/better-auth-ciba-1.0.0.tgz` | CIBA plugin tarball |
+Clients follow `authorization_servers[0]` to the AS metadata, then proceed with DCR and authorization.
 
 ---
 
-## Pairwise Subject Identifiers & Double Anonymity
+## Privacy Guarantees
 
-DCR clients default to `subject_type: "pairwise"` (enforced in the `before` hook). This generates a unique, opaque `sub` per (user, client) pair, preventing cross-RP correlation.
+### Pairwise subject identifiers
 
-Additional ARCOM double anonymity measures for pairwise proof-only flows:
+All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a unique opaque `sub`:
 
-- **Opaque access tokens**: Forced for pairwise clients — resource stripping prevents JWT access tokens from leaking the `sub` claim
-- **Consent record deletion**: Consent rows are deleted after authorization code issuance for pairwise proof-only flows (transient linkage)
-- **Access token DB record deletion**: Token records are deleted after JWT issuance — no server-side linkage persists
-- **Session metadata scrubbing**: IP address and user-agent are scrubbed from session records for pairwise clients
+```text
+sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + userId))
+```
 
-The `PAIRWISE_SECRET` env var (min 32 chars, required) is the HMAC key for generating pairwise identifiers.
+The `sectorId` is derived from the host of the client's first `redirect_uri` (per OIDC Core §8.1). Related services under one domain share a sector; cross-domain tracking is prevented.
+
+### Double anonymity (ARCOM)
+
+For pairwise proof-only flows, additional measures remove all server-side linkage:
+
+- **Opaque access tokens** — random strings prevent `sub` leakage (JWT access tokens would embed it)
+- **Consent record deletion** — consent rows deleted after authorization code issuance
+- **Token record deletion** — token DB records deleted after JWT issuance
+- **Session metadata scrubbing** — IP address and user-agent scrubbed from session records
 
 See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
 
----
+### Zero persistent PII
 
-## VeriPass OID4VP Verifier (demo-rp)
+The server never stores plaintext PII. The user's profile secret (encrypted with their credential) is the only copy. Identity claims are staged ephemerally at consent time (5-minute TTL, consumed on read) and delivered via id_token. After delivery, no trace remains.
 
-`apps/demo-rp` includes a reference OID4VP verifier implementation at `/veripass` with 4 scenarios:
+### HAIP compliance
 
-| Scenario | Required Claims | Use Case |
-|----------|----------------|----------|
-| Border Control | `given_name`, `family_name`, `nationality` | International travel |
-| Background Check | `given_name`, `family_name`, `verification_level` | Employment screening |
-| Age-Restricted Venue | `age_over_18` | Minimal disclosure |
-| Financial Institution | `given_name`, `family_name`, `nationality`, `verification_level`, `email` | Full KYC |
-
-Key implementation details:
-
-- **Ephemeral ECDH-ES P-256 key** generated per VP session for JARM encryption
-- **In-memory JAR cache** (single-use) — won't survive multi-instance deployments
-- **`client_id_scheme: x509_hash`** — the `client_id` is `x509_hash#<SHA-256-thumbprint>`. Note: `#` must be URL-encoded as `%23` in the `openid4vp://` URI
-- **KB-JWT audience**: The verifier's own `NEXT_PUBLIC_APP_URL` (not Zentity's URL)
-- **Same-device session binding**: `/vp/complete` validates the session cookie matches the VP session creator
-
-See `apps/demo-rp/src/lib/verify.ts` for the full verification chain.
-
-### DCR validation rules
-
-Clients registering via DCR are validated:
-
-- `client_name`: max 100 chars, no HTML tags
-- `logo_uri` / `client_uri`: must be HTTPS (localhost allowed in dev)
-- `redirect_uris`: must be HTTPS in production
-
----
-
-## Notes
-
-- Wallet auth (SIWE) is separate and documented in `docs/web3-architecture.md`.
+| Feature | Standard | Status |
+| --- | --- | --- |
+| DPoP | RFC 9449 | Enforced globally |
+| PAR | RFC 9126 | Required |
+| Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
+| JARM | OIDC JARM | ECDH-ES P-256 |
+| x5c certificate chain | RFC 5280 | Leaf + CA, env vars or filesystem |
+| Pairwise subjects | OIDC Core §8.1 | Enforced for all DCR clients |
