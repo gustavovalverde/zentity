@@ -1,6 +1,14 @@
+import type { JWK } from "jose";
+
 import crypto from "node:crypto";
 
-import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
+import {
+  calculateJwkThumbprint,
+  decodeJwt,
+  exportJWK,
+  generateKeyPair,
+  SignJWT,
+} from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { getAuthIssuer } from "@/lib/auth/issuer";
@@ -281,5 +289,192 @@ describe("POST /api/oauth2/release", () => {
     expect(idToken.family_name).toBe("Smith");
     // birthdate NOT included because identity.dob not in approved scopes
     expect(idToken.birthdate).toBeUndefined();
+  });
+
+  describe("DPoP sender-constraining", () => {
+    let dpopKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
+    let dpopJwk: JWK;
+    let dpopJkt: string;
+
+    beforeEach(async () => {
+      dpopKeyPair = await generateKeyPair("ES256");
+      dpopJwk = await exportJWK(dpopKeyPair.publicKey);
+      dpopJkt = await calculateJwkThumbprint(dpopJwk);
+    });
+
+    function buildDpopProof(opts: { method: string; url: string }) {
+      return new SignJWT({
+        htm: opts.method,
+        htu: opts.url,
+        jti: crypto.randomUUID(),
+      })
+        .setProtectedHeader({
+          alg: "ES256",
+          typ: "dpop+jwt",
+          jwk: dpopJwk,
+        })
+        .setIssuedAt()
+        .sign(dpopKeyPair.privateKey);
+    }
+
+    async function postReleaseWithDpop(
+      accessToken: string,
+      dpopProof: string
+    ): Promise<{ status: number; json: Record<string, unknown> }> {
+      const { POST } = await import("@/app/api/oauth2/release/route");
+      const response = await POST(
+        new Request(RELEASE_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `DPoP ${accessToken}`,
+            DPoP: dpopProof,
+          },
+        })
+      );
+      const json = (await response.json()) as Record<string, unknown>;
+      return { status: response.status, json };
+    }
+
+    it("accepts a DPoP-bound token with a valid proof", async () => {
+      const sealed = await createApprovalRecord({
+        userId,
+        clientId: TEST_CLIENT_ID,
+        pii: { given_name: "DPoP-Alice" },
+        scopes: "openid identity.name",
+      });
+
+      const token = await mintTestAccessToken({
+        sub: userId,
+        azp: TEST_CLIENT_ID,
+        release_handle: sealed.releaseHandle,
+        cnf: { jkt: dpopJkt },
+      });
+
+      const dpopProof = await buildDpopProof({
+        method: "POST",
+        url: RELEASE_URL,
+      });
+
+      const { status, json } = await postReleaseWithDpop(token, dpopProof);
+      expect(status).toBe(200);
+
+      const idToken = decodeJwt(json.id_token as string);
+      expect(idToken.given_name).toBe("DPoP-Alice");
+    });
+
+    it("rejects a DPoP-bound token without a DPoP proof header", async () => {
+      const sealed = await createApprovalRecord({
+        userId,
+        clientId: TEST_CLIENT_ID,
+        pii: { given_name: "NoDPoP" },
+        scopes: "openid identity.name",
+      });
+
+      const token = await mintTestAccessToken({
+        sub: userId,
+        azp: TEST_CLIENT_ID,
+        release_handle: sealed.releaseHandle,
+        cnf: { jkt: dpopJkt },
+      });
+
+      // Use Bearer scheme, no DPoP header
+      const { status, json } = await postRelease(token);
+      expect(status).toBe(401);
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("rejects a DPoP-bound token with a wrong key proof", async () => {
+      const sealed = await createApprovalRecord({
+        userId,
+        clientId: TEST_CLIENT_ID,
+        pii: { given_name: "WrongKey" },
+        scopes: "openid identity.name",
+      });
+
+      // Bind token to the test DPoP key
+      const token = await mintTestAccessToken({
+        sub: userId,
+        azp: TEST_CLIENT_ID,
+        release_handle: sealed.releaseHandle,
+        cnf: { jkt: dpopJkt },
+      });
+
+      // Build proof with a DIFFERENT key
+      const otherKeyPair = await generateKeyPair("ES256");
+      const otherJwk = await exportJWK(otherKeyPair.publicKey);
+      const wrongProof = await new SignJWT({
+        htm: "POST",
+        htu: RELEASE_URL,
+        jti: crypto.randomUUID(),
+      })
+        .setProtectedHeader({
+          alg: "ES256",
+          typ: "dpop+jwt",
+          jwk: otherJwk,
+        })
+        .setIssuedAt()
+        .sign(otherKeyPair.privateKey);
+
+      const { status, json } = await postReleaseWithDpop(token, wrongProof);
+      expect(status).toBe(401);
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("skips DPoP validation when token has no cnf claim (non-bound)", async () => {
+      const sealed = await createApprovalRecord({
+        userId,
+        clientId: TEST_CLIENT_ID,
+        pii: { given_name: "NoCnf" },
+        scopes: "openid identity.name",
+      });
+
+      // No cnf claim — plain Bearer token
+      const token = await mintTestAccessToken({
+        sub: userId,
+        azp: TEST_CLIENT_ID,
+        release_handle: sealed.releaseHandle,
+      });
+
+      const { status, json } = await postRelease(token);
+      expect(status).toBe(200);
+
+      const idToken = decodeJwt(json.id_token as string);
+      expect(idToken.given_name).toBe("NoCnf");
+    });
+
+    it("returns DPoP-Nonce header in successful response", async () => {
+      const sealed = await createApprovalRecord({
+        userId,
+        clientId: TEST_CLIENT_ID,
+        pii: { given_name: "Nonce" },
+        scopes: "openid identity.name",
+      });
+
+      const token = await mintTestAccessToken({
+        sub: userId,
+        azp: TEST_CLIENT_ID,
+        release_handle: sealed.releaseHandle,
+        cnf: { jkt: dpopJkt },
+      });
+
+      const dpopProof = await buildDpopProof({
+        method: "POST",
+        url: RELEASE_URL,
+      });
+
+      const { POST } = await import("@/app/api/oauth2/release/route");
+      const response = await POST(
+        new Request(RELEASE_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `DPoP ${token}`,
+            DPoP: dpopProof,
+          },
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("DPoP-Nonce")).toBeTruthy();
+    });
   });
 });

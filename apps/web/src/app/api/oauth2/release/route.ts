@@ -1,7 +1,9 @@
+import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { and, eq } from "drizzle-orm";
 import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
+import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
   hashReleaseHandle,
@@ -15,6 +17,8 @@ import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 
 const authIssuer = getAuthIssuer();
 const jwksUrl = joinAuthIssuerPath(authIssuer, "pq-jwks");
+
+const validateDpop = createDpopAccessTokenValidator({ requireDpop: false });
 
 /**
  * Build a local JWKS keyset from the DB for token verification.
@@ -44,12 +48,18 @@ async function getLocalJwks(kid: string) {
   return createLocalJWKSet(jwksObj);
 }
 
-function extractBearerToken(headers: Headers): string | null {
+function extractAccessToken(headers: Headers): string | null {
   const authHeader = headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (!authHeader) {
     return null;
   }
-  return authHeader.slice(7);
+  if (authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  if (authHeader.startsWith("DPoP ")) {
+    return authHeader.slice(5);
+  }
+  return null;
 }
 
 /**
@@ -65,7 +75,7 @@ function extractBearerToken(headers: Headers): string | null {
  * 6. Marks the approval as redeemed (one-time use)
  */
 export async function POST(request: Request): Promise<Response> {
-  const token = extractBearerToken(request.headers);
+  const token = extractAccessToken(request.headers);
   if (!token) {
     return NextResponse.json(
       { error: "missing_token", error_description: "Bearer token required" },
@@ -89,6 +99,20 @@ export async function POST(request: Request): Promise<Response> {
       {
         error: "invalid_token",
         error_description: "Access token invalid or expired",
+      },
+      { status: 401 }
+    );
+  }
+
+  // DPoP sender-constraining: validate proof if token is DPoP-bound (cnf.jkt)
+  try {
+    await validateDpop({ request, tokenPayload: payload });
+  } catch {
+    return NextResponse.json(
+      {
+        error: "invalid_dpop_proof",
+        error_description:
+          "DPoP proof required for sender-constrained access token",
       },
       { status: 401 }
     );
@@ -219,5 +243,7 @@ export async function POST(request: Request): Promise<Response> {
     .where(eq(approvals.id, approval.id))
     .run();
 
-  return NextResponse.json({ id_token: idToken });
+  const response = NextResponse.json({ id_token: idToken });
+  response.headers.set("DPoP-Nonce", getDpopNonceStore().issue());
+  return response;
 }

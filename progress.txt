@@ -151,3 +151,15 @@
 
 # Files changed
 - `apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts` — new test file (4 tests)
+
+## DPoP sender-constraining on release endpoint (deferred item #1)
+- Added opportunistic DPoP validation to `POST /api/oauth2/release`:
+  - Accepts both `Bearer` and `DPoP` authorization schemes
+  - If access token has `cnf.jkt`, validates DPoP proof via `createDpopAccessTokenValidator` from `@better-auth/haip`
+  - If no `cnf.jkt`, skips DPoP (backwards-compatible with current `requireDpop: false` regime)
+  - Issues `DPoP-Nonce` header in response for future proof replay protection
+- 5 integration tests: valid DPoP proof accepted, missing proof rejected, wrong-key proof rejected, non-bound token skips validation, nonce header present
+
+# Files changed
+- `apps/web/src/app/api/oauth2/release/route.ts` — DPoP validation + dual auth scheme support
+- `apps/web/src/lib/auth/__tests__/release-endpoint.integration.test.ts` — 5 new DPoP tests
