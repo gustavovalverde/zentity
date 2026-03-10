@@ -109,7 +109,7 @@ describe("CIBA token endpoint", () => {
       client_id: TEST_CLIENT_ID,
     });
 
-    expect(status).toBe(403);
+    expect(status).toBe(400);
     expect(json.error).toBe("access_denied");
   });
 

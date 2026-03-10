@@ -6,16 +6,50 @@
 - Fixed stale node_modules: pnpm install refreshed CIBA tarball with act + authorization_details support
 - Added cibaRequests to resetDatabase() for test isolation
 
+## Demo-rp token display (PRD: ciba-token-delivery, Module 4.5)
+- Added collapsible Token Details panel to CibaResult showing act claim and authorization_details
+- Inline JWT decoding via atob (no jose dependency needed for display)
+
+## Better-auth fork: feat/zentity-combined rebuilt (PRD: ciba-token-delivery, all modules)
+- Root cause: old branch was built via cherry-picks, losing Git merge-base history → phantom conflicts on every merge
+- Rebuilt from scratch using proper sequential merges from canary base:
+  1. feat/oidc-haip (includes oauth-response-format + public-endpoints + oidc-vc)
+  2. feat/passkey-preauth-extensions
+  3. feat/two-factor-passwordless-canary
+  4. feat/pairwise-jwt-access-token-sub (was NEVER in old combined branch)
+  5. feat/ciba-plugin (with act + authorization_details enhancements)
+- Resolved 2 real merge conflicts in token.ts (pairwise sub + CIBA grant handler vs oidc-haip refactor)
+- Resolved conflicts in metadata.ts, oauth.ts, types/oauth.ts (keeping both sides' additions)
+- Built and packed new tarballs: oauth-provider@1.5.1-beta.3, ciba@1.5.1-beta.3
+- Copied tarballs to apps/web/vendor/, removed oauth-provider patch file
+- Updated package.json: oauth-provider from npm+patch to tarball, CIBA from 1.0.0 to 1.5.1-beta.3
+- Fixed integration test: access_denied returns 400 (RFC 6749 §5.2) not 403
+- All feedback loops pass: typecheck, 108 integration tests, 68 unit test files, biome lint
+
 # Decisions made and why
 - Tests use auth.handler() directly (same as toNextJsHandler) with response envelope unwrapping
 - JWT act/authorization_details tests set resource=authIssuer because access tokens are JWT only when audience is present (opaque otherwise)
-- Integration test (not unit) because it exercises the full plugin dispatch chain: Zod parsing → customGrantTypeHandlers → CIBA grant handler → createUserTokens
+- Integration test (not unit) because it exercises the full plugin dispatch chain
+- Rebuilt zentity-combined with merges (not cherry-picks) to preserve Git history and prevent future phantom conflicts
+- TokenResponse type and createUserTokens exported from oauth-provider so CIBA plugin can import them
+- Custom grant handler type uses Promise<TokenResponse> (matching oidc-haip refactor) instead of Promise<Response>
 
-# Blockers encountered
-- node_modules had stale CIBA plugin without act/authorization_details (tarball was updated in commit 2e50411 but pnpm install wasn't re-run)
-
-# Files changed
-- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (new)
+# Files changed (zentity repo)
+- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (new, then updated: 403→400)
 - apps/web/src/lib/auth/__tests__/oidc-well-known.test.ts (2 new CIBA tests)
 - apps/web/src/test/db-test-utils.ts (add cibaRequests to resetDatabase)
-- apps/web/pnpm-lock.yaml (refreshed from pnpm install)
+- apps/web/package.json (oauth-provider → tarball, CIBA tarball version bump, remove patch entry)
+- apps/web/vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz (new)
+- apps/web/vendor/better-auth-ciba-1.5.1-beta.3.tgz (new, replaces 1.0.0)
+- apps/web/vendor/better-auth-ciba-1.0.0.tgz (deleted)
+- apps/web/patches/@better-auth__oauth-provider@1.5.1-beta.3.patch (deleted)
+- apps/web/pnpm-lock.yaml (refreshed)
+- apps/demo-rp/src/components/aether/agent-chat.tsx (token details display)
+
+# Files changed (better-auth fork)
+- packages/oauth-provider/src/token.ts (customGrantTypeHandlers dispatch, extraClaims, export createUserTokens+TokenResponse)
+- packages/oauth-provider/src/metadata.ts (CIBA metadata overrides)
+- packages/oauth-provider/src/oauth.ts (z.string() grant_type, auth_req_id, client_assertion fields)
+- packages/oauth-provider/src/types/oauth.ts (GrantType includes pre-authorized_code + CIBA)
+- packages/ciba/src/grant-handler.ts (act claim, authorization_details forwarding)
+- packages/ciba/src/approval.ts (act claim, authorization_details forwarding for push mode)
