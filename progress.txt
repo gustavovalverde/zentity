@@ -88,5 +88,15 @@
 - `apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts` — 2 new release_handle tests
 - `apps/web/src/app/api/ciba/identity/stage/route.ts` — switched from ephemeral to durable approvals
 
+## Phase 3 cleanup: remove dead CIBA ephemeral staging tests
+- Removed `describe("identity claims via ephemeral staging")` block (3 tests) from ciba-token.integration.test.ts — tested old ephemeral PII staging path that CIBA no longer uses (replaced by durable approvals in Phase 3.5)
+- Removed unused imports: `resetEphemeralIdentityClaimsStore`, `storeEphemeralClaims`, `createScopeHash`
+- Removed `resetEphemeralIdentityClaimsStore()` call from `beforeEach`
+- Kept: ephemeral-identity-claims.ts (still used by OAuth consent flow), ephemeral-release-handles.ts (used by CIBA access token embedding)
+- Discovery metadata for release endpoint: not needed — no standard OIDC field exists, RP knows URL out-of-band
+
+# Files changed
+- `apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts` — removed 3 dead tests + unused imports
+
 # Any blockers or notes for next iteration
-- Next: Phase 3 cleanup — remove now-unused ephemeral identity claims for CIBA (the old path in customIdTokenClaims still runs but is harmless since nothing stages there for CIBA anymore). Consider discovery metadata for the release endpoint. Then proceed to Phase 4 (Token Exchange).
+- Next: Phase 4 (Token Exchange RFC 8693)
