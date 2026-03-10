@@ -150,6 +150,9 @@ export async function POST(request: Request): Promise<Response> {
   const piiJson = JSON.stringify(filteredIdentity);
   const sealed = await sealApprovalPii(piiJson);
 
+  // Replace any existing approval for this CIBA request (idempotent re-staging)
+  await db.delete(approvals).where(eq(approvals.authReqId, auth_req_id)).run();
+
   await db
     .insert(approvals)
     .values({
