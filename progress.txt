@@ -140,4 +140,14 @@
 - `apps/demo-rp/src/components/aether/agent-chat.tsx` — updated `CibaResult` to show exchanged token details
 - `apps/demo-rp/src/app/aether/page.tsx` — passes `exchangedTokens` to `AgentChat`
 
-# All phases complete
+## CIBA → release lifecycle integration tests (deferred item #3)
+- Added 4 lifecycle integration tests covering the full CIBA → durable approval → release endpoint flow:
+  - Full lifecycle: stage PII → CIBA token mint (access_token with release_handle) → release endpoint (id_token with PII) → replay rejection (410)
+  - Scope filtering: only approved identity scopes appear in released PII
+  - No identity scopes: access_token has no release_handle
+  - Expired approval: release returns 410
+- These tests verify both state channels work together: ephemeral release handle store → access token JWT, and durable approval record → release endpoint decryption
+- Tests use the auth system's real signing keys (not manually inserted test keys), proving true end-to-end integration
+
+# Files changed
+- `apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts` — new test file (4 tests)
