@@ -98,5 +98,33 @@
 # Files changed
 - `apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts` — removed 3 dead tests + unused imports
 
+## Phase 4.1: Token exchange vendor tarball + handler fixes (Plan §Phase 4, AC 1-2)
+- Updated vendor tarball `better-auth-oauth-provider-1.5.1-beta.3.tgz` to add RFC 8693 fields: `subject_token`, `subject_token_type`, `requested_token_type`, `actor_token`, `actor_token_type`, `audience` to Zod body schema, OpenAPI metadata, and TypeScript declarations
+- Fixed `createTokenExchangeHandler` bugs: (a) `basicToClientCredentials` was called with `ctx.headers` (object) instead of Authorization header string, and properties accessed as camelCase instead of snake_case; (b) scope attenuation was skipped for id_token→access_token exchanges, allowing arbitrary scope escalation; (c) `audience` body parameter was ignored — now uses `resource > audience > issuer` fallback; (d) added `azp` to id_token output
+- Added `resetSigningKeyCache()` export from `jwt-signer.ts` for test isolation (module-level key cache persists across `resetDatabase()` calls)
+- `tokenExchangePlugin()` already wired in auth.ts, grant type already in discovery metadata
+
+## Phase 4.2: Token exchange integration tests (Plan §Phase 4, AC 3-18)
+- 13 integration tests covering all acceptance criteria:
+  - Access→Access with scope attenuation (verify narrower scope, `act` claim)
+  - Access→Access with audience binding via `resource` parameter
+  - Access→Access with audience binding via `audience` parameter
+  - `resource` takes precedence over `audience` for `aud` binding
+  - Default scope inheritance when none requested
+  - Access→ID Token exchange (verify id_token format, claims, `act`)
+  - ID Token→Access Token exchange (verify access token minted for id_token's subject)
+  - Scope broadening rejection on access token subjects
+  - Non-openid scope rejection on id_token subjects
+  - `act` claim nesting across 2 exchanges (chain depth 2)
+  - Missing subject_token rejection
+  - Expired subject token rejection
+  - Unsupported subject_token_type rejection
+
+# Files changed (Phase 4)
+- `apps/web/vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz` — updated tarball with RFC 8693 body fields
+- `apps/web/src/lib/auth/oidc/token-exchange.ts` — fixed client auth, scope attenuation, audience handling
+- `apps/web/src/lib/auth/oidc/jwt-signer.ts` — added `resetSigningKeyCache()` export
+- `apps/web/src/lib/auth/__tests__/token-exchange.integration.test.ts` — added 2 new audience tests, 1 id_token scope restriction test, cache reset in beforeEach
+
 # Any blockers or notes for next iteration
-- Next: Phase 4 (Token Exchange RFC 8693)
+- Next: Phase 5 (Demo-rp Aether Token Exchange)
