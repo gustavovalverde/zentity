@@ -1,5 +1,23 @@
 # Tasks completed in this session
 
+## Phase 2: Intent and Approval Context Binding (CIBA Notifications Remediation)
+- PRD ref: Findings 5, 6 (intent tokens not bound to auth_req_id, authorization_details dropped)
+- Intent token payload now includes optional authReqId field
+- CIBA intent route passes auth_req_id into createIdentityIntentToken
+- Stage route verifies intentPayload.authReqId === auth_req_id before accepting
+- Stage route reads authorizationDetails from CIBA request and persists in approvals row
+- Release endpoint already reads approvals.authorizationDetails — no change needed
+- OAuth2 consent flow unaffected (authReqId is optional, absent for non-CIBA)
+- 5 new integration tests: authReqId binding, cross-request replay rejection, authorization_details persistence
+
+### Files changed
+- apps/web/src/lib/auth/oidc/identity-intent.ts (add authReqId to schema + creation + interface)
+- apps/web/src/app/api/ciba/identity/intent/route.ts (pass authReqId)
+- apps/web/src/app/api/ciba/identity/stage/route.ts (verify authReqId + persist authorizationDetails)
+- apps/web/src/app/api/ciba/identity/__tests__/intent-binding.integration.test.ts (NEW, 5 tests)
+
+---
+
 ## Phase 1: Push Notification Safety (CIBA Notifications Remediation)
 - PRD ref: Findings 1, 3 (push ownership transfer, service worker bypass)
 - Subscribe endpoint upserts userId on conflict — transfers ownership when different user resubscribes same browser endpoint

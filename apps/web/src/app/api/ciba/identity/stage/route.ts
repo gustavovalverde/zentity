@@ -69,6 +69,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: cibaRequests.userId,
       scope: cibaRequests.scope,
       status: cibaRequests.status,
+      authorizationDetails: cibaRequests.authorizationDetails,
     })
     .from(cibaRequests)
     .where(eq(cibaRequests.authReqId, auth_req_id))
@@ -126,6 +127,13 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  if (intentPayload.authReqId !== auth_req_id) {
+    return NextResponse.json(
+      { error: "Intent token was issued for a different auth_req_id" },
+      { status: 400 }
+    );
+  }
+
   const scopeHash = createScopeHash(scopes);
   if (
     intentPayload.clientId !== cibaRequest.clientId ||
@@ -160,6 +168,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: session.user.id,
       clientId: cibaRequest.clientId,
       approvedScopes: scopes.join(" "),
+      authorizationDetails: cibaRequest.authorizationDetails ?? undefined,
       encryptedPii: sealed.encryptedPii,
       encryptionIv: sealed.encryptionIv,
       releaseHandleHash: sealed.releaseHandleHash,

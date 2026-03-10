@@ -14,11 +14,13 @@ const IntentPayloadSchema = z.object({
   jti: z.string().min(1),
   userId: z.string().min(1),
   clientId: z.string().min(1),
+  authReqId: z.string().min(1).optional(),
   scopeHash: z.string().length(64),
   exp: z.number().int().positive(),
 });
 
 export interface IdentityIntentPayload {
+  authReqId?: string;
   clientId: string;
   exp: number;
   jti: string;
@@ -40,6 +42,7 @@ export function createScopeHash(scopes: string[]): string {
 export async function createIdentityIntentToken(input: {
   userId: string;
   clientId: string;
+  authReqId?: string;
   scopes: string[];
   ttlSeconds?: number;
 }): Promise<{
@@ -56,6 +59,7 @@ export async function createIdentityIntentToken(input: {
     jti,
     userId: input.userId,
     clientId: input.clientId,
+    ...(input.authReqId ? { authReqId: input.authReqId } : {}),
     scopeHash,
     exp: expiresAt,
   };

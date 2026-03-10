@@ -96,6 +96,7 @@ export async function POST(request: Request): Promise<Response> {
   const intent = await createIdentityIntentToken({
     userId: session.user.id,
     clientId: cibaRequest.clientId,
+    authReqId: auth_req_id,
     scopes,
   });
 
