@@ -101,6 +101,8 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
     expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
     expect(claims.amr).toEqual(["pop", "hwk", "user"]);
+    expect(claims.auth_time).toBeDefined();
+    expect(typeof claims.auth_time).toBe("number");
   });
 
   it("tier-1 opaque user gets amr=pwd", async () => {
@@ -148,6 +150,8 @@ describe("assurance claims in ID tokens", () => {
     // Without secured keys, tier remains 0
     expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
     expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
+    expect(claims.auth_time).toBeDefined();
+    expect(typeof claims.auth_time).toBe("number");
   });
 
   it("at_hash binds ID token to companion access token", async () => {
