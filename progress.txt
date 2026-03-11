@@ -9,4 +9,6 @@
 - authorization_challenge_endpoint added to discovery metadata
 - Files: apps/web/src/app/api/oauth2/authorize-challenge/route.ts (new)
 - Files: apps/web/src/lib/auth/well-known-utils.ts (discovery)
-- TODO: integration tests, token exchange test
+- Integration tests: 7 tests covering all 3 rounds, error cases, session validation
+- Test infra: real OPAQUE server setup in vitest.setup.mts, authChallengeSessions in resetDatabase
+- TODO: token exchange test (verify auth code at /oauth2/token with grant_type=authorization_code)

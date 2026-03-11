@@ -13,6 +13,7 @@ import {
   users,
   verifications,
 } from "@/lib/db/schema/auth";
+import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import {
@@ -75,6 +76,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(usedIntentJtis).run();
     await tx.delete(pushSubscriptions).run();
     await tx.delete(approvals).run();
+    await tx.delete(authChallengeSessions).run();
     await tx.delete(cibaRequests).run();
     await tx.delete(haipPushedRequests).run();
     await tx.delete(haipVpSessions).run();

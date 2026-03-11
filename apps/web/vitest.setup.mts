@@ -13,7 +13,16 @@ import { afterAll, afterEach, vi } from "vitest";
 // Use file-based test database (schema pushed by globalSetup)
 process.env.TURSO_DATABASE_URL ||= "file:./.data/test.db";
 process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
-process.env.OPAQUE_SERVER_SETUP ||= "test-opaque-server-setup-placeholder";
+// Generate a valid OPAQUE server setup for tests that need real OPAQUE operations.
+// The placeholder string would fail in @serenity-kit/opaque calls.
+if (
+  !process.env.OPAQUE_SERVER_SETUP ||
+  process.env.OPAQUE_SERVER_SETUP === "test-opaque-server-setup-placeholder"
+) {
+  const { ready, server: opaqueServer } = await import("@serenity-kit/opaque");
+  await ready;
+  process.env.OPAQUE_SERVER_SETUP = opaqueServer.createSetup();
+}
 process.env.PAIRWISE_SECRET ||= "test-pairwise-secret-minimum-32-chars";
 
 // Disable logging in tests unless explicitly enabled
