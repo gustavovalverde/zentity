@@ -63,3 +63,17 @@
 - Phase 3: token exchange enriched + demo-rp display + at_hash validation
 - Tier 2/3 integration tests deferred: pure function coverage is complete, complex seeding for diminishing returns
 - at_hash in token exchange: N/A per RFC 8693 (single token output, no companion)
+
+## Step-Up Authentication — Phase 1: Authorize Endpoint Enforcement
+- PRD ref: docs/plans/oidc-step-up-authentication.md, Phase 1
+- Pure functions in src/lib/auth/oidc/step-up.ts: parseAcrValues, findSatisfiedAcr, isMaxAgeExceeded, buildOAuthErrorUrl
+- Enforcement hook in src/lib/auth/oidc/step-up-hook.ts: enforceStepUp
+- Wired into auth.ts before hook for /oauth2/authorize path
+- Architecture: peek at PAR record without consuming, session resolved from cookie+DB
+- max_age: redirects to /sign-in with callbackURL preserving request_uri, extends PAR TTL to 5min
+- acr_values: redirects to RP redirect_uri with interaction_required, consumes PAR record
+- prompt=none + max_age: returns login_required to RP redirect_uri
+- Combined: max_age checked first (re-auth may refresh session), then acr_values
+- 20 unit tests (step-up.test.ts), 16 integration tests (step-up-auth.integration.test.ts)
+- Added haipPushedRequests/haipVpSessions to resetDatabase test utility
+- Files: step-up.ts, step-up-hook.ts, auth.ts (hook), step-up.test.ts, step-up-auth.integration.test.ts, db-test-utils.ts

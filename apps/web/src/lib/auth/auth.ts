@@ -62,6 +62,7 @@ import {
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import { enforceStepUp } from "@/lib/auth/oidc/step-up-hook";
 import {
   TOKEN_EXCHANGE_GRANT_TYPE,
   tokenExchangePlugin,
@@ -679,6 +680,11 @@ export const auth = betterAuth({
           .filter((s: string) => !isIdentityScope(s))
           .join(" ");
         ctx.body.scope = filtered;
+      }
+
+      // Step-up authentication: enforce acr_values and max_age on authorize
+      if (ctx.path === "/oauth2/authorize") {
+        await enforceStepUp(ctx, db);
       }
     }),
     after: createAuthMiddleware(async (ctx) => {

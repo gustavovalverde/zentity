@@ -24,6 +24,7 @@ import {
   zkChallenges,
   zkProofs,
 } from "@/lib/db/schema/crypto";
+import { haipPushedRequests, haipVpSessions } from "@/lib/db/schema/haip";
 import {
   identityBundles,
   identityVerificationDrafts,
@@ -75,6 +76,8 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(pushSubscriptions).run();
     await tx.delete(approvals).run();
     await tx.delete(cibaRequests).run();
+    await tx.delete(haipPushedRequests).run();
+    await tx.delete(haipVpSessions).run();
     // OAuth/compliance tables (delete children before parents)
     await tx.delete(rpEncryptionKeys).run();
     await tx.delete(oauthAccessTokens).run();
