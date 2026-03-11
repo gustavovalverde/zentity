@@ -250,6 +250,7 @@ const resolveOpaqueUserByIdentifier = async (
 };
 
 const authIssuer = getAuthIssuer();
+const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const identityClaimKeys = Array.from(
@@ -914,7 +915,12 @@ export const auth = betterAuth({
         TOKEN_EXCHANGE_GRANT_TYPE as typeof TOKEN_EXCHANGE_GRANT_TYPE &
           "authorization_code",
       ],
-      validAudiences: [authIssuer, oidc4vciCredentialAudience, rpApiAudience],
+      validAudiences: [
+        appUrl,
+        authIssuer,
+        oidc4vciCredentialAudience,
+        rpApiAudience,
+      ],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,

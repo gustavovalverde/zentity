@@ -112,6 +112,15 @@
 - Enables JWT access tokens with aud binding for all demo-rp flows
 - Files: auth.ts (makeProviderConfig, ZENTITY_URL resource), api/ciba/route.ts (bc-authorize + token)
 
+## MCP Compatibility — Phase 1c: Valid Audiences + Integration Tests
+- Added appUrl (NEXT_PUBLIC_APP_URL) to validAudiences so resource=appUrl works
+- 6 integration tests (rfc8707-resource.integration.test.ts):
+  - PAR: reject missing resource, reject fragment, reject relative URI, accept valid resource
+  - CIBA: JWT access token with aud when resource present, opaque when absent
+- PAR endpoint accepts JSON body (not form-urlencoded) — better-auth routing
+- aud is array when openid scope present (adds userinfo endpoint)
+- Files: auth.ts (validAudiences), rfc8707-resource.integration.test.ts
+
 ## Step-Up Authentication: COMPLETE
 - All 3 phases implemented
 - Phase 1: Authorize endpoint enforcement (acr_values + max_age, PAR + non-PAR)
