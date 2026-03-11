@@ -203,6 +203,47 @@ describe("oidc discovery — MCP compatibility metadata", () => {
   });
 });
 
+describe("oidc discovery — assurance & grant type completeness", () => {
+  it("acr_values_supported contains all 4 tier URIs", () => {
+    const enriched = enrichDiscoveryMetadata({
+      issuer: "https://example.com/api/auth",
+    });
+    const acr = enriched.acr_values_supported as string[];
+
+    expect(acr).toContain("urn:zentity:assurance:tier-0");
+    expect(acr).toContain("urn:zentity:assurance:tier-1");
+    expect(acr).toContain("urn:zentity:assurance:tier-2");
+    expect(acr).toContain("urn:zentity:assurance:tier-3");
+    expect(acr).toHaveLength(4);
+  });
+
+  it("claims_supported includes assurance claims", () => {
+    const enriched = enrichDiscoveryMetadata({
+      issuer: "https://example.com/api/auth",
+    });
+    const claims = enriched.claims_supported as string[];
+
+    expect(claims).toContain("acr");
+    expect(claims).toContain("amr");
+    expect(claims).toContain("auth_time");
+    expect(claims).toContain("acr_eidas");
+    expect(claims).toContain("at_hash");
+  });
+
+  it("grant_types_supported includes token-exchange", async () => {
+    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const resolved = await parseOpenIdConfig(raw);
+    const enriched = enrichDiscoveryMetadata(
+      resolved as Record<string, unknown>
+    );
+
+    const grantTypes = enriched.grant_types_supported as string[];
+    expect(grantTypes).toContain(
+      "urn:ietf:params:oauth:grant-type:token-exchange"
+    );
+  });
+});
+
 describe("RFC 9728 — protected resource metadata", () => {
   it("GET returns RFC 9728 metadata structure", async () => {
     const { GET } = await import(

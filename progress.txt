@@ -33,3 +33,10 @@
   - MOD: apps/web/src/lib/auth/auth.ts — emit `auth_time` in `customIdTokenClaims`
   - MOD: apps/web/src/lib/auth/oidc/token-exchange.ts — use `assurance.authTime` instead of `now`
   - MOD: apps/web/src/lib/auth/__tests__/assurance-id-token.integration.test.ts — stronger bounds assertions
+
+### Phase 2: Discovery metadata completeness — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 2)
+- No code changes needed — all metadata already emitted by `enrichDiscoveryMetadata`
+- `grant_types_supported` includes token-exchange natively via `grantTypes` config
+- Files:
+  - MOD: apps/web/src/lib/auth/__tests__/oidc-well-known.test.ts — 3 new tests: acr_values, claims_supported, token-exchange grant
