@@ -81,7 +81,7 @@ async function extractDpopJkt(request: Request): Promise<string | undefined> {
 }
 
 function hashCode(code: string): string {
-  return createHash("sha256").update(code).digest("hex");
+  return createHash("sha256").update(code).digest("base64url");
 }
 
 function loadSession(
@@ -374,6 +374,7 @@ async function handleOpaqueFinish(
       },
       userId: user.id,
       authTime: Date.now(),
+      authSession: auth_session,
     }),
     expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000).toISOString(),
     createdAt: new Date(iat * 1000).toISOString(),

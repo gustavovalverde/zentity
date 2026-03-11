@@ -11,4 +11,8 @@
 - Files: apps/web/src/lib/auth/well-known-utils.ts (discovery)
 - Integration tests: 7 tests covering all 3 rounds, error cases, session validation
 - Test infra: real OPAQUE server setup in vitest.setup.mts, authChallengeSessions in resetDatabase
-- TODO: token exchange test (verify auth code at /oauth2/token with grant_type=authorization_code)
+- Token exchange: auth code exchangeable at /oauth2/token without redirect_uri
+- Token response includes auth_session for future step-up re-authentication
+- Vendor tarball patched: redirect_uri optional, session creation deferred, auth_session pass-through
+- Auth code hash fixed: base64url encoding to match oauth-provider's defaultHasher
+- Phase 1 COMPLETE: all acceptance criteria met

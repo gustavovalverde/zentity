@@ -8,6 +8,7 @@ import { db } from "@/lib/db/connection";
 import { accounts } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const CHALLENGE_URL = "http://localhost:3000/api/oauth2/authorize-challenge";
 const TEST_CLIENT_ID = "fpa-test-client";
@@ -92,6 +93,51 @@ async function callChallenge(
   return { status: response.status, json };
 }
 
+// RFC 7636 example: code_verifier → code_challenge (S256)
+const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+
+async function completeOpaqueFlow(): Promise<{
+  authSession: string;
+  authorizationCode: string;
+}> {
+  await ready;
+  const round1 = await callChallenge({
+    client_id: TEST_CLIENT_ID,
+    response_type: "code",
+    scope: "openid",
+    code_challenge: CODE_CHALLENGE,
+    code_challenge_method: "S256",
+    identifier: TEST_EMAIL,
+  });
+  const authSession = round1.json.auth_session as string;
+
+  const { clientLoginState, startLoginRequest } = client.startLogin({
+    password: TEST_PASSWORD,
+  });
+
+  const round2 = await callChallenge({
+    auth_session: authSession,
+    opaque_login_request: startLoginRequest,
+  });
+
+  const loginResult = client.finishLogin({
+    clientLoginState,
+    loginResponse: round2.json.opaque_login_response as string,
+    password: TEST_PASSWORD,
+  });
+
+  const round3 = await callChallenge({
+    auth_session: authSession,
+    opaque_finish_request: loginResult?.finishLoginRequest,
+  });
+
+  return {
+    authSession,
+    authorizationCode: round3.json.authorization_code as string,
+  };
+}
+
 describe("Authorization Challenge Endpoint", () => {
   beforeEach(async () => {
     await resetDatabase();
@@ -106,7 +152,7 @@ describe("Authorization Challenge Endpoint", () => {
         client_id: TEST_CLIENT_ID,
         response_type: "code",
         scope: "openid",
-        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
         identifier: TEST_EMAIL,
       });
@@ -125,7 +171,7 @@ describe("Authorization Challenge Endpoint", () => {
         client_id: TEST_CLIENT_ID,
         response_type: "code",
         scope: "openid",
-        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
         identifier: TEST_EMAIL,
       });
@@ -140,7 +186,7 @@ describe("Authorization Challenge Endpoint", () => {
         client_id: TEST_CLIENT_ID,
         response_type: "code",
         scope: "openid",
-        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
         identifier: "nonexistent@example.com",
       });
@@ -154,7 +200,7 @@ describe("Authorization Challenge Endpoint", () => {
         client_id: "unknown-client",
         response_type: "code",
         scope: "openid",
-        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
         identifier: TEST_EMAIL,
       });
@@ -166,52 +212,48 @@ describe("Authorization Challenge Endpoint", () => {
 
   describe("Full 3-round OPAQUE flow", () => {
     it("completes OPAQUE challenge and returns authorization_code", async () => {
-      await ready;
       await createUserWithOpaque(TEST_EMAIL);
+      const { authorizationCode } = await completeOpaqueFlow();
 
-      // Round 1: Get auth_session
-      const round1 = await callChallenge({
+      expect(authorizationCode).toBeTypeOf("string");
+      expect(authorizationCode.length).toBe(32);
+    });
+  });
+
+  describe("Token exchange", () => {
+    it("exchanges authorization code for tokens with auth_session in response", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const { authSession, authorizationCode } = await completeOpaqueFlow();
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: "authorization_code",
         client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-        code_challenge_method: "S256",
-        identifier: TEST_EMAIL,
+        code: authorizationCode,
+        code_verifier: CODE_VERIFIER,
       });
 
-      expect(round1.status).toBe(401);
-      expect(round1.json.challenge_type).toBe("opaque");
-      const authSession = round1.json.auth_session as string;
+      expect({ status, json }).toMatchObject({
+        status: 200,
+        json: {
+          access_token: expect.any(String),
+          token_type: "DPoP",
+          auth_session: authSession,
+        },
+      });
+    });
 
-      // Round 2: OPAQUE startLogin
-      const { clientLoginState, startLoginRequest } = client.startLogin({
-        password: TEST_PASSWORD,
+    it("rejects token exchange without code_verifier (PKCE required)", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const { authorizationCode } = await completeOpaqueFlow();
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        client_id: TEST_CLIENT_ID,
+        code: authorizationCode,
       });
 
-      const round2 = await callChallenge({
-        auth_session: authSession,
-        opaque_login_request: startLoginRequest,
-      });
-
-      expect(round2.status).toBe(200);
-      expect(round2.json.opaque_login_response).toBeTypeOf("string");
-
-      // Round 3: OPAQUE finishLogin
-      const loginResult = client.finishLogin({
-        clientLoginState,
-        loginResponse: round2.json.opaque_login_response as string,
-        password: TEST_PASSWORD,
-      });
-      expect(loginResult).toBeDefined();
-
-      const round3 = await callChallenge({
-        auth_session: authSession,
-        opaque_finish_request: loginResult?.finishLoginRequest,
-      });
-
-      expect(round3.status).toBe(200);
-      expect(round3.json.authorization_code).toBeTypeOf("string");
-      expect((round3.json.authorization_code as string).length).toBe(32);
+      expect(status).toBeGreaterThanOrEqual(400);
+      expect(json.error).toBeDefined();
     });
   });
 
@@ -235,7 +277,7 @@ describe("Authorization Challenge Endpoint", () => {
         client_id: TEST_CLIENT_ID,
         response_type: "code",
         scope: "openid",
-        code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
         identifier: TEST_EMAIL,
       });
