@@ -1,11 +1,13 @@
 import "server-only";
 
+import crypto from "node:crypto";
+
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session, user, verification } from "@/lib/db/schema";
@@ -53,6 +55,34 @@ async function verifyIdToken(
   }
 }
 
+const ALG_TO_HASH: Record<string, string> = {
+  RS256: "sha256",
+  ES256: "sha256",
+  PS256: "sha256",
+  EdDSA: "sha512",
+  "ML-DSA-65": "sha256",
+};
+
+function validateAtHash(accessToken: string, idToken: string, atHash: string) {
+  try {
+    const header = decodeProtectedHeader(idToken);
+    const hashAlg = ALG_TO_HASH[header.alg ?? "RS256"] ?? "sha256";
+    const hash = crypto
+      .createHash(hashAlg)
+      .update(accessToken, "ascii")
+      .digest();
+    const expected = hash.subarray(0, hash.length / 2).toString("base64url");
+    if (atHash !== expected) {
+      console.warn(
+        "[demo-rp] at_hash mismatch: ID token is not bound to this access token",
+        { expected, actual: atHash, alg: header.alg }
+      );
+    }
+  } catch (e) {
+    console.warn("[demo-rp] at_hash validation failed:", e);
+  }
+}
+
 async function fetchUserInfo(tokens: {
   accessToken?: string;
   idToken?: string;
@@ -73,6 +103,12 @@ async function fetchUserInfo(tokens: {
   // Merge id_token claims (always available, contains proof claims)
   if (tokens.idToken) {
     const idTokenClaims = await verifyIdToken(tokens.idToken);
+
+    // Validate at_hash binding (OIDC Core §3.1.3.6)
+    if (tokens.accessToken && typeof idTokenClaims.at_hash === "string") {
+      validateAtHash(tokens.accessToken, tokens.idToken, idTokenClaims.at_hash);
+    }
+
     Object.assign(body, idTokenClaims);
   }
 

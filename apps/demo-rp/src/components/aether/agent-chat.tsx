@@ -16,6 +16,8 @@ import type { Product, ShoppingTask } from "@/data/aether";
 import type { CibaState } from "@/hooks/use-ciba-flow";
 import { env } from "@/lib/env";
 
+const TIER_RE = /tier-(\d)/;
+
 interface AgentMessage {
   content?: string;
   id: string;
@@ -420,6 +422,19 @@ function CibaResult({
     | unknown[]
     | undefined;
 
+  // Decode id_token for assurance claims
+  const idTokenPayload =
+    typeof tokens.id_token === "string"
+      ? decodeJwtPayload(tokens.id_token)
+      : null;
+  const acr = idTokenPayload?.acr as string | undefined;
+  const amr = idTokenPayload?.amr as string[] | undefined;
+
+  // Derive human-readable labels
+  const tierMatch = acr?.match(TIER_RE);
+  const tierLabel = tierMatch ? `Tier ${tierMatch[1]}` : undefined;
+  const amrLabel = amr?.join(", ");
+
   const exchangedPayload =
     exchangedTokens && typeof exchangedTokens.access_token === "string"
       ? decodeJwtPayload(exchangedTokens.access_token)
@@ -481,6 +496,21 @@ function CibaResult({
         </p>
       </div>
 
+      {(tierLabel || amrLabel) && (
+        <div className="flex gap-3 text-xs">
+          {tierLabel && (
+            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-blue-300">
+              {tierLabel}
+            </span>
+          )}
+          {amrLabel && (
+            <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-purple-300">
+              Auth: {amrLabel}
+            </span>
+          )}
+        </div>
+      )}
+
       {(actClaim || authorizationDetails || exchangedPayload) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           <button
@@ -498,6 +528,20 @@ function CibaResult({
 
           {showDetails && (
             <div className="mt-3 space-y-3">
+              {acr && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    ID token — assurance (acr + amr)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-cyan-300/80 text-xs">
+                    {JSON.stringify(
+                      { acr, acr_eidas: idTokenPayload?.acr_eidas, amr },
+                      null,
+                      2
+                    )}
+                  </pre>
+                </div>
+              )}
               {actClaim && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">

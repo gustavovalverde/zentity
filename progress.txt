@@ -40,5 +40,12 @@
 - at_hash not applicable: RFC 8693 produces a single token per exchange, no companion
 - Integration test: exchanges access_token → id_token, verifies acr/amr/auth_time present
 
+## OIDC Assurance-Aware ID Tokens — Phase 3: Demo-rp Integration
+- Aether CibaResult: decodes id_token, displays acr tier badge + amr auth method badge
+- Aether Token Details: shows acr/acr_eidas/amr JSON in expandable section
+- demo-rp fetchUserInfo: validates at_hash against access token, logs warning on mismatch
+- at_hash validation: reads alg from id_token header, computes left-half hash, compares
+
 # What's Next
-- Phase 3 demo-rp: display acr/amr in scenario dashboards, validate at_hash
+- All 3 phases of OIDC Assurance-Aware ID Tokens complete
+- Remaining CIBA remediation gaps: SW integration test (browser-only), demo-rp regression test
