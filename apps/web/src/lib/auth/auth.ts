@@ -37,6 +37,7 @@ import { getAssuranceForOAuth } from "@/lib/assurance/data";
 import {
   computeAcr,
   computeAcrEidas,
+  computeAtHash,
   loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
@@ -909,7 +910,7 @@ export const auth = betterAuth({
         const handle = consumeReleaseHandle(user.id);
         return handle ? { release_handle: handle } : {};
       },
-      customIdTokenClaims: async ({ user, scopes }) => {
+      customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
         const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
 
         // Identity claims require ephemeral staging (vault unlock)
@@ -933,10 +934,15 @@ export const auth = betterAuth({
         let assuranceClaims: Record<string, unknown> = {};
         if (scopeList.includes("openid") && user?.id) {
           const assurance = await getAssuranceForOAuth(user.id);
+          const signingAlg =
+            (metadata?.id_token_signed_response_alg as string) || "RS256";
           assuranceClaims = {
             acr: computeAcr(assurance.tier),
             acr_eidas: computeAcrEidas(assurance.tier),
             amr: loginMethodToAmr(assurance.loginMethod),
+            at_hash: accessToken
+              ? computeAtHash(accessToken, signingAlg)
+              : undefined,
           };
         }
 

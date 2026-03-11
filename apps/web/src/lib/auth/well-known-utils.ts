@@ -60,6 +60,7 @@ export function enrichDiscoveryMetadata(
       "amr",
       "auth_time",
       "acr_eidas",
+      "at_hash",
     ],
     // MCP authorization compatibility (RFC 9728, CIMD)
     client_id_metadata_document_supported: true,

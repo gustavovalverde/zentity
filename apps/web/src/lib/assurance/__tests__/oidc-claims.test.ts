@@ -1,11 +1,14 @@
 import type { AccountTier } from "../types";
 
+import crypto from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
   ACR_VALUES_SUPPORTED,
   computeAcr,
   computeAcrEidas,
+  computeAtHash,
   loginMethodToAmr,
 } from "../oidc-claims";
 
@@ -73,5 +76,67 @@ describe("loginMethodToAmr", () => {
 
   it("falls back to user for unknown method", () => {
     expect(loginMethodToAmr("none")).toEqual(["user"]);
+  });
+});
+
+describe("computeAtHash", () => {
+  const testToken = "ya29.test-access-token-value";
+
+  it("returns base64url left-half SHA-256 for RS256", () => {
+    const result = computeAtHash(testToken, "RS256");
+    // Manually compute expected: SHA-256 → left 16 bytes → base64url
+    const hash = crypto
+      .createHash("sha256")
+      .update(testToken, "ascii")
+      .digest();
+    const expected = hash.subarray(0, 16).toString("base64url");
+    expect(result).toBe(expected);
+  });
+
+  it("returns base64url left-half SHA-256 for ES256", () => {
+    const result = computeAtHash(testToken, "ES256");
+    const hash = crypto
+      .createHash("sha256")
+      .update(testToken, "ascii")
+      .digest();
+    const expected = hash.subarray(0, 16).toString("base64url");
+    expect(result).toBe(expected);
+  });
+
+  it("returns base64url left-half SHA-512 for EdDSA", () => {
+    const result = computeAtHash(testToken, "EdDSA");
+    const hash = crypto
+      .createHash("sha512")
+      .update(testToken, "ascii")
+      .digest();
+    const expected = hash.subarray(0, 32).toString("base64url");
+    expect(result).toBe(expected);
+  });
+
+  it("returns base64url left-half SHA-256 for ML-DSA-65", () => {
+    const result = computeAtHash(testToken, "ML-DSA-65");
+    const hash = crypto
+      .createHash("sha256")
+      .update(testToken, "ascii")
+      .digest();
+    const expected = hash.subarray(0, 16).toString("base64url");
+    expect(result).toBe(expected);
+  });
+
+  it("returns undefined for unknown algorithm", () => {
+    expect(computeAtHash(testToken, "none")).toBeUndefined();
+    expect(computeAtHash(testToken, "HS256")).toBeUndefined();
+  });
+
+  it("RS256 and ES256 produce identical hashes (same algorithm)", () => {
+    expect(computeAtHash(testToken, "RS256")).toBe(
+      computeAtHash(testToken, "ES256")
+    );
+  });
+
+  it("different tokens produce different hashes", () => {
+    const hash1 = computeAtHash("token-a", "RS256");
+    const hash2 = computeAtHash("token-b", "RS256");
+    expect(hash1).not.toBe(hash2);
   });
 });

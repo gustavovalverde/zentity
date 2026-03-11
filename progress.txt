@@ -17,7 +17,22 @@
 - Discovery metadata: acr_values_supported + claims_supported enriched via well-known-utils.ts
 - 18 unit tests for pure functions (all tiers, all login methods, edge cases)
 
+## OIDC Assurance-Aware ID Tokens — Phase 1 Integration Tests
+- 5 integration tests: tier-0, tier-1 passkey, tier-1 opaque, at_hash binding, scope guard
+- assurance-id-token.integration.test.ts
+
+## OIDC Assurance-Aware ID Tokens — Phase 2: at_hash (Access Token Hash Binding)
+- Pure function: computeAtHash in src/lib/assurance/oidc-claims.ts
+- Vendor tarball patch: sequenced access token creation before ID token in createUserTokens, passed accessToken to customIdTokenClaims via createIdToken
+- Type def patch: added accessToken?: string to customIdTokenClaims info param
+- Wired in auth.ts: computes at_hash from accessToken + client signing alg (metadata.id_token_signed_response_alg, default RS256)
+- Discovery: at_hash added to claims_supported
+- 7 unit tests for computeAtHash (RS256, ES256, EdDSA, ML-DSA-65, unknown alg, same-alg equivalence, different-token divergence)
+- 1 integration test verifying at_hash matches recomputed SHA-256 left-half of access_token
+
+# Architectural decisions
+- Vendor sequencing: broke Promise.all parallelism in createUserTokens — access token created first (await), then refresh token + ID token in parallel. Enables at_hash in customIdTokenClaims without post-hoc re-signing.
+- Signing alg resolution: reads metadata.id_token_signed_response_alg from client metadata (same source of truth as jwt-signer.ts), defaults to RS256.
+
 # What's Next
-- Phase 1 integration test: seed user at each tier, authorize, verify ID token claims
-- Phase 2: at_hash (access token hash binding) — needs access token in customIdTokenClaims or post-hoc hook
 - Phase 3: token exchange + demo-rp integration

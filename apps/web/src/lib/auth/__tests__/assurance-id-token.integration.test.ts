@@ -150,6 +150,47 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
   });
 
+  it("at_hash binds ID token to companion access token", async () => {
+    await seedTier1User(userId);
+
+    await db
+      .insert((await import("@/lib/db/schema/auth")).sessions)
+      .values({
+        id: crypto.randomUUID(),
+        userId,
+        token: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastLoginMethod: "passkey",
+      })
+      .run();
+
+    const authReqId = await insertCibaRequest({ userId });
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+    expect(status).toBe(200);
+
+    const idToken = json.id_token as string;
+    const accessToken = json.access_token as string;
+    expect(idToken).toBeDefined();
+    expect(accessToken).toBeDefined();
+
+    const claims = decodeJwt(idToken);
+    expect(claims.at_hash).toBeDefined();
+
+    // Verify: recompute at_hash from access token (default RS256 → SHA-256)
+    const hash = crypto
+      .createHash("sha256")
+      .update(accessToken, "ascii")
+      .digest();
+    const expectedAtHash = hash.subarray(0, 16).toString("base64url");
+    expect(claims.at_hash).toBe(expectedAtHash);
+  });
+
   it("omits assurance claims when openid scope is absent", async () => {
     await seedTier1User(userId);
 
