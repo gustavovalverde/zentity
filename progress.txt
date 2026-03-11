@@ -1,74 +1,29 @@
-## First-Party Apps — Phase 1: Authorization Challenge Endpoint
-- Created POST /api/oauth2/authorize-challenge with 3-round OPAQUE flow
-- Round 1: identifier + OAuth params → auth_session + challenge_type + server_public_key
-- Round 2: auth_session + opaque_login_request → opaque_login_response
-- Round 3: auth_session + opaque_finish_request → authorization_code
-- DPoP key bound at round 1 and enforced on subsequent rounds
-- Auth code stored in verification table (same SHA-256 format as oauth-provider)
-- redirect_to_web returned for users without OPAQUE credentials
-- authorization_challenge_endpoint added to discovery metadata
-- Files: apps/web/src/app/api/oauth2/authorize-challenge/route.ts (new)
-- Files: apps/web/src/lib/auth/well-known-utils.ts (discovery)
-- Integration tests: 7 tests covering all 3 rounds, error cases, session validation
-- Test infra: real OPAQUE server setup in vitest.setup.mts, authChallengeSessions in resetDatabase
-- Token exchange: auth code exchangeable at /oauth2/token without redirect_uri
-- Token response includes auth_session for future step-up re-authentication
-- Vendor tarball patched: redirect_uri optional, session creation deferred, auth_session pass-through
-- Auth code hash fixed: base64url encoding to match oauth-provider's defaultHasher
-- Phase 1 COMPLETE: all acceptance criteria met
+## CIBA Notifications Remediation — Phase 1 & 2 Complete
 
-## First-Party Apps — Phase 2: redirect_to_web + Credential Resolution
-- Credential resolution: OPAQUE > EIP-712 wallet > redirect_to_web (passkey-only)
-- Unknown users get OPAQUE challenge (timing-safe, indistinguishable from real OPAQUE)
-- redirect_to_web includes PAR request_uri when code_challenge present (FPA draft §3.2)
-- PAR record stored in haipPushedRequests, consumable at standard authorize endpoint
-- No request_uri when no code_challenge (per spec)
-- code_challenge/method now optional in schema + request validation
-- Tests: passkey-only → redirect_to_web + request_uri, no PKCE → no request_uri, unknown → opaque
-- Phase 2 COMPLETE
+Task: ciba-notifications-remediation.md (Phase 1 + Phase 2)
 
-## First-Party Apps — Phase 5: First-Party Enforcement + Hardening
-- `firstParty` boolean column added to oauthClients schema (default: false)
-- Non-first-party clients receive `redirect_to_web` unconditionally (no credential resolution)
-- Rate limiting: 10 requests/minute per IP via sliding window (X-Forwarded-For)
-- Lazy session cleanup: expired authChallengeSessions deleted on each request
-- DPoP key continuity enforced across all 3 rounds (already existed, now tested)
-- Tests: non-first-party → redirect_to_web, rate limit → 429, per-IP isolation, DPoP key switch → invalid_session
-- Phase 5 COMPLETE
+### Completed
+- Phase 1: Set up vitest + @testing-library/react in apps/demo-rp
+  - vitest.config.mts with JSDOM environment
+  - `pnpm test` script added to package.json
+  - Dev deps: vitest, @testing-library/react, @testing-library/dom, jsdom, @types/jsdom
+- Phase 2: Regression tests for use-ciba-flow.ts (10 tests, all passing)
+  - classifyPollResponse: 7 unit tests covering all response types
+  - Hook state machine: 3 tests (happy path, inflight guard, terminal monotonicity)
+  - Exported classifyPollResponse for direct testing
 
-## First-Party Apps — Phase 3: EIP-712 Wallet Challenge Flow
-- Extracted shared EIP-712 utils (buildDefaultTypedData, verifyEip712Signature, nonceIdentifier) into plugins/eip712/utils.ts
-- Plugin server.ts refactored to use shared utils (no behavior change)
-- 2-round wallet auth: Round 1 returns nonce + typed_data, Round 2 verifies signature → authorization_code
-- Identifier supports both email and Ethereum address (0x-prefixed, 42 chars)
-- Wallet context (address, chainId, nonce) stored in opaqueServerState as JSON
-- Nonce stored in verifications table (same as plugin), consumed on round 2
-- verifyEip712Signature catches invalid signature errors (returns false vs throwing)
-- issueAuthorizationCode extracted as shared helper (used by OPAQUE and EIP-712 finish)
-- Tests: eip712 challenge by email, by address, full 2-round flow, token exchange, invalid signature
-- Phase 3 COMPLETE
+### Key decisions
+- Used fake timers + advanceTimersByTimeAsync for hook tests (not waitFor, which deadlocks with fake timers)
+- Mock implementations use Promise.resolve() instead of async to satisfy Biome's useAwait rule
+- Terminal guard tested via time-advance past expire timeout — verifies both stopPolling cleanup and terminalRef guard
 
-## First-Party Apps — Phase 4: Step-Up Re-Authentication
-- Token endpoint returns HTTP 403 + auth_session for FPA clients when CIBA acr_values unsatisfied
-- Non-FPA clients continue to receive 400 interaction_required (unchanged behavior)
-- enforceCibaTokenAcr detects firstParty flag, creates challenge session with DPoP JKT + scope + acrValues
-- Challenge endpoint accepts step-up re-entry: auth_session (no challengeType) → resolves credentials → starts OPAQUE/EIP-712
-- resolveCredentialType helper extracted (shared credential resolution logic)
-- Step-up sessions gated by !session.challengeType (prevents hijacking regular sessions)
-- Optional PKCE (code_challenge/code_challenge_method) accepted on step-up re-entry for public clients
-- DPoP key consistency enforced from CIBA token request through challenge rounds
-- acrValues column added to authChallengeSessions schema
-- Tests: FPA→403+auth_session, non-FPA→400, step-up re-entry→OPAQUE, full CIBA→challenge→tokens, DPoP consistency
-- Phase 4 COMPLETE
-- ALL 5 PHASES COMPLETE
+### Files changed
+- apps/demo-rp/package.json — added test script + dev deps
+- apps/demo-rp/vitest.config.mts — new vitest config (JSDOM)
+- apps/demo-rp/src/hooks/use-ciba-flow.ts — exported classifyPollResponse
+- apps/demo-rp/src/hooks/use-ciba-flow.test.ts — new test file (10 tests)
+- docs/plans/tasks/ciba-notifications-remediation.md — marked all criteria done
 
-## Documentation Alignment (Post First-Party Apps)
-- docs/oauth-integrations.md: added authorize-challenge endpoint, First-Party Challenge flow section with mermaid diagrams, acr_values enforcement on CIBA, discovery metadata (authorization_challenge_endpoint, acr_values_supported), firstParty client flag, HAIP table rows
-- CLAUDE.md: added First-Party Apps paragraph, updated CIBA paragraph with acr_values enforcement
-- docs/plans/tasks/first-party-apps.md: all 42 checkboxes already [x] from prior commits
-
-## Mobile Push PWA — All 3 Phases Already Complete
-- Phase 1 (Manifest + Installability): manifest.ts with display: standalone, icons, shortcuts, theme/bg colors
-- Phase 2 (Deep-Link Route + Rich Notifications): /approve/[authReqId] standalone route, buildNotificationBody with authorization_details, approvalUrl uses /approve/ path
-- Phase 3 (App Shell Caching): push-sw.js fetch handler with StaleWhileRevalidate for /approve/*, CacheFirst for static, network-only for API
-- All implementation was done in prior sessions; task checkboxes marked complete
+### Notes
+- All 7 findings from the original CIBA review are now covered by automated regression tests
+- The ciba-notifications-remediation plan is complete and can be archived

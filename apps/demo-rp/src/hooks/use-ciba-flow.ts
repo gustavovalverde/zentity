@@ -37,7 +37,7 @@ type PollResult =
   | { kind: "slow_down" }
   | { kind: "terminal"; state: CibaState; message?: string };
 
-function classifyPollResponse(
+export function classifyPollResponse(
   status: number,
   body: Record<string, unknown>
 ): PollResult {
