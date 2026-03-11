@@ -29,6 +29,7 @@ export const authChallengeSessions = sqliteTable(
     challengeType: text("challenge_type", {
       enum: ["opaque", "eip712", "redirect_to_web"],
     }),
+    acrValues: text("acr_values"),
     opaqueServerState: text("opaque_server_state"),
     authorizationCode: text("authorization_code").unique(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),

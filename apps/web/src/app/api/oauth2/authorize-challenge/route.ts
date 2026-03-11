@@ -173,6 +173,9 @@ export async function POST(request: Request): Promise<Response> {
   if (body.client_id && body.identifier) {
     return handleInitialRequest(request, body);
   }
+  if (body.auth_session) {
+    return handleStepUpReEntry(request, body);
+  }
 
   return errorJson(400, "invalid_request", "Unrecognized request format");
 }
@@ -636,6 +639,156 @@ async function handleEip712Finish(
   }
 
   return issueAuthorizationCode(session, user.id, auth_session);
+}
+
+// ── Step-up re-entry: resume auth after 403 ─────────────
+
+async function resolveCredentialType(
+  userId: string
+): Promise<"opaque" | "eip712" | "redirect_to_web"> {
+  const opaqueAccount = await db
+    .select({ registrationRecord: accounts.registrationRecord })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, "opaque")))
+    .get();
+
+  if (opaqueAccount?.registrationRecord) {
+    return "opaque";
+  }
+
+  const walletAccount = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, "eip712")))
+    .get();
+
+  return walletAccount ? "eip712" : "redirect_to_web";
+}
+
+async function handleStepUpReEntry(
+  request: Request,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const authSession =
+    typeof body.auth_session === "string" ? body.auth_session : "";
+  if (!authSession) {
+    return errorJson(400, "invalid_request", "Missing auth_session");
+  }
+
+  const session = await loadSession(authSession);
+  if (!session || isExpired(session)) {
+    return errorJson(400, "invalid_session", "Session expired or not found");
+  }
+  // Only step-up sessions (created without challengeType) can enter here
+  if (session.state !== "pending" || session.challengeType) {
+    return errorJson(400, "invalid_session", "Invalid session state");
+  }
+  if (!session.userId) {
+    return errorJson(400, "invalid_session", "No user associated with session");
+  }
+
+  // DPoP key continuity
+  const dpopJkt = await extractDpopJkt(request);
+  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
+    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  }
+
+  // Verify user still exists
+  const user = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .get();
+  if (!user) {
+    return errorJson(401, "access_denied", "User not found");
+  }
+
+  const challengeType = await resolveCredentialType(user.id);
+
+  // Update session with resolved challenge type
+  await db
+    .update(authChallengeSessions)
+    .set({ challengeType })
+    .where(eq(authChallengeSessions.id, session.id));
+
+  if (challengeType === "redirect_to_web") {
+    return errorJson(
+      400,
+      "redirect_to_web",
+      "Passkey-only users must use browser flow"
+    );
+  }
+
+  if (challengeType === "eip712") {
+    const wallet = await db
+      .select({
+        address: walletAddresses.address,
+        chainId: walletAddresses.chainId,
+      })
+      .from(walletAddresses)
+      .where(eq(walletAddresses.userId, user.id))
+      .get();
+
+    if (!wallet) {
+      return errorJson(401, "access_denied", "Authentication failed");
+    }
+
+    const nonce = crypto.randomUUID();
+    const nid = nonceIdentifier(wallet.address, wallet.chainId);
+
+    await db.insert(verifications).values({
+      id: randomBytes(16).toString("hex"),
+      identifier: nid,
+      value: nonce,
+      expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS).toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await db
+      .update(authChallengeSessions)
+      .set({
+        opaqueServerState: JSON.stringify({
+          walletAddress: wallet.address,
+          chainId: wallet.chainId,
+          nonce,
+          nonceIdentifier: nid,
+        }),
+      })
+      .where(eq(authChallengeSessions.id, session.id));
+
+    const typedData = buildDefaultTypedData(
+      wallet.address,
+      wallet.chainId,
+      nonce,
+      EIP712_APP_NAME
+    );
+
+    return NextResponse.json(
+      {
+        auth_session: authSession,
+        challenge_type: "eip712",
+        error: "insufficient_authorization",
+        nonce,
+        typed_data: typedData,
+      },
+      { status: 401 }
+    );
+  }
+
+  // OPAQUE
+  await ready;
+  const serverPublicKey = server.getPublicKey(env.OPAQUE_SERVER_SETUP);
+
+  return NextResponse.json(
+    {
+      auth_session: authSession,
+      challenge_type: "opaque",
+      error: "insufficient_authorization",
+      server_public_key: serverPublicKey,
+    },
+    { status: 401 }
+  );
 }
 
 // ── Shared: Issue authorization code ────────────────────
