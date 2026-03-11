@@ -199,9 +199,12 @@ export const getAssuranceState = cache(async function getAssuranceState(
  */
 export async function getAssuranceForOAuth(
   userId: string
-): Promise<AssuranceState> {
+): Promise<AssuranceState & { authTime: number }> {
   const latestSession = await db
-    .select({ lastLoginMethod: sessions.lastLoginMethod })
+    .select({
+      lastLoginMethod: sessions.lastLoginMethod,
+      createdAt: sessions.createdAt,
+    })
     .from(sessions)
     .where(eq(sessions.userId, userId))
     .orderBy(desc(sessions.createdAt))
@@ -211,11 +214,18 @@ export async function getAssuranceForOAuth(
   const storedLoginMethod = latestSession?.lastLoginMethod ?? null;
   const data = await gatherVerificationData(userId, storedLoginMethod);
 
-  return computeAssuranceState({
-    hasSession: true,
-    loginMethod: data.lastLoginMethod,
-    ...data,
-  });
+  const authTime = latestSession?.createdAt
+    ? Math.floor(new Date(latestSession.createdAt).getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
+
+  return {
+    ...computeAssuranceState({
+      hasSession: true,
+      loginMethod: data.lastLoginMethod,
+      ...data,
+    }),
+    authTime,
+  };
 }
 
 /**

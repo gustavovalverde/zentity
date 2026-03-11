@@ -103,6 +103,9 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.amr).toEqual(["pop", "hwk", "user"]);
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
+    const now = Math.floor(Date.now() / 1000);
+    expect(claims.auth_time as number).toBeLessThanOrEqual(now);
+    expect(claims.auth_time as number).toBeGreaterThan(now - 3600);
   });
 
   it("tier-1 opaque user gets amr=pwd", async () => {
@@ -152,6 +155,9 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
+    const now = Math.floor(Date.now() / 1000);
+    expect(claims.auth_time as number).toBeLessThanOrEqual(now);
+    expect(claims.auth_time as number).toBeGreaterThan(now - 3600);
   });
 
   it("at_hash binds ID token to companion access token", async () => {

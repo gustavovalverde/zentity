@@ -18,3 +18,18 @@
 - Follows `oidc-well-known.test.ts` pattern (dynamic import of route handler, no mocks)
 - Files:
   - NEW: apps/web/src/lib/auth/__tests__/a2a-agent-card.integration.test.ts
+
+## Gap Closure for Implemented Plans
+
+### Phase 1: auth_time claim in ID tokens — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 1)
+- Decisions:
+  - `auth_time` sourced from `sessions.createdAt` (OIDC Core §2), not `Date.now()`
+  - Falls back to `Date.now()` when no session exists (e.g., bare CIBA grants without prior session)
+  - `getAssuranceForOAuth` return type extended to `AssuranceState & { authTime: number }`
+  - Token-exchange path also fixed to use session-derived `authTime` instead of `now`
+- Files:
+  - MOD: apps/web/src/lib/assurance/data.ts — select `sessions.createdAt`, compute `authTime`
+  - MOD: apps/web/src/lib/auth/auth.ts — emit `auth_time` in `customIdTokenClaims`
+  - MOD: apps/web/src/lib/auth/oidc/token-exchange.ts — use `assurance.authTime` instead of `now`
+  - MOD: apps/web/src/lib/auth/__tests__/assurance-id-token.integration.test.ts — stronger bounds assertions

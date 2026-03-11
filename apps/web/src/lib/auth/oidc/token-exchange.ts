@@ -266,7 +266,7 @@ function createTokenExchangeHandler(): (
         acr: computeAcr(assurance.tier),
         acr_eidas: computeAcrEidas(assurance.tier),
         amr: loginMethodToAmr(assurance.loginMethod),
-        auth_time: now,
+        auth_time: assurance.authTime,
       };
 
       const idToken = await signJwt(idTokenPayload);

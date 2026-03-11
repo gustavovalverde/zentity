@@ -1025,6 +1025,7 @@ export const auth = betterAuth({
             acr: computeAcr(assurance.tier),
             acr_eidas: computeAcrEidas(assurance.tier),
             amr: loginMethodToAmr(assurance.loginMethod),
+            auth_time: assurance.authTime,
             at_hash: accessToken
               ? computeAtHash(accessToken, signingAlg)
               : undefined,
