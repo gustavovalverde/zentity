@@ -1,100 +1,13 @@
 # Tasks completed in this session
 
-## Regression Test Backfill (CIBA Notifications Remediation)
-- Covers Phase 2 and Phase 3 acceptance criteria gaps
-- authorization_details round-trip through /api/oauth2/release into id_token (Phase 2)
-- Same user with two pending CIBA requests each gets correct release handle (Phase 3)
+## CIBA Notifications Remediation — Missing AC Tests
+- Phase 3 AC-7: non-identity CIBA token doesn't consume staged release handle (ciba-token.integration.test.ts)
+- Phase 3 AC-8: concurrent release redemption yields exactly one success (release-endpoint.integration.test.ts)
+- Phase 3 AC-5: rollback on decrypt failure preserves redeemability (release-endpoint.integration.test.ts)
 
-### Files changed
-- apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts (+1 test)
-- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (+1 test)
+# Architectural decisions
+- Concurrent release test accepts 400 OR 410 for loser — Node.js single-threaded async means the second caller may re-read DB after status="claiming", hitting status guard (400) instead of atomic claim race (410). Both prevent double PII delivery.
 
----
-
-## Phase 4: Demo-rp Ping Flow Hardening (CIBA Notifications Remediation)
-- PRD ref: Finding 7 (demo-rp ping/poll race conditions)
-- In-flight fetch deduplication via inflightRef prevents overlapping token requests
-- Monotonic state guard via terminalRef — once terminal state reached, all subsequent results ignored
-- Ping handler suspends poll interval before triggering fast-path fetch (no dual-path collision)
-- Expiry timeout checks terminalRef before transitioning state
-- Removed unused TERMINAL_STATES constant
-
-### Files changed
-- apps/demo-rp/src/hooks/use-ciba-flow.ts (inflight dedup, monotonic guard, ping suspends poll)
-- apps/demo-rp/src/lib/auth.ts (pre-existing formatting fix)
-
----
-
-## Phase 3: Release Handle Scoping and Atomic Redemption (CIBA Notifications Remediation)
-- PRD ref: Findings 2, 4 (release handle scope collision, non-atomic release)
-- Ephemeral release handle store re-keyed by authReqId with userId reverse index
-- customAccessTokenClaims guarded: only consumes handles when identity scopes present
-- Non-CIBA grants (auth-code, refresh, token-exchange) can no longer steal CIBA handles
-- Release endpoint uses 3-phase atomic claim: approved → claiming → redeemed
-- Rollback to "approved" if decrypt/sign fails mid-request
-- Concurrent callers get exactly one success (SQLite serialized writes)
-
-### Files changed
-- apps/web/src/lib/auth/oidc/ephemeral-release-handles.ts (rewrite: authReqId-keyed store + userId index)
-- apps/web/src/lib/auth/auth.ts (guard customAccessTokenClaims with identity scope check)
-- apps/web/src/app/api/oauth2/release/route.ts (3-phase atomic claim with rollback)
-- apps/web/src/app/api/ciba/identity/stage/route.ts (pass authReqId to stageReleaseHandle)
-- apps/web/src/lib/auth/__tests__/ciba-token.integration.test.ts (updated stageReleaseHandle calls + scope)
-- apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts (updated stageReleaseHandle calls)
-
----
-
-## Phase 2: Intent and Approval Context Binding (CIBA Notifications Remediation)
-- PRD ref: Findings 5, 6 (intent tokens not bound to auth_req_id, authorization_details dropped)
-- Intent token payload now includes optional authReqId field
-- CIBA intent route passes auth_req_id into createIdentityIntentToken
-- Stage route verifies intentPayload.authReqId === auth_req_id before accepting
-- Stage route reads authorizationDetails from CIBA request and persists in approvals row
-- Release endpoint already reads approvals.authorizationDetails — no change needed
-- OAuth2 consent flow unaffected (authReqId is optional, absent for non-CIBA)
-- 5 new integration tests: authReqId binding, cross-request replay rejection, authorization_details persistence
-
-### Files changed
-- apps/web/src/lib/auth/oidc/identity-intent.ts (add authReqId to schema + creation + interface)
-- apps/web/src/app/api/ciba/identity/intent/route.ts (pass authReqId)
-- apps/web/src/app/api/ciba/identity/stage/route.ts (verify authReqId + persist authorizationDetails)
-- apps/web/src/app/api/ciba/identity/__tests__/intent-binding.integration.test.ts (NEW, 5 tests)
-
----
-
-## Phase 1: Push Notification Safety (CIBA Notifications Remediation)
-- PRD ref: Findings 1, 3 (push ownership transfer, service worker bypass)
-- Subscribe endpoint upserts userId on conflict — transfers ownership when different user resubscribes same browser endpoint
-- Push payload includes requiresVaultUnlock flag derived from identity scopes in CIBA request
-- Service worker suppresses quick-approve action for identity-scoped requests; deny stays
-- Identity-scoped notification clicks always open approval page (never direct API call)
-- Non-identity CIBA requests retain both approve/deny quick actions
-- 1 new integration test: endpoint ownership transfer across two users
-- 1 new unit test: requiresVaultUnlock flag preserved in serialized push payload
-
-### Files changed
-- apps/web/src/app/api/push/subscribe/route.ts (add userId to upsert set)
-- apps/web/src/lib/auth/auth.ts (add requiresVaultUnlock to push payload)
-- apps/web/public/push-sw.js (conditional actions + identity-scoped click routing)
-- apps/web/src/app/api/push/__tests__/push-routes.integration.test.ts (ownership transfer test)
-- apps/web/src/lib/push/__tests__/web-push.test.ts (payload flag test)
-
----
-
-## Phase 1: Protected Resource Metadata + Discovery (MCP Compatibility)
-- PRD ref: Phase 1 (User stories 1, 9, 12)
-- RFC 9728 endpoint at /.well-known/oauth-protected-resource
-- Discovery metadata enriched with client_id_metadata_document_supported + resource_indicators_supported
-- 7 new tests (5 RFC 9728 route, 2 MCP discovery flags) + 1 pre-existing CIBA test fix (ping mode)
-- All acceptance criteria met
-
-# Key decisions made and reasoning (architectural decisions)
-- Route is a simple Next.js handler (no [[...issuer]] catch-all) — RFC 9728 defines single path
-- Scopes built inline importing PROOF_SCOPES/IDENTITY_SCOPES constants — stays in sync without coupling to auth.ts
-- resource_signing_alg_values_supported: ["EdDSA"] — matches access token signing alg
-- Cache-Control: public, max-age=3600 (1hr) — per PRD spec, longer than discovery's 15s since this changes rarely
-
-# Files changed
-- apps/web/src/app/.well-known/oauth-protected-resource/route.ts (NEW)
-- apps/web/src/lib/auth/well-known-utils.ts (enrichDiscoveryMetadata + 2 MCP fields)
-- apps/web/src/lib/auth/__tests__/oidc-well-known.test.ts (7 new tests + CIBA ping fix)
+# What's Next
+- Verify remaining CIBA plan gaps (Phase 1 AC-8: SW integration test is structural/browser-only; Phase 4 AC-4: demo-rp regression test)
+- Start oidc-assurance-aware-id-tokens plan (Phase 1: core assurance claims)

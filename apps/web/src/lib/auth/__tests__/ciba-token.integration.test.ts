@@ -331,5 +331,43 @@ describe("CIBA token endpoint", () => {
       const payload = decodeJwt(json.access_token as string);
       expect(payload.release_handle).toBeUndefined();
     });
+
+    it("non-identity token issuance does not consume a staged handle", async () => {
+      // Stage a handle for an identity-scoped request
+      const identityAuthReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+        scope: "openid identity.name",
+      });
+      const handle = crypto.randomBytes(32).toString("base64url");
+      stageReleaseHandle(identityAuthReqId, handle, userId);
+
+      // Issue a non-identity CIBA token (openid only) — interleaved
+      const nonIdentityAuthReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+        scope: "openid",
+      });
+      const { json: nonIdentityJson } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: nonIdentityAuthReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+      const nonIdentityPayload = decodeJwt(
+        nonIdentityJson.access_token as string
+      );
+      expect(nonIdentityPayload.release_handle).toBeUndefined();
+
+      // Now mint the identity-scoped token — handle should still be available
+      const { json: identityJson } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: identityAuthReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+      const identityPayload = decodeJwt(identityJson.access_token as string);
+      expect(identityPayload.release_handle).toBe(handle);
+    });
   });
 });

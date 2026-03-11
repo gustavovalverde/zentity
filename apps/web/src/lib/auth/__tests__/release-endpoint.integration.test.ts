@@ -291,6 +291,83 @@ describe("POST /api/oauth2/release", () => {
     expect(idToken.birthdate).toBeUndefined();
   });
 
+  it("concurrent redemption: exactly one succeeds, the other is rejected", async () => {
+    const sealed = await createApprovalRecord({
+      userId,
+      clientId: TEST_CLIENT_ID,
+      pii: { given_name: "ConcurrentAlice" },
+      scopes: "openid identity.name",
+    });
+
+    const token = await mintTestAccessToken({
+      sub: userId,
+      azp: TEST_CLIENT_ID,
+      release_handle: sealed.releaseHandle,
+    });
+
+    const [r1, r2] = await Promise.all([
+      postRelease(token),
+      postRelease(token),
+    ]);
+
+    const winner = r1.status === 200 ? r1 : r2;
+    const loser = r1.status === 200 ? r2 : r1;
+
+    expect(winner.status).toBe(200);
+    expect(winner.json.id_token).toBeDefined();
+    // The loser may get 410 (atomic claim race) or 400 (status already
+    // transitioned to "claiming" before it re-reads). Both prevent double PII.
+    expect(loser.status).toBeGreaterThanOrEqual(400);
+    expect(loser.json.id_token).toBeUndefined();
+  });
+
+  it("rolls back to approved when decryption fails, preserving redeemability", async () => {
+    const sealed = await createApprovalRecord({
+      userId,
+      clientId: TEST_CLIENT_ID,
+      pii: { given_name: "RollbackAlice" },
+      scopes: "openid identity.name",
+    });
+
+    // Corrupt the encrypted PII in the DB so unsealApprovalPii throws
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(approvals)
+      .set({ encryptedPii: "corrupted-ciphertext" })
+      .where(eq(approvals.releaseHandleHash, sealed.releaseHandleHash))
+      .run();
+
+    const token = await mintTestAccessToken({
+      sub: userId,
+      azp: TEST_CLIENT_ID,
+      release_handle: sealed.releaseHandle,
+    });
+
+    // First call should fail with server_error due to corrupt ciphertext
+    const { status, json } = await postRelease(token);
+    expect(status).toBe(500);
+    expect(json.error).toBe("server_error");
+
+    // Verify status was rolled back to "approved"
+    const row = await db
+      .select({ status: approvals.status })
+      .from(approvals)
+      .where(eq(approvals.releaseHandleHash, sealed.releaseHandleHash))
+      .get();
+    expect(row?.status).toBe("approved");
+
+    // Fix the PII and verify the approval is still redeemable
+    await db
+      .update(approvals)
+      .set({ encryptedPii: sealed.encryptedPii })
+      .where(eq(approvals.releaseHandleHash, sealed.releaseHandleHash))
+      .run();
+
+    const { status: retryStatus, json: retryJson } = await postRelease(token);
+    expect(retryStatus).toBe(200);
+    expect(retryJson.id_token).toBeDefined();
+  });
+
   describe("DPoP sender-constraining", () => {
     let dpopKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
     let dpopJwk: JWK;
