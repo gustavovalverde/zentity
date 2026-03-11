@@ -47,3 +47,17 @@
 - issueAuthorizationCode extracted as shared helper (used by OPAQUE and EIP-712 finish)
 - Tests: eip712 challenge by email, by address, full 2-round flow, token exchange, invalid signature
 - Phase 3 COMPLETE
+
+## First-Party Apps — Phase 4: Step-Up Re-Authentication
+- Token endpoint returns HTTP 403 + auth_session for FPA clients when CIBA acr_values unsatisfied
+- Non-FPA clients continue to receive 400 interaction_required (unchanged behavior)
+- enforceCibaTokenAcr detects firstParty flag, creates challenge session with DPoP JKT + scope + acrValues
+- Challenge endpoint accepts step-up re-entry: auth_session (no challengeType) → resolves credentials → starts OPAQUE/EIP-712
+- resolveCredentialType helper extracted (shared credential resolution logic)
+- Step-up sessions gated by !session.challengeType (prevents hijacking regular sessions)
+- Optional PKCE (code_challenge/code_challenge_method) accepted on step-up re-entry for public clients
+- DPoP key consistency enforced from CIBA token request through challenge rounds
+- acrValues column added to authChallengeSessions schema
+- Tests: FPA→403+auth_session, non-FPA→400, step-up re-entry→OPAQUE, full CIBA→challenge→tokens, DPoP consistency
+- Phase 4 COMPLETE
+- ALL 5 PHASES COMPLETE
