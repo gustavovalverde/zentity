@@ -7,6 +7,8 @@ import { getAuthIssuer } from "@/lib/auth/issuer";
 import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
+import { sessions } from "@/lib/db/schema/auth";
+import { identityBundles } from "@/lib/db/schema/identity";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
@@ -214,6 +216,51 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.iss).toBe(authIssuer);
       expect(payload.aud).toBe(TEST_CLIENT_ID);
       expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
+    });
+
+    it("includes assurance claims (acr, acr_eidas, amr, auth_time)", async () => {
+      // Seed tier-1 user: identity bundle with FHE keys
+      await db
+        .insert(identityBundles)
+        .values({
+          userId,
+          fheKeyId: "test-fhe-key-id",
+          fheStatus: "complete",
+          status: "verified",
+        })
+        .run();
+
+      // Seed session with lastLoginMethod=passkey
+      await db
+        .insert(sessions)
+        .values({
+          id: crypto.randomUUID(),
+          userId,
+          token: crypto.randomUUID(),
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          lastLoginMethod: "passkey",
+        })
+        .run();
+
+      const subjectToken = await mintAccessToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        requested_token_type: ID_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.acr).toBe("urn:zentity:assurance:tier-1");
+      expect(payload.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
+      expect(payload.amr).toEqual(["pop", "hwk", "user"]);
+      expect(payload.auth_time).toBeDefined();
+      expect(typeof payload.auth_time).toBe("number");
     });
   });
 

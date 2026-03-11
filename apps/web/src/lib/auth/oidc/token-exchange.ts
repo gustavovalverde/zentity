@@ -12,6 +12,12 @@ import {
   jwtVerify,
 } from "jose";
 
+import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import {
+  computeAcr,
+  computeAcrEidas,
+  loginMethodToAmr,
+} from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { db } from "@/lib/db/connection";
@@ -248,6 +254,7 @@ function createTokenExchangeHandler(): (
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
+      const assurance = await getAssuranceForOAuth(sub);
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
         sub,
@@ -256,6 +263,10 @@ function createTokenExchangeHandler(): (
         iat: now,
         exp,
         act: actClaim,
+        acr: computeAcr(assurance.tier),
+        acr_eidas: computeAcrEidas(assurance.tier),
+        amr: loginMethodToAmr(assurance.loginMethod),
+        auth_time: now,
       };
 
       const idToken = await signJwt(idTokenPayload);

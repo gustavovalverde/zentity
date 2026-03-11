@@ -34,5 +34,11 @@
 - Vendor sequencing: broke Promise.all parallelism in createUserTokens — access token created first (await), then refresh token + ID token in parallel. Enables at_hash in customIdTokenClaims without post-hoc re-signing.
 - Signing alg resolution: reads metadata.id_token_signed_response_alg from client metadata (same source of truth as jwt-signer.ts), defaults to RS256.
 
+## OIDC Assurance-Aware ID Tokens — Phase 3: Token Exchange Enrichment
+- Token exchange ID token output now includes acr, acr_eidas, amr, auth_time
+- Uses getAssuranceForOAuth (same as CIBA path) to resolve user's current tier
+- at_hash not applicable: RFC 8693 produces a single token per exchange, no companion
+- Integration test: exchanges access_token → id_token, verifies acr/amr/auth_time present
+
 # What's Next
-- Phase 3: token exchange + demo-rp integration
+- Phase 3 demo-rp: display acr/amr in scenario dashboards, validate at_hash
