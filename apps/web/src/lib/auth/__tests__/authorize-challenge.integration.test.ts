@@ -299,6 +299,30 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBeGreaterThanOrEqual(400);
       expect(json.error).toBeDefined();
     });
+
+    it("rejects replay of already-exchanged authorization code", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const { authorizationCode } = await completeOpaqueFlow();
+
+      // First exchange succeeds
+      const first = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        client_id: TEST_CLIENT_ID,
+        code: authorizationCode,
+        code_verifier: CODE_VERIFIER,
+      });
+      expect(first.status).toBe(200);
+
+      // Replay with a fresh DPoP key should fail (code consumed)
+      const replay = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        client_id: TEST_CLIENT_ID,
+        code: authorizationCode,
+        code_verifier: CODE_VERIFIER,
+      });
+      expect(replay.status).toBeGreaterThanOrEqual(400);
+      expect(replay.json.error).toBeDefined();
+    });
   });
 
   describe("Session validation", () => {
