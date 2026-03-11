@@ -1,8 +1,13 @@
-## PWA Phase 3: App Shell Caching
-- Added fetch event handler to push-sw.js
-- StaleWhileRevalidate for /approve/* navigation requests
-- CacheFirst for /_next/static/ hashed assets (immutable)
-- Network-only for /api/* and /trpc/* (no interception)
-- Versioned cache name: zentity-shell-v1
-- activate event cleans up old zentity-* caches on version bump
-- Files: apps/web/public/push-sw.js
+## First-Party Apps — Phase 1 Prep: Schema + Shared OPAQUE Login
+- Created authChallengeSessions table schema in src/lib/db/schema/auth-challenge.ts
+- Columns: authSession (unique), clientId (FK), userId (nullable FK), dpopJkt, scope, resource, codeChallenge, codeChallengeMethod, state (enum), challengeType (enum), opaqueServerState, authorizationCode (unique), expiresAt, createdAt
+- Created shared OPAQUE login module at src/lib/auth/plugins/opaque/login.ts
+- Exports: startOpaqueLogin, finishOpaqueLogin, OpaqueLoginError, ResolvedUser types
+- Refactored server.ts getLoginChallenge/completeLogin to use shared module
+- Existing sign-in endpoints still work (plugin uses shared functions via callback pattern)
+- No test regressions
+
+### Architectural decisions
+- Shared module decoupled from better-auth context: uses callbacks for user resolution
+- OpaqueLoginError instead of APIError: callers map to their own error types
+- serverPublicKey derived via server.getPublicKey() (not slice hack)

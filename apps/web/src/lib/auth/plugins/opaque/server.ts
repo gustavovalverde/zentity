@@ -15,8 +15,8 @@ import {
 import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 
+import { finishOpaqueLogin, OpaqueLoginError, startOpaqueLogin } from "./login";
 import {
-  createDummyRegistrationRecord,
   decryptServerLoginState,
   encryptServerLoginState,
   findOpaqueAccount,
@@ -138,66 +138,25 @@ export const opaque = (options: OpaquePluginOptions) => {
           }),
         },
         async (ctx) => {
-          const identifier = normalizeIdentifier(ctx.body.identifier);
-
-          // Validate identifier length to prevent DoS attacks
-          if (identifier.length > 254 || identifier.length < 3) {
-            throw new APIError("BAD_REQUEST", {
-              message: "Invalid identifier format",
+          try {
+            const result = await startOpaqueLogin({
+              identifier: ctx.body.identifier,
+              loginRequest: ctx.body.loginRequest,
+              serverSetup: getServerSetup(),
+              secret: ctx.context.secret,
+              resolveUser: (id) =>
+                resolveUserByIdentifier(
+                  id,
+                  ctx as unknown as OpaqueEndpointContext
+                ),
             });
+            return { challenge: result.challenge, state: result.state };
+          } catch (err) {
+            if (err instanceof OpaqueLoginError) {
+              throw new APIError("BAD_REQUEST", { message: err.message });
+            }
+            throw err;
           }
-
-          validateBase64Length(
-            ctx.body.loginRequest,
-            LOGIN_REQUEST_LENGTH,
-            "login request"
-          );
-
-          const [
-            { registrationRecord: dummyRecord, userIdentifier },
-            resolved,
-          ] = await Promise.all([
-            createDummyRegistrationRecord(),
-            resolveUserByIdentifier(
-              identifier,
-              ctx as unknown as OpaqueEndpointContext
-            ),
-          ]);
-
-          const opaqueAccount = resolved
-            ? findOpaqueAccount(resolved.accounts)
-            : undefined;
-
-          const registrationRecord =
-            opaqueAccount?.registrationRecord || dummyRecord;
-          // If we have a valid OPAQUE account, use the real user ID;
-          // otherwise use the dummy userIdentifier for timing consistency
-          const loginUserIdentifier =
-            opaqueAccount?.registrationRecord && resolved
-              ? resolved.user.id
-              : userIdentifier;
-          const userId =
-            opaqueAccount?.registrationRecord && resolved
-              ? resolved.user.id
-              : null;
-
-          const { serverLoginState, loginResponse } = server.startLogin({
-            serverSetup: getServerSetup(),
-            userIdentifier: loginUserIdentifier,
-            registrationRecord,
-            startLoginRequest: ctx.body.loginRequest,
-          });
-
-          const encryptedServerState = await encryptServerLoginState({
-            serverLoginState,
-            userId,
-            secret: ctx.context.secret,
-          });
-
-          return {
-            challenge: loginResponse,
-            state: encryptedServerState,
-          };
         }
       ),
       completeLogin: createAuthEndpoint(
@@ -211,25 +170,18 @@ export const opaque = (options: OpaquePluginOptions) => {
           }),
         },
         async (ctx) => {
-          const { serverLoginState, userId } = await decryptServerLoginState({
-            encryptedState: ctx.body.encryptedServerState,
-            secret: ctx.context.secret,
-          });
-
-          const { sessionKey } = server.finishLogin({
-            finishLoginRequest: ctx.body.loginResult,
-            serverLoginState,
-          });
-
-          if (!sessionKey) {
-            throw new APIError("UNAUTHORIZED", {
-              message: "Login failed",
-            });
-          }
-          if (!userId) {
-            throw new APIError("UNAUTHORIZED", {
-              message: "Login failed",
-            });
+          let userId: string;
+          try {
+            ({ userId } = await finishOpaqueLogin({
+              loginResult: ctx.body.loginResult,
+              encryptedServerState: ctx.body.encryptedServerState,
+              secret: ctx.context.secret,
+            }));
+          } catch (err) {
+            if (err instanceof OpaqueLoginError) {
+              throw new APIError("UNAUTHORIZED", { message: err.message });
+            }
+            throw err;
           }
 
           const user = await ctx.context.internalAdapter.findUserById(userId);
