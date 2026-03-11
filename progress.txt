@@ -1,13 +1,12 @@
-## First-Party Apps — Phase 1 Prep: Schema + Shared OPAQUE Login
-- Created authChallengeSessions table schema in src/lib/db/schema/auth-challenge.ts
-- Columns: authSession (unique), clientId (FK), userId (nullable FK), dpopJkt, scope, resource, codeChallenge, codeChallengeMethod, state (enum), challengeType (enum), opaqueServerState, authorizationCode (unique), expiresAt, createdAt
-- Created shared OPAQUE login module at src/lib/auth/plugins/opaque/login.ts
-- Exports: startOpaqueLogin, finishOpaqueLogin, OpaqueLoginError, ResolvedUser types
-- Refactored server.ts getLoginChallenge/completeLogin to use shared module
-- Existing sign-in endpoints still work (plugin uses shared functions via callback pattern)
-- No test regressions
-
-### Architectural decisions
-- Shared module decoupled from better-auth context: uses callbacks for user resolution
-- OpaqueLoginError instead of APIError: callers map to their own error types
-- serverPublicKey derived via server.getPublicKey() (not slice hack)
+## First-Party Apps — Phase 1: Authorization Challenge Endpoint
+- Created POST /api/oauth2/authorize-challenge with 3-round OPAQUE flow
+- Round 1: identifier + OAuth params → auth_session + challenge_type + server_public_key
+- Round 2: auth_session + opaque_login_request → opaque_login_response
+- Round 3: auth_session + opaque_finish_request → authorization_code
+- DPoP key bound at round 1 and enforced on subsequent rounds
+- Auth code stored in verification table (same SHA-256 format as oauth-provider)
+- redirect_to_web returned for users without OPAQUE credentials
+- authorization_challenge_endpoint added to discovery metadata
+- Files: apps/web/src/app/api/oauth2/authorize-challenge/route.ts (new)
+- Files: apps/web/src/lib/auth/well-known-utils.ts (discovery)
+- TODO: integration tests, token exchange test

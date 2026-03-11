@@ -44,6 +44,10 @@ export function enrichDiscoveryMetadata(
           jwks_uri: `${issuer}/oauth2/jwks`,
           pushed_authorization_request_endpoint: `${issuer}/oauth2/par`,
           backchannel_authentication_endpoint: `${issuer}/oauth2/bc-authorize`,
+          authorization_challenge_endpoint: new URL(
+            "/api/oauth2/authorize-challenge",
+            issuer
+          ).toString(),
         }
       : {}),
     require_pushed_authorization_requests: true,
