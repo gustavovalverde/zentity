@@ -1,5 +1,68 @@
 /// <reference lib="webworker" />
 
+const CACHE_NAME = "zentity-shell-v1";
+
+// ── App Shell Caching ───────────────────────────────────
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  // Never cache API or tRPC requests
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/trpc/")) {
+    return;
+  }
+
+  // CacheFirst for hashed static assets (immutable once built)
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(event.request).then(
+          (cached) =>
+            cached ||
+            fetch(event.request).then((response) => {
+              cache.put(event.request, response.clone());
+              return response;
+            })
+        )
+      )
+    );
+    return;
+  }
+
+  // StaleWhileRevalidate for /approve/* navigation requests
+  if (
+    event.request.mode === "navigate" &&
+    url.pathname.startsWith("/approve/")
+  ) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          const networkFetch = fetch(event.request).then((response) => {
+            cache.put(event.request, response.clone());
+            return response;
+          });
+          return cached || networkFetch;
+        })
+      )
+    );
+    return;
+  }
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith("zentity-") && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      )
+    )
+  );
+});
+
+// ── Push Notifications ──────────────────────────────────
+
 self.addEventListener("push", (event) => {
   if (!event.data) return;
 

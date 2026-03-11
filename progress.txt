@@ -1,18 +1,8 @@
-## PWA Phase 2: Approval Deep-Link Route + Rich Notifications
-- Created /approve/[authReqId] standalone route outside (dashboard) group
-- Layout follows oauth/consent pattern: branded header, centered card, QueryProvider + Web3Provider
-- Server component detects auth mode (passkey/OPAQUE/wallet) via detectAuthMode
-- Reuses existing CibaApproveClient by refactoring it to accept authReqId as prop
-- Dashboard page updated to read auth_req_id from searchParams and pass as prop
-- Desktop viewports show "View in dashboard" link (hidden on mobile)
-- sendNotification URL updated from /dashboard/ciba/approve?auth_req_id=X to /approve/X
-- Added buildNotificationBody: rich notification body from authorization_details (purchase item + amount)
-- push-sw.js already parameterized via data.approvalUrl — no changes needed
-- Existing /dashboard/ciba/approve still functional for email links
-
-### Files changed
-- apps/web/src/app/approve/[authReqId]/layout.tsx (new)
-- apps/web/src/app/approve/[authReqId]/page.tsx (new)
-- apps/web/src/app/(dashboard)/dashboard/ciba/approve/ciba-approve-client.tsx (refactored: authReqId as prop)
-- apps/web/src/app/(dashboard)/dashboard/ciba/approve/page.tsx (passes authReqId from searchParams)
-- apps/web/src/lib/auth/auth.ts (notification URL + buildNotificationBody)
+## PWA Phase 3: App Shell Caching
+- Added fetch event handler to push-sw.js
+- StaleWhileRevalidate for /approve/* navigation requests
+- CacheFirst for /_next/static/ hashed assets (immutable)
+- Network-only for /api/* and /trpc/* (no interception)
+- Versioned cache name: zentity-shell-v1
+- activate event cleans up old zentity-* caches on version bump
+- Files: apps/web/public/push-sw.js
