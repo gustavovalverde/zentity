@@ -96,6 +96,7 @@ async function callChallenge(
 // RFC 7636 example: code_verifier → code_challenge (S256)
 const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+const PAR_URI_RE = /^urn:ietf:params:oauth:request_uri:.+/;
 
 async function completeOpaqueFlow(): Promise<{
   authSession: string;
@@ -164,7 +165,7 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.server_public_key).toBeTypeOf("string");
     });
 
-    it("returns redirect_to_web for user without OPAQUE credentials", async () => {
+    it("returns redirect_to_web with request_uri for passkey-only user", async () => {
       await createTestUser({ email: TEST_EMAIL });
 
       const { status, json } = await callChallenge({
@@ -179,9 +180,26 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(400);
       expect(json.error).toBe("redirect_to_web");
       expect(json.auth_session).toBeTypeOf("string");
+      expect(json.request_uri).toBeTypeOf("string");
+      expect(json.request_uri).toMatch(PAR_URI_RE);
     });
 
-    it("returns redirect_to_web for unknown user (timing-safe)", async () => {
+    it("returns redirect_to_web without request_uri when no code_challenge", async () => {
+      await createTestUser({ email: TEST_EMAIL });
+
+      const { status, json } = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        identifier: TEST_EMAIL,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("redirect_to_web");
+      expect(json.request_uri).toBeUndefined();
+    });
+
+    it("returns insufficient_authorization for unknown user (timing-safe)", async () => {
       const { status, json } = await callChallenge({
         client_id: TEST_CLIENT_ID,
         response_type: "code",
@@ -191,8 +209,11 @@ describe("Authorization Challenge Endpoint", () => {
         identifier: "nonexistent@example.com",
       });
 
-      expect(status).toBe(400);
-      expect(json.error).toBe("redirect_to_web");
+      // Unknown users look identical to OPAQUE users — timing-safe
+      expect(status).toBe(401);
+      expect(json.error).toBe("insufficient_authorization");
+      expect(json.challenge_type).toBe("opaque");
+      expect(json.server_public_key).toBeTypeOf("string");
     });
 
     it("rejects unknown client_id", async () => {

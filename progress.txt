@@ -16,3 +16,13 @@
 - Vendor tarball patched: redirect_uri optional, session creation deferred, auth_session pass-through
 - Auth code hash fixed: base64url encoding to match oauth-provider's defaultHasher
 - Phase 1 COMPLETE: all acceptance criteria met
+
+## First-Party Apps — Phase 2: redirect_to_web + Credential Resolution
+- Credential resolution: OPAQUE > EIP-712 wallet > redirect_to_web (passkey-only)
+- Unknown users get OPAQUE challenge (timing-safe, indistinguishable from real OPAQUE)
+- redirect_to_web includes PAR request_uri when code_challenge present (FPA draft §3.2)
+- PAR record stored in haipPushedRequests, consumable at standard authorize endpoint
+- No request_uri when no code_challenge (per spec)
+- code_challenge/method now optional in schema + request validation
+- Tests: passkey-only → redirect_to_web + request_uri, no PKCE → no request_uri, unknown → opaque
+- Phase 2 COMPLETE

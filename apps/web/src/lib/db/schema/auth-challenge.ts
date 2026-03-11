@@ -19,10 +19,8 @@ export const authChallengeSessions = sqliteTable(
     dpopJkt: text("dpop_jkt"),
     scope: text("scope").notNull(),
     resource: text("resource"),
-    codeChallenge: text("code_challenge").notNull(),
-    codeChallengeMethod: text("code_challenge_method")
-      .notNull()
-      .default("S256"),
+    codeChallenge: text("code_challenge"),
+    codeChallengeMethod: text("code_challenge_method"),
     state: text("state", {
       enum: ["pending", "authenticated", "code_issued"],
     })

@@ -21,17 +21,20 @@ import {
   type AuthChallengeSession,
   authChallengeSessions,
 } from "@/lib/db/schema/auth-challenge";
+import { haipPushedRequests } from "@/lib/db/schema/haip";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const CODE_LIFETIME_S = 600;
+const PAR_LIFETIME_MS = 60 * 1000;
+const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 
 // ── Request schemas ─────────────────────────────────────
 
 const InitialRequestSchema = z.object({
   client_id: z.string().min(1),
-  code_challenge: z.string().min(43),
-  code_challenge_method: z.string().default("S256"),
+  code_challenge: z.string().min(43).optional(),
+  code_challenge_method: z.string().default("S256").optional(),
   identifier: z.string().min(1),
   resource: z.string().url().optional(),
   response_type: z.literal("code"),
@@ -156,7 +159,9 @@ async function handleInitialRequest(
     .get();
 
   // Determine challenge type based on available credentials
-  let challengeType: "opaque" | "redirect_to_web" = "redirect_to_web";
+  // Priority: OPAQUE > EIP-712 wallet > redirect_to_web (passkey-only)
+  // Unknown users get OPAQUE challenge (timing-safe — indistinguishable from real OPAQUE users)
+  let challengeType: "opaque" | "eip712" | "redirect_to_web" = "opaque";
   if (user) {
     const opaqueAccount = await db
       .select({ registrationRecord: accounts.registrationRecord })
@@ -167,6 +172,15 @@ async function handleInitialRequest(
       .get();
     if (opaqueAccount?.registrationRecord) {
       challengeType = "opaque";
+    } else {
+      const walletAccount = await db
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(
+          and(eq(accounts.userId, user.id), eq(accounts.providerId, "eip712"))
+        )
+        .get();
+      challengeType = walletAccount ? "eip712" : "redirect_to_web";
     }
   }
 
@@ -188,9 +202,28 @@ async function handleInitialRequest(
   });
 
   if (challengeType === "redirect_to_web") {
-    return errorJson(400, "redirect_to_web", undefined, {
-      auth_session: authSession,
-    });
+    const extras: Record<string, unknown> = { auth_session: authSession };
+
+    // Include PAR request_uri when PKCE was provided (FPA draft §3.2)
+    if (params.code_challenge) {
+      const requestId = generateRandomString(32, "a-z", "A-Z", "0-9");
+      await db.insert(haipPushedRequests).values({
+        requestId,
+        clientId: params.client_id,
+        requestParams: JSON.stringify({
+          client_id: params.client_id,
+          response_type: params.response_type,
+          scope: params.scope,
+          code_challenge: params.code_challenge,
+          code_challenge_method: params.code_challenge_method,
+          ...(params.resource && { resource: params.resource }),
+        }),
+        expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
+      });
+      extras.request_uri = `${PAR_URI_PREFIX}${requestId}`;
+    }
+
+    return errorJson(400, "redirect_to_web", undefined, extras);
   }
 
   await ready;
@@ -368,8 +401,10 @@ async function handleOpaqueFinish(
       query: {
         client_id: session.clientId,
         scope: session.scope,
-        code_challenge: session.codeChallenge,
-        code_challenge_method: session.codeChallengeMethod,
+        ...(session.codeChallenge && {
+          code_challenge: session.codeChallenge,
+          code_challenge_method: session.codeChallengeMethod,
+        }),
         ...(session.resource && { resource: session.resource }),
       },
       userId: user.id,
