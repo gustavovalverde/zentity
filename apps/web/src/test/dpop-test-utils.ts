@@ -12,13 +12,13 @@ export interface DpopKeyPair {
   publicKey: CryptoKey;
 }
 
-async function createTestDpopKeyPair(): Promise<DpopKeyPair> {
+export async function createTestDpopKeyPair(): Promise<DpopKeyPair> {
   const { privateKey, publicKey } = await generateKeyPair("ES256");
   const jwk = await exportJWK(publicKey);
   return { privateKey, publicKey, jwk };
 }
 
-function buildDpopProof(
+export function buildDpopProof(
   keyPair: DpopKeyPair,
   method: string,
   url: string

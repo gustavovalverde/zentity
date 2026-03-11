@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { ready, server } from "@serenity-kit/opaque";
 import { generateRandomString } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -28,6 +28,21 @@ const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const CODE_LIFETIME_S = 600;
 const PAR_LIFETIME_MS = 60 * 1000;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 10;
+
+// ── Rate limiter (sliding window per IP) ────────────────
+
+export const ipRequestLog = new Map<string, number[]>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = ipRequestLog.get(ip)?.filter((t) => t > windowStart) ?? [];
+  timestamps.push(now);
+  ipRequestLog.set(ip, timestamps);
+  return timestamps.length > RATE_LIMIT_MAX;
+}
 
 // ── Request schemas ─────────────────────────────────────
 
@@ -104,6 +119,20 @@ function isExpired(s: AuthChallengeSession): boolean {
 // ── Route handler ───────────────────────────────────────
 
 export async function POST(request: Request): Promise<Response> {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (isRateLimited(ip)) {
+    return errorJson(429, "too_many_requests", "Rate limit exceeded");
+  }
+
+  // Lazy cleanup of expired sessions
+  db.delete(authChallengeSessions)
+    .where(lt(authChallengeSessions.expiresAt, new Date()))
+    .then(
+      () => undefined,
+      () => undefined
+    );
+
   const body = (await request.json().catch(() => null)) as Record<
     string,
     unknown
@@ -139,12 +168,36 @@ async function handleInitialRequest(
 
   // Validate client
   const client = await db
-    .select({ clientId: oauthClients.clientId })
+    .select({
+      clientId: oauthClients.clientId,
+      firstParty: oauthClients.firstParty,
+    })
     .from(oauthClients)
     .where(eq(oauthClients.clientId, params.client_id))
     .get();
   if (!client) {
     return errorJson(400, "invalid_client", "Unknown client_id");
+  }
+
+  // Non-first-party clients must use standard browser-based OAuth
+  if (!client.firstParty) {
+    const authSession = randomBytes(32).toString("base64url");
+    await db.insert(authChallengeSessions).values({
+      authSession,
+      clientId: params.client_id,
+      userId: null,
+      dpopJkt: null,
+      scope: params.scope,
+      resource: params.resource ?? null,
+      codeChallenge: params.code_challenge,
+      codeChallengeMethod: params.code_challenge_method,
+      state: "pending",
+      challengeType: "redirect_to_web",
+      expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
+    });
+    return errorJson(400, "redirect_to_web", undefined, {
+      auth_session: authSession,
+    });
   }
 
   // Extract DPoP thumbprint (bound to all subsequent requests)

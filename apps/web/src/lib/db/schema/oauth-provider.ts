@@ -49,6 +49,9 @@ export const oauthClients = sqliteTable(
     metadataUrl: text("metadata_url"),
     metadataFetchedAt: integer("metadata_fetched_at", { mode: "timestamp_ms" }),
     trustLevel: integer("trust_level").notNull().default(0),
+    firstParty: integer("first_party", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (table) => [
     uniqueIndex("oauth_client_client_id_unique").on(table.clientId),

@@ -26,3 +26,12 @@
 - code_challenge/method now optional in schema + request validation
 - Tests: passkey-only → redirect_to_web + request_uri, no PKCE → no request_uri, unknown → opaque
 - Phase 2 COMPLETE
+
+## First-Party Apps — Phase 5: First-Party Enforcement + Hardening
+- `firstParty` boolean column added to oauthClients schema (default: false)
+- Non-first-party clients receive `redirect_to_web` unconditionally (no credential resolution)
+- Rate limiting: 10 requests/minute per IP via sliding window (X-Forwarded-For)
+- Lazy session cleanup: expired authChallengeSessions deleted on each request
+- DPoP key continuity enforced across all 3 rounds (already existed, now tested)
+- Tests: non-first-party → redirect_to_web, rate limit → 429, per-IP isolation, DPoP key switch → invalid_session
+- Phase 5 COMPLETE
