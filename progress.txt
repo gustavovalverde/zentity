@@ -121,6 +121,18 @@
 - aud is array when openid scope present (adds userinfo endpoint)
 - Files: auth.ts (validAudiences), rfc8707-resource.integration.test.ts
 
+## MCP Compatibility — Phase 2: CIMD Client Resolution Pipeline
+- Schema: added metadataUrl, metadataFetchedAt, trustLevel to oauthClients
+- Pure validation in cimd-validation.ts: isUrlClientId, isPrivateHost, validateCimdMetadata, validateFetchUrl
+- DB/fetch resolution in cimd.ts: resolveCimdClient with 1-hour TTL caching
+- URL client_id detection: https:// always, http://localhost in dev only
+- SSRF protection: private IP ranges rejected (IPv4 + IPv6)
+- Metadata validation: client_id match, client_name required, redirect_uris absolute URIs, restricted grant_types/response_types, public client only
+- Synthetic client: pairwise subject, trustLevel=0, metadataUrl stored
+- Before hook on /oauth2/authorize and /oauth2/par for CIMD resolution
+- 44 unit tests (cimd.test.ts), 9 integration tests (cimd.integration.test.ts)
+- Files: cimd-validation.ts, cimd.ts, oauth-provider.ts (schema), auth.ts (hook)
+
 ## Step-Up Authentication: COMPLETE
 - All 3 phases implemented
 - Phase 1: Authorize endpoint enforcement (acr_values + max_age, PAR + non-PAR)

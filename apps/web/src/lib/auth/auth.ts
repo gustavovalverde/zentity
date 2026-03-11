@@ -42,6 +42,8 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
+import { resolveCimdClient } from "@/lib/auth/oidc/cimd";
+import { isUrlClientId } from "@/lib/auth/oidc/cimd-validation";
 import {
   buildOidcVerifiedClaims,
   buildProofClaims,
@@ -251,6 +253,7 @@ const resolveOpaqueUserByIdentifier = async (
 
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
+const isProduction = env.NODE_ENV === "production";
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const identityClaimKeys = Array.from(
@@ -696,6 +699,23 @@ export const auth = betterAuth({
             error: "invalid_request",
             error_description: result.error,
           });
+        }
+      }
+
+      // CIMD: resolve URL-formatted client_id before plugin's getClient()
+      if (ctx.path === "/oauth2/authorize" || ctx.path === "/oauth2/par") {
+        const clientId =
+          ctx.path === "/oauth2/par"
+            ? (ctx.body?.client_id as string | undefined)
+            : (ctx.query?.client_id as string | undefined);
+        if (clientId && isUrlClientId(clientId, isProduction)) {
+          const cimd = await resolveCimdClient(clientId);
+          if (!cimd.resolved) {
+            throw new APIError("BAD_REQUEST", {
+              error: "invalid_client",
+              error_description: cimd.error,
+            });
+          }
         }
       }
 
