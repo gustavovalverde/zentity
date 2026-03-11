@@ -12,9 +12,9 @@
 - Files:
   - NEW: apps/web/src/app/.well-known/agent-card.json/route.ts
 
-### Phase 2: Integration Tests — COMPLETE (pre-existing)
+### Phase 2: Integration Tests — COMPLETE
 - PRD: docs/plans/a2a-agent-card.md (Tasks 2.1–2.6)
-- 20 tests passing across 5 describe blocks
+- 20 tests across 5 describe blocks: structure, security schemes, skills catalog, HTTP headers, URL resolution
+- Follows `oidc-well-known.test.ts` pattern (dynamic import of route handler, no mocks)
 - Files:
-  - apps/web/src/lib/auth/__tests__/a2a-agent-card.integration.test.ts (existed from prior session)
-- Note: test file was already created in a previous conversation; all tests pass against the new route
+  - NEW: apps/web/src/lib/auth/__tests__/a2a-agent-card.integration.test.ts
