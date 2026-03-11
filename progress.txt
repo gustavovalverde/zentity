@@ -66,3 +66,9 @@
 - docs/oauth-integrations.md: added authorize-challenge endpoint, First-Party Challenge flow section with mermaid diagrams, acr_values enforcement on CIBA, discovery metadata (authorization_challenge_endpoint, acr_values_supported), firstParty client flag, HAIP table rows
 - CLAUDE.md: added First-Party Apps paragraph, updated CIBA paragraph with acr_values enforcement
 - docs/plans/tasks/first-party-apps.md: all 42 checkboxes already [x] from prior commits
+
+## Mobile Push PWA — All 3 Phases Already Complete
+- Phase 1 (Manifest + Installability): manifest.ts with display: standalone, icons, shortcuts, theme/bg colors
+- Phase 2 (Deep-Link Route + Rich Notifications): /approve/[authReqId] standalone route, buildNotificationBody with authorization_details, approvalUrl uses /approve/ path
+- Phase 3 (App Shell Caching): push-sw.js fetch handler with StaleWhileRevalidate for /approve/*, CacheFirst for static, network-only for API
+- All implementation was done in prior sessions; task checkboxes marked complete
