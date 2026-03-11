@@ -191,6 +191,7 @@
       "@better-auth/passkey@1.5.1-beta.3": "vendor/@better-auth__passkey@1.5.1-beta.3.patch",
       "better-auth@1.5.1-beta.3": "patches/better-auth@1.5.1-beta.3.patch",
       "@better-auth/oidc4vci@0.0.0": "vendor/@better-auth__oidc4vci@0.0.0.patch",
+      "@better-auth/ciba@1.5.1-beta.3": "vendor/@better-auth__ciba@1.5.1-beta.3.patch",
       "@daveyplate/better-auth-ui": "vendor/@daveyplate__better-auth-ui.patch"
     },
     "overrides": {

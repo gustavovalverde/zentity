@@ -62,6 +62,10 @@ import {
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import {
+  enforceCibaApprovalAcr,
+  enforceCibaTokenAcr,
+} from "@/lib/auth/oidc/step-up-ciba";
 import { enforceStepUp } from "@/lib/auth/oidc/step-up-hook";
 import {
   TOKEN_EXCHANGE_GRANT_TYPE,
@@ -685,6 +689,19 @@ export const auth = betterAuth({
       // Step-up authentication: enforce acr_values and max_age on authorize
       if (ctx.path === "/oauth2/authorize") {
         await enforceStepUp(ctx, db);
+      }
+
+      // CIBA step-up: enforce acr_values at approval time
+      if (ctx.path === "/ciba/authorize") {
+        await enforceCibaApprovalAcr(ctx, db);
+      }
+
+      // CIBA step-up: safety net at token exchange time
+      if (
+        ctx.path === "/oauth2/token" &&
+        ctx.body?.grant_type === "urn:openid:params:grant-type:ciba"
+      ) {
+        await enforceCibaTokenAcr(ctx, db);
       }
     }),
     after: createAuthMiddleware(async (ctx) => {

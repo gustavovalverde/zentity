@@ -2,7 +2,7 @@
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
-import { Lock } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -44,6 +44,7 @@ interface AuthorizationDetail {
 }
 
 interface CibaRequestDetails {
+  acr_values?: string;
   auth_req_id: string;
   authorization_details?: AuthorizationDetail[];
   binding_message?: string;
@@ -382,8 +383,11 @@ export function CibaApproveClient({
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as {
             error_description?: string;
+            message?: string;
           };
-          throw new Error(body.error_description ?? `Failed to ${action}`);
+          throw new Error(
+            body.error_description ?? body.message ?? `Failed to ${action}`
+          );
         }
 
         setState(action === "authorize" ? "approved" : "rejected");
@@ -693,6 +697,19 @@ export function CibaApproveClient({
               <p className="font-medium text-sm">Message</p>
               <p className="text-muted-foreground text-sm">
                 {details.binding_message}
+              </p>
+            </div>
+          )}
+
+          {details?.acr_values && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+              <ShieldCheck className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="text-sm">
+                <span className="font-medium">Required assurance:</span>{" "}
+                {details.acr_values
+                  .split(" ")
+                  .map((v) => v.replace("urn:zentity:assurance:", ""))
+                  .join(", ")}
               </p>
             </div>
           )}

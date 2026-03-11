@@ -77,3 +77,12 @@
 - 20 unit tests (step-up.test.ts), 16 integration tests (step-up-auth.integration.test.ts)
 - Added haipPushedRequests/haipVpSessions to resetDatabase test utility
 - Files: step-up.ts, step-up-hook.ts, auth.ts (hook), step-up.test.ts, step-up-auth.integration.test.ts, db-test-utils.ts
+
+## Step-Up Authentication — Phase 2: CIBA acr_values Enforcement
+- Schema: added acrValues column to cibaRequests table
+- CIBA plugin patch: acr_values accepted in bc-authorize Zod schema, stored in DB, returned by verify endpoint
+- Approval-time enforcement: before hook on /ciba/authorize checks user tier via getAssuranceForOAuth
+- Token exchange safety net: before hook on /oauth2/token for CIBA grant re-checks tier
+- Approval UI: displays required assurance tier badge when acr_values present
+- 10 integration tests (step-up-ciba.integration.test.ts): approval rejection, approval success, preference order, token exchange safety net
+- Files: ciba.ts (schema), step-up-ciba.ts, auth.ts (hooks), ciba-approve-client.tsx (UI), step-up-ciba.integration.test.ts, vendor patch

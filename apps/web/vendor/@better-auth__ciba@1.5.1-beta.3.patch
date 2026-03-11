@@ -1,0 +1,69 @@
+diff --git a/dist/index-FxeUTEK6.d.mts b/dist/index-FxeUTEK6.d.mts
+index 1111111..2222222 100644
+--- a/dist/index-FxeUTEK6.d.mts
++++ b/dist/index-FxeUTEK6.d.mts
+@@ -15,6 +15,7 @@ interface CibaOptions {
+     bindingMessage?: string;
+     authorizationDetails?: unknown;
++    acrValues?: string;
+     approvalUrl: string;
+   }, request?: Request) => Promise<void>;
+@@ -110,6 +111,10 @@ declare const ciba: (options: CibaOptions) => {
+           type: "string";
+           required: false;
+         };
++        acrValues: {
++          type: "string";
++          required: false;
++        };
+         status: {
+           type: "string";
+           required: true;
+@@ -175,6 +180,7 @@ declare const ciba: (options: CibaOptions) => {
+       authorization_details?: string | undefined;
+       resource?: string | undefined;
++      acr_values?: string | undefined;
+       requested_expiry?: unknown;
+     }, Record<string, any> | undefined, [], Record<string, unknown>, {
+@@ -213,6 +219,7 @@ declare const ciba: (options: CibaOptions) => {
+       authorization_details: unknown;
++      acr_values: string | undefined;
+       status: string;
+       expires_at: string;
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 3333333..4444444 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -264,6 +264,7 @@ function createBcAuthorize(options) {
+ 			authorization_details: z.string().optional(),
+ 			resource: z.string().optional(),
++			acr_values: z.string().optional(),
+ 			requested_expiry: z.coerce.number().int().positive().optional()
+ 		}),
+@@ -362,6 +363,7 @@ function createBcAuthorize(options) {
+ 				authorizationDetails: ctx.body.authorization_details,
+ 				resource: ctx.body.resource,
++				acrValues: ctx.body.acr_values,
+ 				status: "pending",
+ 				deliveryMode: mode,
+@@ -379,6 +381,7 @@ function createBcAuthorize(options) {
+ 			bindingMessage: ctx.body.binding_message,
+ 			authorizationDetails: parsedAuthorizationDetails,
++			acrValues: ctx.body.acr_values,
+ 			approvalUrl
+ 		}, ctx.request).catch(() => {});
+@@ -609,6 +612,10 @@ const schema = { cibaRequest: {
+ 		resource: {
+ 			type: "string",
+ 			required: false
++		},
++		acrValues: {
++			type: "string",
++			required: false
+ 		},
+ 		status: {
+@@ -693,6 +700,7 @@ function createCibaVerify() {
+ 			authorization_details: parsedAuthorizationDetails,
++			acr_values: cibaRequest.acrValues,
+ 			status: cibaRequest.status,
+ 			expires_at: cibaRequest.expiresAt.toISOString()

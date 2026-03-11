@@ -19,6 +19,7 @@ export const cibaRequests = sqliteTable(
     scope: text("scope").notNull(),
     bindingMessage: text("binding_message"),
     authorizationDetails: text("authorization_details"),
+    acrValues: text("acr_values"),
     resource: text("resource"),
     status: text("status").notNull(),
     deliveryMode: text("delivery_mode").notNull().default("poll"),
