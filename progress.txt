@@ -1,29 +1,20 @@
-## CIBA Notifications Remediation — Phase 1 & 2 Complete
+## A2A Agent Card Discovery
 
-Task: ciba-notifications-remediation.md (Phase 1 + Phase 2)
+### Phase 1: Agent Card Route — COMPLETE
+- PRD: docs/plans/a2a-agent-card.md (Tasks 1.1–1.7)
+- RFC: RFC-0033 §Phase 4
+- Decisions:
+  - Content-Type: `application/a2a+json` (IANA-registered per A2A spec §14.1.1)
+  - A2A-Version header: ignored (discovery-only, no task server)
+  - OAuth URLs derived from `getAuthIssuer()` + `joinAuthIssuerPath()` (consistent with existing well-known routes)
+  - Security schemes: OAuth2 auth-code (PKCE) + OpenID Connect discovery
+  - CORS: permissive (`*`) with A2A-specific headers
+- Files:
+  - NEW: apps/web/src/app/.well-known/agent-card.json/route.ts
 
-### Completed
-- Phase 1: Set up vitest + @testing-library/react in apps/demo-rp
-  - vitest.config.mts with JSDOM environment
-  - `pnpm test` script added to package.json
-  - Dev deps: vitest, @testing-library/react, @testing-library/dom, jsdom, @types/jsdom
-- Phase 2: Regression tests for use-ciba-flow.ts (10 tests, all passing)
-  - classifyPollResponse: 7 unit tests covering all response types
-  - Hook state machine: 3 tests (happy path, inflight guard, terminal monotonicity)
-  - Exported classifyPollResponse for direct testing
-
-### Key decisions
-- Used fake timers + advanceTimersByTimeAsync for hook tests (not waitFor, which deadlocks with fake timers)
-- Mock implementations use Promise.resolve() instead of async to satisfy Biome's useAwait rule
-- Terminal guard tested via time-advance past expire timeout — verifies both stopPolling cleanup and terminalRef guard
-
-### Files changed
-- apps/demo-rp/package.json — added test script + dev deps
-- apps/demo-rp/vitest.config.mts — new vitest config (JSDOM)
-- apps/demo-rp/src/hooks/use-ciba-flow.ts — exported classifyPollResponse
-- apps/demo-rp/src/hooks/use-ciba-flow.test.ts — new test file (10 tests)
-- docs/plans/tasks/ciba-notifications-remediation.md — marked all criteria done
-
-### Notes
-- All 7 findings from the original CIBA review are now covered by automated regression tests
-- The ciba-notifications-remediation plan is complete and can be archived
+### Phase 2: Integration Tests — COMPLETE (pre-existing)
+- PRD: docs/plans/a2a-agent-card.md (Tasks 2.1–2.6)
+- 20 tests passing across 5 describe blocks
+- Files:
+  - apps/web/src/lib/auth/__tests__/a2a-agent-card.integration.test.ts (existed from prior session)
+- Note: test file was already created in a previous conversation; all tests pass against the new route
