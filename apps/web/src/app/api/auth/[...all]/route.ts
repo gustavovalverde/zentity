@@ -1,6 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth";
+import { getProtectedResourceMetadataUrl } from "@/lib/auth/oidc/www-authenticate";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
@@ -47,16 +48,43 @@ async function unwrapIfNeeded(request: Request, response: Response) {
   return response;
 }
 
+function addWwwAuthenticate(response: Response): Response {
+  if (response.status !== 401 && response.status !== 403) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  const metadataUrl = getProtectedResourceMetadataUrl();
+
+  if (response.status === 401) {
+    headers.set(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${metadataUrl}"`
+    );
+  } else {
+    headers.set(
+      "WWW-Authenticate",
+      `Bearer resource_metadata="${metadataUrl}", error="insufficient_scope"`
+    );
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export async function GET(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const response = await authGET(request);
-  return unwrapIfNeeded(request, response);
+  return addWwwAuthenticate(await unwrapIfNeeded(request, response));
 }
 
 export async function POST(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const response = await authPOST(request);
-  return unwrapIfNeeded(request, response);
+  return addWwwAuthenticate(await unwrapIfNeeded(request, response));
 }

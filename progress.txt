@@ -133,6 +133,23 @@
 - 44 unit tests (cimd.test.ts), 9 integration tests (cimd.integration.test.ts)
 - Files: cimd-validation.ts, cimd.ts, oauth-provider.ts (schema), auth.ts (hook)
 
+## MCP Compatibility — Phase 3: E2E Test + WWW-Authenticate
+- WWW-Authenticate header on 401/403: added to [...all] route handler
+- 401: `Bearer resource_metadata="<url>"`
+- 403: `Bearer resource_metadata="<url>", error="insufficient_scope"`
+- www-authenticate.ts: getProtectedResourceMetadataUrl utility
+- 3 E2E integration tests (mcp-e2e.integration.test.ts):
+  - Discovery metadata includes CIMD + resource indicator flags
+  - CIMD → PAR → synthetic client creation
+  - Resource-bound CIBA token with aud + DPoP binding
+- Protected resource metadata endpoint already existed (RFC 9728)
+- Discovery already had client_id_metadata_document_supported + resource_indicators_supported
+
+## MCP Compatibility: COMPLETE
+- Phase 1: RFC 8707 resource indicator validation + demo-rp migration + integration tests
+- Phase 2: CIMD client resolution pipeline (URL client_id → fetch → validate → upsert)
+- Phase 3: E2E integration test + WWW-Authenticate headers
+
 ## Step-Up Authentication: COMPLETE
 - All 3 phases implemented
 - Phase 1: Authorize endpoint enforcement (acr_values + max_age, PAR + non-PAR)
