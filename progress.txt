@@ -96,6 +96,14 @@
 - Error UX: better-auth's built-in /error endpoint renders the error_description from step-up rejection
 - Files: scenarios.ts, auth.ts (PROVIDER_AUTH_PARAMS + authorizationUrlParams), use-ciba-flow.ts, api/ciba/route.ts, aether/page.tsx
 
+## MCP Compatibility — Phase 1a: Resource Validation + PAR Enforcement
+- Pure function validateResourceUri in src/lib/auth/oidc/resource.ts (RFC 8707 §2)
+- Validates: absolute URI, no fragment, http(s) scheme, required
+- Before hook on /oauth2/par enforces resource presence and format
+- OAuth error format: { error: "invalid_request", error_description: "..." }
+- 10 unit tests (resource.test.ts)
+- Files: resource.ts, auth.ts (hook), resource.test.ts
+
 ## Step-Up Authentication: COMPLETE
 - All 3 phases implemented
 - Phase 1: Authorize endpoint enforcement (acr_values + max_age, PAR + non-PAR)

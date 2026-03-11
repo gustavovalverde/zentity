@@ -62,6 +62,7 @@ import {
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import { validateResourceUri } from "@/lib/auth/oidc/resource";
 import {
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
@@ -684,6 +685,17 @@ export const auth = betterAuth({
           .filter((s: string) => !isIdentityScope(s))
           .join(" ");
         ctx.body.scope = filtered;
+      }
+
+      // RFC 8707: validate resource indicator on PAR requests
+      if (ctx.path === "/oauth2/par") {
+        const result = validateResourceUri(ctx.body?.resource);
+        if (!result.valid) {
+          throw new APIError("BAD_REQUEST", {
+            error: "invalid_request",
+            error_description: result.error,
+          });
+        }
       }
 
       // Step-up authentication: enforce acr_values and max_age on authorize
