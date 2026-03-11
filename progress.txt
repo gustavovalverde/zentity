@@ -8,6 +8,16 @@
 # Architectural decisions
 - Concurrent release test accepts 400 OR 410 for loser — Node.js single-threaded async means the second caller may re-read DB after status="claiming", hitting status guard (400) instead of atomic claim race (410). Both prevent double PII delivery.
 
+## OIDC Assurance-Aware ID Tokens — Phase 1: Core Claims + Discovery
+- Pure functions: computeAcr, computeAcrEidas, loginMethodToAmr in src/lib/assurance/oidc-claims.ts
+- Vendor tarball patch: reordered createIdToken payload so customClaims override acr/auth_time defaults
+- Schema: added lastLoginMethod column to sessions, enabled storeInDatabase in plugin
+- Refactored data.ts: extracted gatherVerificationData, added getAssuranceForOAuth (session-less variant)
+- Wired customIdTokenClaims: emits acr, acr_eidas, amr when openid scope present
+- Discovery metadata: acr_values_supported + claims_supported enriched via well-known-utils.ts
+- 18 unit tests for pure functions (all tiers, all login methods, edge cases)
+
 # What's Next
-- Verify remaining CIBA plan gaps (Phase 1 AC-8: SW integration test is structural/browser-only; Phase 4 AC-4: demo-rp regression test)
-- Start oidc-assurance-aware-id-tokens plan (Phase 1: core assurance claims)
+- Phase 1 integration test: seed user at each tier, authorize, verify ID token claims
+- Phase 2: at_hash (access token hash binding) — needs access token in customIdTokenClaims or post-hoc hook
+- Phase 3: token exchange + demo-rp integration

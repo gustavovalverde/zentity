@@ -11,6 +11,8 @@
  * auth.api.getOpenIdConfig() directly — bypassing the HTTP hook chain.
  */
 
+import { ACR_VALUES_SUPPORTED } from "@/lib/assurance/oidc-claims";
+
 const TRAILING_SLASHES_REGEX = /\/+$/;
 const LEADING_SLASHES_REGEX = /^\/+/;
 
@@ -50,6 +52,15 @@ export function enrichDiscoveryMetadata(
     // CIBA metadata (OpenID CIBA Core §4)
     backchannel_token_delivery_modes_supported: ["poll", "ping"],
     backchannel_user_code_parameter_supported: false,
+    // Assurance metadata
+    acr_values_supported: [...ACR_VALUES_SUPPORTED],
+    claims_supported: [
+      ...((metadata.claims_supported as string[]) ?? []),
+      "acr",
+      "amr",
+      "auth_time",
+      "acr_eidas",
+    ],
     // MCP authorization compatibility (RFC 9728, CIMD)
     client_id_metadata_document_supported: true,
     resource_indicators_supported: true,

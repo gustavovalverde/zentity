@@ -33,6 +33,12 @@ import { organization } from "better-auth/plugins/organization";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "@/env";
+import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import {
+  computeAcr,
+  computeAcrEidas,
+  loginMethodToAmr,
+} from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
@@ -823,6 +829,7 @@ export const auth = betterAuth({
     }),
     lastLoginMethod({
       customResolveMethod: resolveLastLoginMethod,
+      storeInDatabase: true,
     }),
     jwt({
       jwks: {
@@ -915,16 +922,25 @@ export const auth = betterAuth({
         const hasProofScopes =
           scopeList.includes("proof:identity") ||
           extractProofScopes(scopeList).length > 0;
-        if (!hasProofScopes) {
-          return identityClaims;
+        const proofClaims = hasProofScopes
+          ? filterProofClaimsByScopes(
+              await buildProofClaims(user.id),
+              scopeList
+            )
+          : {};
+
+        // Assurance claims: acr, acr_eidas, amr (emitted when openid scope present)
+        let assuranceClaims: Record<string, unknown> = {};
+        if (scopeList.includes("openid") && user?.id) {
+          const assurance = await getAssuranceForOAuth(user.id);
+          assuranceClaims = {
+            acr: computeAcr(assurance.tier),
+            acr_eidas: computeAcrEidas(assurance.tier),
+            amr: loginMethodToAmr(assurance.loginMethod),
+          };
         }
 
-        const allProofClaims = await buildProofClaims(user.id);
-        const proofClaims = filterProofClaimsByScopes(
-          allProofClaims,
-          scopeList
-        );
-        return { ...identityClaims, ...proofClaims };
+        return { ...identityClaims, ...proofClaims, ...assuranceClaims };
       },
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList: string[] = Array.isArray(scopes) ? scopes : [];

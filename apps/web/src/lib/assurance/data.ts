@@ -9,8 +9,10 @@ import "server-only";
 import type { Session } from "@/lib/auth/auth";
 import type { AssuranceState } from "./types";
 
+import { desc, eq } from "drizzle-orm";
 import { cache } from "react";
 
+import { db } from "@/lib/db/connection";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import {
   getEncryptedAttributeTypesByUserId,
@@ -24,6 +26,7 @@ import {
   isChipVerified,
 } from "@/lib/db/queries/identity";
 import { hasPasskeyCredentials } from "@/lib/db/queries/passkey";
+import { sessions } from "@/lib/db/schema/auth";
 
 import {
   areZkProofsComplete,
@@ -103,6 +106,61 @@ async function hasValidClaimHashes(
 }
 
 /**
+ * Gather verification data from DB for assurance computation.
+ * Shared between session-based and OAuth token endpoint contexts.
+ */
+async function gatherVerificationData(
+  userId: string,
+  storedLoginMethod: string | null
+) {
+  const [
+    hasSecuredKeys,
+    verification,
+    fheAttributeTypes,
+    hasAttestation,
+    hasPasskeys,
+  ] = await Promise.all([
+    hasSecuredFheKeys(userId),
+    getSelectedVerification(userId),
+    getEncryptedAttributeTypesByUserId(userId),
+    hasOnChainAttestation(userId),
+    storedLoginMethod ? Promise.resolve(false) : hasPasskeyCredentials(userId),
+  ]);
+
+  const lastLoginMethod = storedLoginMethod ?? (hasPasskeys ? "passkey" : null);
+  const verificationId = verification?.id ?? null;
+  const documentVerified = verification?.status === "verified";
+  const chipVerified = isChipVerified(verification);
+
+  const [zkProofTypes, signedClaimTypes, claimHashesValid] = verificationId
+    ? await Promise.all([
+        getZkProofTypesByUserAndVerification(userId, verificationId),
+        getSignedClaimTypesByUserAndVerification(userId, verificationId),
+        hasValidClaimHashes(userId, verificationId),
+      ])
+    : [[], [], true];
+
+  const livenessVerified = signedClaimTypes.includes("liveness_score");
+  const faceMatchVerified =
+    signedClaimTypes.includes("face_match_score") ||
+    zkProofTypes.includes("face_match");
+  const needsDocumentReprocessing = documentVerified && !claimHashesValid;
+
+  return {
+    lastLoginMethod,
+    hasSecuredKeys,
+    chipVerified,
+    documentVerified,
+    livenessVerified,
+    faceMatchVerified,
+    zkProofsComplete: areZkProofsComplete(zkProofTypes),
+    fheComplete: isFheComplete(fheAttributeTypes),
+    onChainAttested: hasAttestation,
+    needsDocumentReprocessing,
+  };
+}
+
+/**
  * Get the complete assurance state for a user
  *
  * Gathers data from multiple tables:
@@ -118,66 +176,47 @@ export const getAssuranceState = cache(async function getAssuranceState(
   userId: string,
   session: Session | null
 ): Promise<AssuranceState> {
-  // Build auth state from session
   const hasSession = !!session;
   const storedLoginMethod =
     (session?.session as { lastLoginMethod?: string } | undefined)
       ?.lastLoginMethod ?? null;
 
-  // Gather primary data in parallel
-  const [
-    hasSecuredKeys,
-    verification,
-    fheAttributeTypes,
-    hasAttestation,
-    hasPasskeys,
-  ] = await Promise.all([
-    hasSecuredFheKeys(userId),
-    getSelectedVerification(userId),
-    getEncryptedAttributeTypesByUserId(userId),
-    hasOnChainAttestation(userId),
-    // Fallback: if lastLoginMethod wasn't recorded, check if user has passkeys
-    storedLoginMethod ? Promise.resolve(false) : hasPasskeyCredentials(userId),
-  ]);
-
-  // Use stored method, or infer "passkey" if user has passkey credentials
-  const lastLoginMethod = storedLoginMethod ?? (hasPasskeys ? "passkey" : null);
-
-  const verificationId = verification?.id ?? null;
-  const documentVerified = verification?.status === "verified";
-  const chipVerified = isChipVerified(verification);
-
-  // Get proof types and check claim hashes if we have a verification
-  const [zkProofTypes, signedClaimTypes, claimHashesValid] = verificationId
-    ? await Promise.all([
-        getZkProofTypesByUserAndVerification(userId, verificationId),
-        getSignedClaimTypesByUserAndVerification(userId, verificationId),
-        hasValidClaimHashes(userId, verificationId),
-      ])
-    : [[], [], true];
-
-  const livenessVerified = signedClaimTypes.includes("liveness_score");
-  const faceMatchVerified =
-    signedClaimTypes.includes("face_match_score") ||
-    zkProofTypes.includes("face_match");
-
-  // Document needs reprocessing if verified but missing claim hashes
-  const needsDocumentReprocessing = documentVerified && !claimHashesValid;
+  const data = await gatherVerificationData(userId, storedLoginMethod);
 
   return computeAssuranceState({
     hasSession,
-    loginMethod: lastLoginMethod,
-    hasSecuredKeys,
-    chipVerified,
-    documentVerified,
-    livenessVerified,
-    faceMatchVerified,
-    zkProofsComplete: areZkProofsComplete(zkProofTypes),
-    fheComplete: isFheComplete(fheAttributeTypes),
-    onChainAttested: hasAttestation,
-    needsDocumentReprocessing,
+    loginMethod: data.lastLoginMethod,
+    ...data,
   });
 });
+
+/**
+ * Get assurance state for the OAuth token endpoint.
+ *
+ * Unlike getAssuranceState, this doesn't require a Session object.
+ * Used in customIdTokenClaims where only { user, scopes } are available.
+ * Queries the latest session for lastLoginMethod directly.
+ */
+export async function getAssuranceForOAuth(
+  userId: string
+): Promise<AssuranceState> {
+  const latestSession = await db
+    .select({ lastLoginMethod: sessions.lastLoginMethod })
+    .from(sessions)
+    .where(eq(sessions.userId, userId))
+    .orderBy(desc(sessions.createdAt))
+    .limit(1)
+    .get();
+
+  const storedLoginMethod = latestSession?.lastLoginMethod ?? null;
+  const data = await gatherVerificationData(userId, storedLoginMethod);
+
+  return computeAssuranceState({
+    hasSession: true,
+    loginMethod: data.lastLoginMethod,
+    ...data,
+  });
+}
 
 /**
  * Get assurance state for unauthenticated users (Tier 0)

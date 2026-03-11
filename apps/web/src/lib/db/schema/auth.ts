@@ -37,6 +37,7 @@ export const sessions = sqliteTable(
     ipAddress: text("ipAddress"),
     userAgent: text("userAgent"),
     activeOrganizationId: text("activeOrganizationId"),
+    lastLoginMethod: text("lastLoginMethod"),
     userId: text("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
