@@ -3,6 +3,7 @@ import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
+import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -873,6 +874,12 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(200);
       expect(json.access_token).toBeTypeOf("string");
       expect(json.auth_session).toBe(stepUpAuthSession);
+
+      // Verify the id_token contains the upgraded acr claim (tier-1)
+      if (json.id_token) {
+        const claims = decodeJwt(json.id_token as string);
+        expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
+      }
     });
 
     it("step-up DPoP key consistency is enforced", async () => {
