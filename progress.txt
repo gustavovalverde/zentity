@@ -104,6 +104,14 @@
 - 10 unit tests (resource.test.ts)
 - Files: resource.ts, auth.ts (hook), resource.test.ts
 
+## MCP Compatibility — Phase 1b: Demo-rp Resource Migration
+- All providers send resource=ZENTITY_URL in authorizationUrlParams (authorize URL)
+- Token request body includes resource=ZENTITY_URL in getToken (auth code exchange)
+- CIBA bc-authorize sends resource=ZENTITY_URL
+- CIBA token request sends resource=ZENTITY_URL
+- Enables JWT access tokens with aud binding for all demo-rp flows
+- Files: auth.ts (makeProviderConfig, ZENTITY_URL resource), api/ciba/route.ts (bc-authorize + token)
+
 ## Step-Up Authentication: COMPLETE
 - All 3 phases implemented
 - Phase 1: Authorize endpoint enforcement (acr_values + max_age, PAR + non-PAR)

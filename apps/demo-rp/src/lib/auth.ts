@@ -202,7 +202,10 @@ function makeProviderConfig(
     scopes,
     pkce: true,
     overrideUserInfo: true,
-    ...(authorizationUrlParams ? { authorizationUrlParams } : {}),
+    authorizationUrlParams: {
+      resource: env.ZENTITY_URL,
+      ...authorizationUrlParams,
+    },
     async getToken(data: {
       code: string;
       redirectURI: string;
@@ -217,6 +220,7 @@ function makeProviderConfig(
           code: data.code,
           redirect_uri: data.redirectURI,
           client_id: clientId,
+          resource: env.ZENTITY_URL,
         };
         if (data.codeVerifier) {
           params.code_verifier = data.codeVerifier;

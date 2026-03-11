@@ -79,6 +79,7 @@ async function handleAuthorize(
       binding_message: data.bindingMessage,
       authorization_details: data.authorizationDetails,
       ...(data.acrValues ? { acr_values: data.acrValues } : {}),
+      resource: env.ZENTITY_URL,
       client_notification_token: notificationToken,
       client_notification_uri: callbackUrl,
     }),
@@ -182,6 +183,7 @@ export async function POST(request: Request) {
     client_id: client.clientId,
     ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
     auth_req_id: data.authReqId,
+    resource: env.ZENTITY_URL,
   };
 
   const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
