@@ -5,7 +5,11 @@ import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
 
 import { CibaApproveClient } from "./ciba-approve-client";
 
-export default async function CibaApprovePage() {
+export default async function CibaApprovePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getCachedSession(await headers());
   let authMode: AuthMode = null;
   let wallet: { address: string; chainId: number } | null = null;
@@ -16,5 +20,15 @@ export default async function CibaApprovePage() {
     wallet = detected.wallet;
   }
 
-  return <CibaApproveClient authMode={authMode} wallet={wallet} />;
+  const params = await searchParams;
+  const authReqId =
+    typeof params.auth_req_id === "string" ? params.auth_req_id : null;
+
+  return (
+    <CibaApproveClient
+      authMode={authMode}
+      authReqId={authReqId}
+      wallet={wallet}
+    />
+  );
 }

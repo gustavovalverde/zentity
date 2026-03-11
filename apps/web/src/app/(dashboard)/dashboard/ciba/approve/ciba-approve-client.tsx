@@ -3,7 +3,7 @@
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
 import { Lock, ShieldCheck } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -74,14 +74,14 @@ const INTENT_EXPIRY_GRACE_MS = 2000;
 
 export function CibaApproveClient({
   authMode,
+  authReqId,
   wallet,
 }: Readonly<{
   authMode: AuthMode;
+  authReqId: string | null;
   wallet: { address: string; chainId: number } | null;
 }>) {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const authReqId = searchParams.get("auth_req_id");
 
   const [state, setState] = useState<PageState>("loading");
   const [details, setDetails] = useState<CibaRequestDetails | null>(null);

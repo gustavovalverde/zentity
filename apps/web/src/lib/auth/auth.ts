@@ -142,6 +142,30 @@ const betterAuthSchema = {
   cibaRequest: cibaRequests,
 };
 
+function buildNotificationBody(
+  clientLabel: string,
+  bindingMessage: string | undefined,
+  authorizationDetails: unknown
+): string {
+  if (bindingMessage) {
+    return `${clientLabel}: ${bindingMessage}`;
+  }
+
+  if (Array.isArray(authorizationDetails)) {
+    for (const detail of authorizationDetails) {
+      if (detail?.type === "purchase" && detail?.item) {
+        const amount =
+          detail.amount?.value && detail.amount?.currency
+            ? ` for ${detail.amount.currency === "USD" ? "$" : ""}${detail.amount.value}${detail.amount.currency !== "USD" ? ` ${detail.amount.currency}` : ""}`
+            : "";
+        return `${clientLabel}: ${detail.item}${amount}`;
+      }
+    }
+  }
+
+  return `${clientLabel} is requesting access`;
+}
+
 // Build trusted origins based on environment
 // In production: only the configured app URL + any explicit TRUSTED_ORIGINS
 // In development: also trust all localhost variants (IPv4/IPv6)
@@ -1104,13 +1128,18 @@ export const auth = betterAuth({
         );
       },
       sendNotification: async (data) => {
-        const approvalUrl = `${getAppOrigin()}/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(data.authReqId)}`;
+        const approvalUrl = `${getAppOrigin()}/approve/${encodeURIComponent(data.authReqId)}`;
         const clientLabel = data.clientName ?? "An application";
         const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
+        const notificationBody = buildNotificationBody(
+          clientLabel,
+          data.bindingMessage,
+          data.authorizationDetails
+        );
         await Promise.allSettled([
           sendWebPush(data.userId, {
             title: "Authorization Request",
-            body: `${clientLabel}: ${data.bindingMessage ?? data.scope}`,
+            body: notificationBody,
             data: {
               authReqId: data.authReqId,
               approvalUrl,
