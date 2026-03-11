@@ -31,6 +31,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | `GET /api/auth/oauth2/authorize` | OAuth 2.1 | Authorization request (interactive) |
 | `POST /api/auth/oauth2/bc-authorize` | OIDC CIBA | Backchannel authorization (headless) |
 | `POST /api/auth/oauth2/consent` | OAuth 2.1 | User consent submission |
+| `POST /api/oauth2/authorize-challenge` | draft-ietf-oauth-first-party-apps | First-party app challenge (headless, no redirect) |
 
 ### Tokens
 
@@ -69,7 +70,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 
 ## Authorization Flows
 
-Zentity supports two authorization paths. Both require DPoP and produce the same token format.
+Zentity supports three authorization paths. All require DPoP and produce the same token format.
 
 ### Interactive (browser redirect)
 
@@ -100,6 +101,59 @@ sequenceDiagram
 **Grant type**: `authorization_code`
 
 PAR is required — all authorization requests must first be pushed to the PAR endpoint, which returns a `request_uri` (60-second TTL) passed to the authorize endpoint.
+
+### First-Party Challenge (headless, no redirect)
+
+For first-party CLI clients (e.g., the MCP server) that authenticate directly without browser redirects. Implements `draft-ietf-oauth-first-party-apps`.
+
+The AS resolves the user's credentials and selects the best CLI-compatible challenge: OPAQUE (password) > EIP-712 (wallet) > `redirect_to_web` (passkey-only fallback). Only clients with the `firstParty` flag can use this endpoint.
+
+#### OPAQUE flow (3 rounds)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Client as CLI / MCP Client
+  participant AS as Zentity AS
+
+  Client->>AS: POST /oauth2/authorize-challenge<br/>(identifier, client_id, scope, code_challenge, DPoP proof)
+  AS-->>Client: 401 { challenge_type: "opaque", auth_session, server_public_key }
+
+  Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, opaque_login_request, DPoP proof)
+  AS-->>Client: { opaque_login_response }
+
+  Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, opaque_finish_request, DPoP proof)
+  AS-->>Client: 200 { authorization_code }
+
+  Client->>AS: POST /oauth2/token (code, code_verifier, DPoP proof)
+  AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
+```
+
+#### EIP-712 flow (2 rounds)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Client as CLI / MCP Client
+  participant AS as Zentity AS
+
+  Client->>AS: POST /oauth2/authorize-challenge<br/>(identifier, client_id, scope, DPoP proof)
+  AS-->>Client: 401 { challenge_type: "eip712", auth_session, nonce, typed_data }
+
+  Client->>AS: POST /oauth2/authorize-challenge<br/>(auth_session, signature, DPoP proof)
+  AS-->>Client: 200 { authorization_code }
+
+  Client->>AS: POST /oauth2/token (code, DPoP proof)
+  AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
+```
+
+**Credential resolution**: The AS queries registered credentials and selects OPAQUE > EIP-712 > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with a PAR `request_uri` (when PKCE is present) so they can complete authorization in a browser.
+
+**DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`.
+
+**Step-up re-authentication**: When a CIBA token exchange fails due to `acr_values` mismatch, first-party clients receive HTTP 403 with `{ error: "insufficient_authorization", auth_session }` instead of 400 `interaction_required`. The client re-enters the challenge endpoint with the `auth_session` to re-authenticate at a higher assurance level, then exchanges the resulting code for upgraded tokens.
+
+**Rate limiting**: 10 requests/minute per IP. Exceeded returns 429.
 
 ### Headless (CIBA)
 
@@ -156,11 +210,13 @@ The user is notified through three channels: web push notifications with inline 
 
 The `act` claim in the token response identifies the agent acting on behalf of the user, per `draft-oauth-ai-agents-on-behalf-of-user-02`.
 
+**`acr_values` enforcement**: CIBA requests can include `acr_values` to require a minimum assurance tier. Enforcement happens at two points: (1) approval time — the user cannot approve if their tier is insufficient, and (2) token exchange — a safety net if the tier decreased between approval and polling. For first-party clients, the token exchange safety net returns HTTP 403 + `auth_session` (enabling step-up via the Authorization Challenge Endpoint). Non-first-party clients receive 400 `interaction_required`.
+
 ### Grant types
 
 | Grant type | Flow |
 | --- | --- |
-| `authorization_code` | Browser redirect (PAR required) |
+| `authorization_code` | Browser redirect (PAR required) or first-party challenge |
 | `urn:openid:params:grant-type:ciba` | CIBA poll mode |
 | `urn:ietf:params:oauth:grant-type:pre-authorized_code` | OIDC4VCI credential issuance |
 
@@ -252,7 +308,7 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 }
 ```
 
-Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent).
+Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint for headless authentication and receive step-up `auth_session` tokens instead of redirect errors.
 
 ---
 
@@ -392,12 +448,14 @@ See [SSI Architecture](ssi-architecture.md) for the complete model.
   "authorization_endpoint": "https://app.zentity.xyz/api/auth/oauth2/authorize",
   "jwks_uri": "https://app.zentity.xyz/api/auth/oauth2/jwks",
   "backchannel_authentication_endpoint": "https://app.zentity.xyz/api/auth/oauth2/bc-authorize",
+  "authorization_challenge_endpoint": "https://app.zentity.xyz/api/oauth2/authorize-challenge",
   "pushed_authorization_request_endpoint": "https://app.zentity.xyz/api/auth/oauth2/par",
   "require_pushed_authorization_requests": true,
   "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],
   "dpop_signing_alg_values_supported": ["ES256"],
   "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
   "subject_types_supported": ["public", "pairwise"],
+  "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
   "backchannel_token_delivery_modes_supported": ["poll", "ping"],
   "client_id_metadata_document_supported": true,
   "resource_indicators_supported": true
@@ -458,4 +516,6 @@ The server never stores plaintext PII. The user's profile secret (encrypted with
 | Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
 | JARM | OIDC JARM | ECDH-ES P-256 |
 | x5c certificate chain | RFC 5280 | Leaf + CA, env vars or filesystem |
+| Step-up authentication | RFC 9470 / FPA draft | `acr_values` enforcement at authorize, CIBA approval, and token exchange |
+| First-party apps | draft-ietf-oauth-first-party-apps | Authorization Challenge Endpoint for CLI/headless clients |
 | Pairwise subjects | OIDC Core §8.1 | Enforced for all DCR clients |

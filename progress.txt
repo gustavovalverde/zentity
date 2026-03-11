@@ -61,3 +61,8 @@
 - Tests: FPA→403+auth_session, non-FPA→400, step-up re-entry→OPAQUE, full CIBA→challenge→tokens, DPoP consistency
 - Phase 4 COMPLETE
 - ALL 5 PHASES COMPLETE
+
+## Documentation Alignment (Post First-Party Apps)
+- docs/oauth-integrations.md: added authorize-challenge endpoint, First-Party Challenge flow section with mermaid diagrams, acr_values enforcement on CIBA, discovery metadata (authorization_challenge_endpoint, acr_values_supported), firstParty client flag, HAIP table rows
+- CLAUDE.md: added First-Party Apps paragraph, updated CIBA paragraph with acr_values enforcement
+- docs/plans/tasks/first-party-apps.md: all 42 checkboxes already [x] from prior commits
