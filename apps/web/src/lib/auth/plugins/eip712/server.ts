@@ -1,70 +1,44 @@
-import type {
-  BuildTypedDataParams,
-  Eip712AuthOptions,
-  Eip712TypedData,
-} from "./types";
+import type { Eip712AuthOptions, Eip712TypedData } from "./types";
 
 import { APIError, type BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
-import { getAddress, recoverTypedDataAddress } from "viem";
+import { getAddress } from "viem";
 import { z } from "zod";
 
+import {
+  buildDefaultTypedData,
+  nonceIdentifier,
+  verifyEip712Signature,
+} from "./utils";
+
 const DEFAULT_NONCE_TTL_SECONDS = 900; // 15 minutes
-const NONCE_PREFIX = "eip712";
-
-function defaultBuildTypedData(
-  params: BuildTypedDataParams,
-  appName: string
-): Eip712TypedData {
-  return {
-    domain: {
-      name: appName,
-      version: "1",
-      chainId: params.chainId,
-    },
-    types: {
-      WalletAuth: [
-        { name: "address", type: "address" },
-        { name: "nonce", type: "string" },
-      ],
-    },
-    primaryType: "WalletAuth",
-    message: {
-      address: params.address,
-      nonce: params.nonce,
-    },
-  };
-}
-
-function nonceIdentifier(address: string, chainId: number): string {
-  return `${NONCE_PREFIX}:${address.toLowerCase()}:${chainId}`;
-}
 
 export const eip712Auth = (options: Eip712AuthOptions = {}) => {
   const appName = options.appName || "App";
   const emailDomainName = options.emailDomainName || "wallet.app";
   const nonceTtlSeconds = options.nonceTtlSeconds || DEFAULT_NONCE_TTL_SECONDS;
 
-  const buildTypedData = (params: BuildTypedDataParams): Eip712TypedData =>
+  const buildTypedData = (
+    address: string,
+    chainId: number,
+    nonce: string
+  ): Eip712TypedData =>
     options.buildTypedData
-      ? options.buildTypedData(params)
-      : defaultBuildTypedData(params, appName);
+      ? options.buildTypedData({ address, chainId, nonce })
+      : buildDefaultTypedData(address, chainId, nonce, appName);
 
   async function verifySignature(
     signature: string,
     typedData: Eip712TypedData,
     expectedAddress: string
   ): Promise<void> {
-    const recovered = await recoverTypedDataAddress({
-      domain: typedData.domain,
-      types: typedData.types,
-      primaryType: typedData.primaryType,
-      message: typedData.message,
-      signature: signature as `0x${string}`,
-    });
-
-    if (recovered.toLowerCase() !== expectedAddress.toLowerCase()) {
+    const valid = await verifyEip712Signature(
+      signature,
+      typedData,
+      expectedAddress
+    );
+    if (!valid) {
       throw new APIError("UNAUTHORIZED", {
         message: "Invalid signature",
       });
@@ -142,7 +116,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
             expiresAt,
           });
 
-          const typedData = buildTypedData({ address, chainId, nonce });
+          const typedData = buildTypedData(address, chainId, nonce);
 
           return ctx.json({ nonce, typedData });
         }
@@ -174,7 +148,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           );
 
           // Reconstruct typed data and verify both signatures
-          const typedData = buildTypedData({ address, chainId, nonce });
+          const typedData = buildTypedData(address, chainId, nonce);
           await verifySignature(signature, typedData, address);
           await verifySignature(signature2, typedData, address);
 
@@ -323,7 +297,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           );
 
           // Reconstruct typed data and verify signature
-          const typedData = buildTypedData({ address, chainId, nonce });
+          const typedData = buildTypedData(address, chainId, nonce);
           await verifySignature(signature, typedData, address);
 
           // Look up wallet — try exact chain first, then any chain

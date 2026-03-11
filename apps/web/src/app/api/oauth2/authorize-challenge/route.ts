@@ -5,9 +5,15 @@ import { generateRandomString } from "better-auth/crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 import { NextResponse } from "next/server";
+import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
+import {
+  buildDefaultTypedData,
+  nonceIdentifier,
+  verifyEip712Signature,
+} from "@/lib/auth/plugins/eip712/utils";
 import {
   createDummyRegistrationRecord,
   decryptServerLoginState,
@@ -16,7 +22,12 @@ import {
   validateBase64Length,
 } from "@/lib/auth/plugins/opaque/utils";
 import { db } from "@/lib/db/connection";
-import { accounts, users, verifications } from "@/lib/db/schema/auth";
+import {
+  accounts,
+  users,
+  verifications,
+  walletAddresses,
+} from "@/lib/db/schema/auth";
 import {
   type AuthChallengeSession,
   authChallengeSessions,
@@ -30,6 +41,9 @@ const PAR_LIFETIME_MS = 60 * 1000;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 10;
+const EIP712_NONCE_TTL_MS = 15 * 60 * 1000;
+const EIP712_APP_NAME = "Zentity";
+const ETH_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 
 // ── Rate limiter (sliding window per IP) ────────────────
 
@@ -47,6 +61,7 @@ function isRateLimited(ip: string): boolean {
 // ── Request schemas ─────────────────────────────────────
 
 const InitialRequestSchema = z.object({
+  chain_id: z.number().int().positive().optional(),
   client_id: z.string().min(1),
   code_challenge: z.string().min(43).optional(),
   code_challenge_method: z.string().default("S256").optional(),
@@ -64,6 +79,11 @@ const OpaqueStartSchema = z.object({
 const OpaqueFinishSchema = z.object({
   auth_session: z.string().min(1),
   opaque_finish_request: z.string().min(1),
+});
+
+const Eip712FinishSchema = z.object({
+  auth_session: z.string().min(1),
+  eip712_signature: z.string().min(1),
 });
 
 // ── Helpers ─────────────────────────────────────────────
@@ -144,6 +164,9 @@ export async function POST(request: Request): Promise<Response> {
   if (body.auth_session && body.opaque_finish_request) {
     return handleOpaqueFinish(request, body);
   }
+  if (body.auth_session && body.eip712_signature) {
+    return handleEip712Finish(request, body);
+  }
   if (body.auth_session && body.opaque_login_request) {
     return handleOpaqueStart(request, body);
   }
@@ -203,13 +226,37 @@ async function handleInitialRequest(
   // Extract DPoP thumbprint (bound to all subsequent requests)
   const dpopJkt = await extractDpopJkt(request);
 
-  // Resolve user by email — timing-safe (always create session)
-  const identifier = params.identifier.trim().toLowerCase();
-  const user = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, identifier))
-    .get();
+  // Resolve user — by wallet address or email
+  const identifier = params.identifier.trim();
+  let user: { id: string } | undefined;
+  let walletInfo: { address: string; chainId: number } | null = null;
+
+  if (ETH_ADDRESS_RE.test(identifier)) {
+    const checksummed = getAddress(identifier);
+    const wallet = await db
+      .select({
+        userId: walletAddresses.userId,
+        address: walletAddresses.address,
+        chainId: walletAddresses.chainId,
+      })
+      .from(walletAddresses)
+      .where(eq(walletAddresses.address, checksummed))
+      .get();
+    if (wallet) {
+      user = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, wallet.userId))
+        .get();
+      walletInfo = { address: wallet.address, chainId: wallet.chainId };
+    }
+  } else {
+    user = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, identifier.toLowerCase()))
+      .get();
+  }
 
   // Determine challenge type based on available credentials
   // Priority: OPAQUE > EIP-712 wallet > redirect_to_web (passkey-only)
@@ -277,6 +324,71 @@ async function handleInitialRequest(
     }
 
     return errorJson(400, "redirect_to_web", undefined, extras);
+  }
+
+  if (challengeType === "eip712") {
+    // Resolve wallet address if not already known (email lookup path)
+    if (!walletInfo && user) {
+      const wallet = await db
+        .select({
+          address: walletAddresses.address,
+          chainId: walletAddresses.chainId,
+        })
+        .from(walletAddresses)
+        .where(eq(walletAddresses.userId, user.id))
+        .get();
+      if (wallet) {
+        walletInfo = { address: wallet.address, chainId: wallet.chainId };
+      }
+    }
+
+    if (!walletInfo) {
+      return errorJson(401, "access_denied", "Authentication failed");
+    }
+
+    const chainId = params.chain_id ?? walletInfo.chainId;
+    const nonce = crypto.randomUUID();
+    const nid = nonceIdentifier(walletInfo.address, chainId);
+
+    await db.insert(verifications).values({
+      id: randomBytes(16).toString("hex"),
+      identifier: nid,
+      value: nonce,
+      expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS).toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Store wallet context on the session for round 2
+    await db
+      .update(authChallengeSessions)
+      .set({
+        opaqueServerState: JSON.stringify({
+          walletAddress: walletInfo.address,
+          chainId,
+          nonce,
+          nonceIdentifier: nid,
+        }),
+      })
+      .where(eq(authChallengeSessions.authSession, authSession));
+
+    const typedData = buildDefaultTypedData(
+      walletInfo.address,
+      chainId,
+      nonce,
+      EIP712_APP_NAME
+    );
+
+    return NextResponse.json(
+      {
+        auth_session: authSession,
+        challenge_type: "eip712",
+        error: "insufficient_authorization",
+        nonce,
+        typed_data: typedData,
+      },
+      { status: 401 }
+    );
   }
 
   await ready;
@@ -441,14 +553,105 @@ async function handleOpaqueFinish(
     return errorJson(401, "access_denied", "Authentication failed");
   }
 
-  // Issue authorization code (same format as oauth-provider)
+  return issueAuthorizationCode(session, user.id, auth_session);
+}
+
+// ── EIP-712 Round 2: Verify signature + issue auth code ─
+
+async function handleEip712Finish(
+  request: Request,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const parsed = Eip712FinishSchema.safeParse(body);
+  if (!parsed.success) {
+    return errorJson(400, "invalid_request", parsed.error.issues[0]?.message);
+  }
+  const { auth_session, eip712_signature } = parsed.data;
+
+  const session = await loadSession(auth_session);
+  if (!session || isExpired(session)) {
+    return errorJson(400, "invalid_session", "Session expired or not found");
+  }
+  if (session.state !== "pending" || session.challengeType !== "eip712") {
+    return errorJson(400, "invalid_session", "Invalid session state");
+  }
+  if (!(session.opaqueServerState && session.userId)) {
+    return errorJson(400, "invalid_session", "EIP-712 round 1 not completed");
+  }
+
+  // DPoP key continuity
+  const dpopJkt = await extractDpopJkt(request);
+  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
+    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  }
+
+  // Parse wallet context from session
+  const ctx = JSON.parse(session.opaqueServerState) as {
+    walletAddress: string;
+    chainId: number;
+    nonce: string;
+    nonceIdentifier: string;
+  };
+
+  // Consume nonce (single-use)
+  const nonceRow = await db
+    .select({ id: verifications.id, value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, ctx.nonceIdentifier))
+    .get();
+
+  if (!nonceRow || nonceRow.value !== ctx.nonce) {
+    return errorJson(401, "access_denied", "Nonce expired or already used");
+  }
+
+  await db
+    .delete(verifications)
+    .where(eq(verifications.identifier, ctx.nonceIdentifier));
+
+  // Verify signature
+  const typedData = buildDefaultTypedData(
+    ctx.walletAddress,
+    ctx.chainId,
+    ctx.nonce,
+    EIP712_APP_NAME
+  );
+
+  const valid = await verifyEip712Signature(
+    eip712_signature,
+    typedData,
+    ctx.walletAddress
+  );
+  if (!valid) {
+    return errorJson(401, "access_denied", "Invalid signature");
+  }
+
+  // Verify user still exists
+  const user = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .get();
+  if (!user) {
+    return errorJson(401, "access_denied", "Authentication failed");
+  }
+
+  return issueAuthorizationCode(session, user.id, auth_session);
+}
+
+// ── Shared: Issue authorization code ────────────────────
+
+async function issueAuthorizationCode(
+  session: AuthChallengeSession,
+  userId: string,
+  authSession: string
+): Promise<Response> {
   const code = generateRandomString(32, "a-z", "A-Z", "0-9");
-  const identifier = hashCode(code);
+  const codeHash = hashCode(code);
   const iat = Math.floor(Date.now() / 1000);
 
   await db.insert(verifications).values({
     id: randomBytes(16).toString("hex"),
-    identifier,
+    identifier: codeHash,
     value: JSON.stringify({
       type: "authorization_code",
       query: {
@@ -460,23 +663,18 @@ async function handleOpaqueFinish(
         }),
         ...(session.resource && { resource: session.resource }),
       },
-      userId: user.id,
+      userId,
       authTime: Date.now(),
-      authSession: auth_session,
+      authSession,
     }),
     expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000).toISOString(),
     createdAt: new Date(iat * 1000).toISOString(),
     updatedAt: new Date(iat * 1000).toISOString(),
   });
 
-  // Mark session as code_issued
   await db
     .update(authChallengeSessions)
-    .set({
-      state: "code_issued",
-      authorizationCode: identifier,
-      userId: user.id,
-    })
+    .set({ state: "code_issued", authorizationCode: codeHash, userId })
     .where(eq(authChallengeSessions.id, session.id));
 
   return NextResponse.json({ authorization_code: code });
