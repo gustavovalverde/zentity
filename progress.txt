@@ -86,3 +86,18 @@
 - Approval UI: displays required assurance tier badge when acr_values present
 - 10 integration tests (step-up-ciba.integration.test.ts): approval rejection, approval success, preference order, token exchange safety net
 - Files: ciba.ts (schema), step-up-ciba.ts, auth.ts (hooks), ciba-approve-client.tsx (UI), step-up-ciba.integration.test.ts, vendor patch
+
+## Step-Up Authentication — Phase 3: Demo-rp Step-Up Scenarios
+- Scenario type: added acrValues/maxAge fields to Scenario interface
+- Exchange scenario: sends acr_values=urn:zentity:assurance:tier-2 via authorizationUrlParams in genericOAuth config
+- Bank scenario: sends max_age=300 via authorizationUrlParams
+- Aether CIBA: sends acr_values=urn:zentity:assurance:tier-2 in bc-authorize request
+- CIBA API route: added acrValues to Zod schema, passes acr_values in bc-authorize body, extracted handleAuthorize for complexity
+- Error UX: better-auth's built-in /error endpoint renders the error_description from step-up rejection
+- Files: scenarios.ts, auth.ts (PROVIDER_AUTH_PARAMS + authorizationUrlParams), use-ciba-flow.ts, api/ciba/route.ts, aether/page.tsx
+
+## Step-Up Authentication: COMPLETE
+- All 3 phases implemented
+- Phase 1: Authorize endpoint enforcement (acr_values + max_age, PAR + non-PAR)
+- Phase 2: CIBA acr_values enforcement (approval + token exchange safety net)
+- Phase 3: Demo-rp scenarios (exchange acr_values, bank max_age, aether CIBA acr_values)

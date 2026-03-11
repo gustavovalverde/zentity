@@ -5,10 +5,12 @@ export interface ComplianceBadge {
 }
 
 export interface Scenario {
+  acrValues?: string;
   compliance: ComplianceBadge[];
   dcr: { clientName: string; defaultScopes: string };
   description: string;
   id: string;
+  maxAge?: number;
   name: string;
   notShared: string[];
   providerId: string;
@@ -32,6 +34,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     const stepUpScopes = ["identity.name"];
     return {
       id: "bank",
+      maxAge: 300,
       name: "Velocity Bank",
       tagline: "Modern digital banking",
       description:
@@ -77,6 +80,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     const signInScopes = ["openid", "email", "proof:verification"];
     const stepUpScopes = ["identity.nationality"];
     return {
+      acrValues: "urn:zentity:assurance:tier-2",
       id: "exchange",
       name: "Nova Exchange",
       tagline: "Trade crypto globally",
@@ -272,6 +276,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     const signInScopes = ["openid", "email"];
     const stepUpScopes: string[] = [];
     return {
+      acrValues: "urn:zentity:assurance:tier-2",
       id: "aether",
       name: "Aether AI",
       tagline: "Personal Shopping Agent",

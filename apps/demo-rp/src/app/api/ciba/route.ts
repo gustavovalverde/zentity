@@ -30,6 +30,7 @@ const bodySchema = z.discriminatedUnion("action", [
     scope: z.string().min(1),
     bindingMessage: z.string().optional(),
     authorizationDetails: z.string().optional(),
+    acrValues: z.string().optional(),
   }),
   z.object({
     action: z.literal("token"),
@@ -48,6 +49,56 @@ const bodySchema = z.discriminatedUnion("action", [
     scope: z.string().optional(),
   }),
 ]);
+
+interface DcrClient {
+  clientId: string;
+  clientSecret: string | null;
+}
+
+async function handleAuthorize(
+  data: {
+    scope: string;
+    loginHint: string;
+    bindingMessage?: string;
+    authorizationDetails?: string;
+    acrValues?: string;
+  },
+  client: DcrClient
+) {
+  const notificationToken = crypto.randomUUID();
+  const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
+
+  const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: client.clientId,
+      ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
+      scope: data.scope,
+      login_hint: data.loginHint,
+      binding_message: data.bindingMessage,
+      authorization_details: data.authorizationDetails,
+      ...(data.acrValues ? { acr_values: data.acrValues } : {}),
+      client_notification_token: notificationToken,
+      client_notification_uri: callbackUrl,
+    }),
+  });
+
+  const body = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    return NextResponse.json(body, { status: res.status });
+  }
+
+  const authReqId = body.auth_req_id as string;
+  if (authReqId) {
+    await getDb()
+      .insert(cibaPings)
+      .values({ authReqId, notificationToken })
+      .onConflictDoNothing();
+  }
+
+  return NextResponse.json(body);
+}
 
 async function fetchTokenWithDpop(
   tokenUrl: string,
@@ -101,40 +152,7 @@ export async function POST(request: Request) {
   }
 
   if (data.action === "authorize") {
-    // Generate a per-request notification token for ping mode
-    const notificationToken = crypto.randomUUID();
-    const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
-
-    const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: client.clientId,
-        ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
-        scope: data.scope,
-        login_hint: data.loginHint,
-        binding_message: data.bindingMessage,
-        authorization_details: data.authorizationDetails,
-        client_notification_token: notificationToken,
-        client_notification_uri: callbackUrl,
-      }),
-    });
-
-    const body = (await res.json()) as Record<string, unknown>;
-    if (!res.ok) {
-      return NextResponse.json(body, { status: res.status });
-    }
-
-    // Store the notification token so the callback can verify it
-    const authReqId = body.auth_req_id as string;
-    if (authReqId) {
-      await getDb()
-        .insert(cibaPings)
-        .values({ authReqId, notificationToken })
-        .onConflictDoNothing();
-    }
-
-    return NextResponse.json(body);
+    return handleAuthorize(data, client);
   }
 
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;

@@ -17,6 +17,7 @@ interface CibaFlowState {
   exchangedTokens: Record<string, unknown> | null;
   reset: () => void;
   startFlow: (params: {
+    acrValues?: string;
     loginHint: string;
     scope: string;
     bindingMessage?: string;
@@ -256,6 +257,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
   const startFlow = useCallback(
     async (params: {
+      acrValues?: string;
       loginHint: string;
       scope: string;
       bindingMessage?: string;
@@ -275,6 +277,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
             scope: params.scope,
             bindingMessage: params.bindingMessage,
             authorizationDetails: params.authorizationDetails,
+            acrValues: params.acrValues,
           }),
         });
 

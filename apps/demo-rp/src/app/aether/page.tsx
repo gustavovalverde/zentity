@@ -58,6 +58,7 @@ export default function AetherPage() {
           amount: { currency: "USD", value: total.toFixed(2) },
         },
       ]),
+      acrValues: scenario.acrValues,
     });
   }, [userEmail, task, startFlow]);
 

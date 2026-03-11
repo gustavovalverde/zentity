@@ -192,7 +192,8 @@ async function syncClaimsToDb(
 function makeProviderConfig(
   providerId: string,
   clientId: string,
-  scopes: string[]
+  scopes: string[],
+  authorizationUrlParams?: Record<string, string>
 ) {
   return {
     providerId,
@@ -201,6 +202,7 @@ function makeProviderConfig(
     scopes,
     pkce: true,
     overrideUserInfo: true,
+    ...(authorizationUrlParams ? { authorizationUrlParams } : {}),
     async getToken(data: {
       code: string;
       redirectURI: string;
@@ -282,6 +284,13 @@ function makeProviderConfig(
   };
 }
 
+const PROVIDER_AUTH_PARAMS: Partial<
+  Record<ProviderId, Record<string, string>>
+> = {
+  exchange: { acr_values: "urn:zentity:assurance:tier-2" },
+  bank: { max_age: "300" },
+};
+
 const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   bank: ["openid", "email", "proof:verification"],
   exchange: ["openid", "email", "proof:verification"],
@@ -323,7 +332,12 @@ function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
             return [];
           }
           return [
-            makeProviderConfig(`zentity-${id}`, clientId, PROVIDER_SCOPES[id]),
+            makeProviderConfig(
+              `zentity-${id}`,
+              clientId,
+              PROVIDER_SCOPES[id],
+              PROVIDER_AUTH_PARAMS[id]
+            ),
           ];
         }),
       }),
