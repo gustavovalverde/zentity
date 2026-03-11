@@ -1,12 +1,15 @@
+import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
+import { privateKeyToAccount } from "viem/accounts";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ipRequestLog } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
-import { accounts } from "@/lib/db/schema/auth";
+import { accounts, walletAddresses } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import {
@@ -20,6 +23,9 @@ const TEST_CLIENT_ID = "fpa-test-client";
 const THIRD_PARTY_CLIENT_ID = "third-party-client";
 const TEST_PASSWORD = "correct-horse-battery-staple";
 const TEST_EMAIL = "alice@example.com";
+const TEST_WALLET_KEY =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const TEST_WALLET = privateKeyToAccount(TEST_WALLET_KEY);
 
 async function createTestClient() {
   await db
@@ -49,6 +55,39 @@ async function createThirdPartyClient() {
       firstParty: false,
     })
     .run();
+}
+
+async function createUserWithWallet(
+  address: string,
+  chainId = 1
+): Promise<string> {
+  const email = `${address.slice(2, 10).toLowerCase()}@wallet.zentity.app`;
+  const userId = await createTestUser({ email });
+
+  await db
+    .insert(accounts)
+    .values({
+      id: crypto.randomUUID(),
+      accountId: userId,
+      providerId: "eip712",
+      userId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .run();
+
+  await db
+    .insert(walletAddresses)
+    .values({
+      userId,
+      address,
+      chainId,
+      isPrimary: true,
+      createdAt: new Date().toISOString(),
+    })
+    .run();
+
+  return userId;
 }
 
 async function createUserWithOpaque(
@@ -500,6 +539,131 @@ describe("Authorization Challenge Endpoint", () => {
       expect(round2.status).toBe(400);
       expect(round2.json.error).toBe("invalid_session");
       expect(round2.json.error_description).toBe("DPoP key mismatch");
+    });
+  });
+
+  describe("EIP-712 wallet challenge flow", () => {
+    it("returns eip712 challenge type for wallet user (by email)", async () => {
+      await createUserWithWallet(TEST_WALLET.address);
+
+      const { status, json } = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        identifier: `${TEST_WALLET.address.slice(2, 10).toLowerCase()}@wallet.zentity.app`,
+      });
+
+      expect(status).toBe(401);
+      expect(json.error).toBe("insufficient_authorization");
+      expect(json.challenge_type).toBe("eip712");
+      expect(json.auth_session).toBeTypeOf("string");
+      expect(json.nonce).toBeTypeOf("string");
+      expect(json.typed_data).toBeDefined();
+    });
+
+    it("returns eip712 challenge type for wallet user (by address)", async () => {
+      await createUserWithWallet(TEST_WALLET.address);
+
+      const { status, json } = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        identifier: TEST_WALLET.address,
+      });
+
+      expect(status).toBe(401);
+      expect(json.challenge_type).toBe("eip712");
+      expect(json.nonce).toBeTypeOf("string");
+      expect(json.typed_data).toBeDefined();
+    });
+
+    it("completes 2-round EIP-712 flow and returns authorization_code", async () => {
+      await createUserWithWallet(TEST_WALLET.address);
+
+      const round1 = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        identifier: TEST_WALLET.address,
+      });
+      expect(round1.status).toBe(401);
+      const authSession = round1.json.auth_session as string;
+      const typedData = round1.json.typed_data as Eip712TypedData;
+
+      const signature = await TEST_WALLET.signTypedData({
+        domain: typedData.domain,
+        types: typedData.types,
+        primaryType: typedData.primaryType as "WalletAuth",
+        message: typedData.message as { address: `0x${string}`; nonce: string },
+      });
+
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        eip712_signature: signature,
+      });
+      expect(round2.status).toBe(200);
+      expect(round2.json.authorization_code).toBeTypeOf("string");
+      expect((round2.json.authorization_code as string).length).toBe(32);
+    });
+
+    it("exchanges EIP-712 authorization code for tokens", async () => {
+      await createUserWithWallet(TEST_WALLET.address);
+
+      const round1 = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        identifier: TEST_WALLET.address,
+      });
+      const authSession = round1.json.auth_session as string;
+      const typedData = round1.json.typed_data as Eip712TypedData;
+
+      const signature = await TEST_WALLET.signTypedData({
+        domain: typedData.domain,
+        types: typedData.types,
+        primaryType: typedData.primaryType as "WalletAuth",
+        message: typedData.message as { address: `0x${string}`; nonce: string },
+      });
+
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        eip712_signature: signature,
+      });
+      const authorizationCode = round2.json.authorization_code as string;
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        client_id: TEST_CLIENT_ID,
+        code: authorizationCode,
+        code_verifier: CODE_VERIFIER,
+      });
+
+      expect(status).toBe(200);
+      expect(json.access_token).toBeTypeOf("string");
+      expect(json.auth_session).toBe(authSession);
+    });
+
+    it("rejects invalid EIP-712 signature", async () => {
+      await createUserWithWallet(TEST_WALLET.address);
+
+      const round1 = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        identifier: TEST_WALLET.address,
+      });
+
+      const round2 = await callChallenge({
+        auth_session: round1.json.auth_session as string,
+        eip712_signature:
+          "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      });
+      expect(round2.status).toBe(401);
+      expect(round2.json.error).toBe("access_denied");
     });
   });
 });

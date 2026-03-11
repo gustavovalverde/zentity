@@ -35,3 +35,15 @@
 - DPoP key continuity enforced across all 3 rounds (already existed, now tested)
 - Tests: non-first-party → redirect_to_web, rate limit → 429, per-IP isolation, DPoP key switch → invalid_session
 - Phase 5 COMPLETE
+
+## First-Party Apps — Phase 3: EIP-712 Wallet Challenge Flow
+- Extracted shared EIP-712 utils (buildDefaultTypedData, verifyEip712Signature, nonceIdentifier) into plugins/eip712/utils.ts
+- Plugin server.ts refactored to use shared utils (no behavior change)
+- 2-round wallet auth: Round 1 returns nonce + typed_data, Round 2 verifies signature → authorization_code
+- Identifier supports both email and Ethereum address (0x-prefixed, 42 chars)
+- Wallet context (address, chainId, nonce) stored in opaqueServerState as JSON
+- Nonce stored in verifications table (same as plugin), consumed on round 2
+- verifyEip712Signature catches invalid signature errors (returns false vs throwing)
+- issueAuthorizationCode extracted as shared helper (used by OPAQUE and EIP-712 finish)
+- Tests: eip712 challenge by email, by address, full 2-round flow, token exchange, invalid signature
+- Phase 3 COMPLETE

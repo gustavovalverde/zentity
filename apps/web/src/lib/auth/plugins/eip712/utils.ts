@@ -32,12 +32,16 @@ export async function verifyEip712Signature(
   typedData: Eip712TypedData,
   expectedAddress: string
 ): Promise<boolean> {
-  const recovered = await recoverTypedDataAddress({
-    domain: typedData.domain,
-    types: typedData.types,
-    primaryType: typedData.primaryType,
-    message: typedData.message,
-    signature: signature as `0x${string}`,
-  });
-  return recovered.toLowerCase() === expectedAddress.toLowerCase();
+  try {
+    const recovered = await recoverTypedDataAddress({
+      domain: typedData.domain,
+      types: typedData.types,
+      primaryType: typedData.primaryType,
+      message: typedData.message,
+      signature: signature as `0x${string}`,
+    });
+    return recovered.toLowerCase() === expectedAddress.toLowerCase();
+  } catch {
+    return false;
+  }
 }
