@@ -10,6 +10,9 @@ import { ipRequestLog } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { accounts, walletAddresses } from "@/lib/db/schema/auth";
+import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
+import { cibaRequests } from "@/lib/db/schema/ciba";
+import { identityBundles } from "@/lib/db/schema/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import {
@@ -664,6 +667,244 @@ describe("Authorization Challenge Endpoint", () => {
       });
       expect(round2.status).toBe(401);
       expect(round2.json.error).toBe("access_denied");
+    });
+  });
+
+  describe("Step-up re-authentication (Phase 4)", () => {
+    const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
+    const FPA_CIBA_CLIENT_ID = "fpa-ciba-step-up";
+
+    async function createFpaCibaClient() {
+      await db
+        .insert(oauthClients)
+        .values({
+          clientId: FPA_CIBA_CLIENT_ID,
+          name: "FPA CIBA Step-Up Client",
+          redirectUris: ["http://localhost/callback"],
+          grantTypes: [CIBA_GRANT_TYPE, "authorization_code"],
+          tokenEndpointAuthMethod: "none",
+          public: true,
+          firstParty: true,
+        })
+        .run();
+    }
+
+    async function insertApprovedCibaRequest(
+      userId: string,
+      acrValues: string,
+      clientId = FPA_CIBA_CLIENT_ID
+    ) {
+      const authReqId = crypto.randomUUID();
+      await db
+        .insert(cibaRequests)
+        .values({
+          authReqId,
+          clientId,
+          userId,
+          scope: "openid",
+          status: "approved",
+          acrValues,
+          expiresAt: new Date(Date.now() + 300_000),
+        })
+        .run();
+      return authReqId;
+    }
+
+    async function seedTier1(userId: string) {
+      await db
+        .insert(identityBundles)
+        .values({
+          userId,
+          fheKeyId: "test-fhe-key",
+          fheStatus: "complete",
+          status: "verified",
+        })
+        .run();
+    }
+
+    it("step-up re-entry with auth_session returns OPAQUE challenge", async () => {
+      const { userId } = await createUserWithOpaque(TEST_EMAIL);
+
+      // Create a step-up session (simulating what enforceCibaTokenAcr produces)
+      const authSession = crypto.randomUUID();
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: TEST_CLIENT_ID,
+          userId,
+          scope: "openid",
+          acrValues: "urn:zentity:assurance:tier-1",
+          state: "pending",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      const { status, json } = await callChallenge({
+        auth_session: authSession,
+      });
+
+      expect(status).toBe(401);
+      expect(json.error).toBe("insufficient_authorization");
+      expect(json.challenge_type).toBe("opaque");
+      expect(json.server_public_key).toBeTypeOf("string");
+      expect(json.auth_session).toBe(authSession);
+    });
+
+    it("step-up re-entry rejects sessions with challengeType already set", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+
+      // Start a normal challenge (which sets challengeType)
+      const round1 = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        identifier: TEST_EMAIL,
+      });
+
+      // Try to re-enter with just auth_session (no round-specific fields)
+      const { status, json } = await callChallenge({
+        auth_session: round1.json.auth_session as string,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_session");
+    });
+
+    it("full CIBA step-up → re-challenge → tokens flow", async () => {
+      const { userId } = await createUserWithOpaque(TEST_EMAIL);
+      await createFpaCibaClient();
+
+      // 1. CIBA token exchange → 403 + auth_session (tier-0 vs tier-1 required)
+      const authReqId = await insertApprovedCibaRequest(
+        userId,
+        "urn:zentity:assurance:tier-1"
+      );
+
+      const tokenResult = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: FPA_CIBA_CLIENT_ID,
+      });
+
+      expect(tokenResult.status).toBe(403);
+      expect(tokenResult.json.error).toBe("insufficient_authorization");
+      const stepUpAuthSession = tokenResult.json.auth_session as string;
+      expect(stepUpAuthSession).toBeTypeOf("string");
+
+      // 2. Upgrade user tier (simulate identity verification completion)
+      await seedTier1(userId);
+
+      // 3. Re-enter challenge endpoint with auth_session + PKCE + same DPoP key
+      const dpopProof = await buildDpopProof(
+        tokenResult.dpopKeyPair,
+        "POST",
+        CHALLENGE_URL
+      );
+      const dpopHeaders = { DPoP: dpopProof };
+
+      const reEntry = await callChallenge(
+        {
+          auth_session: stepUpAuthSession,
+          code_challenge: CODE_CHALLENGE,
+          code_challenge_method: "S256",
+        },
+        dpopHeaders
+      );
+      expect(reEntry.status).toBe(401);
+      expect(reEntry.json.challenge_type).toBe("opaque");
+      expect(reEntry.json.server_public_key).toBeTypeOf("string");
+
+      // 4. Complete OPAQUE authentication (with DPoP continuity)
+      await ready;
+      const { clientLoginState, startLoginRequest } = client.startLogin({
+        password: TEST_PASSWORD,
+      });
+
+      const dpopProof2 = await buildDpopProof(
+        tokenResult.dpopKeyPair,
+        "POST",
+        CHALLENGE_URL
+      );
+      const round2 = await callChallenge(
+        {
+          auth_session: stepUpAuthSession,
+          opaque_login_request: startLoginRequest,
+        },
+        { DPoP: dpopProof2 }
+      );
+      expect(round2.json.opaque_login_response).toBeTypeOf("string");
+
+      const loginResult = client.finishLogin({
+        clientLoginState,
+        loginResponse: round2.json.opaque_login_response as string,
+        password: TEST_PASSWORD,
+      });
+
+      const dpopProof3 = await buildDpopProof(
+        tokenResult.dpopKeyPair,
+        "POST",
+        CHALLENGE_URL
+      );
+      const round3 = await callChallenge(
+        {
+          auth_session: stepUpAuthSession,
+          opaque_finish_request: loginResult?.finishLoginRequest,
+        },
+        { DPoP: dpopProof3 }
+      );
+      expect(round3.status).toBe(200);
+      const authCode = round3.json.authorization_code as string;
+      expect(authCode).toBeTypeOf("string");
+
+      // 5. Exchange auth code for tokens (PKCE code_verifier required)
+      const { status, json } = await postTokenWithDpop(
+        {
+          grant_type: "authorization_code",
+          client_id: FPA_CIBA_CLIENT_ID,
+          code: authCode,
+          code_verifier: CODE_VERIFIER,
+        },
+        tokenResult.dpopKeyPair
+      );
+
+      expect(status).toBe(200);
+      expect(json.access_token).toBeTypeOf("string");
+      expect(json.auth_session).toBe(stepUpAuthSession);
+    });
+
+    it("step-up DPoP key consistency is enforced", async () => {
+      const { userId } = await createUserWithOpaque(TEST_EMAIL);
+      await createFpaCibaClient();
+
+      const authReqId = await insertApprovedCibaRequest(
+        userId,
+        "urn:zentity:assurance:tier-1"
+      );
+
+      // Token request with DPoP key A → 403 + auth_session
+      const tokenResult = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: FPA_CIBA_CLIENT_ID,
+      });
+      expect(tokenResult.status).toBe(403);
+      const stepUpAuthSession = tokenResult.json.auth_session as string;
+
+      // Re-enter challenge with DPoP key B → DPoP mismatch
+      const keyPairB = await createTestDpopKeyPair();
+      const dpopProofB = await buildDpopProof(keyPairB, "POST", CHALLENGE_URL);
+
+      const reEntry = await callChallenge(
+        { auth_session: stepUpAuthSession },
+        { DPoP: dpopProofB }
+      );
+
+      expect(reEntry.status).toBe(400);
+      expect(reEntry.json.error).toBe("invalid_session");
+      expect(reEntry.json.error_description).toBe("DPoP key mismatch");
     });
   });
 });

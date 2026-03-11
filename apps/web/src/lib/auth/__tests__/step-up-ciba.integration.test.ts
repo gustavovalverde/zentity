@@ -13,6 +13,7 @@ import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";
+const FPA_CLIENT_ID = "step-up-ciba-fpa-test";
 const APPROVE_URL = "http://localhost:3000/api/auth/ciba/authorize";
 
 async function createTestClient() {
@@ -25,6 +26,21 @@ async function createTestClient() {
       grantTypes: [CIBA_GRANT_TYPE],
       tokenEndpointAuthMethod: "none",
       public: true,
+    })
+    .run();
+}
+
+async function createFirstPartyClient() {
+  await db
+    .insert(oauthClients)
+    .values({
+      clientId: FPA_CLIENT_ID,
+      name: "Step-Up CIBA FPA Test",
+      redirectUris: ["http://localhost/callback"],
+      grantTypes: [CIBA_GRANT_TYPE],
+      tokenEndpointAuthMethod: "none",
+      public: true,
+      firstParty: true,
     })
     .run();
 }
@@ -254,5 +270,73 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
 
     expect(status).toBe(400);
     expect(json.error).toBe("authorization_pending");
+  });
+});
+
+describe("CIBA step-up: first-party client (FPA) path", () => {
+  let userId: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    await createFirstPartyClient();
+  });
+
+  it("FPA client with unsatisfied acr_values returns 403 + auth_session", async () => {
+    const authReqId = await insertCibaRequest({
+      clientId: FPA_CLIENT_ID,
+      userId,
+      status: "approved",
+      acrValues: "urn:zentity:assurance:tier-2",
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: FPA_CLIENT_ID,
+    });
+
+    expect(status).toBe(403);
+    expect(json.error).toBe("insufficient_authorization");
+    expect(json.auth_session).toBeTypeOf("string");
+    expect(json.error_description).toContain("tier-0");
+  });
+
+  it("non-FPA client with unsatisfied acr_values still returns 400 interaction_required", async () => {
+    await createTestClient();
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      acrValues: "urn:zentity:assurance:tier-2",
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    expect(status).toBe(400);
+    expect(json.error).toBe("interaction_required");
+    expect(json.auth_session).toBeUndefined();
+  });
+
+  it("FPA client with satisfied acr_values issues tokens normally", async () => {
+    await seedTier1User(userId);
+    const authReqId = await insertCibaRequest({
+      clientId: FPA_CLIENT_ID,
+      userId,
+      status: "approved",
+      acrValues: "urn:zentity:assurance:tier-1",
+    });
+
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: FPA_CLIENT_ID,
+    });
+
+    expect(status).toBe(200);
+    expect(json.access_token).toBeDefined();
   });
 });

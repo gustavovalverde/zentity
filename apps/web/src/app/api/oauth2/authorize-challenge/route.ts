@@ -703,12 +703,25 @@ async function handleStepUpReEntry(
     return errorJson(401, "access_denied", "User not found");
   }
 
+  // Accept optional PKCE (required by OAuth 2.1 for public clients)
+  const codeChallenge =
+    typeof body.code_challenge === "string" ? body.code_challenge : undefined;
+  let codeChallengeMethod: string | undefined;
+  if (typeof body.code_challenge_method === "string") {
+    codeChallengeMethod = body.code_challenge_method;
+  } else if (codeChallenge) {
+    codeChallengeMethod = "S256";
+  }
+
   const challengeType = await resolveCredentialType(user.id);
 
-  // Update session with resolved challenge type
+  // Update session with resolved challenge type (and PKCE if provided)
   await db
     .update(authChallengeSessions)
-    .set({ challengeType })
+    .set({
+      challengeType,
+      ...(codeChallenge && { codeChallenge, codeChallengeMethod }),
+    })
     .where(eq(authChallengeSessions.id, session.id));
 
   if (challengeType === "redirect_to_web") {
