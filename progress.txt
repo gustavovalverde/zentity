@@ -40,3 +40,15 @@
 - `grant_types_supported` includes token-exchange natively via `grantTypes` config
 - Files:
   - MOD: apps/web/src/lib/auth/__tests__/oidc-well-known.test.ts — 3 new tests: acr_values, claims_supported, token-exchange grant
+
+### Phase 5: Test hardening — CIBA & delegated auth — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 5)
+- Decisions:
+  - `customAccessTokenClaims` can't check grant_type (not in callback params). Identity-scope guard
+    is functionally equivalent — only CIBA approval stages release handles. Added explicit comment.
+  - Scope-guard test: stages handle, issues non-identity-scope token, verifies handle is preserved
+  - Ping-while-poll test: ping reuses in-flight promise via inflightRef guard, no duplicate fetch
+- Files:
+  - MOD: apps/web/src/lib/auth/auth.ts — expanded comment on identity-scope proxy design
+  - MOD: apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts — scope guard test
+  - MOD: apps/demo-rp/src/hooks/use-ciba-flow.test.ts — ping-while-poll-in-flight regression test

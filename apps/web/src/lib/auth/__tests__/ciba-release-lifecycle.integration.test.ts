@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { sealApprovalPii } from "@/lib/auth/oidc/approval-crypto";
 import {
+  consumeReleaseHandle,
   resetReleaseHandleStore,
   stageReleaseHandle,
 } from "@/lib/auth/oidc/ephemeral-release-handles";
@@ -304,6 +305,42 @@ describe("CIBA → durable approval → release lifecycle", () => {
     expect(idToken.authorization_details).toEqual([
       { type: "purchase", amount: { currency: "USD", value: "42.00" } },
     ]);
+  });
+
+  it("staged handle survives non-identity-scope grant (scope guard)", async () => {
+    // Stage a handle as if a CIBA approval just happened
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      scope: "openid",
+      resource: TEST_RESOURCE,
+    });
+
+    const pii = { given_name: "Protected" };
+    await stageApproval({
+      authReqId,
+      userId,
+      clientId: TEST_CLIENT_ID,
+      pii,
+      scopes: "openid identity.name",
+    });
+
+    // Issue a token with only openid scope (no identity scopes).
+    // The scope guard in customAccessTokenClaims should skip
+    // consumeReleaseHandle entirely — the handle stays staged.
+    const { status, json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+    expect(status).toBe(200);
+
+    const payload = decodeJwt(json.access_token as string);
+    expect(payload.release_handle).toBeUndefined();
+
+    // The handle should still be consumable for a future identity-scope grant
+    const handle = consumeReleaseHandle(userId);
+    expect(handle).not.toBeNull();
   });
 
   it("expired approval: release returns 410", async () => {

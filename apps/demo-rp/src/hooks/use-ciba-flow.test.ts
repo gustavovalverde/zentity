@@ -180,6 +180,86 @@ describe("useCibaFlow state machine", () => {
     expect(result.current.state).toBe("approved");
   });
 
+  it("ping arrives while interval poll fetch is in-flight", async () => {
+    const tokenDeferred = createDeferred<ReturnType<typeof mockResponse>>();
+    let tokenFetchCount = 0;
+    let pingCheckCount = 0;
+    let pingReceived = false;
+
+    fetchSpy.mockImplementation((_url: string, init?: { body?: string }) => {
+      const body = init?.body
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+
+      if (body.action === "authorize") {
+        return Promise.resolve(
+          mockResponse(200, { auth_req_id: "req_ping", interval: 5 })
+        );
+      }
+
+      if (body.action === "token") {
+        tokenFetchCount++;
+        // First fetch hangs (simulates slow network)
+        return tokenDeferred.promise;
+      }
+
+      if (body.action === "check-ping") {
+        pingCheckCount++;
+        // Second ping check returns received
+        if (pingCheckCount >= 2 && !pingReceived) {
+          pingReceived = true;
+          return Promise.resolve(mockResponse(200, { received: true }));
+        }
+        return Promise.resolve(mockResponse(200, { received: false }));
+      }
+
+      return Promise.resolve(mockResponse(404, {}));
+    });
+
+    const { result } = renderHook(() => useCibaFlow("test-provider"));
+
+    // Start flow — triggers immediate fetchTokens (deferred, hangs)
+    await act(async () => {
+      await result.current.startFlow({
+        loginHint: "user@test.com",
+        scope: "openid",
+      });
+    });
+
+    expect(tokenFetchCount).toBe(1);
+
+    // Advance past two ping check intervals (4s) — second returns received.
+    // Ping handler clears poll interval and calls fetchTokens() while the
+    // original fetch is still in-flight. inflightRef guard reuses the same
+    // promise — no duplicate network request.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+
+    // No duplicate fetch despite ping trigger — inflightRef guard works
+    expect(tokenFetchCount).toBe(1);
+    expect(pingReceived).toBe(true);
+
+    // Resolve the deferred with tokens. Both the original call and the
+    // ping-triggered call share the same promise, so handlePollResult
+    // fires exactly once → approved.
+    await act(async () => {
+      tokenDeferred.resolve(
+        mockResponse(200, { access_token: "at_ping", token_type: "Bearer" })
+      );
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Only 1 fetch total — no duplicate
+    expect(tokenFetchCount).toBe(1);
+    // State reached approved correctly — no regression
+    expect(result.current.state).toBe("approved");
+    expect(result.current.tokens).toEqual({
+      access_token: "at_ping",
+      token_type: "Bearer",
+    });
+  });
+
   it("after approved, no further poll results can regress state", async () => {
     let tokenCallCount = 0;
 

@@ -985,9 +985,14 @@ export const auth = betterAuth({
         if (!user?.id) {
           return {};
         }
-        // Only consume staged release handles for grants with identity scopes.
-        // This prevents auth-code, refresh, and token-exchange grants from
-        // stealing a handle staged for a CIBA approval.
+        // Identity scopes serve as an explicit proxy for the CIBA grant type.
+        // The callback doesn't receive grant_type, but this guard is
+        // functionally equivalent: only CIBA approval flows stage release
+        // handles (via stageReleaseHandle), and only CIBA grants carry
+        // identity.* scopes. Non-CIBA grants (auth-code, refresh, token-
+        // exchange) never have identity scopes, so they exit here.
+        // Even if they did, consumeReleaseHandle returns null when nothing
+        // is staged — defense-in-depth.
         const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
         if (!scopeList.some(isIdentityScope)) {
           return {};
