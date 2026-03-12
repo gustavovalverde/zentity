@@ -8,6 +8,7 @@ import { ExchangeHeader } from "@/components/exchange/exchange-header";
 import { ExchangeMarkets } from "@/components/exchange/exchange-markets";
 import { ExchangePortfolio } from "@/components/exchange/exchange-portfolio";
 import { ExchangeTrade } from "@/components/exchange/exchange-trade";
+import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { MARKET_DATA } from "@/data/exchange";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
@@ -115,6 +116,7 @@ export default function ExchangePage() {
                   </div>
                 )}
               </div>
+              <AssuranceBadges claims={claims} />
             </div>
           ) : (
             <div className="space-y-4 rounded-lg border border-border bg-card p-4 shadow-sm">

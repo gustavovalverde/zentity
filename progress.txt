@@ -63,3 +63,17 @@
   - MOD: apps/web/src/lib/db/schema/haip.ts — added `resource` column
   - MOD: apps/web/src/lib/auth/auth.ts — after hook for PAR resource persistence + `desc` import
   - MOD: apps/web/src/lib/auth/__tests__/rfc8707-resource.integration.test.ts — persistence test
+
+### Phase 3a: Shared assurance display component — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 3, items 1-2)
+- Decisions:
+  - Shared `AssuranceBadges` component using shadcn Badge + theme CSS vars (auto-adapts per data-theme)
+  - AMR codes mapped to human-readable labels (pwd→Password, hwk→Hardware Key, etc.)
+  - Aether `CibaResult` refactored to use shared component (eliminated inline badge rendering + TIER_RE)
+- Files:
+  - NEW: apps/demo-rp/src/components/shared/assurance-badges.tsx
+  - MOD: apps/demo-rp/src/app/bank/page.tsx — added AssuranceBadges in dashboard header
+  - MOD: apps/demo-rp/src/app/exchange/page.tsx — added AssuranceBadges in Account Status card
+  - MOD: apps/demo-rp/src/app/wine/page.tsx — added AssuranceBadges after header
+  - MOD: apps/demo-rp/src/app/aid/page.tsx — added AssuranceBadges in dashboard header
+  - MOD: apps/demo-rp/src/components/aether/agent-chat.tsx — replaced inline badges with shared component

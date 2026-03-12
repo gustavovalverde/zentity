@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { BankDashboard } from "@/components/bank/bank-dashboard";
 import { BankProspect } from "@/components/bank/bank-prospect";
+import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
@@ -242,11 +243,12 @@ export default function BankPage() {
         <div className="mx-auto max-w-5xl p-6 md:p-10">
           {isSteppedUp ? (
             <div className="fade-in slide-in-from-bottom-4 animate-in space-y-6 duration-500">
-              <div>
+              <div className="space-y-2">
                 <h1 className="font-bold text-2xl tracking-tight">Dashboard</h1>
                 <p className="text-muted-foreground">
                   Welcome back, here&apos;s your financial overview.
                 </p>
+                <AssuranceBadges claims={claims} />
               </div>
               <BankDashboard claims={claims} />
             </div>

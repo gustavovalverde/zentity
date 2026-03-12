@@ -11,12 +11,11 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { Button } from "@/components/ui/button";
 import type { Product, ShoppingTask } from "@/data/aether";
 import type { CibaState } from "@/hooks/use-ciba-flow";
 import { env } from "@/lib/env";
-
-const TIER_RE = /tier-(\d)/;
 
 interface AgentMessage {
   content?: string;
@@ -430,11 +429,6 @@ function CibaResult({
   const acr = idTokenPayload?.acr as string | undefined;
   const amr = idTokenPayload?.amr as string[] | undefined;
 
-  // Derive human-readable labels
-  const tierMatch = acr?.match(TIER_RE);
-  const tierLabel = tierMatch ? `Tier ${tierMatch[1]}` : undefined;
-  const amrLabel = amr?.join(", ");
-
   const exchangedPayload =
     exchangedTokens && typeof exchangedTokens.access_token === "string"
       ? decodeJwtPayload(exchangedTokens.access_token)
@@ -496,20 +490,7 @@ function CibaResult({
         </p>
       </div>
 
-      {(tierLabel || amrLabel) && (
-        <div className="flex gap-3 text-xs">
-          {tierLabel && (
-            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-blue-300">
-              {tierLabel}
-            </span>
-          )}
-          {amrLabel && (
-            <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-purple-300">
-              Auth: {amrLabel}
-            </span>
-          )}
-        </div>
-      )}
+      <AssuranceBadges claims={idTokenPayload ?? undefined} />
 
       {(actClaim || authorizationDetails || exchangedPayload) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">

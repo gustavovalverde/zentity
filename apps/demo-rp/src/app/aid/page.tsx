@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { AidDashboard } from "@/components/aid/aid-dashboard";
 import { AidHeader } from "@/components/aid/aid-header";
+import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
@@ -157,13 +158,14 @@ export default function AidPage() {
 
       <main className="container mx-auto flex-1 px-6 py-8">
         <div className="mx-auto max-w-5xl space-y-8">
-          <div>
+          <div className="space-y-2">
             <h1 className="font-bold text-2xl tracking-tight">
               Beneficiary Dashboard
             </h1>
             <p className="text-muted-foreground">
               Manage your aid distribution and verify status.
             </p>
+            <AssuranceBadges claims={claims} />
           </div>
 
           <AidDashboard

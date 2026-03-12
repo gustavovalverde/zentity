@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { WineAgeGate } from "@/components/wine/wine-age-gate";
 import { type CartItem, WineCart } from "@/components/wine/wine-cart";
 import { WineHeader } from "@/components/wine/wine-header";
@@ -136,6 +137,7 @@ export default function WinePage() {
       />
 
       <main className="mx-auto max-w-7xl px-6 py-12">
+        <AssuranceBadges claims={claims} />
         {activeTab === "browse" ? (
           <div className="fade-in animate-in space-y-16 duration-700">
             <div className="space-y-6 border-border/40 border-b py-12 text-center">
