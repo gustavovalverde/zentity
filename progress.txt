@@ -1,3 +1,26 @@
+## MCP Agent Server
+
+### Phase 1: Project Bootstrap & Echo Tool — COMPLETE
+- PRD: docs/plans/mcp-agent-server.md (Phase 1)
+- Decisions:
+  - Standalone app at `apps/mcp/` (no root workspace, matches monorepo pattern)
+  - `WebStandardStreamableHTTPServerTransport` for Hono (not Node.js variant — Hono uses web standard Request/Response)
+  - Server factory pattern: `createServer()` → `{ server, cleanup }`, transport-agnostic
+  - One tool per file pattern: `tools/*.ts` each exports `register(server)` fn
+  - CLI arg parsing: `--transport stdio|http`, `--port 3200`
+  - Ultracite biome/core only (no react/next presets)
+- Files:
+  - NEW: apps/mcp/package.json, tsconfig.json, biome.json, vitest.config.mts, .gitignore
+  - NEW: apps/mcp/src/index.ts — entry point with CLI arg dispatch
+  - NEW: apps/mcp/src/config.ts — CLI arg + env var config
+  - NEW: apps/mcp/src/server/index.ts — server factory
+  - NEW: apps/mcp/src/tools/echo.ts — echo tool (dev/connectivity test)
+  - NEW: apps/mcp/src/tools/index.ts — tool registration barrel
+  - NEW: apps/mcp/src/transports/stdio.ts — StdioServerTransport wiring
+  - NEW: apps/mcp/src/transports/http.ts — Hono + WebStandardStreamableHTTPServerTransport
+  - NEW: apps/mcp/__tests__/server.test.ts — server factory tests (2)
+  - NEW: apps/mcp/__tests__/tools/echo.test.ts — echo tool tests (3)
+
 ## A2A Agent Card Discovery
 
 ### Phase 1: Agent Card Route — COMPLETE
